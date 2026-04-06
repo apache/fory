@@ -23,8 +23,10 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
 
 /**
@@ -34,107 +36,122 @@ import org.apache.fory.resolver.TypeResolver;
 public final class OptionalSerializers {
   public static final class OptionalSerializer extends Serializer<Optional> {
 
-    public OptionalSerializer(Fory fory) {
-      super(fory, Optional.class);
+    public OptionalSerializer(Config config) {
+      super(config, Optional.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Optional value) {
+    public void write(WriteContext writeContext, Optional value) {
       Object nullable = value.isPresent() ? value.get() : null;
-      fory.writeRef(buffer, nullable);
+      writeContext.writeRef(nullable);
     }
 
     @Override
-    public Optional copy(Optional originOptional) {
+    public Optional copy(CopyContext copyContext, Optional originOptional) {
       if (originOptional.isPresent()) {
-        return Optional.ofNullable(fory.copyObject(originOptional.get()));
+        return Optional.ofNullable(copyContext.copyObject(originOptional.get()));
       }
       return originOptional;
     }
 
     @Override
-    public Optional read(MemoryBuffer buffer) {
-      return Optional.ofNullable(fory.readRef(buffer));
+    public Optional read(ReadContext readContext) {
+      return Optional.ofNullable(readContext.readRef());
     }
   }
 
   public static final class OptionalIntSerializer extends ImmutableSerializer<OptionalInt> {
-    public OptionalIntSerializer(Fory fory) {
-      super(fory, OptionalInt.class);
+    public OptionalIntSerializer(Config config) {
+      super(config, OptionalInt.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, OptionalInt value) {
+    public void write(WriteContext writeContext, OptionalInt value) {
       boolean present = value.isPresent();
-      buffer.writeBoolean(present);
+      writeContext.getBuffer().writeBoolean(present);
       if (present) {
-        buffer.writeInt32(value.getAsInt());
+        writeContext.getBuffer().writeInt32(value.getAsInt());
       }
     }
 
     @Override
-    public OptionalInt read(MemoryBuffer buffer) {
-      if (buffer.readBoolean()) {
-        return OptionalInt.of(buffer.readInt32());
+    public OptionalInt read(ReadContext readContext) {
+      if (readContext.getBuffer().readBoolean()) {
+        return OptionalInt.of(readContext.getBuffer().readInt32());
       } else {
         return OptionalInt.empty();
       }
     }
+
+    @Override
+    public boolean shareable() {
+      return true;
+    }
   }
 
   public static final class OptionalLongSerializer extends ImmutableSerializer<OptionalLong> {
-    public OptionalLongSerializer(Fory fory) {
-      super(fory, OptionalLong.class);
+    public OptionalLongSerializer(Config config) {
+      super(config, OptionalLong.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, OptionalLong value) {
+    public void write(WriteContext writeContext, OptionalLong value) {
       boolean present = value.isPresent();
-      buffer.writeBoolean(present);
+      writeContext.getBuffer().writeBoolean(present);
       if (present) {
-        buffer.writeInt64(value.getAsLong());
+        writeContext.getBuffer().writeInt64(value.getAsLong());
       }
     }
 
     @Override
-    public OptionalLong read(MemoryBuffer buffer) {
-      if (buffer.readBoolean()) {
-        return OptionalLong.of(buffer.readInt64());
+    public OptionalLong read(ReadContext readContext) {
+      if (readContext.getBuffer().readBoolean()) {
+        return OptionalLong.of(readContext.getBuffer().readInt64());
       } else {
         return OptionalLong.empty();
       }
     }
+
+    @Override
+    public boolean shareable() {
+      return true;
+    }
   }
 
   public static final class OptionalDoubleSerializer extends ImmutableSerializer<OptionalDouble> {
-    public OptionalDoubleSerializer(Fory fory) {
-      super(fory, OptionalDouble.class);
+    public OptionalDoubleSerializer(Config config) {
+      super(config, OptionalDouble.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, OptionalDouble value) {
+    public void write(WriteContext writeContext, OptionalDouble value) {
       boolean present = value.isPresent();
-      buffer.writeBoolean(present);
+      writeContext.getBuffer().writeBoolean(present);
       if (present) {
-        buffer.writeFloat64(value.getAsDouble());
+        writeContext.getBuffer().writeFloat64(value.getAsDouble());
       }
     }
 
     @Override
-    public OptionalDouble read(MemoryBuffer buffer) {
-      if (buffer.readBoolean()) {
-        return OptionalDouble.of(buffer.readFloat64());
+    public OptionalDouble read(ReadContext readContext) {
+      if (readContext.getBuffer().readBoolean()) {
+        return OptionalDouble.of(readContext.getBuffer().readFloat64());
       } else {
         return OptionalDouble.empty();
       }
     }
+
+    @Override
+    public boolean shareable() {
+      return true;
+    }
   }
 
-  public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory.getTypeResolver();
-    resolver.registerInternalSerializer(Optional.class, new OptionalSerializer(fory));
-    resolver.registerInternalSerializer(OptionalInt.class, new OptionalIntSerializer(fory));
-    resolver.registerInternalSerializer(OptionalLong.class, new OptionalLongSerializer(fory));
-    resolver.registerInternalSerializer(OptionalDouble.class, new OptionalDoubleSerializer(fory));
+  public static void registerDefaultSerializers(TypeResolver resolver) {
+    Config config = resolver.getConfig();
+    resolver.registerInternalSerializer(Optional.class, new OptionalSerializer(config));
+    resolver.registerInternalSerializer(OptionalInt.class, new OptionalIntSerializer(config));
+    resolver.registerInternalSerializer(OptionalLong.class, new OptionalLongSerializer(config));
+    resolver.registerInternalSerializer(OptionalDouble.class, new OptionalDoubleSerializer(config));
   }
 }

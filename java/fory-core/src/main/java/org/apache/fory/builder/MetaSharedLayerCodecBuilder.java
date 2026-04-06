@@ -32,10 +32,11 @@ import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.Expression.StaticInvoke;
 import org.apache.fory.codegen.ExpressionUtils;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.serializer.MetaSharedLayerSerializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.util.ExceptionUtils;
@@ -50,7 +51,7 @@ import org.apache.fory.util.StringUtils;
  * <p>This is used by {@link org.apache.fory.serializer.ObjectStreamSerializer} to generate JIT
  * serializers for each layer in the class hierarchy.
  *
- * @see MetaSharedLayerSerializer
+ * @see org.apache.fory.serializer.MetaSharedLayerSerializer
  * @see MetaSharedCodecBuilder
  * @see GeneratedMetaSharedLayerSerializer
  */
@@ -71,13 +72,10 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
     objectCodecOptimizer = new ObjectCodecOptimizer(beanClass, grouper, false, ctx);
   }
 
-  // Must be static to be shared across the whole process life.
   private static final Map<Long, Integer> idGenerator = new ConcurrentHashMap<>();
 
   @Override
   protected String codecSuffix() {
-    // For every class def sent from different peer, if the class def are different, then
-    // a new serializer needs being generated.
     Integer id = idGenerator.get(layerTypeDef.getId());
     if (id == null) {
       synchronized (idGenerator) {
@@ -92,43 +90,88 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
     String className = codecClassName(beanClass);
     ctx.setClassName(className);
-    // don't addImport(beanClass), because user class may name collide.
     ctx.extendsClasses(ctx.type(parentSerializerClass));
     ctx.reserveName(POJO_CLASS_TYPE_NAME);
-    ctx.addField(ctx.type(Fory.class), FORY_NAME);
     String constructorCode =
         StringUtils.format(
-            "super(${fory}, ${cls});\nthis.${fory} = ${fory};\n",
-            "fory",
-            FORY_NAME,
+            ""
+                + "super(${typeResolver}, ${cls});\n"
+                + "this.${generatedTypeResolver} = (${generatedTypeResolverType}) ${typeResolver};\n"
+                + "${typeResolver}.setSerializerIfAbsent(${cls}, this);\n",
+            "typeResolver",
+            CONSTRUCTOR_TYPE_RESOLVER_NAME,
+            "generatedTypeResolver",
+            TYPE_RESOLVER_NAME,
+            "generatedTypeResolverType",
+            ctx.type(concreteTypeResolverType),
             "cls",
             POJO_CLASS_TYPE_NAME);
+
     ctx.clearExprState();
-    Expression encodeExpr = buildEncodeExpression();
-    String encodeCode = encodeExpr.genCode(ctx).code();
+    String encodeCode = buildEncodeExpression().genCode(ctx).code();
     encodeCode = ctx.optimizeMethodCode(encodeCode);
+    encodeCode = encodeCode == null ? "" : encodeCode;
+    encodeCode =
+        StringUtils.format(
+                "${bufferType} ${buffer} = ${writeContext}.getBuffer();\n",
+                "bufferType",
+                ctx.type(MemoryBuffer.class),
+                "buffer",
+                BUFFER_NAME,
+                "writeContext",
+                WRITE_CONTEXT_NAME)
+            + encodeCode;
+    if (encodeCode.contains(REF_WRITER_NAME)) {
+      encodeCode =
+          StringUtils.format(
+                  "${refWriterType} ${refWriter} = (${refWriterType}) ${writeContext}.getRefWriter();\n",
+                  "refWriterType",
+                  ctx.type(concreteRefWriterType),
+                  "refWriter",
+                  REF_WRITER_NAME,
+                  "writeContext",
+                  WRITE_CONTEXT_NAME)
+              + encodeCode;
+    }
+
     ctx.clearExprState();
-    Expression decodeExpr = buildReadAndSetFieldsExpression();
-    String decodeCode = decodeExpr.genCode(ctx).code();
+    String decodeCode = buildReadAndSetFieldsExpression().genCode(ctx).code();
     decodeCode = ctx.optimizeMethodCode(decodeCode);
+    decodeCode = decodeCode == null ? "" : decodeCode;
+    decodeCode =
+        StringUtils.format(
+                "${bufferType} ${buffer} = ${readContext}.getBuffer();\n",
+                "bufferType",
+                ctx.type(MemoryBuffer.class),
+                "buffer",
+                BUFFER_NAME,
+                "readContext",
+                READ_CONTEXT_NAME)
+            + decodeCode;
+
     ctx.overrideMethod(
         "writeFieldsOnly",
         encodeCode,
         void.class,
-        MemoryBuffer.class,
-        BUFFER_NAME,
+        WriteContext.class,
+        WRITE_CONTEXT_NAME,
         Object.class,
         ROOT_OBJECT_NAME);
     ctx.overrideMethod(
         "readAndSetFields",
         decodeCode,
         Object.class,
-        MemoryBuffer.class,
-        BUFFER_NAME,
+        ReadContext.class,
+        READ_CONTEXT_NAME,
         Object.class,
         ROOT_OBJECT_NAME);
     registerJITNotifyCallback();
-    ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
+    ctx.addConstructor(
+        constructorCode,
+        org.apache.fory.resolver.TypeResolver.class,
+        CONSTRUCTOR_TYPE_RESOLVER_NAME,
+        Class.class,
+        POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
   }
 
@@ -185,15 +228,10 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
   @Override
   protected Expression setFieldValue(Expression bean, Descriptor descriptor, Expression value) {
     if (descriptor.getField() == null) {
-      // Field doesn't exist in current class (e.g., from serialPersistentFields).
-      // Skip setting this field value but still consume the read value.
       return new StaticInvoke(ExceptionUtils.class, "ignore", value);
     }
     return super.setFieldValue(bean, descriptor, value);
   }
-
-  // Note: Layer class meta is read by ObjectStreamSerializer before calling this serializer.
-  // The generated read() method only reads field data, not the layer class meta.
 
   private Expression buildReadAndSetFieldsExpression() {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
@@ -207,17 +245,23 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
         objectCodecOptimizer.boxedReadGroups, numGroups, expressions, bean, buffer);
     deserializeReadGroup(
         objectCodecOptimizer.buildInReadGroups, numGroups, expressions, bean, buffer);
-    for (Descriptor d : objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors()) {
+    for (Descriptor descriptor :
+        objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors()) {
       expressions.add(
-          deserializeGroup(java.util.Collections.singletonList(d), bean, buffer, false));
+          deserializeGroup(java.util.Collections.singletonList(descriptor), bean, buffer, false));
     }
-    for (Descriptor d : objectCodecOptimizer.descriptorGrouper.getMapDescriptors()) {
+    for (Descriptor descriptor : objectCodecOptimizer.descriptorGrouper.getMapDescriptors()) {
       expressions.add(
-          deserializeGroup(java.util.Collections.singletonList(d), bean, buffer, false));
+          deserializeGroup(java.util.Collections.singletonList(descriptor), bean, buffer, false));
     }
     deserializeReadGroup(
         objectCodecOptimizer.otherReadGroups, numGroups, expressions, bean, buffer);
     expressions.add(new Expression.Return(bean));
     return expressions;
+  }
+
+  @Override
+  protected Expression buildComponentsArray() {
+    return buildDefaultComponentsArray();
   }
 }

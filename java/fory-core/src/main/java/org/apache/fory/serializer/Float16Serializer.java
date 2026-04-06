@@ -19,23 +19,29 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.type.Float16;
 
 public final class Float16Serializer extends ImmutableSerializer<Float16> {
 
-  public Float16Serializer(Fory fory) {
-    super(fory, Float16.class);
+  public Float16Serializer(Config config) {
+    super(config, Float16.class);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Float16 value) {
-    buffer.writeInt16(value.toBits());
+  public void write(WriteContext writeContext, Float16 value) {
+    writeContext.getBuffer().writeInt16(value.toBits());
   }
 
   @Override
-  public Float16 read(MemoryBuffer buffer) {
-    return Float16.fromBits(buffer.readInt16());
+  public Float16 read(ReadContext readContext) {
+    return Float16.fromBits(readContext.getBuffer().readInt16());
+  }
+
+  @Override
+  public boolean shareable() {
+    return true;
   }
 }

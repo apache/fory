@@ -20,10 +20,10 @@
 package org.apache.fory.serializer.collection;
 
 import java.util.Collection;
-import org.apache.fory.Fory;
 import org.apache.fory.collection.CollectionSnapshot;
 import org.apache.fory.collection.ObjectArray;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.WriteContext;
+import org.apache.fory.resolver.TypeResolver;
 
 /**
  * Serializer for concurrent collection implementations that require thread-safe serialization.
@@ -56,12 +56,13 @@ public class ConcurrentCollectionSerializer<T extends Collection> extends Collec
   /**
    * Constructs a new ConcurrentCollectionSerializer for the specified concurrent collection type.
    *
-   * @param fory the Fory instance for serialization context
+   * @param typeResolver the resolver used for nested type handling
    * @param type the class type of the concurrent collection to serialize
    * @param supportCodegen whether code generation is supported for this serializer
    */
-  public ConcurrentCollectionSerializer(Fory fory, Class<T> type, boolean supportCodegen) {
-    super(fory, type, supportCodegen);
+  public ConcurrentCollectionSerializer(
+      TypeResolver typeResolver, Class<T> type, boolean supportCodegen) {
+    super(typeResolver, type, supportCodegen);
   }
 
   /**
@@ -72,18 +73,17 @@ public class ConcurrentCollectionSerializer<T extends Collection> extends Collec
    * concurrent modification issues during serialization. The collection size is written to the
    * buffer before returning the snapshot.
    *
-   * @param buffer the memory buffer to write serialization data to
    * @param value the concurrent collection to serialize
    * @return a snapshot of the collection for safe iteration during serialization
    */
   @Override
-  public CollectionSnapshot onCollectionWrite(MemoryBuffer buffer, T value) {
+  public CollectionSnapshot onCollectionWrite(WriteContext writeContext, T value) {
     CollectionSnapshot snapshot = snapshots.popOrNull();
     if (snapshot == null) {
       snapshot = new CollectionSnapshot();
     }
     snapshot.setCollection(value);
-    buffer.writeVarUint32Small7(snapshot.size());
+    writeContext.getBuffer().writeVarUint32Small7(snapshot.size());
     return snapshot;
   }
 

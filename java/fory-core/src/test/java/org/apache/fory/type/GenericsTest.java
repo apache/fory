@@ -23,10 +23,8 @@ import com.google.common.collect.ImmutableList;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -220,36 +218,36 @@ public class GenericsTest extends ForyTestBase {
 
   @Test
   public void testGenerics() throws NoSuchFieldException {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
-    Generics generics = new Generics(fory);
+    Generics generics = new Generics();
+    int depth = 0;
     {
       GenericType genericType =
           GenericType.build(Test4.class, Test2.class.getField("fromFieldNested").getGenericType());
       // push generics in outer serialization.
-      generics.pushGenericType(genericType);
+      generics.pushGenericType(genericType, depth);
       // increase serialization depth.
-      increaseForyDepth(fory, 1);
+      depth += 1;
       // get generics in inner serialization.
-      GenericType genericType1 = generics.nextGenericType();
+      GenericType genericType1 = generics.nextGenericType(depth);
       Assert.assertSame(genericType1, genericType);
-      increaseForyDepth(fory, -1);
-      generics.popGenericType();
+      depth -= 1;
+      generics.popGenericType(depth);
     }
     {
       for (String fieldName : new String[] {"fromField2", "arrayWithTypeVar", "fromFieldNested"}) {
         GenericType genericType =
             GenericType.build(Test4.class, Test2.class.getField(fieldName).getGenericType());
-        generics.pushGenericType(genericType);
-        increaseForyDepth(fory, 1);
+        generics.pushGenericType(genericType, depth);
+        depth += 1;
       }
       for (String fieldName :
           ImmutableList.of("fromField2", "arrayWithTypeVar", "fromFieldNested").reverse()) {
         GenericType genericType =
             GenericType.build(Test4.class, Test2.class.getField(fieldName).getGenericType());
-        GenericType genericType1 = generics.nextGenericType();
+        GenericType genericType1 = generics.nextGenericType(depth);
         Assert.assertEquals(genericType1.typeRef, genericType.typeRef);
-        increaseForyDepth(fory, -1);
-        generics.popGenericType();
+        depth -= 1;
+        generics.popGenericType(depth);
       }
     }
     Assert.assertEquals(TestUtils.getFieldValue(generics, "genericTypesSize"), Integer.valueOf(0));

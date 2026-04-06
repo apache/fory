@@ -359,7 +359,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     // Create FieldReplaceResolveSerializer as it would be used for a final field
     FinalFieldReplaceResolveSerializer finalFieldSerializer =
-        new FinalFieldReplaceResolveSerializer(fory, listClass);
+        new FinalFieldReplaceResolveSerializer(fory.getTypeResolver(), listClass);
 
     // Use reflection to check that writeTypeInfo is null
     java.lang.reflect.Field writeTypeInfoField =
@@ -374,7 +374,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     // Compare with ReplaceResolveSerializer (non-final)
     ReplaceResolveSerializer nonFinalFieldSerializer =
-        new ReplaceResolveSerializer(fory, listClass, false, true);
+        new ReplaceResolveSerializer(fory.getTypeResolver(), listClass, false, true);
     Object writeTypeInfoNonFinal = writeTypeInfoField.get(nonFinalFieldSerializer);
 
     // For ReplaceResolveSerializer (non-final), writeTypeInfo should NOT be null

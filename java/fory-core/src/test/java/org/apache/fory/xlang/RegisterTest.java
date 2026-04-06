@@ -19,14 +19,21 @@
 
 package org.apache.fory.xlang;
 
+import java.lang.reflect.Method;
+import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -59,19 +66,19 @@ public class RegisterTest extends ForyTestBase {
 
   private static class MyExtSerializer extends Serializer<MyExt> {
 
-    public MyExtSerializer(Fory fory, Class<MyExt> cls) {
-      super(fory, cls);
+    public MyExtSerializer(TypeResolver typeResolver, Class<MyExt> cls) {
+      super(typeResolver.getConfig(), cls);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, MyExt value) {
-      buffer.writeVarInt32(value.id);
+    public void write(WriteContext writeContext, MyExt value) {
+      writeContext.getBuffer().writeVarInt32(value.id);
     }
 
     @Override
-    public MyExt read(MemoryBuffer buffer) {
+    public MyExt read(ReadContext readContext) {
       MyExt obj = new MyExt();
-      obj.id = buffer.readVarInt32();
+      obj.id = readContext.getBuffer().readVarInt32();
       return obj;
     }
   }
@@ -117,5 +124,35 @@ public class RegisterTest extends ForyTestBase {
     MemoryBuffer buffer2 = MemoryUtils.wrap(serialize);
     EmptyWrapper newWrapper = (EmptyWrapper) fory2.deserialize(buffer2);
     Assert.assertEquals(newWrapper, new EmptyWrapper());
+  }
+
+  @Test
+  public void testXlangBuiltInAliasTypeIdsKeepCanonicalTypeInfo() {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    TypeResolver typeResolver = fory.getTypeResolver();
+
+    typeResolver.getSerializer(StringBuffer.class);
+    typeResolver.getSerializer(AtomicInteger.class);
+
+    Assert.assertSame(typeResolver.getTypeInfoByTypeId(Types.STRING).getType(), String.class);
+    Assert.assertSame(typeResolver.getTypeInfoByTypeId(Types.INT32).getType(), Integer.class);
+
+    Object stringValue = fory.deserialize(fory.serialize("str"));
+    Assert.assertSame(stringValue.getClass(), String.class);
+    Assert.assertEquals(stringValue, "str");
+
+    Object intValue = fory.deserialize(fory.serialize(1));
+    Assert.assertSame(intValue.getClass(), Integer.class);
+    Assert.assertEquals(intValue, 1);
+  }
+
+  private static void finishBuilder(ForyBuilder builder) {
+    try {
+      Method finish = ForyBuilder.class.getDeclaredMethod("finish");
+      finish.setAccessible(true);
+      finish.invoke(builder);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 }

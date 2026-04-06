@@ -45,10 +45,13 @@ import org.apache.fory.annotation.Uint8Type;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.MetaCompressor;
 import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.type.Types;
@@ -1080,12 +1083,13 @@ public abstract class XlangTestBase extends ForyTestBase {
 
   private static class MyExtSerializer extends Serializer<MyExt> {
 
-    public MyExtSerializer(Fory fory, Class<MyExt> cls) {
-      super(fory, cls);
+    public MyExtSerializer(TypeResolver typeResolver, Class<MyExt> cls) {
+      super(typeResolver.getConfig(), cls);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, MyExt value) {
+    public void write(WriteContext writeContext, MyExt value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       System.out.println("Writer Index Before write myext: " + buffer.writerIndex());
       buffer.writeVarInt32(value.id);
       System.out.println("Write id " + value.id);
@@ -1093,7 +1097,8 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @SuppressWarnings("unchecked")
     @Override
-    public MyExt read(MemoryBuffer buffer) {
+    public MyExt read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       MyExt obj = new MyExt();
       obj.id = buffer.readVarInt32();
       return obj;

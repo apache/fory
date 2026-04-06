@@ -22,9 +22,10 @@ package org.apache.fory.serializer;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.apache.fory.Fory;
 import org.apache.fory.collection.Tuple3;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 
 /** Local serializer for {@link Locale}. */
 public final class LocaleSerializer extends ImmutableSerializer<Locale> {
@@ -65,20 +66,20 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> {
     map.put(Tuple3.of(locale.getCountry(), locale.getLanguage(), locale.getVariant()), locale);
   }
 
-  public LocaleSerializer(Fory fory) {
-    super(fory, Locale.class);
+  public LocaleSerializer(Config config) {
+    super(config, Locale.class);
   }
 
-  public void write(MemoryBuffer buffer, Locale l) {
-    fory.writeString(buffer, l.getLanguage());
-    fory.writeString(buffer, l.getCountry());
-    fory.writeString(buffer, l.getVariant());
+  public void write(WriteContext writeContext, Locale l) {
+    writeContext.writeString(l.getLanguage());
+    writeContext.writeString(l.getCountry());
+    writeContext.writeString(l.getVariant());
   }
 
-  public Locale read(MemoryBuffer buffer) {
-    String language = fory.readString(buffer);
-    String country = fory.readString(buffer);
-    String variant = fory.readString(buffer);
+  public Locale read(ReadContext readContext) {
+    String language = readContext.readString();
+    String country = readContext.readString();
+    String variant = readContext.readString();
     // Fast path for Default/US/SIMPLIFIED_CHINESE
     Locale defaultLocale = Locale.getDefault();
     if (isSame(defaultLocale, language, country, variant)) {
@@ -101,5 +102,10 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> {
     return (locale.getLanguage().equals(language)
         && locale.getCountry().equals(country)
         && locale.getVariant().equals(variant));
+  }
+
+  @Override
+  public boolean shareable() {
+    return true;
   }
 }

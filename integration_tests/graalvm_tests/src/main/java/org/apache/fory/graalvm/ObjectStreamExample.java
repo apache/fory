@@ -49,14 +49,15 @@ public class ObjectStreamExample extends AbstractMap<Integer, Integer> {
     FORY.register(AsyncTreeMapSubclass.class);
     FORY.registerSerializer(
         AsyncLayerJitContainer.class,
-        new ObjectStreamSerializer(FORY, AsyncLayerJitContainer.class));
+        new ObjectStreamSerializer(FORY.getTypeResolver(), AsyncLayerJitContainer.class));
     FORY.registerSerializer(
         AsyncTreeSetSubclass.class,
         new CollectionSerializers.JDKCompatibleCollectionSerializer<>(
-            FORY, AsyncTreeSetSubclass.class));
+            FORY.getTypeResolver(), AsyncTreeSetSubclass.class));
     FORY.registerSerializer(
         AsyncTreeMapSubclass.class,
-        new MapSerializers.JDKCompatibleMapSerializer<>(FORY, AsyncTreeMapSubclass.class));
+        new MapSerializers.JDKCompatibleMapSerializer<>(
+            FORY.getTypeResolver(), AsyncTreeMapSubclass.class));
     assertSerializerClass(
         AsyncTreeSetSubclass.class, CollectionSerializers.JDKCompatibleCollectionSerializer.class);
     assertSerializerClass(

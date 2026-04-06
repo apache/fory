@@ -81,15 +81,11 @@ public class ForyBuilderTest {
     Fory compatibleFromBoolean = new ForyBuilder().withCompatible(true).build();
     Fory schemaConsistent = new ForyBuilder().withCompatible(false).build();
 
-    assertTrue(compatibleFromMode.isCompatible());
     assertTrue(compatibleFromMode.getConfig().isCompatible());
-    assertEquals(compatibleFromMode.getCompatibleMode(), CompatibleMode.COMPATIBLE);
     assertEquals(compatibleFromMode.getConfig().getCompatibleMode(), CompatibleMode.COMPATIBLE);
     assertEquals(compatibleFromMode.getConfig(), compatibleFromBoolean.getConfig());
 
-    assertFalse(schemaConsistent.isCompatible());
     assertFalse(schemaConsistent.getConfig().isCompatible());
-    assertEquals(schemaConsistent.getCompatibleMode(), CompatibleMode.SCHEMA_CONSISTENT);
     assertEquals(
         schemaConsistent.getConfig().getCompatibleMode(), CompatibleMode.SCHEMA_CONSISTENT);
   }

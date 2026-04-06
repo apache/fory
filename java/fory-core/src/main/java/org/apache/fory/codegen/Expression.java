@@ -1236,7 +1236,15 @@ public interface Expression {
         TypeRef<?> type,
         boolean returnNullable,
         Expression... arguments) {
-      this(staticObject, functionName, returnNamePrefix, type, returnNullable, false, arguments);
+      this(
+          staticObject,
+          functionName,
+          returnNamePrefix,
+          type,
+          returnNullable,
+          false,
+          ReflectionUtils.hasException(staticObject, functionName),
+          arguments);
     }
 
     /**
@@ -1257,15 +1265,9 @@ public interface Expression {
         TypeRef<?> type,
         boolean returnNullable,
         boolean inline,
+        boolean needTryCatch,
         Expression... arguments) {
-      super(
-          functionName,
-          type,
-          arguments,
-          returnNamePrefix,
-          returnNullable,
-          inline,
-          ReflectionUtils.hasException(staticObject, functionName));
+      super(functionName, type, arguments, returnNamePrefix, returnNullable, inline, needTryCatch);
       this.staticObject = staticObject;
       if (inline && needTryCatch) {
         throw new UnsupportedOperationException(
@@ -1273,6 +1275,25 @@ public interface Expression {
                 "Method %s in %s has exception signature and can't be inlined",
                 functionName, staticObject));
       }
+    }
+
+    public StaticInvoke(
+        Class<?> staticObject,
+        String functionName,
+        String returnNamePrefix,
+        TypeRef<?> type,
+        boolean returnNullable,
+        boolean inline,
+        Expression... arguments) {
+      this(
+          staticObject,
+          functionName,
+          returnNamePrefix,
+          type,
+          returnNullable,
+          inline,
+          ReflectionUtils.hasException(staticObject, functionName),
+          arguments);
     }
 
     @Override
@@ -2307,11 +2328,11 @@ public interface Expression {
 
   class ForEach extends AbstractExpression {
     private Expression inputObject;
-
-    @ClosureVisitable final SerializableBiFunction<Expression, Expression, Expression> action;
-
     private final TypeRef<?> elementType;
     private final boolean elementNullable;
+    private final Reference indexRef;
+    private final Reference elementRef;
+    private final Expression loopAction;
 
     /**
      * inputObject.type() must be multi-dimension array or Collection, not allowed to be primitive
@@ -2324,7 +2345,6 @@ public interface Expression {
       super(inputObject);
       this.inputObject = inputObject;
       this.elementNullable = elementNullable;
-      this.action = action;
       TypeRef<?> elementType;
       if (inputObject.type().isArray()) {
         elementType = inputObject.type().getComponentType();
@@ -2332,6 +2352,11 @@ public interface Expression {
         elementType = getElementType(inputObject.type());
       }
       this.elementType = ReflectionUtils.getPublicSuperType(elementType);
+      String refNamePrefix = String.valueOf(System.identityHashCode(this));
+      indexRef = new Reference(refNamePrefix + "_i", PRIMITIVE_INT_TYPE);
+      elementRef =
+          new Reference(refNamePrefix + "_elemValue", this.elementType, this.elementNullable);
+      loopAction = action.apply(indexRef, elementRef);
     }
 
     public ForEach(
@@ -2341,9 +2366,12 @@ public interface Expression {
         SerializableBiFunction<Expression, Expression, Expression> action) {
       super(inputObject);
       this.inputObject = inputObject;
-      this.action = action;
       this.elementType = beanType;
       this.elementNullable = elementNullable;
+      String refNamePrefix = String.valueOf(System.identityHashCode(this));
+      indexRef = new Reference(refNamePrefix + "_i", PRIMITIVE_INT_TYPE);
+      elementRef = new Reference(refNamePrefix + "_elemValue", this.elementType, elementNullable);
+      loopAction = action.apply(indexRef, elementRef);
     }
 
     @Override
@@ -2360,9 +2388,9 @@ public interface Expression {
       }
       String i = ctx.newName("i");
       String elemValue = ctx.newName("elemValue");
-      Expression elementExpr =
-          action.apply(new Reference(i), new Reference(elemValue, elementType, elementNullable));
-      ExprCode elementExprCode = elementExpr.genCode(ctx);
+      indexRef.setName(i);
+      elementRef.setName(elemValue);
+      ExprCode elementExprCode = loopAction.genCode(ctx);
 
       if (inputObject.type().isArray()) {
         String code =
@@ -2432,16 +2460,19 @@ public interface Expression {
 
     @Override
     public String toString() {
-      return String.format("ForEach(%s, %s)", inputObject, action);
+      return String.format("ForEach(%s, %s)", inputObject, loopAction);
     }
   }
 
   class ZipForEach extends AbstractExpression {
     private Expression left;
     private Expression right;
-
-    @ClosureVisitable
-    private final SerializableTriFunction<Expression, Expression, Expression, Expression> action;
+    private final TypeRef<?> leftElemType;
+    private final TypeRef<?> rightElemType;
+    private final Reference indexRef;
+    private final Reference leftElementRef;
+    private final Reference rightElementRef;
+    private final Expression loopAction;
 
     public ZipForEach(
         Expression left,
@@ -2450,7 +2481,6 @@ public interface Expression {
       super(new Expression[] {left, right});
       this.left = left;
       this.right = right;
-      this.action = action;
       Preconditions.checkArgument(
           left.type().isArray() || TypeRef.of(Collection.class).isSupertypeOf(left.type()));
       Preconditions.checkArgument(
@@ -2459,6 +2489,27 @@ public interface Expression {
         Preconditions.checkArgument(
             right.type().isArray(), "Should both be array or neither be array");
       }
+      TypeRef<?> leftElemType;
+      if (left.type().isArray()) {
+        leftElemType = left.type().getComponentType();
+      } else {
+        leftElemType = getElementType(left.type());
+      }
+      this.leftElemType = ReflectionUtils.getPublicSuperType(leftElemType);
+      TypeRef<?> rightElemType;
+      if (right.type().isArray()) {
+        rightElemType = right.type().getComponentType();
+      } else {
+        rightElemType = getElementType(right.type());
+      }
+      this.rightElemType = ReflectionUtils.getPublicSuperType(rightElemType);
+      String refNamePrefix = String.valueOf(System.identityHashCode(this));
+      indexRef = new Reference(refNamePrefix + "_i", PRIMITIVE_INT_TYPE);
+      leftElementRef = new Reference(refNamePrefix + "_leftElemValue", this.leftElemType, true);
+      // elemValue nullability check uses isNullAt inside action, so elemValueRef's nullable is
+      // false.
+      rightElementRef = new Reference(refNamePrefix + "_rightElemValue", this.rightElemType, false);
+      loopAction = action.apply(indexRef, leftElementRef, rightElementRef);
     }
 
     @Override
@@ -2481,28 +2532,10 @@ public interface Expression {
       String i = ctx.newName("i");
       String leftElemValue = ctx.newName("leftElemValue");
       String rightElemValue = ctx.newName("rightElemValue");
-      TypeRef<?> leftElemType;
-      if (left.type().isArray()) {
-        leftElemType = left.type().getComponentType();
-      } else {
-        leftElemType = getElementType(left.type());
-      }
-      leftElemType = ReflectionUtils.getPublicSuperType(leftElemType);
-      TypeRef<?> rightElemType;
-      if (right.type().isArray()) {
-        rightElemType = right.type().getComponentType();
-      } else {
-        rightElemType = getElementType(right.type());
-      }
-      rightElemType = ReflectionUtils.getPublicSuperType(rightElemType);
-      Expression elemExpr =
-          action.apply(
-              new Reference(i),
-              new Reference(leftElemValue, leftElemType, true),
-              // elemValue nullability check uses isNullAt inside action, so elemValueRef's nullable
-              // is false.
-              new Reference(rightElemValue, rightElemType, false));
-      ExprCode elementExprCode = elemExpr.genCode(ctx);
+      indexRef.setName(i);
+      leftElementRef.setName(leftElemValue);
+      rightElementRef.setName(rightElemValue);
+      ExprCode elementExprCode = loopAction.genCode(ctx);
 
       if (left.type().isArray()) {
         String code =

@@ -64,7 +64,7 @@ public class EnumSerializerTest extends ForyTestBase {
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
-    if (fory1.isCrossLanguage()) {
+    if (fory1.getConfig().isXlang()) {
       fory1.register(EnumSerializerTest.EnumFoo.class);
       fory2.register(EnumSerializerTest.EnumFoo.class);
       fory1.register(EnumSerializerTest.EnumSubClass.class);

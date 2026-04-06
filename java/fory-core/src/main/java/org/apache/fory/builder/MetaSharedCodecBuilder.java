@@ -37,11 +37,13 @@ import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.StaticInvoke;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.MetaSharedSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
@@ -158,15 +160,18 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
     ctx.extendsClasses(ctx.type(parentSerializerClass));
     ctx.reserveName(POJO_CLASS_TYPE_NAME);
     ctx.reserveName(SERIALIZER_FIELD_NAME);
-    ctx.addField(ctx.type(Fory.class), FORY_NAME);
     String constructorCode =
         StringUtils.format(
             ""
-                + "super(${fory}, ${cls});\n"
-                + "this.${fory} = ${fory};\n"
-                + "${serializer} = ${builderClass}.setCodegenSerializer(${fory}, ${cls}, this);\n",
-            "fory",
-            FORY_NAME,
+                + "super(${typeResolver}, ${cls});\n"
+                + "this.${generatedTypeResolver} = (${generatedTypeResolverType}) ${typeResolver};\n"
+                + "${serializer} = ${builderClass}.setCodegenSerializer(${typeResolver}, ${cls}, this);\n",
+            "typeResolver",
+            CONSTRUCTOR_TYPE_RESOLVER_NAME,
+            "generatedTypeResolver",
+            TYPE_RESOLVER_NAME,
+            "generatedTypeResolverType",
+            ctx.type(concreteTypeResolverType),
             "cls",
             POJO_CLASS_TYPE_NAME,
             "builderClass",
@@ -177,9 +182,27 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
     Expression decodeExpr = buildDecodeExpression();
     String decodeCode = decodeExpr.genCode(ctx).code();
     decodeCode = ctx.optimizeMethodCode(decodeCode);
-    ctx.overrideMethod(readMethodName, decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    decodeCode = decodeCode == null ? "" : decodeCode;
+    decodeCode =
+        StringUtils.format(
+            "${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "bufferType",
+            ctx.type(MemoryBuffer.class),
+            "buffer",
+            BUFFER_NAME,
+            "readContext",
+            READ_CONTEXT_NAME,
+            "code",
+            decodeCode);
+    ctx.overrideMethod(
+        readMethodName, decodeCode, Object.class, ReadContext.class, READ_CONTEXT_NAME);
     registerJITNotifyCallback();
-    ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
+    ctx.addConstructor(
+        constructorCode,
+        TypeResolver.class,
+        CONSTRUCTOR_TYPE_RESOLVER_NAME,
+        Class.class,
+        POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
   }
 
@@ -192,18 +215,21 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
   // Invoked by JIT.
   @SuppressWarnings({"unchecked", "rawtypes"})
   public static Serializer setCodegenSerializer(
-      Fory fory, Class<?> cls, GeneratedMetaSharedSerializer s) {
+      TypeResolver typeResolver, Class<?> cls, GeneratedMetaSharedSerializer s) {
     if (GraalvmSupport.isGraalRuntime()) {
-      return typeResolver(fory, r -> r.getSerializer(s.getType()));
+      return typeResolver
+          .getJITContext()
+          .asyncVisitFory(f -> f.getTypeResolver().getSerializer(s.getType()));
     }
     // This method hold jit lock, so create jit serializer async to avoid block serialization.
     Class serializerClass =
-        fory.getJITContext()
+        typeResolver
+            .getJITContext()
             .registerSerializerJITCallback(
                 () -> ObjectSerializer.class,
-                () -> CodegenSerializer.loadCodegenSerializer(fory, s.getType()),
-                c -> s.serializer = Serializers.newSerializer(fory, s.getType(), c));
-    return Serializers.newSerializer(fory, cls, serializerClass);
+                () -> CodegenSerializer.loadCodegenSerializer(typeResolver, s.getType()),
+                c -> s.serializer = Serializers.newSerializer(typeResolver, s.getType(), c));
+    return Serializers.newSerializer(typeResolver, cls, serializerClass);
   }
 
   @Override

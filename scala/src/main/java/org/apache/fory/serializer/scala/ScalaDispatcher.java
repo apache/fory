@@ -20,7 +20,7 @@
 package org.apache.fory.serializer.scala;
 
 import com.google.common.base.Preconditions;
-import org.apache.fory.Fory;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
@@ -41,23 +41,23 @@ public class ScalaDispatcher implements SerializerFactory {
    * @see scala.collection.generic.DefaultSerializationProxy
    */
   @Override
-  public Serializer createSerializer(Fory fory, Class<?> clz) {
+  public Serializer createSerializer(TypeResolver typeResolver, Class<?> clz) {
     // Many map/seq/set types doesn't extends DefaultSerializable.
     if (scala.collection.SortedMap.class.isAssignableFrom(clz)) {
-      return new ScalaSortedMapSerializer(fory, clz);
+      return new ScalaSortedMapSerializer(typeResolver, clz);
     } else if (scala.collection.Map.class.isAssignableFrom(clz)) {
-      return new ScalaMapSerializer(fory, clz);
+      return new ScalaMapSerializer(typeResolver, clz);
     } else if (scala.collection.SortedSet.class.isAssignableFrom(clz)) {
-      return new ScalaSortedSetSerializer(fory, clz);
+      return new ScalaSortedSetSerializer(typeResolver, clz);
     } else if (scala.collection.Seq.class.isAssignableFrom(clz)) {
-      return new ScalaSeqSerializer(fory, clz);
+      return new ScalaSeqSerializer(typeResolver, clz);
     } else if (scala.collection.Iterable.class.isAssignableFrom(clz)) {
-      return new ScalaCollectionSerializer(fory, clz);
+      return new ScalaCollectionSerializer(typeResolver, clz);
     }
     if (DefaultSerializable.class.isAssignableFrom(clz)) {
       Method replaceMethod = JavaSerializer.getWriteReplaceMethod(clz);
       Preconditions.checkNotNull(replaceMethod);
-      return new ScalaCollectionSerializer(fory, clz);
+      return new ScalaCollectionSerializer(typeResolver, clz);
     }
     return null;
   }

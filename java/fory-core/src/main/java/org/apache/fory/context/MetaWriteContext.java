@@ -17,26 +17,20 @@
  * under the License.
  */
 
-package org.apache.fory.resolver;
+package org.apache.fory.context;
 
-import static org.testng.Assert.*;
+import org.apache.fory.collection.IdentityObjectIntMap;
 
-import org.apache.fory.config.Config;
-import org.apache.fory.config.ForyBuilder;
-import org.testng.annotations.Test;
-
-public class SerializationContextTest {
-
-  @Test
-  public void testSerializationContext() {
-    ForyBuilder builder = new ForyBuilder().withDeserializeUnknownClass(false);
-    builder.build(); // trigger finish
-    SerializationContext context = new SerializationContext(new Config(builder));
-    assertFalse(context.containsKey("A"));
-    context.add("A", 1);
-    assertTrue(context.containsKey("A"));
-    assertEquals(context.get("A"), 1);
-    context.reset();
-    assertFalse(context.containsKey("A"));
-  }
+/**
+ * Write-side state for meta-share serialization.
+ *
+ * <p>When scoped meta share is disabled, the same instance can be reused across multiple writes so
+ * already announced classes are not sent repeatedly.
+ */
+public class MetaWriteContext {
+  /**
+   * Classes whose definitions have already been announced to the peer, mapped to the protocol id
+   * used by the current or shared meta-share session.
+   */
+  public final IdentityObjectIntMap<Class<?>> classMap = new IdentityObjectIntMap<>(1, 0.5f);
 }

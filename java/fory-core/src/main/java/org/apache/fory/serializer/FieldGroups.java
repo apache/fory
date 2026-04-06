@@ -26,7 +26,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Function;
-import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
@@ -68,23 +67,23 @@ public class FieldGroups {
     allFields = fields;
   }
 
-  public static FieldGroups buildFieldsInfo(Fory fory, List<Field> fields) {
+  public static FieldGroups buildFieldsInfo(TypeResolver typeResolver, List<Field> fields) {
     List<Descriptor> descriptors = new ArrayList<>();
     for (Field field : fields) {
       if (!Modifier.isTransient(field.getModifiers()) && !Modifier.isStatic(field.getModifiers())) {
         descriptors.add(new Descriptor(field, TypeRef.of(field.getAnnotatedType()), null, null));
       }
     }
-    DescriptorGrouper descriptorGrouper = buildDescriptorGrouper(fory, descriptors, false, null);
-    return buildFieldInfos(fory, descriptorGrouper);
+    DescriptorGrouper descriptorGrouper =
+        buildDescriptorGrouper(typeResolver, descriptors, false, null);
+    return buildFieldInfos(typeResolver, descriptorGrouper);
   }
 
   static DescriptorGrouper buildDescriptorGrouper(
-      Fory fory,
+      TypeResolver typeResolver,
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
-    TypeResolver typeResolver = fory.getTypeResolver();
     return DescriptorGrouper.createDescriptorGrouper(
             typeResolver::isBuildIn,
             descriptors,
@@ -95,7 +94,7 @@ public class FieldGroups {
         .sort();
   }
 
-  public static FieldGroups buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
+  public static FieldGroups buildFieldInfos(TypeResolver typeResolver, DescriptorGrouper grouper) {
     // When a type is both Collection/Map and final, add it to collection/map fields to keep
     // consistent with jit.
     List<Descriptor> primitives = new ArrayList<>(grouper.getPrimitiveDescriptors());
@@ -103,7 +102,7 @@ public class FieldGroups {
     Collection<Descriptor> buildIn = grouper.getBuildInDescriptors();
     List<Descriptor> regularBuildIn = new ArrayList<>(buildIn.size());
     for (Descriptor d : buildIn) {
-      if (DispatchId.getDispatchId(fory, d) == DispatchId.FLOAT16) {
+      if (DispatchId.getDispatchId(typeResolver, d) == DispatchId.FLOAT16) {
         if (d.isNullable()) {
           boxed.add(d);
         } else {
@@ -117,19 +116,20 @@ public class FieldGroups {
         new SerializationFieldInfo[primitives.size() + boxed.size() + regularBuildIn.size()];
     int cnt = 0;
     for (Descriptor d : primitives) {
-      allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
+      allBuildIn[cnt++] = new SerializationFieldInfo(typeResolver, d);
     }
     for (Descriptor d : boxed) {
-      allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
+      allBuildIn[cnt++] = new SerializationFieldInfo(typeResolver, d);
     }
     for (Descriptor d : regularBuildIn) {
-      allBuildIn[cnt++] = new SerializationFieldInfo(fory, d);
+      allBuildIn[cnt++] = new SerializationFieldInfo(typeResolver, d);
     }
     cnt = 0;
     SerializationFieldInfo[] otherFields =
         new SerializationFieldInfo[grouper.getOtherDescriptors().size()];
     for (Descriptor descriptor : grouper.getOtherDescriptors()) {
-      SerializationFieldInfo genericTypeField = new SerializationFieldInfo(fory, descriptor);
+      SerializationFieldInfo genericTypeField =
+          new SerializationFieldInfo(typeResolver, descriptor);
       otherFields[cnt++] = genericTypeField;
     }
     cnt = 0;
@@ -138,10 +138,10 @@ public class FieldGroups {
     SerializationFieldInfo[] containerFields =
         new SerializationFieldInfo[collections.size() + maps.size()];
     for (Descriptor d : collections) {
-      containerFields[cnt++] = new SerializationFieldInfo(fory, d);
+      containerFields[cnt++] = new SerializationFieldInfo(typeResolver, d);
     }
     for (Descriptor d : maps) {
-      containerFields[cnt++] = new SerializationFieldInfo(fory, d);
+      containerFields[cnt++] = new SerializationFieldInfo(typeResolver, d);
     }
     return new FieldGroups(allBuildIn, containerFields, otherFields);
   }
@@ -168,20 +168,20 @@ public class FieldGroups {
     public final TypeInfoHolder classInfoHolder;
     public final TypeInfo containerTypeInfo;
 
-    SerializationFieldInfo(Fory fory, Descriptor d) {
+    SerializationFieldInfo(TypeResolver resolver, Descriptor d) {
       this.descriptor = d;
       this.type = descriptor.getRawType();
       this.typeRef = d.getTypeRef();
-      this.dispatchId = DispatchId.getDispatchId(fory, d);
-      TypeResolver resolver = fory.getTypeResolver();
+      this.dispatchId = DispatchId.getDispatchId(resolver, d);
       // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
       if (resolver.isMonomorphic(descriptor)) {
-        typeInfo = fory.getTypeResolver().getTypeInfo(typeRef.getRawType());
-        if (!fory.isShareMeta()
-            && !fory.isCompatible()
+        typeInfo = resolver.getTypeInfo(typeRef.getRawType());
+        if (!resolver.isShareMeta()
+            && !resolver.isCompatible()
             && typeInfo.getSerializer() instanceof ReplaceResolveSerializer) {
           // overwrite replace resolve serializer for final field
-          typeInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, typeInfo.getCls()));
+          typeInfo.setSerializer(
+              new FinalFieldReplaceResolveSerializer(resolver, typeInfo.getType()));
         }
       } else {
         typeInfo = null;
@@ -227,7 +227,7 @@ public class FieldGroups {
       genericType = t;
       Field field = descriptor.getField();
       if (field != null) {
-        TypeUtils.applyRefTrackingOverride(t, field.getAnnotatedType(), fory.trackingRef());
+        TypeUtils.applyRefTrackingOverride(t, field.getAnnotatedType(), resolver.trackingRef());
       }
       if (needsClassInfoHolder(resolver, cls)) {
         classInfoHolder = resolver.nilTypeInfoHolder();
@@ -235,7 +235,7 @@ public class FieldGroups {
         classInfoHolder = null;
       }
       isArray = cls.isArray();
-      if (!fory.isCrossLanguage()) {
+      if (!resolver.isCrossLanguage()) {
         containerTypeInfo = null;
       } else {
         if (resolver.isMap(cls) || resolver.isCollection(cls) || resolver.isSet(cls)) {

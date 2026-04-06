@@ -47,7 +47,7 @@ public class NativeTypeDefEncoderTest {
     MemoryBuffer buffer =
         NativeTypeDefEncoder.encodeTypeDef(
             (ClassResolver) fory.getTypeResolver(), type, getClassFields(type, fieldsInfo), true);
-    TypeDef typeDef = TypeDef.readTypeDef(fory, buffer);
+    TypeDef typeDef = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     Assert.assertEquals(typeDef.getClassName(), type.getName());
     Assert.assertEquals(typeDef.getFieldsInfo().size(), type.getDeclaredFields().length);
     Assert.assertEquals(typeDef.getFieldsInfo(), fieldsInfo);
@@ -60,9 +60,10 @@ public class NativeTypeDefEncoderTest {
           MapFields.class, BeanA.class, Struct.createStructClass("TestBigMetaEncoding", 5)
         }) {
       Fory fory = Fory.builder().withMetaShare(true).build();
-      TypeDef typeDef = TypeDef.buildTypeDef(fory, type);
+      TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), type);
       TypeDef typeDef1 =
-          TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+          TypeDef.readTypeDef(
+              fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
       Assert.assertEquals(typeDef1, typeDef);
     }
   }
@@ -77,8 +78,10 @@ public class NativeTypeDefEncoderTest {
   @Test
   public void testEmptySubClassSerializer() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, Foo2.class);
-    TypeDef typeDef1 = TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo2.class);
+    TypeDef typeDef1 =
+        TypeDef.readTypeDef(
+            fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
     Assert.assertEquals(typeDef, typeDef1);
   }
 
@@ -87,10 +90,12 @@ public class NativeTypeDefEncoderTest {
     Fory fory = Fory.builder().withMetaShare(true).build();
     TypeDef typeDef =
         TypeDef.buildTypeDef(
-            fory,
+            fory.getTypeResolver(),
             TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
                 .InnerClassTestLengthInnerClassTestLengthInnerClassTestLength.class);
-    TypeDef typeDef1 = TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+    TypeDef typeDef1 =
+        TypeDef.readTypeDef(
+            fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
     Assert.assertEquals(typeDef1, typeDef);
   }
 
@@ -139,9 +144,10 @@ public class NativeTypeDefEncoderTest {
     fory1.register(BaseAbstractClass.class);
     fory1.register(ChildClass.class);
     for (Fory fory : new Fory[] {fory0, fory1}) {
-      TypeDef typeDef = TypeDef.buildTypeDef(fory, ChildClass.class);
+      TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), ChildClass.class);
       TypeDef typeDef1 =
-          TypeDef.readTypeDef(fory, MemoryBuffer.fromByteArray(typeDef.getEncoded()));
+          TypeDef.readTypeDef(
+              fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
       Assert.assertEquals(typeDef, typeDef1);
       ChildClass c = new ChildClass();
       c.setId("123");

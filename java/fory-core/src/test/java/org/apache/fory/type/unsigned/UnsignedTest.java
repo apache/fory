@@ -237,7 +237,7 @@ public class UnsignedTest {
     Fory fory = builder.build();
 
     // Register Uint serializers
-    UnsignedSerializers.registerSerializers(fory);
+    UnsignedSerializers.registerSerializers(fory.getTypeResolver());
 
     // Register the Uint POJO class
     fory.register(UintPojo.class);
@@ -304,7 +304,7 @@ public class UnsignedTest {
     Fory fory = builder.build();
 
     // Register Uint serializers
-    UnsignedSerializers.registerSerializers(fory);
+    UnsignedSerializers.registerSerializers(fory.getTypeResolver());
 
     // Register all POJO classes
     fory.register(UintPojo.class);
@@ -367,7 +367,7 @@ public class UnsignedTest {
     Fory fory = builder.build();
 
     // Register Uint serializers
-    UnsignedSerializers.registerSerializers(fory);
+    UnsignedSerializers.registerSerializers(fory.getTypeResolver());
 
     // Register the Uint POJO class
     fory.register(UintPojo.class);
@@ -395,7 +395,7 @@ public class UnsignedTest {
     Fory fory = builder.build();
 
     // Register Uint serializers
-    UnsignedSerializers.registerSerializers(fory);
+    UnsignedSerializers.registerSerializers(fory.getTypeResolver());
 
     // Register all POJO classes
     fory.register(UintPojo.class);

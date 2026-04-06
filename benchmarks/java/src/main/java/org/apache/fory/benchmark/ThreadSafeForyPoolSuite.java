@@ -24,8 +24,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
-import org.apache.fory.logging.Logger;
-import org.apache.fory.logging.LoggerFactory;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -42,9 +40,7 @@ import org.openjdk.jmh.infra.Blackhole;
 @CompilerControl(value = CompilerControl.Mode.INLINE)
 @State(Scope.Benchmark)
 @OutputTimeUnit(java.util.concurrent.TimeUnit.MILLISECONDS)
-public class ThreadPoolForySuite {
-
-  private static final Logger LOG = LoggerFactory.getLogger(ThreadPoolForySuite.class);
+public class ThreadSafeForyPoolSuite {
 
   private ThreadSafeFory fory =
       Fory.builder()
@@ -83,7 +79,7 @@ public class ThreadPoolForySuite {
   public static void main(String[] args) throws IOException {
     if (args.length == 0) {
       String commandLine =
-          "org.apache.fory.*ObjectPoolBenchmark.* -f 1 -wi 0 -i 5 -w 2s -r 2s -rf csv";
+          "org.apache.fory.*ThreadSafeForyPoolSuite.* -f 1 -wi 0 -i 5 -w 2s -r 2s -rf csv";
       System.out.println(commandLine);
       args = commandLine.split(" ");
     }

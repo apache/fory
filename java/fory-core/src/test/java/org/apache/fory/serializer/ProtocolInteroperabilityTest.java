@@ -44,7 +44,8 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
-import org.apache.fory.resolver.MetaContext;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.serializer.collection.CollectionSerializersTest;
 import org.apache.fory.serializer.collection.MapSerializersTest;
 import org.apache.fory.test.bean.BeanA;
@@ -336,17 +337,19 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
 
   private static void metaShareRoundCheck(
       Fory fory1, Fory fory2, Object o, Function<Object, Object> compareHook) {
-    MetaContext context1 = new MetaContext();
-    MetaContext context2 = new MetaContext();
+    MetaWriteContext writerMetaContext1 = new MetaWriteContext();
+    MetaReadContext readerMetaContext1 = new MetaReadContext();
+    MetaWriteContext writerMetaContext2 = new MetaWriteContext();
+    MetaReadContext readerMetaContext2 = new MetaReadContext();
     for (int i = 0; i < 2; i++) {
-      fory1.getSerializationContext().setMetaContext(context1);
+      setMetaContexts(fory1, writerMetaContext1, readerMetaContext1);
       byte[] bytes1 = fory1.serialize(o);
-      fory2.getSerializationContext().setMetaContext(context2);
+      setMetaContexts(fory2, writerMetaContext2, readerMetaContext2);
       Object o1 = fory2.deserialize(bytes1);
       Assert.assertEquals(compareHook.apply(o1), compareHook.apply(o));
-      fory2.getSerializationContext().setMetaContext(context2);
+      setMetaContexts(fory2, writerMetaContext2, readerMetaContext2);
       byte[] bytes2 = fory2.serialize(o1);
-      fory1.getSerializationContext().setMetaContext(context1);
+      setMetaContexts(fory1, writerMetaContext1, readerMetaContext1);
       Object o2 = fory1.deserialize(bytes2);
       Assert.assertEquals(compareHook.apply(o2), compareHook.apply(o));
     }

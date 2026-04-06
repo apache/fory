@@ -51,32 +51,6 @@ public interface BaseFory {
    */
   void register(Class<?> cls, int id);
 
-  /**
-   * Register class and allocate an auto-grown ID for this class.
-   *
-   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
-   * allocated ID will be different, and the deserialization will failed !!!
-   *
-   * @param cls class to register.
-   * @param createSerializer whether to create serializer, if true and codegen enabled, this will
-   *     generate the serializer code too.
-   */
-  void register(Class<?> cls, boolean createSerializer);
-
-  /**
-   * Register class with specified id. This method has been deprecated, please use {@link
-   * #register(Class, int)} instead, and invoke {@link #ensureSerializersCompiled} after all classes
-   * has been registered.
-   *
-   * @param cls class to register.
-   * @param id id for provided class.
-   * @param createSerializer whether to create serializer, if true and codegen enabled, this will
-   *     generate the serializer code too. this parameter has no effect anymore on whether to
-   *     generate code, please use {@link #ensureSerializersCompiled} to trigger code generation
-   */
-  @Deprecated
-  void register(Class<?> cls, int id, boolean createSerializer);
-
   /** register class with given type name which will be used for cross-language serialization. */
   void register(Class<?> cls, String typeName);
 
@@ -139,9 +113,9 @@ public interface BaseFory {
    * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param type class needed to be serialized/deserialized.
-   * @param serializerCreator serializer creator with param {@link Fory}
+   * @param serializerCreator serializer creator with param {@link TypeResolver}
    */
-  void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator);
+  void registerSerializer(Class<?> type, Function<TypeResolver, Serializer<?>> serializerCreator);
 
   /**
    * Register a class (if not already registered) and then register its serializer class.
@@ -171,9 +145,10 @@ public interface BaseFory {
    * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param type class needed to be serialized/deserialized.
-   * @param serializerCreator serializer creator with param {@link Fory}
+   * @param serializerCreator serializer creator with param {@link TypeResolver}
    */
-  void registerSerializerAndType(Class<?> type, Function<Fory, Serializer<?>> serializerCreator);
+  void registerSerializerAndType(
+      Class<?> type, Function<TypeResolver, Serializer<?>> serializerCreator);
 
   void setSerializerFactory(SerializerFactory serializerFactory);
 

@@ -19,8 +19,9 @@
 
 package org.apache.fory.serializer.scala
 
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
+import org.apache.fory.resolver.TypeResolver
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 import java.util
@@ -43,21 +44,19 @@ import scala.collection.{Factory, Iterable, mutable}
  * invoke [[java.util.Collection#add]] to add it into builder.</li>
  * <li>`onCollectionRead`: create scala collection from builder.</li>
  */
-abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](fory: Fory, cls: Class[T])
-  extends CollectionLikeSerializer[T](fory, cls) {
-  override def onCollectionWrite(buffer: MemoryBuffer, value: T): util.Collection[_]
+abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
+    typeResolver: TypeResolver,
+    cls: Class[T])
+  extends CollectionLikeSerializer[T](typeResolver, cls) {
+  override def onCollectionWrite(
+      writeContext: WriteContext,
+      value: T): util.Collection[_]
 
-  override def read(buffer: MemoryBuffer): T = {
-    val collection = newCollection(buffer)
-    val numElements = getAndClearNumElements()
-    if (numElements != 0) readElements(fory, buffer, collection, numElements)
-    onCollectionRead(collection)
-  }
-
-  override def newCollection(buffer: MemoryBuffer): util.Collection[_] = {
+  override def newCollection(readContext: ReadContext): util.Collection[_] = {
+    val buffer = readContext.getBuffer
     val numElements = buffer.readVarUint32()
     setNumElements(numElements)
-    val factory = fory.readRef(buffer).asInstanceOf[Factory[A, T]]
+    val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
     val builder = factory.newBuilder
     builder.sizeHint(numElements)
     new JavaCollectionBuilder[A, T](builder)
@@ -134,13 +133,16 @@ private class JavaCollectionBuilder[A, T](val builder: mutable.Builder[A, T])
 /**
  * Serializer for scala iterables.
  */
-class ScalaCollectionSerializer[A, T <: Iterable[A]] (fory: Fory, cls: Class[T])
-  extends AbstractScalaCollectionSerializer[A, T](fory, cls) {
-  override def onCollectionWrite(buffer: MemoryBuffer, value: T): util.Collection[_] = {
+class ScalaCollectionSerializer[A, T <: Iterable[A]] (typeResolver: TypeResolver, cls: Class[T])
+  extends AbstractScalaCollectionSerializer[A, T](typeResolver, cls) {
+  override def onCollectionWrite(
+      writeContext: WriteContext,
+      value: T): util.Collection[_] = {
+    val buffer = writeContext.getBuffer
     val factory: Factory[A, Any] = value.iterableFactory.iterableFactory
     val adapter = new CollectionAdapter[A, T](value)
     buffer.writeVarUint32Small7(adapter.size)
-    fory.writeRef(buffer, factory)
+    writeContext.writeRef(factory)
     adapter
   }
 }
@@ -148,13 +150,18 @@ class ScalaCollectionSerializer[A, T <: Iterable[A]] (fory: Fory, cls: Class[T])
 /**
  * Serializer for scala sorted set.
  */
-class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](fory: Fory, cls: Class[T])
-  extends AbstractScalaCollectionSerializer[A, T](fory, cls) {
-  override def onCollectionWrite(buffer: MemoryBuffer, value: T): util.Collection[_] = {
+class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](
+    typeResolver: TypeResolver,
+    cls: Class[T])
+  extends AbstractScalaCollectionSerializer[A, T](typeResolver, cls) {
+  override def onCollectionWrite(
+      writeContext: WriteContext,
+      value: T): util.Collection[_] = {
+    val buffer = writeContext.getBuffer
     buffer.writeVarUint32Small7(value.size)
     val factory = value.sortedIterableFactory.evidenceIterableFactory[Any](
       value.ordering.asInstanceOf[Ordering[Any]])
-    fory.writeRef(buffer, factory)
+    writeContext.writeRef(factory)
     new CollectionAdapter[A, T](value)
   }
 }
@@ -162,12 +169,17 @@ class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](fory: Fory
 /**
  * Serializer for scala Seq.
  */
-class ScalaSeqSerializer[A, T <: scala.collection.Seq[A]](fory: Fory, cls: Class[T])
-  extends AbstractScalaCollectionSerializer[A, T](fory, cls)  {
-  override def onCollectionWrite(buffer: MemoryBuffer, value: T): util.Collection[_] = {
+class ScalaSeqSerializer[A, T <: scala.collection.Seq[A]](
+    typeResolver: TypeResolver,
+    cls: Class[T])
+  extends AbstractScalaCollectionSerializer[A, T](typeResolver, cls)  {
+  override def onCollectionWrite(
+      writeContext: WriteContext,
+      value: T): util.Collection[_] = {
+    val buffer = writeContext.getBuffer
     buffer.writeVarUint32Small7(value.size)
     val factory: Factory[A, Any] = value.iterableFactory.iterableFactory
-    fory.writeRef(buffer, factory)
+    writeContext.writeRef(factory)
     new ListAdapter[Any](value)
   }
 }

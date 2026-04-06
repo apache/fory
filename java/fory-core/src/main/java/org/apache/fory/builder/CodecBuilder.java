@@ -43,7 +43,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Cast;
@@ -83,8 +82,6 @@ import org.apache.fory.util.record.RecordUtils;
 @SuppressWarnings("UnstableApiUsage")
 public abstract class CodecBuilder {
   protected static final String ROOT_OBJECT_NAME = "_f_obj";
-  // avoid user class has field with name fory.
-  protected static final String FORY_NAME = "_f_fory";
   static TypeRef<Object[]> objectArrayTypeRef = TypeRef.of(Object[].class);
   static TypeRef<MemoryBuffer> bufferTypeRef = TypeRef.of(MemoryBuffer.class);
   static TypeRef<TypeInfo> classInfoTypeRef = TypeRef.of(TypeInfo.class);
@@ -96,7 +93,6 @@ public abstract class CodecBuilder {
   protected final boolean isRecord;
   protected final boolean isInterface;
   private final Set<String> duplicatedFields;
-  protected Reference foryRef = Reference.fieldRef(FORY_NAME, TypeRef.of(Fory.class));
   public static final Reference recordComponentDefaultValues =
       new Reference("recordComponentDefaultValues", OBJECT_ARRAY_TYPE);
   protected final Map<String, Reference> fieldMap = new HashMap<>();
@@ -113,7 +109,6 @@ public abstract class CodecBuilder {
     }
     duplicatedFields = Descriptor.getSortedDuplicatedMembers(beanClass).keySet();
     // don't ctx.addImport beanClass, because it maybe causes name collide.
-    ctx.reserveName(FORY_NAME);
     ctx.reserveName(ROOT_OBJECT_NAME);
     // Don't import other packages to avoid class conflicts.
     // For example user class named as `Date`/`List`/`MemoryBuffer`
@@ -460,12 +455,8 @@ public abstract class CodecBuilder {
                     classExpr, "getDeclaredField", fieldTypeRef, Literal.ofString(fieldName));
           } else {
             fieldExpr =
-                new StaticInvoke(
-                    ReflectionUtils.class,
-                    "getField",
-                    fieldTypeRef,
-                    classExpr,
-                    Literal.ofString(fieldName));
+                reflectionUtilsInvoke(
+                    "getField", fieldTypeRef, classExpr, Literal.ofString(fieldName));
           }
           if (!setAccessible) {
             return fieldExpr;
@@ -550,12 +541,8 @@ public abstract class CodecBuilder {
           Class.class,
           name,
           () ->
-              new StaticInvoke(
-                      ReflectionUtils.class,
-                      "loadClass",
-                      CLASS_TYPE,
-                      Literal.ofString(cls.getName()))
-                  .inline());
+              inlineReflectionUtilsInvoke(
+                  "loadClass", CLASS_TYPE, Literal.ofString(cls.getName())));
     }
     throw new UnsupportedOperationException();
   }
@@ -583,9 +570,19 @@ public abstract class CodecBuilder {
         Class.class,
         fieldName,
         () ->
-            new StaticInvoke(
-                    ReflectionUtils.class, "loadClass", CLASS_TYPE, Literal.ofString(cls.getName()))
-                .inline());
+            inlineReflectionUtilsInvoke("loadClass", CLASS_TYPE, Literal.ofString(cls.getName())));
+  }
+
+  private StaticInvoke reflectionUtilsInvoke(
+      String methodName, TypeRef<?> returnType, Expression... arguments) {
+    return new StaticInvoke(
+        ReflectionUtils.class, methodName, "", returnType, false, false, false, arguments);
+  }
+
+  private StaticInvoke inlineReflectionUtilsInvoke(
+      String methodName, TypeRef<?> returnType, Expression... arguments) {
+    return new StaticInvoke(
+        ReflectionUtils.class, methodName, "", returnType, false, true, false, arguments);
   }
 
   /** Build unsafePut operation. */

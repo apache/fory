@@ -93,20 +93,20 @@ public class FieldTypes {
       TypeResolver resolver, Field field, GenericType genericType) {
     Preconditions.checkNotNull(genericType);
     Class<?> rawType = genericType.getCls();
-    boolean isXlang = resolver.getFory().isCrossLanguage();
+    boolean isXlang = resolver.isCrossLanguage();
     // Get type ID for both xlang and native mode
     // This supports unsigned types and field-configurable compression in both modes
     int typeId;
     if (TypeUtils.unwrap(rawType).isPrimitive()) {
       if (field != null) {
-        typeId = Types.getDescriptorTypeId(resolver.getFory(), field);
+        typeId = Types.getDescriptorTypeId(resolver, field);
       } else {
-        typeId = Types.getTypeId(resolver.getFory(), rawType);
+        typeId = Types.getTypeId(resolver, rawType);
       }
     } else if (rawType.isArray() && rawType.getComponentType().isPrimitive() && field != null) {
       // For primitive arrays with type annotations, use getDescriptorTypeId to parse annotation
       // This allows @Uint8ArrayType etc. to override the default INT8_ARRAY type
-      typeId = Types.getDescriptorTypeId(resolver.getFory(), field);
+      typeId = Types.getDescriptorTypeId(resolver, field);
     } else {
       TypeInfo info =
           isXlang && rawType == Object.class ? null : resolver.getTypeInfo(rawType, false);
@@ -119,7 +119,7 @@ public class FieldTypes {
         if (rawType.isArray()) {
           Class<?> componentType = rawType.getComponentType();
           if (componentType.isPrimitive()) {
-            int elemTypeId = Types.getTypeId(resolver.getFory(), componentType);
+            int elemTypeId = Types.getTypeId(resolver, componentType);
             typeId = Types.getPrimitiveArrayTypeId(elemTypeId);
           } else {
             typeId = Types.LIST;
@@ -557,20 +557,20 @@ public class FieldTypes {
         }
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
         boolean isEnum = internalTypeId == Types.ENUM;
-        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.getFory().isShareMeta());
+        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.isShareMeta());
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
       if (resolver instanceof XtypeResolver) {
         TypeInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
         Preconditions.checkNotNull(xtypeInfo);
-        cls = xtypeInfo.getCls();
+        cls = xtypeInfo.getType();
       } else {
         cls = ((ClassResolver) resolver).getRegisteredClassByTypeId(typeId);
       }
       if (cls == null) {
         LOG.warn("Class {} not registered, take it as Struct type for deserialization.", typeId);
         boolean isEnum = internalTypeId == Types.ENUM;
-        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.getFory().isShareMeta());
+        cls = UnknownClass.getUnknowClass(isEnum, 0, resolver.isShareMeta());
       }
       return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
     }

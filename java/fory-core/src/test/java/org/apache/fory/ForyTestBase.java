@@ -29,6 +29,7 @@ import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -37,12 +38,16 @@ import java.util.stream.Collectors;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.io.ClassLoaderObjectInputStream;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.BufferObject;
+import org.apache.fory.serializer.Serializer;
 import org.testng.Assert;
 import org.testng.Assert.ThrowingRunnable;
 import org.testng.annotations.DataProvider;
@@ -346,6 +351,46 @@ public abstract class ForyTestBase {
     return fory2.deserialize(buffer);
   }
 
+  public static void withWriteContext(
+      Fory fory, MemoryBuffer buffer, Consumer<WriteContext> action) {
+    WriteContext context = (WriteContext) ReflectionUtils.getObjectFieldValue(fory, "writeContext");
+    context.prepare(buffer, null);
+    try {
+      action.accept(context);
+    } finally {
+      context.reset();
+    }
+  }
+
+  public static <T> T withReadContext(
+      Fory fory, MemoryBuffer buffer, Function<ReadContext, T> action) {
+    ReadContext context = (ReadContext) ReflectionUtils.getObjectFieldValue(fory, "readContext");
+    context.prepare(buffer, null, false);
+    try {
+      return action.apply(context);
+    } finally {
+      context.reset();
+    }
+  }
+
+  public static <T> T withCopyContext(Fory fory, Function<CopyContext, T> action) {
+    CopyContext context = (CopyContext) ReflectionUtils.getObjectFieldValue(fory, "copyContext");
+    try {
+      return action.apply(context);
+    } finally {
+      context.reset();
+    }
+  }
+
+  public static <T> void writeSerializer(
+      Fory fory, Serializer<T> serializer, MemoryBuffer buffer, T value) {
+    withWriteContext(fory, buffer, context -> serializer.write(context, value));
+  }
+
+  public static <T> T readSerializer(Fory fory, Serializer<T> serializer, MemoryBuffer buffer) {
+    return withReadContext(fory, buffer, serializer::read);
+  }
+
   public static Object serDeCheckIndex(Fory fory1, Fory fory2, MemoryBuffer buffer, Object obj) {
     fory1.serialize(buffer, obj);
     Object newObj = fory2.deserialize(buffer);
@@ -391,11 +436,18 @@ public abstract class ForyTestBase {
   }
 
   public static Object serDeMetaShared(Fory fory, Object obj) {
-    MetaContext context = new MetaContext();
-    fory.getSerializationContext().setMetaContext(context);
+    MetaWriteContext metaWriteContext = new MetaWriteContext();
+    MetaReadContext metaReadContext = new MetaReadContext();
+    setMetaContexts(fory, metaWriteContext, metaReadContext);
     byte[] bytes = fory.serialize(obj);
-    fory.getSerializationContext().setMetaContext(context);
+    setMetaContexts(fory, metaWriteContext, metaReadContext);
     return fory.deserialize(bytes);
+  }
+
+  public static void setMetaContexts(
+      Fory fory, MetaWriteContext metaWriteContext, MetaReadContext metaReadContext) {
+    fory.setMetaWriteContext(metaWriteContext);
+    fory.setMetaReadContext(metaReadContext);
   }
 
   public static byte[] jdkSerialize(Object o) {
@@ -435,13 +487,6 @@ public abstract class ForyTestBase {
     List<MemoryBuffer> buffers =
         bufferObjects.stream().map(BufferObject::toBuffer).collect(Collectors.toList());
     return fory2.deserialize(bytes, buffers);
-  }
-
-  /** Update serialization depth by <code>diff</code>. */
-  protected void increaseForyDepth(Fory fory, int diff) {
-    long offset = ReflectionUtils.getFieldOffset(Fory.class, "depth");
-    int depth = Platform.getInt(fory, offset);
-    Platform.putInt(fory, offset, depth + diff);
   }
 
   public static <T extends Throwable> void assertThrowsCause(

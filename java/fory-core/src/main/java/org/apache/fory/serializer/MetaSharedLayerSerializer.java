@@ -19,8 +19,8 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.resolver.TypeResolver;
 
 /**
  * Interpreter implementation for a single meta-shared class layer. Generated layer serializers
@@ -30,8 +30,8 @@ import org.apache.fory.meta.TypeDef;
 public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<T> {
 
   public MetaSharedLayerSerializer(
-      Fory fory, Class<T> type, TypeDef layerTypeDef, Class<?> layerMarkerClass) {
-    super(fory, type);
+      TypeResolver typeResolver, Class<T> type, TypeDef layerTypeDef, Class<?> layerMarkerClass) {
+    super(typeResolver, type);
     setLayerSerializerMeta(layerTypeDef, layerMarkerClass);
   }
 }

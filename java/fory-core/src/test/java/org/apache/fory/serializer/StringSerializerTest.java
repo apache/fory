@@ -146,7 +146,7 @@ public class StringSerializerTest extends ForyTestBase {
   public void testJavaStringSimple() {
     Fory fory = Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    StringSerializer serializer = new StringSerializer(fory);
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
     {
       String str = "str";
       serializer.writeString(buffer, str);
@@ -212,7 +212,7 @@ public class StringSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    StringSerializer serializer = new StringSerializer(fory);
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
 
     String longStr = new String(new char[50]).replace("\0", "abc");
     buffer.writerIndex(0);
@@ -365,9 +365,9 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(2048))
         }) {
-      StringSerializer serializer = new StringSerializer(fory);
-      serializer.write(buffer, "abc你好");
-      assertEquals(serializer.read(buffer), "abc你好");
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
+      writeSerializer(fory, serializer, buffer, "abc你好");
+      assertEquals(readSerializer(fory, serializer, buffer), "abc你好");
       byte[] bytes = "abc你好".getBytes(StandardCharsets.UTF_8);
       byte UTF8 = 2;
       if (writeNumUtf16BytesForUtf8Encoding) {
@@ -377,7 +377,7 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writeVarUint64((((long) bytes.length) << 2 | UTF8));
       }
       buffer.writeBytes(bytes);
-      assertEquals(serializer.read(buffer), "abc你好");
+      assertEquals(readSerializer(fory, serializer, buffer), "abc你好");
       assertEquals(buffer.readerIndex(), buffer.writerIndex());
     }
   }
@@ -414,9 +414,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for ASCII string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -453,9 +453,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for Latin1 string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -493,9 +493,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for UTF-16 string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -529,9 +529,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for mixed content string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -571,9 +571,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for edge case string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -608,9 +608,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for surrogate pair string: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -643,9 +643,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for large string");
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -674,9 +674,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, asciiStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, asciiStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, asciiStr, "Failed for vectorized ASCII string of length " + length);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -694,7 +694,7 @@ public class StringSerializerTest extends ForyTestBase {
             .build();
 
     MemoryBuffer buffer = MemoryUtils.buffer(2048);
-    StringSerializer serializer = new StringSerializer(fory);
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
 
     // Test multiple consecutive reads/writes to verify buffer reuse doesn't cause issues
     String[] testSequence = {
@@ -711,8 +711,8 @@ public class StringSerializerTest extends ForyTestBase {
       buffer.writerIndex(0);
       buffer.readerIndex(0);
 
-      serializer.write(buffer, testStr);
-      String result = serializer.read(buffer);
+      writeSerializer(fory, serializer, buffer, testStr);
+      String result = readSerializer(fory, serializer, buffer);
 
       assertEquals(result, testStr, "Failed during buffer reuse test for: " + testStr);
       assertEquals(buffer.readerIndex(), buffer.writerIndex());
@@ -737,7 +737,7 @@ public class StringSerializerTest extends ForyTestBase {
           MemoryUtils.buffer(1024), MemoryUtils.wrap(ByteBuffer.allocateDirect(1024))
         }) {
       // Create fresh serializer for each test to avoid buffer reuse issues
-      StringSerializer serializer = new StringSerializer(fory);
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
       buffer.writerIndex(0);
       buffer.readerIndex(0);
       buffer.writeBytes(asciiBytes);
@@ -751,7 +751,7 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(1024), MemoryUtils.wrap(ByteBuffer.allocateDirect(1024))
         }) {
-      StringSerializer serializer = new StringSerializer(fory);
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
       buffer.writerIndex(0);
       buffer.readerIndex(0);
       buffer.writeBytes(latin1Bytes);
@@ -765,7 +765,7 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(1024), MemoryUtils.wrap(ByteBuffer.allocateDirect(1024))
         }) {
-      StringSerializer serializer = new StringSerializer(fory);
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
       buffer.writerIndex(0);
       buffer.readerIndex(0);
       buffer.writeBytes(utf16Bytes);
@@ -779,7 +779,7 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(1024), MemoryUtils.wrap(ByteBuffer.allocateDirect(1024))
         }) {
-      StringSerializer serializer = new StringSerializer(fory);
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
       buffer.writerIndex(0);
       buffer.readerIndex(0);
       buffer.writeBytes(emojiBytes);
@@ -793,7 +793,7 @@ public class StringSerializerTest extends ForyTestBase {
         new MemoryBuffer[] {
           MemoryUtils.buffer(1024), MemoryUtils.wrap(ByteBuffer.allocateDirect(1024))
         }) {
-      StringSerializer serializer = new StringSerializer(fory);
+      StringSerializer serializer = new StringSerializer(fory.getConfig());
       buffer.writerIndex(0);
       buffer.readerIndex(0);
       buffer.writeBytes(mixedBytes);
@@ -832,9 +832,9 @@ public class StringSerializerTest extends ForyTestBase {
         buffer.writerIndex(0);
         buffer.readerIndex(0);
 
-        StringSerializer serializer = new StringSerializer(fory);
-        serializer.write(buffer, testStr);
-        String result = serializer.read(buffer);
+        StringSerializer serializer = new StringSerializer(fory.getConfig());
+        writeSerializer(fory, serializer, buffer, testStr);
+        String result = readSerializer(fory, serializer, buffer);
 
         assertEquals(result, testStr, "Failed for special characters: " + testStr);
         assertEquals(buffer.readerIndex(), buffer.writerIndex());

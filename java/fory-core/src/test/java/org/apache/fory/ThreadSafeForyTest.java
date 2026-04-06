@@ -33,11 +33,15 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.Data;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.pool.ThreadPoolFory;
-import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -257,13 +261,13 @@ public class ThreadSafeForyTest extends ForyTestBase {
                 byte[] sharedBytes =
                     shared.execute(
                         f -> {
-                          f.getSerializationContext().setMetaContext(new MetaContext());
+                          f.setMetaWriteContext(new MetaWriteContext());
                           return f.serialize(beanA);
                         });
                 Object sharedObj =
                     shared.execute(
                         f -> {
-                          f.getSerializationContext().setMetaContext(new MetaContext());
+                          f.setMetaReadContext(new MetaReadContext());
                           return f.deserialize(sharedBytes);
                         });
                 assertEquals(sharedObj, beanA);
@@ -281,7 +285,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testThreadLocalMetaShareWithPerThreadMetaContext() throws InterruptedException {
+  public void testThreadLocalMetaShareWithPerThreadMetaContexts() throws InterruptedException {
     ThreadSafeFory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
@@ -290,25 +294,29 @@ public class ThreadSafeForyTest extends ForyTestBase {
             .buildThreadLocalFory();
     BeanA beanA = BeanA.createBeanA(2);
     ExecutorService executorService = Executors.newFixedThreadPool(12);
-    ConcurrentHashMap<Thread, MetaContext> metaMap = new ConcurrentHashMap<>();
+    ConcurrentHashMap<Thread, MetaWriteContext> writeMetaMap = new ConcurrentHashMap<>();
+    ConcurrentHashMap<Thread, MetaReadContext> readMetaMap = new ConcurrentHashMap<>();
     AtomicReference<Throwable> error = new AtomicReference<>();
     for (int i = 0; i < 200; i++) {
       executorService.execute(
           () -> {
             try {
               for (int j = 0; j < 10; j++) {
-                MetaContext metaContext =
-                    metaMap.computeIfAbsent(Thread.currentThread(), t -> new MetaContext());
+                MetaWriteContext metaWriteContext =
+                    writeMetaMap.computeIfAbsent(
+                        Thread.currentThread(), t -> new MetaWriteContext());
+                MetaReadContext metaReadContext =
+                    readMetaMap.computeIfAbsent(Thread.currentThread(), t -> new MetaReadContext());
                 byte[] serialized =
                     fory.execute(
                         f -> {
-                          f.getSerializationContext().setMetaContext(metaContext);
+                          f.setMetaWriteContext(metaWriteContext);
                           return f.serialize(beanA);
                         });
                 Object newObj =
                     fory.execute(
                         f -> {
-                          f.getSerializationContext().setMetaContext(metaContext);
+                          f.setMetaReadContext(metaReadContext);
                           return f.deserialize(serialized);
                         });
                 assertEquals(newObj, beanA);
@@ -346,19 +354,19 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   public static class FooSerializer extends Serializer<Foo> {
-    public FooSerializer(Fory fory, Class<Foo> type) {
-      super(fory, type);
+    public FooSerializer(TypeResolver typeResolver, Class<Foo> type) {
+      super(typeResolver.getConfig(), type);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Foo value) {
-      buffer.writeInt32(value.f1);
+    public void write(WriteContext writeContext, Foo value) {
+      writeContext.getBuffer().writeInt32(value.f1);
     }
 
     @Override
-    public Foo read(MemoryBuffer buffer) {
+    public Foo read(ReadContext readContext) {
       Foo foo = new Foo();
-      foo.f1 = buffer.readInt32();
+      foo.f1 = readContext.getBuffer().readInt32();
       return foo;
     }
   }

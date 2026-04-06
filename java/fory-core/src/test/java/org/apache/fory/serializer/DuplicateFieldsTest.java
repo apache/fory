@@ -63,10 +63,10 @@ public class DuplicateFieldsTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     {
-      ObjectSerializer<C> serializer = new ObjectSerializer<>(fory, C.class);
+      ObjectSerializer<C> serializer = new ObjectSerializer<>(fory.getTypeResolver(), C.class);
       MemoryBuffer buffer = MemoryUtils.buffer(32);
-      serializer.write(buffer, c);
-      C newC = serializer.read(buffer);
+      writeSerializer(fory, serializer, buffer, c);
+      C newC = readSerializer(fory, serializer, buffer);
       assertEquals(newC.f1, c.f1);
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);
@@ -76,8 +76,8 @@ public class DuplicateFieldsTest extends ForyTestBase {
           Serializers.newSerializer(
               fory, C.class, CodecUtils.loadOrGenObjectCodecClass(C.class, fory));
       MemoryBuffer buffer = MemoryUtils.buffer(32);
-      serializer.write(buffer, c);
-      C newC = serializer.read(buffer);
+      writeSerializer(fory, serializer, buffer, c);
+      C newC = readSerializer(fory, serializer, buffer);
       assertEquals(newC.f1, c.f1);
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);
@@ -116,10 +116,10 @@ public class DuplicateFieldsTest extends ForyTestBase {
     {
       MetaSharedSerializer<C> serializer =
           new MetaSharedSerializer<>(
-              fory, C.class, fory.getTypeResolver().getTypeDef(C.class, true));
+              fory.getTypeResolver(), C.class, fory.getTypeResolver().getTypeDef(C.class, true));
       MemoryBuffer buffer = MemoryUtils.buffer(32);
-      serializer.write(buffer, c);
-      C newC = serializer.read(buffer);
+      writeSerializer(fory, serializer, buffer, c);
+      C newC = readSerializer(fory, serializer, buffer);
       assertEquals(newC.f1, c.f1);
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);
@@ -133,8 +133,8 @@ public class DuplicateFieldsTest extends ForyTestBase {
               CodecUtils.loadOrGenMetaSharedCodecClass(
                   fory, C.class, fory.getTypeResolver().getTypeDef(C.class, true)));
       MemoryBuffer buffer = MemoryUtils.buffer(32);
-      serializer.write(buffer, c);
-      C newC = serializer.read(buffer);
+      writeSerializer(fory, serializer, buffer, c);
+      C newC = readSerializer(fory, serializer, buffer);
       assertEquals(newC.f1, c.f1);
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);

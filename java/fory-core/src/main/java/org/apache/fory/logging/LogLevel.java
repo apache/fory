@@ -37,7 +37,7 @@ public class LogLevel {
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       DEFAULT_LEVEL = DEBUG_LEVEL;
     } else {
-      DEFAULT_LEVEL = INFO_LEVEL;
+      DEFAULT_LEVEL = ERROR_LEVEL;
     }
   }
 

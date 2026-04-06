@@ -19,32 +19,34 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 
 /** Fory custom copy serializer. see {@link ForyCopyable} */
 public class ForyCopyableSerializer<T> extends Serializer<T> {
 
   private final Serializer<T> serializer;
 
-  public ForyCopyableSerializer(Fory fory, Class<T> type, Serializer<T> serializer) {
-    super(fory, type);
+  public ForyCopyableSerializer(Config config, Class<T> type, Serializer<T> serializer) {
+    super(config, type);
     this.serializer = serializer;
   }
 
   @Override
-  public void write(MemoryBuffer buffer, T value) {
-    serializer.write(buffer, value);
+  public void write(WriteContext writeContext, T value) {
+    serializer.write(writeContext, value);
   }
 
   @Override
-  public T copy(T obj) {
-    return ((ForyCopyable<T>) obj).copy(fory);
+  public T copy(CopyContext copyContext, T obj) {
+    return ((ForyCopyable<T>) obj).copy(copyContext);
   }
 
   @Override
-  public T read(MemoryBuffer buffer) {
-    return serializer.read(buffer);
+  public T read(ReadContext readContext) {
+    return serializer.read(readContext);
   }
 }

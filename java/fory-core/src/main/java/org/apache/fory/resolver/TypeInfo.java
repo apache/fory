@@ -23,6 +23,7 @@ import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -35,10 +36,9 @@ import org.apache.fory.util.function.Functions;
  * serialization.
  */
 public class TypeInfo {
-  final Class<?> cls;
-  final MetaStringRef namespaceBytes;
-  final MetaStringRef typeNameBytes;
-  final boolean isDynamicGeneratedClass;
+  final Class<?> type;
+  final EncodedMetaString namespace;
+  final EncodedMetaString typeName;
   // Fory type ID for both native and xlang modes.
   // - Types 0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
   // - Types 31-255: Native-only internal types (VOID_ID, CHAR_ID, etc.)
@@ -50,17 +50,15 @@ public class TypeInfo {
   boolean needToWriteTypeDef;
 
   TypeInfo(
-      Class<?> cls,
-      MetaStringRef namespaceBytes,
-      MetaStringRef typeNameBytes,
-      boolean isDynamicGeneratedClass,
+      Class<?> type,
+      EncodedMetaString namespace,
+      EncodedMetaString typeName,
       Serializer<?> serializer,
       int typeId,
       int userTypeId) {
-    this.cls = cls;
-    this.namespaceBytes = namespaceBytes;
-    this.typeNameBytes = typeNameBytes;
-    this.isDynamicGeneratedClass = isDynamicGeneratedClass;
+    this.type = type;
+    this.namespace = namespace;
+    this.typeName = typeName;
     this.typeId = typeId;
     this.userTypeId = userTypeId;
     this.serializer = serializer;
@@ -70,15 +68,14 @@ public class TypeInfo {
    * Creates a TypeInfo for deserialization with a TypeDef. Used when reading class meta from stream
    * where the TypeDef specifies the field layout.
    *
-   * @param cls the class
+   * @param type the class
    * @param typeDef the class definition from stream
    */
-  public TypeInfo(Class<?> cls, TypeDef typeDef) {
-    this.cls = cls;
+  public TypeInfo(Class<?> type, TypeDef typeDef) {
+    this.type = type;
     this.typeDef = typeDef;
-    this.namespaceBytes = null;
-    this.typeNameBytes = null;
-    this.isDynamicGeneratedClass = false;
+    this.namespace = null;
+    this.typeName = null;
     this.serializer = null;
     this.typeId = typeDef == null ? Types.UNKNOWN : typeDef.getClassSpec().typeId;
     this.userTypeId = typeDef == null ? -1 : typeDef.getClassSpec().userTypeId;
@@ -86,14 +83,13 @@ public class TypeInfo {
 
   TypeInfo(
       TypeResolver classResolver,
-      Class<?> cls,
+      Class<?> type,
       Serializer<?> serializer,
       int typeId,
       int userTypeId) {
-    this.cls = cls;
+    this.type = type;
     this.serializer = serializer;
     needToWriteTypeDef = serializer != null && classResolver.needToWriteTypeDef(serializer);
-    MetaStringResolver metaStringResolver = classResolver.getMetaStringResolver();
     // When typeId indicates a named type, we need to create classname bytes for serialization.
     // - NAMED_STRUCT: unregistered struct classes
     // - NAMED_COMPATIBLE_STRUCT: unregistered classes in compatible mode
@@ -105,26 +101,23 @@ public class TypeInfo {
             || typeId == Types.NAMED_ENUM
             || typeId == Types.NAMED_EXT
             || typeId == ClassResolver.REPLACE_STUB_ID;
-    if (cls != null && isNamedType) {
-      Tuple2<String, String> tuple2 = Encoders.encodePkgAndClass(cls);
-      this.namespaceBytes = metaStringResolver.getOrCreatePackageMetaStringBytes(tuple2.f0);
-      this.typeNameBytes = metaStringResolver.getOrCreateTypeNameMetaStringBytes(tuple2.f1);
+    if (type != null && isNamedType) {
+      Tuple2<String, String> tuple2 = Encoders.encodePkgAndClass(type);
+      this.namespace = classResolver.sharedRegistry.getPackageEncodedMetaString(tuple2.f0);
+      this.typeName = classResolver.sharedRegistry.getTypeNameEncodedMetaString(tuple2.f1);
     } else {
-      this.namespaceBytes = null;
-      this.typeNameBytes = null;
+      this.namespace = null;
+      this.typeName = null;
     }
-    if (cls != null) {
-      boolean isLambda = Functions.isLambda(cls);
-      boolean isProxy = typeId != ClassResolver.REPLACE_STUB_ID && ReflectionUtils.isJdkProxy(cls);
-      this.isDynamicGeneratedClass = isLambda || isProxy;
+    if (type != null) {
+      boolean isLambda = Functions.isLambda(type);
+      boolean isProxy = typeId != ClassResolver.REPLACE_STUB_ID && ReflectionUtils.isJdkProxy(type);
       if (isLambda) {
         typeId = ClassResolver.LAMBDA_STUB_ID;
       }
       if (isProxy) {
         typeId = ClassResolver.JDK_PROXY_STUB_ID;
       }
-    } else {
-      this.isDynamicGeneratedClass = false;
     }
     this.typeId = typeId;
     this.userTypeId = userTypeId;
@@ -134,32 +127,18 @@ public class TypeInfo {
     if (typeId == this.typeId) {
       return this;
     }
-    return new TypeInfo(
-        cls,
-        namespaceBytes,
-        typeNameBytes,
-        isDynamicGeneratedClass,
-        serializer,
-        typeId,
-        userTypeId);
+    return new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
   }
 
   public TypeInfo copy(int typeId, int userTypeId) {
     if (typeId == this.typeId && userTypeId == this.userTypeId) {
       return this;
     }
-    return new TypeInfo(
-        cls,
-        namespaceBytes,
-        typeNameBytes,
-        isDynamicGeneratedClass,
-        serializer,
-        typeId,
-        userTypeId);
+    return new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
   }
 
-  public Class<?> getCls() {
-    return cls;
+  public Class<?> getType() {
+    return type;
   }
 
   public TypeDef getTypeDef() {
@@ -194,20 +173,18 @@ public class TypeInfo {
   }
 
   public String decodeNamespace() {
-    return namespaceBytes.decode(PACKAGE_DECODER);
+    return namespace.decode(PACKAGE_DECODER);
   }
 
   public String decodeTypeName() {
-    return typeNameBytes.decode(TYPE_NAME_DECODER);
+    return typeName.decode(TYPE_NAME_DECODER);
   }
 
   @Override
   public String toString() {
     return "TypeInfo{"
         + "cls="
-        + cls
-        + ", isDynamicGeneratedClass="
-        + isDynamicGeneratedClass
+        + type
         + ", serializer="
         + serializer
         + ", typeId="

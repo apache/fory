@@ -362,7 +362,7 @@ public class TypeDefEncoderTest {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(ClassWithNoAnnotations.class);
 
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, ClassWithNoAnnotations.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), ClassWithNoAnnotations.class);
     Assert.assertEquals(typeDef.getId() & TypeDef.COMPRESS_META_FLAG, 0);
   }
 

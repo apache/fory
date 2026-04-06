@@ -19,11 +19,13 @@
 
 package org.apache.fory;
 
+import org.apache.fory.context.CopyContext;
+
 /**
  * Fory copy interface. Customize the copy method of the class
  *
  * @param <T> custom copy interface object
  */
 public interface ForyCopyable<T> {
-  T copy(Fory fory);
+  T copy(CopyContext copyContext);
 }

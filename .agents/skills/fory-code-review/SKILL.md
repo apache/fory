@@ -19,6 +19,7 @@ Find the highest-value bugs, regressions, and missing verification in Apache For
    - `references/review-checklist.md`
    - `references/lesson-derived-red-flags.md`
    - `references/validation-command-matrix.md`
+   - matching runtime docs under `../../languages/*.md` when the patch is language-specific
 
 ## Review Workflow
 

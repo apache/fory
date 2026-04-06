@@ -23,9 +23,11 @@ import java.io.Serializable;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
-import org.apache.fory.Fory;
 import org.apache.fory.collection.ClassValueCache;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.SerializableFunction;
 import org.apache.fory.util.unsafe._JDKAccess;
@@ -49,11 +51,11 @@ public class LambdaSerializer extends Serializer {
     return function.getClass();
   }
 
-  public LambdaSerializer(Fory fory, Class<?> cls) {
-    super(fory, cls);
+  public LambdaSerializer(TypeResolver typeResolver, Class<?> cls) {
+    super(typeResolver.getConfig(), cls);
     serializedLambdaSerializer =
         (SerializedLambdaSerializer)
-            fory.getTypeResolver().getSerializer(SerializedLambdaSerializer.SERIALIZED_LAMBDA);
+            typeResolver.getSerializer(SerializedLambdaSerializer.SERIALIZED_LAMBDA);
     if (cls == ReplaceStub.class) {
       writeReplaceHandle = null;
       return;
@@ -74,22 +76,22 @@ public class LambdaSerializer extends Serializer {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {
-    serializedLambdaSerializer.write(buffer, extractSerializedLambda(value, "serialize"));
+  public void write(WriteContext writeContext, Object value) {
+    serializedLambdaSerializer.write(writeContext, extractSerializedLambda(value, "serialize"));
   }
 
   @Override
-  public Object copy(Object value) {
+  public Object copy(CopyContext copyContext, Object value) {
     SerializedLambda serializedLambda = extractSerializedLambda(value, "copy");
     return SerializedLambdaSerializer.readResolve(
-        serializedLambdaSerializer.copy(serializedLambda));
+        serializedLambdaSerializer.copy(copyContext, serializedLambda));
   }
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
     try {
       return SerializedLambdaSerializer.readResolve(
-          serializedLambdaSerializer.readUnresolved(buffer));
+          serializedLambdaSerializer.readUnresolved(readContext));
     } catch (Throwable e) {
       throw new RuntimeException("Can't deserialize lambda", e);
     }

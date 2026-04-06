@@ -2,6 +2,8 @@
 
 Use the smallest command set that proves the changed behavior. If protocol or xlang behavior changed, call out the cross-language tests that should run even if the author did not run them yet.
 
+Canonical runtime-specific rules now live under `../../../languages/*.md` and `../../../testing/integration-tests.md`. Use this file as the review-oriented shortcut matrix.
+
 ## Repo-Wide Anchors
 
 - Format/lint sweep: `bash ci/format.sh --all`

@@ -22,6 +22,7 @@ package org.apache.fory.serializer.scala;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.config.Config;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
@@ -40,9 +41,12 @@ public class ScalaSerializers {
 
   public static void registerSerializers(Fory fory) {
     TypeResolver resolver = setSerializerFactory(fory);
+    Config config = resolver.getConfig();
 
-    resolver.registerSerializer(IterableToFactoryClass, new ToFactorySerializers.IterableToFactorySerializer(fory));
-    resolver.registerSerializer(MapToFactoryClass, new ToFactorySerializers.MapToFactorySerializer(fory));
+    resolver.registerSerializer(
+        IterableToFactoryClass, new ToFactorySerializers.IterableToFactorySerializer(config));
+    resolver.registerSerializer(
+        MapToFactoryClass, new ToFactorySerializers.MapToFactorySerializer(config));
 
     // Seq
     resolver.register(scala.collection.immutable.Seq.class);
@@ -115,17 +119,17 @@ public class ScalaSerializers {
     resolver.register("scala.math.Numeric$IntIsIntegral$");
     resolver.register("scala.math.Numeric$LongIsIntegral$");
     resolver.registerSerializerAndType(
-        Range.Inclusive.class, new RangeSerializer(fory, Range.Inclusive.class));
+        Range.Inclusive.class, new RangeSerializer(resolver, Range.Inclusive.class));
     resolver.registerSerializerAndType(
-        Range.Exclusive.class, new RangeSerializer(fory, Range.Exclusive.class));
+        Range.Exclusive.class, new RangeSerializer(resolver, Range.Exclusive.class));
     resolver.registerSerializerAndType(
-        NumericRange.class, new NumericRangeSerializer<>(fory, NumericRange.class));
+        NumericRange.class, new NumericRangeSerializer<>(resolver, NumericRange.class));
     resolver.registerSerializerAndType(
         NumericRange.Exclusive.class,
-        new NumericRangeSerializer<>(fory, NumericRange.Exclusive.class));
+        new NumericRangeSerializer<>(resolver, NumericRange.Exclusive.class));
     resolver.registerSerializerAndType(
         NumericRange.Inclusive.class,
-        new NumericRangeSerializer<>(fory, NumericRange.Inclusive.class));
+        new NumericRangeSerializer<>(resolver, NumericRange.Inclusive.class));
 
     resolver.register(scala.collection.generic.SerializeEnd$.class);
     resolver.register(scala.collection.generic.DefaultSerializationProxy.class);
@@ -172,10 +176,10 @@ public class ScalaSerializers {
     ScalaDispatcher dispatcher = new ScalaDispatcher();
     SerializerFactory factory = resolver.getSerializerFactory();
     if (factory != null) {
-      SerializerFactory newFactory = (f, cls) -> {
-        Serializer serializer = factory.createSerializer(f, cls);
+      SerializerFactory newFactory = (typeResolver, cls) -> {
+        Serializer serializer = factory.createSerializer(typeResolver, cls);
         if (serializer == null) {
-          serializer = dispatcher.createSerializer(f, cls);
+          serializer = dispatcher.createSerializer(typeResolver, cls);
         }
         return serializer;
       };

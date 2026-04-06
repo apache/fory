@@ -94,6 +94,8 @@ public class BlockedStreamUtils {
       buf.ensure(size);
       readByteBuffer(channel, buf.sliceAsByteBuffer(), size);
       return action.apply(buf);
+    } catch (Throwable t) {
+      throw ExceptionUtils.handleReadFailed(fory, t);
     } finally {
       fory.resetBuffer();
     }

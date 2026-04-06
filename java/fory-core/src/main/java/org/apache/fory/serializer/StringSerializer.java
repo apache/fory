@@ -33,11 +33,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.StaticInvoke;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
@@ -131,27 +133,28 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   private int smoothCharArrayLength = DEFAULT_BUFFER_SIZE;
   private byte[] byteArray2 = EMPTY_BYTES_STUB;
 
-  public StringSerializer(Fory fory) {
-    super(fory, String.class, fory.trackingRef() && !fory.isStringRefIgnored());
-    compressString = fory.compressString();
-    xlang = fory.isCrossLanguage();
+  public StringSerializer(Config config) {
+    super(config, String.class, config.trackingRef() && !config.isStringRefIgnored());
+    compressString = config.compressString();
+    xlang = config.isXlang();
     if (xlang) {
       Preconditions.checkArgument(compressString, "compress string muse be enabled for xlang mode");
     }
-    writeNumUtf16BytesForUtf8Encoding = fory.getConfig().writeNumUtf16BytesForUtf8Encoding();
+    writeNumUtf16BytesForUtf8Encoding = config.writeNumUtf16BytesForUtf8Encoding();
   }
 
   @Override
-  public void write(MemoryBuffer buffer, String value) {
-    writeString(buffer, value);
+  public void write(WriteContext writeContext, String value) {
+    writeString(writeContext.getBuffer(), value);
   }
 
   @Override
-  public String read(MemoryBuffer buffer) {
-    return readString(buffer);
+  public String read(ReadContext readContext) {
+    return readString(readContext.getBuffer());
   }
 
-  public Expression writeStringExpr(Expression strSerializer, Expression buffer, Expression str) {
+  public static Expression writeStringExpr(
+      Expression strSerializer, Expression buffer, Expression str, boolean compressString) {
     if (STRING_VALUE_FIELD_IS_BYTES) {
       if (compressString) {
         return new Invoke(strSerializer, "writeCompressedBytesString", buffer, str);
@@ -178,7 +181,8 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     }
   }
 
-  public Expression readStringExpr(Expression strSerializer, Expression buffer) {
+  public static Expression readStringExpr(
+      Expression strSerializer, Expression buffer, boolean compressString) {
     if (STRING_VALUE_FIELD_IS_BYTES) {
       if (compressString) {
         return new Invoke(strSerializer, "readCompressedBytesString", STRING_TYPE, buffer);

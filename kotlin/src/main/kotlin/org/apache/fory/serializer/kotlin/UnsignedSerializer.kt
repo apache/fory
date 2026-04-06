@@ -19,9 +19,10 @@
 
 package org.apache.fory.serializer.kotlin
 
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
-import org.apache.fory.serializer.Serializers
+import org.apache.fory.config.Config
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
+import org.apache.fory.serializer.ImmutableSerializer
 
 /**
  * UByteSerializer
@@ -29,16 +30,24 @@ import org.apache.fory.serializer.Serializers
  * UByte is mapped to Type.UINT8
  */
 public class UByteSerializer(
-  fory: Fory,
-) : Serializers.CrossLanguageCompatibleSerializer<UByte>(fory, UByte::class.java, false, true) {
+  config: Config,
+) :
+  ImmutableSerializer<UByte>(
+    config,
+    UByte::class.java,
+    false,
+    true
+  ) {
 
-  override fun write(buffer: MemoryBuffer, value: UByte) {
-    buffer.writeByte(value.toInt())
+  override fun write(writeContext: WriteContext, value: UByte) {
+    writeContext.buffer.writeByte(value.toInt())
   }
 
-  override fun read(buffer: MemoryBuffer): UByte {
-    return buffer.readByte().toUByte()
+  override fun read(readContext: ReadContext): UByte {
+    return readContext.buffer.readByte().toUByte()
   }
+
+  override fun shareable(): Boolean = true
 }
 
 /**
@@ -47,15 +56,23 @@ public class UByteSerializer(
  * UShort is mapped to Type.UINT16.
  */
 public class UShortSerializer(
-  fory: Fory,
-) : Serializers.CrossLanguageCompatibleSerializer<UShort>(fory, UShort::class.java, false, true) {
-  override fun write(buffer: MemoryBuffer, value: UShort) {
-    buffer.writeVarUint32(value.toInt())
+  config: Config,
+) :
+  ImmutableSerializer<UShort>(
+    config,
+    UShort::class.java,
+    false,
+    true
+  ) {
+  override fun write(writeContext: WriteContext, value: UShort) {
+    writeContext.buffer.writeVarUint32(value.toInt())
   }
 
-  override fun read(buffer: MemoryBuffer): UShort {
-    return buffer.readVarUint32().toUShort()
+  override fun read(readContext: ReadContext): UShort {
+    return readContext.buffer.readVarUint32().toUShort()
   }
+
+  override fun shareable(): Boolean = true
 }
 
 /**
@@ -64,16 +81,24 @@ public class UShortSerializer(
  * UInt is mapped to Type.UINT32.
  */
 public class UIntSerializer(
-  fory: Fory,
-) : Serializers.CrossLanguageCompatibleSerializer<UInt>(fory, UInt::class.java, false, true) {
+  config: Config,
+) :
+  ImmutableSerializer<UInt>(
+    config,
+    UInt::class.java,
+    false,
+    true
+  ) {
 
-  override fun write(buffer: MemoryBuffer, value: UInt) {
-    buffer.writeVarUint32(value.toInt())
+  override fun write(writeContext: WriteContext, value: UInt) {
+    writeContext.buffer.writeVarUint32(value.toInt())
   }
 
-  override fun read(buffer: MemoryBuffer): UInt {
-    return buffer.readVarUint32().toUInt()
+  override fun read(readContext: ReadContext): UInt {
+    return readContext.buffer.readVarUint32().toUInt()
   }
+
+  override fun shareable(): Boolean = true
 }
 
 /**
@@ -82,13 +107,21 @@ public class UIntSerializer(
  * ULong is mapped to Type.UINT64.
  */
 public class ULongSerializer(
-  fory: Fory,
-) : Serializers.CrossLanguageCompatibleSerializer<ULong>(fory, ULong::class.java, false, true) {
-  override fun write(buffer: MemoryBuffer, value: ULong) {
-    buffer.writeVarUint64(value.toLong())
+  config: Config,
+) :
+  ImmutableSerializer<ULong>(
+    config,
+    ULong::class.java,
+    false,
+    true
+  ) {
+  override fun write(writeContext: WriteContext, value: ULong) {
+    writeContext.buffer.writeVarUint64(value.toLong())
   }
 
-  override fun read(buffer: MemoryBuffer): ULong {
-    return buffer.readVarUint64().toULong()
+  override fun read(readContext: ReadContext): ULong {
+    return readContext.buffer.readVarUint64().toULong()
   }
+
+  override fun shareable(): Boolean = true
 }

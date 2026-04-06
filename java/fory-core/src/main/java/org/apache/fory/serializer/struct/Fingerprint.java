@@ -82,11 +82,16 @@ public class Fingerprint {
    * @return the fingerprint string
    */
   public static String computeStructFingerprint(Fory fory, List<Descriptor> descriptors) {
+    return computeStructFingerprint(fory.getTypeResolver(), descriptors);
+  }
+
+  public static String computeStructFingerprint(
+      TypeResolver resolver, List<Descriptor> descriptors) {
     // Build fingerprint info for each field
     List<String[]> fieldInfos = new ArrayList<>(descriptors.size());
     for (Descriptor descriptor : descriptors) {
       Class<?> rawType = descriptor.getTypeRef().getRawType();
-      int typeId = getTypeId(fory, descriptor);
+      int typeId = getTypeId(resolver, descriptor);
 
       // Get field identifier: tag ID if configured, otherwise snake_case name
       String fieldIdentifier;
@@ -110,7 +115,7 @@ public class Fingerprint {
       char nullable;
       if (rawType.isPrimitive()) {
         nullable = '0';
-      } else if (fory.isCrossLanguage()) {
+      } else if (resolver.isCrossLanguage()) {
         // For xlang: nullable defaults to false, except for Optional types, boxed types
         // If @ForyField annotation is present, use its nullable value
         if (foryField != null) {
@@ -153,13 +158,12 @@ public class Fingerprint {
     return fingerprint;
   }
 
-  private static int getTypeId(Fory fory, Descriptor descriptor) {
+  private static int getTypeId(TypeResolver resolver, Descriptor descriptor) {
     Class<?> cls = descriptor.getTypeRef().getRawType();
     Integer primitiveListTypeId = getPrimitiveListTypeId(cls);
     if (primitiveListTypeId != null) {
       return primitiveListTypeId;
     }
-    TypeResolver resolver = fory.getTypeResolver();
     if (resolver.isSet(cls)) {
       return Types.SET;
     } else if (resolver.isCollection(cls)) {
@@ -174,7 +178,7 @@ public class Fingerprint {
       if (typeInfo == null) {
         return Types.UNKNOWN;
       }
-      int typeId = Types.getDescriptorTypeId(fory, descriptor);
+      int typeId = Types.getDescriptorTypeId(resolver, descriptor);
       // union must also be set to `UNKNOWN`, we can't know a type is union at compile-time for some
       // languages.
       if (Types.isUserDefinedType((byte) typeId)) {

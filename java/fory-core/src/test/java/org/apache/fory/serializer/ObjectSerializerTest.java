@@ -50,11 +50,11 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
-    ObjectSerializer serializer = new ObjectSerializer(fory, Foo.class);
+    ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), Foo.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     Foo foo = new Foo();
-    serializer.write(buffer, foo);
-    Object obj = serializer.read(buffer);
+    writeSerializer(fory, serializer, buffer, foo);
+    Object obj = readSerializer(fory, serializer, buffer);
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
   }
 
@@ -66,9 +66,9 @@ public class ObjectSerializerTest extends ForyTestBase {
         return str + s;
       }
     }
-    ObjectSerializer serializer = new ObjectSerializer(fory, Foo.class);
+    ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), Foo.class);
     Foo foo = new Foo();
-    Object obj = serializer.copy(foo);
+    Object obj = withCopyContext(fory, context -> serializer.copy(context, foo));
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
     Assert.assertNotSame(foo, obj);
   }
@@ -94,10 +94,10 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
-    ObjectSerializer serializer = new ObjectSerializer(fory, foo.getClass());
+    ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), foo.getClass());
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    serializer.write(buffer, foo);
-    Object obj = serializer.read(buffer);
+    writeSerializer(fory, serializer, buffer, foo);
+    Object obj = readSerializer(fory, serializer, buffer);
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
   }
 
@@ -116,8 +116,8 @@ public class ObjectSerializerTest extends ForyTestBase {
             return "Anonymous " + s;
           }
         };
-    ObjectSerializer serializer = new ObjectSerializer(fory, foo.getClass());
-    Object obj = serializer.copy(foo);
+    ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), foo.getClass());
+    Object obj = withCopyContext(fory, context -> serializer.copy(context, foo));
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
     assertNotSame(foo, obj);
   }
@@ -133,13 +133,25 @@ public class ObjectSerializerTest extends ForyTestBase {
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
 
-    ObjectSerializer<Cyclic> serializer = new ObjectSerializer<>(fory, Cyclic.class);
-    fory.getRefResolver().writeRefOrNull(buffer, cyclic);
-    serializer.write(buffer, cyclic);
-    byte tag = fory.getRefResolver().readRefOrNull(buffer);
-    Preconditions.checkArgument(tag == Fory.REF_VALUE_FLAG);
-    fory.getRefResolver().preserveRefId();
-    Cyclic cyclic1 = serializer.read(buffer);
+    ObjectSerializer<Cyclic> serializer =
+        new ObjectSerializer<>(fory.getTypeResolver(), Cyclic.class);
+    withWriteContext(
+        fory,
+        buffer,
+        context -> {
+          context.writeRefOrNull(cyclic);
+          serializer.write(context, cyclic);
+        });
+    Cyclic cyclic1 =
+        withReadContext(
+            fory,
+            buffer,
+            context -> {
+              byte tag = context.readRefOrNull();
+              Preconditions.checkArgument(tag == Fory.REF_VALUE_FLAG);
+              context.preserveRefId();
+              return serializer.read(context);
+            });
     fory.reset();
     assertEquals(cyclic1, cyclic);
   }
@@ -147,8 +159,9 @@ public class ObjectSerializerTest extends ForyTestBase {
   @Test(dataProvider = "foryCopyConfig")
   public void testCopyCircularReference(Fory fory) {
     Cyclic cyclic = Cyclic.create(true);
-    ObjectSerializer<Cyclic> serializer = new ObjectSerializer<>(fory, Cyclic.class);
-    Cyclic cyclic1 = serializer.copy(cyclic);
+    ObjectSerializer<Cyclic> serializer =
+        new ObjectSerializer<>(fory.getTypeResolver(), Cyclic.class);
+    Cyclic cyclic1 = withCopyContext(fory, context -> serializer.copy(context, cyclic));
     assertEquals(cyclic1, cyclic);
     assertNotSame(cyclic1, cyclic);
   }
@@ -173,10 +186,10 @@ public class ObjectSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    ObjectSerializer<A> serializer = new ObjectSerializer<>(fory, A.class);
+    ObjectSerializer<A> serializer = new ObjectSerializer<>(fory.getTypeResolver(), A.class);
     A a = new A();
-    serializer.write(buffer, a);
-    assertEquals(a, serializer.read(buffer));
-    assertEquals(a, serializer.copy(a));
+    writeSerializer(fory, serializer, buffer, a);
+    assertEquals(a, readSerializer(fory, serializer, buffer));
+    assertEquals(a, withCopyContext(fory, context -> serializer.copy(context, a)));
   }
 }

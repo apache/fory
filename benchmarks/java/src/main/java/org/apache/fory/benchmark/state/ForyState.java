@@ -36,11 +36,12 @@ import org.apache.fory.benchmark.data.Struct;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.util.Preconditions;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.CompilerControl;
@@ -178,8 +179,8 @@ public class ForyState {
   }
 
   public static class ForyMetaSharedState extends ForyUserTypeState {
-    public MetaContext writerMetaContext = new MetaContext();
-    public MetaContext readerMetaContext = new MetaContext();
+    public MetaWriteContext writerMetaContext = new MetaWriteContext();
+    public MetaReadContext readerMetaContext = new MetaReadContext();
 
     @Override
     public void setup() {

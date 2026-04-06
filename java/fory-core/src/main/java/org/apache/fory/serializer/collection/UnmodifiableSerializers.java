@@ -33,11 +33,12 @@ import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.function.Function;
-import org.apache.fory.Fory;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -82,29 +83,27 @@ public class UnmodifiableSerializers {
     private final Function factory;
     private final long offset;
 
-    public UnmodifiableCollectionSerializer(Fory fory, Class cls, Function factory, long offset) {
-      super(fory, cls, false);
+    public UnmodifiableCollectionSerializer(
+        TypeResolver typeResolver, Class cls, Function factory, long offset) {
+      super(typeResolver, cls, false);
       this.factory = factory;
       this.offset = offset;
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Collection value) {
+    public void write(WriteContext writeContext, Collection value) {
       Preconditions.checkArgument(value.getClass() == type);
-      Object fieldValue = Platform.getObject(value, offset);
-      fory.writeRef(buffer, fieldValue);
+      writeContext.writeRef(Platform.getObject(value, offset));
     }
 
     @Override
-    public Collection read(MemoryBuffer buffer) {
-      final Object sourceCollection = fory.readRef(buffer);
-      return (Collection) factory.apply(sourceCollection);
+    public Collection read(ReadContext readContext) {
+      return (Collection) factory.apply(readContext.readRef());
     }
 
     @Override
-    public Collection copy(Collection object) {
-      final Object collection = Platform.getObject(object, offset);
-      return (Collection) factory.apply(fory.copyObject(collection));
+    public Collection copy(CopyContext copyContext, Collection object) {
+      return (Collection) factory.apply(copyContext.copyObject(Platform.getObject(object, offset)));
     }
   }
 
@@ -112,48 +111,47 @@ public class UnmodifiableSerializers {
     private final Function factory;
     private final long offset;
 
-    public UnmodifiableMapSerializer(Fory fory, Class cls, Function factory, long offset) {
-      super(fory, cls, false);
+    public UnmodifiableMapSerializer(
+        TypeResolver typeResolver, Class cls, Function factory, long offset) {
+      super(typeResolver, cls, false);
       this.factory = factory;
       this.offset = offset;
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Map value) {
+    public void write(WriteContext writeContext, Map value) {
       Preconditions.checkArgument(value.getClass() == type);
-      Object fieldValue = Platform.getObject(value, offset);
-      fory.writeRef(buffer, fieldValue);
+      writeContext.writeRef(Platform.getObject(value, offset));
     }
 
     @Override
-    public Map copy(Map originMap) {
-      final Object unwrappedMap = Platform.getObject(originMap, offset);
-      return (Map) factory.apply(fory.copyObject(unwrappedMap));
+    public Map copy(CopyContext copyContext, Map originMap) {
+      return (Map) factory.apply(copyContext.copyObject(Platform.getObject(originMap, offset)));
     }
 
     @Override
-    public Map read(MemoryBuffer buffer) {
-      final Object sourceCollection = fory.readRef(buffer);
-      return (Map) factory.apply(sourceCollection);
+    public Map read(ReadContext readContext) {
+      return (Map) factory.apply(readContext.readRef());
     }
   }
 
-  static Serializer createSerializer(Fory fory, Class<?> cls) {
+  static Serializer createSerializer(TypeResolver typeResolver, Class<?> cls) {
     for (Tuple2<Class<?>, Function> factory : unmodifiableFactories()) {
       if (factory.f0 == cls) {
-        return createSerializer(fory, factory);
+        return createSerializer(typeResolver, factory);
       }
     }
     throw new IllegalArgumentException("Unsupported type " + cls);
   }
 
-  private static Serializer<?> createSerializer(Fory fory, Tuple2<Class<?>, Function> factory) {
+  private static Serializer<?> createSerializer(
+      TypeResolver typeResolver, Tuple2<Class<?>, Function> factory) {
     if (Collection.class.isAssignableFrom(factory.f0)) {
       return new UnmodifiableCollectionSerializer(
-          fory, factory.f0, factory.f1, Offset.SOURCE_COLLECTION_FIELD_OFFSET);
+          typeResolver, factory.f0, factory.f1, Offset.SOURCE_COLLECTION_FIELD_OFFSET);
     } else {
       return new UnmodifiableMapSerializer(
-          fory, factory.f0, factory.f1, Offset.SOURCE_MAP_FIELD_OFFSET);
+          typeResolver, factory.f0, factory.f1, Offset.SOURCE_MAP_FIELD_OFFSET);
     }
   }
 
@@ -208,11 +206,10 @@ public class UnmodifiableSerializers {
    * @see Collections#unmodifiableMap(Map)
    * @see Collections#unmodifiableSortedMap(SortedMap)
    */
-  public static void registerSerializers(Fory fory) {
+  public static void registerSerializers(TypeResolver resolver) {
     try {
-      TypeResolver resolver = fory.getTypeResolver();
       for (Tuple2<Class<?>, Function> factory : unmodifiableFactories()) {
-        resolver.registerInternalSerializer(factory.f0, createSerializer(fory, factory));
+        resolver.registerInternalSerializer(factory.f0, createSerializer(resolver, factory));
       }
     } catch (Throwable e) {
       ExceptionUtils.ignore(e);

@@ -76,13 +76,13 @@ Fory supports sharing type metadata (class name, field name, final field type in
 //   .withMetaShare(true)
 
 // Not thread-safe fory.
-MetaContext context = xxx;
-fory.getSerializationContext().setMetaContext(context);
+MetaWriteContext writeContext = xxx;
+fory.setMetaWriteContext(writeContext);
 byte[] bytes = fory.serialize(o);
 
 // Not thread-safe fory.
-MetaContext context = xxx;
-fory.getSerializationContext().setMetaContext(context);
+MetaReadContext readContext = xxx;
+fory.setMetaReadContext(readContext);
 fory.deserialize(bytes);
 ```
 
@@ -92,7 +92,7 @@ fory.deserialize(bytes);
 // Thread-safe fory
 byte[] serialized = fory.execute(
   f -> {
-    f.getSerializationContext().setMetaContext(context);
+    f.setMetaWriteContext(writeContext);
     return f.serialize(beanA);
   }
 );
@@ -100,13 +100,17 @@ byte[] serialized = fory.execute(
 // Thread-safe fory
 Object newObj = fory.execute(
   f -> {
-    f.getSerializationContext().setMetaContext(context);
+    f.setMetaReadContext(readContext);
     return f.deserialize(serialized);
   }
 );
 ```
 
-**Note**: `MetaContext` is not thread-safe and cannot be reused across instances of Fory or multiple threads. `buildThreadSafeFory()` is pooled, so create a fresh `MetaContext` for each borrow unless you keep working with the same raw `Fory` instance inside one `execute(...)` call. If you need to reuse one `MetaContext` across multiple calls on the same worker thread, prefer `buildThreadLocalFory()`.
+**Note**: `MetaWriteContext` and `MetaReadContext` are not thread-safe and cannot be reused across
+instances of Fory or multiple threads. In cases of multi-threading, a separate pair of meta
+contexts must be created for each Fory instance. If you need a different classloader, create a
+separate `Fory` or `ThreadSafeFory` configured with that loader instead of switching loaders on an
+existing instance.
 
 For more details, please refer to the [Meta Sharing specification](https://fory.apache.org/docs/specification/fory_java_serialization_spec#meta-share).
 

@@ -19,8 +19,8 @@
 
 package org.apache.fory.type;
 
-import org.apache.fory.Fory;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
 import org.apache.fory.type.unsigned.Uint64;
@@ -60,13 +60,13 @@ public class DispatchId {
   public static final int EXT_VAR_UINT64 = 25;
   public static final int STRING = 26;
 
-  public static int getDispatchId(Fory fory, Descriptor d) {
-    int typeId = Types.getDescriptorTypeId(fory, d);
+  public static int getDispatchId(TypeResolver resolver, Descriptor d) {
+    int typeId = Types.getDescriptorTypeId(resolver, d);
     Class<?> rawType = d.getTypeRef().getRawType();
     if (rawType == Float16.class) {
       return FLOAT16;
     }
-    if (fory.isCrossLanguage()) {
+    if (resolver.isCrossLanguage()) {
       return adjustUnsignedDispatchId(typeId, rawType, xlangTypeIdToDispatchId(typeId));
     } else {
       return adjustUnsignedDispatchId(typeId, rawType, nativeIdToDispatchId(typeId, d));

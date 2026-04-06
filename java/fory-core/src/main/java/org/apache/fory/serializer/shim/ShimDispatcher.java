@@ -19,11 +19,11 @@
 
 package org.apache.fory.serializer.shim;
 
-import org.apache.fory.Fory;
 import org.apache.fory.collection.ForyObjectMap;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.collection.CollectionSerializer;
@@ -38,10 +38,10 @@ public class ShimDispatcher {
   private final ForyObjectMap<String, Class<? extends Serializer>> className2ShimSerializerClass =
       new ObjectMap<>(4, 0.75f);
 
-  private final Fory fory;
+  private final TypeResolver typeResolver;
 
-  public ShimDispatcher(Fory fory) {
-    this.fory = fory;
+  public ShimDispatcher(TypeResolver typeResolver) {
+    this.typeResolver = typeResolver;
   }
 
   public void initialize() {
@@ -75,7 +75,7 @@ public class ShimDispatcher {
     }
     Class<? extends Serializer> serializerClass = className2ShimSerializerClass.get(className);
     try {
-      return Serializers.newSerializer(fory, clazz, serializerClass);
+      return Serializers.newSerializer(typeResolver, clazz, serializerClass);
     } catch (Throwable e) {
       LOG.warn(
           "Construct shim serializer failed for class [{}] with serializer class [{}]",

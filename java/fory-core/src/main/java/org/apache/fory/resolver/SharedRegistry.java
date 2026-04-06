@@ -33,6 +33,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.EncodedMetaString;
+import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.meta.TypeDef;
@@ -43,6 +44,9 @@ import org.apache.fory.util.GraalvmSupport;
 /** Shared caches reused by multiple equivalent {@link org.apache.fory.Fory} instances. */
 @Internal
 public final class SharedRegistry {
+  private static final int MAX_CACHED_ENCODED_META_STRINGS = 32768;
+  private static final int MAX_CACHED_ENCODED_META_STRING_LENGTH = 2048;
+
   final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap = new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef =
       new ConcurrentIdentityMap<>();
@@ -61,6 +65,9 @@ public final class SharedRegistry {
       new ConcurrentHashMap<>();
   final ConcurrentHashMap<MetaStringKey, EncodedMetaString> metaStringMap =
       new ConcurrentHashMap<>();
+  final ConcurrentHashMap<EncodedMetaStringKey, EncodedMetaString> encodedMetaStringMap =
+      new ConcurrentHashMap<>();
+  private final Object metaStringCacheLock = new Object();
   volatile IdentityHashMap<Class<?>, Integer> registeredClassIdMap;
   volatile BiMap<String, Class<?>> registeredClasses;
 
@@ -83,7 +90,23 @@ public final class SharedRegistry {
     return Objects.requireNonNull(registeredClasses);
   }
 
-  EncodedMetaString getOrCreateEncodedMetaString(
+  EncodedMetaString getPackageEncodedMetaString(String string) {
+    return getEncodedMetaString(
+        string,
+        Encoders.PACKAGE_ENCODER,
+        Encoders.computePackageEncoding(string),
+        Encoders.PACKAGE_ENCODER_TYPE_KEY);
+  }
+
+  EncodedMetaString getTypeNameEncodedMetaString(String string) {
+    return getEncodedMetaString(
+        string,
+        Encoders.TYPE_NAME_ENCODER,
+        Encoders.computeTypeNameEncoding(string),
+        Encoders.TYPE_NAME_ENCODER_TYPE_KEY);
+  }
+
+  private EncodedMetaString getEncodedMetaString(
       String string,
       MetaStringEncoder encoder,
       MetaString.Encoding encoding,
@@ -92,7 +115,64 @@ public final class SharedRegistry {
       return EncodedMetaString.EMPTY;
     }
     MetaStringKey key = new MetaStringKey(string, encoderTypeKey, encoding);
-    return metaStringMap.computeIfAbsent(key, ignored -> encoder.encodeBinary(string, encoding));
+    EncodedMetaString encodedMetaString = metaStringMap.get(key);
+    if (encodedMetaString != null) {
+      return encodedMetaString;
+    }
+    EncodedMetaString candidate = encoder.encodeBinary(string, encoding);
+    EncodedMetaStringKey encodedMetaStringKey =
+        new EncodedMetaStringKey(candidate.hash, candidate.bytes);
+    synchronized (metaStringCacheLock) {
+      encodedMetaString = metaStringMap.get(key);
+      if (encodedMetaString != null) {
+        return encodedMetaString;
+      }
+      encodedMetaString = encodedMetaStringMap.get(encodedMetaStringKey);
+      if (encodedMetaString == null) {
+        if (!shouldCacheEncodedMetaString(candidate)) {
+          return candidate;
+        }
+        encodedMetaStringMap.put(encodedMetaStringKey, candidate);
+        encodedMetaString = candidate;
+      }
+      metaStringMap.put(key, encodedMetaString);
+      return encodedMetaString;
+    }
+  }
+
+  public EncodedMetaString getOrCreateEncodedMetaString(byte[] bytes, long hash) {
+    if (bytes.length == 0) {
+      return EncodedMetaString.EMPTY;
+    }
+    EncodedMetaStringKey key = new EncodedMetaStringKey(hash, bytes);
+    EncodedMetaString encodedMetaString = encodedMetaStringMap.get(key);
+    if (encodedMetaString != null) {
+      return encodedMetaString;
+    }
+    if (bytes.length > MAX_CACHED_ENCODED_META_STRING_LENGTH) {
+      return new EncodedMetaString(bytes, hash);
+    }
+    synchronized (metaStringCacheLock) {
+      encodedMetaString = encodedMetaStringMap.get(key);
+      if (encodedMetaString != null) {
+        return encodedMetaString;
+      }
+      if (encodedMetaStringMap.size() >= MAX_CACHED_ENCODED_META_STRINGS) {
+        return new EncodedMetaString(bytes, hash);
+      }
+      EncodedMetaString candidate = new EncodedMetaString(bytes, hash);
+      encodedMetaStringMap.put(key, candidate);
+      return candidate;
+    }
+  }
+
+  private boolean shouldCacheEncodedMetaString(EncodedMetaString encodedMetaString) {
+    return shouldCacheEncodedMetaStringLength(encodedMetaString)
+        && encodedMetaStringMap.size() < MAX_CACHED_ENCODED_META_STRINGS;
+  }
+
+  private boolean shouldCacheEncodedMetaStringLength(EncodedMetaString encodedMetaString) {
+    return encodedMetaString.bytes.length <= MAX_CACHED_ENCODED_META_STRING_LENGTH;
   }
 
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
@@ -182,6 +262,33 @@ public final class SharedRegistry {
     @Override
     public int hashCode() {
       return Objects.hash(string, encoderTypeKey, encoding);
+    }
+  }
+
+  private static final class EncodedMetaStringKey {
+    private final long hash;
+    private final byte[] bytes;
+
+    private EncodedMetaStringKey(long hash, byte[] bytes) {
+      this.hash = hash;
+      this.bytes = Objects.requireNonNull(bytes);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof EncodedMetaStringKey)) {
+        return false;
+      }
+      EncodedMetaStringKey that = (EncodedMetaStringKey) o;
+      return hash == that.hash && java.util.Arrays.equals(bytes, that.bytes);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * Long.hashCode(hash) + java.util.Arrays.hashCode(bytes);
     }
   }
 

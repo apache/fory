@@ -35,7 +35,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
@@ -75,10 +74,9 @@ public class NativeTypeDefEncoder {
     }
   }
 
-  static List<Field> buildFields(Fory fory, Class<?> cls, boolean resolveParent) {
+  static List<Field> buildFields(TypeResolver typeResolver, Class<?> cls, boolean resolveParent) {
     DescriptorGrouper descriptorGrouper =
-        fory.getTypeResolver()
-            .getFieldDescriptorGrouper(cls, resolveParent, false, IDENTITY_DESCRIPTOR);
+        typeResolver.getFieldDescriptorGrouper(cls, resolveParent, false, IDENTITY_DESCRIPTOR);
     List<Field> fields = new ArrayList<>();
     descriptorGrouper
         .getPrimitiveDescriptors()
@@ -101,7 +99,7 @@ public class NativeTypeDefEncoder {
   }
 
   public static List<FieldInfo> buildFieldsInfo(ClassResolver resolver, Class<?> cls) {
-    return buildFieldsInfo(resolver, buildFields(resolver.getFory(), cls, true));
+    return buildFieldsInfo(resolver, buildFields(resolver, cls, true));
   }
 
   public static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, List<Field> fields) {
@@ -217,7 +215,6 @@ public class NativeTypeDefEncoder {
     }
     byte[] compressed =
         classResolver
-            .getFory()
             .getConfig()
             .getMetaCompressor()
             .compress(typeDefBuf.getHeapMemory(), 0, typeDefBuf.writerIndex());

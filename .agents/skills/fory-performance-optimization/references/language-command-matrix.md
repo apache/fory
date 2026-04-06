@@ -2,6 +2,8 @@
 
 Use this as the default verification matrix after performance changes. Run commands from the language directory unless noted.
 
+Canonical runtime-specific rules now live under `../../../languages/*.md` and `../../../testing/integration-tests.md`. Use this file as the quick optimization checklist, not as the long-form source of truth.
+
 ## Swift
 
 - Build: `swift build`

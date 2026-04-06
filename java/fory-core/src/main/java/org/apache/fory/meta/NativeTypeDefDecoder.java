@@ -59,8 +59,7 @@ class NativeTypeDefDecoder {
     byte[] encodedTypeDef = inputBuffer.readBytes(size);
     encoded.writeBytes(encodedTypeDef);
     if ((id & COMPRESS_META_FLAG) != 0) {
-      encodedTypeDef =
-          resolver.getFory().getConfig().getMetaCompressor().decompress(encodedTypeDef, 0, size);
+      encodedTypeDef = resolver.getConfig().getMetaCompressor().decompress(encodedTypeDef, 0, size);
     }
     return Tuple2.of(encodedTypeDef, encoded.getBytes(0, encoded.writerIndex()));
   }
@@ -116,10 +115,7 @@ class NativeTypeDefDecoder {
             if (decodedSpec.isEnum) {
               typeId = Types.NAMED_ENUM;
             } else {
-              typeId =
-                  resolver.getFory().isCompatible()
-                      ? Types.NAMED_COMPATIBLE_STRUCT
-                      : Types.NAMED_STRUCT;
+              typeId = resolver.isCompatible() ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT;
             }
             classSpec =
                 new ClassSpec(

@@ -21,9 +21,12 @@ package org.apache.fory.serializer;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import org.apache.fory.Fory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.ByteBufferUtil;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 
 /** Serializers for buffer related classes. */
 public class BufferSerializers {
@@ -32,20 +35,19 @@ public class BufferSerializers {
    * doesn't implement {@link java.io.Serializable}, it's ok to only serialize data. Also Note that
    * a direct buffer may be returned if the serialized buffer is a heap buffer.
    */
-  public static final class ByteBufferSerializer
-      extends Serializers.CrossLanguageCompatibleSerializer<ByteBuffer> {
+  public static final class ByteBufferSerializer extends Serializer<ByteBuffer> {
 
-    public ByteBufferSerializer(Fory fory, Class<ByteBuffer> cls) {
-      super(fory, cls);
+    public ByteBufferSerializer(TypeResolver typeResolver, Class<ByteBuffer> cls) {
+      super(typeResolver.getConfig(), cls);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, ByteBuffer value) {
-      fory.writeBufferObject(buffer, new BufferObject.ByteBufferBufferObject(value));
+    public void write(WriteContext writeContext, ByteBuffer value) {
+      writeContext.writeBufferObject(new BufferObject.ByteBufferBufferObject(value));
     }
 
     @Override
-    public ByteBuffer copy(ByteBuffer value) {
+    public ByteBuffer copy(CopyContext copyContext, ByteBuffer value) {
       ByteBuffer dst = ByteBuffer.allocate(value.remaining());
       dst.put(value.duplicate());
       ByteBufferUtil.rewind(dst);
@@ -53,8 +55,8 @@ public class BufferSerializers {
     }
 
     @Override
-    public ByteBuffer read(MemoryBuffer buffer) {
-      MemoryBuffer newBuffer = fory.readBufferObject(buffer);
+    public ByteBuffer read(ReadContext readContext) {
+      MemoryBuffer newBuffer = readContext.readBufferObject();
       int readerIndex = newBuffer.readerIndex();
       int size = newBuffer.remaining();
       ByteBuffer originalBuffer = newBuffer.sliceAsByteBuffer(readerIndex, size - 1);
@@ -62,6 +64,11 @@ public class BufferSerializers {
       originalBuffer.order(
           isBigEndian == (byte) 1 ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN);
       return originalBuffer;
+    }
+
+    @Override
+    public boolean shareable() {
+      return true;
     }
   }
 

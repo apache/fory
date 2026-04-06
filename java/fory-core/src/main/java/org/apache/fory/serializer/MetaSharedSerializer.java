@@ -22,10 +22,12 @@ package org.apache.fory.serializer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.fory.Fory;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.RefReader;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -33,8 +35,7 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.resolver.MapRefResolver;
-import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
@@ -75,13 +76,12 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   private final boolean hasDefaultValues;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
 
-  public MetaSharedSerializer(Fory fory, Class<T> type, TypeDef typeDef) {
-    super(fory, type);
+  public MetaSharedSerializer(TypeResolver typeResolver, Class<T> type, TypeDef typeDef) {
+    super(typeResolver, type);
     Preconditions.checkArgument(
-        !fory.getConfig().checkClassVersion(),
+        !config.checkClassVersion(),
         "Class version check should be disabled when compatible mode is enabled.");
-    Preconditions.checkArgument(
-        fory.getConfig().isMetaShareEnabled(), "Meta share must be enabled.");
+    Preconditions.checkArgument(config.isMetaShareEnabled(), "Meta share must be enabled.");
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info("========== MetaSharedSerializer TypeDef for {} ==========", type.getName());
       LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
@@ -89,8 +89,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
       }
     }
-    DescriptorGrouper descriptorGrouper =
-        fory.getTypeResolver().createDescriptorGrouper(typeDef, type);
+    DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(typeDef, type);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info(
           "========== MetaSharedSerializer sorted descriptors for {} ==========", type.getName());
@@ -101,11 +100,11 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
             d.getTypeName(),
             d.isTrackingRef(),
             d.isNullable(),
-            Types.getDescriptorTypeId(fory, d));
+            Types.getDescriptorTypeId(typeResolver, d));
       }
     }
     // d.getField() may be null if not exists in this class when meta share enabled.
-    FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
+    FieldGroups fieldGroups = FieldGroups.buildFieldInfos(typeResolver, descriptorGrouper);
     buildInFields = fieldGroups.buildInFields;
     containerFields = fieldGroups.containerFields;
     otherFields = fieldGroups.userTypeFields;
@@ -122,12 +121,12 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     DefaultValueUtils.DefaultValueField[] defaultValueFields =
         new DefaultValueUtils.DefaultValueField[0];
     DefaultValueUtils.DefaultValueSupport defaultValueSupport;
-    if (fory.getConfig().isScalaOptimizationEnabled()) {
+    if (config.isScalaOptimizationEnabled()) {
       defaultValueSupport = DefaultValueUtils.getScalaDefaultValueSupport();
       hasDefaultValues = defaultValueSupport.hasDefaultValues(type);
       defaultValueFields =
           defaultValueSupport.buildDefaultValueFields(
-              fory, type, descriptorGrouper.getSortedDescriptors());
+              typeResolver, type, descriptorGrouper.getSortedDescriptors());
     }
     if (!hasDefaultValues) {
       DefaultValueUtils.DefaultValueSupport kotlinDefaultValueSupport =
@@ -136,7 +135,7 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         hasDefaultValues = kotlinDefaultValueSupport.hasDefaultValues(type);
         defaultValueFields =
             kotlinDefaultValueSupport.buildDefaultValueFields(
-                fory, type, descriptorGrouper.getSortedDescriptors());
+                typeResolver, type, descriptorGrouper.getSortedDescriptors());
       }
     }
     this.hasDefaultValues = hasDefaultValues;
@@ -144,14 +143,15 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, T value) {
+  public void write(WriteContext writeContext, T value) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     if (serializer == null) {
       // xlang mode will register class and create serializer in advance, it won't go to here.
       serializer =
           ((ClassResolver) typeResolver)
-              .createSerializerSafe(type, () -> new ObjectSerializer<>(fory, type));
+              .createSerializerSafe(type, () -> new ObjectSerializer<>(typeResolver, type));
     }
-    serializer.write(buffer, value);
+    serializer.write(writeContext, value);
   }
 
   private T newInstance() {
@@ -165,27 +165,22 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   @Override
-  public T read(MemoryBuffer buffer) {
+  public T read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     if (isRecord) {
       Object[] fieldValues =
           new Object[buildInFields.length + otherFields.length + containerFields.length];
-      readFields(buffer, fieldValues);
+      readFields(readContext, fieldValues);
       fieldValues = RecordUtils.remapping(recordInfo, fieldValues);
       T t = objectCreator.newInstanceWithArguments(fieldValues);
       Arrays.fill(recordInfo.getRecordComponents(), null);
       return t;
     }
     T targetObject = newInstance();
-    Fory fory = this.fory;
-    RefResolver refResolver = this.refResolver;
-    if (refResolver instanceof MapRefResolver) {
-      MapRefResolver mapRefResolver = (MapRefResolver) refResolver;
-      if (mapRefResolver.hasPreservedRefId()) {
-        refResolver.reference(targetObject);
-      }
-    } else {
-      refResolver.reference(targetObject);
+    if (readContext.hasPreservedRefId()) {
+      readContext.reference(targetObject);
     }
+    RefReader refReader = readContext.getRefReader();
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
       if (Utils.DEBUG_OUTPUT_VERBOSE) {
@@ -194,24 +189,24 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         AbstractObjectSerializer.readBuildInFieldValue(
-            fory, typeResolver, refResolver, fieldInfo, buffer, targetObject);
+            readContext, typeResolver, refReader, fieldInfo, buffer, targetObject);
       } else {
         if (fieldInfo.fieldConverter == null) {
           // Skip the field value from buffer since it doesn't exist in current class
-          FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
+          FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
         } else {
-          compatibleRead(buffer, fieldInfo, targetObject);
+          compatibleRead(readContext, fieldInfo, targetObject);
         }
       }
     }
-    Generics generics = fory.getGenerics();
+    Generics generics = readContext.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       if (Utils.DEBUG_OUTPUT_VERBOSE) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
           AbstractObjectSerializer.readContainerFieldValue(
-              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
+              readContext, typeResolver, refReader, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(targetObject, fieldValue);
@@ -222,7 +217,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
-          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
+          AbstractObjectSerializer.readField(
+              readContext, typeResolver, refReader, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(targetObject, fieldValue);
@@ -231,17 +227,19 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
     return targetObject;
   }
 
-  private void compatibleRead(MemoryBuffer buffer, SerializationFieldInfo fieldInfo, Object obj) {
+  private void compatibleRead(
+      ReadContext readContext, SerializationFieldInfo fieldInfo, Object obj) {
+    MemoryBuffer buffer = readContext.getBuffer();
     Object fieldValue =
         AbstractObjectSerializer.readBuildInFieldValue(
-            fory, typeResolver, refResolver, fieldInfo, buffer);
+            readContext, typeResolver, readContext.getRefReader(), fieldInfo, buffer);
     fieldInfo.fieldConverter.set(obj, fieldValue);
   }
 
-  private void readFields(MemoryBuffer buffer, Object[] fields) {
+  private void readFields(ReadContext readContext, Object[] fields) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int counter = 0;
-    Fory fory = this.fory;
-    RefResolver refResolver = this.refResolver;
+    RefReader refReader = readContext.getRefReader();
     // read order: primitive,boxed,final,other,collection,map
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
@@ -250,24 +248,24 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
       if (fieldInfo.fieldAccessor != null) {
         fields[counter++] =
             AbstractObjectSerializer.readBuildInFieldValue(
-                fory, typeResolver, refResolver, fieldInfo, buffer);
+                readContext, typeResolver, refReader, fieldInfo, buffer);
       } else {
         // Skip the field value from buffer since it doesn't exist in current class.
         // For records, fieldConverter can't be used since records are immutable and
         // constructed all at once. We just read to advance buffer position.
-        FieldSkipper.skipField(fory, typeResolver, refResolver, fieldInfo, buffer);
+        FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
         // remapping will handle those extra fields from peers.
         fields[counter++] = null;
       }
     }
-    Generics generics = fory.getGenerics();
+    Generics generics = readContext.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
           AbstractObjectSerializer.readContainerFieldValue(
-              fory, typeResolver, refResolver, generics, fieldInfo, buffer);
+              readContext, typeResolver, refReader, generics, fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
     for (SerializationFieldInfo fieldInfo : otherFields) {
@@ -275,7 +273,8 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         printFieldDebugInfo(fieldInfo, buffer);
       }
       Object fieldValue =
-          AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
+          AbstractObjectSerializer.readField(
+              readContext, typeResolver, refReader, fieldInfo, buffer);
       fields[counter++] = fieldValue;
     }
   }

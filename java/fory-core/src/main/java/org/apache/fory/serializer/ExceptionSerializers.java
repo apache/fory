@@ -29,15 +29,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import org.apache.fory.Fory;
 import org.apache.fory.builder.LayerMarkerClassGenerator;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ObjectCreator;
 import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.MetaContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -49,14 +52,18 @@ public final class ExceptionSerializers {
   private ExceptionSerializers() {}
 
   public static final class ExceptionSerializer<T extends Throwable> extends Serializer<T> {
+    private final Config config;
+    private final TypeResolver typeResolver;
     private final ObjectCreator<T> objectCreator;
     private volatile Serializer[] slotsSerializers;
     private volatile boolean rebuildSlotsSerializersAtRuntime;
 
-    public ExceptionSerializer(Fory fory, Class<T> type) {
-      super(fory, type);
+    public ExceptionSerializer(TypeResolver typeResolver, Class<T> type) {
+      super(typeResolver.getConfig(), type);
+      this.config = typeResolver.getConfig();
+      this.typeResolver = typeResolver;
       objectCreator = createThrowableObjectCreator(type);
-      slotsSerializers = buildSlotsSerializers(fory, type);
+      slotsSerializers = buildSlotsSerializers(typeResolver, type);
       // Native-image runtime must rebuild slot serializers once so field accessors and
       // descriptors are created against the runtime heap layout instead of reusing
       // any build-time initialized state.
@@ -64,30 +71,32 @@ public final class ExceptionSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, T value) {
+    public void write(WriteContext writeContext, T value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       Serializer[] slotsSerializers = getSlotsSerializers();
-      fory.writeRef(buffer, value.getStackTrace());
-      fory.writeRef(buffer, value.getCause());
-      fory.writeStringRef(buffer, value.getMessage());
+      writeContext.writeRef(value.getStackTrace());
+      writeContext.writeRef(value.getCause());
+      writeContext.writeStringRef(value.getMessage());
       buffer.writeVarUint32(0);
       for (Serializer slotsSerializer : slotsSerializers) {
-        slotsSerializer.write(buffer, value);
+        slotsSerializer.write(writeContext, value);
       }
     }
 
     @Override
-    public T read(MemoryBuffer buffer) {
+    public T read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       Serializer[] slotsSerializers = getSlotsSerializers();
       T obj = objectCreator.newInstance();
-      refResolver.reference(obj);
-      StackTraceElement[] stackTrace = (StackTraceElement[]) fory.readRef(buffer);
-      Throwable cause = (Throwable) fory.readRef(buffer);
-      String detailMessage = fory.readStringRef(buffer);
-      skipExtraFields(buffer);
+      readContext.reference(obj);
+      StackTraceElement[] stackTrace = (StackTraceElement[]) readContext.readRef();
+      Throwable cause = (Throwable) readContext.readRef();
+      String detailMessage = readContext.readStringRef();
+      skipExtraFields(readContext);
       Platform.putObject(obj, ThrowableOffsets.DETAIL_MESSAGE_FIELD_OFFSET, detailMessage);
       Platform.putObject(obj, ThrowableOffsets.CAUSE_FIELD_OFFSET, cause == null ? obj : cause);
       Platform.putObject(obj, ThrowableOffsets.STACK_TRACE_FIELD_OFFSET, stackTrace);
-      readAndSetFields(fory, buffer, obj, slotsSerializers);
+      readAndSetFields(readContext, obj, slotsSerializers, config);
       return obj;
     }
 
@@ -97,18 +106,19 @@ public final class ExceptionSerializers {
       }
       synchronized (this) {
         if (rebuildSlotsSerializersAtRuntime) {
-          slotsSerializers = buildSlotsSerializers(fory, type);
+          slotsSerializers = buildSlotsSerializers(typeResolver, type);
           rebuildSlotsSerializersAtRuntime = false;
         }
         return slotsSerializers;
       }
     }
 
-    private void skipExtraFields(MemoryBuffer buffer) {
+    private void skipExtraFields(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numExtraFields = buffer.readVarUint32();
       for (int i = 0; i < numExtraFields; i++) {
-        fory.readString(buffer);
-        fory.readRef(buffer);
+        readContext.readString();
+        readContext.readRef();
       }
     }
   }
@@ -133,35 +143,37 @@ public final class ExceptionSerializers {
             String.class,
             int.class);
 
-    public StackTraceElementSerializer(Fory fory) {
-      super(fory, StackTraceElement.class, false, true);
+    public StackTraceElementSerializer(Config config) {
+      super(config, StackTraceElement.class, false, true);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, StackTraceElement value) {
-      fory.writeStringRef(buffer, invokeStringGetter(CLASS_LOADER_NAME_GETTER, value));
-      fory.writeStringRef(buffer, invokeStringGetter(MODULE_NAME_GETTER, value));
-      fory.writeStringRef(buffer, invokeStringGetter(MODULE_VERSION_GETTER, value));
-      fory.writeStringRef(buffer, value.getClassName());
-      fory.writeStringRef(buffer, value.getMethodName());
-      fory.writeStringRef(buffer, value.getFileName());
+    public void write(WriteContext writeContext, StackTraceElement value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
+      writeContext.writeStringRef(invokeStringGetter(CLASS_LOADER_NAME_GETTER, value));
+      writeContext.writeStringRef(invokeStringGetter(MODULE_NAME_GETTER, value));
+      writeContext.writeStringRef(invokeStringGetter(MODULE_VERSION_GETTER, value));
+      writeContext.writeStringRef(value.getClassName());
+      writeContext.writeStringRef(value.getMethodName());
+      writeContext.writeStringRef(value.getFileName());
       buffer.writeInt32(value.getLineNumber());
       buffer.writeVarUint32(0);
     }
 
     @Override
-    public StackTraceElement read(MemoryBuffer buffer) {
-      String classLoaderName = fory.readStringRef(buffer);
-      String moduleName = fory.readStringRef(buffer);
-      String moduleVersion = fory.readStringRef(buffer);
-      String declaringClass = fory.readStringRef(buffer);
-      String methodName = fory.readStringRef(buffer);
-      String fileName = fory.readStringRef(buffer);
+    public StackTraceElement read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      String classLoaderName = readContext.readStringRef();
+      String moduleName = readContext.readStringRef();
+      String moduleVersion = readContext.readStringRef();
+      String declaringClass = readContext.readStringRef();
+      String methodName = readContext.readStringRef();
+      String fileName = readContext.readStringRef();
       int lineNumber = buffer.readInt32();
       int numExtraFields = buffer.readVarUint32();
       for (int i = 0; i < numExtraFields; i++) {
-        fory.readString(buffer);
-        fory.readRef(buffer);
+        readContext.readString();
+        readContext.readRef();
       }
       return newStackTraceElement(
           classLoaderName,
@@ -245,17 +257,19 @@ public final class ExceptionSerializers {
     return new ObjectCreators.ParentNoArgCtrObjectCreator<>(type);
   }
 
-  private static <T> Serializer[] buildSlotsSerializers(Fory fory, Class<T> type) {
+  private static <T> Serializer[] buildSlotsSerializers(TypeResolver typeResolver, Class<T> type) {
+    Config config = typeResolver.getConfig();
     List<Serializer> serializers = new ArrayList<>();
     int layerIndex = 0;
     while (!THROWABLE_SUPER_CLASSES.contains(type)) {
       Serializer slotsSerializer;
-      if (fory.getConfig().isCompatible()) {
-        TypeDef layerTypeDef = fory.getTypeResolver().getTypeDef(type, false);
-        Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(fory, type, layerIndex);
-        slotsSerializer = new MetaSharedLayerSerializer(fory, type, layerTypeDef, layerMarkerClass);
+      if (config.isCompatible()) {
+        TypeDef layerTypeDef = typeResolver.getTypeDef(type, false);
+        Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(type, layerIndex);
+        slotsSerializer =
+            new MetaSharedLayerSerializer(typeResolver, type, layerTypeDef, layerMarkerClass);
       } else {
-        slotsSerializer = new ObjectSerializer<>(fory, type, false);
+        slotsSerializer = new ObjectSerializer<>(typeResolver, type, false);
       }
       serializers.add(slotsSerializer);
       type = (Class<T>) type.getSuperclass();
@@ -266,23 +280,24 @@ public final class ExceptionSerializers {
   }
 
   private static void readAndSetFields(
-      Fory fory, MemoryBuffer buffer, Object target, Serializer[] slotsSerializers) {
+      ReadContext readContext, Object target, Serializer[] slotsSerializers, Config config) {
     for (Serializer slotsSerializer : slotsSerializers) {
       if (slotsSerializer instanceof MetaSharedLayerSerializer) {
         MetaSharedLayerSerializer metaSerializer = (MetaSharedLayerSerializer) slotsSerializer;
-        if (fory.getConfig().isMetaShareEnabled()) {
-          readAndSkipLayerClassMeta(fory, buffer);
+        if (config.isMetaShareEnabled()) {
+          readAndSkipLayerClassMeta(readContext);
         }
-        metaSerializer.readAndSetFields(buffer, target);
+        metaSerializer.readAndSetFields(readContext, target);
       } else {
-        ((ObjectSerializer) slotsSerializer).readAndSetFields(buffer, target);
+        ((ObjectSerializer) slotsSerializer).readAndSetFields(readContext, target);
       }
     }
   }
 
-  private static void readAndSkipLayerClassMeta(Fory fory, MemoryBuffer buffer) {
-    MetaContext metaContext = fory.getSerializationContext().getMetaContext();
-    if (metaContext == null) {
+  private static void readAndSkipLayerClassMeta(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    MetaReadContext metaReadContext = readContext.getMetaReadContext();
+    if (metaReadContext == null) {
       return;
     }
     int indexMarker = buffer.readVarUint32Small14();
@@ -292,7 +307,7 @@ public final class ExceptionSerializers {
     }
     long typeDefId = buffer.readInt64();
     TypeDef.skipTypeDef(buffer, typeDefId);
-    metaContext.readTypeInfos.add(null);
+    metaReadContext.readTypeInfos.add(null);
   }
 
   private static final class ThrowableOffsets {

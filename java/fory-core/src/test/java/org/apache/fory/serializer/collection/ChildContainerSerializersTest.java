@@ -275,7 +275,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
    * readAndSkipLayerClassMeta did not add placeholders to readTypeInfos.
    */
   @Test(dataProvider = "enableCodegen")
-  public void testMetaContextIndexSyncWithNestedChildMaps(boolean enableCodegen) {
+  public void testMetaReadContextIndexSyncWithNestedChildMaps(boolean enableCodegen) {
     Fory fory =
         builder()
             .withCodegen(enableCodegen)

@@ -19,10 +19,10 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
+import org.apache.fory.resolver.TypeResolver;
 
 /** Serializer factory for customizing serializer creation. */
 public interface SerializerFactory {
 
-  Serializer createSerializer(Fory fory, Class<?> cls);
+  Serializer createSerializer(TypeResolver typeResolver, Class<?> cls);
 }

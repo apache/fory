@@ -21,20 +21,25 @@ package org.apache.fory.serializer.kotlin
 
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
+import org.apache.fory.config.Config
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
 import org.apache.fory.serializer.ImmutableSerializer
 
 @OptIn(ExperimentalUuidApi::class)
-public class UuidSerializer(fory: Fory) : ImmutableSerializer<Uuid>(fory, Uuid::class.java) {
-  override fun write(buffer: MemoryBuffer, value: Uuid) {
+public class UuidSerializer(config: Config) : ImmutableSerializer<Uuid>(config, Uuid::class.java) {
+  override fun write(writeContext: WriteContext, value: Uuid) {
+    val buffer = writeContext.buffer
     value.toLongs { msb, lsb ->
       buffer.writeInt64(msb)
       buffer.writeInt64(lsb)
     }
   }
 
-  override fun read(buffer: MemoryBuffer): Uuid {
+  override fun read(readContext: ReadContext): Uuid {
+    val buffer = readContext.buffer
     return Uuid.fromLongs(buffer.readInt64(), buffer.readInt64())
   }
+
+  override fun shareable(): Boolean = true
 }

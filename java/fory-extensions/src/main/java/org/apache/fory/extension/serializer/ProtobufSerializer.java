@@ -28,7 +28,9 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.nio.ByteBuffer;
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.serializer.Serializer;
@@ -59,8 +61,8 @@ public class ProtobufSerializer extends Serializer<Message> {
   private final ExtensionRegistryLite emptyRegistry;
   private final MethodHandle parseFromByteBuffer;
 
-  public ProtobufSerializer(Fory fory, Class type) {
-    super(fory, type, true);
+  public ProtobufSerializer(Config config, Class type) {
+    super(config, type, true);
     MethodHandle[] methodHandles = parseFromMethodCache.get(type);
     this.parseFromStream = methodHandles[0];
     this.parseFromByteBuffer = methodHandles[0];
@@ -68,7 +70,8 @@ public class ProtobufSerializer extends Serializer<Message> {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Message value) {
+  public void write(WriteContext writeContext, Message value) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     int size = value.getSerializedSize();
     buffer.writeVarUint32(size);
     buffer.grow(size);
@@ -95,7 +98,8 @@ public class ProtobufSerializer extends Serializer<Message> {
   }
 
   @Override
-  public Message read(MemoryBuffer buffer) {
+  public Message read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int size = buffer.readVarUint32Small14();
     buffer.checkReadableBytes(size);
     byte[] heapMemory = buffer.getHeapMemory();
@@ -118,5 +122,10 @@ public class ProtobufSerializer extends Serializer<Message> {
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
+  }
+
+  @Override
+  public boolean shareable() {
+    return true;
   }
 }

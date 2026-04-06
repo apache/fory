@@ -52,28 +52,32 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   public void testUint8Serializer() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
     PrimitiveSerializers.Uint8Serializer serializer =
-        new PrimitiveSerializers.Uint8Serializer(fory);
+        new PrimitiveSerializers.Uint8Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
-    serializer.write(buffer, 0);
-    assertEquals(serializer.read(buffer), Integer.valueOf(0));
-    serializer.write(buffer, 255);
-    assertEquals(serializer.read(buffer), Integer.valueOf(255));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 256));
+    writeSerializer(fory, serializer, buffer, 0);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
+    writeSerializer(fory, serializer, buffer, 255);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(255));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, 256));
   }
 
   @Test
   public void testUint16Serializer() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
     PrimitiveSerializers.Uint16Serializer serializer =
-        new PrimitiveSerializers.Uint16Serializer(fory);
+        new PrimitiveSerializers.Uint16Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
-    serializer.write(buffer, 0);
-    assertEquals(serializer.read(buffer), Integer.valueOf(0));
-    serializer.write(buffer, 65535);
-    assertEquals(serializer.read(buffer), Integer.valueOf(65535));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 65536));
+    writeSerializer(fory, serializer, buffer, 0);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
+    writeSerializer(fory, serializer, buffer, 65535);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(65535));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, 65536));
   }
 
   @Data

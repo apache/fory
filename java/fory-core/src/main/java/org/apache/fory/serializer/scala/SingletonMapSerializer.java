@@ -21,9 +21,10 @@ package org.apache.fory.serializer.scala;
 
 import java.lang.reflect.Field;
 import java.util.Map;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
@@ -39,8 +40,8 @@ public class SingletonMapSerializer extends MapLikeSerializer {
   private Object base = null;
   private long offset = -1;
 
-  public SingletonMapSerializer(Fory fory, Class cls) {
-    super(fory, cls, false);
+  public SingletonMapSerializer(TypeResolver typeResolver, Class cls) {
+    super(typeResolver, cls, false);
     try {
       field = type.getDeclaredField("MODULE$");
     } catch (NoSuchFieldException e) {
@@ -49,15 +50,15 @@ public class SingletonMapSerializer extends MapLikeSerializer {
   }
 
   @Override
-  public Map onMapWrite(MemoryBuffer buffer, Object value) {
+  public Map onMapWrite(WriteContext writeContext, Object value) {
     throw new IllegalStateException("unreachable");
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {}
+  public void write(WriteContext writeContext, Object value) {}
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
     long offset = this.offset;
     if (offset == -1) {
       Preconditions.checkArgument(!GraalvmSupport.isGraalBuildtime());

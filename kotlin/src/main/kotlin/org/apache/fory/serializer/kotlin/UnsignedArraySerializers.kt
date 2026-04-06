@@ -21,46 +21,58 @@
 
 package org.apache.fory.serializer.kotlin
 
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
+import org.apache.fory.context.CopyContext
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
+import org.apache.fory.resolver.TypeResolver
+import org.apache.fory.serializer.Serializer
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
-  fory: Fory,
+  typeResolver: TypeResolver,
   cls: Class<T>,
   private val delegateClass: Class<T_Delegate>
-) : CollectionLikeSerializer<T>(fory, cls, false) {
+) : CollectionLikeSerializer<T>(typeResolver, cls, false) {
 
-  // Lazily initialize the delegatingSerializer here to avoid lookup cost.
-  private val delegatingSerializer by lazy { fory.typeResolver.getSerializer(delegateClass) }
+  @Suppress("UNCHECKED_CAST")
+  private fun delegatingSerializer(writeContext: WriteContext): Serializer<T_Delegate> {
+    return writeContext.typeResolver.getSerializer(delegateClass) as Serializer<T_Delegate>
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun delegatingSerializer(readContext: ReadContext): Serializer<T_Delegate> {
+    return readContext.typeResolver.getSerializer(delegateClass) as Serializer<T_Delegate>
+  }
 
   protected abstract fun toDelegateClass(value: T): T_Delegate
 
   protected abstract fun fromDelegateClass(value: T_Delegate): T
 
-  override fun write(buffer: MemoryBuffer, value: T) {
-    delegatingSerializer.write(buffer, toDelegateClass(value))
+  override fun write(writeContext: WriteContext, value: T) {
+    delegatingSerializer(writeContext).write(writeContext, toDelegateClass(value))
   }
 
-  override fun read(buffer: MemoryBuffer): T {
-    val delegatedValue = delegatingSerializer.read(buffer)
+  override fun read(readContext: ReadContext): T {
+    val delegatedValue = delegatingSerializer(readContext).read(readContext)
     return fromDelegateClass(delegatedValue)
   }
 
-  override fun onCollectionWrite(buffer: MemoryBuffer, value: T): MutableCollection<Any?> {
+  override fun onCollectionWrite(writeContext: WriteContext, value: T): MutableCollection<Any?> {
     throw IllegalStateException("supportCodegenHook is disabled for ${type.name}")
   }
 
-  override fun onCollectionRead(collection: MutableCollection<Any?>): T {
+  override fun onCollectionRead(collection: Collection<*>): T {
     throw IllegalStateException("supportCodegenHook is disabled for ${type.name}")
   }
+
+  override fun shareable(): Boolean = true
 }
 
 public class UByteArraySerializer(
-  fory: Fory,
+  typeResolver: TypeResolver,
 ) :
   AbstractDelegatingArraySerializer<UByteArray, ByteArray>(
-    fory,
+    typeResolver,
     UByteArray::class.java,
     ByteArray::class.java
   ) {
@@ -68,14 +80,14 @@ public class UByteArraySerializer(
 
   override fun fromDelegateClass(value: ByteArray): UByteArray = value.toUByteArray()
 
-  override fun copy(value: UByteArray): UByteArray = value.copyOf()
+  override fun copy(copyContext: CopyContext, value: UByteArray): UByteArray = value.copyOf()
 }
 
 public class UShortArraySerializer(
-  fory: Fory,
+  typeResolver: TypeResolver,
 ) :
   AbstractDelegatingArraySerializer<UShortArray, ShortArray>(
-    fory,
+    typeResolver,
     UShortArray::class.java,
     ShortArray::class.java
   ) {
@@ -83,14 +95,14 @@ public class UShortArraySerializer(
 
   override fun fromDelegateClass(value: ShortArray): UShortArray = value.toUShortArray()
 
-  override fun copy(value: UShortArray): UShortArray = value.copyOf()
+  override fun copy(copyContext: CopyContext, value: UShortArray): UShortArray = value.copyOf()
 }
 
 public class UIntArraySerializer(
-  fory: Fory,
+  typeResolver: TypeResolver,
 ) :
   AbstractDelegatingArraySerializer<UIntArray, IntArray>(
-    fory,
+    typeResolver,
     UIntArray::class.java,
     IntArray::class.java
   ) {
@@ -98,14 +110,14 @@ public class UIntArraySerializer(
 
   override fun fromDelegateClass(value: IntArray): UIntArray = value.toUIntArray()
 
-  override fun copy(value: UIntArray): UIntArray = value.copyOf()
+  override fun copy(copyContext: CopyContext, value: UIntArray): UIntArray = value.copyOf()
 }
 
 public class ULongArraySerializer(
-  fory: Fory,
+  typeResolver: TypeResolver,
 ) :
   AbstractDelegatingArraySerializer<ULongArray, LongArray>(
-    fory,
+    typeResolver,
     ULongArray::class.java,
     LongArray::class.java
   ) {
@@ -113,5 +125,5 @@ public class ULongArraySerializer(
 
   override fun fromDelegateClass(value: LongArray): ULongArray = value.toULongArray()
 
-  override fun copy(value: ULongArray): ULongArray = value.copyOf()
+  override fun copy(copyContext: CopyContext, value: ULongArray): ULongArray = value.copyOf()
 }

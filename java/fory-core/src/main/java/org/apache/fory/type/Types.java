@@ -21,11 +21,11 @@ package org.apache.fory.type;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import org.apache.fory.Fory;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 
 public class Types {
@@ -349,21 +349,21 @@ public class Types {
     }
   }
 
-  public static int getDescriptorTypeId(Fory fory, Field field) {
+  public static int getDescriptorTypeId(TypeResolver resolver, Field field) {
     Annotation annotation = Descriptor.getAnnotation(field);
     Class<?> rawType = field.getType();
     if (annotation != null) {
       return TypeAnnotationUtils.getTypeId(annotation, rawType);
     } else {
-      int unionTypeId = getUnionDescriptorTypeId(fory, rawType);
+      int unionTypeId = getUnionDescriptorTypeId(resolver, rawType);
       if (unionTypeId != -1) {
         return unionTypeId;
       }
-      return getTypeId(fory, rawType);
+      return getTypeId(resolver, rawType);
     }
   }
 
-  public static int getDescriptorTypeId(Fory fory, Descriptor d) {
+  public static int getDescriptorTypeId(TypeResolver resolver, Descriptor d) {
     TypeRef<?> typeRef = d.getTypeRef();
     TypeExtMeta extMeta = typeRef.getTypeExtMeta();
     if (extMeta != null) {
@@ -374,17 +374,17 @@ public class Types {
       if (typeAnnotation != null) {
         return TypeAnnotationUtils.getTypeId(typeAnnotation, rawType);
       } else {
-        int unionTypeId = getUnionDescriptorTypeId(fory, rawType);
+        int unionTypeId = getUnionDescriptorTypeId(resolver, rawType);
         if (unionTypeId != -1) {
           return unionTypeId;
         }
-        return getTypeId(fory, rawType);
+        return getTypeId(resolver, rawType);
       }
     }
   }
 
-  private static int getUnionDescriptorTypeId(Fory fory, Class<?> rawType) {
-    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(rawType, false);
+  private static int getUnionDescriptorTypeId(TypeResolver resolver, Class<?> rawType) {
+    TypeInfo typeInfo = resolver.getTypeInfo(rawType, false);
     if (typeInfo == null) {
       return -1;
     }
@@ -395,10 +395,10 @@ public class Types {
     return -1;
   }
 
-  public static int getTypeId(Fory fory, Class<?> clz) {
+  public static int getTypeId(TypeResolver resolver, Class<?> clz) {
     Class<?> unwrapped = TypeUtils.unwrap(clz);
     if (unwrapped == char.class) {
-      Preconditions.checkArgument(!fory.isCrossLanguage(), "Char is not support for xlang");
+      Preconditions.checkArgument(!resolver.isCrossLanguage(), "Char is not support for xlang");
       return clz.isPrimitive() ? ClassResolver.PRIMITIVE_CHAR_ID : ClassResolver.CHAR_ID;
     }
     if (unwrapped.isPrimitive()) {
@@ -409,16 +409,16 @@ public class Types {
       } else if (unwrapped == short.class) {
         return Types.INT16;
       } else if (unwrapped == int.class) {
-        return fory.compressInt() ? Types.VARINT32 : Types.INT32;
+        return resolver.getConfig().compressInt() ? Types.VARINT32 : Types.INT32;
       } else if (unwrapped == long.class) {
-        return fory.compressLong() ? Types.VARINT64 : Types.INT64;
+        return resolver.getConfig().compressLong() ? Types.VARINT64 : Types.INT64;
       } else if (unwrapped == float.class) {
         return Types.FLOAT32;
       } else if (unwrapped == double.class) {
         return Types.FLOAT64;
       }
     }
-    TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(clz, false);
+    TypeInfo typeInfo = resolver.getTypeInfo(clz, false);
     if (typeInfo != null) {
       return typeInfo.getTypeId();
     }

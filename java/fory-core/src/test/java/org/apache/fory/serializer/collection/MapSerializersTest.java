@@ -125,20 +125,28 @@ public class MapSerializersTest extends ForyTestBase {
 
     // testMapGenerics
     byte[] bytes1 = fory.serialize(data);
-    fory.getGenerics().pushGenericType(GenericType.build(new TypeRef<Map<String, Integer>>() {}));
+    fory.getWriteContext()
+        .getGenerics()
+        .pushGenericType(
+            GenericType.build(new TypeRef<Map<String, Integer>>() {}),
+            fory.getWriteContext().getDepth());
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
-    fory.getGenerics().popGenericType();
+    fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
 
     // testSortedMap
     Map<String, Integer> treeMap = new TreeMap<>(ImmutableMap.of("a", 1, "b", 2));
     serDeCheckSerializer(fory, treeMap, "SortedMap");
     byte[] sortMapBytes1 = fory.serialize(treeMap);
-    fory.getGenerics().pushGenericType(GenericType.build(new TypeRef<Map<String, Integer>>() {}));
+    fory.getWriteContext()
+        .getGenerics()
+        .pushGenericType(
+            GenericType.build(new TypeRef<Map<String, Integer>>() {}),
+            fory.getWriteContext().getDepth());
     byte[] sortMapBytes2 = fory.serialize(treeMap);
     Assert.assertTrue(sortMapBytes1.length > sortMapBytes2.length);
-    fory.getGenerics().popGenericType();
+    fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(sortMapBytes2));
 
     // testTreeMap
@@ -288,10 +296,14 @@ public class MapSerializersTest extends ForyTestBase {
             .build();
     Map<String, Integer> data = new HashMap<>(ImmutableMap.of("a", 1, "b", 2));
     byte[] bytes1 = fory.serialize(data);
-    fory.getGenerics().pushGenericType(GenericType.build(new TypeRef<Map<String, Integer>>() {}));
+    fory.getWriteContext()
+        .getGenerics()
+        .pushGenericType(
+            GenericType.build(new TypeRef<Map<String, Integer>>() {}),
+            fory.getWriteContext().getDepth());
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
-    fory.getGenerics().popGenericType();
+    fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
@@ -306,10 +318,14 @@ public class MapSerializersTest extends ForyTestBase {
     Map<String, Integer> data = new TreeMap<>(ImmutableMap.of("a", 1, "b", 2));
     serDeCheckSerializer(fory, data, "SortedMap");
     byte[] bytes1 = fory.serialize(data);
-    fory.getGenerics().pushGenericType(GenericType.build(new TypeRef<Map<String, Integer>>() {}));
+    fory.getWriteContext()
+        .getGenerics()
+        .pushGenericType(
+            GenericType.build(new TypeRef<Map<String, Integer>>() {}),
+            fory.getWriteContext().getDepth());
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
-    fory.getGenerics().popGenericType();
+    fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
@@ -498,7 +514,8 @@ public class MapSerializersTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     fory.registerSerializer(
-        ChildTreeMap.class, new MapSerializers.SortedMapSerializer<>(fory, ChildTreeMap.class));
+        ChildTreeMap.class,
+        new MapSerializers.SortedMapSerializer<>(fory.getTypeResolver(), ChildTreeMap.class));
     ChildTreeMap map = new ChildTreeMap();
     map.put("b", "B");
     map.put("a", "A");
@@ -519,7 +536,8 @@ public class MapSerializersTest extends ForyTestBase {
             .build();
     fory.registerSerializer(
         ChildTreeMapWithComparator.class,
-        new MapSerializers.SortedMapSerializer<>(fory, ChildTreeMapWithComparator.class));
+        new MapSerializers.SortedMapSerializer<>(
+            fory.getTypeResolver(), ChildTreeMapWithComparator.class));
     ChildTreeMapWithComparator map = new ChildTreeMapWithComparator();
     map.put("b", "B");
     map.put("a", "A");
@@ -1114,7 +1132,8 @@ public class MapSerializersTest extends ForyTestBase {
   public void testNestedValueByPrivateMapSerializer() {
     Fory fory = builder().withRefTracking(false).build();
     // test private map serializer
-    fory.registerSerializer(PrivateMap.class, new MapSerializer(fory, PrivateMap.class) {});
+    fory.registerSerializer(
+        PrivateMap.class, new MapSerializer(fory.getTypeResolver(), PrivateMap.class) {});
     PrivateMap<String, Integer> map = new PrivateMap<>();
     map.put("k", 1);
     serDeCheck(fory, new LazyMapCollectionFieldStruct(ofArrayList(map), map));

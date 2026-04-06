@@ -26,6 +26,12 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.RefReader;
+import org.apache.fory.context.RefWriter;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -36,7 +42,6 @@ import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.RefMode;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
@@ -55,39 +60,41 @@ import org.apache.fory.util.record.RecordUtils;
 
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
-  protected final RefResolver refResolver;
+  protected final Config config;
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectCreator<T> objectCreator;
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
-  public AbstractObjectSerializer(Fory fory, Class<T> type) {
-    this(fory, type, ObjectCreators.getObjectCreator(type));
+  public AbstractObjectSerializer(TypeResolver typeResolver, Class<T> type) {
+    this(typeResolver, type, ObjectCreators.getObjectCreator(type));
   }
 
-  public AbstractObjectSerializer(Fory fory, Class<T> type, ObjectCreator<T> objectCreator) {
-    super(fory, type);
-    this.refResolver = fory.getRefResolver();
-    this.typeResolver = fory.getTypeResolver();
+  public AbstractObjectSerializer(
+      TypeResolver typeResolver, Class<T> type, ObjectCreator<T> objectCreator) {
+    super(typeResolver.getConfig(), type);
+    this.config = typeResolver.getConfig();
+    this.typeResolver = typeResolver;
     this.isRecord = RecordUtils.isRecord(type);
     this.objectCreator = objectCreator;
   }
 
   static void writeField(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
       Object fieldValue) {
-    writeField(fory, typeResolver, refResolver, fieldInfo, fieldInfo.refMode, buffer, fieldValue);
+    writeField(
+        writeContext, typeResolver, refWriter, fieldInfo, fieldInfo.refMode, buffer, fieldValue);
   }
 
   static void writeField(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       SerializationFieldInfo fieldInfo,
       RefMode refMode,
       MemoryBuffer buffer,
@@ -95,8 +102,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (fieldInfo.useDeclaredTypeInfo) {
       Serializer<Object> serializer = fieldInfo.typeInfo.getSerializer();
       if (refMode == RefMode.TRACKING) {
-        if (!refResolver.writeRefOrNull(buffer, fieldValue)) {
-          serializer.write(buffer, fieldValue);
+        if (!refWriter.writeRefOrNull(buffer, fieldValue)) {
+          serializer.write(writeContext, fieldValue);
         }
       } else if (refMode == RefMode.NULL_ONLY) {
         if (fieldValue == null) {
@@ -104,65 +111,68 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
           return;
         }
         buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-        serializer.write(buffer, fieldValue);
+        serializer.write(writeContext, fieldValue);
       } else {
-        serializer.write(buffer, fieldValue);
+        serializer.write(writeContext, fieldValue);
       }
       return;
     }
     if (refMode == RefMode.TRACKING) {
-      fory.writeRef(buffer, fieldValue, fieldInfo.classInfoHolder);
+      writeContext.writeRef(fieldValue, fieldInfo.classInfoHolder);
     } else if (refMode == RefMode.NULL_ONLY) {
       if (fieldValue == null) {
         buffer.writeByte(Fory.NULL_FLAG);
         return;
       }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-      fory.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
+      writeContext.writeNonRef(fieldValue, fieldInfo.classInfoHolder);
     } else {
-      fory.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
+      writeContext.writeNonRef(fieldValue, fieldInfo.classInfoHolder);
     }
   }
 
   static Object readField(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer) {
-    return readField(fory, typeResolver, refResolver, fieldInfo, fieldInfo.refMode, buffer);
+    return readField(readContext, typeResolver, refReader, fieldInfo, fieldInfo.refMode, buffer);
   }
 
   static Object readField(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       RefMode refMode,
       MemoryBuffer buffer) {
     if (fieldInfo.useDeclaredTypeInfo) {
       if (refMode == RefMode.TRACKING) {
-        return fory.readRef(buffer, fieldInfo.typeInfo);
+        return readContext.readRef(fieldInfo.typeInfo);
       }
       if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-        refResolver.preserveRefId(-1);
-        return fory.readNonRef(buffer, fieldInfo.typeInfo);
+        refReader.preserveRefId(-1);
+        return readContext.readNonRef(fieldInfo.typeInfo);
       }
       return null;
     }
     if (refMode == RefMode.TRACKING) {
-      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+      int nextReadRefId = refReader.tryPreserveRefId(buffer);
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         Object value =
-            typeResolver.readTypeInfo(buffer, fieldInfo.type).getSerializer().read(buffer);
-        refResolver.setReadObject(nextReadRefId, value);
+            typeResolver
+                .readTypeInfo(readContext, fieldInfo.type)
+                .getSerializer()
+                .read(readContext);
+        refReader.setReadRef(nextReadRefId, value);
         return value;
       }
-      return refResolver.getReadObject();
+      return refReader.getReadRef();
     }
     if (refMode != RefMode.NULL_ONLY || buffer.readByte() != Fory.NULL_FLAG) {
-      TypeInfo typeInfo = typeResolver.readTypeInfo(buffer, fieldInfo.type);
-      return typeInfo.getSerializer().read(buffer, RefMode.NONE);
+      TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, fieldInfo.type);
+      return typeInfo.getSerializer().read(readContext, RefMode.NONE);
     }
     return null;
   }
@@ -172,9 +182,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * types, unsigned/compressed numbers, and common types like String with optimized fast paths.
    */
   static void writeBuildInField(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
       Object obj) {
@@ -185,7 +195,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
     // Handle non-primitive fields based on refMode
     Object fieldValue = fieldInfo.fieldAccessor.getObject(obj);
-    writeBuildInFieldValue(fory, typeResolver, refResolver, fieldInfo, buffer, fieldValue);
+    writeBuildInFieldValue(writeContext, typeResolver, refWriter, fieldInfo, buffer, fieldValue);
   }
 
   /**
@@ -193,12 +203,12 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * types like String with optimized fast paths.
    *
    * <p>This method is the write counterpart of {@link #readBuildInFieldValue(Fory, TypeResolver,
-   * RefResolver, SerializationFieldInfo, MemoryBuffer)}.
+   * RefReader, SerializationFieldInfo, MemoryBuffer)}.
    */
   static void writeBuildInFieldValue(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
       Object fieldValue) {
@@ -206,7 +216,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     // Handle non-primitive fields based on refMode
     if (refMode == RefMode.NONE) {
       // No null flag - write value directly
-      writeNotPrimitiveFieldValue(fory, typeResolver, refResolver, buffer, fieldValue, fieldInfo);
+      writeNotPrimitiveFieldValue(
+          writeContext, typeResolver, refWriter, buffer, fieldValue, fieldInfo);
     } else if (refMode == RefMode.NULL_ONLY) {
       // Write null flag, then value if not null
       if (fieldValue == null) {
@@ -214,9 +225,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         return;
       }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-      writeNotPrimitiveFieldValue(fory, typeResolver, refResolver, buffer, fieldValue, fieldInfo);
+      writeNotPrimitiveFieldValue(
+          writeContext, typeResolver, refWriter, buffer, fieldValue, fieldInfo);
     } else {
-      writeField(fory, typeResolver, refResolver, fieldInfo, buffer, fieldValue);
+      writeField(writeContext, typeResolver, refWriter, fieldInfo, buffer, fieldValue);
     }
   }
 
@@ -363,9 +375,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * Write field value to buffer. This method handle the situation which all fields are not null.
    */
   static void writeNotPrimitiveFieldValue(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       MemoryBuffer buffer,
       Object fieldValue,
       SerializationFieldInfo fieldInfo) {
@@ -377,7 +389,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     // add time types serialization here.
     switch (fieldInfo.dispatchId) {
       case DispatchId.STRING: // fastpath for string.
-        fory.writeString(buffer, (String) fieldValue);
+        writeContext.writeString((String) fieldValue);
         return;
       case DispatchId.BOOL:
         buffer.writeBoolean((Boolean) fieldValue);
@@ -455,20 +467,21 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeInt16(((Float16) fieldValue).toBits());
         return;
       default:
-        writeField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer, fieldValue);
+        writeField(
+            writeContext, typeResolver, refWriter, fieldInfo, RefMode.NONE, buffer, fieldValue);
     }
   }
 
   static void writeContainerFieldValue(
-      Fory fory,
+      WriteContext writeContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefWriter refWriter,
       Generics generics,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
       Object fieldValue) {
     if (fieldInfo.refMode == RefMode.TRACKING) {
-      if (refResolver.writeRefOrNull(buffer, fieldValue)) {
+      if (refWriter.writeRefOrNull(buffer, fieldValue)) {
         return;
       }
     } else if (fieldInfo.refMode == RefMode.NULL_ONLY) {
@@ -478,64 +491,64 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
-    generics.pushGenericType(fieldInfo.genericType);
-    if (fory.isCrossLanguage() && fieldInfo.useDeclaredTypeInfo) {
+    generics.pushGenericType(fieldInfo.genericType, writeContext.getDepth());
+    if (writeContext.isCrossLanguage() && fieldInfo.useDeclaredTypeInfo) {
       TypeInfo typeInfo =
           typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
-      fory.writeData(buffer, typeInfo, fieldValue);
+      writeContext.writeData(typeInfo, fieldValue);
     } else if (fieldInfo.useDeclaredTypeInfo) {
       TypeInfo typeInfo =
           typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
-      fory.writeNonRef(buffer, fieldValue, typeInfo);
+      writeContext.writeNonRef(fieldValue, typeInfo);
     } else {
-      fory.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
+      writeContext.writeNonRef(fieldValue, fieldInfo.classInfoHolder);
     }
-    generics.popGenericType();
+    generics.popGenericType(writeContext.getDepth());
   }
 
   /**
    * Read a container field value (Collection or Map). Handles reference tracking, nullable fields,
    * and pushes/pops generic type information for proper deserialization of parameterized types.
    *
-   * @param fory fory runtime
    * @param typeResolver resolver used for type metadata read
-   * @param refResolver resolver used for reference tracking
+   * @param refReader resolver used for reference tracking
    * @param generics the generics context for tracking parameterized types
    * @param fieldInfo the field metadata including generic type info and nullability
    * @param buffer the buffer to read from
    * @return the deserialized container field value, or null if the field is nullable and was null
    */
   static Object readContainerFieldValue(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       Generics generics,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer) {
     Object fieldValue;
     switch (fieldInfo.refMode) {
       case NONE:
-        refResolver.preserveRefId(-1);
-        generics.pushGenericType(fieldInfo.genericType);
-        fieldValue = readContainerFieldValueNoRef(fory, fieldInfo, buffer);
-        generics.popGenericType();
+        refReader.preserveRefId(-1);
+        generics.pushGenericType(fieldInfo.genericType, readContext.getDepth());
+        fieldValue = readContainerFieldValueNoRef(readContext, fieldInfo);
+        generics.popGenericType(readContext.getDepth());
         break;
       case NULL_ONLY:
         {
-          refResolver.preserveRefId(-1);
+          refReader.preserveRefId(-1);
           byte headFlag = buffer.readByte();
           if (headFlag == Fory.NULL_FLAG) {
             return null;
           }
-          generics.pushGenericType(fieldInfo.genericType);
-          fieldValue = readContainerFieldValueNoRef(fory, fieldInfo, buffer);
-          generics.popGenericType();
+          generics.pushGenericType(fieldInfo.genericType, readContext.getDepth());
+          fieldValue = readContainerFieldValueNoRef(readContext, fieldInfo);
+          generics.popGenericType(readContext.getDepth());
         }
         break;
       case TRACKING:
-        generics.pushGenericType(fieldInfo.genericType);
-        fieldValue = readContainerFieldValueRef(fory, typeResolver, refResolver, fieldInfo, buffer);
-        generics.popGenericType();
+        generics.pushGenericType(fieldInfo.genericType, readContext.getDepth());
+        fieldValue =
+            readContainerFieldValueRef(readContext, typeResolver, refReader, fieldInfo, buffer);
+        generics.popGenericType(readContext.getDepth());
         break;
       default:
         throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
@@ -544,58 +557,57 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private static Object readContainerFieldValueNoRef(
-      Fory fory, SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
-    if (fory.isCrossLanguage()) {
-      return fory.readNonRef(buffer, fieldInfo.containerTypeInfo);
+      ReadContext readContext, SerializationFieldInfo fieldInfo) {
+    if (readContext.getConfig().isXlang()) {
+      return readContext.readNonRef(fieldInfo.containerTypeInfo);
     }
-    return fory.readNonRef(buffer, fieldInfo.classInfoHolder);
+    return readContext.readNonRef(fieldInfo.classInfoHolder);
   }
 
   private static Object readContainerFieldValueRef(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer) {
-    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    int nextReadRefId = refReader.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       Object value;
-      if (fory.isCrossLanguage()) {
-        value = fory.readNonRef(buffer, fieldInfo.containerTypeInfo);
+      if (readContext.getConfig().isXlang()) {
+        value = readContext.readNonRef(fieldInfo.containerTypeInfo);
       } else {
-        value = fory.readData(buffer, typeResolver.readTypeInfo(buffer));
+        value = readContext.readData(typeResolver.readTypeInfo(readContext));
       }
-      refResolver.setReadObject(nextReadRefId, value);
+      refReader.setReadRef(nextReadRefId, value);
       return value;
     }
-    return refResolver.getReadObject();
+    return refReader.getReadRef();
   }
 
   /**
    * Read field value from buffer and return it. Handles primitive types, unsigned/compressed
    * numbers, and common types like String with optimized fast paths.
    *
-   * <p>This method is similar to {@link #readBuildInFieldValue(Fory, TypeResolver, RefResolver,
-   * SerializationFieldInfo, MemoryBuffer, Object)}, but returns the field value instead of setting
-   * it into the target object.
+   * <p>This method is similar to {@link #readBuildInFieldValue(ReadContext, TypeResolver,
+   * RefReader, SerializationFieldInfo, MemoryBuffer)}, but returns the field value instead of
+   * setting it into the target object.
    *
    * <p>The refMode determines how to read the value from buffer: - RefMode.NONE: read directly
    * without null flag - RefMode.NULL_ONLY: read null flag first, then value if not null -
    * RefMode.TRACKING: use reference tracking
    *
-   * @param fory fory runtime
    * @param typeResolver resolver used for type metadata read
-   * @param refResolver resolver used for reference tracking
+   * @param refReader resolver used for reference tracking
    * @param fieldInfo the field metadata including type and nullability info
    * @param buffer the buffer to read from
    * @return the deserialized field value, or null if the field is nullable and was null
-   * @see #readBuildInFieldValue(Fory, TypeResolver, RefResolver, SerializationFieldInfo,
-   *     MemoryBuffer, Object)
+   * @see #readBuildInFieldValue(ReadContext, TypeResolver, RefReader, SerializationFieldInfo,
+   *     MemoryBuffer)
    */
   static Object readBuildInFieldValue(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer) {
     int dispatchId = fieldInfo.dispatchId;
@@ -604,16 +616,16 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (refMode == RefMode.NONE) {
       // No null flag in stream - read directly
       return readNotNullBuildInFieldValue(
-          fory, typeResolver, refResolver, buffer, fieldInfo, dispatchId);
+          readContext, typeResolver, refReader, buffer, fieldInfo, dispatchId);
     } else if (refMode == RefMode.NULL_ONLY) {
       // Read null flag from buffer
       if (buffer.readByte() == Fory.NULL_FLAG) {
         return null;
       }
       return readNotNullBuildInFieldValue(
-          fory, typeResolver, refResolver, buffer, fieldInfo, dispatchId);
+          readContext, typeResolver, refReader, buffer, fieldInfo, dispatchId);
     }
-    return readField(fory, typeResolver, refResolver, fieldInfo, buffer);
+    return readField(readContext, typeResolver, refReader, fieldInfo, buffer);
   }
 
   /**
@@ -621,9 +633,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * fastpath for common type such as String.
    */
   static void readBuildInFieldValue(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
       Object targetObject) {
@@ -634,7 +646,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         readPrimitiveFieldValue(buffer, targetObject, fieldAccessor, dispatchId);
       } else {
         readNotPrimitiveFieldValue(
-            fory, typeResolver, refResolver, buffer, targetObject, fieldInfo, dispatchId);
+            readContext, typeResolver, refReader, buffer, targetObject, fieldInfo, dispatchId);
       }
     } else if (fieldInfo.refMode == RefMode.NULL_ONLY) {
       if (buffer.readByte() == Fory.NULL_FLAG) {
@@ -644,10 +656,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         readPrimitiveFieldValue(buffer, targetObject, fieldAccessor, dispatchId);
       } else {
         readNotPrimitiveFieldValue(
-            fory, typeResolver, refResolver, buffer, targetObject, fieldInfo, dispatchId);
+            readContext, typeResolver, refReader, buffer, targetObject, fieldInfo, dispatchId);
       }
     } else {
-      Object fieldValue = readField(fory, typeResolver, refResolver, fieldInfo, buffer);
+      Object fieldValue = readField(readContext, typeResolver, refReader, fieldInfo, buffer);
       fieldAccessor.putObject(targetObject, fieldValue);
     }
   }
@@ -657,9 +669,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * STRING dispatch IDs with optimized fast paths.
    */
   private static Object readNotNullBuildInFieldValue(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       MemoryBuffer buffer,
       SerializationFieldInfo fieldInfo,
       int dispatchId) {
@@ -715,9 +727,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.FLOAT16:
         return Float16.fromBits(buffer.readInt16());
       case DispatchId.STRING:
-        return fory.readString(buffer);
+        return readContext.readString();
       default:
-        return readField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer);
+        return readField(readContext, typeResolver, refReader, fieldInfo, RefMode.NONE, buffer);
     }
   }
 
@@ -853,9 +865,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    * and NOTNULL_BOXED_* dispatch IDs where null values are not allowed.
    */
   private static void readNotPrimitiveFieldValue(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       MemoryBuffer buffer,
       Object targetObject,
       SerializationFieldInfo fieldInfo,
@@ -938,36 +950,36 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, Float16.fromBits(buffer.readInt16()));
         return;
       case DispatchId.STRING:
-        fieldAccessor.putObject(targetObject, fory.readString(buffer));
+        fieldAccessor.putObject(targetObject, readContext.readString());
         return;
       default:
         // Use RefMode.NONE because null flag was already handled by caller
         Object fieldValue =
-            readField(fory, typeResolver, refResolver, fieldInfo, RefMode.NONE, buffer);
+            readField(readContext, typeResolver, refReader, fieldInfo, RefMode.NONE, buffer);
         fieldAccessor.putObject(targetObject, fieldValue);
     }
   }
 
   @Override
-  public T copy(T originObj) {
+  public T copy(CopyContext copyContext, T originObj) {
     if (immutable) {
       return originObj;
     }
     if (isRecord) {
-      return copyRecord(originObj);
+      return copyRecord(copyContext, originObj);
     }
     T newObj = newBean();
-    fory.reference(originObj, newObj);
-    copyFields(originObj, newObj);
+    copyContext.reference(originObj, newObj);
+    copyFields(copyContext, originObj, newObj);
     return newObj;
   }
 
-  private T copyRecord(T originObj) {
-    Object[] fieldValues = copyFields(originObj);
+  private T copyRecord(CopyContext copyContext, T originObj) {
+    Object[] fieldValues = copyFields(copyContext, originObj);
     try {
       T t = objectCreator.newInstanceWithArguments(fieldValues);
       Arrays.fill(copyRecordInfo.getRecordComponents(), null);
-      fory.reference(originObj, t);
+      copyContext.reference(originObj, t);
       return t;
     } catch (Throwable e) {
       Platform.throwException(e);
@@ -975,7 +987,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     return originObj;
   }
 
-  private Object[] copyFields(T originObj) {
+  private Object[] copyFields(CopyContext copyContext, T originObj) {
     SerializationFieldInfo[] fieldInfos = this.fieldInfos;
     if (fieldInfos == null) {
       fieldInfos = buildFieldsInfo();
@@ -989,27 +1001,31 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         if (fieldInfo.isPrimitiveField) {
           fieldValues[i] = copyPrimitiveField(originObj, fieldOffset, fieldInfo.dispatchId);
         } else {
-          fieldValues[i] = copyNotPrimitiveField(originObj, fieldOffset, fieldInfo.dispatchId);
+          fieldValues[i] =
+              copyNotPrimitiveField(copyContext, originObj, fieldOffset, fieldInfo.dispatchId);
         }
       } else {
         // field in record class has offset -1
         Object fieldValue = fieldAccessor.get(originObj);
-        fieldValues[i] = fory.copyObject(fieldValue, fieldInfo.dispatchId);
+        fieldValues[i] = copyContext.copyObject(fieldValue, fieldInfo.dispatchId);
       }
     }
     return RecordUtils.remapping(copyRecordInfo, fieldValues);
   }
 
-  private void copyFields(T originObj, T newObj) {
+  private void copyFields(CopyContext copyContext, T originObj, T newObj) {
     SerializationFieldInfo[] fieldInfos = this.fieldInfos;
     if (fieldInfos == null) {
       fieldInfos = buildFieldsInfo();
     }
-    copyFields(fory, fieldInfos, originObj, newObj);
+    copyFields(copyContext, fieldInfos, originObj, newObj);
   }
 
   public static void copyFields(
-      Fory fory, SerializationFieldInfo[] fieldInfos, Object originObj, Object newObj) {
+      CopyContext copyContext,
+      SerializationFieldInfo[] fieldInfos,
+      Object originObj,
+      Object newObj) {
     for (SerializationFieldInfo fieldInfo : fieldInfos) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       long fieldOffset = fieldAccessor.getFieldOffset();
@@ -1018,7 +1034,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       if (fieldInfo.isPrimitiveField) {
         copySetPrimitiveField(originObj, newObj, fieldOffset, fieldInfo.dispatchId);
       } else {
-        copySetNotPrimitiveField(fory, originObj, newObj, fieldOffset, fieldInfo.dispatchId);
+        copySetNotPrimitiveField(copyContext, originObj, newObj, fieldOffset, fieldInfo.dispatchId);
       }
     }
   }
@@ -1066,7 +1082,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private static void copySetNotPrimitiveField(
-      Fory fory, Object originObj, Object newObj, long fieldOffset, int typeId) {
+      CopyContext copyContext, Object originObj, Object newObj, long fieldOffset, int typeId) {
     switch (typeId) {
       case DispatchId.BOOL:
       case DispatchId.INT8:
@@ -1098,7 +1114,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         break;
       default:
         Platform.putObject(
-            newObj, fieldOffset, fory.copyObject(Platform.getObject(originObj, fieldOffset)));
+            newObj,
+            fieldOffset,
+            copyContext.copyObject(Platform.getObject(originObj, fieldOffset)));
     }
   }
 
@@ -1135,7 +1153,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  private Object copyNotPrimitiveField(Object targetObject, long fieldOffset, int typeId) {
+  private Object copyNotPrimitiveField(
+      CopyContext copyContext, Object targetObject, long fieldOffset, int typeId) {
     switch (typeId) {
       case DispatchId.BOOL:
       case DispatchId.INT8:
@@ -1159,7 +1178,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.STRING:
         return Platform.getObject(targetObject, fieldOffset);
       default:
-        return fory.copyObject(Platform.getObject(targetObject, fieldOffset));
+        return copyContext.copyObject(Platform.getObject(targetObject, fieldOffset));
     }
   }
 
@@ -1187,8 +1206,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       }
     }
     DescriptorGrouper descriptorGrouper =
-        FieldGroups.buildDescriptorGrouper(fory, descriptors, false, null);
-    FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
+        FieldGroups.buildDescriptorGrouper(typeResolver, descriptors, false, null);
+    FieldGroups fieldGroups = FieldGroups.buildFieldInfos(typeResolver, descriptorGrouper);
     fieldInfos = fieldGroups.allFields;
     if (isRecord) {
       List<String> fieldNames =

@@ -50,7 +50,7 @@ public class NewJava11StringSuite {
   private static String stubStr = new String(new char[] {Character.MAX_VALUE, Character.MIN_VALUE});
   private static Fory fory =
       Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
-  private static StringSerializer stringSerializer = new StringSerializer(fory);
+  private static StringSerializer stringSerializer = new StringSerializer(fory.getConfig());
   private static MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(512);
 
   static {

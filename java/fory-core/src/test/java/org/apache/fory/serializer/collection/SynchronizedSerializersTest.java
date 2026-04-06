@@ -73,9 +73,10 @@ public class SynchronizedSerializersTest extends ForyTestBase {
     for (Object value : values) {
       buffer.writerIndex(0);
       buffer.readerIndex(0);
-      Serializer serializer = SynchronizedSerializers.createSerializer(fory, value.getClass());
-      serializer.write(buffer, value);
-      Object newObj = serializer.read(buffer);
+      Serializer serializer =
+          SynchronizedSerializers.createSerializer(fory.getTypeResolver(), value.getClass());
+      writeSerializer(fory, serializer, buffer, value);
+      Object newObj = readSerializer(fory, serializer, buffer);
       assertEquals(newObj.getClass(), value.getClass());
       long sourceCollectionFieldOffset =
           Collection.class.isAssignableFrom(value.getClass())

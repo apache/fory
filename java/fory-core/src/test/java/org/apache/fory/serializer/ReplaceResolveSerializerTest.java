@@ -41,8 +41,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
-import org.apache.fory.serializer.collection.CollectionLikeSerializer;
-import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.util.Preconditions;
 import org.testng.annotations.Test;
 
@@ -84,13 +82,11 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
     ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
+    fory.registerSerializer(
+        list1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), list1.getClass()));
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> fory.registerSerializer(list1.getClass(), ReplaceResolveSerializer.class));
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> fory.registerSerializer(map1.getClass(), ReplaceResolveSerializer.class));
+    fory.registerSerializer(
+        map1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), map1.getClass()));
 
     CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     serDeCheck(fory, o1);
@@ -101,8 +97,9 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
 
     serDeCheck(fory, map1);
     assertTrue(
-        fory.getTypeResolver().getSerializer(list1.getClass()) instanceof CollectionLikeSerializer);
-    assertTrue(fory.getTypeResolver().getSerializer(map1.getClass()) instanceof MapLikeSerializer);
+        fory.getTypeResolver().getSerializer(list1.getClass()) instanceof ReplaceResolveSerializer);
+    assertTrue(
+        fory.getTypeResolver().getSerializer(map1.getClass()) instanceof ReplaceResolveSerializer);
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -112,12 +109,10 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> fory.registerSerializer(list1.getClass(), ReplaceResolveSerializer.class));
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> fory.registerSerializer(map1.getClass(), ReplaceResolveSerializer.class));
+    fory.registerSerializer(
+        list1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), list1.getClass()));
+    fory.registerSerializer(
+        map1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), map1.getClass()));
     copyCheck(fory, o1);
 
     copyCheck(fory, list1);
@@ -486,46 +481,16 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
 
   @Test(dataProvider = "foryCopyConfig")
   public void testImmutable(Fory fory) {
+    fory.registerSerializer(ImmutableList.of(1, 2).getClass(), ReplaceResolveSerializer.class);
     fory.registerSerializer(SimpleCollectionTest.class, ReplaceResolveSerializer.class);
+    fory.registerSerializer(ImmutableMap.of("1", 2).getClass(), ReplaceResolveSerializer.class);
     fory.registerSerializer(SimpleMapTest.class, ReplaceResolveSerializer.class);
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            fory.registerSerializer(
-                ImmutableList.of(1, 2).getClass(), ReplaceResolveSerializer.class));
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            fory.registerSerializer(
-                ImmutableMap.of("1", 2).getClass(), ReplaceResolveSerializer.class));
     copyCheck(fory, ImmutableList.of(1, 2));
     copyCheck(fory, ImmutableList.of("a", "b"));
     copyCheck(fory, new SimpleCollectionTest(ImmutableList.of(1, 2), ImmutableList.of("a", "b")));
     copyCheck(fory, ImmutableMap.of("1", 2));
     copyCheck(fory, ImmutableMap.of(1, 2));
     copyCheck(fory, new SimpleMapTest(ImmutableMap.of("k", 2), ImmutableMap.of(1, 2)));
-  }
-
-  @Test
-  public void testRejectReplaceResolveInstanceRegistrationForCollectionAndMap() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .withRefTracking(true)
-            .build();
-    ImmutableList<Integer> list = ImmutableList.of(1, 2);
-    ImmutableMap<String, Integer> map = ImmutableMap.of("k1", 1, "k2", 2);
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            fory.registerSerializer(
-                list.getClass(), new ReplaceResolveSerializer(fory, list.getClass())));
-    assertThrows(
-        IllegalArgumentException.class,
-        () ->
-            fory.registerSerializer(
-                map.getClass(), new ReplaceResolveSerializer(fory, map.getClass())));
   }
 
   @Data

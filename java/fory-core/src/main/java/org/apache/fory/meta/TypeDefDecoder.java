@@ -70,7 +70,7 @@ class TypeDefDecoder {
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(UnknownClass.UnknownStruct.class);
       } else {
-        classSpec = new ClassSpec(userTypeInfo.getCls());
+        classSpec = new ClassSpec(userTypeInfo.getType());
       }
     } else {
       int typeId = buffer.readUint8();
@@ -79,7 +79,7 @@ class TypeDefDecoder {
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(UnknownClass.UnknownStruct.class, typeId, userTypeId);
       } else {
-        classSpec = new ClassSpec(userTypeInfo.getCls(), typeId, userTypeId);
+        classSpec = new ClassSpec(userTypeInfo.getType(), typeId, userTypeId);
       }
     }
     List<FieldInfo> classFields =
@@ -91,7 +91,7 @@ class TypeDefDecoder {
       // Compute and print diff with local TypeDef
       Class<?> cls = classSpec.type;
       if (cls != null && cls != UnknownClass.UnknownStruct.class) {
-        TypeDef localDef = TypeDef.buildTypeDef(resolver.getFory(), cls);
+        TypeDef localDef = TypeDef.buildTypeDef(resolver, cls);
         String diff = typeDef.computeDiff(localDef);
         if (diff != null) {
           LOG.info("[Java TypeDef DIFF] " + classSpec.entireClassName + ":\n" + diff);
