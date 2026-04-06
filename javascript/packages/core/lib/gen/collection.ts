@@ -152,6 +152,7 @@ class CollectionAnySerializer {
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
     const len = this.fory.binaryReader.readVarUint32Small7();
+    this.fory.checkCollectionSize(len);
     const flags = this.fory.binaryReader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
@@ -304,6 +305,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const refFlag = this.scope.uniqueName("refFlag");
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
+            fory.checkCollectionSize(${len});
             const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
