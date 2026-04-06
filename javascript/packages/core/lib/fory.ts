@@ -45,6 +45,8 @@ export default class {
   config: Config;
   depth = 0;
   maxDepth: number;
+  maxBinarySize: number | undefined;
+  maxCollectionSize: number | undefined;
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
@@ -53,6 +55,18 @@ export default class {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.maxDepth = maxDepth;
+    if (config?.maxBinarySize !== undefined) {
+      if (!Number.isInteger(config.maxBinarySize) || config.maxBinarySize < 0) {
+        throw new Error(`maxBinarySize must be a non-negative integer but got ${config.maxBinarySize}`);
+      }
+    }
+    this.maxBinarySize = config?.maxBinarySize;
+    if (config?.maxCollectionSize !== undefined) {
+      if (!Number.isInteger(config.maxCollectionSize) || config.maxCollectionSize < 0) {
+        throw new Error(`maxCollectionSize must be a non-negative integer but got ${config.maxCollectionSize}`);
+      }
+    }
+    this.maxCollectionSize = config?.maxCollectionSize;
     this.binaryReader = new BinaryReader(this.config);
     this.binaryWriter = new BinaryWriter(this.config);
     this.referenceResolver = new ReferenceResolver(this.binaryReader);
@@ -68,6 +82,8 @@ export default class {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
+      maxBinarySize: config?.maxBinarySize,
+      maxCollectionSize: config?.maxCollectionSize,
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
     };
@@ -89,6 +105,24 @@ export default class {
 
   decReadDepth(): void {
     this.depth--;
+  }
+
+  checkCollectionSize(size: number): void {
+    if (this.maxCollectionSize !== undefined && size > this.maxCollectionSize) {
+      throw new Error(
+        `Collection size ${size} exceeds maxCollectionSize ${this.maxCollectionSize}. `
+        + "The data may be malicious, or increase maxCollectionSize if needed."
+      );
+    }
+  }
+
+  checkBinarySize(size: number): void {
+    if (this.maxBinarySize !== undefined && size > this.maxBinarySize) {
+      throw new Error(
+        `Binary size ${size} exceeds maxBinarySize ${this.maxBinarySize}. `
+        + "The data may be malicious, or increase maxBinarySize if needed."
+      );
+    }
   }
 
   private resetRead(): void {
