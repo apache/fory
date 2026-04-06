@@ -769,9 +769,9 @@ Enums generate `export enum` declarations:
 
 ```typescript
 export enum PhoneType {
-  PHONE_TYPE_MOBILE = 0,
-  PHONE_TYPE_HOME = 1,
-  PHONE_TYPE_WORK = 2,
+  MOBILE = 0,
+  HOME = 1,
+  WORK = 2,
 }
 ```
 

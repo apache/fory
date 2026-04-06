@@ -4,7 +4,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 
 ## Features
 
-- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, Javascript, and Swift
+- **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, JavaScript, and Swift
 - **Rich type system**: Primitives, enums, messages, lists, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration

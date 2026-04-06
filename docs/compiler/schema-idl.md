@@ -1051,7 +1051,7 @@ Fory IDL provides fixed-width signed integers (varint encoding for 32/64-bit by 
 
 **Language Mapping (Signed):**
 
-| Fory IDL | Java    | Python         | Go      | Rust  | C++       | Javascript         |
+| Fory IDL | Java    | Python         | Go      | Rust  | C++       | JavaScript         |
 | -------- | ------- | -------------- | ------- | ----- | --------- | ------------------ |
 | `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  | `number`           |
 | `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` | `number`           |
@@ -1069,7 +1069,7 @@ Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit b
 
 **Language Mapping (Unsigned):**
 
-| Fory IDL | Java    | Python          | Go       | Rust  | C++        | Javascript         |
+| Fory IDL | Java    | Python          | Go       | Rust  | C++        | JavaScript         |
 | -------- | ------- | --------------- | -------- | ----- | ---------- | ------------------ |
 | `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  | `number`           |
 | `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` | `number`           |
