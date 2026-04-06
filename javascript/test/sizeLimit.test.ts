@@ -264,4 +264,88 @@ describe('size-limit guardrails', () => {
       expect(() => deserializeFory.deserialize(bytes)).toThrow('exceeds maxCollectionSize');
     });
   });
+
+  describe('bool array deserialization with maxCollectionSize', () => {
+    // BoolArraySerializerGenerator reads an element count — guarded by checkCollectionSize
+    test('should deserialize bool array within limit', () => {
+      const fory = new Fory({ maxCollectionSize: 10 });
+      const { serialize, deserialize } = fory.registerSerializer(Type.struct("test.boolArr", {
+        flags: Type.boolArray(),
+      }));
+      const data = { flags: [true, false, true] };
+      const result = deserialize(serialize(data));
+      expect(result!.flags).toEqual([true, false, true]);
+    });
+
+    test('should throw when bool array exceeds maxCollectionSize', () => {
+      const serializeFory = new Fory();
+      const { serialize } = serializeFory.registerSerializer(Type.struct("test.boolArr2", {
+        flags: Type.boolArray(),
+      }));
+      const bytes = serialize({ flags: [true, false, true, true, false] });
+
+      const deserializeFory = new Fory({ maxCollectionSize: 3 });
+      const { deserialize } = deserializeFory.registerSerializer(Type.struct("test.boolArr2", {
+        flags: Type.boolArray(),
+      }));
+      expect(() => deserialize(bytes)).toThrow('exceeds maxCollectionSize');
+    });
+  });
+
+  describe('float16 array deserialization with maxBinarySize', () => {
+    // Float16ArraySerializerGenerator writes byte count (elements * 2) — guarded by checkBinarySize
+    test('should deserialize float16 array within limit', () => {
+      const fory = new Fory({ maxBinarySize: 1024 });
+      const { serialize, deserialize } = fory.registerSerializer(Type.struct("test.f16Arr", {
+        vals: Type.float16Array(),
+      }));
+      const data = { vals: [1.0, 2.0, 3.0] };
+      const result = deserialize(serialize(data));
+      expect(result!.vals!.length).toBe(3);
+    });
+
+    test('should throw when float16 array byte length exceeds maxBinarySize', () => {
+      const serializeFory = new Fory();
+      const { serialize } = serializeFory.registerSerializer(Type.struct("test.f16Arr2", {
+        vals: Type.float16Array(),
+      }));
+      // 10 elements × 2 bytes each = 20 raw bytes on the wire
+      const bytes = serialize({ vals: Array.from({ length: 10 }, (_, i) => i * 0.5) });
+
+      const deserializeFory = new Fory({ maxBinarySize: 10 }); // 10 < 20
+      const { deserialize } = deserializeFory.registerSerializer(Type.struct("test.f16Arr2", {
+        vals: Type.float16Array(),
+      }));
+      expect(() => deserialize(bytes)).toThrow('exceeds maxBinarySize');
+    });
+  });
+
+  describe('bfloat16 array deserialization with maxBinarySize', () => {
+    // BFloat16ArraySerializerGenerator writes byte count (elements * 2) — same pattern as float16
+    test('should deserialize bfloat16 array within limit', () => {
+      const fory = new Fory({ maxBinarySize: 1024 });
+      const { serialize, deserialize } = fory.registerSerializer(Type.struct("test.bf16Arr", {
+        vals: Type.bfloat16Array(),
+      }));
+      const data = { vals: [1.0, 2.0, 3.0] };
+      const result = deserialize(serialize(data));
+      expect(result!.vals!.length).toBe(3);
+    });
+
+    test('should throw when bfloat16 array byte length exceeds maxBinarySize', () => {
+      const serializeFory = new Fory();
+      const { serialize } = serializeFory.registerSerializer(Type.struct("test.bf16Arr2", {
+        vals: Type.bfloat16Array(),
+      }));
+      // 10 elements × 2 bytes each = 20 raw bytes on the wire
+      const bytes = serialize({ vals: Array.from({ length: 10 }, (_, i) => i * 0.5) });
+
+      const deserializeFory = new Fory({ maxBinarySize: 10 }); // 10 < 20
+      const { deserialize } = deserializeFory.registerSerializer(Type.struct("test.bf16Arr2", {
+        vals: Type.bfloat16Array(),
+      }));
+      expect(() => deserialize(bytes)).toThrow('exceeds maxBinarySize');
+    });
+  });
 });
+

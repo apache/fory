@@ -86,6 +86,7 @@ class BoolArraySerializerGenerator extends BaseSerializerGenerator {
     const idx = this.scope.uniqueName("idx");
     return `
                 const ${len} = ${this.builder.reader.readVarUInt32()};
+                fory.checkCollectionSize(${len});
                 const ${result} = new Array(${len});
                 ${this.maybeReference(result, refState)}
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
@@ -121,10 +122,13 @@ class Float16ArraySerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    const rawLen = this.scope.uniqueName("rawLen");
     const len = this.scope.uniqueName("len");
     const idx = this.scope.uniqueName("idx");
     return `
-        const ${len} = ${this.builder.reader.readVarUInt32()} / 2;
+        const ${rawLen} = ${this.builder.reader.readVarUInt32()};
+        fory.checkBinarySize(${rawLen});
+        const ${len} = ${rawLen} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}
         for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
@@ -160,10 +164,13 @@ class BFloat16ArraySerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    const rawLen = this.scope.uniqueName("rawLen");
     const len = this.scope.uniqueName("len");
     const idx = this.scope.uniqueName("idx");
     return `
-        const ${len} = ${this.builder.reader.readVarUInt32()} / 2;
+        const ${rawLen} = ${this.builder.reader.readVarUInt32()};
+        fory.checkBinarySize(${rawLen});
+        const ${len} = ${rawLen} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}
         for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
