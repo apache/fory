@@ -47,6 +47,7 @@ function build(inner: TypeInfo, creator: string, size: number) {
 
       return `
                 const ${len} = ${this.builder.reader.readVarUInt32()};
+                fory.checkBinarySize(${len});
                 const ${copied} = ${this.builder.reader.buffer(len)}
                 const ${result} = new ${creator}(${copied}.buffer, ${copied}.byteOffset, ${copied}.byteLength / ${size});
                 ${this.maybeReference(result, refState)}
