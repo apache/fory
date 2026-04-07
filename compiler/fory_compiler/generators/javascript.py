@@ -936,9 +936,7 @@ class JavaScriptGenerator(BaseGenerator):
         """Return a ``fory.registerSerializer(Type.union(...))`` statement."""
         case_parts: List[str] = []
         for field in union_def.fields:
-            case_num = (
-                field.tag_id if field.tag_id is not None else field.number
-            )
+            case_num = field.tag_id if field.tag_id is not None else field.number
             if case_num is not None:
                 case_type_expr = self._field_type_expr(field.field_type, [])
                 case_parts.append(f"{case_num}: {case_type_expr}")
