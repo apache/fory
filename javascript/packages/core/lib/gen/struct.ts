@@ -63,6 +63,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   sortedProps: { key: string; typeInfo: TypeInfo }[];
   metaChangedSerializer: string;
   typeMeta: TypeMeta;
+  serializerExpr: string;
   ownTypeInfoExpr: string;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
@@ -71,14 +72,14 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     this.sortedProps = sortProps(this.typeInfo);
     this.metaChangedSerializer = this.scope.declareVar("metaChangedSerializer", "null");
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
-    // Build an expression that resolves this struct's own TypeInfo at runtime.
+    // Build an expression that resolves this struct's own serializer at runtime.
     // This is needed so that nested struct generators (e.g., Person inside
     // AddressBook) use their own TypeInfo for meta-share tracking, not the
     // enclosing struct's TypeInfo.
-    const serializerLookup = TypeId.isNamedType(typeInfo.typeId)
+    this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
       ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
       : `fory.typeResolver.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
-    this.ownTypeInfoExpr = `${serializerLookup}.getTypeInfo()`;
+    this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
   readField(fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
@@ -186,11 +187,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
-      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
-        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
       return `
-        let ${result} = ${serializerLookup}.read(${refState});
+        let ${result} = ${this.serializerExpr}.read(${refState});
         ${accessor(result)};
       `;
     }
@@ -231,12 +229,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   readWithDepth(assignStmt: (v: string) => string, refState: string): string {
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
       const result = this.scope.uniqueName("result");
-      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
-        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
       return `
         fory.incReadDepth();
-        let ${result} = ${serializerLookup}.read(${refState});
+        let ${result} = ${this.serializerExpr}.read(${refState});
         fory.decReadDepth();
         ${assignStmt(result)};
       `;
@@ -247,13 +242,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
-      const serializerLookup = TypeId.isNamedType(this.typeInfo.typeId)
-        ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-        : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
       return `
         ${this.readTypeInfo()}
         fory.incReadDepth();
-        let ${result} = ${serializerLookup}.read(${refState});
+        let ${result} = ${this.serializerExpr}.read(${refState});
         fory.decReadDepth();
         ${assignStmt(result)};
       `;

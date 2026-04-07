@@ -238,8 +238,8 @@ export class TypeMeta {
   }
 
   computeStructHash() {
-    // const fields = TypeMeta.groupFieldsByType(this.fields);
-    const fingerprint = this.computeStructFingerprint(this.fields);
+    const fields = TypeMeta.groupFieldsByType(this.fields);
+    const fingerprint = this.computeStructFingerprint(fields);
     const bytes = fromString(fingerprint);
     const hashLong = x64hash128(bytes, 47).getBigInt64(0);
     const result = Number(BigInt.asIntN(32, hashLong));

@@ -55,9 +55,20 @@ export class AnyHelper {
         }
         break;
       case TypeId.NAMED_ENUM:
+      case TypeId.NAMED_UNION:
+        if (fory.isCompatible()) {
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+          const ns = typeMeta.getNs();
+          const typeName = typeMeta.getTypeName();
+          serializer = fory.typeResolver.getSerializerByName(`${ns}$${typeName}`);
+        } else {
+          const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
+          const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
+          serializer = fory.typeResolver.getSerializerByName(`${ns}$${typeName}`);
+        }
+        break;
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_EXT:
-      case TypeId.NAMED_UNION:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
         if (fory.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);

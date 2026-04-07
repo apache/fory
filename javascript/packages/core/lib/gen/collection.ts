@@ -321,57 +321,58 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${len} > 0) {
-            const ${flags} = ${this.builder.reader.readUint8()};
-            let ${elemSerializer} = null;
-            if (!(${flags} & ${CollectionFlags.DECL_ELEMENT_TYPE})) {
-                ${elemSerializer} = ${anyHelper}.detectSerializer(${foryName});
-            }
-            if (${flags} & ${CollectionFlags.TRACKING_REF}) {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    const ${refFlag} = ${this.builder.reader.readInt8()};
-                    switch (${refFlag}) {
-                        case ${RefFlags.NotNullValueFlag}:
-                        case ${RefFlags.RefValueFlag}:
+                const ${flags} = ${this.builder.reader.readUint8()};
+                let ${elemSerializer} = null;
+                if (!(${flags} & ${CollectionFlags.DECL_ELEMENT_TYPE})) {
+                    ${elemSerializer} = ${anyHelper}.detectSerializer(${foryName});
+                }
+                if (${flags} & ${CollectionFlags.TRACKING_REF}) {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                        const ${refFlag} = ${this.builder.reader.readInt8()};
+                        switch (${refFlag}) {
+                            case ${RefFlags.NotNullValueFlag}:
+                            case ${RefFlags.RefValueFlag}:
+                                if (${elemSerializer}) {
+                                    ${foryName}.incReadDepth();
+                                    ${this.putAccessor(result, `${elemSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag})`, idx)}
+                                    ${foryName}.decReadDepth();
+                                } else {
+                                    ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                                }
+                                break;
+                            case ${RefFlags.RefFlag}:
+                                ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()), idx)}
+                                break;
+                            case ${RefFlags.NullFlag}:
+                                ${this.putAccessor(result, "null", idx)}
+                                break;
+                        }
+                    }
+                } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                        if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
+                            ${this.putAccessor(result, "null", idx)}
+                        } else {
                             if (${elemSerializer}) {
                                 ${foryName}.incReadDepth();
-                                ${this.putAccessor(result, `${elemSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag})`, idx)}
+                                ${this.putAccessor(result, `${elemSerializer}.read(false)`, idx)}
                                 ${foryName}.decReadDepth();
-                            } else {${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
-  }
-                            break;
-                        case ${RefFlags.RefFlag}:
-                            ${this.putAccessor(result, this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()), idx)}
-                            break;
-                        case ${RefFlags.NullFlag}:
-                            ${this.putAccessor(result, "null", idx)}
-                            break;
+                            } else {
+                                ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                            }
+                        }
                     }
-                }
-            } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
-                        ${this.putAccessor(result, "null", idx)}
-                        } else {
+                } else {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
                         if (${elemSerializer}) {
                             ${foryName}.incReadDepth();
                             ${this.putAccessor(result, `${elemSerializer}.read(false)`, idx)}
                             ${foryName}.decReadDepth();
-                    } else {
-                        ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                        } else {
+                            ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                        }
                     }
-}
                 }
-
-            } else {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${elemSerializer}) {
-                        ${foryName}.incReadDepth();
-                        ${this.putAccessor(result, `${elemSerializer}.read(false)`, idx)}
-                        ${foryName}.decReadDepth();
-                    } else {${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
-                }
-            }
-}
             }
             ${accessor(result)}
         `;

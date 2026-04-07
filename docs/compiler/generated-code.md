@@ -878,7 +878,7 @@ If `option enable_auto_type_id = false;` is set, generated code uses name-based 
 | C++        | `Person::PhoneNumber`          |
 | Go         | `Person_PhoneNumber` (default) |
 | C#         | `Person.PhoneNumber`           |
-| JavaScript | `PhoneNumber` (flat)           |
+| JavaScript | `Person.PhoneNumber`           |
 | Swift      | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
