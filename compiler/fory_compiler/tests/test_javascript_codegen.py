@@ -434,3 +434,37 @@ def test_javascript_qualified_nested_type_resolved():
     assert "export interface Inner" in output
 
     assert "item: Outer.Inner;" in output
+
+
+def test_javascript_union_registration():
+    """Test that unions are registered with Type.union() including case mappings."""
+    source = dedent(
+        """
+        package example;
+
+        message Dog [id=101] {
+            string name = 1;
+            int32 bark_volume = 2;
+        }
+
+        message Cat [id=102] {
+            string name = 1;
+            int32 lives = 2;
+        }
+
+        union Animal [id=103] {
+            Dog dog = 1;
+            Cat cat = 2;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    # Union registration should use Type.union() with type ID and case mappings
+    assert "Type.union(103" in output
+    # Case 1 -> Dog (struct 101), Case 2 -> Cat (struct 102)
+    assert "1: Type.struct(101" in output
+    assert "2: Type.struct(102" in output
+    # Struct registrations for the variant types must also be present
+    assert "Type.struct(101" in output
+    assert "Type.struct(102" in output

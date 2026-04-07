@@ -684,10 +684,28 @@ export const Type = {
       withConstructor,
     });
   },
-  union(cases?: { [caseIndex: number]: TypeInfo }) {
-    const typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
-    if (cases) {
-      typeInfo.options = { cases };
+  union(idOrCases?: number | { namespace?: string; typeName?: string } | { [caseIndex: number]: TypeInfo }, cases?: { [caseIndex: number]: TypeInfo }) {
+    let typeInfo: TypeInfo;
+    if (typeof idOrCases === "number") {
+      typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
+      typeInfo.userTypeId = idOrCases;
+      if (cases) {
+        typeInfo.options = { cases };
+      }
+    } else if (idOrCases && ("namespace" in idOrCases || "typeName" in idOrCases)) {
+      const nameInfo = idOrCases as { namespace?: string; typeName?: string };
+      typeInfo = new TypeInfo<typeof TypeId.NAMED_UNION>(TypeId.NAMED_UNION);
+      typeInfo.namespace = nameInfo.namespace || "";
+      typeInfo.typeName = nameInfo.typeName || "";
+      typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
+      if (cases) {
+        typeInfo.options = { cases };
+      }
+    } else {
+      typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
+      if (idOrCases) {
+        typeInfo.options = { cases: idOrCases as { [caseIndex: number]: TypeInfo } };
+      }
     }
     return typeInfo;
   },

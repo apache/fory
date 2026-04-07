@@ -64,7 +64,7 @@ function fileRoundTrip(
   envVar: string,
   rootTypeId: number,
   registerFn: (fory: any, type: any) => void,
-  foryOptions: { refTracking?: boolean | null; compatible?: boolean }
+  foryOptions: { refTracking?: boolean | null; compatible?: boolean; union?: boolean }
 ): void {
   const filePath = process.env[envVar];
   if (!filePath) {
@@ -80,9 +80,10 @@ function fileRoundTrip(
 
   registerFn(fory, Type);
 
-  const serializer = fory.typeResolver.getSerializerByTypeInfo(
-    Type.struct(rootTypeId)
-  );
+  const rootTypeInfo = foryOptions.union
+    ? Type.union(rootTypeId)
+    : Type.struct(rootTypeId);
+  const serializer = fory.typeResolver.getSerializerByTypeInfo(rootTypeInfo);
 
   // Read binary data
   const data = fs.readFileSync(filePath);
@@ -115,23 +116,14 @@ fileRoundTrip("DATA_FILE_PRIMITIVES", 200, registerComplexPbTypes, { compatible 
 
 fileRoundTrip("DATA_FILE_COLLECTION", 210, registerCollectionTypes, { compatible });
 
-// DATA_FILE_COLLECTION_UNION: NumericCollectionUnion (IS a union)
-// Union types are not yet supported in the Fory JS runtime.
-if (process.env["DATA_FILE_COLLECTION_UNION"]) {
-  console.log(
-    "Processing DATA_FILE_COLLECTION_UNION: skipped (union type not yet supported)"
-  );
-}
+// DATA_FILE_COLLECTION_UNION: NumericCollectionUnion (type ID 211)
+fileRoundTrip("DATA_FILE_COLLECTION_UNION", 211, registerCollectionTypes, { compatible, union: true });
 
 // DATA_FILE_COLLECTION_ARRAY: NumericCollectionsArray (type ID 212)
 fileRoundTrip("DATA_FILE_COLLECTION_ARRAY", 212, registerCollectionTypes, { compatible });
 
-// DATA_FILE_COLLECTION_ARRAY_UNION: NumericCollectionArrayUnion (IS a union)
-if (process.env["DATA_FILE_COLLECTION_ARRAY_UNION"]) {
-  console.log(
-    "Processing DATA_FILE_COLLECTION_ARRAY_UNION: skipped (union type not yet supported)"
-  );
-}
+// DATA_FILE_COLLECTION_ARRAY_UNION: NumericCollectionArrayUnion (type ID 213)
+fileRoundTrip("DATA_FILE_COLLECTION_ARRAY_UNION", 213, registerCollectionTypes, { compatible, union: true });
 
 
 fileRoundTrip("DATA_FILE_OPTIONAL_TYPES", 122, registerOptionalTypesTypes, { compatible });

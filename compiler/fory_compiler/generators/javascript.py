@@ -928,6 +928,32 @@ class JavaScriptGenerator(BaseGenerator):
 
         return f"{target_var}.registerSerializer(Type.struct({name_info}{props_arg}));"
 
+    def _register_union_line(
+        self,
+        union_def,
+        target_var: str = "fory",
+    ) -> str:
+        """Return a ``fory.registerSerializer(Type.union(...))`` statement."""
+        case_parts: List[str] = []
+        for field in union_def.fields:
+            case_num = (
+                field.tag_id if field.tag_id is not None else field.number
+            )
+            if case_num is not None:
+                case_type_expr = self._field_type_expr(field.field_type, [])
+                case_parts.append(f"{case_num}: {case_type_expr}")
+        cases_str = ", ".join(case_parts)
+        cases_arg = f", {{ {cases_str} }}" if case_parts else ""
+
+        if self.should_register_by_id(union_def):
+            name_info = str(union_def.type_id)
+        else:
+            ns = self.schema.package or "default"
+            qname = self._qualified_type_names.get(id(union_def), union_def.name)
+            name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+
+        return f"{target_var}.registerSerializer(Type.union({name_info}{cases_arg}));"
+
     def _resolve_field_deps(
         self,
         message: Message,
@@ -1030,10 +1056,9 @@ class JavaScriptGenerator(BaseGenerator):
                         resolved
                     ):
                         emit_message(resolved)
-            # Union types are encoded inline inside field descriptors in the
-            # Fory JS runtime.  Standalone registerSerializer for a union type
-            # requires runtime support that is not yet available; no call is
-            # emitted here.
+            reg_line = self._register_union_line(union, "fory")
+            if reg_line:
+                lines.append(f"  {reg_line}")
 
         lines.append("}")
 
