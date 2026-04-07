@@ -192,14 +192,14 @@ class ForyTypeVisitor(TypeVisitor):
         return field(field_name, struct(fields))
 
     def visit_other(self, field_name, type_, types_path=None):
+        if type_ in _supported_types_mapping:
+            fory_type_func = _supported_types_mapping.get(type_)
+            return field(field_name, fory_type_func())
         if isinstance(type_, type) and type_.__module__ != "builtins":
             return self.visit_customized(field_name, type_, types_path=types_path)
-        if type_ not in _supported_types_mapping:
-            raise TypeError(
-                f"Type {type_} not supported, currently only compositions of {_supported_types_str} are supported. types_path is {types_path}"
-            )
-        fory_type_func = _supported_types_mapping.get(type_)
-        return field(field_name, fory_type_func())
+        raise TypeError(
+            f"Type {type_} not supported, currently only compositions of {_supported_types_str} are supported. types_path is {types_path}"
+        )
 
 
 def infer_data_type(clz) -> Optional[DataType]:

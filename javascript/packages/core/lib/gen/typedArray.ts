@@ -198,4 +198,4 @@ CodegenRegistry.register(TypeId.UINT64_ARRAY, build(Type.uint64(), `BigUint64Arr
 CodegenRegistry.register(TypeId.FLOAT16_ARRAY, Float16ArraySerializerGenerator);
 CodegenRegistry.register(TypeId.BFLOAT16_ARRAY, BFloat16ArraySerializerGenerator);
 CodegenRegistry.register(TypeId.FLOAT32_ARRAY, build(Type.float32(), `Float32Array`, 4));
-CodegenRegistry.register(TypeId.FLOAT64_ARRAY, build(Type.float64(), `Float64Array`, 6));
+CodegenRegistry.register(TypeId.FLOAT64_ARRAY, build(Type.float64(), `Float64Array`, 8));
