@@ -53,6 +53,7 @@ def run():
 
     # Run tests with default settings
     common.exec_cmd("pytest -v -s --durations=60 pyfory/tests")
+    common.exec_cmd("pytest -v -s --durations=60 pyfory/format/tests")
 
     logging.info("Executing fory python tests succeeds")
 
