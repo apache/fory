@@ -27,7 +27,10 @@ import com.esotericsoftware.kryo.io.Output;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -53,8 +56,8 @@ public class SerializerFactoryTest {
     private Output output;
     private ByteBufferInput input;
 
-    public KryoSerializer(Fory fory, Class cls) {
-      super(fory, cls);
+    public KryoSerializer(TypeResolver typeResolver, Class cls) {
+      super(typeResolver.getConfig(), cls);
       kryo = new Kryo();
       kryo.setRegistrationRequired(false);
       output = new Output(64, Integer.MAX_VALUE);
@@ -62,14 +65,16 @@ public class SerializerFactoryTest {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Object value) {
+    public void write(WriteContext writeContext, Object value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       output.reset();
       kryo.writeObject(output, value);
       buffer.writeBytes(output.getBuffer(), 0, output.position());
     }
 
     @Override
-    public Object read(MemoryBuffer buffer) {
+    public Object read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       input.setBuffer(buffer.sliceAsByteBuffer());
       Object o = kryo.readObject(input, type);
       buffer.readerIndex(buffer.readerIndex() + input.position());
@@ -88,7 +93,7 @@ public class SerializerFactoryTest {
     fory.setSerializerFactory(
         (f, cls) -> {
           if (KryoSerializable.class.isAssignableFrom(cls)) {
-            return new KryoSerializer(fory, cls);
+            return new KryoSerializer(f, cls);
           } else {
             return null;
           }

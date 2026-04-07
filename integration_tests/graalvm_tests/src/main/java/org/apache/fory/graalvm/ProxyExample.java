@@ -25,6 +25,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -50,6 +51,7 @@ public class ProxyExample {
             .build();
     // register and generate serializer code.
     fory.register(TestInvocationHandler.class);
+    GraalvmSupport.registerProxySupport(Function.class, Serializable.class);
     fory.ensureSerializersCompiled();
     return fory;
   }
@@ -58,7 +60,9 @@ public class ProxyExample {
     Function function =
         (Function)
             Proxy.newProxyInstance(
-                fory.getClassLoader(), new Class[] {Function.class}, new TestInvocationHandler());
+                fory.getClassLoader(),
+                new Class[] {Function.class, Serializable.class},
+                new TestInvocationHandler());
     Function deserializedFunction = (Function) fory.deserialize(fory.serialize(function));
     Preconditions.checkArgument(deserializedFunction.apply(null).equals(1));
     fory = createFory();

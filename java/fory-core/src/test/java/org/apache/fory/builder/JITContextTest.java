@@ -34,10 +34,11 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -124,12 +125,13 @@ public class JITContextTest extends ForyTestBase {
             .build();
     BeanB beanB = BeanB.createBeanB(2);
     BeanA beanA = BeanA.createBeanA(2);
-    MetaContext context = new MetaContext();
+    MetaWriteContext metaWriteContext = new MetaWriteContext();
+    MetaReadContext metaReadContext = new MetaReadContext();
     if (!scopedMetaShare) {
-      fory.getSerializationContext().setMetaContext(context);
+      setMetaContexts(fory, metaWriteContext, metaReadContext);
     }
     byte[] bytes1 = fory.serialize(beanB);
-    if (!scopedMetaShare) fory.getSerializationContext().setMetaContext(context);
+    if (!scopedMetaShare) setMetaContexts(fory, metaWriteContext, metaReadContext);
     byte[] bytes2 = fory.serialize(beanA);
     while (!(getSerializer(fory, BeanB.class) instanceof Generated)) {
       LOG.info("Waiting {} serializer to be jit.", BeanB.class);
@@ -141,9 +143,9 @@ public class JITContextTest extends ForyTestBase {
     }
     Assert.assertTrue(getSerializer(fory, BeanB.class) instanceof Generated);
     Assert.assertTrue(getSerializer(fory, BeanA.class) instanceof Generated);
-    if (!scopedMetaShare) fory.getSerializationContext().setMetaContext(context);
+    if (!scopedMetaShare) setMetaContexts(fory, metaWriteContext, metaReadContext);
     assertEquals(fory.deserialize(bytes1), beanB);
-    if (!scopedMetaShare) fory.getSerializationContext().setMetaContext(context);
+    if (!scopedMetaShare) setMetaContexts(fory, metaWriteContext, metaReadContext);
     assertEquals(fory.deserialize(bytes2), beanA);
   }
 
@@ -195,9 +197,9 @@ public class JITContextTest extends ForyTestBase {
                           .requireClassRegistration(true)
                           .withAsyncCompilation(true)
                           .withCompatibleMode(CompatibleMode.COMPATIBLE)
-                          .buildThreadSafeForyPool(2, 4, 1, java.util.concurrent.TimeUnit.MINUTES);
-                  fory.register(BeanB.class, true);
-                  // fory.register(BeanA.class, true);
+                          .buildThreadSafeForyPool(4);
+                  fory.register(BeanB.class);
+                  // fory.register(BeanA.class);
                 } catch (Throwable t) {
                   errors.add(t);
                 } finally {

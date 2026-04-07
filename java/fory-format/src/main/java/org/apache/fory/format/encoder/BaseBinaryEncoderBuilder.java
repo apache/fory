@@ -35,6 +35,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
+import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
@@ -83,8 +84,10 @@ import org.apache.fory.util.StringUtils;
 /** Base encoder builder for {@link Row}, {@link ArrayData} and {@link MapData}. */
 public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected static final String REFERENCES_NAME = "references";
+  protected static final String FORY_NAME = "fory";
   protected static final TypeRef<Schema> SCHEMA_TYPE = TypeRef.of(Schema.class);
   protected static final TypeRef<Field> FORY_FIELD_TYPE = TypeRef.of(Field.class);
+  protected static final TypeRef<Fory> FORY_TYPE = TypeRef.of(Fory.class);
   protected static TypeRef<Schema> schemaTypeToken = TypeRef.of(Schema.class);
   protected static TypeRef<BinaryWriter> writerTypeToken = TypeRef.of(BinaryWriter.class);
   protected static TypeRef<Row> rowTypeToken = TypeRef.of(Row.class);
@@ -101,6 +104,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected final CustomTypeHandler customTypeHandler =
       CustomTypeEncoderRegistry.customTypeHandler();
   protected final TypeResolutionContext typeCtx;
+  protected final Reference foryRef = new Reference(FORY_NAME, FORY_TYPE, false);
 
   public BaseBinaryEncoderBuilder(CodegenContext context, Class<?> beanClass) {
     this(context, TypeRef.of(beanClass));
@@ -109,6 +113,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   public BaseBinaryEncoderBuilder(CodegenContext context, TypeRef<?> beanType) {
     super(context, beanType);
     ctx.reserveName(REFERENCES_NAME);
+    ctx.reserveName(FORY_NAME);
 
     ctx.addImport(BinaryRow.class.getPackage().getName() + ".*");
     ctx.addImport(BinaryWriter.class.getPackage().getName() + ".*");

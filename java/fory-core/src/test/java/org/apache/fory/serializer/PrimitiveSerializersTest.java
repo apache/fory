@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.*;
 
+import java.util.Collection;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
@@ -51,28 +52,32 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   public void testUint8Serializer() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
     PrimitiveSerializers.Uint8Serializer serializer =
-        new PrimitiveSerializers.Uint8Serializer(fory);
+        new PrimitiveSerializers.Uint8Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
-    serializer.write(buffer, 0);
-    assertEquals(serializer.read(buffer), Integer.valueOf(0));
-    serializer.write(buffer, 255);
-    assertEquals(serializer.read(buffer), Integer.valueOf(255));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 256));
+    writeSerializer(fory, serializer, buffer, 0);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
+    writeSerializer(fory, serializer, buffer, 255);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(255));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, 256));
   }
 
   @Test
   public void testUint16Serializer() {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
     PrimitiveSerializers.Uint16Serializer serializer =
-        new PrimitiveSerializers.Uint16Serializer(fory);
+        new PrimitiveSerializers.Uint16Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
-    serializer.write(buffer, 0);
-    assertEquals(serializer.read(buffer), Integer.valueOf(0));
-    serializer.write(buffer, 65535);
-    assertEquals(serializer.read(buffer), Integer.valueOf(65535));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, -1));
-    assertThrows(IllegalArgumentException.class, () -> serializer.write(buffer, 65536));
+    writeSerializer(fory, serializer, buffer, 0);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
+    writeSerializer(fory, serializer, buffer, 65535);
+    assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(65535));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writeSerializer(fory, serializer, buffer, 65536));
   }
 
   @Data
@@ -186,6 +191,15 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     public Uint64List uint64Values;
   }
 
+  public static class PrimitiveCollectionFieldStruct {
+    public Collection<Byte> int8Values;
+  }
+
+  public static class PrimitiveListCopyStruct {
+    public Int8List first;
+    public Int8List second;
+  }
+
   @Test(dataProvider = "compatibleMode")
   public void testPrimitiveArrayListRoundTrip(boolean compatible) {
     CompatibleMode mode = compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
@@ -215,6 +229,48 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     PrimitiveArrayStruct arrayRoundTrip =
         arrayFory.deserialize(listFory.serialize(listStruct), PrimitiveArrayStruct.class);
     assertArrayEqualsList(arrayRoundTrip, listStruct);
+  }
+
+  @Test
+  public void testPrimitiveListAsCollectionFieldWithCodegen() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .build();
+    PrimitiveCollectionFieldStruct struct = new PrimitiveCollectionFieldStruct();
+    struct.int8Values = new Int8List(new byte[] {1, -2, 3});
+    PrimitiveCollectionFieldStruct roundTrip =
+        fory.deserialize(fory.serialize(struct), PrimitiveCollectionFieldStruct.class);
+    assertNotNull(roundTrip);
+    assertTrue(roundTrip.int8Values instanceof Int8List);
+    assertEquals(((Int8List) roundTrip.int8Values).copyArray(), new byte[] {1, -2, 3});
+  }
+
+  @Test
+  public void testPrimitiveListCopyTracksReferences() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .withRefCopy(true)
+            .requireClassRegistration(false)
+            .build();
+    PrimitiveListCopyStruct struct = new PrimitiveListCopyStruct();
+    Int8List values = new Int8List(new byte[] {1, -2, 3});
+    struct.first = values;
+    struct.second = values;
+
+    PrimitiveListCopyStruct copy = fory.copy(struct);
+
+    assertNotSame(copy, struct);
+    assertNotSame(copy.first, values);
+    assertSame(copy.first, copy.second);
+    assertEquals(copy.first.copyArray(), new byte[] {1, -2, 3});
+
+    values.set(0, (byte) 9);
+    assertEquals(copy.first.copyArray(), new byte[] {1, -2, 3});
   }
 
   private PrimitiveArrayStruct buildPrimitiveArrayStruct() {

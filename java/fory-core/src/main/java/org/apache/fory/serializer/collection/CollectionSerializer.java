@@ -20,29 +20,31 @@
 package org.apache.fory.serializer.collection;
 
 import java.util.Collection;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.WriteContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 
 /** Base serializer for all java collections. */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CollectionSerializer<T extends Collection> extends CollectionLikeSerializer<T> {
-  public CollectionSerializer(Fory fory, Class<T> type) {
-    super(fory, type);
-  }
-
-  public CollectionSerializer(Fory fory, Class<T> type, boolean supportCodegenHook) {
-    super(fory, type, supportCodegenHook);
+  public CollectionSerializer(TypeResolver typeResolver, Class<T> type) {
+    super(typeResolver, type);
   }
 
   public CollectionSerializer(
-      Fory fory, Class<T> type, boolean supportCodegenHook, boolean immutable) {
-    super(fory, type, supportCodegenHook, immutable);
+      TypeResolver typeResolver, Class<T> type, boolean supportCodegenHook) {
+    super(typeResolver, type, supportCodegenHook);
+  }
+
+  public CollectionSerializer(
+      TypeResolver typeResolver, Class<T> type, boolean supportCodegenHook, boolean immutable) {
+    super(typeResolver, type, supportCodegenHook, immutable);
   }
 
   @Override
-  public Collection onCollectionWrite(MemoryBuffer buffer, T value) {
-    buffer.writeVarUint32Small7(value.size());
+  public Collection onCollectionWrite(WriteContext writeContext, T value) {
+    writeContext.getBuffer().writeVarUint32Small7(value.size());
     return value;
   }
 
@@ -52,14 +54,14 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
   }
 
   @Override
-  public T copy(T originCollection) {
+  public T copy(CopyContext copyContext, T originCollection) {
     if (isImmutable()) {
       return originCollection;
     }
     Preconditions.checkArgument(supportCodegenHook);
-    Collection newCollection = newCollection(originCollection);
-    fory.reference(originCollection, newCollection);
-    copyElements(originCollection, newCollection);
+    Collection newCollection = newCollection(copyContext, originCollection);
+    copyContext.reference(originCollection, newCollection);
+    copyElements(copyContext, originCollection, newCollection);
     return (T) newCollection;
   }
 }

@@ -19,7 +19,7 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
 
 /**
  * Serializer for immutable objects.
@@ -28,15 +28,16 @@ import org.apache.fory.Fory;
  */
 public abstract class ImmutableSerializer<T> extends Serializer<T> {
 
-  public ImmutableSerializer(Fory fory, Class<T> type) {
-    super(fory, type, true);
+  public ImmutableSerializer(Config config, Class<T> type) {
+    super(config, type, true);
   }
 
-  public ImmutableSerializer(Fory fory, Class<T> type, boolean needToWriteRef) {
-    super(fory, type, needToWriteRef, true);
+  public ImmutableSerializer(Config config, Class<T> type, boolean needToWriteRef) {
+    super(config, type, needToWriteRef, true);
   }
 
-  public ImmutableSerializer(Fory fory, Class<T> type, boolean needToWriteRef, boolean immutable) {
-    super(fory, type, needToWriteRef, immutable);
+  public ImmutableSerializer(
+      Config config, Class<T> type, boolean needToWriteRef, boolean immutable) {
+    super(config, type, needToWriteRef, immutable);
   }
 }

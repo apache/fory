@@ -34,6 +34,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
@@ -106,6 +107,13 @@ public class DefaultValueUtils {
      */
     public final DefaultValueField[] buildDefaultValueFields(
         Fory fory, Class<?> type, java.util.List<org.apache.fory.type.Descriptor> descriptors) {
+      return buildDefaultValueFields(fory.getTypeResolver(), type, descriptors);
+    }
+
+    public final DefaultValueField[] buildDefaultValueFields(
+        TypeResolver typeResolver,
+        Class<?> type,
+        java.util.List<org.apache.fory.type.Descriptor> descriptors) {
       DefaultValueField[] defaultFieldsArray = defaultValueFieldsCache.getIfPresent(type);
       if (defaultFieldsArray != null) {
         return defaultFieldsArray;
@@ -131,7 +139,7 @@ public class DefaultValueUtils {
             if (defaultValue != null
                 && TypeUtils.wrap(field.getType()).isAssignableFrom(defaultValue.getClass())) {
               FieldAccessor fieldAccessor = FieldAccessor.createAccessor(field);
-              int dispatchId = Types.getTypeId(fory, field.getType());
+              int dispatchId = Types.getTypeId(typeResolver, field.getType());
               // Convert value to correct type once during initialization
               Object convertedValue = convertToType(defaultValue, dispatchId);
               defaultFields.add(

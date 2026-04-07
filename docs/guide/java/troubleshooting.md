@@ -147,7 +147,7 @@ Fory fory = Fory.builder()
 **Solution**: Register a custom serializer:
 
 ```java
-fory.registerSerializer(MyClass.class, new MyClassSerializer(fory));
+fory.registerSerializer(MyClass.class, new MyClassSerializer(fory.getTypeResolver()));
 ```
 
 ## Performance Issues

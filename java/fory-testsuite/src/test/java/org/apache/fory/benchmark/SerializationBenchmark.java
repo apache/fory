@@ -108,13 +108,13 @@ public class SerializationBenchmark {
     // warm
     for (int i = 0; i < iterNums; i++) {
       buffer.writerIndex(0);
-      fory.writeRef(buffer, obj);
+      fory.serialize(buffer, obj);
     }
     // test
     long startTime = System.nanoTime();
     for (int i = 0; i < iterNums; i++) {
       buffer.writerIndex(0);
-      fory.writeRef(buffer, obj);
+      fory.serialize(buffer, obj);
     }
     long duration = System.nanoTime() - startTime;
     LOG.info(

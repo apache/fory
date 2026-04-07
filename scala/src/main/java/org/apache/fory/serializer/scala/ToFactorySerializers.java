@@ -19,7 +19,9 @@
 
 package org.apache.fory.serializer.scala;
 
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -46,20 +48,25 @@ public class ToFactorySerializers  {
       }
     }
 
-    public IterableToFactorySerializer(Fory fory) {
-      super(fory, IterableToFactoryClass);
+    public IterableToFactorySerializer(Config config) {
+      super(config, IterableToFactoryClass);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      fory.writeRef(buffer, Platform.getObject(value, fieldOffset));
+    public void write(WriteContext writeContext, Object value) {
+      writeContext.writeRef(Platform.getObject(value, fieldOffset));
     }
 
     @Override
-    public Object read(MemoryBuffer buffer) {
+    public Object read(ReadContext readContext) {
       Object o = Platform.newInstance(type);
-      Platform.putObject(o, fieldOffset, fory.readRef(buffer));
+      Platform.putObject(o, fieldOffset, readContext.readRef());
       return o;
+    }
+
+    @Override
+    public boolean shareable() {
+      return true;
     }
   }
 
@@ -76,20 +83,25 @@ public class ToFactorySerializers  {
       }
     }
 
-    public MapToFactorySerializer(Fory fory) {
-      super(fory, MapToFactoryClass);
+    public MapToFactorySerializer(Config config) {
+      super(config, MapToFactoryClass);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      fory.writeRef(buffer, Platform.getObject(value, fieldOffset));
+    public void write(WriteContext writeContext, Object value) {
+      writeContext.writeRef(Platform.getObject(value, fieldOffset));
     }
 
     @Override
-    public Object read(MemoryBuffer buffer) {
+    public Object read(ReadContext readContext) {
       Object o = Platform.newInstance(type);
-      Platform.putObject(o, fieldOffset, fory.readRef(buffer));
+      Platform.putObject(o, fieldOffset, readContext.readRef());
       return o;
+    }
+
+    @Override
+    public boolean shareable() {
+      return true;
     }
   }
 }

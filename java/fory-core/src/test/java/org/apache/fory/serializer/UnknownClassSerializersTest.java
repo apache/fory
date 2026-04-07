@@ -38,9 +38,10 @@ import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.test.bean.Struct;
 import org.codehaus.commons.compiler.util.reflect.ByteArrayClassLoader;
 import org.testng.Assert;
@@ -111,7 +112,7 @@ public class UnknownClassSerializersTest extends ForyTestBase {
 
   @Test
   public void testUnknownEnum() {
-    // Use scoped meta share for automatic MetaContext management
+    // Use scoped meta share for automatic meta read/write context management
     Fory fory = foryBuilder().withDeserializeUnknownClass(true).build();
     String enumCode = ("enum TestEnum {" + " A, B" + "}");
     Class<?> cls = JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum", enumCode);
@@ -126,7 +127,7 @@ public class UnknownClassSerializersTest extends ForyTestBase {
 
   @Test
   public void testUnknownEnum_AsString() {
-    // Use scoped meta share for automatic MetaContext management
+    // Use scoped meta share for automatic meta read/write context management
     Fory fory = foryBuilder().withDeserializeUnknownClass(true).serializeEnumByName(true).build();
     String enumCode = ("enum TestEnum {" + " A, B" + "}");
     Class<?> cls = JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum", enumCode);
@@ -225,7 +226,7 @@ public class UnknownClassSerializersTest extends ForyTestBase {
     arr2D[0] = arr;
     arr2D[1] = arr;
     ReflectionUtils.setObjectFieldValue(o, "f4", arr2D);
-    // Use scoped meta share for automatic MetaContext management
+    // Use scoped meta share for automatic meta read/write context management
     Fory fory1 =
         foryBuilder()
             .withDeserializeUnknownClass(true)
@@ -269,8 +270,9 @@ public class UnknownClassSerializersTest extends ForyTestBase {
           Struct.createStructClass("TestUnknownEmptyStructClass2", 2)
         }) {
       Object pojo = Struct.createPOJO(structClass);
-      MetaContext context1 = new MetaContext();
-      fory.getSerializationContext().setMetaContext(context1);
+      MetaWriteContext metaWriteContext1 = new MetaWriteContext();
+      MetaReadContext metaReadContext1 = new MetaReadContext();
+      setMetaContexts(fory, metaWriteContext1, metaReadContext1);
       byte[] bytes = fory.serialize(pojo);
       Fory fory2 =
           foryBuilder()
@@ -279,11 +281,12 @@ public class UnknownClassSerializersTest extends ForyTestBase {
               .withMetaShare(true)
               .withClassLoader(classLoader)
               .build();
-      MetaContext context2 = new MetaContext();
-      fory2.getSerializationContext().setMetaContext(context2);
+      MetaWriteContext metaWriteContext2 = new MetaWriteContext();
+      MetaReadContext metaReadContext2 = new MetaReadContext();
+      setMetaContexts(fory2, metaWriteContext2, metaReadContext2);
       Object o2 = fory2.deserialize(bytes);
       assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
-      fory2.getSerializationContext().setMetaContext(context2);
+      setMetaContexts(fory2, metaWriteContext2, metaReadContext2);
       byte[] bytes2 = fory2.serialize(o2);
       Fory fory3 =
           foryBuilder()
@@ -292,8 +295,9 @@ public class UnknownClassSerializersTest extends ForyTestBase {
               .withMetaShare(true)
               .withClassLoader(pojo.getClass().getClassLoader())
               .build();
-      MetaContext context3 = new MetaContext();
-      fory3.getSerializationContext().setMetaContext(context3);
+      MetaWriteContext metaWriteContext3 = new MetaWriteContext();
+      MetaReadContext metaReadContext3 = new MetaReadContext();
+      setMetaContexts(fory3, metaWriteContext3, metaReadContext3);
       Object o3 = fory3.deserialize(bytes2);
       assertEquals(o3.getClass(), structClass);
       assertEquals(o3, pojo);
@@ -312,9 +316,12 @@ public class UnknownClassSerializersTest extends ForyTestBase {
             .withCodegen(enableCodegen1)
             .withMetaShare(true)
             .build();
-    MetaContext context1 = new MetaContext();
-    MetaContext context2 = new MetaContext();
-    MetaContext context3 = new MetaContext();
+    MetaWriteContext metaWriteContext1 = new MetaWriteContext();
+    MetaReadContext metaReadContext1 = new MetaReadContext();
+    MetaWriteContext metaWriteContext2 = new MetaWriteContext();
+    MetaReadContext metaReadContext2 = new MetaReadContext();
+    MetaWriteContext metaWriteContext3 = new MetaWriteContext();
+    MetaReadContext metaReadContext3 = new MetaReadContext();
     ClassLoader classLoader = getClass().getClassLoader();
     for (Class<?> structClass :
         new Class<?>[] {
@@ -337,16 +344,16 @@ public class UnknownClassSerializersTest extends ForyTestBase {
               .build();
       for (int i = 0; i < 2; i++) {
         Object pojo = Struct.createPOJO(structClass);
-        fory.getSerializationContext().setMetaContext(context1);
+        setMetaContexts(fory, metaWriteContext1, metaReadContext1);
         byte[] bytes = fory.serialize(pojo);
 
-        fory2.getSerializationContext().setMetaContext(context2);
+        setMetaContexts(fory2, metaWriteContext2, metaReadContext2);
         Object o2 = fory2.deserialize(bytes);
         assertEquals(o2.getClass(), UnknownClass.UnknownStruct.class);
-        fory2.getSerializationContext().setMetaContext(context2);
+        setMetaContexts(fory2, metaWriteContext2, metaReadContext2);
         byte[] bytes2 = fory2.serialize(o2);
 
-        fory3.getSerializationContext().setMetaContext(context3);
+        setMetaContexts(fory3, metaWriteContext3, metaReadContext3);
         Object o3 = fory3.deserialize(bytes2);
         assertEquals(o3.getClass(), structClass);
         assertEquals(o3, pojo);
@@ -356,7 +363,7 @@ public class UnknownClassSerializersTest extends ForyTestBase {
 
   @Test
   public void testThrowExceptionIfClassNotExist() {
-    // Use scoped meta share for automatic MetaContext management
+    // Use scoped meta share for automatic meta read/write context management
     Fory fory = foryBuilder().withDeserializeUnknownClass(false).build();
     ClassLoader classLoader = getClass().getClassLoader();
     Class<?> structClass = Struct.createNumberStructClass("TestUnknownEmptyStructClass1", 2);

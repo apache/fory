@@ -28,14 +28,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -176,23 +179,24 @@ public class ReplaceResolveSerializer extends Serializer {
     }
   }
 
-  static MethodInfoCache newJDKMethodInfoCache(Class<?> cls, Fory fory) {
+  static MethodInfoCache newJDKMethodInfoCache(TypeResolver typeResolver, Class<?> cls) {
     ReplaceResolveInfo replaceResolveInfo = REPLACE_RESOLVE_INFO_CACHE.get(cls);
     MethodInfoCache methodInfoCache = new MethodInfoCache(replaceResolveInfo);
+    ClassResolver classResolver = (ClassResolver) typeResolver;
     Class<? extends Serializer> serializerClass;
     if (Externalizable.class.isAssignableFrom(cls)) {
       serializerClass = ExternalizableSerializer.class;
-    } else if (JavaSerializer.getReadObjectMethod(cls, true) == null
+    } else if (JavaSerializer.getReadRefMethod(cls, true) == null
         && JavaSerializer.getWriteObjectMethod(cls, true) == null) {
       serializerClass =
-          ((ClassResolver) fory.getTypeResolver())
-              .getObjectSerializerClass(
-                  cls,
-                  sc -> methodInfoCache.setObjectSerializer(createDataSerializer(fory, cls, sc)));
+          classResolver.getObjectSerializerClass(
+              cls,
+              sc ->
+                  methodInfoCache.setObjectSerializer(createDataSerializer(typeResolver, cls, sc)));
     } else {
-      serializerClass = fory.getDefaultJDKStreamSerializerType();
+      serializerClass = typeResolver.getDefaultJDKStreamSerializerType();
     }
-    methodInfoCache.setObjectSerializer(createDataSerializer(fory, cls, serializerClass));
+    methodInfoCache.setObjectSerializer(createDataSerializer(typeResolver, cls, serializerClass));
     return methodInfoCache;
   }
 
@@ -203,29 +207,29 @@ public class ReplaceResolveSerializer extends Serializer {
    * @see #readObject
    */
   private static Serializer createDataSerializer(
-      Fory fory, Class<?> cls, Class<? extends Serializer> sc) {
-    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+      TypeResolver typeResolver, Class<?> cls, Class<? extends Serializer> sc) {
+    ClassResolver classResolver = (ClassResolver) typeResolver;
     Serializer prev = classResolver.getSerializer(cls, false);
-    Serializer serializer = Serializers.newSerializer(fory, cls, sc);
+    Serializer serializer = Serializers.newSerializer(typeResolver, cls, sc);
     classResolver.resetSerializer(cls, prev);
     return serializer;
   }
 
-  protected final RefResolver refResolver;
+  protected final TypeResolver typeResolver;
   protected final ClassResolver classResolver;
   protected final MethodInfoCache jdkMethodInfoWriteCache;
   protected final TypeInfo writeTypeInfo;
   protected final Map<Class<?>, MethodInfoCache> classTypeInfoHolderMap = new HashMap<>();
 
-  public ReplaceResolveSerializer(Fory fory, Class type) {
-    this(fory, type, false, true);
+  public ReplaceResolveSerializer(TypeResolver typeResolver, Class type) {
+    this(typeResolver, type, false, true);
   }
 
   public ReplaceResolveSerializer(
-      Fory fory, Class type, boolean isFinalField, boolean setSerializer) {
-    super(fory, type);
-    refResolver = fory.getRefResolver();
-    classResolver = (ClassResolver) fory.getTypeResolver();
+      TypeResolver typeResolver, Class type, boolean isFinalField, boolean setSerializer) {
+    super(typeResolver.getConfig(), type);
+    this.typeResolver = typeResolver;
+    classResolver = (ClassResolver) typeResolver;
     if (setSerializer) {
       // `setSerializer` before `newJDKMethodInfoCache` since it query classinfo from
       // `classResolver`,
@@ -235,7 +239,7 @@ public class ReplaceResolveSerializer extends Serializer {
       classResolver.setSerializerIfAbsent(type, this);
     }
     if (type != ReplaceStub.class) {
-      jdkMethodInfoWriteCache = newJDKMethodInfoCache(type, fory);
+      jdkMethodInfoWriteCache = newJDKMethodInfoCache(typeResolver, type);
       classTypeInfoHolderMap.put(type, jdkMethodInfoWriteCache);
       if (isFinalField) {
         writeTypeInfo = null;
@@ -251,7 +255,8 @@ public class ReplaceResolveSerializer extends Serializer {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {
+  public void write(WriteContext writeContext, Object value) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     MethodInfoCache jdkMethodInfoCache = this.jdkMethodInfoWriteCache;
     ReplaceResolveInfo replaceResolveInfo = jdkMethodInfoCache.info;
     Method writeReplaceMethod = replaceResolveInfo.writeReplaceMethod;
@@ -264,80 +269,80 @@ public class ReplaceResolveSerializer extends Serializer {
       //  which is not a problem in almost every case but inconsistent with JDK serialization.
       if (value == null || value.getClass() != type) {
         buffer.writeByte(REPLACED_NEW_TYPE);
-        if (!refResolver.writeRefOrNull(buffer, value)) {
+        if (!writeContext.writeRefOrNull(value)) {
           // replace original object reference id with new object reference id
           // for later object graph serialization.
           // written `REF_VALUE_FLAG`/`NOT_NULL_VALUE_FLAG` id outside this method call will be
           // ignored.
-          refResolver.replaceRef(original, value);
-          fory.writeNonRef(buffer, value);
+          writeContext.replaceRef(original, value);
+          writeContext.writeNonRef(value);
         }
       } else {
         if (value != original) {
           buffer.writeByte(REPLACED_SAME_TYPE);
-          if (!refResolver.writeRefOrNull(buffer, value)) {
+          if (!writeContext.writeRefOrNull(value)) {
             // replace original object reference id with new object reference id
             // for later object graph serialization,
             // written `REF_VALUE_FLAG`/`NOT_NULL_VALUE_FLAG` id outside this method call will be
             // ignored.
-            refResolver.replaceRef(original, value);
-            writeObject(buffer, value, jdkMethodInfoCache);
+            writeContext.replaceRef(original, value);
+            writeObject(writeContext, value, jdkMethodInfoCache);
           }
         } else {
           buffer.writeByte(ORIGINAL);
-          writeObject(buffer, value, jdkMethodInfoCache);
+          writeObject(writeContext, value, jdkMethodInfoCache);
         }
       }
     } else {
       buffer.writeByte(ORIGINAL);
-      writeObject(buffer, value, jdkMethodInfoCache);
+      writeObject(writeContext, value, jdkMethodInfoCache);
     }
   }
 
   protected void writeObject(
-      MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
-    classResolver.writeClassInternal(buffer, writeTypeInfo);
-    jdkMethodInfoCache.objectSerializer.write(buffer, value);
+      WriteContext writeContext, Object value, MethodInfoCache jdkMethodInfoCache) {
+    classResolver.writeClassInternal(writeContext, writeTypeInfo);
+    jdkMethodInfoCache.objectSerializer.write(writeContext, value);
   }
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     byte flag = buffer.readByte();
-    RefResolver refResolver = this.refResolver;
     if (flag == REPLACED_NEW_TYPE) {
-      int outerRefId = refResolver.lastPreservedRefId();
-      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+      int outerRefId = readContext.lastPreservedRefId();
+      int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         // ref value or not-null value
-        Object o = fory.readData(buffer, classResolver.readTypeInfo(buffer));
-        refResolver.setReadObject(nextReadRefId, o);
-        refResolver.setReadObject(outerRefId, o);
+        Object o = readContext.readData(classResolver.readTypeInfo(readContext));
+        readContext.setReadRef(nextReadRefId, o);
+        readContext.setReadRef(outerRefId, o);
         return o;
       } else {
-        return refResolver.getReadObject();
+        return readContext.getReadRef();
       }
     } else if (flag == REPLACED_SAME_TYPE) {
-      int outerRefId = refResolver.lastPreservedRefId();
-      int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+      int outerRefId = readContext.lastPreservedRefId();
+      int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         // ref value or not-null value
-        Object o = readObject(buffer);
-        refResolver.setReadObject(nextReadRefId, o);
-        refResolver.setReadObject(outerRefId, o);
+        Object o = readObject(readContext);
+        readContext.setReadRef(nextReadRefId, o);
+        readContext.setReadRef(outerRefId, o);
         return o;
       } else {
-        return refResolver.getReadObject();
+        return readContext.getReadRef();
       }
     } else {
       Preconditions.checkArgument(flag == ORIGINAL);
-      return readObject(buffer);
+      return readObject(readContext);
     }
   }
 
-  protected Object readObject(MemoryBuffer buffer) {
-    Class cls = classResolver.readClassInternal(buffer);
+  protected Object readObject(ReadContext readContext) {
+    Class cls = classResolver.readClassInternal(readContext);
     MethodInfoCache jdkMethodInfoCache = getMethodInfoCache(cls);
-    Object o = jdkMethodInfoCache.objectSerializer.read(buffer);
+    Object o = jdkMethodInfoCache.objectSerializer.read(readContext);
     ReplaceResolveInfo replaceResolveInfo = jdkMethodInfoCache.info;
     if (replaceResolveInfo.readResolveMethod == null) {
       return o;
@@ -346,18 +351,18 @@ public class ReplaceResolveSerializer extends Serializer {
   }
 
   @Override
-  public Object copy(Object originObj) {
+  public Object copy(CopyContext copyContext, Object originObj) {
     ReplaceResolveInfo replaceResolveInfo = jdkMethodInfoWriteCache.info;
     if (replaceResolveInfo.writeReplaceMethod == null) {
-      return jdkMethodInfoWriteCache.objectSerializer.copy(originObj);
+      return jdkMethodInfoWriteCache.objectSerializer.copy(copyContext, originObj);
     }
     Object newObj = originObj;
     newObj = replaceResolveInfo.writeReplace(newObj);
     if (needToCopyRef) {
-      fory.reference(originObj, newObj);
+      copyContext.reference(originObj, newObj);
     }
     MethodInfoCache jdkMethodInfoCache = getMethodInfoCache(newObj.getClass());
-    newObj = jdkMethodInfoCache.objectSerializer.copy(newObj);
+    newObj = jdkMethodInfoCache.objectSerializer.copy(copyContext, newObj);
     replaceResolveInfo = jdkMethodInfoCache.info;
     if (replaceResolveInfo.readResolveMethod != null) {
       newObj = replaceResolveInfo.readResolve(newObj);
@@ -368,7 +373,7 @@ public class ReplaceResolveSerializer extends Serializer {
   protected MethodInfoCache getMethodInfoCache(Class<?> cls) {
     MethodInfoCache jdkMethodInfoCache = classTypeInfoHolderMap.get(cls);
     if (jdkMethodInfoCache == null) {
-      jdkMethodInfoCache = newJDKMethodInfoCache(cls, fory);
+      jdkMethodInfoCache = newJDKMethodInfoCache(typeResolver, cls);
       classTypeInfoHolderMap.put(cls, jdkMethodInfoCache);
     }
     return jdkMethodInfoCache;

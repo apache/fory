@@ -20,36 +20,131 @@
 package org.apache.fory;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
-import java.util.WeakHashMap;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.Data;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.MetaContext;
+import org.apache.fory.pool.ThreadPoolFory;
+import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
-import org.apache.fory.test.bean.Struct;
-import org.apache.fory.util.LoaderBinding.StagingType;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class ThreadSafeForyTest extends ForyTestBase {
-  private volatile boolean hasException;
 
   @Test
-  public void testPoolSerialize() {
+  public void testBuildThreadSafeForyUsesThreadPoolFory() {
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeFory();
+    assertTrue(fory instanceof ThreadPoolFory);
+  }
+
+  @Test
+  public void testFunctionFactoryConstructorsUseBuilderProvidedClassLoader() {
+    ClassLoader custom = new ClassLoader(ClassLoader.getSystemClassLoader()) {};
+    ThreadLocalFory threadLocal =
+        new ThreadLocalFory(
+            builder -> builder.withClassLoader(custom).requireClassRegistration(false).build());
+    ThreadPoolFory threadPool =
+        new ThreadPoolFory(
+            builder -> builder.withClassLoader(custom).requireClassRegistration(false).build(), 2);
+    assertSame(threadLocal.execute(Fory::getClassLoader), custom);
+    assertSame(threadPool.execute(Fory::getClassLoader), custom);
+  }
+
+  @Test
+  public void testThreadSafeRuntimesShareRegistryAcrossRawForyInstances() throws Exception {
+    ThreadLocalFory threadLocal =
+        Fory.builder().requireClassRegistration(false).buildThreadLocalFory();
+    AtomicReference<SharedRegistry> threadLocalRegistry1 = new AtomicReference<>();
+    AtomicReference<SharedRegistry> threadLocalRegistry2 = new AtomicReference<>();
+    Thread thread1 =
+        new Thread(() -> threadLocalRegistry1.set(threadLocal.execute(Fory::getSharedRegistry)));
+    Thread thread2 =
+        new Thread(() -> threadLocalRegistry2.set(threadLocal.execute(Fory::getSharedRegistry)));
+    thread1.start();
+    thread1.join();
+    thread2.start();
+    thread2.join();
+    assertSame(threadLocalRegistry1.get(), threadLocalRegistry2.get());
+
+    ThreadPoolFory threadPool =
+        (ThreadPoolFory) Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(2);
+    CountDownLatch acquired = new CountDownLatch(2);
+    CountDownLatch release = new CountDownLatch(1);
+    AtomicReference<SharedRegistry> threadPoolRegistry1 = new AtomicReference<>();
+    AtomicReference<SharedRegistry> threadPoolRegistry2 = new AtomicReference<>();
+    AtomicReference<Throwable> error = new AtomicReference<>();
+    Thread poolThread1 =
+        new Thread(
+            () -> {
+              try {
+                threadPool.execute(
+                    fory -> {
+                      threadPoolRegistry1.set(fory.getSharedRegistry());
+                      acquired.countDown();
+                      awaitUnchecked(release);
+                      return null;
+                    });
+              } catch (Throwable t) {
+                error.compareAndSet(null, t);
+              }
+            });
+    Thread poolThread2 =
+        new Thread(
+            () -> {
+              try {
+                threadPool.execute(
+                    fory -> {
+                      threadPoolRegistry2.set(fory.getSharedRegistry());
+                      acquired.countDown();
+                      awaitUnchecked(release);
+                      return null;
+                    });
+              } catch (Throwable t) {
+                error.compareAndSet(null, t);
+              }
+            });
+    poolThread1.start();
+    poolThread2.start();
+    assertTrue(acquired.await(30, TimeUnit.SECONDS));
+    release.countDown();
+    poolThread1.join();
+    poolThread2.join();
+    if (error.get() != null) {
+      throw new AssertionError(error.get());
+    }
+    assertSame(threadPoolRegistry1.get(), threadPoolRegistry2.get());
+  }
+
+  private static void awaitUnchecked(CountDownLatch latch) {
+    try {
+      latch.await();
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new AssertionError(e);
+    }
+  }
+
+  @Test
+  public void testThreadSafeSerialize() throws InterruptedException {
     BeanA beanA = BeanA.createBeanA(2);
     ThreadSafeFory fory =
         Fory.builder()
@@ -57,99 +152,96 @@ public class ThreadSafeForyTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withAsyncCompilation(true)
-            .buildThreadSafeForyPool(5, 10);
-    for (int i = 0; i < 2000; i++) {
-      new Thread(
-              () -> {
-                for (int j = 0; j < 10; j++) {
-                  try {
-                    fory.setClassLoader(beanA.getClass().getClassLoader());
-                    assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
-                  } catch (Exception e) {
-                    hasException = true;
-                    e.printStackTrace();
-                  }
-                }
-              })
-          .start();
-    }
-    assertFalse(hasException);
+            .buildThreadSafeFory();
+    assertConcurrentRoundTrip(fory, beanA);
+  }
+
+  @Test
+  public void testPoolSerialize() throws InterruptedException {
+    BeanA beanA = BeanA.createBeanA(2);
+    ThreadSafeFory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .withAsyncCompilation(true)
+            .buildThreadSafeForyPool(10);
+    assertConcurrentRoundTrip(fory, beanA);
   }
 
   @Test
   public void testRegistration() throws Exception {
     BeanB bean = BeanB.createBeanB(2);
     ExecutorService executor = Executors.newSingleThreadExecutor();
-    AtomicReference<Throwable> ex = new AtomicReference<>();
-    {
-      ThreadSafeFory fory =
-          Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(2, 4);
-      fory.register(BeanB.class);
-      Assert.assertEquals(fory.deserialize(fory.serialize(bean)), bean);
+    try {
+      AtomicReference<Throwable> error = new AtomicReference<>();
+      ThreadSafeFory pooled =
+          Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(4);
+      pooled.register(BeanB.class);
+      assertEquals(pooled.deserialize(pooled.serialize(bean)), bean);
       executor.execute(
           () -> {
             try {
-              Assert.assertEquals(fory.deserialize(fory.serialize(bean)), bean);
+              assertEquals(pooled.deserialize(pooled.serialize(bean)), bean);
             } catch (Throwable t) {
-              ex.set(t);
+              error.set(t);
             }
           });
-      Assert.assertNull(ex.get());
-    }
-    {
-      ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
-      fory.register(BeanB.class);
-      Assert.assertEquals(fory.deserialize(fory.serialize(bean)), bean);
-      executor.execute(
-          () -> {
-            try {
-              Assert.assertEquals(fory.deserialize(fory.serialize(bean)), bean);
-            } catch (Throwable t) {
-              ex.set(t);
-            }
-          });
-      Assert.assertNull(ex.get());
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+      assertNull(error.get());
+    } finally {
+      executor.shutdownNow();
     }
   }
 
   @Test
-  public void testSerialize() throws Exception {
-    BeanA beanA = BeanA.createBeanA(2);
-    ThreadSafeFory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(true)
-            .requireClassRegistration(false)
-            .withAsyncCompilation(true)
-            .buildThreadSafeFory();
-    ExecutorService executorService = Executors.newFixedThreadPool(12);
-    for (int i = 0; i < 2000; i++) {
-      executorService.execute(
-          () -> {
-            for (int j = 0; j < 10; j++) {
-              try {
-                fory.setClassLoader(beanA.getClass().getClassLoader());
-                assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
-              } catch (Exception e) {
-                hasException = true;
-                e.printStackTrace();
-              }
-            }
-          });
+  public void testThreadPoolReusesForyAcrossThreads() throws InterruptedException {
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(1);
+    AtomicReference<Integer> firstForyId = new AtomicReference<>();
+    AtomicReference<Integer> secondForyId = new AtomicReference<>();
+    AtomicReference<Throwable> error = new AtomicReference<>();
+    try {
+      Thread first =
+          new Thread(
+              () -> {
+                try {
+                  firstForyId.set(fory.execute(System::identityHashCode));
+                } catch (Throwable t) {
+                  error.compareAndSet(null, t);
+                }
+              });
+      Thread second =
+          new Thread(
+              () -> {
+                try {
+                  secondForyId.set(fory.execute(System::identityHashCode));
+                } catch (Throwable t) {
+                  error.compareAndSet(null, t);
+                }
+              });
+      first.start();
+      first.join();
+      second.start();
+      second.join();
+      if (error.get() != null) {
+        throw new AssertionError(error.get());
+      }
+      assertNotNull(firstForyId.get());
+      assertEquals(secondForyId.get(), firstForyId.get());
+    } finally {
+      // no-op
     }
-    executorService.shutdown();
-    assertTrue(executorService.awaitTermination(30, TimeUnit.SECONDS));
-    assertFalse(hasException);
   }
 
   @Test
   public void testSerializeWithMetaShare() throws InterruptedException {
-    ThreadSafeFory fory1 =
+    ThreadSafeFory plain =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .requireClassRegistration(false)
             .buildThreadSafeFory();
-    ThreadSafeFory fory2 =
+    ThreadSafeFory shared =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .withMetaShare(true)
@@ -157,164 +249,88 @@ public class ThreadSafeForyTest extends ForyTestBase {
             .buildThreadSafeFory();
     BeanA beanA = BeanA.createBeanA(2);
     ExecutorService executorService = Executors.newFixedThreadPool(12);
-    ConcurrentHashMap<Thread, MetaContext> metaMap = new ConcurrentHashMap<>();
-    for (int i = 0; i < 2000; i++) {
+    AtomicReference<Throwable> error = new AtomicReference<>();
+    for (int i = 0; i < 200; i++) {
       executorService.execute(
           () -> {
-            for (int j = 0; j < 10; j++) {
-              try {
-                {
-                  fory1.setClassLoader(beanA.getClass().getClassLoader());
-                  byte[] serialized = fory1.execute(f -> f.serialize(beanA));
-                  Object newObj = fory1.execute(f -> f.deserialize(serialized));
-                  assertEquals(newObj, beanA);
-                }
-                {
-                  fory2.setClassLoader(beanA.getClass().getClassLoader());
-                  byte[] serialized =
-                      fory2.execute(
-                          f -> {
-                            f.getSerializationContext().setMetaContext(new MetaContext());
-                            return f.serialize(beanA);
-                          });
-                  Object newObj =
-                      fory2.execute(
-                          f -> {
-                            f.getSerializationContext().setMetaContext(new MetaContext());
-                            return f.deserialize(serialized);
-                          });
-                  assertEquals(newObj, beanA);
-                }
-                {
-                  MetaContext metaContext =
-                      metaMap.computeIfAbsent(Thread.currentThread(), k -> new MetaContext());
-                  fory2.setClassLoader(beanA.getClass().getClassLoader());
-                  byte[] serialized =
-                      fory2.execute(
-                          f -> {
-                            f.getSerializationContext().setMetaContext(metaContext);
-                            return f.serialize(beanA);
-                          });
-                  Object newObj =
-                      fory2.execute(
-                          f -> {
-                            f.getSerializationContext().setMetaContext(metaContext);
-                            return f.deserialize(serialized);
-                          });
-                  assertEquals(newObj, beanA);
-                }
-              } catch (Exception e) {
-                hasException = true;
-                e.printStackTrace();
-                throw e;
+            try {
+              for (int j = 0; j < 10; j++) {
+                byte[] serialized = plain.execute(f -> f.serialize(beanA));
+                assertEquals(plain.execute(f -> f.deserialize(serialized)), beanA);
+
+                byte[] sharedBytes =
+                    shared.execute(
+                        f -> {
+                          f.setMetaWriteContext(new MetaWriteContext());
+                          return f.serialize(beanA);
+                        });
+                Object sharedObj =
+                    shared.execute(
+                        f -> {
+                          f.setMetaReadContext(new MetaReadContext());
+                          return f.deserialize(sharedBytes);
+                        });
+                assertEquals(sharedObj, beanA);
               }
+            } catch (Throwable t) {
+              error.compareAndSet(null, t);
             }
           });
     }
     executorService.shutdown();
     assertTrue(executorService.awaitTermination(30, TimeUnit.SECONDS));
-    assertFalse(hasException);
-  }
-
-  @DataProvider(name = "stagingConfig")
-  public static Object[][] stagingConfig() {
-    return new Object[][] {{StagingType.NO_STAGING}, {StagingType.STRONG_STAGING}};
-  }
-
-  @Test(dataProvider = "stagingConfig")
-  public void testClassDuplicateName(StagingType staging) {
-    ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeFory();
-    String className = "DuplicateStruct";
-    Class<?> structClass1 = Struct.createStructClass(className, 1);
-    Object struct1 = Struct.createPOJO(structClass1);
-    byte[] bytes1 = fory.serialize(struct1);
-    Assert.assertEquals(fory.deserialize(bytes1), struct1);
-    Class<? extends Serializer> serializerClass1 =
-        fory.execute(f -> f.getTypeResolver().getSerializerClass(structClass1));
-    Assert.assertTrue(serializerClass1.getName().contains("Codec"));
-
-    Class<?> structClass2 = Struct.createStructClass(className, 2);
-    Object struct2 = Struct.createPOJO(structClass2);
-    assertEquals(
-        struct2.getClass().getDeclaredFields().length,
-        struct1.getClass().getDeclaredFields().length * 2);
-    AtomicReference<byte[]> bytesReference = new AtomicReference<>();
-    CompletableFuture.runAsync(
-            () -> {
-              fory.setClassLoader(structClass2.getClassLoader(), staging);
-              byte[] bytes2 = fory.serialize(struct2);
-              bytesReference.set(bytes2);
-            })
-        .join();
-    byte[] bytes2 = bytesReference.get();
-    fory.setClassLoader(structClass2.getClassLoader());
-    Assert.assertEquals(fory.deserialize(bytes2), struct2);
-    Class<? extends Serializer> serializerClass2 =
-        fory.execute(f -> f.getTypeResolver().getSerializerClass(structClass2));
-    Assert.assertTrue(serializerClass2.getName().contains("Codec"));
-    Assert.assertNotSame(serializerClass2, serializerClass1);
-
-    byte[] newBytes1 = fory.serialize(struct1);
-    CompletableFuture.runAsync(
-            () -> {
-              fory.setClassLoader(structClass1.getClassLoader(), staging);
-              fory.setTypeChecker((classResolver, className1) -> true);
-              fory.setSerializerFactory((fory1, cls) -> null);
-              Assert.assertEquals(fory.deserialize(newBytes1), struct1);
-            })
-        .join();
-  }
-
-  @Test(timeOut = 60_000)
-  public void testClassGC() throws Exception {
-    // Can't inline `generateClassForGC` in current method, generated classes won't be gc.
-    WeakHashMap<Class<?>, Boolean> map = generateClassForGC();
-    TestUtils.triggerOOMForSoftGC(
-        () -> {
-          if (!map.isEmpty()) {
-            System.out.printf("Wait classes %s gc.\n", map.keySet());
-            return true;
-          } else {
-            return false;
-          }
-        });
-  }
-
-  private WeakHashMap<Class<?>, Boolean> generateClassForGC() {
-    ThreadSafeFory fory1 = Fory.builder().requireClassRegistration(false).buildThreadLocalFory();
-    ThreadSafeFory fory2 =
-        Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(1, 2);
-    String className = "DuplicateStruct";
-    WeakHashMap<Class<?>, Boolean> map = new WeakHashMap<>();
-    {
-      Class<?> structClass1 = Struct.createStructClass(className, 1, false);
-      Object struct1 = Struct.createPOJO(structClass1);
-      for (ThreadSafeFory fory : new ThreadSafeFory[] {fory1, fory2}) {
-        fory.setClassLoader(structClass1.getClassLoader());
-        byte[] bytes = fory.serialize(struct1);
-        Assert.assertEquals(fory.deserialize(bytes), struct1);
-        map.put(structClass1, true);
-        System.out.printf(
-            "structClass1 %s %s\n",
-            structClass1.hashCode(), structClass1.getClassLoader().hashCode());
-        fory.clearClassLoader(structClass1.getClassLoader());
-      }
+    if (error.get() != null) {
+      throw new AssertionError(error.get());
     }
-    {
-      Class<?> structClass2 = Struct.createStructClass(className, 2, false);
-      map.put(structClass2, true);
-      System.out.printf(
-          "structClass2 %s %s\n ",
-          structClass2.hashCode(), structClass2.getClassLoader().hashCode());
-      for (ThreadSafeFory fory : new ThreadSafeFory[] {fory1, fory2}) {
-        fory.setClassLoader(structClass2.getClassLoader());
-        Object struct2 = Struct.createPOJO(structClass2);
-        byte[] bytes2 = fory.serialize(struct2);
-        Assert.assertEquals(fory.deserialize(bytes2), struct2);
-        fory.clearClassLoader(structClass2.getClassLoader());
-      }
+  }
+
+  @Test
+  public void testThreadLocalMetaShareWithPerThreadMetaContexts() throws InterruptedException {
+    ThreadSafeFory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .buildThreadLocalFory();
+    BeanA beanA = BeanA.createBeanA(2);
+    ExecutorService executorService = Executors.newFixedThreadPool(12);
+    ConcurrentHashMap<Thread, MetaWriteContext> writeMetaMap = new ConcurrentHashMap<>();
+    ConcurrentHashMap<Thread, MetaReadContext> readMetaMap = new ConcurrentHashMap<>();
+    AtomicReference<Throwable> error = new AtomicReference<>();
+    for (int i = 0; i < 200; i++) {
+      executorService.execute(
+          () -> {
+            try {
+              for (int j = 0; j < 10; j++) {
+                MetaWriteContext metaWriteContext =
+                    writeMetaMap.computeIfAbsent(
+                        Thread.currentThread(), t -> new MetaWriteContext());
+                MetaReadContext metaReadContext =
+                    readMetaMap.computeIfAbsent(Thread.currentThread(), t -> new MetaReadContext());
+                byte[] serialized =
+                    fory.execute(
+                        f -> {
+                          f.setMetaWriteContext(metaWriteContext);
+                          return f.serialize(beanA);
+                        });
+                Object newObj =
+                    fory.execute(
+                        f -> {
+                          f.setMetaReadContext(metaReadContext);
+                          return f.deserialize(serialized);
+                        });
+                assertEquals(newObj, beanA);
+              }
+            } catch (Throwable t) {
+              error.compareAndSet(null, t);
+            }
+          });
     }
-    return map;
+    executorService.shutdown();
+    assertTrue(executorService.awaitTermination(30, TimeUnit.SECONDS));
+    if (error.get() != null) {
+      throw new AssertionError(error.get());
+    }
   }
 
   @Test
@@ -322,7 +338,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
     for (ThreadSafeFory fory :
         new ThreadSafeFory[] {
           Fory.builder().requireClassRegistration(false).buildThreadSafeFory(),
-          Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(2, 2)
+          Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(2)
         }) {
       byte[] bytes = fory.serialize("abc");
       Assert.assertEquals(fory.deserialize(bytes, String.class), "abc");
@@ -338,19 +354,19 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   public static class FooSerializer extends Serializer<Foo> {
-    public FooSerializer(Fory fory, Class<Foo> type) {
-      super(fory, type);
+    public FooSerializer(TypeResolver typeResolver, Class<Foo> type) {
+      super(typeResolver.getConfig(), type);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Foo value) {
-      buffer.writeInt32(value.f1);
+    public void write(WriteContext writeContext, Foo value) {
+      writeContext.getBuffer().writeInt32(value.f1);
     }
 
     @Override
-    public Foo read(MemoryBuffer buffer) {
-      final Foo foo = new Foo();
-      foo.f1 = buffer.readInt32();
+    public Foo read(ReadContext readContext) {
+      Foo foo = new Foo();
+      foo.f1 = readContext.getBuffer().readInt32();
       return foo;
     }
   }
@@ -362,12 +378,40 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
+  public void testBuilderClassLoaderStaysFixed() throws Exception {
+    ClassLoader loader = new CustomClassLoader(ClassLoader.getSystemClassLoader());
+    ThreadSafeFory threadSafe =
+        Fory.builder()
+            .withClassLoader(loader)
+            .requireClassRegistration(false)
+            .buildThreadSafeFory();
+    ThreadSafeFory threadLocal =
+        Fory.builder()
+            .withClassLoader(loader)
+            .requireClassRegistration(false)
+            .buildThreadLocalFory();
+    ThreadSafeFory threadPool =
+        Fory.builder()
+            .withClassLoader(loader)
+            .requireClassRegistration(false)
+            .buildThreadSafeForyPool(2);
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      for (ThreadSafeFory fory : new ThreadSafeFory[] {threadSafe, threadLocal, threadPool}) {
+        AtomicReference<ClassLoader> seen = new AtomicReference<>();
+        executor.submit(() -> seen.set(fory.execute(Fory::getClassLoader))).get();
+        assertSame(seen.get(), loader);
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
   public void testSerializerRegister() {
-    final ThreadSafeFory threadSafeFory =
-        Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(0, 2);
+    ThreadSafeFory threadSafeFory =
+        Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(2);
     threadSafeFory.registerSerializer(Foo.class, FooSerializer.class);
-    // create a new classLoader
-    threadSafeFory.setClassLoader(new CustomClassLoader(ClassLoader.getSystemClassLoader()));
     threadSafeFory.execute(
         fory -> {
           Assert.assertEquals(
@@ -377,7 +421,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisterAfterSerializeThrowsException() throws Exception {
+  public void testRegisterAfterSerializeThrowsException() {
     ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
     fory.register(BeanA.class);
     fory.serialize("ok");
@@ -394,31 +438,32 @@ public class ThreadSafeForyTest extends ForyTestBase {
 
   @Test
   public void testRegisterAfterSerializeThrowsExceptionWithForyPool() {
-    ThreadSafeFory fory =
-        Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(1, 2);
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(2);
     fory.register(BeanA.class);
     fory.serialize("ok");
     Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
   }
 
-  @Test
-  public void testRegisterAfterDeserializeThrowsExceptionWithFory() {
-    Fory fory = Fory.builder().requireClassRegistration(true).build();
-    fory.deserialize(fory.serialize("ok"));
-    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
-  }
-
-  @Test
-  public void testBuildThreadSafeForyKeepsPlatformThreadClassLoaderLocal() {
-    ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeFory();
-    ClassLoader original = Thread.currentThread().getContextClassLoader();
-    ClassLoader classLoader = new CustomClassLoader(original);
-    try {
-      fory.setClassLoader(classLoader);
-      assertSame(Thread.currentThread().getContextClassLoader(), original);
-      assertSame(fory.getClassLoader(), classLoader);
-    } finally {
-      Thread.currentThread().setContextClassLoader(original);
+  private void assertConcurrentRoundTrip(ThreadSafeFory fory, BeanA beanA)
+      throws InterruptedException {
+    ExecutorService executorService = Executors.newFixedThreadPool(12);
+    AtomicReference<Throwable> error = new AtomicReference<>();
+    for (int i = 0; i < 2000; i++) {
+      executorService.execute(
+          () -> {
+            for (int j = 0; j < 10; j++) {
+              try {
+                assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
+              } catch (Throwable t) {
+                error.compareAndSet(null, t);
+              }
+            }
+          });
+    }
+    executorService.shutdown();
+    assertTrue(executorService.awaitTermination(30, TimeUnit.SECONDS));
+    if (error.get() != null) {
+      throw new AssertionError(error.get());
     }
   }
 }

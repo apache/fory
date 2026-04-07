@@ -27,6 +27,8 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
+import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class MemoryBufferObjectInputTest extends ForyTestBase {
@@ -41,12 +43,14 @@ public class MemoryBufferObjectInputTest extends ForyTestBase {
     } else {
       buffer.writeInt32(2);
     }
-    fory.writeInt64(buffer, 3);
+    LongSerializer.writeInt64(buffer, 3, fory.getConfig().longEncoding());
     buffer.writeBoolean(true);
     buffer.writeFloat32(4.1f);
     buffer.writeFloat64(4.2);
-    fory.writeString(buffer, "abc");
-    try (MemoryBufferObjectInput input = new MemoryBufferObjectInput(fory, buffer)) {
+    new StringSerializer(fory.getConfig()).writeString(buffer, "abc");
+    fory.getReadContext().prepare(buffer, null, false);
+    try (MemoryBufferObjectInput input =
+        new MemoryBufferObjectInput(fory.getConfig(), fory.getReadContext())) {
       assertEquals(input.readByte(), 1);
       assertEquals(input.readInt(), 2);
       assertEquals(input.readLong(), 3);

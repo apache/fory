@@ -29,10 +29,12 @@ import java.util.Map;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.Types;
@@ -80,8 +82,8 @@ public class UnionSerializer extends Serializer<Union> {
   private boolean finalCaseSerializersResolved;
   private final TypeResolver resolver;
 
-  public UnionSerializer(Fory fory, Class<? extends Union> cls) {
-    super(fory, (Class<Union>) cls);
+  public UnionSerializer(TypeResolver typeResolver, Class<? extends Union> cls) {
+    super(typeResolver.getConfig(), (Class<Union>) cls);
     int typeIndex = getTypeIndex(cls);
     if (typeIndex >= 0) {
       this.factory = FACTORIES[typeIndex];
@@ -90,7 +92,7 @@ public class UnionSerializer extends Serializer<Union> {
     }
     finalCaseTypeInfo = new LongMap<>(1);
     this.caseValueTypes = resolveCaseValueTypes(cls);
-    resolver = fory.getTypeResolver();
+    resolver = typeResolver;
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -134,7 +136,8 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Union union) {
+  public void write(WriteContext writeContext, Union union) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     int index = union.getIndex();
     buffer.writeVarUint32(index);
 
@@ -142,47 +145,49 @@ public class UnionSerializer extends Serializer<Union> {
     int valueTypeId = union.getValueTypeId();
     if (valueTypeId == Types.UNKNOWN) {
       if (value != null) {
-        fory.writeRef(buffer, value);
+        writeContext.writeRef(value);
       } else {
         buffer.writeByte(Fory.NULL_FLAG);
       }
       return;
     }
-    writeCaseValue(buffer, value, valueTypeId, index);
+    writeCaseValue(writeContext, value, valueTypeId, index);
   }
 
   @Override
-  public Union read(MemoryBuffer buffer) {
+  public Union read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int index = buffer.readVarUint32();
     Object caseValue;
-    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    int nextReadRefId = readContext.tryPreserveRefId();
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       // ref value or not-null value
       TypeInfo declared = getFinalCaseTypeInfo(index);
-      TypeInfo readTypeInfo = resolver.readTypeInfo(buffer, declared);
+      TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
       if (declared != null) {
-        caseValue = Serializers.read(buffer, declared.getSerializer());
+        caseValue = Serializers.read(readContext, declared.getSerializer());
       } else {
-        caseValue = Serializers.read(buffer, readTypeInfo.getSerializer());
+        caseValue = Serializers.read(readContext, readTypeInfo.getSerializer());
       }
-      refResolver.setReadObject(nextReadRefId, caseValue);
+      readContext.setReadRef(nextReadRefId, caseValue);
     } else {
-      caseValue = refResolver.getReadObject();
+      caseValue = readContext.getReadRef();
     }
     return factory.apply(index, caseValue);
   }
 
   @Override
-  public Union copy(Union union) {
+  public Union copy(CopyContext copyContext, Union union) {
     if (union == null) {
       return null;
     }
     Object value = union.getValue();
-    Object copiedValue = value != null ? fory.copyObject(value) : null;
+    Object copiedValue = value != null ? copyContext.copyObject(value) : null;
     return factory.apply(union.getIndex(), copiedValue);
   }
 
-  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
+  private void writeCaseValue(WriteContext writeContext, Object value, int typeId, int caseId) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     byte internalTypeId = (byte) typeId;
     boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
     Serializer serializer;
@@ -202,9 +207,8 @@ public class UnionSerializer extends Serializer<Union> {
     }
     Preconditions.checkArgument(typeInfo != null);
     serializer = typeInfo.getSerializer();
-    RefResolver refResolver = fory.getRefResolver();
     if (serializer != null && serializer.needToWriteRef()) {
-      if (refResolver.writeRefOrNull(buffer, value)) {
+      if (writeContext.writeRefOrNull(value)) {
         return;
       }
     } else {
@@ -213,12 +217,14 @@ public class UnionSerializer extends Serializer<Union> {
     if (!Types.isUserDefinedType(internalTypeId)) {
       buffer.writeUint8(typeId);
     } else {
-      resolver.writeTypeInfo(buffer, typeInfo);
+      resolver.writeTypeInfo(writeContext, typeInfo);
     }
-    writeValue(buffer, value, typeId, serializer);
+    writeValue(writeContext, value, typeId, serializer);
   }
 
-  private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
+  private void writeValue(
+      WriteContext writeContext, Object value, int typeId, Serializer serializer) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     int internalTypeId = typeId;
     switch (internalTypeId) {
       case Types.BOOL:
@@ -265,7 +271,7 @@ public class UnionSerializer extends Serializer<Union> {
         buffer.writeFloat64(((Number) value).doubleValue());
         return;
       case Types.STRING:
-        fory.writeString(buffer, (String) value);
+        writeContext.writeString((String) value);
         return;
       case Types.BINARY:
         buffer.writeBytes((byte[]) value);
@@ -274,7 +280,7 @@ public class UnionSerializer extends Serializer<Union> {
         break;
     }
     if (serializer != null) {
-      Serializers.write(buffer, serializer, value);
+      Serializers.write(writeContext, serializer, value);
       return;
     }
     throw new IllegalStateException("Missing serializer for union type id " + typeId);
@@ -297,7 +303,7 @@ public class UnionSerializer extends Serializer<Union> {
       if (expectedType.isPrimitive()) {
         continue;
       }
-      TypeInfo typeInfo = fory.getTypeResolver().getTypeInfo(expectedType);
+      TypeInfo typeInfo = resolver.getTypeInfo(expectedType);
       finalCaseTypeInfo.put(entry.getKey(), typeInfo);
     }
   }

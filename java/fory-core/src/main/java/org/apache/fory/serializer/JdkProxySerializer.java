@@ -23,11 +23,12 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
@@ -60,8 +61,11 @@ public class JdkProxySerializer extends Serializer {
       Proxy.newProxyInstance(
           Serializer.class.getClassLoader(), new Class[] {StubInterface.class}, STUB_HANDLER);
 
-  public JdkProxySerializer(Fory fory, Class cls) {
-    super(fory, cls);
+  private final TypeResolver typeResolver;
+
+  public JdkProxySerializer(TypeResolver typeResolver, Class cls) {
+    super(typeResolver.getConfig(), cls);
+    this.typeResolver = typeResolver;
     if (cls != ReplaceStub.class) {
       // Skip proxy class validation in GraalVM native image runtime to avoid issues with proxy
       // detection
@@ -72,32 +76,32 @@ public class JdkProxySerializer extends Serializer {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {
-    fory.writeRef(buffer, value.getClass().getInterfaces());
-    fory.writeRef(buffer, Proxy.getInvocationHandler(value));
+  public void write(WriteContext writeContext, Object value) {
+    writeContext.writeRef(value.getClass().getInterfaces());
+    writeContext.writeRef(Proxy.getInvocationHandler(value));
   }
 
   @Override
-  public Object copy(Object value) {
+  public Object copy(CopyContext copyContext, Object value) {
     Class<?>[] interfaces = value.getClass().getInterfaces();
     InvocationHandler invocationHandler = Proxy.getInvocationHandler(value);
     Preconditions.checkNotNull(interfaces);
     Preconditions.checkNotNull(invocationHandler);
-    Object proxy = Proxy.newProxyInstance(fory.getClassLoader(), interfaces, STUB_HANDLER);
-    fory.reference(value, proxy);
-    Platform.putObject(proxy, PROXY_HANDLER_FIELD_OFFSET, fory.copyObject(invocationHandler));
+    Object proxy = Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, STUB_HANDLER);
+    copyContext.reference(value, proxy);
+    Platform.putObject(
+        proxy, PROXY_HANDLER_FIELD_OFFSET, copyContext.copyObject(invocationHandler));
     return proxy;
   }
 
   @Override
-  public Object read(MemoryBuffer buffer) {
-    final RefResolver resolver = fory.getRefResolver();
-    final int refId = resolver.lastPreservedRefId();
-    final Class<?>[] interfaces = (Class<?>[]) fory.readRef(buffer);
+  public Object read(ReadContext readContext) {
+    final int refId = readContext.lastPreservedRefId();
+    final Class<?>[] interfaces = (Class<?>[]) readContext.readRef();
     Preconditions.checkNotNull(interfaces);
-    Object proxy = Proxy.newProxyInstance(fory.getClassLoader(), interfaces, STUB_HANDLER);
-    resolver.setReadObject(refId, proxy);
-    InvocationHandler invocationHandler = (InvocationHandler) fory.readRef(buffer);
+    Object proxy = Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, STUB_HANDLER);
+    readContext.setReadRef(refId, proxy);
+    InvocationHandler invocationHandler = (InvocationHandler) readContext.readRef();
     Preconditions.checkNotNull(invocationHandler);
     Platform.putObject(proxy, PROXY_HANDLER_FIELD_OFFSET, invocationHandler);
     return proxy;

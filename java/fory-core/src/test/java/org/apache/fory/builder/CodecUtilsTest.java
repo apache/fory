@@ -22,9 +22,11 @@ package org.apache.fory.builder;
 import static org.testng.Assert.assertEquals;
 
 import org.apache.fory.Fory;
+import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.annotations.Test;
 
@@ -43,13 +45,13 @@ public class CodecUtilsTest {
     Generated.GeneratedSerializer serializer =
         seqCodecClass
             .asSubclass(Generated.GeneratedSerializer.class)
-            .getConstructor(Fory.class, Class.class)
-            .newInstance(fory, BeanA.class);
+            .getConstructor(TypeResolver.class, Class.class)
+            .newInstance(fory.getTypeResolver(), BeanA.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     BeanA beanA = BeanA.createBeanA(2);
-    serializer.write(buffer, beanA);
+    ForyTestBase.writeSerializer(fory, serializer, buffer, beanA);
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
-    Object obj = serializer.read(MemoryUtils.wrap(bytes));
+    Object obj = ForyTestBase.readSerializer(fory, serializer, MemoryUtils.wrap(bytes));
     assertEquals(obj, beanA);
   }
 }

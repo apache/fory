@@ -41,7 +41,6 @@ import org.apache.fory.util.function.SerializableSupplier;
  * org.apache.fory.codegen.Expression} to invoke the new generated method.
  */
 public class ExpressionOptimizer {
-
   public static Expression invokeGenerated(
       CodegenContext ctx,
       SerializableSupplier<Expression> groupExpressionsGenerator,
@@ -89,9 +88,12 @@ public class ExpressionOptimizer {
       String modifier,
       String methodPrefix,
       boolean inlineInvoke) {
-    LinkedHashMap<Expression, Reference> cutExprMap = new LinkedHashMap<>();
+    LinkedHashMap<Expression, Reference> availableCutExprMap = new LinkedHashMap<>();
     for (Expression expression : cutPoint) {
       if (expression == null) {
+        continue;
+      }
+      if (expression instanceof Reference && ((Reference) expression).isFieldRef()) {
         continue;
       }
       if (expression instanceof Literal) {
@@ -106,18 +108,20 @@ public class ExpressionOptimizer {
       Preconditions.checkArgument(
           expression.type() != PRIMITIVE_VOID_TYPE, "Cut on block is not supported currently.");
       String param = ctx.newName(getRawType(expression.type()));
-      cutExprMap.put(expression, new Reference(param, expression.type()));
+      availableCutExprMap.put(expression, new Reference(param, expression.type()));
     }
+    LinkedHashMap<Expression, Reference> cutExprMap = new LinkedHashMap<>();
     // iterate groupExpressions dag to update cutoff point to `Reference`.
     new ExpressionVisitor()
         .traverseExpression(
             groupExpressions,
             exprSite -> {
               if (cutPoint.contains((exprSite.current))) {
-                Reference newExpr = cutExprMap.get(exprSite.current);
+                Reference newExpr = availableCutExprMap.get(exprSite.current);
                 // cutpoint may pass null, or we remove some expr from cutpoint if we think
                 // it's ok to use original expr such as Literal or Enum expr.
                 if (exprSite.current != newExpr && newExpr != null) {
+                  cutExprMap.putIfAbsent(exprSite.current, newExpr);
                   exprSite.update(newExpr);
                 }
                 return false;

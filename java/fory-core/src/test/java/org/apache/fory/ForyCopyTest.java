@@ -79,8 +79,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
 import org.apache.fory.serializer.Serializer;
@@ -143,16 +146,16 @@ public class ForyCopyTest extends ForyTestBase {
     BeanA beanA = BeanA.createBeanA(2);
     ExecutorService executor = Executors.newSingleThreadExecutor();
     AtomicReference<Throwable> ex = new AtomicReference<>();
-    ThreadLocalFory threadLocalFory =
-        builder().withCodegen(false).withRefCopy(true).buildThreadLocalFory();
-    threadLocalFory.setTypeChecker((classResolver, className1) -> true);
-    threadLocalFory.setSerializerFactory((fory1, cls) -> null);
-    threadLocalFory.register(BeanA.class);
-    assetEqualsButNotSame(threadLocalFory.copy(beanA));
+    ThreadSafeFory threadSafeFory =
+        builder().withCodegen(false).withRefCopy(true).buildThreadSafeFory();
+    threadSafeFory.setTypeChecker((classResolver, className1) -> true);
+    threadSafeFory.setSerializerFactory((fory1, cls) -> null);
+    threadSafeFory.register(BeanA.class);
+    assetEqualsButNotSame(threadSafeFory.copy(beanA));
     executor.execute(
         () -> {
           try {
-            assetEqualsButNotSame(threadLocalFory.copy(beanA));
+            assetEqualsButNotSame(threadSafeFory.copy(beanA));
           } catch (Throwable t) {
             ex.set(t);
           }
@@ -169,13 +172,12 @@ public class ForyCopyTest extends ForyTestBase {
             .withRefCopy(true)
             .withCodegen(false)
             .withAsyncCompilation(true)
-            .buildThreadSafeForyPool(5, 10);
+            .buildThreadSafeForyPool(10);
     for (int i = 0; i < 2000; i++) {
       new Thread(
               () -> {
                 for (int j = 0; j < 10; j++) {
                   try {
-                    threadSafeFory.setClassLoader(beanA.getClass().getClassLoader());
                     Assert.assertEquals(beanA, threadSafeFory.copy(beanA));
                   } catch (Exception e) {
                     e.printStackTrace();
@@ -212,7 +214,8 @@ public class ForyCopyTest extends ForyTestBase {
   public void testCopyFailureDoesNotLeakCopyDepth() {
     Fory fory =
         builder().withCodegen(false).withRefCopy(false).requireClassRegistration(true).build();
-    fory.registerSerializerAndType(ExplodingCopyBean.class, new ExplodingCopyBeanSerializer(fory));
+    fory.registerSerializerAndType(
+        ExplodingCopyBean.class, new ExplodingCopyBeanSerializer(fory.getTypeResolver()));
     Assert.assertThrows(Throwable.class, () -> fory.copy(new ExplodingCopyBean()));
     Assert.assertThrows(
         ForyException.class, () -> fory.serialize(new UnregisteredAfterCopyFailure()));
@@ -329,22 +332,22 @@ public class ForyCopyTest extends ForyTestBase {
   private static final class UnregisteredAfterCopyFailure {}
 
   private static final class ExplodingCopyBeanSerializer extends Serializer<ExplodingCopyBean> {
-    private ExplodingCopyBeanSerializer(Fory fory) {
-      super(fory, ExplodingCopyBean.class);
+    private ExplodingCopyBeanSerializer(TypeResolver typeResolver) {
+      super(typeResolver.getConfig(), ExplodingCopyBean.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, ExplodingCopyBean value) {
+    public void write(WriteContext writeContext, ExplodingCopyBean value) {
       throw new UnsupportedOperationException("unused");
     }
 
     @Override
-    public ExplodingCopyBean read(MemoryBuffer buffer) {
+    public ExplodingCopyBean read(ReadContext readContext) {
       throw new UnsupportedOperationException("unused");
     }
 
     @Override
-    public ExplodingCopyBean copy(ExplodingCopyBean value) {
+    public ExplodingCopyBean copy(CopyContext copyContext, ExplodingCopyBean value) {
       throw new IllegalStateException("copy failed");
     }
   }

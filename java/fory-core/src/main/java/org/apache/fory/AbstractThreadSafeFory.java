@@ -20,6 +20,8 @@
 package org.apache.fory;
 
 import java.util.function.Function;
+import org.apache.fory.resolver.AllowListChecker;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -32,21 +34,10 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
-  public void register(Class<?> cls, boolean createSerializer) {
-    registerCallback(fory -> fory.register(cls, createSerializer));
-  }
-
-  @Override
   public void register(Class<?> cls, int id) {
     registerCallback(fory -> fory.register(cls, id));
   }
 
-  @Override
-  public void register(Class<?> cls, int id, boolean createSerializer) {
-    registerCallback(fory -> fory.register(cls, id, createSerializer));
-  }
-
-  @Deprecated
   @Override
   public void register(Class<?> cls, String typeName) {
     registerCallback(fory -> fory.register(cls, typeName));
@@ -96,8 +87,9 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
-  public void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
-    registerCallback(fory -> fory.registerSerializer(type, serializerCreator.apply(fory)));
+  public void registerSerializer(
+      Class<?> type, Function<TypeResolver, Serializer<?>> serializerCreator) {
+    registerCallback(fory -> fory.registerSerializer(type, serializerCreator));
   }
 
   @Override
@@ -113,7 +105,7 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
 
   @Override
   public void registerSerializerAndType(
-      Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
+      Class<?> type, Function<TypeResolver, Serializer<?>> serializerCreator) {
     registerCallback(fory -> fory.registerSerializerAndType(type, serializerCreator));
   }
 
@@ -129,7 +121,14 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
 
   @Override
   public void setTypeChecker(TypeChecker typeChecker) {
-    registerCallback(fory -> fory.getTypeResolver().setTypeChecker(typeChecker));
+    registerCallback(
+        fory -> {
+          TypeResolver typeResolver = fory.getTypeResolver();
+          typeResolver.setTypeChecker(typeChecker);
+          if (typeChecker instanceof AllowListChecker && typeResolver instanceof ClassResolver) {
+            ((AllowListChecker) typeChecker).addListener((ClassResolver) typeResolver);
+          }
+        });
   }
 
   @Override

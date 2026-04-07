@@ -24,10 +24,11 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.ObjectArray;
+import org.apache.fory.context.MapRefReader;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.MapRefResolver;
 
 /** Util for java exceptions. */
 public class ExceptionUtils {
@@ -56,18 +57,17 @@ public class ExceptionUtils {
   }
 
   public static RuntimeException handleReadFailed(Fory fory, Throwable t) {
-    if (fory.getRefResolver() instanceof MapRefResolver) {
-      ObjectArray readObjects = ((MapRefResolver) fory.getRefResolver()).getReadObjects();
+    if (t instanceof ForyException) {
+      throw (ForyException) t;
+    }
+    ReadContext readContext = fory.getReadContext();
+    if (readContext.getRefReader() instanceof MapRefReader) {
+      ObjectArray readObjects = ((MapRefReader) readContext.getRefReader()).getReadRefs();
       // carry with read objects for better trouble shooting.
       List<Object> objects = Arrays.asList(readObjects.objects).subList(0, readObjects.size);
       throw new DeserializationException(objects, t);
-    } else {
-      if (!(t instanceof ForyException)) {
-        throw new DeserializationException("Failed to deserialize input", t);
-      } else {
-        throw (ForyException) t;
-      }
     }
+    throw new DeserializationException("Failed to deserialize input", t);
   }
 
   public static void ignore(Object... args) {}

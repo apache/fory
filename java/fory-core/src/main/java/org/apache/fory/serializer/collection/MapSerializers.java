@@ -32,9 +32,11 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import org.apache.fory.Fory;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.collection.MapSnapshot;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -54,16 +56,17 @@ import org.apache.fory.util.Preconditions;
 public class MapSerializers {
 
   public static final class HashMapSerializer extends MapSerializer<HashMap> {
-    public HashMapSerializer(Fory fory) {
-      super(fory, HashMap.class, true);
+    public HashMapSerializer(TypeResolver typeResolver) {
+      super(typeResolver, HashMap.class, true);
     }
 
     @Override
-    public HashMap newMap(MemoryBuffer buffer) {
+    public HashMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       HashMap hashMap = new HashMap(numElements);
-      fory.getRefResolver().reference(hashMap);
+      readContext.reference(hashMap);
       return hashMap;
     }
 
@@ -74,16 +77,17 @@ public class MapSerializers {
   }
 
   public static final class LinkedHashMapSerializer extends MapSerializer<LinkedHashMap> {
-    public LinkedHashMapSerializer(Fory fory) {
-      super(fory, LinkedHashMap.class, true);
+    public LinkedHashMapSerializer(TypeResolver typeResolver) {
+      super(typeResolver, LinkedHashMap.class, true);
     }
 
     @Override
-    public LinkedHashMap newMap(MemoryBuffer buffer) {
+    public LinkedHashMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       LinkedHashMap hashMap = new LinkedHashMap(numElements);
-      fory.getRefResolver().reference(hashMap);
+      readContext.reference(hashMap);
       return hashMap;
     }
 
@@ -94,16 +98,17 @@ public class MapSerializers {
   }
 
   public static final class LazyMapSerializer extends MapSerializer<LazyMap> {
-    public LazyMapSerializer(Fory fory) {
-      super(fory, LazyMap.class, true);
+    public LazyMapSerializer(TypeResolver typeResolver) {
+      super(typeResolver, LazyMap.class, true);
     }
 
     @Override
-    public LazyMap newMap(MemoryBuffer buffer) {
+    public LazyMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       LazyMap map = new LazyMap(numElements);
-      fory.getRefResolver().reference(map);
+      readContext.reference(map);
       return map;
     }
 
@@ -117,8 +122,8 @@ public class MapSerializers {
     private MethodHandle comparatorConstructor;
     private MethodHandle noArgConstructor;
 
-    public SortedMapSerializer(Fory fory, Class<T> cls) {
-      super(fory, cls, true);
+    public SortedMapSerializer(TypeResolver typeResolver, Class<T> cls) {
+      super(typeResolver, cls, true);
       if (cls != TreeMap.class) {
         try {
           comparatorConstructor = ReflectionUtils.getCtrHandle(cls, Comparator.class);
@@ -136,21 +141,25 @@ public class MapSerializers {
     }
 
     @Override
-    public Map onMapWrite(MemoryBuffer buffer, T value) {
+    public Map onMapWrite(WriteContext writeContext, T value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       buffer.writeVarUint32Small7(value.size());
-      if (!fory.isCrossLanguage()) {
-        fory.writeRef(buffer, value.comparator());
+      if (config.isXlang()) {
+        return value;
+      } else {
+        writeContext.writeRef(value.comparator());
       }
       return value;
     }
 
     @SuppressWarnings("unchecked")
     @Override
-    public Map newMap(MemoryBuffer buffer) {
-      assert !fory.isCrossLanguage();
+    public Map newMap(ReadContext readContext) {
+      assert !config.isXlang();
+      MemoryBuffer buffer = readContext.getBuffer();
       setNumElements(buffer.readVarUint32Small7());
       T map;
-      Comparator comparator = (Comparator) fory.readRef(buffer);
+      Comparator comparator = (Comparator) readContext.readRef();
       if (type == TreeMap.class) {
         map = (T) new TreeMap(comparator);
       } else {
@@ -164,13 +173,13 @@ public class MapSerializers {
           throw new RuntimeException(e);
         }
       }
-      fory.getRefResolver().reference(map);
+      readContext.reference(map);
       return map;
     }
 
     @Override
-    public Map newMap(Map originMap) {
-      Comparator comparator = fory.copyObject(((SortedMap) originMap).comparator());
+    public Map newMap(CopyContext copyContext, Map originMap) {
+      Comparator comparator = copyContext.copyObject(((SortedMap) originMap).comparator());
       Map map;
       if (type == TreeMap.class) {
         map = new TreeMap(comparator);
@@ -191,87 +200,88 @@ public class MapSerializers {
 
   public static final class EmptyMapSerializer extends MapSerializer<Map<?, ?>> {
 
-    public EmptyMapSerializer(Fory fory, Class<Map<?, ?>> cls) {
-      super(fory, cls, fory.isCrossLanguage(), true);
+    public EmptyMapSerializer(TypeResolver typeResolver, Class<Map<?, ?>> cls) {
+      super(typeResolver, cls, typeResolver.getConfig().isXlang(), true);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {
-      if (!isJava) {
-        super.write(buffer, value);
+    public void write(WriteContext writeContext, Map<?, ?> value) {
+      if (config.isXlang()) {
+        super.write(writeContext, value);
       }
     }
 
     @Override
-    public Map<?, ?> read(MemoryBuffer buffer) {
-      if (isJava) {
-        return Collections.EMPTY_MAP;
+    public Map<?, ?> read(ReadContext readContext) {
+      if (config.isXlang()) {
+        throw new IllegalStateException();
       }
-      throw new IllegalStateException();
+      return Collections.EMPTY_MAP;
     }
   }
 
   public static final class EmptySortedMapSerializer extends MapSerializer<SortedMap<?, ?>> {
-    public EmptySortedMapSerializer(Fory fory, Class<SortedMap<?, ?>> cls) {
-      super(fory, cls, fory.isCrossLanguage(), true);
+    public EmptySortedMapSerializer(TypeResolver typeResolver, Class<SortedMap<?, ?>> cls) {
+      super(typeResolver, cls, typeResolver.getConfig().isXlang(), true);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, SortedMap<?, ?> value) {}
+    public void write(WriteContext writeContext, SortedMap<?, ?> value) {}
 
     @Override
-    public SortedMap<?, ?> read(MemoryBuffer buffer) {
+    public SortedMap<?, ?> read(ReadContext readContext) {
       return Collections.emptySortedMap();
     }
   }
 
   public static final class SingletonMapSerializer extends MapSerializer<Map<?, ?>> {
 
-    public SingletonMapSerializer(Fory fory, Class<Map<?, ?>> cls) {
-      super(fory, cls, fory.isCrossLanguage());
+    public SingletonMapSerializer(TypeResolver typeResolver, Class<Map<?, ?>> cls) {
+      super(typeResolver, cls, typeResolver.getConfig().isXlang());
     }
 
     @Override
-    public Map<?, ?> copy(Map<?, ?> originMap) {
+    public Map<?, ?> copy(CopyContext copyContext, Map<?, ?> originMap) {
       Entry<?, ?> entry = originMap.entrySet().iterator().next();
       return Collections.singletonMap(
-          fory.copyObject(entry.getKey()), fory.copyObject(entry.getValue()));
+          copyContext.copyObject(entry.getKey()), copyContext.copyObject(entry.getValue()));
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Map<?, ?> value) {
-      if (isJava) {
-        Map.Entry entry = value.entrySet().iterator().next();
-        fory.writeRef(buffer, entry.getKey());
-        fory.writeRef(buffer, entry.getValue());
+    public void write(WriteContext writeContext, Map<?, ?> value) {
+      if (config.isXlang()) {
+        super.write(writeContext, value);
       } else {
-        super.write(buffer, value);
+        Map.Entry entry = value.entrySet().iterator().next();
+        writeContext.writeRef(entry.getKey());
+        writeContext.writeRef(entry.getValue());
       }
     }
 
     @Override
-    public Map<?, ?> read(MemoryBuffer buffer) {
-      if (isJava) {
-        Object key = fory.readRef(buffer);
-        Object value = fory.readRef(buffer);
-        return Collections.singletonMap(key, value);
+    public Map<?, ?> read(ReadContext readContext) {
+      if (config.isXlang()) {
+        throw new UnsupportedOperationException();
       }
-      throw new UnsupportedOperationException();
+      Object key = readContext.readRef();
+      Object value = readContext.readRef();
+      return Collections.singletonMap(key, value);
     }
   }
 
   public static final class ConcurrentHashMapSerializer
       extends ConcurrentMapSerializer<ConcurrentHashMap> {
-    public ConcurrentHashMapSerializer(Fory fory, Class<ConcurrentHashMap> type) {
-      super(fory, type, true);
+    public ConcurrentHashMapSerializer(TypeResolver typeResolver, Class<ConcurrentHashMap> type) {
+      super(typeResolver, type, true);
     }
 
     @Override
-    public ConcurrentHashMap newMap(MemoryBuffer buffer) {
+    public ConcurrentHashMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       ConcurrentHashMap map = new ConcurrentHashMap(numElements);
-      fory.getRefResolver().reference(map);
+      readContext.reference(map);
       return map;
     }
 
@@ -284,32 +294,36 @@ public class MapSerializers {
   public static final class ConcurrentSkipListMapSerializer
       extends ConcurrentMapSerializer<ConcurrentSkipListMap> {
 
-    public ConcurrentSkipListMapSerializer(Fory fory, Class<ConcurrentSkipListMap> cls) {
-      super(fory, cls, true);
+    public ConcurrentSkipListMapSerializer(
+        TypeResolver typeResolver, Class<ConcurrentSkipListMap> cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    public MapSnapshot onMapWrite(MemoryBuffer buffer, ConcurrentSkipListMap value) {
-      MapSnapshot snapshot = super.onMapWrite(buffer, value);
-      if (!fory.isCrossLanguage()) {
-        fory.writeRef(buffer, value.comparator());
+    public MapSnapshot onMapWrite(WriteContext writeContext, ConcurrentSkipListMap value) {
+      MapSnapshot snapshot = super.onMapWrite(writeContext, value);
+      if (config.isXlang()) {
+        return snapshot;
       }
+      writeContext.writeRef(value.comparator());
       return snapshot;
     }
 
     @Override
-    public ConcurrentSkipListMap newMap(MemoryBuffer buffer) {
+    public ConcurrentSkipListMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
-      Comparator comparator = (Comparator) fory.readRef(buffer);
+      Comparator comparator = (Comparator) readContext.readRef();
       ConcurrentSkipListMap map = new ConcurrentSkipListMap(comparator);
-      fory.getRefResolver().reference(map);
+      readContext.reference(map);
       return map;
     }
 
     @Override
-    public Map newMap(Map originMap) {
-      Comparator comparator = fory.copyObject(((ConcurrentSkipListMap) originMap).comparator());
+    public Map newMap(CopyContext copyContext, Map originMap) {
+      Comparator comparator =
+          copyContext.copyObject(((ConcurrentSkipListMap) originMap).comparator());
       return new ConcurrentSkipListMap(comparator);
     }
   }
@@ -326,42 +340,45 @@ public class MapSerializers {
       }
     }
 
-    public EnumMapSerializer(Fory fory) {
+    public EnumMapSerializer(TypeResolver typeResolver) {
       // getMapKeyValueType(EnumMap.class) will be `K, V` without Enum as key bound.
       // so no need to infer key generics in init.
-      super(fory, EnumMap.class, true);
+      super(typeResolver, EnumMap.class, true);
     }
 
     @Override
-    public Map onMapWrite(MemoryBuffer buffer, EnumMap value) {
+    public Map onMapWrite(WriteContext writeContext, EnumMap value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       buffer.writeVarUint32Small7(value.size());
       Class keyType = (Class) Platform.getObject(value, keyTypeFieldOffset);
-      ((ClassResolver) fory.getTypeResolver()).writeClassAndUpdateCache(buffer, keyType);
+      ((ClassResolver) typeResolver).writeClassAndUpdateCache(writeContext, keyType);
       return value;
     }
 
     @Override
-    public EnumMap newMap(MemoryBuffer buffer) {
+    public EnumMap newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       setNumElements(buffer.readVarUint32Small7());
-      Class<?> keyType = fory.getTypeResolver().readTypeInfo(buffer).getCls();
+      Class<?> keyType = typeResolver.readTypeInfo(readContext).getType();
       return new EnumMap(keyType);
     }
 
     @Override
-    public EnumMap copy(EnumMap originMap) {
+    public EnumMap copy(CopyContext copyContext, EnumMap originMap) {
       return new EnumMap(originMap);
     }
   }
 
   public static class StringKeyMapSerializer<T> extends MapSerializer<Map<String, T>> {
 
-    public StringKeyMapSerializer(Fory fory, Class<Map<String, T>> cls) {
-      super(fory, cls, true);
+    public StringKeyMapSerializer(TypeResolver typeResolver, Class<Map<String, T>> cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    protected <K, V> void copyEntry(Map<K, V> originMap, Map<K, V> newMap) {
-      ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+    protected <K, V> void copyEntry(
+        CopyContext copyContext, Map<K, V> originMap, Map<K, V> newMap) {
+      ClassResolver classResolver = (ClassResolver) typeResolver;
       MapTypeCache state = mapTypeCache();
       for (Entry<K, V> entry : originMap.entrySet()) {
         V value = entry.getValue();
@@ -369,7 +386,7 @@ public class MapSerializers {
           TypeInfo typeInfo =
               classResolver.getTypeInfo(value.getClass(), state.valueTypeInfoWriteCache);
           if (!typeInfo.getSerializer().isImmutable()) {
-            value = fory.copyObject(value, typeInfo.getTypeId());
+            value = copyContext.copyObject(value, typeInfo.getTypeId());
           }
         }
         newMap.put(entry.getKey(), value);
@@ -385,23 +402,23 @@ public class MapSerializers {
   public static final class DefaultJavaMapSerializer<T> extends MapLikeSerializer<T> {
     private Serializer<T> dataSerializer;
 
-    public DefaultJavaMapSerializer(Fory fory, Class<T> cls) {
-      super(fory, cls, false);
+    public DefaultJavaMapSerializer(TypeResolver typeResolver, Class<T> cls) {
+      super(typeResolver, cls, false);
       Preconditions.checkArgument(
-          !fory.isCrossLanguage(),
+          !config.isXlang(),
           "Fory cross-language default map serializer should use " + MapSerializer.class);
-      fory.getTypeResolver().setSerializer(cls, this);
+      typeResolver.setSerializer(cls, this);
       Class<? extends Serializer> serializerClass =
-          ((ClassResolver) fory.getTypeResolver())
+          ((ClassResolver) typeResolver)
               .getObjectSerializerClass(
-                  cls, sc -> dataSerializer = Serializers.newSerializer(fory, cls, sc));
-      dataSerializer = Serializers.newSerializer(fory, cls, serializerClass);
+                  cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
+      dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
       // No need to set object serializer to this, it will be set in class resolver later.
-      // fory.getTypeResolver().setSerializer(cls, this);
+      // typeResolver.setSerializer(cls, this);
     }
 
     @Override
-    public Map onMapWrite(MemoryBuffer buffer, T value) {
+    public Map onMapWrite(WriteContext writeContext, T value) {
       throw new IllegalStateException();
     }
 
@@ -416,18 +433,18 @@ public class MapSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, T value) {
-      dataSerializer.write(buffer, value);
+    public void write(WriteContext writeContext, T value) {
+      dataSerializer.write(writeContext, value);
     }
 
     @Override
-    public T copy(T value) {
-      return fory.copyObject(value, dataSerializer);
+    public T copy(CopyContext copyContext, T value) {
+      return copyContext.copyObject(value, dataSerializer);
     }
 
     @Override
-    public T read(MemoryBuffer buffer) {
-      return dataSerializer.read(buffer);
+    public T read(ReadContext readContext) {
+      return dataSerializer.read(readContext);
     }
   }
 
@@ -435,19 +452,19 @@ public class MapSerializers {
   public static class JDKCompatibleMapSerializer<T> extends MapLikeSerializer<T> {
     private final Serializer serializer;
 
-    public JDKCompatibleMapSerializer(Fory fory, Class<T> cls) {
-      super(fory, cls, false);
+    public JDKCompatibleMapSerializer(TypeResolver typeResolver, Class<T> cls) {
+      super(typeResolver, cls, false);
       // Map which defined `writeReplace` may use this serializer, so check replace/resolve
       // is necessary.
       Class<? extends Serializer> serializerType =
           ClassResolver.useReplaceResolveSerializer(cls)
               ? ReplaceResolveSerializer.class
-              : fory.getDefaultJDKStreamSerializerType();
-      serializer = Serializers.newSerializer(fory, cls, serializerType);
+              : config.getDefaultJDKStreamSerializerType();
+      serializer = Serializers.newSerializer(typeResolver, cls, serializerType);
     }
 
     @Override
-    public Map onMapWrite(MemoryBuffer buffer, T value) {
+    public Map onMapWrite(WriteContext writeContext, T value) {
       throw new IllegalStateException();
     }
 
@@ -463,29 +480,30 @@ public class MapSerializers {
 
     @SuppressWarnings("unchecked")
     @Override
-    public T read(MemoryBuffer buffer) {
-      return (T) serializer.read(buffer);
+    public T read(ReadContext readContext) {
+      return (T) serializer.read(readContext);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, T value) {
-      serializer.write(buffer, value);
+    public void write(WriteContext writeContext, T value) {
+      serializer.write(writeContext, value);
     }
 
     @Override
-    public T copy(T value) {
-      return fory.copyObject(value, (Serializer<T>) serializer);
+    public T copy(CopyContext copyContext, T value) {
+      return copyContext.copyObject(value, (Serializer<T>) serializer);
     }
   }
 
   public static class XlangMapSerializer extends MapLikeSerializer {
 
-    public XlangMapSerializer(Fory fory, Class cls) {
-      super(fory, cls, true);
+    public XlangMapSerializer(TypeResolver typeResolver, Class cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    public Map onMapWrite(MemoryBuffer buffer, Object value) {
+    public Map onMapWrite(WriteContext writeContext, Object value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
       Map v = (Map) value;
       buffer.writeVarUint32Small7(v.size());
       return v;
@@ -496,11 +514,12 @@ public class MapSerializers {
       throw new IllegalStateException("should not be called");
     }
 
-    public Map newMap(MemoryBuffer buffer) {
+    public Map newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       HashMap<Object, Object> map = new HashMap<>(numElements);
-      fory.getRefResolver().reference(map);
+      readContext.reference(map);
       return map;
     }
 
@@ -511,29 +530,29 @@ public class MapSerializers {
   }
 
   // TODO(chaokunyang) support ConcurrentSkipListMap.SubMap mo efficiently.
-  public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory.getTypeResolver();
-    resolver.registerInternalSerializer(HashMap.class, new HashMapSerializer(fory));
-    resolver.registerInternalSerializer(LinkedHashMap.class, new LinkedHashMapSerializer(fory));
+  public static void registerDefaultSerializers(TypeResolver resolver) {
+    resolver.registerInternalSerializer(HashMap.class, new HashMapSerializer(resolver));
+    resolver.registerInternalSerializer(LinkedHashMap.class, new LinkedHashMapSerializer(resolver));
     resolver.registerInternalSerializer(
-        TreeMap.class, new SortedMapSerializer<>(fory, TreeMap.class));
+        TreeMap.class, new SortedMapSerializer<>(resolver, TreeMap.class));
     resolver.registerInternalSerializer(
         Collections.EMPTY_MAP.getClass(),
-        new EmptyMapSerializer(fory, (Class<Map<?, ?>>) Collections.EMPTY_MAP.getClass()));
+        new EmptyMapSerializer(resolver, (Class<Map<?, ?>>) Collections.EMPTY_MAP.getClass()));
     resolver.registerInternalSerializer(
         Collections.emptySortedMap().getClass(),
         new EmptySortedMapSerializer(
-            fory, (Class<SortedMap<?, ?>>) Collections.emptySortedMap().getClass()));
+            resolver, (Class<SortedMap<?, ?>>) Collections.emptySortedMap().getClass()));
     resolver.registerInternalSerializer(
         Collections.singletonMap(null, null).getClass(),
         new SingletonMapSerializer(
-            fory, (Class<Map<?, ?>>) Collections.singletonMap(null, null).getClass()));
+            resolver, (Class<Map<?, ?>>) Collections.singletonMap(null, null).getClass()));
     resolver.registerInternalSerializer(
-        ConcurrentHashMap.class, new ConcurrentHashMapSerializer(fory, ConcurrentHashMap.class));
+        ConcurrentHashMap.class,
+        new ConcurrentHashMapSerializer(resolver, ConcurrentHashMap.class));
     resolver.registerInternalSerializer(
         ConcurrentSkipListMap.class,
-        new ConcurrentSkipListMapSerializer(fory, ConcurrentSkipListMap.class));
-    resolver.registerInternalSerializer(EnumMap.class, new EnumMapSerializer(fory));
-    resolver.registerInternalSerializer(LazyMap.class, new LazyMapSerializer(fory));
+        new ConcurrentSkipListMapSerializer(resolver, ConcurrentSkipListMap.class));
+    resolver.registerInternalSerializer(EnumMap.class, new EnumMapSerializer(resolver));
+    resolver.registerInternalSerializer(LazyMap.class, new LazyMapSerializer(resolver));
   }
 }

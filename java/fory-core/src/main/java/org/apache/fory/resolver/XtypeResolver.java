@@ -49,9 +49,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.builder.JITContext;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float16List;
 import org.apache.fory.collection.Float32List;
@@ -67,12 +67,14 @@ import org.apache.fory.collection.Uint32List;
 import org.apache.fory.collection.Uint64List;
 import org.apache.fory.collection.Uint8List;
 import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.ClassUnregisteredException;
 import org.apache.fory.exception.SerializerUnregisteredException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
@@ -106,7 +108,6 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
-import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
@@ -118,19 +119,13 @@ import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
-// TODO(chaokunyang) Abstract type resolver for java/xlang type resolution.
 public class XtypeResolver extends TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(XtypeResolver.class);
-
   private static final float loadFactor = 0.5f;
   // Most systems won't have so many types for serialization.
   private static final int MAX_TYPE_ID = 4096;
 
-  private final Config config;
-  private final Fory fory;
   private final TypeInfoHolder classInfoCache = new TypeInfoHolder(NIL_TYPE_INFO);
-  private final MetaStringResolver metaStringResolver;
-
   // Every deserialization for unregistered class will query it, performance is important.
   private final ObjectMap<TypeNameBytes, TypeInfo> compositeClassNameBytes2TypeInfo =
       new ObjectMap<>(16, loadFactor);
@@ -140,26 +135,47 @@ public class XtypeResolver extends TypeResolver {
   private final boolean shareMeta;
   private int xtypeIdGenerator = 64;
 
-  private final Generics generics;
-
-  public XtypeResolver(Fory fory) {
-    super(fory);
-    this.config = fory.getConfig();
-    this.fory = fory;
-    shareMeta = fory.getConfig().isMetaShareEnabled();
-    this.generics = fory.getGenerics();
-    this.metaStringResolver = fory.getMetaStringResolver();
+  public XtypeResolver(
+      Config config,
+      ClassLoader classLoader,
+      SharedRegistry sharedRegistry,
+      JITContext jitContext) {
+    super(config, classLoader, sharedRegistry, jitContext);
+    shareMeta = config.isMetaShareEnabled();
   }
 
   @Override
   public void initialize() {
     registerDefaultTypes();
-    // Keep xlang default internal serializers aligned with previous bootstrap behavior.
-    // Before resolver unification, these were registered through ClassResolver initialization.
-    Serializers.registerDefaultSerializers(fory);
+    Serializers.registerDefaultSerializers(this);
     if (shareMeta) {
-      Serializer serializer = new UnknownStructSerializer(fory, null);
+      Serializer serializer = new UnknownStructSerializer(this, null);
       register(UnknownStruct.class, serializer, "", "unknown_struct", Types.COMPATIBLE_STRUCT, -1);
+    }
+    if (GraalvmSupport.isGraalBuildtime()) {
+      classInfoMap.forEach(
+          (cls, classInfo) -> {
+            if (classInfo.serializer != null) {
+              extRegistry.registeredTypeInfos.add(classInfo);
+            }
+          });
+    }
+  }
+
+  @Override
+  protected void updateTypeInfo(Class<?> cls, TypeInfo typeInfo) {
+    classInfoMap.put(cls, typeInfo);
+    if (typeInfo.userTypeId != INVALID_USER_TYPE_ID) {
+      putUserTypeInfo(typeInfo.userTypeId, typeInfo);
+      return;
+    }
+    if (Types.isUserDefinedType((byte) typeInfo.typeId)) {
+      return;
+    }
+    // Preserve the canonical built-in decode target for shared xtype ids such as STRING and INT32.
+    TypeInfo currentTypeInfo = getInternalTypeInfoByTypeId(typeInfo.typeId);
+    if (currentTypeInfo == null || currentTypeInfo.getType() == cls) {
+      putInternalTypeInfo(typeInfo.typeId, typeInfo);
     }
   }
 
@@ -180,7 +196,7 @@ public class XtypeResolver extends TypeResolver {
     TypeInfo typeInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildTypeInfo(type);
-      GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
+      registerGraalvmClass(type);
       return;
     }
     Serializer<?> serializer = null;
@@ -235,7 +251,7 @@ public class XtypeResolver extends TypeResolver {
     Serializer<?> serializer = null;
     if (typeInfo != null) {
       serializer = typeInfo.serializer;
-      if (typeInfo.typeNameBytes != null) {
+      if (typeInfo.typeName != null) {
         String prevNamespace = typeInfo.decodeNamespace();
         String prevTypeName = typeInfo.decodeTypeName();
         if (!namespace.equals(prevNamespace) || typeName.equals(prevTypeName)) {
@@ -282,18 +298,15 @@ public class XtypeResolver extends TypeResolver {
       int userTypeId) {
     TypeInfo typeInfo = newTypeInfo(type, serializer, namespace, typeName, typeId, userTypeId);
     String qualifiedName = qualifiedName(namespace, typeName);
-    qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
-    extRegistry.registeredClasses.put(qualifiedName, type);
-    GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
     if (serializer == null) {
       if (type.isEnum()) {
-        typeInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
+        serializer = new EnumSerializer(config, (Class<Enum>) type);
       } else {
         AtomicBoolean updated = new AtomicBoolean(false);
         AtomicReference<Serializer> ref = new AtomicReference(null);
-        typeInfo.serializer =
+        serializer =
             new DeferedLazySerializer.DeferredLazyObjectSerializer(
-                fory,
+                this,
                 type,
                 () -> {
                   if (ref.get() == null) {
@@ -301,10 +314,10 @@ public class XtypeResolver extends TypeResolver {
                         getObjectSerializerClass(
                             type,
                             shareMeta,
-                            fory.getConfig().isCodeGenEnabled(),
-                            sc -> ref.set(Serializers.newSerializer(fory, type, sc)));
-                    ref.set(Serializers.newSerializer(fory, type, c));
-                    if (!fory.getConfig().isAsyncCompilationEnabled()) {
+                            config.isCodeGenEnabled(),
+                            sc -> ref.set(Serializers.newSerializer(this, type, sc)));
+                    ref.set(Serializers.newSerializer(this, type, c));
+                    if (!config.isAsyncCompilationEnabled()) {
                       updated.set(true);
                     }
                   }
@@ -312,6 +325,10 @@ public class XtypeResolver extends TypeResolver {
                 });
       }
     }
+    typeInfo.setSerializer(this, serializer);
+    qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
+    extRegistry.registeredClasses.put(qualifiedName, type);
+    registerGraalvmClass(type);
     updateTypeInfo(type, typeInfo);
   }
 
@@ -347,7 +364,7 @@ public class XtypeResolver extends TypeResolver {
         "Typename %s should not contains `.`, please put it into namespace",
         typeName);
     TypeInfo typeInfo = classInfoMap.get(type);
-    if (typeInfo != null && typeInfo.typeNameBytes != null) {
+    if (typeInfo != null && typeInfo.typeName != null) {
       String prevNamespace = typeInfo.decodeNamespace();
       String prevTypeName = typeInfo.decodeTypeName();
       if (!namespace.equals(prevNamespace) || typeName.equals(prevTypeName)) {
@@ -418,14 +435,14 @@ public class XtypeResolver extends TypeResolver {
       String typeName,
       int typeId,
       int userTypeId) {
-    MetaStringRef nsBytes = metaStringResolver.getOrCreatePackageMetaStringBytes(namespace);
-    MetaStringRef classNameBytes = metaStringResolver.getOrCreateTypeNameMetaStringBytes(typeName);
-    return new TypeInfo(type, nsBytes, classNameBytes, false, serializer, typeId, userTypeId);
+    EncodedMetaString nsBytes = sharedRegistry.getPackageEncodedMetaString(namespace);
+    EncodedMetaString classNameBytes = sharedRegistry.getTypeNameEncodedMetaString(typeName);
+    return new TypeInfo(type, nsBytes, classNameBytes, serializer, typeId, userTypeId);
   }
 
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     checkRegisterAllowed();
-    registerSerializer(type, Serializers.newSerializer(fory, type, serializerClass));
+    registerSerializer(type, Serializers.newSerializer(this, type, serializerClass));
   }
 
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
@@ -443,14 +460,13 @@ public class XtypeResolver extends TypeResolver {
       foryId = Types.NAMED_EXT;
     }
     typeInfo = typeInfo.copy(foryId);
-    typeInfo.serializer = serializer;
+    typeInfo.setSerializer(this, serializer);
     updateTypeInfo(type, typeInfo);
-    if (typeInfo.typeNameBytes != null) {
+    if (typeInfo.typeName != null) {
       String qualifiedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
       qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
       TypeNameBytes typeNameBytes =
-          new TypeNameBytes(
-              typeInfo.namespaceBytes.encoded.hash, typeInfo.typeNameBytes.encoded.hash);
+          new TypeNameBytes(typeInfo.namespace.hash, typeInfo.typeName.hash);
       compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
     }
   }
@@ -468,11 +484,10 @@ public class XtypeResolver extends TypeResolver {
     TypeInfo typeInfo = classInfoMap.get(type);
     if (typeInfo != null) {
       if (typeInfo.serializer == null) {
-        typeInfo.serializer = serializer;
+        typeInfo.setSerializer(this, serializer);
       }
       return;
     }
-    // Determine appropriate type ID based on the type
     int typeId = determineTypeIdForClass(type);
     typeInfo = newTypeInfo(type, serializer, typeId);
     classInfoMap.put(type, typeInfo);
@@ -493,7 +508,7 @@ public class XtypeResolver extends TypeResolver {
     if (type.isArray()) {
       Class<?> componentType = type.getComponentType();
       if (componentType.isPrimitive()) {
-        int elemTypeId = Types.getTypeId(fory, componentType);
+        int elemTypeId = Types.getTypeId(this, componentType);
         return Types.getPrimitiveArrayTypeId(elemTypeId);
       }
       return Types.LIST;
@@ -592,7 +607,7 @@ public class XtypeResolver extends TypeResolver {
           return false;
         }
         byte typeIdByte = getInternalTypeId(rawType);
-        if (fory.isCompatible()) {
+        if (isCompatible()) {
           return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
         }
         return typeIdByte != Types.UNKNOWN;
@@ -652,7 +667,7 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public TypeInfo getTypeInfo(Class<?> cls) {
     TypeInfo typeInfo = classInfoMap.get(cls);
-    if (typeInfo == null) {
+    if (typeInfo == null || typeInfo.serializer == null) {
       typeInfo = buildTypeInfo(cls);
     }
     return typeInfo;
@@ -668,9 +683,9 @@ public class XtypeResolver extends TypeResolver {
 
   public TypeInfo getTypeInfo(Class<?> cls, TypeInfoHolder classInfoHolder) {
     TypeInfo typeInfo = classInfoHolder.typeInfo;
-    if (typeInfo.getCls() != cls) {
+    if (typeInfo.getType() != cls) {
       typeInfo = classInfoMap.get(cls);
-      if (typeInfo == null) {
+      if (typeInfo == null || typeInfo.serializer == null) {
         typeInfo = buildTypeInfo(cls);
       }
       classInfoHolder.typeInfo = typeInfo;
@@ -695,12 +710,23 @@ public class XtypeResolver extends TypeResolver {
   // buildGenericType methods are inherited from TypeResolver
 
   private TypeInfo buildTypeInfo(Class<?> cls) {
+    TypeInfo typeInfo = classInfoMap.get(cls);
+    if (typeInfo != null && typeInfo.serializer != null) {
+      return typeInfo;
+    }
+    if (typeInfo != null) {
+      Class<? extends Serializer> serializerClass = getSerializerClassFromGraalvmRegistry(cls);
+      if (serializerClass != null) {
+        typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, serializerClass));
+        return typeInfo;
+      }
+    }
     Serializer serializer;
     int typeId;
     if (isSet(cls)) {
       if (cls.isAssignableFrom(HashSet.class)) {
         cls = HashSet.class;
-        serializer = new HashSetSerializer(fory);
+        serializer = new HashSetSerializer(this);
       } else {
         serializer = getCollectionSerializer(cls);
       }
@@ -708,32 +734,32 @@ public class XtypeResolver extends TypeResolver {
     } else if (isCollection(cls)) {
       if (cls.isAssignableFrom(ArrayList.class)) {
         cls = ArrayList.class;
-        serializer = new ArrayListSerializer(fory);
+        serializer = new ArrayListSerializer(this);
       } else {
         serializer = getCollectionSerializer(cls);
       }
       typeId = Types.LIST;
     } else if (cls.isArray() && !cls.getComponentType().isPrimitive()) {
-      serializer = new ArraySerializers.ObjectArraySerializer(fory, cls);
+      serializer = new ArraySerializers.ObjectArraySerializer(this, cls);
       typeId = Types.LIST;
     } else if (isMap(cls)) {
       if (cls.isAssignableFrom(HashMap.class)) {
         cls = HashMap.class;
-        serializer = new HashMapSerializer(fory);
+        serializer = new HashMapSerializer(this);
       } else {
-        TypeInfo typeInfo = classInfoMap.get(cls);
-        if (typeInfo != null
-            && typeInfo.serializer != null
-            && typeInfo.serializer instanceof MapLikeSerializer
-            && ((MapLikeSerializer) typeInfo.serializer).supportCodegenHook()) {
-          serializer = typeInfo.serializer;
+        TypeInfo cachedTypeInfo = classInfoMap.get(cls);
+        if (cachedTypeInfo != null
+            && cachedTypeInfo.serializer != null
+            && cachedTypeInfo.serializer instanceof MapLikeSerializer
+            && ((MapLikeSerializer) cachedTypeInfo.serializer).supportCodegenHook()) {
+          serializer = cachedTypeInfo.serializer;
         } else {
-          serializer = new MapSerializer(fory, cls);
+          serializer = new MapSerializer(this, cls);
         }
       }
       typeId = Types.MAP;
     } else if (UnknownClass.class.isAssignableFrom(cls)) {
-      serializer = UnknownClassSerializers.getSerializer(fory, "Unknown", cls);
+      serializer = UnknownClassSerializers.getSerializer(this, "Unknown", cls);
       if (cls.isEnum()) {
         typeId = Types.ENUM;
       } else {
@@ -765,122 +791,152 @@ public class XtypeResolver extends TypeResolver {
         && ((CollectionLikeSerializer) (typeInfo.serializer)).supportCodegenHook()) {
       return typeInfo.serializer;
     }
-    return new CollectionSerializer(fory, cls);
+    return new CollectionSerializer(this, cls);
   }
 
   private void registerDefaultTypes() {
+    Config config = this.config;
     // Boolean types
     registerType(
-        Types.BOOL, Boolean.class, new PrimitiveSerializers.BooleanSerializer(fory, Boolean.class));
+        Types.BOOL,
+        Boolean.class,
+        new PrimitiveSerializers.BooleanSerializer(config, Boolean.class));
     registerType(
-        Types.BOOL, boolean.class, new PrimitiveSerializers.BooleanSerializer(fory, boolean.class));
-    registerType(Types.BOOL, AtomicBoolean.class, new Serializers.AtomicBooleanSerializer(fory));
+        Types.BOOL,
+        boolean.class,
+        new PrimitiveSerializers.BooleanSerializer(config, boolean.class));
+    registerType(Types.BOOL, AtomicBoolean.class, new Serializers.AtomicBooleanSerializer(config));
 
     // Byte types
     registerType(
-        Types.UINT8, Byte.class, new PrimitiveSerializers.ByteSerializer(fory, Byte.class));
+        Types.UINT8, Byte.class, new PrimitiveSerializers.ByteSerializer(config, Byte.class));
     registerType(
-        Types.UINT8, byte.class, new PrimitiveSerializers.ByteSerializer(fory, byte.class));
-    registerType(Types.INT8, Byte.class, new PrimitiveSerializers.ByteSerializer(fory, Byte.class));
-    registerType(Types.INT8, byte.class, new PrimitiveSerializers.ByteSerializer(fory, byte.class));
-    registerType(Types.UINT8, Uint8.class, new UnsignedSerializers.Uint8Serializer(fory));
+        Types.UINT8, byte.class, new PrimitiveSerializers.ByteSerializer(config, byte.class));
+    registerType(
+        Types.INT8, Byte.class, new PrimitiveSerializers.ByteSerializer(config, Byte.class));
+    registerType(
+        Types.INT8, byte.class, new PrimitiveSerializers.ByteSerializer(config, byte.class));
+    registerType(Types.UINT8, Uint8.class, new UnsignedSerializers.Uint8Serializer(config));
 
     // Short types
     registerType(
-        Types.UINT16, Short.class, new PrimitiveSerializers.ShortSerializer(fory, Short.class));
+        Types.UINT16, Short.class, new PrimitiveSerializers.ShortSerializer(config, Short.class));
     registerType(
-        Types.UINT16, short.class, new PrimitiveSerializers.ShortSerializer(fory, short.class));
+        Types.UINT16, short.class, new PrimitiveSerializers.ShortSerializer(config, short.class));
     registerType(
-        Types.INT16, Short.class, new PrimitiveSerializers.ShortSerializer(fory, Short.class));
+        Types.INT16, Short.class, new PrimitiveSerializers.ShortSerializer(config, Short.class));
     registerType(
-        Types.INT16, short.class, new PrimitiveSerializers.ShortSerializer(fory, short.class));
-    registerType(Types.UINT16, Uint16.class, new UnsignedSerializers.Uint16Serializer(fory));
+        Types.INT16, short.class, new PrimitiveSerializers.ShortSerializer(config, short.class));
+    registerType(Types.UINT16, Uint16.class, new UnsignedSerializers.Uint16Serializer(config));
 
     // Integer types
     registerType(
-        Types.UINT32, Integer.class, new PrimitiveSerializers.IntSerializer(fory, Integer.class));
-    registerType(Types.UINT32, int.class, new PrimitiveSerializers.IntSerializer(fory, int.class));
-    registerType(Types.UINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(fory));
+        Types.UINT32, Integer.class, new PrimitiveSerializers.IntSerializer(config, Integer.class));
     registerType(
-        Types.INT32, Integer.class, new PrimitiveSerializers.IntSerializer(fory, Integer.class));
-    registerType(Types.INT32, int.class, new PrimitiveSerializers.IntSerializer(fory, int.class));
-    registerType(Types.INT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(fory));
+        Types.UINT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
     registerType(
-        Types.VAR_UINT32, Integer.class, new PrimitiveSerializers.VarUint32Serializer(fory));
-    registerType(Types.VAR_UINT32, int.class, new PrimitiveSerializers.VarUint32Serializer(fory));
+        Types.UINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
     registerType(
-        Types.VARINT32, Integer.class, new PrimitiveSerializers.IntSerializer(fory, Integer.class));
+        Types.INT32, Integer.class, new PrimitiveSerializers.IntSerializer(config, Integer.class));
+    registerType(Types.INT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
+    registerType(Types.INT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
     registerType(
-        Types.VARINT32, int.class, new PrimitiveSerializers.IntSerializer(fory, int.class));
+        Types.VAR_UINT32, Integer.class, new PrimitiveSerializers.VarUint32Serializer(config));
+    registerType(Types.VAR_UINT32, int.class, new PrimitiveSerializers.VarUint32Serializer(config));
     registerType(
-        Types.VARINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(fory));
-    registerType(Types.UINT32, Uint32.class, new UnsignedSerializers.Uint32Serializer(fory));
-    registerType(Types.UINT64, Uint64.class, new UnsignedSerializers.Uint64Serializer(fory));
+        Types.VARINT32,
+        Integer.class,
+        new PrimitiveSerializers.IntSerializer(config, Integer.class));
+    registerType(
+        Types.VARINT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
+    registerType(
+        Types.VARINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
+    registerType(Types.UINT32, Uint32.class, new UnsignedSerializers.Uint32Serializer(config));
+    registerType(Types.UINT64, Uint64.class, new UnsignedSerializers.Uint64Serializer(config));
 
     // Long types
     registerType(
-        Types.UINT64, Long.class, new PrimitiveSerializers.LongSerializer(fory, Long.class));
+        Types.UINT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
     registerType(
-        Types.UINT64, long.class, new PrimitiveSerializers.LongSerializer(fory, long.class));
-    registerType(Types.UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(fory));
+        Types.UINT64, long.class, new PrimitiveSerializers.LongSerializer(config, long.class));
+    registerType(Types.UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
     registerType(
-        Types.TAGGED_UINT64, Long.class, new PrimitiveSerializers.LongSerializer(fory, Long.class));
+        Types.TAGGED_UINT64,
+        Long.class,
+        new PrimitiveSerializers.LongSerializer(config, Long.class));
     registerType(
-        Types.TAGGED_UINT64, long.class, new PrimitiveSerializers.LongSerializer(fory, long.class));
-    registerType(Types.TAGGED_UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(fory));
+        Types.TAGGED_UINT64,
+        long.class,
+        new PrimitiveSerializers.LongSerializer(config, long.class));
     registerType(
-        Types.INT64, Long.class, new PrimitiveSerializers.LongSerializer(fory, Long.class));
+        Types.TAGGED_UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
     registerType(
-        Types.INT64, long.class, new PrimitiveSerializers.LongSerializer(fory, long.class));
-    registerType(Types.INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(fory));
+        Types.INT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
     registerType(
-        Types.TAGGED_INT64, Long.class, new PrimitiveSerializers.LongSerializer(fory, Long.class));
+        Types.INT64, long.class, new PrimitiveSerializers.LongSerializer(config, long.class));
+    registerType(Types.INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
     registerType(
-        Types.TAGGED_INT64, long.class, new PrimitiveSerializers.LongSerializer(fory, long.class));
-    registerType(Types.TAGGED_INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(fory));
-    registerType(Types.VAR_UINT64, Long.class, new PrimitiveSerializers.VarUint64Serializer(fory));
-    registerType(Types.VAR_UINT64, long.class, new PrimitiveSerializers.VarUint64Serializer(fory));
+        Types.TAGGED_INT64,
+        Long.class,
+        new PrimitiveSerializers.LongSerializer(config, Long.class));
     registerType(
-        Types.VARINT64, Long.class, new PrimitiveSerializers.LongSerializer(fory, Long.class));
+        Types.TAGGED_INT64,
+        long.class,
+        new PrimitiveSerializers.LongSerializer(config, long.class));
     registerType(
-        Types.VARINT64, long.class, new PrimitiveSerializers.LongSerializer(fory, long.class));
-    registerType(Types.VARINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(fory));
+        Types.TAGGED_INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
+    registerType(
+        Types.VAR_UINT64, Long.class, new PrimitiveSerializers.VarUint64Serializer(config));
+    registerType(
+        Types.VAR_UINT64, long.class, new PrimitiveSerializers.VarUint64Serializer(config));
+    registerType(
+        Types.VARINT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
+    registerType(
+        Types.VARINT64, long.class, new PrimitiveSerializers.LongSerializer(config, long.class));
+    registerType(Types.VARINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
 
     // Float types
     registerType(
-        Types.FLOAT32, Float.class, new PrimitiveSerializers.FloatSerializer(fory, Float.class));
+        Types.FLOAT32, Float.class, new PrimitiveSerializers.FloatSerializer(config, Float.class));
     registerType(
-        Types.FLOAT32, float.class, new PrimitiveSerializers.FloatSerializer(fory, float.class));
+        Types.FLOAT32, float.class, new PrimitiveSerializers.FloatSerializer(config, float.class));
     registerType(
         Types.FLOAT16,
         Float16.class,
-        new PrimitiveSerializers.Float16Serializer(fory, Float16.class));
+        new PrimitiveSerializers.Float16Serializer(config, Float16.class));
     registerType(
-        Types.FLOAT64, Double.class, new PrimitiveSerializers.DoubleSerializer(fory, Double.class));
+        Types.FLOAT64,
+        Double.class,
+        new PrimitiveSerializers.DoubleSerializer(config, Double.class));
     registerType(
-        Types.FLOAT64, double.class, new PrimitiveSerializers.DoubleSerializer(fory, double.class));
+        Types.FLOAT64,
+        double.class,
+        new PrimitiveSerializers.DoubleSerializer(config, double.class));
 
     // String types
-    registerType(Types.STRING, String.class, fory.getStringSerializer());
-    registerType(Types.STRING, StringBuilder.class, new Serializers.StringBuilderSerializer(fory));
-    registerType(Types.STRING, StringBuffer.class, new Serializers.StringBufferSerializer(fory));
+    registerType(
+        Types.STRING, String.class, new org.apache.fory.serializer.StringSerializer(config));
+    registerType(
+        Types.STRING, StringBuilder.class, new Serializers.StringBuilderSerializer(config));
+    registerType(Types.STRING, StringBuffer.class, new Serializers.StringBufferSerializer(config));
 
     // Time types
-    registerType(Types.DURATION, Duration.class, new TimeSerializers.DurationSerializer(fory));
-    registerType(Types.TIMESTAMP, Instant.class, new TimeSerializers.InstantSerializer(fory));
-    registerType(Types.TIMESTAMP, Date.class, new TimeSerializers.DateSerializer(fory));
-    registerType(Types.TIMESTAMP, java.sql.Date.class, new TimeSerializers.SqlDateSerializer(fory));
-    registerType(Types.TIMESTAMP, Timestamp.class, new TimeSerializers.TimestampSerializer(fory));
+    registerType(Types.DURATION, Duration.class, new TimeSerializers.DurationSerializer(config));
+    registerType(Types.TIMESTAMP, Instant.class, new TimeSerializers.InstantSerializer(config));
+    registerType(Types.TIMESTAMP, Date.class, new TimeSerializers.DateSerializer(config));
     registerType(
-        Types.TIMESTAMP, LocalDateTime.class, new TimeSerializers.LocalDateTimeSerializer(fory));
-    registerType(Types.DATE, LocalDate.class, new TimeSerializers.LocalDateSerializer(fory));
+        Types.TIMESTAMP, java.sql.Date.class, new TimeSerializers.SqlDateSerializer(config));
+    registerType(Types.TIMESTAMP, Timestamp.class, new TimeSerializers.TimestampSerializer(config));
+    registerType(
+        Types.TIMESTAMP, LocalDateTime.class, new TimeSerializers.LocalDateTimeSerializer(config));
+    registerType(Types.DATE, LocalDate.class, new TimeSerializers.LocalDateSerializer(config));
 
     // Decimal types
-    registerType(Types.DECIMAL, BigDecimal.class, new Serializers.BigDecimalSerializer(fory));
-    registerType(Types.DECIMAL, BigInteger.class, new Serializers.BigIntegerSerializer(fory));
+    registerType(Types.DECIMAL, BigDecimal.class, new Serializers.BigDecimalSerializer(config));
+    registerType(Types.DECIMAL, BigInteger.class, new Serializers.BigIntegerSerializer(config));
 
     // Binary types
-    registerType(Types.BINARY, byte[].class, new ArraySerializers.ByteArraySerializer(fory));
+    registerType(Types.BINARY, byte[].class, new ArraySerializers.ByteArraySerializer(this));
     @SuppressWarnings("unchecked")
     Class<java.nio.ByteBuffer> heapByteBufferClass =
         (Class<java.nio.ByteBuffer>) Platform.HEAP_BYTE_BUFFER_CLASS;
@@ -888,7 +944,7 @@ public class XtypeResolver extends TypeResolver {
         Types.BINARY,
         Platform.HEAP_BYTE_BUFFER_CLASS,
         new org.apache.fory.serializer.BufferSerializers.ByteBufferSerializer(
-            fory, heapByteBufferClass));
+            this, heapByteBufferClass));
     @SuppressWarnings("unchecked")
     Class<java.nio.ByteBuffer> directByteBufferClass =
         (Class<java.nio.ByteBuffer>) Platform.DIRECT_BYTE_BUFFER_CLASS;
@@ -896,88 +952,88 @@ public class XtypeResolver extends TypeResolver {
         Types.BINARY,
         Platform.DIRECT_BYTE_BUFFER_CLASS,
         new org.apache.fory.serializer.BufferSerializers.ByteBufferSerializer(
-            fory, directByteBufferClass));
+            this, directByteBufferClass));
 
     // Primitive arrays
     registerType(
-        Types.BOOL_ARRAY, boolean[].class, new ArraySerializers.BooleanArraySerializer(fory));
-    registerType(Types.INT16_ARRAY, short[].class, new ArraySerializers.ShortArraySerializer(fory));
-    registerType(Types.INT32_ARRAY, int[].class, new ArraySerializers.IntArraySerializer(fory));
-    registerType(Types.INT64_ARRAY, long[].class, new ArraySerializers.LongArraySerializer(fory));
+        Types.BOOL_ARRAY, boolean[].class, new ArraySerializers.BooleanArraySerializer(this));
+    registerType(Types.INT16_ARRAY, short[].class, new ArraySerializers.ShortArraySerializer(this));
+    registerType(Types.INT32_ARRAY, int[].class, new ArraySerializers.IntArraySerializer(this));
+    registerType(Types.INT64_ARRAY, long[].class, new ArraySerializers.LongArraySerializer(this));
     registerType(
-        Types.FLOAT32_ARRAY, float[].class, new ArraySerializers.FloatArraySerializer(fory));
+        Types.FLOAT32_ARRAY, float[].class, new ArraySerializers.FloatArraySerializer(this));
     registerType(
-        Types.FLOAT64_ARRAY, double[].class, new ArraySerializers.DoubleArraySerializer(fory));
+        Types.FLOAT64_ARRAY, double[].class, new ArraySerializers.DoubleArraySerializer(this));
     registerType(
-        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(fory));
+        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(this));
 
     // Primitive lists
     registerType(
-        Types.BOOL_ARRAY, BoolList.class, new PrimitiveListSerializers.BoolListSerializer(fory));
+        Types.BOOL_ARRAY, BoolList.class, new PrimitiveListSerializers.BoolListSerializer(this));
     registerType(
-        Types.INT8_ARRAY, Int8List.class, new PrimitiveListSerializers.Int8ListSerializer(fory));
+        Types.INT8_ARRAY, Int8List.class, new PrimitiveListSerializers.Int8ListSerializer(this));
     registerType(
-        Types.INT16_ARRAY, Int16List.class, new PrimitiveListSerializers.Int16ListSerializer(fory));
+        Types.INT16_ARRAY, Int16List.class, new PrimitiveListSerializers.Int16ListSerializer(this));
     registerType(
-        Types.INT32_ARRAY, Int32List.class, new PrimitiveListSerializers.Int32ListSerializer(fory));
+        Types.INT32_ARRAY, Int32List.class, new PrimitiveListSerializers.Int32ListSerializer(this));
     registerType(
-        Types.INT64_ARRAY, Int64List.class, new PrimitiveListSerializers.Int64ListSerializer(fory));
+        Types.INT64_ARRAY, Int64List.class, new PrimitiveListSerializers.Int64ListSerializer(this));
     registerType(
-        Types.UINT8_ARRAY, Uint8List.class, new PrimitiveListSerializers.Uint8ListSerializer(fory));
+        Types.UINT8_ARRAY, Uint8List.class, new PrimitiveListSerializers.Uint8ListSerializer(this));
     registerType(
         Types.UINT16_ARRAY,
         Uint16List.class,
-        new PrimitiveListSerializers.Uint16ListSerializer(fory));
+        new PrimitiveListSerializers.Uint16ListSerializer(this));
     registerType(
         Types.UINT32_ARRAY,
         Uint32List.class,
-        new PrimitiveListSerializers.Uint32ListSerializer(fory));
+        new PrimitiveListSerializers.Uint32ListSerializer(this));
     registerType(
         Types.UINT64_ARRAY,
         Uint64List.class,
-        new PrimitiveListSerializers.Uint64ListSerializer(fory));
+        new PrimitiveListSerializers.Uint64ListSerializer(this));
     registerType(
         Types.FLOAT32_ARRAY,
         Float32List.class,
-        new PrimitiveListSerializers.Float32ListSerializer(fory));
+        new PrimitiveListSerializers.Float32ListSerializer(this));
     registerType(
         Types.FLOAT64_ARRAY,
         Float64List.class,
-        new PrimitiveListSerializers.Float64ListSerializer(fory));
+        new PrimitiveListSerializers.Float64ListSerializer(this));
     registerType(
         Types.FLOAT16_ARRAY,
         Float16List.class,
-        new PrimitiveListSerializers.Float16ListSerializer(fory));
+        new PrimitiveListSerializers.Float16ListSerializer(this));
 
     // Collections
-    registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(fory));
+    registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(this));
     registerType(
         Types.LIST,
         Object[].class,
-        new ArraySerializers.ObjectArraySerializer(fory, Object[].class));
-    registerType(Types.LIST, List.class, new XlangListDefaultSerializer(fory, List.class));
+        new ArraySerializers.ObjectArraySerializer(this, Object[].class));
+    registerType(Types.LIST, List.class, new XlangListDefaultSerializer(this, List.class));
     registerType(
-        Types.LIST, Collection.class, new XlangListDefaultSerializer(fory, Collection.class));
+        Types.LIST, Collection.class, new XlangListDefaultSerializer(this, Collection.class));
 
     // Sets
-    registerType(Types.SET, HashSet.class, new HashSetSerializer(fory));
+    registerType(Types.SET, HashSet.class, new HashSetSerializer(this));
     registerType(
         Types.SET,
         LinkedHashSet.class,
         new org.apache.fory.serializer.collection.CollectionSerializers.LinkedHashSetSerializer(
-            fory));
-    registerType(Types.SET, Set.class, new XlangSetDefaultSerializer(fory, Set.class));
+            this));
+    registerType(Types.SET, Set.class, new XlangSetDefaultSerializer(this, Set.class));
 
     // Maps
     registerType(
         Types.MAP,
         HashMap.class,
-        new org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer(fory));
+        new org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer(this));
     registerType(
         Types.MAP,
         LinkedHashMap.class,
-        new org.apache.fory.serializer.collection.MapSerializers.LinkedHashMapSerializer(fory));
-    registerType(Types.MAP, Map.class, new XlangMapSerializer(fory, Map.class));
+        new org.apache.fory.serializer.collection.MapSerializers.LinkedHashMapSerializer(this));
+    registerType(Types.MAP, Map.class, new XlangMapSerializer(this, Map.class));
 
     registerUnionTypes();
   }
@@ -1004,7 +1060,7 @@ public class XtypeResolver extends TypeResolver {
       @SuppressWarnings("unchecked")
       Class<? extends org.apache.fory.type.union.Union> unionCls =
           (Class<? extends org.apache.fory.type.union.Union>) cls;
-      UnionSerializer serializer = new UnionSerializer(fory, unionCls);
+      UnionSerializer serializer = new UnionSerializer(this, unionCls);
       TypeInfo typeInfo = newTypeInfo(cls, serializer, Types.UNION, INVALID_USER_TYPE_ID);
       classInfoMap.put(cls, typeInfo);
     }
@@ -1021,7 +1077,7 @@ public class XtypeResolver extends TypeResolver {
   protected TypeDef buildTypeDef(TypeInfo typeInfo) {
     TypeDef typeDef =
         cacheTypeDef(
-            typeDefMap.computeIfAbsent(typeInfo.cls, cls -> TypeDef.buildTypeDef(fory, cls)));
+            typeDefMap.computeIfAbsent(typeInfo.type, cls -> TypeDef.buildTypeDef(this, cls)));
     typeInfo.typeDef = typeDef;
     return typeDef;
   }
@@ -1038,23 +1094,23 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public <T> void setSerializer(Class<T> cls, Serializer<T> serializer) {
-    getTypeInfo(cls).serializer = serializer;
+    getTypeInfo(cls).setSerializer(this, serializer);
   }
 
   @Override
   public <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer) {
     TypeInfo typeInfo = classInfoMap.get(cls);
     Preconditions.checkNotNull(typeInfo);
-    Preconditions.checkNotNull(typeInfo.serializer);
+    if (typeInfo.serializer == null) {
+      typeInfo.setSerializer(this, serializer);
+    }
   }
 
   // nilTypeInfo and nilTypeInfoHolder are inherited from TypeResolver
 
   @Override
-  protected TypeInfo getListTypeInfo() {
-    fory.incReadDepth();
-    GenericType genericType = generics.nextGenericType();
-    fory.decDepth();
+  protected TypeInfo readListTypeInfo(ReadContext readContext) {
+    GenericType genericType = readContext.getGenerics().nextGenericType(readContext.getDepth() + 1);
     if (genericType != null) {
       return getOrBuildTypeInfo(genericType.getCls());
     }
@@ -1062,10 +1118,8 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  protected TypeInfo getTimestampTypeInfo() {
-    fory.incReadDepth();
-    GenericType genericType = generics.nextGenericType();
-    fory.decDepth();
+  protected TypeInfo readTimestampTypeInfo(ReadContext readContext) {
+    GenericType genericType = readContext.getGenerics().nextGenericType(readContext.getDepth() + 1);
     if (genericType != null) {
       return getOrBuildTypeInfo(genericType.getCls());
     }
@@ -1083,31 +1137,30 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   protected TypeInfo loadBytesToTypeInfo(
-      MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
+      EncodedMetaString packageBytes, EncodedMetaString simpleClassNameBytes) {
     // Default to NAMED_STRUCT when called without internalTypeId
     return loadBytesToTypeInfoWithTypeId(Types.NAMED_STRUCT, packageBytes, simpleClassNameBytes);
   }
 
   @Override
   protected TypeInfo loadBytesToTypeInfo(
-      int typeId, MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
+      int typeId, EncodedMetaString packageBytes, EncodedMetaString simpleClassNameBytes) {
     return loadBytesToTypeInfoWithTypeId(typeId, packageBytes, simpleClassNameBytes);
   }
 
   @Override
   protected TypeInfo ensureSerializerForTypeInfo(TypeInfo typeInfo) {
     if (typeInfo.serializer == null) {
-      Class<?> cls = typeInfo.cls;
+      Class<?> cls = typeInfo.type;
       if (cls != null && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
         return typeInfo;
       }
       // Get or create TypeInfo with serializer
-      TypeInfo newTypeInfo = getTypeInfo(typeInfo.cls);
+      TypeInfo newTypeInfo = getTypeInfo(typeInfo.type);
       // Update the cache with the correct TypeInfo that has a serializer
-      if (typeInfo.typeNameBytes != null) {
+      if (typeInfo.typeName != null) {
         TypeNameBytes typeNameBytes =
-            new TypeNameBytes(
-                typeInfo.namespaceBytes.encoded.hash, typeInfo.typeNameBytes.encoded.hash);
+            new TypeNameBytes(typeInfo.namespace.hash, typeInfo.typeName.hash);
         compositeClassNameBytes2TypeInfo.put(typeNameBytes, newTypeInfo);
       }
       return newTypeInfo;
@@ -1116,9 +1169,8 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private TypeInfo loadBytesToTypeInfoWithTypeId(
-      int internalTypeId, MetaStringRef packageBytes, MetaStringRef simpleClassNameBytes) {
-    TypeNameBytes typeNameBytes =
-        new TypeNameBytes(packageBytes.encoded.hash, simpleClassNameBytes.encoded.hash);
+      int internalTypeId, EncodedMetaString packageBytes, EncodedMetaString simpleClassNameBytes) {
+    TypeNameBytes typeNameBytes = new TypeNameBytes(packageBytes.hash, simpleClassNameBytes.hash);
     TypeInfo typeInfo = compositeClassNameBytes2TypeInfo.get(typeNameBytes);
     if (typeInfo == null) {
       typeInfo =
@@ -1131,8 +1183,8 @@ public class XtypeResolver extends TypeResolver {
   private TypeInfo populateBytesToTypeInfo(
       int typeId,
       TypeNameBytes typeNameBytes,
-      MetaStringRef packageBytes,
-      MetaStringRef simpleClassNameBytes) {
+      EncodedMetaString packageBytes,
+      EncodedMetaString simpleClassNameBytes) {
     String namespace = packageBytes.decode(PACKAGE_DECODER);
     String typeName = simpleClassNameBytes.decode(TYPE_NAME_DECODER);
     String qualifiedName = qualifiedName(namespace, typeName);
@@ -1163,12 +1215,11 @@ public class XtypeResolver extends TypeResolver {
               type,
               packageBytes,
               simpleClassNameBytes,
-              false,
               null,
               NOT_SUPPORT_XLANG,
               INVALID_USER_TYPE_ID);
       if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-        typeInfo.serializer = UnknownClassSerializers.getSerializer(fory, qualifiedName, type);
+        typeInfo.serializer = UnknownClassSerializers.getSerializer(this, qualifiedName, type);
       }
     }
     compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
@@ -1197,7 +1248,7 @@ public class XtypeResolver extends TypeResolver {
   private byte getInternalTypeId(Descriptor descriptor) {
     Class<?> cls = descriptor.getRawType();
     if (cls.isArray() && cls.getComponentType().isPrimitive()) {
-      return (byte) Types.getDescriptorTypeId(fory, descriptor);
+      return (byte) Types.getDescriptorTypeId(this, descriptor);
     }
     return getInternalTypeId(cls);
   }
@@ -1260,15 +1311,13 @@ public class XtypeResolver extends TypeResolver {
   public void ensureSerializersCompiled() {
     classInfoMap.forEach(
         (cls, classInfo) -> {
-          GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+          registerGraalvmClass(cls);
           if (classInfo.serializer != null) {
             // Trigger serializer initialization and resolution for deferred serializers
             if (classInfo.serializer
                 instanceof DeferedLazySerializer.DeferredLazyObjectSerializer) {
               ((DeferedLazySerializer.DeferredLazyObjectSerializer) classInfo.serializer)
                   .resolveSerializer();
-            } else {
-              classInfo.serializer.getClass();
             }
           }
           // For enums at GraalVM build time, also handle anonymous enum value classes
@@ -1280,6 +1329,15 @@ public class XtypeResolver extends TypeResolver {
               }
             }
           }
+          if (GraalvmSupport.isGraalBuildtime() && classInfo.serializer != null) {
+            getGraalvmClassRegistry()
+                .putSerializerClass(cls, getGraalvmSerializerClass(classInfo.serializer));
+          }
         });
+    if (GraalvmSupport.isGraalBuildtime()) {
+      clearGraalvmGeneratedTypeInfoSerializers();
+      getGraalvmClassRegistry().clearResolvers();
+    }
+    extRegistry.registeredTypeInfos.clear();
   }
 }

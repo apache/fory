@@ -23,11 +23,12 @@ import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.AbstractObjectSerializer;
+import org.apache.fory.serializer.MetaSharedLayerSerializerBase;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.Preconditions;
 
@@ -40,8 +41,8 @@ public interface Generated {
 
   /** Base class for all generated serializers. */
   abstract class GeneratedSerializer extends AbstractObjectSerializer implements Generated {
-    public GeneratedSerializer(Fory fory, Class<?> cls) {
-      super(fory, cls);
+    public GeneratedSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls);
     }
 
     /**
@@ -66,14 +67,14 @@ public interface Generated {
           String serializerFieldName = (String) serializerFieldInfos[i];
           Class<?> beanFieldType = (Class<?>) serializerFieldInfos[i + 1];
           Field field = Objects.requireNonNull(fieldsMap.get(serializerFieldName));
-          fory.getJITContext()
+          typeResolver
+              .getJITContext()
               .registerJITNotifyCallback(
                   beanFieldType,
                   new JITContext.NotifyCallback() {
                     @Override
                     public void onNotifyResult(Object result) {
-                      Serializer<?> fieldSerializer =
-                          fory.getTypeResolver().getSerializer(beanFieldType);
+                      Serializer<?> fieldSerializer = typeResolver.getSerializer(beanFieldType);
                       Preconditions.checkState(beanFieldType == fieldSerializer.getType());
                       Preconditions.checkState(result == fieldSerializer.getClass());
                       ReflectionUtils.setObjectFieldValue(
@@ -82,8 +83,7 @@ public interface Generated {
 
                     @Override
                     public void onNotifyMissed() {
-                      Serializer<?> fieldSerializer =
-                          fory.getTypeResolver().getSerializer(beanFieldType);
+                      Serializer<?> fieldSerializer = typeResolver.getSerializer(beanFieldType);
                       ReflectionUtils.setObjectFieldValue(
                           subclassSerializer, field, fieldSerializer);
                     }
@@ -95,8 +95,8 @@ public interface Generated {
 
   /** Base class for all type consist serializers. */
   abstract class GeneratedObjectSerializer extends GeneratedSerializer implements Generated {
-    public GeneratedObjectSerializer(Fory fory, Class<?> cls) {
-      super(fory, cls);
+    public GeneratedObjectSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls);
     }
   }
 
@@ -107,13 +107,13 @@ public interface Generated {
     /** Will be set in generated constructor by {@link MetaSharedCodecBuilder}. */
     public Serializer serializer;
 
-    public GeneratedMetaSharedSerializer(Fory fory, Class<?> cls) {
-      super(fory, cls);
+    public GeneratedMetaSharedSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      serializer.write(buffer, value);
+    public void write(WriteContext writeContext, Object value) {
+      serializer.write(writeContext, value);
     }
   }
 
@@ -122,71 +122,10 @@ public interface Generated {
    * GeneratedMetaSharedSerializer}, this serializer only handles fields from a single class layer
    * and does not include parent class fields.
    */
-  abstract class GeneratedMetaSharedLayerSerializer
-      extends org.apache.fory.serializer.MetaSharedLayerSerializerBase implements Generated {
-    public static final String SERIALIZER_FIELD_NAME = "serializer";
-
-    /** Will be set in generated constructor by MetaSharedLayerCodecBuilder. */
-    public org.apache.fory.serializer.MetaSharedLayerSerializerBase serializer;
-
-    public GeneratedMetaSharedLayerSerializer(Fory fory, Class<?> cls) {
-      super(fory, cls);
-    }
-
-    @Override
-    public void write(MemoryBuffer buffer, Object value) {
-      serializer.write(buffer, value);
-    }
-
-    @Override
-    public Object readAndSetFields(MemoryBuffer buffer, Object obj) {
-      return serializer.readAndSetFields(buffer, obj);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void setFieldValuesFromPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, Object[] vals) {
-      serializer.setFieldValuesFromPutFields(obj, fieldIndexMap, vals);
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public Object[] getFieldValuesForPutFields(
-        Object obj, org.apache.fory.collection.ObjectIntMap fieldIndexMap, int arraySize) {
-      return serializer.getFieldValuesForPutFields(obj, fieldIndexMap, arraySize);
-    }
-
-    @Override
-    public void writeLayerClassMeta(MemoryBuffer buffer) {
-      serializer.writeLayerClassMeta(buffer);
-    }
-
-    @Override
-    public void writeFieldsOnly(MemoryBuffer buffer, Object value) {
-      serializer.writeFieldsOnly(buffer, value);
-    }
-
-    @Override
-    public void writeFieldValues(MemoryBuffer buffer, Object[] vals) {
-      serializer.writeFieldValues(buffer, vals);
-    }
-
-    @Override
-    public Object[] readFieldValues(MemoryBuffer buffer) {
-      return serializer.readFieldValues(buffer);
-    }
-
-    @Override
-    public int getNumFields() {
-      return serializer.getNumFields();
-    }
-
-    @Override
-    @SuppressWarnings("rawtypes")
-    public void populateFieldInfo(
-        org.apache.fory.collection.ObjectIntMap fieldIndexMap, Class[] fieldTypes) {
-      serializer.populateFieldInfo(fieldIndexMap, fieldTypes);
+  abstract class GeneratedMetaSharedLayerSerializer extends MetaSharedLayerSerializerBase
+      implements Generated {
+    public GeneratedMetaSharedLayerSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls);
     }
   }
 }

@@ -20,9 +20,10 @@
 package org.apache.fory.serializer.scala;
 
 import java.lang.reflect.Field;
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
@@ -37,8 +38,8 @@ public class SingletonObjectSerializer extends Serializer {
   private Object base = null;
   private long offset = -1;
 
-  public SingletonObjectSerializer(Fory fory, Class type) {
-    super(fory, type);
+  public SingletonObjectSerializer(TypeResolver typeResolver, Class type) {
+    super(typeResolver.getConfig(), type);
     try {
       Class.forName(type.getName(), true, type.getClassLoader());
     } catch (final ClassNotFoundException e) {
@@ -52,10 +53,10 @@ public class SingletonObjectSerializer extends Serializer {
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {}
+  public void write(WriteContext writeContext, Object value) {}
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
     long offset = this.offset;
     if (offset == -1) {
       Preconditions.checkArgument(!GraalvmSupport.isGraalBuildtime());

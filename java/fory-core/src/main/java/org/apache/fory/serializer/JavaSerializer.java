@@ -29,6 +29,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import org.apache.fory.Fory;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.io.ClassLoaderObjectInputStream;
 import org.apache.fory.io.MemoryBufferObjectInput;
 import org.apache.fory.io.MemoryBufferObjectOutput;
@@ -38,6 +40,7 @@ import org.apache.fory.memory.BigEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 
 /**
  * Serializes objects using Java's built in serialization to be compatible with java serialization.
@@ -53,8 +56,8 @@ public class JavaSerializer extends AbstractObjectSerializer {
   private final MemoryBufferObjectInput objectInput;
   private final MemoryBufferObjectOutput objectOutput;
 
-  public JavaSerializer(Fory fory, Class<?> cls) {
-    super(fory, cls);
+  public JavaSerializer(TypeResolver typeResolver, Class<?> cls) {
+    super(typeResolver, cls);
     // TODO(chgaokunyang) enable this check when ObjectSerializer is implemented.
     // Preconditions.checkArgument(ClassResolver.requireJavaSerialization(cls));
     if (cls != SerializedLambda.class) {
@@ -65,40 +68,47 @@ public class JavaSerializer extends AbstractObjectSerializer {
           Serializer.class.getName(),
           Externalizable.class.getName());
     }
-    objectInput = new MemoryBufferObjectInput(fory, null);
-    objectOutput = new MemoryBufferObjectOutput(fory, null);
+    objectInput = new MemoryBufferObjectInput(config, null);
+    objectOutput = new MemoryBufferObjectOutput(config, null);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {
+  public void write(WriteContext writeContext, Object value) {
     try {
-      objectOutput.setBuffer(buffer);
+      objectOutput.setWriteContext(writeContext);
       ObjectOutputStream objectOutputStream =
-          (ObjectOutputStream) fory.getSerializationContext().get(objectOutput);
+          (ObjectOutputStream) writeContext.getContextObject(objectOutput);
       if (objectOutputStream == null) {
         objectOutputStream = new ObjectOutputStream(objectOutput);
-        fory.getSerializationContext().add(objectOutput, objectOutputStream);
+        writeContext.putContextObject(objectOutput, objectOutputStream);
       }
       objectOutputStream.writeObject(value);
       objectOutputStream.flush();
     } catch (IOException e) {
       Platform.throwException(e);
+    } finally {
+      objectOutput.clearWriteContext();
     }
   }
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     try {
       objectInput.setBuffer(buffer);
+      objectInput.setReadContext(readContext);
       ObjectInputStream objectInputStream =
-          (ObjectInputStream) fory.getSerializationContext().get(objectInput);
+          (ObjectInputStream) readContext.getContextObject(objectInput);
       if (objectInputStream == null) {
-        objectInputStream = new ClassLoaderObjectInputStream(fory.getClassLoader(), objectInput);
-        fory.getSerializationContext().add(objectInput, objectInputStream);
+        objectInputStream =
+            new ClassLoaderObjectInputStream(typeResolver.getClassLoader(), objectInput);
+        readContext.putContextObject(objectInput, objectInputStream);
       }
       return objectInputStream.readObject();
     } catch (IOException | ClassNotFoundException e) {
       Platform.throwException(e);
+    } finally {
+      objectInput.clearReadContext();
     }
     throw new IllegalStateException("unreachable code");
   }
@@ -136,15 +146,15 @@ public class JavaSerializer extends AbstractObjectSerializer {
       new ClassValue<Method>() {
         @Override
         protected Method computeValue(Class<?> type) {
-          return getReadObjectMethod(type, true);
+          return getReadRefMethod(type, true);
         }
       };
 
-  public static Method getReadObjectMethod(Class<?> clz) {
+  public static Method getReadRefMethod(Class<?> clz) {
     return readObjectMethodCache.get(clz);
   }
 
-  public static Method getReadObjectMethod(Class<?> clz, boolean searchParent) {
+  public static Method getReadRefMethod(Class<?> clz, boolean searchParent) {
     Method readObject = getMethod(clz, "readObject", searchParent);
     if (readObject != null && isReadObjectMethod(readObject)) {
       return readObject;
@@ -159,7 +169,7 @@ public class JavaSerializer extends AbstractObjectSerializer {
         && Modifier.isPrivate(method.getModifiers());
   }
 
-  public static Method getReadObjectNoData(Class<?> clz, boolean searchParent) {
+  public static Method getReadRefNoData(Class<?> clz, boolean searchParent) {
     Method method = getMethod(clz, "readObjectNoData", searchParent);
     if (method != null
         && method.getParameterTypes().length == 0

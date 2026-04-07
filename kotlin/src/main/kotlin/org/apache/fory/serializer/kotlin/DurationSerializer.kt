@@ -28,25 +28,31 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.nanoseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.DurationUnit
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
+import org.apache.fory.config.Config
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
 import org.apache.fory.serializer.ImmutableSerializer
 import org.apache.fory.serializer.Serializer
 
-public class DurationSerializer(fory: Fory, needToWriteRef: Boolean) :
-  ImmutableSerializer<Duration>(fory, Duration::class.java, needToWriteRef) {
+public class DurationSerializer(config: Config) :
+  ImmutableSerializer<Duration>(config, Duration::class.java, !config.isTimeRefIgnored) {
 
-  public constructor(
-    fory: Fory,
-  ) : this(fory, fory.config.isTimeRefIgnored)
-
-  private val durationUnitSerializer: Serializer<DurationUnit> by lazy {
-    fory.typeResolver.getSerializer(DurationUnit::class.java)
+  @Suppress("UNCHECKED_CAST")
+  private fun durationUnitSerializer(writeContext: WriteContext): Serializer<DurationUnit> {
+    return writeContext.typeResolver.getSerializer(DurationUnit::class.java)
+      as Serializer<DurationUnit>
   }
 
-  override fun write(buffer: MemoryBuffer, value: Duration) {
+  @Suppress("UNCHECKED_CAST")
+  private fun durationUnitSerializer(readContext: ReadContext): Serializer<DurationUnit> {
+    return readContext.typeResolver.getSerializer(DurationUnit::class.java)
+      as Serializer<DurationUnit>
+  }
+
+  override fun write(writeContext: WriteContext, value: Duration) {
     val unit = computeDurationUnitPrecision(value)
-    durationUnitSerializer.write(buffer, unit)
+    durationUnitSerializer(writeContext).write(writeContext, unit)
+    val buffer = writeContext.buffer
 
     val rawValue: Long =
       when (unit) {
@@ -62,8 +68,9 @@ public class DurationSerializer(fory: Fory, needToWriteRef: Boolean) :
     buffer.writeInt64(rawValue)
   }
 
-  override fun read(buffer: MemoryBuffer): Duration {
-    val unit = durationUnitSerializer.read(buffer)
+  override fun read(readContext: ReadContext): Duration {
+    val unit = durationUnitSerializer(readContext).read(readContext)
+    val buffer = readContext.buffer
     val rawValue = buffer.readInt64()
     return when (unit) {
       DurationUnit.NANOSECONDS -> rawValue.nanoseconds
@@ -114,4 +121,6 @@ public class DurationSerializer(fory: Fory, needToWriteRef: Boolean) :
       return DurationUnit.DAYS
     }
   }
+
+  override fun shareable(): Boolean = true
 }

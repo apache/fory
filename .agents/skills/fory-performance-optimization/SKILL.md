@@ -104,7 +104,7 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 ## Use References
 
 - Use [`references/workflow-checklist.md`](references/workflow-checklist.md) for execution checklists and stop conditions.
-- Use [`references/language-command-matrix.md`](references/language-command-matrix.md) for per-language build/test/benchmark/profile commands.
+- Use [`references/language-command-matrix.md`](references/language-command-matrix.md) for the quick per-language verification matrix, and the canonical runtime docs under `../../languages/*.md` for full language-specific rules.
 - Use [`references/bottleneck-playbook.md`](references/bottleneck-playbook.md) for hotspot-to-fix mapping.
 - Use [`references/round-template.md`](references/round-template.md) to log each optimization round consistently.
 

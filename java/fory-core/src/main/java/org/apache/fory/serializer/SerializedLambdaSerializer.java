@@ -22,9 +22,12 @@ package org.apache.fory.serializer;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
-import org.apache.fory.Fory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -37,6 +40,7 @@ import org.apache.fory.util.unsafe._JDKAccess;
 public class SerializedLambdaSerializer extends Serializer {
   static final Class<SerializedLambda> SERIALIZED_LAMBDA = SerializedLambda.class;
   private static final MethodHandle READ_RESOLVE_HANDLE;
+  private final TypeResolver typeResolver;
 
   static {
     try {
@@ -49,37 +53,39 @@ public class SerializedLambdaSerializer extends Serializer {
     }
   }
 
-  public SerializedLambdaSerializer(Fory fory, Class<?> cls) {
-    super(fory, cls);
+  public SerializedLambdaSerializer(TypeResolver typeResolver, Class<?> cls) {
+    super(typeResolver.getConfig(), cls);
+    this.typeResolver = typeResolver;
     Preconditions.checkArgument(cls == SERIALIZED_LAMBDA);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {
+  public void write(WriteContext writeContext, Object value) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     SerializedLambda serializedLambda = (SerializedLambda) value;
-    fory.writeStringRef(buffer, serializedLambda.getCapturingClass());
-    fory.writeStringRef(buffer, serializedLambda.getFunctionalInterfaceClass());
-    fory.writeStringRef(buffer, serializedLambda.getFunctionalInterfaceMethodName());
-    fory.writeStringRef(buffer, serializedLambda.getFunctionalInterfaceMethodSignature());
-    fory.writeStringRef(buffer, serializedLambda.getImplClass());
-    fory.writeStringRef(buffer, serializedLambda.getImplMethodName());
-    fory.writeStringRef(buffer, serializedLambda.getImplMethodSignature());
+    writeContext.writeStringRef(serializedLambda.getCapturingClass());
+    writeContext.writeStringRef(serializedLambda.getFunctionalInterfaceClass());
+    writeContext.writeStringRef(serializedLambda.getFunctionalInterfaceMethodName());
+    writeContext.writeStringRef(serializedLambda.getFunctionalInterfaceMethodSignature());
+    writeContext.writeStringRef(serializedLambda.getImplClass());
+    writeContext.writeStringRef(serializedLambda.getImplMethodName());
+    writeContext.writeStringRef(serializedLambda.getImplMethodSignature());
     buffer.writeVarInt32(serializedLambda.getImplMethodKind());
-    fory.writeStringRef(buffer, serializedLambda.getInstantiatedMethodType());
+    writeContext.writeStringRef(serializedLambda.getInstantiatedMethodType());
     int capturedArgCount = serializedLambda.getCapturedArgCount();
     buffer.writeVarUint32Small7(capturedArgCount);
     for (int i = 0; i < capturedArgCount; i++) {
-      fory.writeRef(buffer, serializedLambda.getCapturedArg(i));
+      writeContext.writeRef(serializedLambda.getCapturedArg(i));
     }
   }
 
   @Override
-  public Object copy(Object value) {
+  public Object copy(CopyContext copyContext, Object value) {
     SerializedLambda serializedLambda = (SerializedLambda) value;
     int capturedArgCount = serializedLambda.getCapturedArgCount();
     Object[] capturedArgs = new Object[capturedArgCount];
     for (int i = 0; i < capturedArgCount; i++) {
-      capturedArgs[i] = fory.copyObject(serializedLambda.getCapturedArg(i));
+      capturedArgs[i] = copyContext.copyObject(serializedLambda.getCapturedArg(i));
     }
     return newSerializedLambda(
         serializedLambda.getCapturingClass(),
@@ -95,24 +101,25 @@ public class SerializedLambdaSerializer extends Serializer {
   }
 
   @Override
-  public Object read(MemoryBuffer buffer) {
-    return readResolve(readUnresolved(buffer));
+  public Object read(ReadContext readContext) {
+    return readResolve(readUnresolved(readContext));
   }
 
-  Object readUnresolved(MemoryBuffer buffer) {
-    String capturingClass = fory.readStringRef(buffer);
-    String functionalInterfaceClass = fory.readStringRef(buffer);
-    String functionalInterfaceMethodName = fory.readStringRef(buffer);
-    String functionalInterfaceMethodSignature = fory.readStringRef(buffer);
-    String implClass = fory.readStringRef(buffer);
-    String implMethodName = fory.readStringRef(buffer);
-    String implMethodSignature = fory.readStringRef(buffer);
+  Object readUnresolved(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    String capturingClass = readContext.readStringRef();
+    String functionalInterfaceClass = readContext.readStringRef();
+    String functionalInterfaceMethodName = readContext.readStringRef();
+    String functionalInterfaceMethodSignature = readContext.readStringRef();
+    String implClass = readContext.readStringRef();
+    String implMethodName = readContext.readStringRef();
+    String implMethodSignature = readContext.readStringRef();
     int implMethodKind = buffer.readVarInt32();
-    String instantiatedMethodType = fory.readStringRef(buffer);
+    String instantiatedMethodType = readContext.readStringRef();
     int capturedArgCount = buffer.readVarUint32Small7();
     Object[] capturedArgs = new Object[capturedArgCount];
     for (int i = 0; i < capturedArgCount; i++) {
-      capturedArgs[i] = fory.readRef(buffer);
+      capturedArgs[i] = readContext.readRef();
     }
     return newSerializedLambda(
         capturingClass,
@@ -162,7 +169,7 @@ public class SerializedLambdaSerializer extends Serializer {
   private Class<?> loadCapturingClass(String className) {
     String binaryClassName = className.replace('/', '.');
     try {
-      return Class.forName(binaryClassName, false, fory.getClassLoader());
+      return Class.forName(binaryClassName, false, typeResolver.getClassLoader());
     } catch (ClassNotFoundException e) {
       try {
         return Class.forName(

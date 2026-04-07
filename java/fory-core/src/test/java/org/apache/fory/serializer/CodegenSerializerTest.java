@@ -102,11 +102,22 @@ public class CodegenSerializerTest extends ForyTestBase {
     fory.deserialize(buffer);
 
     Serializer<Cyclic> beanSerializer = fory.getTypeResolver().getSerializer(Cyclic.class);
-    fory.getRefResolver().writeRefOrNull(buffer, cyclic);
-    beanSerializer.write(buffer, cyclic);
-    fory.getRefResolver().readRefOrNull(buffer);
-    fory.getRefResolver().preserveRefId();
-    Cyclic cyclic1 = beanSerializer.read(buffer);
+    withWriteContext(
+        fory,
+        buffer,
+        context -> {
+          context.writeRefOrNull(cyclic);
+          beanSerializer.write(context, cyclic);
+        });
+    Cyclic cyclic1 =
+        withReadContext(
+            fory,
+            buffer,
+            context -> {
+              context.readRefOrNull();
+              context.preserveRefId();
+              return beanSerializer.read(context);
+            });
     fory.reset();
     assertEquals(cyclic1, cyclic);
   }

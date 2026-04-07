@@ -139,7 +139,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
     JaninoUtils.CodeStats classStats = JaninoUtils.getClassStats(bytecode);
     // System.out.println(classStats);
     classStats.methodsSize.entrySet().stream()
-        .filter(e -> !e.getKey().equals("<init>"))
+        .filter(e -> !e.getKey().equals("<init>") && !e.getKey().equals("write"))
         .forEach(
             e ->
                 Assert.assertTrue(

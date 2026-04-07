@@ -22,9 +22,13 @@ package org.apache.fory.serializer;
 import java.util.Arrays;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArrayBufferObject;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArraySerializer;
 import org.apache.fory.util.ArrayCompressionUtils;
@@ -70,14 +74,15 @@ public final class CompressedArraySerializers {
    */
   static void registerIfEnabled(Fory fory) {
     ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
-    boolean compressInt = fory.getConfig().compressIntArray();
-    boolean compressLong = fory.getConfig().compressLongArray();
+    boolean compressInt = resolver.getConfig().compressIntArray();
+    boolean compressLong = resolver.getConfig().compressLongArray();
 
     if (compressInt) {
-      resolver.registerInternalSerializer(int[].class, new CompressedIntArraySerializer(fory));
+      resolver.registerInternalSerializer(int[].class, new CompressedIntArraySerializer(resolver));
     }
     if (compressLong) {
-      resolver.registerInternalSerializer(long[].class, new CompressedLongArraySerializer(fory));
+      resolver.registerInternalSerializer(
+          long[].class, new CompressedLongArraySerializer(resolver));
     }
   }
 
@@ -110,8 +115,8 @@ public final class CompressedArraySerializers {
    */
   public static void register(Fory fory) {
     ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
-    resolver.registerInternalSerializer(int[].class, new CompressedIntArraySerializer(fory));
-    resolver.registerInternalSerializer(long[].class, new CompressedLongArraySerializer(fory));
+    resolver.registerInternalSerializer(int[].class, new CompressedIntArraySerializer(resolver));
+    resolver.registerInternalSerializer(long[].class, new CompressedLongArraySerializer(resolver));
   }
 
   /** Register compressed array serializers with the given Fory instance. */
@@ -121,15 +126,15 @@ public final class CompressedArraySerializers {
 
   public static final class CompressedIntArraySerializer extends PrimitiveArraySerializer<int[]> {
 
-    public CompressedIntArraySerializer(Fory fory) {
-      super(fory, int[].class);
+    public CompressedIntArraySerializer(TypeResolver typeResolver) {
+      super(typeResolver, int[].class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, int[] value) {
-      if (fory.getBufferCallback() != null) {
-        fory.writeBufferObject(
-            buffer,
+    public void write(WriteContext writeContext, int[] value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
+      if (writeContext.getBufferCallback() != null) {
+        writeContext.writeBufferObject(
             new PrimitiveArrayBufferObject(value, Platform.INT_ARRAY_OFFSET, 4, value.length));
         return;
       }
@@ -173,14 +178,15 @@ public final class CompressedArraySerializers {
     }
 
     @Override
-    public int[] copy(int[] originArray) {
+    public int[] copy(CopyContext copyContext, int[] originArray) {
       return Arrays.copyOf(originArray, originArray.length);
     }
 
     @Override
-    public int[] read(MemoryBuffer buffer) {
-      if (fory.isPeerOutOfBandEnabled()) {
-        return readFromBufferObject(buffer);
+    public int[] read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      if (readContext.isPeerOutOfBandEnabled()) {
+        return readFromBufferObject(readContext);
       }
 
       int compressionTypeValue = buffer.readByte() & 0xFF;
@@ -203,8 +209,8 @@ public final class CompressedArraySerializers {
       }
     }
 
-    private int[] readFromBufferObject(MemoryBuffer buffer) {
-      MemoryBuffer buf = fory.readBufferObject(buffer);
+    private int[] readFromBufferObject(ReadContext readContext) {
+      MemoryBuffer buf = readContext.readBufferObject();
       int size = buf.remaining();
       int numElements = size / 4;
       int[] values = new int[numElements];
@@ -245,15 +251,15 @@ public final class CompressedArraySerializers {
 
   public static final class CompressedLongArraySerializer extends PrimitiveArraySerializer<long[]> {
 
-    public CompressedLongArraySerializer(Fory fory) {
-      super(fory, long[].class);
+    public CompressedLongArraySerializer(TypeResolver typeResolver) {
+      super(typeResolver, long[].class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, long[] value) {
-      if (fory.getBufferCallback() != null) {
-        fory.writeBufferObject(
-            buffer,
+    public void write(WriteContext writeContext, long[] value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
+      if (writeContext.getBufferCallback() != null) {
+        writeContext.writeBufferObject(
             new PrimitiveArrayBufferObject(value, Platform.LONG_ARRAY_OFFSET, 8, value.length));
         return;
       }
@@ -288,14 +294,15 @@ public final class CompressedArraySerializers {
     }
 
     @Override
-    public long[] copy(long[] originArray) {
+    public long[] copy(CopyContext copyContext, long[] originArray) {
       return Arrays.copyOf(originArray, originArray.length);
     }
 
     @Override
-    public long[] read(MemoryBuffer buffer) {
-      if (fory.isPeerOutOfBandEnabled()) {
-        return readFromBufferObject(buffer);
+    public long[] read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      if (readContext.isPeerOutOfBandEnabled()) {
+        return readFromBufferObject(readContext);
       }
 
       int compressionTypeValue = buffer.readByte() & 0xFF;
@@ -316,8 +323,8 @@ public final class CompressedArraySerializers {
       }
     }
 
-    private long[] readFromBufferObject(MemoryBuffer buffer) {
-      MemoryBuffer buf = fory.readBufferObject(buffer);
+    private long[] readFromBufferObject(ReadContext readContext) {
+      MemoryBuffer buf = readContext.readBufferObject();
       int size = buf.remaining();
       int numElements = size / 8;
       long[] values = new long[numElements];

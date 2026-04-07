@@ -35,12 +35,14 @@ public class Main {
 
     ThreadSafeExample.main(args);
     CompatibleThreadSafeExample.main(args);
+    CompatibleDependentSerializerExample.main(args);
     ProxyExample.main(args);
     ObjectStreamExample.main(args);
     EnsureSerializerExample.main(args);
     Benchmark.main(args);
     CollectionExample.main(args);
     ArrayExample.main(args);
+    ExceptionExample.main(args);
     AbstractClassExample.main(args);
     FeatureTestExample.main(args);
   }

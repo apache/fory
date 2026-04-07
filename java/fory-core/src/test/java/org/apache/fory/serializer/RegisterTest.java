@@ -24,7 +24,9 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -182,45 +184,37 @@ public class RegisterTest extends ForyTestBase {
   }
 
   public static class MyExtSerializer extends Serializer<MyExt> {
-    public MyExtSerializer(Fory fory) {
-      super(fory, MyExt.class);
+    public MyExtSerializer(TypeResolver typeResolver) {
+      super(typeResolver.getConfig(), MyExt.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, MyExt value) {
-      if (isJava) {
-        fory.writeString(buffer, value.id);
-      } else {
-        fory.writeString(buffer, value.id);
-      }
+    public void write(WriteContext writeContext, MyExt value) {
+      writeContext.writeString(value.id);
     }
 
     @Override
-    public MyExt read(MemoryBuffer buffer) {
+    public MyExt read(ReadContext readContext) {
       MyExt result = new MyExt();
-      if (isJava) {
-        result.id = fory.readString(buffer);
-      } else {
-        result.id = fory.readString(buffer);
-      }
+      result.id = readContext.readString();
       return result;
     }
   }
 
   public static class AlternativeMyExtSerializer extends Serializer<MyExt> {
-    public AlternativeMyExtSerializer(Fory fory) {
-      super(fory, MyExt.class);
+    public AlternativeMyExtSerializer(TypeResolver typeResolver) {
+      super(typeResolver.getConfig(), MyExt.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, MyExt value) {
-      fory.writeString(buffer, value.id);
+    public void write(WriteContext writeContext, MyExt value) {
+      writeContext.writeString(value.id);
     }
 
     @Override
-    public MyExt read(MemoryBuffer buffer) {
+    public MyExt read(ReadContext readContext) {
       MyExt result = new MyExt();
-      result.id = fory.readString(buffer);
+      result.id = readContext.readString();
       return result;
     }
   }

@@ -227,7 +227,8 @@ public class TimeSerializersTest extends ForyTestBase {
     {
       Fory fory =
           Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-      fory.registerSerializer(TimeStruct.class, new ObjectSerializer(fory, TimeStruct.class));
+      fory.registerSerializer(
+          TimeStruct.class, new ObjectSerializer(fory.getTypeResolver(), TimeStruct.class));
       serDe(fory, struct);
     }
   }
@@ -330,10 +331,12 @@ public class TimeSerializersTest extends ForyTestBase {
               .withRefTracking(true)
               .ignoreTimeRef(true)
               .build();
-      fory.registerSerializer(Date.class, new TimeSerializers.DateSerializer(fory, true));
       fory.registerSerializer(
-          java.sql.Date.class, new TimeSerializers.SqlDateSerializer(fory, true));
-      fory.registerSerializer(Instant.class, new TimeSerializers.InstantSerializer(fory, true));
+          Date.class, new TimeSerializers.DateSerializer(fory.getConfig(), true));
+      fory.registerSerializer(
+          java.sql.Date.class, new TimeSerializers.SqlDateSerializer(fory.getConfig(), true));
+      fory.registerSerializer(
+          Instant.class, new TimeSerializers.InstantSerializer(fory.getConfig(), true));
       {
         TimeStructRef struct = createTimeStructRef(new TimeStructRef());
         TimeStructRef struct2 = (TimeStructRef) serDeCheck(fory, struct);
@@ -360,9 +363,11 @@ public class TimeSerializersTest extends ForyTestBase {
         TimeStruct.class, CodegenSerializer.loadCodegenSerializer(fory, TimeStruct.class));
     fory.registerSerializer(
         TimeStructRef1.class, CodegenSerializer.loadCodegenSerializer(fory, TimeStructRef1.class));
-    fory.registerSerializer(Date.class, new TimeSerializers.DateSerializer(fory, true));
-    fory.registerSerializer(java.sql.Date.class, new TimeSerializers.SqlDateSerializer(fory, true));
-    fory.registerSerializer(Instant.class, new TimeSerializers.InstantSerializer(fory, true));
+    fory.registerSerializer(Date.class, new TimeSerializers.DateSerializer(fory.getConfig(), true));
+    fory.registerSerializer(
+        java.sql.Date.class, new TimeSerializers.SqlDateSerializer(fory.getConfig(), true));
+    fory.registerSerializer(
+        Instant.class, new TimeSerializers.InstantSerializer(fory.getConfig(), true));
     {
       TimeStructRef struct = createTimeStructRef(new TimeStructRef());
       TimeStructRef struct1 = fory.copy(struct);

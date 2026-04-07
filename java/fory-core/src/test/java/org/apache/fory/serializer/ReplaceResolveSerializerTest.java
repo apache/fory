@@ -82,9 +82,11 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
     ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
-    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
+    fory.registerSerializer(
+        list1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), list1.getClass()));
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
-    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
+    fory.registerSerializer(
+        map1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), map1.getClass()));
 
     CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     serDeCheck(fory, o1);
@@ -107,8 +109,10 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
-    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
-    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
+    fory.registerSerializer(
+        list1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), list1.getClass()));
+    fory.registerSerializer(
+        map1.getClass(), new ReplaceResolveSerializer(fory.getTypeResolver(), map1.getClass()));
     copyCheck(fory, o1);
 
     copyCheck(fory, list1);

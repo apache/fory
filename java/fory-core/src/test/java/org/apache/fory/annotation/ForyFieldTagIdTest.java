@@ -65,7 +65,7 @@ public class ForyFieldTagIdTest extends ForyTestBase {
       fory.register(TestClass.class, "test.TestClass");
     }
 
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, TestClass.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), TestClass.class);
     List<FieldInfo> fieldsInfo = typeDef.getFieldsInfo();
 
     // Should have 4 fields

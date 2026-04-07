@@ -22,7 +22,6 @@ package org.apache.fory.resolver;
 import static org.testng.Assert.*;
 
 import org.apache.fory.Fory;
-import org.apache.fory.ThreadLocalFory;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.exception.InsecureException;
 import org.testng.annotations.Test;
@@ -84,18 +83,8 @@ public class AllowListCheckerTest {
   @Test
   public void testThreadSafeFory() {
     AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-    ThreadSafeFory fory =
-        new ThreadLocalFory(
-            classLoader -> {
-              Fory f =
-                  Fory.builder()
-                      .requireClassRegistration(false)
-                      .withClassLoader(classLoader)
-                      .build();
-              f.getTypeResolver().setTypeChecker(checker);
-              checker.addListener((ClassResolver) f.getTypeResolver());
-              return f;
-            });
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeFory();
+    fory.setTypeChecker(checker);
     checker.allowClass("org.apache.fory.*");
     byte[] bytes = fory.serialize(new AllowListCheckerTest());
     checker.disallowClass("org.apache.fory.*");

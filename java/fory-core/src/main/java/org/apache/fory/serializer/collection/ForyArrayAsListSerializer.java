@@ -23,20 +23,22 @@ import java.util.AbstractList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.RandomAccess;
-import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 
 /** Serializer for {@link ArrayAsList}. Helper for serialization of other classes. */
 @Internal
 @SuppressWarnings("rawtypes")
 public final class ForyArrayAsListSerializer
     extends CollectionSerializer<ForyArrayAsListSerializer.ArrayAsList> {
-  public ForyArrayAsListSerializer(Fory fory) {
-    super(fory, ArrayAsList.class, true);
+  public ForyArrayAsListSerializer(TypeResolver typeResolver) {
+    super(typeResolver, ArrayAsList.class, true);
   }
 
-  public Collection newCollection(MemoryBuffer buffer) {
+  public Collection newCollection(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int numElements = buffer.readVarUint32Small7();
     setNumElements(numElements);
     return new ArrayAsList(numElements);

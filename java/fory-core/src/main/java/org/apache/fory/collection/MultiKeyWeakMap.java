@@ -41,17 +41,8 @@ import org.apache.fory.util.GraalvmSupport;
  * @see java.util.WeakHashMap
  */
 public class MultiKeyWeakMap<T> {
-  private static final FinalizableReferenceQueue REFERENCE_QUEUE;
-
-  static {
-    if (GraalvmSupport.isGraalBuildtime()) {
-      REFERENCE_QUEUE = null;
-    } else {
-      REFERENCE_QUEUE = new FinalizableReferenceQueue();
-    }
-  }
-
   private static final Set<KeyReference> REFERENCES = ConcurrentHashMap.newKeySet();
+  private static volatile FinalizableReferenceQueue referenceQueue;
   private final Map<Object, T> map;
 
   public MultiKeyWeakMap() {
@@ -83,6 +74,20 @@ public class MultiKeyWeakMap<T> {
       keyRefs.add(new FinalizableKeyReference(keys[i], keyRefs, reclaimedFlags, i));
     }
     return keyRefs;
+  }
+
+  private static FinalizableReferenceQueue getReferenceQueue() {
+    FinalizableReferenceQueue queue = referenceQueue;
+    if (queue == null) {
+      synchronized (MultiKeyWeakMap.class) {
+        queue = referenceQueue;
+        if (queue == null) {
+          queue = new FinalizableReferenceQueue();
+          referenceQueue = queue;
+        }
+      }
+    }
+    return queue;
   }
 
   private interface KeyReference {}
@@ -121,7 +126,7 @@ public class MultiKeyWeakMap<T> {
 
     public FinalizableKeyReference(
         Object obj, List<FinalizableKeyReference> keyRefs, boolean[] reclaimedFlags, int index) {
-      super(obj, REFERENCE_QUEUE);
+      super(obj, getReferenceQueue());
       this.reclaimedFlags = reclaimedFlags;
       this.index = index;
       this.keyRefs = keyRefs;

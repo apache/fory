@@ -21,26 +21,22 @@ package org.apache.fory.codegen;
 
 import static org.apache.fory.type.TypeUtils.LIST_TYPE;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
-import java.lang.invoke.SerializedLambda;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import org.apache.fory.codegen.Expression.Literal;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.util.Preconditions;
 import org.testng.annotations.Test;
 
 public class ExpressionVisitorTest {
 
   @Test
-  public void testTraverseExpression() throws InvocationTargetException, IllegalAccessException {
+  public void testTraverseExpression() {
     Expression.Reference ref =
         new Expression.Reference("a", TypeRef.of(ExpressionVisitorTest.class));
     Expression e1 = new Expression.Invoke(ref, "testTraverseExpression");
@@ -57,19 +53,23 @@ public class ExpressionVisitorTest {
     List<Expression> expressions = new ArrayList<>();
     new ExpressionVisitor()
         .traverseExpression(forLoop, exprSite -> expressions.add(exprSite.current));
-    Preconditions.checkArgument(forLoop.action != null);
-    Method writeReplace =
-        ReflectionUtils.findMethods(forLoop.action.getClass(), "writeReplace").get(0);
-    writeReplace.setAccessible(true);
-    SerializedLambda serializedLambda = (SerializedLambda) writeReplace.invoke(forLoop.action);
-    assertEquals(serializedLambda.getCapturedArgCount(), 1);
-    ExpressionVisitor.ExprHolder exprHolder =
-        (ExpressionVisitor.ExprHolder) (serializedLambda.getCapturedArg(0));
-
     // Traversal relies on getDeclaredFields(), nondeterministic order.
     Set<Expression> expressionsSet = new HashSet<>(expressions);
-    Set<Expression> expressionsSet2 =
-        new HashSet<>(Arrays.asList(forLoop, e1, ref, exprHolder.get("e2"), list, literal1));
-    assertEquals(expressionsSet, expressionsSet2);
+    assertEquals(expressionsSet.size(), 8);
+    assertTrue(
+        expressionsSet.containsAll(
+            Arrays.asList(forLoop, e1, ref, holder.get("e2"), list, literal1)));
+    assertTrue(
+        expressionsSet.stream()
+            .anyMatch(
+                expression ->
+                    expression instanceof Expression.Reference
+                        && expression.toString().endsWith("_i")));
+    assertTrue(
+        expressionsSet.stream()
+            .anyMatch(
+                expression ->
+                    expression instanceof Expression.Reference
+                        && expression.toString().endsWith("_elemValue")));
   }
 }

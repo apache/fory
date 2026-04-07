@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -61,8 +60,7 @@ class TypeDefEncoder {
       descriptor -> descriptor;
 
   /** Build class definition from fields of class. */
-  static TypeDef buildTypeDef(Fory fory, Class<?> type) {
-    XtypeResolver resolver = (XtypeResolver) fory.getTypeResolver();
+  static TypeDef buildTypeDef(XtypeResolver resolver, Class<?> type) {
     DescriptorGrouper descriptorGrouper =
         resolver.getFieldDescriptorGrouper(type, true, false, IDENTITY_DESCRIPTOR);
     TypeInfo typeInfo = resolver.getTypeInfo(type);

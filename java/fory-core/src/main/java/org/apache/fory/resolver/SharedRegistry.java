@@ -33,6 +33,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.EncodedMetaString;
+import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.meta.TypeDef;
@@ -43,6 +44,9 @@ import org.apache.fory.util.GraalvmSupport;
 /** Shared caches reused by multiple equivalent {@link org.apache.fory.Fory} instances. */
 @Internal
 public final class SharedRegistry {
+  private static final int MAX_CACHED_ENCODED_META_STRINGS = 32768;
+  private static final int MAX_CACHED_ENCODED_META_STRING_LENGTH = 2048;
+
   final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap = new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef =
       new ConcurrentIdentityMap<>();
@@ -61,6 +65,9 @@ public final class SharedRegistry {
       new ConcurrentHashMap<>();
   final ConcurrentHashMap<MetaStringKey, EncodedMetaString> metaStringMap =
       new ConcurrentHashMap<>();
+  final ConcurrentHashMap<EncodedMetaStringKey, EncodedMetaString> encodedMetaStringMap =
+      new ConcurrentHashMap<>();
+  private final Object metaStringCacheLock = new Object();
   volatile IdentityHashMap<Class<?>, Integer> registeredClassIdMap;
   volatile BiMap<String, Class<?>> registeredClasses;
 
@@ -83,7 +90,23 @@ public final class SharedRegistry {
     return Objects.requireNonNull(registeredClasses);
   }
 
-  EncodedMetaString getOrCreateEncodedMetaString(
+  EncodedMetaString getPackageEncodedMetaString(String string) {
+    return getEncodedMetaString(
+        string,
+        Encoders.PACKAGE_ENCODER,
+        Encoders.computePackageEncoding(string),
+        Encoders.PACKAGE_ENCODER_TYPE_KEY);
+  }
+
+  EncodedMetaString getTypeNameEncodedMetaString(String string) {
+    return getEncodedMetaString(
+        string,
+        Encoders.TYPE_NAME_ENCODER,
+        Encoders.computeTypeNameEncoding(string),
+        Encoders.TYPE_NAME_ENCODER_TYPE_KEY);
+  }
+
+  private EncodedMetaString getEncodedMetaString(
       String string,
       MetaStringEncoder encoder,
       MetaString.Encoding encoding,
@@ -92,7 +115,64 @@ public final class SharedRegistry {
       return EncodedMetaString.EMPTY;
     }
     MetaStringKey key = new MetaStringKey(string, encoderTypeKey, encoding);
-    return metaStringMap.computeIfAbsent(key, ignored -> encoder.encodeBinary(string, encoding));
+    EncodedMetaString encodedMetaString = metaStringMap.get(key);
+    if (encodedMetaString != null) {
+      return encodedMetaString;
+    }
+    EncodedMetaString candidate = encoder.encodeBinary(string, encoding);
+    EncodedMetaStringKey encodedMetaStringKey =
+        new EncodedMetaStringKey(candidate.hash, candidate.bytes);
+    synchronized (metaStringCacheLock) {
+      encodedMetaString = metaStringMap.get(key);
+      if (encodedMetaString != null) {
+        return encodedMetaString;
+      }
+      encodedMetaString = encodedMetaStringMap.get(encodedMetaStringKey);
+      if (encodedMetaString == null) {
+        if (!shouldCacheEncodedMetaString(candidate)) {
+          return candidate;
+        }
+        encodedMetaStringMap.put(encodedMetaStringKey, candidate);
+        encodedMetaString = candidate;
+      }
+      metaStringMap.put(key, encodedMetaString);
+      return encodedMetaString;
+    }
+  }
+
+  public EncodedMetaString getOrCreateEncodedMetaString(byte[] bytes, long hash) {
+    if (bytes.length == 0) {
+      return EncodedMetaString.EMPTY;
+    }
+    EncodedMetaStringKey key = new EncodedMetaStringKey(hash, bytes);
+    EncodedMetaString encodedMetaString = encodedMetaStringMap.get(key);
+    if (encodedMetaString != null) {
+      return encodedMetaString;
+    }
+    if (bytes.length > MAX_CACHED_ENCODED_META_STRING_LENGTH) {
+      return new EncodedMetaString(bytes, hash);
+    }
+    synchronized (metaStringCacheLock) {
+      encodedMetaString = encodedMetaStringMap.get(key);
+      if (encodedMetaString != null) {
+        return encodedMetaString;
+      }
+      if (encodedMetaStringMap.size() >= MAX_CACHED_ENCODED_META_STRINGS) {
+        return new EncodedMetaString(bytes, hash);
+      }
+      EncodedMetaString candidate = new EncodedMetaString(bytes, hash);
+      encodedMetaStringMap.put(key, candidate);
+      return candidate;
+    }
+  }
+
+  private boolean shouldCacheEncodedMetaString(EncodedMetaString encodedMetaString) {
+    return shouldCacheEncodedMetaStringLength(encodedMetaString)
+        && encodedMetaStringMap.size() < MAX_CACHED_ENCODED_META_STRINGS;
+  }
+
+  private boolean shouldCacheEncodedMetaStringLength(EncodedMetaString encodedMetaString) {
+    return encodedMetaString.bytes.length <= MAX_CACHED_ENCODED_META_STRING_LENGTH;
   }
 
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
@@ -115,8 +195,7 @@ public final class SharedRegistry {
     if (GraalvmSupport.isGraalBuildtime()) {
       return Collections.unmodifiableList(new ArrayList<>(factory.get()));
     }
-    TypeDefDescriptorsKey key =
-        new TypeDefDescriptorsKey(typeDef.getId(), type, typeDef.getClassSpec().type);
+    TypeDefDescriptorsKey key = new TypeDefDescriptorsKey(typeDef.getId(), type);
     return typeDefDescriptorsCache.computeIfAbsent(
         key, ignored -> Collections.unmodifiableList(new ArrayList<>(factory.get())));
   }
@@ -149,77 +228,10 @@ public final class SharedRegistry {
     }
     TypeDefDescriptorGrouperKey key =
         new TypeDefDescriptorGrouperKey(
-            new TypeDefDescriptorsKey(typeDef.getId(), type, typeDef.getClassSpec().type),
+            new TypeDefDescriptorsKey(typeDef.getId(), type),
             descriptorsGroupedOrdered,
             descriptorUpdator);
     return typeDefDescriptorGrouperCache.computeIfAbsent(key, ignored -> factory.get());
-  }
-
-  public void clearClassLoader(ClassLoader loader) {
-    if (loader == null) {
-      return;
-    }
-    clearSharedRegistrationIfClassLoader(loader);
-    typeDefMap.removeIf((cls, typeDef) -> cls.getClassLoader() == loader);
-    currentLayerTypeDef.removeIf((cls, typeDef) -> cls.getClassLoader() == loader);
-    typeDefById
-        .entrySet()
-        .removeIf(
-            entry -> {
-              Class<?> cls = entry.getValue().getClassSpec().type;
-              return cls != null && cls.getClassLoader() == loader;
-            });
-    descriptorsCache.entrySet().removeIf(entry -> entry.getKey().f0.getClassLoader() == loader);
-    fieldDescriptorsCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().type.getClassLoader() == loader);
-    typeDefDescriptorsCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().referencesClassLoader(loader));
-    fieldDescriptorGrouperCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().fieldDescriptorsKey.type.getClassLoader() == loader);
-    typeDefDescriptorGrouperCache
-        .entrySet()
-        .removeIf(entry -> entry.getKey().typeDefDescriptorsKey.referencesClassLoader(loader));
-    codeGeneratorMap.entrySet().removeIf(entry -> entry.getKey().contains(loader));
-  }
-
-  private synchronized void clearSharedRegistrationIfClassLoader(ClassLoader loader) {
-    IdentityHashMap<Class<?>, Integer> sharedRegisteredClassIdMap = registeredClassIdMap;
-    BiMap<String, Class<?>> sharedRegisteredClasses = registeredClasses;
-    if (sharedRegisteredClassIdMap == null || sharedRegisteredClasses == null) {
-      return;
-    }
-    if (containsClassLoader(sharedRegisteredClassIdMap, loader)
-        || containsClassLoader(sharedRegisteredClasses.values(), loader)) {
-      registeredClassIdMap = null;
-      registeredClasses = null;
-    }
-  }
-
-  private static boolean containsClassLoader(Iterable<Class<?>> classes, ClassLoader loader) {
-    for (Class<?> cls : classes) {
-      if (cls.getClassLoader() == loader) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean containsClassLoader(
-      IdentityHashMap<Class<?>, ?> classMap, ClassLoader loader) {
-    final boolean[] found = new boolean[1];
-    classMap.forEach(
-        (cls, value) -> {
-          if (cls.getClassLoader() == loader) {
-            found[0] = true;
-          }
-        });
-    if (found[0]) {
-      return true;
-    }
-    return false;
   }
 
   private static final class MetaStringKey {
@@ -253,6 +265,33 @@ public final class SharedRegistry {
     }
   }
 
+  private static final class EncodedMetaStringKey {
+    private final long hash;
+    private final byte[] bytes;
+
+    private EncodedMetaStringKey(long hash, byte[] bytes) {
+      this.hash = hash;
+      this.bytes = Objects.requireNonNull(bytes);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof EncodedMetaStringKey)) {
+        return false;
+      }
+      EncodedMetaStringKey that = (EncodedMetaStringKey) o;
+      return hash == that.hash && java.util.Arrays.equals(bytes, that.bytes);
+    }
+
+    @Override
+    public int hashCode() {
+      return 31 * Long.hashCode(hash) + java.util.Arrays.hashCode(bytes);
+    }
+  }
+
   private static final class FieldDescriptorsKey {
     private final Class<?> type;
     private final boolean searchParent;
@@ -283,17 +322,10 @@ public final class SharedRegistry {
   private static final class TypeDefDescriptorsKey {
     private final long typeDefId;
     private final Class<?> type;
-    private final Class<?> typeDefClass;
 
-    private TypeDefDescriptorsKey(long typeDefId, Class<?> type, Class<?> typeDefClass) {
+    private TypeDefDescriptorsKey(long typeDefId, Class<?> type) {
       this.typeDefId = typeDefId;
       this.type = Objects.requireNonNull(type);
-      this.typeDefClass = typeDefClass;
-    }
-
-    private boolean referencesClassLoader(ClassLoader loader) {
-      return type.getClassLoader() == loader
-          || (typeDefClass != null && typeDefClass.getClassLoader() == loader);
     }
 
     @Override

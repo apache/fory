@@ -32,6 +32,7 @@ import kotlin.uuid.Uuid;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.config.Config;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -49,60 +50,61 @@ public class KotlinSerializers {
   public static void registerSerializers(Fory fory) {
     DefaultValueUtils.setKotlinDefaultValueSupport(new KotlinDefaultValueSupport());
     TypeResolver resolver = fory.getTypeResolver();
+    Config config = resolver.getConfig();
 
     // UByte
     Class ubyteClass = KotlinToJavaClass.INSTANCE.getUByteClass();
     resolver.register(ubyteClass);
-    resolver.registerSerializer(ubyteClass, new UByteSerializer(fory));
+    resolver.registerSerializer(ubyteClass, new UByteSerializer(config));
 
     // UShort
     Class ushortClass = KotlinToJavaClass.INSTANCE.getUShortClass();
     resolver.register(ushortClass);
-    resolver.registerSerializer(ushortClass, new UShortSerializer(fory));
+    resolver.registerSerializer(ushortClass, new UShortSerializer(config));
 
     // UInt
     Class uintClass = KotlinToJavaClass.INSTANCE.getUIntClass();
     resolver.register(uintClass);
-    resolver.registerSerializer(uintClass, new UIntSerializer(fory));
+    resolver.registerSerializer(uintClass, new UIntSerializer(config));
 
     // ULong
     Class ulongClass = KotlinToJavaClass.INSTANCE.getULongClass();
     resolver.register(ulongClass);
-    resolver.registerSerializer(ulongClass, new ULongSerializer(fory));
+    resolver.registerSerializer(ulongClass, new ULongSerializer(config));
 
     // EmptyList
     Class emptyListClass = KotlinToJavaClass.INSTANCE.getEmptyListClass();
     resolver.register(emptyListClass);
     resolver.registerSerializer(
-        emptyListClass, new CollectionSerializers.EmptyListSerializer(fory, emptyListClass));
+        emptyListClass, new CollectionSerializers.EmptyListSerializer(resolver, emptyListClass));
 
     // EmptySet
     Class emptySetClass = KotlinToJavaClass.INSTANCE.getEmptySetClass();
     resolver.register(emptySetClass);
     resolver.registerSerializer(
-        emptySetClass, new CollectionSerializers.EmptySetSerializer(fory, emptySetClass));
+        emptySetClass, new CollectionSerializers.EmptySetSerializer(resolver, emptySetClass));
 
     // EmptyMap
     Class emptyMapClass = KotlinToJavaClass.INSTANCE.getEmptyMapClass();
     resolver.register(emptyMapClass);
     resolver.registerSerializer(
-        emptyMapClass, new MapSerializers.EmptyMapSerializer(fory, emptyMapClass));
+        emptyMapClass, new MapSerializers.EmptyMapSerializer(resolver, emptyMapClass));
 
     // Non-Java collection implementation in kotlin stdlib.
     Class arrayDequeClass = KotlinToJavaClass.INSTANCE.getArrayDequeClass();
     resolver.register(arrayDequeClass);
     resolver.registerSerializer(
-        arrayDequeClass, new KotlinArrayDequeSerializer(fory, arrayDequeClass));
+        arrayDequeClass, new KotlinArrayDequeSerializer(resolver, arrayDequeClass));
 
     // Unsigned array classes: UByteArray, UShortArray, UIntArray, ULongArray.
     resolver.register(UByteArray.class);
-    resolver.registerSerializer(UByteArray.class, new UByteArraySerializer(fory));
+    resolver.registerSerializer(UByteArray.class, new UByteArraySerializer(resolver));
     resolver.register(UShortArray.class);
-    resolver.registerSerializer(UShortArray.class, new UShortArraySerializer(fory));
+    resolver.registerSerializer(UShortArray.class, new UShortArraySerializer(resolver));
     resolver.register(UIntArray.class);
-    resolver.registerSerializer(UIntArray.class, new UIntArraySerializer(fory));
+    resolver.registerSerializer(UIntArray.class, new UIntArraySerializer(resolver));
     resolver.register(ULongArray.class);
-    resolver.registerSerializer(ULongArray.class, new ULongArraySerializer(fory));
+    resolver.registerSerializer(ULongArray.class, new ULongArraySerializer(resolver));
 
     // Ranges and Progressions.
     resolver.register(kotlin.ranges.CharRange.class);
@@ -139,11 +141,11 @@ public class KotlinSerializers {
     // kotlin.time
     resolver.register(DurationUnit.class);
     resolver.register(Duration.class);
-    resolver.registerSerializer(Duration.class, new DurationSerializer(fory));
+    resolver.registerSerializer(Duration.class, new DurationSerializer(config));
     resolver.register(TimedValue.class);
 
     // kotlin.uuid
     resolver.register(Uuid.class);
-    resolver.registerSerializer(Uuid.class, new UuidSerializer(fory));
+    resolver.registerSerializer(Uuid.class, new UuidSerializer(config));
   }
 }

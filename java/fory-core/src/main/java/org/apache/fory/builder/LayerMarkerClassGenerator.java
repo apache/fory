@@ -22,7 +22,6 @@ package org.apache.fory.builder;
 import java.lang.reflect.Array;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.fory.Fory;
 
 /**
  * Creates unique marker classes for each layer in a class hierarchy. These marker classes serve as
@@ -117,15 +116,8 @@ public class LayerMarkerClassGenerator {
     }
   }
 
-  /**
-   * Get or create a unique marker class for the given target class and layer index.
-   *
-   * @param fory the Fory instance (unused, kept for API compatibility)
-   * @param targetClass the target class this marker represents
-   * @param layerIndex the layer index in the class hierarchy (0 = topmost parent)
-   * @return a unique class representing this layer marker
-   */
-  public static Class<?> getOrCreate(Fory fory, Class<?> targetClass, int layerIndex) {
+  /** Get or create a unique marker class for the given target class and layer index. */
+  public static Class<?> getOrCreate(Class<?> targetClass, int layerIndex) {
     if (layerIndex >= MAX_LAYER_DEPTH) {
       throw new IllegalArgumentException(
           "Layer index " + layerIndex + " exceeds maximum depth " + MAX_LAYER_DEPTH);

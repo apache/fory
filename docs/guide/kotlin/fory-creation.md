@@ -63,18 +63,14 @@ For multi-threaded applications, use `ThreadSafeFory`:
 ```kotlin
 import org.apache.fory.Fory
 import org.apache.fory.ThreadSafeFory
-import org.apache.fory.ThreadLocalFory
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 object ForyHolder {
-    val fory: ThreadSafeFory = ThreadLocalFory { classLoader ->
-        Fory.builder()
-            .withClassLoader(classLoader)
-            .requireClassRegistration(true)
-            .build().also {
-                KotlinSerializers.registerSerializers(it)
-            }
-    }
+    val fory: ThreadSafeFory = Fory.builder()
+        .requireClassRegistration(true)
+        .buildThreadSafeFory().also {
+            KotlinSerializers.registerSerializers(it)
+        }
 }
 ```
 

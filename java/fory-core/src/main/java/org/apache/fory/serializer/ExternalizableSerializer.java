@@ -21,11 +21,12 @@ package org.apache.fory.serializer;
 
 import java.io.Externalizable;
 import java.io.IOException;
-import org.apache.fory.Fory;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.io.MemoryBufferObjectInput;
 import org.apache.fory.io.MemoryBufferObjectOutput;
-import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.resolver.TypeResolver;
 
 /** Serializer for class implements {@link Externalizable}. */
 public class ExternalizableSerializer<T extends Externalizable>
@@ -33,34 +34,38 @@ public class ExternalizableSerializer<T extends Externalizable>
   private final MemoryBufferObjectInput objectInput;
   private final MemoryBufferObjectOutput objectOutput;
 
-  public ExternalizableSerializer(Fory fory, Class<T> cls) {
-    super(fory, cls);
-    objectInput = new MemoryBufferObjectInput(fory, null);
-    objectOutput = new MemoryBufferObjectOutput(fory, null);
+  public ExternalizableSerializer(TypeResolver typeResolver, Class<T> cls) {
+    super(typeResolver, cls);
+    objectInput = new MemoryBufferObjectInput(config, null);
+    objectOutput = new MemoryBufferObjectOutput(config, null);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, T value) {
-    if (!isJava) {
+  public void write(WriteContext writeContext, T value) {
+    if (config.isXlang()) {
       throw new UnsupportedOperationException("Externalizable can only be used in java");
     }
-    objectOutput.setBuffer(buffer);
+    objectOutput.setWriteContext(writeContext);
     try {
       value.writeExternal(objectOutput);
     } catch (IOException e) {
       Platform.throwException(e);
+    } finally {
+      objectOutput.clearWriteContext();
     }
   }
 
   @Override
-  public T read(MemoryBuffer buffer) {
+  public T read(ReadContext readContext) {
     T t = objectCreator.newInstance();
-    refResolver.reference(t);
-    objectInput.setBuffer(buffer);
+    readContext.reference(t);
+    objectInput.setReadContext(readContext);
     try {
       t.readExternal(objectInput);
     } catch (IOException | ClassNotFoundException e) {
       Platform.throwException(e);
+    } finally {
+      objectInput.clearReadContext();
     }
     return t;
   }

@@ -22,40 +22,46 @@ package org.apache.fory.io;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInput;
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
-import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.util.Preconditions;
 
-/** ObjectInput based on {@link Fory} and {@link MemoryBuffer}. */
+/** ObjectInput based on {@link MemoryBuffer}. */
 public class MemoryBufferObjectInput extends InputStream implements ObjectInput {
-  private final Fory fory;
   private final boolean compressInt;
   private final LongEncoding longEncoding;
   private MemoryBuffer buffer;
-  private final StringSerializer stringSerializer;
+  private ReadContext readContext;
 
-  public MemoryBufferObjectInput(Fory fory, MemoryBuffer buffer) {
-    this.fory = fory;
-    this.compressInt = fory.compressInt();
-    this.longEncoding = fory.longEncoding();
-    this.buffer = buffer;
-    this.stringSerializer = fory.getStringSerializer();
-  }
-
-  public MemoryBuffer getBuffer() {
-    return buffer;
+  public MemoryBufferObjectInput(Config config, ReadContext readContext) {
+    this.compressInt = config.compressInt();
+    this.longEncoding = config.longEncoding();
+    this.readContext = readContext;
+    if (readContext != null) {
+      this.buffer = readContext.getBuffer();
+    }
   }
 
   public void setBuffer(MemoryBuffer buffer) {
     this.buffer = buffer;
   }
 
+  public void setReadContext(ReadContext readContext) {
+    this.readContext = readContext;
+    this.buffer = readContext.getBuffer();
+  }
+
+  public void clearReadContext() {
+    this.readContext = null;
+    this.buffer = null;
+  }
+
   @Override
   public Object readObject() throws ClassNotFoundException, IOException {
-    return fory.readRef(buffer);
+    return readContext.readRef();
   }
 
   @Override
@@ -165,6 +171,6 @@ public class MemoryBufferObjectInput extends InputStream implements ObjectInput 
 
   @Override
   public String readUTF() throws IOException {
-    return stringSerializer.readString(buffer);
+    return readContext.getStringSerializer().readString(buffer);
   }
 }

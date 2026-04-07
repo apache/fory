@@ -66,6 +66,7 @@ class SchemaValidator:
         self._check_duplicate_type_ids()
         self._check_messages()
         self._check_type_references()
+        self._check_services()
         self._check_collection_nesting()
         self._check_ref_rules()
         self._check_weak_refs()
@@ -638,6 +639,37 @@ class SchemaValidator:
         for union in self.schema.unions:
             for f in union.fields:
                 check_field(f, None)
+
+    def _check_services(self) -> None:
+        seen_service_names: dict = {}
+        for service in self.schema.services:
+            if service.name in seen_service_names:
+                self._error(
+                    f"Duplicate service name: {service.name}",
+                    service.location,
+                )
+            seen_service_names.setdefault(service.name, service.location)
+
+            seen_method_names: dict = {}
+            for method in service.methods:
+                if method.name in seen_method_names:
+                    self._error(
+                        f"Duplicate method name in service {service.name}: {method.name}",
+                        method.location,
+                    )
+                seen_method_names.setdefault(method.name, method.location)
+
+                for named_type in (method.request_type, method.response_type):
+                    resolved = self.schema.get_type(named_type.name)
+                    if resolved is None:
+                        continue
+                    if not isinstance(resolved, Message):
+                        kind = "enum" if isinstance(resolved, Enum) else "union"
+                        self._error(
+                            f"RPC type '{named_type.name}' in service {service.name}"
+                            f" must be a message, not a {kind}",
+                            named_type.location,
+                        )
 
 
 def validate_schema(schema: Schema) -> List[str]:

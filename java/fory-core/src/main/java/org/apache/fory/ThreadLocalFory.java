@@ -26,16 +26,16 @@ import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.BufferCallback;
-import org.apache.fory.util.LoaderBinding;
-import org.apache.fory.util.LoaderBinding.StagingType;
 
 /**
  * A thread safe serialization entrance for {@link Fory} by binding a {@link Fory} for every thread.
@@ -44,43 +44,36 @@ import org.apache.fory.util.LoaderBinding.StagingType;
  */
 @ThreadSafe
 public class ThreadLocalFory extends AbstractThreadSafeFory {
-  private final ThreadLocal<MemoryBuffer> bufferLocal =
-      ThreadLocal.withInitial(() -> MemoryUtils.buffer(32));
-
-  private final ThreadLocal<LoaderBinding> bindingThreadLocal;
-  private final SharedRegistry sharedRegistry;
+  private final Supplier<Fory> foryFactory;
+  private final ThreadLocal<Fory> foryThreadLocal;
   private Consumer<Fory> factoryCallback;
-  private final Map<LoaderBinding, Object> allFory;
-
-  private ClassLoader classLoader;
+  private final Map<Fory, Object> allFory;
   private final Object callbackLock = new Object();
 
-  public ThreadLocalFory(Function<ClassLoader, Fory> foryFactory) {
-    this(foryFactory, new SharedRegistry());
-  }
-
-  public ThreadLocalFory(Function<ClassLoader, Fory> foryFactory, SharedRegistry sharedRegistry) {
-    this.sharedRegistry = sharedRegistry;
+  public ThreadLocalFory(Function<ForyBuilder, Fory> factory) {
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    foryFactory = () -> factory.apply(Fory.builder().withSharedRegistry(sharedRegistry));
     factoryCallback = f -> {};
     allFory = Collections.synchronizedMap(new WeakHashMap<>());
-    bindingThreadLocal =
-        ThreadLocal.withInitial(
-            () -> {
-              LoaderBinding binding = new LoaderBinding(foryFactory);
-              binding.setBindingCallback(factoryCallback);
-              ClassLoader cl =
-                  classLoader == null
-                      ? Thread.currentThread().getContextClassLoader()
-                      : classLoader;
-              binding.setClassLoader(cl);
-              allFory.put(binding, null);
-              return binding;
-            });
+    foryThreadLocal = ThreadLocal.withInitial(this::newFory);
     // 1. init and warm for current thread.
     // Fory creation took about 1~2 ms, but first creation
     // in a process load some classes which is not cheap.
     // 2. Make fory generate code at graalvm build time.
-    Fory fory = bindingThreadLocal.get().get();
+    foryThreadLocal.get();
+  }
+
+  private Fory newFory() {
+    synchronized (callbackLock) {
+      Fory fory = foryFactory.get();
+      factoryCallback.accept(fory);
+      allFory.put(fory, null);
+      return fory;
+    }
+  }
+
+  private Fory currentFory() {
+    return foryThreadLocal.get();
   }
 
   @Internal
@@ -88,154 +81,124 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   public void registerCallback(Consumer<Fory> callback) {
     synchronized (callbackLock) {
       factoryCallback = factoryCallback.andThen(callback);
-      for (LoaderBinding binding : allFory.keySet()) {
-        binding.visitAllFory(callback);
-        binding.setBindingCallback(factoryCallback);
+      synchronized (allFory) {
+        allFory.keySet().forEach(callback);
       }
     }
   }
 
   @Override
   public <R> R execute(Function<Fory, R> action) {
-    Fory fory = bindingThreadLocal.get().get();
-    return action.apply(fory);
+    return action.apply(currentFory());
   }
 
   @Override
   public byte[] serialize(Object obj) {
-    MemoryBuffer buffer = bufferLocal.get();
-    buffer.writerIndex(0);
-    bindingThreadLocal.get().get().serialize(buffer, obj);
-    return buffer.getBytes(0, buffer.writerIndex());
+    return currentFory().serialize(obj);
   }
 
   @Override
   public byte[] serialize(Object obj, BufferCallback callback) {
-    MemoryBuffer buffer = bufferLocal.get();
-    buffer.writerIndex(0);
-    bindingThreadLocal.get().get().serialize(buffer, obj, callback);
-    return buffer.getBytes(0, buffer.writerIndex());
+    return currentFory().serialize(obj, callback);
   }
 
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
-    return bindingThreadLocal.get().get().serialize(obj, address, size);
+    return currentFory().serialize(obj, address, size);
   }
 
   @Override
   public MemoryBuffer serialize(MemoryBuffer buffer, Object obj) {
-    return bindingThreadLocal.get().get().serialize(buffer, obj);
+    return currentFory().serialize(buffer, obj);
   }
 
   @Override
   public MemoryBuffer serialize(MemoryBuffer buffer, Object obj, BufferCallback callback) {
-    return bindingThreadLocal.get().get().serialize(buffer, obj, callback);
+    return currentFory().serialize(buffer, obj, callback);
   }
 
   @Override
   public void serialize(OutputStream outputStream, Object obj) {
-    bindingThreadLocal.get().get().serialize(outputStream, obj);
+    currentFory().serialize(outputStream, obj);
   }
 
   @Override
   public void serialize(OutputStream outputStream, Object obj, BufferCallback callback) {
-    bindingThreadLocal.get().get().serialize(outputStream, obj, callback);
+    currentFory().serialize(outputStream, obj, callback);
   }
 
   @Override
   public Object deserialize(byte[] bytes) {
-    return bindingThreadLocal.get().get().deserialize(bytes);
+    return currentFory().deserialize(bytes);
   }
 
   @Override
   public <T> T deserialize(byte[] bytes, Class<T> type) {
-    return bindingThreadLocal.get().get().deserialize(bytes, type);
+    return currentFory().deserialize(bytes, type);
   }
 
   @Override
   public <T> T deserialize(MemoryBuffer buffer, Class<T> type) {
-    return bindingThreadLocal.get().get().deserialize(buffer, type);
+    return currentFory().deserialize(buffer, type);
   }
 
   @Override
   public <T> T deserialize(ForyInputStream inputStream, Class<T> type) {
-    return bindingThreadLocal.get().get().deserialize(inputStream, type);
+    return currentFory().deserialize(inputStream, type);
   }
 
   @Override
   public <T> T deserialize(ForyReadableChannel channel, Class<T> type) {
-    return bindingThreadLocal.get().get().deserialize(channel, type);
+    return currentFory().deserialize(channel, type);
   }
 
   @Override
   public Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return bindingThreadLocal.get().get().deserialize(bytes, outOfBandBuffers);
+    return currentFory().deserialize(bytes, outOfBandBuffers);
   }
 
   @Override
   public Object deserialize(long address, int size) {
-    return bindingThreadLocal.get().get().deserialize(address, size);
+    return currentFory().deserialize(address, size);
   }
 
   @Override
   public Object deserialize(MemoryBuffer buffer) {
-    return bindingThreadLocal.get().get().deserialize(buffer);
+    return currentFory().deserialize(buffer);
   }
 
   @Override
   public Object deserialize(ByteBuffer byteBuffer) {
-    return bindingThreadLocal.get().get().deserialize(MemoryUtils.wrap(byteBuffer));
+    return currentFory().deserialize(MemoryUtils.wrap(byteBuffer));
   }
 
   @Override
   public Object deserialize(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return bindingThreadLocal.get().get().deserialize(buffer, outOfBandBuffers);
+    return currentFory().deserialize(buffer, outOfBandBuffers);
   }
 
   @Override
   public Object deserialize(ForyInputStream inputStream) {
-    return bindingThreadLocal.get().get().deserialize(inputStream);
+    return currentFory().deserialize(inputStream);
   }
 
   @Override
   public Object deserialize(ForyInputStream inputStream, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return bindingThreadLocal.get().get().deserialize(inputStream, outOfBandBuffers);
+    return currentFory().deserialize(inputStream, outOfBandBuffers);
   }
 
   @Override
   public Object deserialize(ForyReadableChannel channel) {
-    return bindingThreadLocal.get().get().deserialize(channel);
+    return currentFory().deserialize(channel);
   }
 
   @Override
   public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return bindingThreadLocal.get().get().deserialize(channel, outOfBandBuffers);
+    return currentFory().deserialize(channel, outOfBandBuffers);
   }
 
   @Override
   public <T> T copy(T obj) {
-    return bindingThreadLocal.get().get().copy(obj);
-  }
-
-  @Override
-  public void setClassLoader(ClassLoader classLoader) {
-    setClassLoader(classLoader, StagingType.STRONG_STAGING);
-  }
-
-  @Override
-  public void setClassLoader(ClassLoader classLoader, StagingType stagingType) {
-    this.classLoader = classLoader;
-    bindingThreadLocal.get().setClassLoader(classLoader, stagingType);
-  }
-
-  @Override
-  public ClassLoader getClassLoader() {
-    return bindingThreadLocal.get().getClassLoader();
-  }
-
-  @Override
-  public void clearClassLoader(ClassLoader loader) {
-    bindingThreadLocal.get().clearClassLoader(loader);
-    sharedRegistry.clearClassLoader(loader);
+    return currentFory().copy(obj);
   }
 }

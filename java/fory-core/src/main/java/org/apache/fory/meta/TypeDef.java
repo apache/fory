@@ -32,7 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-import org.apache.fory.Fory;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
@@ -346,22 +345,19 @@ public class TypeDef implements Serializable {
   }
 
   /** Read class definition from buffer. */
-  public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer) {
-    if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeTypeDef(
-          (XtypeResolver) fory.getTypeResolver(), buffer, buffer.readInt64());
+  public static TypeDef readTypeDef(TypeResolver resolver, MemoryBuffer buffer) {
+    if (resolver.isCrossLanguage()) {
+      return TypeDefDecoder.decodeTypeDef((XtypeResolver) resolver, buffer, buffer.readInt64());
     }
-    return NativeTypeDefDecoder.decodeTypeDef(
-        (ClassResolver) fory.getTypeResolver(), buffer, buffer.readInt64());
+    return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, buffer.readInt64());
   }
 
   /** Read class definition from buffer. */
-  public static TypeDef readTypeDef(Fory fory, MemoryBuffer buffer, long header) {
-    if (fory.isCrossLanguage()) {
-      return TypeDefDecoder.decodeTypeDef((XtypeResolver) fory.getTypeResolver(), buffer, header);
+  public static TypeDef readTypeDef(TypeResolver resolver, MemoryBuffer buffer, long header) {
+    if (resolver.isCrossLanguage()) {
+      return TypeDefDecoder.decodeTypeDef((XtypeResolver) resolver, buffer, header);
     }
-    return NativeTypeDefDecoder.decodeTypeDef(
-        (ClassResolver) fory.getTypeResolver(), buffer, header);
+    return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, header);
   }
 
   /**
@@ -373,7 +369,7 @@ public class TypeDef implements Serializable {
    * @param cls class load in current process.
    */
   public List<Descriptor> getDescriptors(TypeResolver resolver, Class<?> cls) {
-    SharedRegistry sharedRegistry = resolver.getFory().getSharedRegistry();
+    SharedRegistry sharedRegistry = resolver.getSharedRegistry();
     return sharedRegistry.getOrCreateTypeDefDescriptors(
         this, cls, () -> buildDescriptors(resolver, cls));
   }
@@ -405,7 +401,7 @@ public class TypeDef implements Serializable {
       }
     }
     List<Descriptor> descriptors = new ArrayList<>(fieldsInfo.size());
-    boolean isXlang = resolver.getFory().isCrossLanguage();
+    boolean isXlang = resolver.isCrossLanguage();
     for (FieldInfo fieldInfo : fieldsInfo) {
       Descriptor descriptor;
       if (fieldInfo.hasFieldId()) {
@@ -425,16 +421,16 @@ public class TypeDef implements Serializable {
     return descriptors;
   }
 
-  public static TypeDef buildTypeDef(Fory fory, Class<?> cls) {
-    return buildTypeDef(fory, cls, true);
+  public static TypeDef buildTypeDef(TypeResolver resolver, Class<?> cls) {
+    return buildTypeDef(resolver, cls, true);
   }
 
-  public static TypeDef buildTypeDef(Fory fory, Class<?> cls, boolean resolveParent) {
-    if (fory.isCrossLanguage()) {
-      return TypeDefEncoder.buildTypeDef(fory, cls);
+  public static TypeDef buildTypeDef(TypeResolver resolver, Class<?> cls, boolean resolveParent) {
+    if (resolver.isCrossLanguage()) {
+      return TypeDefEncoder.buildTypeDef((XtypeResolver) resolver, cls);
     }
     return NativeTypeDefEncoder.buildTypeDef(
-        (ClassResolver) fory.getTypeResolver(), cls, buildFields(fory, cls, resolveParent), true);
+        (ClassResolver) resolver, cls, buildFields(resolver, cls, resolveParent), true);
   }
 
   /** Build class definition from fields of class. */
@@ -460,7 +456,7 @@ public class TypeDef implements Serializable {
                   }
                 })
             .collect(Collectors.toList());
-    if (resolver.getFory().isCrossLanguage()) {
+    if (resolver.isCrossLanguage()) {
       return TypeDefEncoder.buildTypeDefWithFieldInfos(
           (XtypeResolver) resolver, targetCls, fieldInfos);
     }

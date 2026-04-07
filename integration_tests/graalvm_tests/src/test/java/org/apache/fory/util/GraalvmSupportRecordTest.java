@@ -61,8 +61,8 @@ public class GraalvmSupportRecordTest {
     Assert.assertTrue(GraalvmSupport.needReflectionRegisterForCreation(PrivateRecord.class));
     // Class with no-arg constructor doesn't need reflection registration
     Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(ClassWithNoArgCtor.class));
-    // Class without no-arg constructor needs reflection registration
-    Assert.assertTrue(
+    // Class without no-arg constructor uses the unsafe allocation path.
+    Assert.assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(ClassWithoutNoArgCtor.class));
     // Interface doesn't need reflection registration
     Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(Runnable.class));

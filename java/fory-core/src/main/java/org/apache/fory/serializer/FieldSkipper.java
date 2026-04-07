@@ -20,9 +20,10 @@
 package org.apache.fory.serializer;
 
 import org.apache.fory.Fory;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.RefReader;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.RefMode;
-import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.type.DispatchId;
@@ -38,16 +39,15 @@ public class FieldSkipper {
    * Skip a field value in the buffer. Handles all dispatch IDs including basic types and complex
    * types. Whether to read a null flag is determined by fieldInfo.refMode.
    *
-   * @param fory fory runtime
    * @param typeResolver resolver used for type metadata read
-   * @param refResolver resolver used for reference tracking
+   * @param refReader resolver used for reference tracking
    * @param fieldInfo the field metadata
    * @param buffer the buffer to skip from
    */
   static void skipField(
-      Fory fory,
+      ReadContext readContext,
       TypeResolver typeResolver,
-      RefResolver refResolver,
+      RefReader refReader,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer) {
     int dispatchId = fieldInfo.dispatchId;
@@ -55,7 +55,7 @@ public class FieldSkipper {
 
     // For non-basic types, fall back to binding.readField
     if (!DispatchId.isBasicType(dispatchId)) {
-      AbstractObjectSerializer.readField(fory, typeResolver, refResolver, fieldInfo, buffer);
+      AbstractObjectSerializer.readField(readContext, typeResolver, refReader, fieldInfo, buffer);
       return;
     }
 
@@ -118,7 +118,7 @@ public class FieldSkipper {
         buffer.readTaggedUint64();
         break;
       case DispatchId.STRING:
-        fory.readString(buffer);
+        readContext.readString();
         break;
       default:
         throw new IllegalStateException("Unexpected basic dispatchId: " + dispatchId);

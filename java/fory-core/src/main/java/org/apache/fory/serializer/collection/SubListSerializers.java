@@ -22,10 +22,11 @@ package org.apache.fory.serializer.collection;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import org.apache.fory.Fory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ObjectSerializer;
@@ -63,17 +64,17 @@ public class SubListSerializers {
     }
   }
 
-  public static void registerSerializers(Fory fory, boolean preserveView) {
-    TypeResolver classResolver = fory.getTypeResolver();
+  public static void registerSerializers(TypeResolver classResolver, boolean preserveView) {
     // java.util.ImmutableCollections$SubList is already registered in
     // ImmutableCollectionSerializers
     for (Class<?> cls :
         new Class[] {SubListClass, RandomAccessSubListClass, ArrayListSubListClass}) {
-      if (fory.trackingRef() && preserveView && !fory.isCrossLanguage()) {
-        classResolver.registerInternalSerializer(cls, new SubListViewSerializer(fory, cls));
+      if (classResolver.trackingRef() && preserveView && !classResolver.isCrossLanguage()) {
+        classResolver.registerInternalSerializer(
+            cls, new SubListViewSerializer(classResolver, cls));
       } else {
         classResolver.registerInternalSerializer(
-            cls, new SubListSerializer(fory, (Class<List>) cls));
+            cls, new SubListSerializer(classResolver, (Class<List>) cls));
       }
     }
   }
@@ -82,13 +83,15 @@ public class SubListSerializers {
     private ObjectSerializer dataSerializer;
     private boolean serializedBefore;
 
-    public SubListViewSerializer(Fory fory, Class cls) {
-      super(fory, Stub.class.isAssignableFrom(cls) ? (Class<List>) ArrayListSubListClass : cls);
-      assert !fory.isCrossLanguage();
+    public SubListViewSerializer(TypeResolver typeResolver, Class cls) {
+      super(
+          typeResolver,
+          Stub.class.isAssignableFrom(cls) ? (Class<List>) ArrayListSubListClass : cls);
+      assert !config.isXlang();
     }
 
     @Override
-    public Collection onCollectionWrite(MemoryBuffer buffer, List value) {
+    public Collection onCollectionWrite(WriteContext writeContext, List value) {
       throw new IllegalStateException();
     }
 
@@ -98,14 +101,14 @@ public class SubListSerializers {
     }
 
     @Override
-    public void write(MemoryBuffer buffer, List value) {
+    public void write(WriteContext writeContext, List value) {
       checkSerialization(value);
-      (getObjectSerializer()).write(buffer, value);
+      getObjectSerializer().write(writeContext, value);
     }
 
     @Override
-    public List read(MemoryBuffer buffer) {
-      List value = (List) (getObjectSerializer()).read(buffer);
+    public List read(ReadContext readContext) {
+      List value = (List) getObjectSerializer().read(readContext);
       checkSerialization(value);
       return value;
     }
@@ -113,13 +116,13 @@ public class SubListSerializers {
     private ObjectSerializer getObjectSerializer() {
       ObjectSerializer dataSerializer = this.dataSerializer;
       if (dataSerializer == null) {
-        dataSerializer = this.dataSerializer = new ObjectSerializer(fory, type);
+        dataSerializer = this.dataSerializer = new ObjectSerializer(typeResolver, type);
       }
       return dataSerializer;
     }
 
     @Override
-    public List copy(List value) {
+    public List copy(CopyContext copyContext, List value) {
       throw new UnsupportedOperationException(
           "parent list didn't copy modCount, but sublist does copy it");
     }
@@ -136,7 +139,7 @@ public class SubListSerializers {
                 + "Otherwise, serializing multiple view of same original list will bring data duplication, "
                 + "and if you update the view, the original list won't be updated too. "
                 + "If you want to serialize SubList view as a standard List, you can register a serializer by "
-                + "`fory.registerSerializer(cls, new SubListSerializer(fory, (Class<List>) cls))`, object type of deserialized "
+                + "`fory.registerSerializer(cls, new SubListSerializer(fory.getTypeResolver(), (Class<List>) cls))`, object type of deserialized "
                 + "value will be {}",
             value.getClass(),
             ArrayList.class);
@@ -146,13 +149,14 @@ public class SubListSerializers {
 
   public static final class SubListSerializer extends CollectionSerializer {
 
-    public SubListSerializer(Fory fory, Class<List> type) {
-      super(fory, type, true);
-      fory.getTypeResolver().setSerializer(type, this);
+    public SubListSerializer(TypeResolver typeResolver, Class<List> type) {
+      super(typeResolver, type, true);
+      typeResolver.setSerializer(type, this);
     }
 
     @Override
-    public Collection newCollection(MemoryBuffer buffer) {
+    public Collection newCollection(ReadContext readContext) {
+      org.apache.fory.memory.MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       return new ArrayList(numElements);

@@ -118,8 +118,9 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
       }
     }
     classVersionHash =
-        fory.checkClassVersion()
-            ? new Literal(ObjectSerializer.computeStructHash(fory, grouper), PRIMITIVE_INT_TYPE)
+        typeResolver.checkClassVersion()
+            ? new Literal(
+                ObjectSerializer.computeStructHash(typeResolver, grouper), PRIMITIVE_INT_TYPE)
             : null;
     objectCodecOptimizer = new ObjectCodecOptimizer(beanClass, grouper, false, ctx);
     if (isRecord) {
@@ -163,7 +164,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     ListExpression expressions = new ListExpression();
     Expression bean = tryCastIfPublic(inputObject, beanType, ctx.newName(beanClass));
     expressions.add(bean);
-    if (fory.checkClassVersion()) {
+    if (typeResolver.checkClassVersion()) {
       expressions.add(new Invoke(buffer, "writeInt32", classVersionHash));
     }
     expressions.addAll(serializePrimitives(bean, buffer, objectCodecOptimizer.primitiveGroups));
@@ -199,7 +200,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     }
   }
 
-  private int getNumGroups(ObjectCodecOptimizer objectCodecOptimizer) {
+  protected int getNumGroups(ObjectCodecOptimizer objectCodecOptimizer) {
     return objectCodecOptimizer.boxedWriteGroups.size()
         + objectCodecOptimizer.buildInWriteGroups.size()
         + objectCodecOptimizer.otherWriteGroups.size()
@@ -225,7 +226,8 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     if (inline) {
       return expressionSupplier.get();
     }
-    return objectCodecOptimizer.invokeGenerated(expressionSupplier, "writeFields");
+    return objectCodecOptimizer.invokeGenerated(
+        writeCutPoints(bean, buffer), expressionSupplier.get(), "writeFields");
   }
 
   /**
@@ -238,7 +240,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     if (totalSize == 0) {
       return new ArrayList<>();
     }
-    if (fory.compressInt() || fory.compressLong()) {
+    if (config.compressInt() || config.compressLong()) {
       return serializePrimitivesCompressed(bean, buffer, primitiveGroups, totalSize);
     } else {
       return serializePrimitivesUnCompressed(bean, buffer, primitiveGroups, totalSize);
@@ -465,14 +467,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   public Expression buildDecodeExpression() {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
     ListExpression expressions = new ListExpression();
-    if (fory.checkClassVersion()) {
+    if (typeResolver.checkClassVersion()) {
       expressions.add(checkClassVersion(buffer));
     }
     Expression bean;
     if (!isRecord) {
       bean = newBean();
-      Expression referenceObject =
-          new Invoke(refResolverRef, "reference", PRIMITIVE_VOID_TYPE, bean);
+      Expression referenceObject = invokeReadContext("reference", bean);
       expressions.add(bean);
       expressions.add(referenceObject);
     } else {
@@ -511,7 +512,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     return expressions;
   }
 
-  private void deserializeReadGroup(
+  protected void deserializeReadGroup(
       List<List<Descriptor>> readGroups,
       int numGroups,
       ListExpression expressions,
@@ -602,7 +603,8 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     if (inline) {
       return exprSupplier.get();
     } else {
-      return objectCodecOptimizer.invokeGenerated(exprSupplier, "readFields");
+      return objectCodecOptimizer.invokeGenerated(
+          readCutPoints(bean, buffer), exprSupplier.get(), "readFields");
     }
   }
 
@@ -634,13 +636,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
    * Return a list of expressions that deserialize all primitive fields. This can reduce unnecessary
    * check call and increment readerIndex in writeXXX.
    */
-  private List<Expression> deserializePrimitives(
+  protected List<Expression> deserializePrimitives(
       Expression bean, Expression buffer, List<List<Descriptor>> primitiveGroups) {
     int totalSize = getTotalSizeOfPrimitives(primitiveGroups);
     if (totalSize == 0) {
       return new ArrayList<>();
     }
-    if (fory.compressInt() || fory.compressLong()) {
+    if (config.compressInt() || config.compressLong()) {
       return deserializeCompressedPrimitives(bean, buffer, primitiveGroups);
     } else {
       return deserializeUnCompressedPrimitives(bean, buffer, primitiveGroups, totalSize);

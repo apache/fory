@@ -19,20 +19,21 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 
 @SuppressWarnings("rawtypes")
 public class NoneSerializer extends Serializer {
-  public NoneSerializer(Fory fory, Class type) {
-    super(fory, type);
+  public NoneSerializer(Config config, Class type) {
+    super(config, type);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Object value) {}
+  public void write(WriteContext writeContext, Object value) {}
 
   @Override
-  public Object read(MemoryBuffer buffer) {
+  public Object read(ReadContext readContext) {
     return null;
   }
 }

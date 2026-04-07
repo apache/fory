@@ -25,11 +25,13 @@ import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.serializer.SerializerFactory;
-import org.apache.fory.util.LoaderBinding;
 
 /**
- * Thread safe serializer interface. {@link Fory} is not thread-safe, the implementation of this
- * interface will be thread-safe. And support switch classloader dynamically.
+ * Thread-safe serializer interface. {@link Fory} is not thread-safe; implementations of this
+ * interface are.
+ *
+ * <p>The runtime class loader is fixed when the thread-safe serializer is built. If you need a
+ * different class loader, build a different {@link ThreadSafeFory} instance.
  */
 public interface ThreadSafeFory extends BaseFory {
 
@@ -41,31 +43,6 @@ public interface ThreadSafeFory extends BaseFory {
 
   /** Deserialize <code>obj</code> from a {@link ByteBuffer}. */
   Object deserialize(ByteBuffer byteBuffer);
-
-  /**
-   * Set classLoader of serializer for current thread only.
-   *
-   * @see LoaderBinding#setClassLoader(ClassLoader)
-   */
-  void setClassLoader(ClassLoader classLoader);
-
-  /**
-   * Set classLoader of serializer for current thread only.
-   *
-   * <p>If <code>staging</code> is true, a cached {@link Fory} instance will be returned if not
-   * null, and the previous classloader and associated {@link Fory} instance won't be gc unless
-   * {@link #clearClassLoader} is called explicitly. If false, and the passed <code>classLoader
-   * </code> is different, a new {@link Fory} instance will be created, previous classLoader and
-   * associated {@link Fory} instance will be cleared.
-   *
-   * @param classLoader {@link ClassLoader} for resolving unregistered class name to class
-   * @param stagingType Whether cache previous classloader and associated {@link Fory} instance.
-   * @see LoaderBinding#setClassLoader(ClassLoader, LoaderBinding.StagingType)
-   */
-  void setClassLoader(ClassLoader classLoader, LoaderBinding.StagingType stagingType);
-
-  /** Returns classLoader of serializer for current thread. */
-  ClassLoader getClassLoader();
 
   /**
    * Set TypeChecker of serializer for current thread only.
@@ -80,17 +57,6 @@ public interface ThreadSafeFory extends BaseFory {
    * @param serializerFactory {@link SerializerFactory} for serializerFactory
    */
   void setSerializerFactory(SerializerFactory serializerFactory);
-
-  /**
-   * Clean up classloader set by {@link #setClassLoader(ClassLoader, LoaderBinding.StagingType)},
-   * <code>
-   * classLoader
-   * </code> won't be referenced by {@link Fory} after this call and can be gc if it's not
-   * referenced by other objects.
-   *
-   * @see LoaderBinding#clearClassLoader(ClassLoader)
-   */
-  void clearClassLoader(ClassLoader loader);
 
   @Internal
   void registerCallback(Consumer<Fory> callback);

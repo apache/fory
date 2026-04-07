@@ -19,7 +19,7 @@
 
 package org.apache.fory.builder;
 
-import static org.apache.fory.builder.Generated.GeneratedMetaSharedLayerSerializer.SERIALIZER_FIELD_NAME;
+import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,18 +27,19 @@ import org.apache.fory.Fory;
 import org.apache.fory.builder.Generated.GeneratedMetaSharedLayerSerializer;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
+import org.apache.fory.codegen.Expression.ListExpression;
+import org.apache.fory.codegen.Expression.Literal;
+import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.Expression.StaticInvoke;
+import org.apache.fory.codegen.ExpressionUtils;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.serializer.CodegenSerializer;
-import org.apache.fory.serializer.MetaSharedLayerSerializer;
-import org.apache.fory.serializer.MetaSharedLayerSerializerBase;
-import org.apache.fory.serializer.Serializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 
@@ -50,7 +51,7 @@ import org.apache.fory.util.StringUtils;
  * <p>This is used by {@link org.apache.fory.serializer.ObjectStreamSerializer} to generate JIT
  * serializers for each layer in the class hierarchy.
  *
- * @see MetaSharedLayerSerializer
+ * @see org.apache.fory.serializer.MetaSharedLayerSerializer
  * @see MetaSharedCodecBuilder
  * @see GeneratedMetaSharedLayerSerializer
  */
@@ -71,13 +72,10 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
     objectCodecOptimizer = new ObjectCodecOptimizer(beanClass, grouper, false, ctx);
   }
 
-  // Must be static to be shared across the whole process life.
   private static final Map<Long, Integer> idGenerator = new ConcurrentHashMap<>();
 
   @Override
   protected String codecSuffix() {
-    // For every class def sent from different peer, if the class def are different, then
-    // a new serializer needs being generated.
     Integer id = idGenerator.get(layerTypeDef.getId());
     if (id == null) {
       synchronized (idGenerator) {
@@ -92,32 +90,88 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
     String className = codecClassName(beanClass);
     ctx.setClassName(className);
-    // don't addImport(beanClass), because user class may name collide.
     ctx.extendsClasses(ctx.type(parentSerializerClass));
     ctx.reserveName(POJO_CLASS_TYPE_NAME);
-    ctx.reserveName(SERIALIZER_FIELD_NAME);
-    ctx.addField(ctx.type(Fory.class), FORY_NAME);
     String constructorCode =
         StringUtils.format(
             ""
-                + "super(${fory}, ${cls});\n"
-                + "this.${fory} = ${fory};\n"
-                + "${serializer} = ${builderClass}.setCodegenSerializer(${fory}, ${cls}, this);\n",
-            "fory",
-            FORY_NAME,
+                + "super(${typeResolver}, ${cls});\n"
+                + "this.${generatedTypeResolver} = (${generatedTypeResolverType}) ${typeResolver};\n"
+                + "${typeResolver}.setSerializerIfAbsent(${cls}, this);\n",
+            "typeResolver",
+            CONSTRUCTOR_TYPE_RESOLVER_NAME,
+            "generatedTypeResolver",
+            TYPE_RESOLVER_NAME,
+            "generatedTypeResolverType",
+            ctx.type(concreteTypeResolverType),
             "cls",
-            POJO_CLASS_TYPE_NAME,
-            "builderClass",
-            MetaSharedLayerCodecBuilder.class.getName(),
-            "serializer",
-            SERIALIZER_FIELD_NAME);
+            POJO_CLASS_TYPE_NAME);
+
     ctx.clearExprState();
-    Expression decodeExpr = buildDecodeExpression();
-    String decodeCode = decodeExpr.genCode(ctx).code();
+    String encodeCode = buildEncodeExpression().genCode(ctx).code();
+    encodeCode = ctx.optimizeMethodCode(encodeCode);
+    encodeCode = encodeCode == null ? "" : encodeCode;
+    encodeCode =
+        StringUtils.format(
+                "${bufferType} ${buffer} = ${writeContext}.getBuffer();\n",
+                "bufferType",
+                ctx.type(MemoryBuffer.class),
+                "buffer",
+                BUFFER_NAME,
+                "writeContext",
+                WRITE_CONTEXT_NAME)
+            + encodeCode;
+    if (encodeCode.contains(REF_WRITER_NAME)) {
+      encodeCode =
+          StringUtils.format(
+                  "${refWriterType} ${refWriter} = (${refWriterType}) ${writeContext}.getRefWriter();\n",
+                  "refWriterType",
+                  ctx.type(concreteRefWriterType),
+                  "refWriter",
+                  REF_WRITER_NAME,
+                  "writeContext",
+                  WRITE_CONTEXT_NAME)
+              + encodeCode;
+    }
+
+    ctx.clearExprState();
+    String decodeCode = buildReadAndSetFieldsExpression().genCode(ctx).code();
     decodeCode = ctx.optimizeMethodCode(decodeCode);
-    ctx.overrideMethod(readMethodName, decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    decodeCode = decodeCode == null ? "" : decodeCode;
+    decodeCode =
+        StringUtils.format(
+                "${bufferType} ${buffer} = ${readContext}.getBuffer();\n",
+                "bufferType",
+                ctx.type(MemoryBuffer.class),
+                "buffer",
+                BUFFER_NAME,
+                "readContext",
+                READ_CONTEXT_NAME)
+            + decodeCode;
+
+    ctx.overrideMethod(
+        "writeFieldsOnly",
+        encodeCode,
+        void.class,
+        WriteContext.class,
+        WRITE_CONTEXT_NAME,
+        Object.class,
+        ROOT_OBJECT_NAME);
+    ctx.overrideMethod(
+        "readAndSetFields",
+        decodeCode,
+        Object.class,
+        ReadContext.class,
+        READ_CONTEXT_NAME,
+        Object.class,
+        ROOT_OBJECT_NAME);
     registerJITNotifyCallback();
-    ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
+    ctx.addConstructor(
+        constructorCode,
+        org.apache.fory.resolver.TypeResolver.class,
+        CONSTRUCTOR_TYPE_RESOLVER_NAME,
+        Class.class,
+        POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
   }
 
@@ -127,45 +181,84 @@ public class MetaSharedLayerCodecBuilder extends ObjectCodecBuilder {
     ctx.addImport(GeneratedMetaSharedLayerSerializer.class);
   }
 
-  // Invoked by JIT.
-  @SuppressWarnings({"unchecked", "rawtypes"})
-  public static MetaSharedLayerSerializerBase setCodegenSerializer(
-      Fory fory, Class<?> cls, GeneratedMetaSharedLayerSerializer s) {
-    if (GraalvmSupport.isGraalRuntime()) {
-      return (MetaSharedLayerSerializerBase) typeResolver(fory, r -> r.getSerializer(s.getType()));
+  @Override
+  protected Expression getFieldValue(Expression bean, Descriptor descriptor) {
+    if (descriptor.getField() == null) {
+      return ExpressionUtils.defaultValue(descriptor.getRawType());
     }
-    // This method hold jit lock, so create jit serializer async to avoid block serialization.
-    // Use MetaSharedLayerSerializer as fallback since it's compatible with
-    // MetaSharedLayerSerializerBase
-    Class serializerClass =
-        fory.getJITContext()
-            .registerSerializerJITCallback(
-                () -> MetaSharedLayerSerializer.class,
-                () -> CodegenSerializer.loadCodegenSerializer(fory, s.getType()),
-                c ->
-                    s.serializer =
-                        (MetaSharedLayerSerializerBase)
-                            Serializers.newSerializer(fory, s.getType(), c));
-    return (MetaSharedLayerSerializerBase) Serializers.newSerializer(fory, cls, serializerClass);
+    return super.getFieldValue(bean, descriptor);
   }
 
   @Override
-  public Expression buildEncodeExpression() {
-    throw new IllegalStateException("unreachable");
+  protected Expression serializeField(
+      Expression fieldValue, Expression buffer, Descriptor descriptor) {
+    if (descriptor.getField() == null
+        && fieldValue instanceof Literal
+        && ((Literal) fieldValue).getValue() == null
+        && !descriptor.getTypeRef().isPrimitive()) {
+      if (descriptor.isTrackingRef()) {
+        return writeRefOrNull(buffer, fieldValue);
+      }
+      return serializeForNullable(
+          fieldValue, buffer, descriptor.getTypeRef(), null, false, descriptor.isNullable());
+    }
+    return super.serializeField(fieldValue, buffer, descriptor);
+  }
+
+  @Override
+  protected Expression serializeForNullable(
+      Expression inputObject,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      boolean generateNewMethod,
+      boolean nullable) {
+    if (inputObject instanceof Literal && ((Literal) inputObject).getValue() == null) {
+      if (typeResolver(r -> r.needToWriteRef(typeRef))) {
+        return writeRefOrNull(buffer, inputObject);
+      }
+      if (nullable) {
+        return new Expression.Invoke(buffer, "writeByte", Literal.ofByte(Fory.NULL_FLAG));
+      }
+    }
+    return super.serializeForNullable(
+        inputObject, buffer, typeRef, serializer, generateNewMethod, nullable);
   }
 
   @Override
   protected Expression setFieldValue(Expression bean, Descriptor descriptor, Expression value) {
     if (descriptor.getField() == null) {
-      // Field doesn't exist in current class (e.g., from serialPersistentFields).
-      // Skip setting this field value but still consume the read value.
       return new StaticInvoke(ExceptionUtils.class, "ignore", value);
     }
     return super.setFieldValue(bean, descriptor, value);
   }
 
-  // Note: Layer class meta is read by ObjectStreamSerializer before calling this serializer.
-  // The generated read() method only reads field data, not the layer class meta.
+  private Expression buildReadAndSetFieldsExpression() {
+    Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
+    Reference inputObject = new Reference(ROOT_OBJECT_NAME, OBJECT_TYPE, false);
+    ListExpression expressions = new ListExpression();
+    Expression bean = tryCastIfPublic(inputObject, beanType, ctx.newName(beanClass));
+    expressions.add(bean);
+    expressions.addAll(deserializePrimitives(bean, buffer, objectCodecOptimizer.primitiveGroups));
+    int numGroups = getNumGroups(objectCodecOptimizer);
+    deserializeReadGroup(
+        objectCodecOptimizer.boxedReadGroups, numGroups, expressions, bean, buffer);
+    deserializeReadGroup(
+        objectCodecOptimizer.buildInReadGroups, numGroups, expressions, bean, buffer);
+    for (Descriptor descriptor :
+        objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors()) {
+      expressions.add(
+          deserializeGroup(java.util.Collections.singletonList(descriptor), bean, buffer, false));
+    }
+    for (Descriptor descriptor : objectCodecOptimizer.descriptorGrouper.getMapDescriptors()) {
+      expressions.add(
+          deserializeGroup(java.util.Collections.singletonList(descriptor), bean, buffer, false));
+    }
+    deserializeReadGroup(
+        objectCodecOptimizer.otherReadGroups, numGroups, expressions, bean, buffer);
+    expressions.add(new Expression.Return(bean));
+    return expressions;
+  }
 
   @Override
   protected Expression buildComponentsArray() {

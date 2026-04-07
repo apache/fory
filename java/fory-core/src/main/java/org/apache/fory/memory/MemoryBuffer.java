@@ -793,7 +793,7 @@ public final class MemoryBuffer {
    */
   public int writeVarUint32(int v) {
     // ensure at least 8 bytes are writable at once, so jvm-jit
-    // generated code is smaller. Otherwise, `MapRefResolver.writeRefOrNull`
+    // generated code is smaller. Otherwise, the reference writer fast path
     // may be `callee is too large`/`already compiled into a big method`
     ensure(writerIndex + 8);
     int varintBytes = _unsafePutVarUint32(writerIndex, v);

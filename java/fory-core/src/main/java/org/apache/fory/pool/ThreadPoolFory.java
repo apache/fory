@@ -21,212 +21,377 @@ package org.apache.fory.pool;
 
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
-import org.apache.fory.logging.Logger;
-import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.BufferCallback;
-import org.apache.fory.util.LoaderBinding;
 
+/**
+ * A thread-safe {@link Fory} runtime backed by a thread-agnostic fixed-slot pool.
+ *
+ * <p>The current thread identity hash is used only as a routing hint to choose a preferred slot
+ * scan start. Borrowed {@link Fory} instances are shared pool entries, not thread-owned state.
+ */
 @ThreadSafe
 public class ThreadPoolFory extends AbstractThreadSafeFory {
-
-  private static final Logger LOG = LoggerFactory.getLogger(ThreadPoolFory.class);
-
-  private final ForyPooledObjectFactory foryPooledObjectFactory;
-  private Consumer<Fory> factoryCallback = f -> {};
+  private static final int PREFERRED_SLOT_RETRIES = 2;
+  private final int poolSize;
+  private final AtomicReferenceArray<PooledEntry> slots;
+  private final Fory[] pooledFory;
+  private final Semaphore waiterSignal = new Semaphore(0);
+  private final AtomicInteger waitingBorrowers = new AtomicInteger();
   private final Object callbackLock = new Object();
 
-  public ThreadPoolFory(
-      Function<ClassLoader, Fory> foryFactory,
-      int minPoolSize,
-      int maxPoolSize,
-      long expireTime,
-      TimeUnit timeUnit) {
-    this.foryPooledObjectFactory =
-        new ForyPooledObjectFactory(
-            foryFactory,
-            minPoolSize,
-            maxPoolSize,
-            expireTime,
-            timeUnit,
-            fory -> factoryCallback.accept(fory));
+  public ThreadPoolFory(Function<ForyBuilder, Fory> foryFactory, int poolSize) {
+    if (poolSize <= 0) {
+      throw new IllegalArgumentException(
+          String.format("thread safe fory pool size error, please check it, size:[%s]", poolSize));
+    }
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Supplier<Fory> factory =
+        () -> foryFactory.apply(Fory.builder().withSharedRegistry(sharedRegistry));
+    this.poolSize = poolSize;
+    slots = new AtomicReferenceArray<>(poolSize);
+    pooledFory = new Fory[poolSize];
+    for (int i = 0; i < poolSize; i++) {
+      Fory fory = factory.get();
+      pooledFory[i] = fory;
+      slots.set(i, new PooledEntry(fory, i));
+    }
+  }
+
+  private PooledEntry acquire() {
+    int slotIndex = slotIndexForCurrentThread();
+    PooledEntry entry = tryBorrowPreferredSlots(slotIndex);
+    if (entry != null) {
+      return entry;
+    }
+    waitingBorrowers.incrementAndGet();
+    try {
+      while (true) {
+        entry = tryBorrowPreferredSlots(slotIndex);
+        if (entry != null) {
+          return entry;
+        }
+        try {
+          waiterSignal.acquire();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new RuntimeException("Interrupted while borrowing a pooled Fory instance.", e);
+        }
+      }
+    } finally {
+      waitingBorrowers.decrementAndGet();
+    }
+  }
+
+  private void release(PooledEntry entry) {
+    slots.lazySet(entry.homeIndex, entry);
+    if (waitingBorrowers.get() > 0) {
+      waiterSignal.release();
+    }
+  }
+
+  private PooledEntry tryBorrowPreferredSlots(int slotIndex) {
+    PooledEntry entry = tryBorrowSlot(slotIndex);
+    if (entry != null) {
+      return entry;
+    }
+    for (int i = 1; i < PREFERRED_SLOT_RETRIES; i++) {
+      entry = tryBorrowSlot(slotIndex);
+      if (entry != null) {
+        return entry;
+      }
+    }
+    int index = slotIndex + 1;
+    if (index == poolSize) {
+      index = 0;
+    }
+    for (int i = 1; i < poolSize; i++) {
+      entry = tryBorrowSlot(index);
+      if (entry != null) {
+        return entry;
+      }
+      index++;
+      if (index == poolSize) {
+        index = 0;
+      }
+    }
+    return null;
+  }
+
+  private PooledEntry tryBorrowSlot(int index) {
+    return slots.getAndSet(index, null);
+  }
+
+  private int slotIndexForCurrentThread() {
+    return Math.floorMod(spread(System.identityHashCode(Thread.currentThread())), poolSize);
+  }
+
+  private static int spread(int hash) {
+    return hash ^ (hash >>> 16);
   }
 
   @Internal
   @Override
   public void registerCallback(Consumer<Fory> callback) {
     synchronized (callbackLock) {
-      factoryCallback = factoryCallback.andThen(callback);
-      for (ClassLoaderForyPooled foryPooled :
-          foryPooledObjectFactory.classLoaderForyPooledCache.asMap().values()) {
-        foryPooled.allFory.keySet().forEach(callback);
+      for (Fory fory : pooledFory) {
+        callback.accept(fory);
       }
     }
   }
 
   @Override
   public <R> R execute(Function<Fory, R> action) {
-    ClassLoaderForyPooled pooledCache = null;
-    Fory fory = null;
+    PooledEntry entry = acquire();
     try {
-      pooledCache = foryPooledObjectFactory.getPooledCache();
-      fory = pooledCache.getFory();
-      return action.apply(fory);
-    } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
-      throw new RuntimeException(e);
+      return action.apply(entry.fory);
     } finally {
-      if (pooledCache != null) {
-        pooledCache.returnFory(fory);
-      }
+      release(entry);
     }
   }
 
   @Override
   public byte[] serialize(Object obj) {
-    return execute(fory -> fory.serialize(obj));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.serialize(obj);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public byte[] serialize(Object obj, BufferCallback callback) {
-    return execute(fory -> fory.serialize(obj, callback));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.serialize(obj, callback);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
-    return execute(fory -> fory.serialize(obj, address, size));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.serialize(obj, address, size);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public MemoryBuffer serialize(MemoryBuffer buffer, Object obj) {
-    return execute(fory -> fory.serialize(buffer, obj));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.serialize(buffer, obj);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public MemoryBuffer serialize(MemoryBuffer buffer, Object obj, BufferCallback callback) {
-    return execute(fory -> fory.serialize(buffer, obj, callback));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.serialize(buffer, obj, callback);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public void serialize(OutputStream outputStream, Object obj) {
-    execute(
-        fory -> {
-          fory.serialize(outputStream, obj);
-          return null;
-        });
+    PooledEntry entry = acquire();
+    try {
+      entry.fory.serialize(outputStream, obj);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public void serialize(OutputStream outputStream, Object obj, BufferCallback callback) {
-    execute(
-        fory -> {
-          fory.serialize(outputStream, obj, callback);
-          return null;
-        });
+    PooledEntry entry = acquire();
+    try {
+      entry.fory.serialize(outputStream, obj, callback);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(byte[] bytes) {
-    return execute(fory -> fory.deserialize(bytes));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(bytes);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public <T> T deserialize(byte[] bytes, Class<T> type) {
-    return execute(fory -> fory.deserialize(bytes, type));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(bytes, type);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public <T> T deserialize(MemoryBuffer buffer, Class<T> type) {
-    return execute(fory -> fory.deserialize(buffer, type));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(buffer, type);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public <T> T deserialize(ForyInputStream inputStream, Class<T> type) {
-    return execute(fory -> fory.deserialize(inputStream, type));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(inputStream, type);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public <T> T deserialize(ForyReadableChannel channel, Class<T> type) {
-    return execute(fory -> fory.deserialize(channel, type));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(channel, type);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return execute(fory -> fory.deserialize(bytes, outOfBandBuffers));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(bytes, outOfBandBuffers);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(long address, int size) {
-    return execute(fory -> fory.deserialize(address, size));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(address, size);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(MemoryBuffer buffer) {
-    return execute(fory -> fory.deserialize(buffer));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(buffer);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(ByteBuffer byteBuffer) {
-    return execute(fory -> fory.deserialize(MemoryUtils.wrap(byteBuffer)));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(MemoryUtils.wrap(byteBuffer));
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return execute(fory -> fory.deserialize(buffer, outOfBandBuffers));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(buffer, outOfBandBuffers);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(ForyInputStream inputStream) {
-    return execute(fory -> fory.deserialize(inputStream));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(inputStream);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(ForyInputStream inputStream, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return execute(fory -> fory.deserialize(inputStream, outOfBandBuffers));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(inputStream, outOfBandBuffers);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(ForyReadableChannel channel) {
-    return execute(fory -> fory.deserialize(channel));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(channel);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return execute(fory -> fory.deserialize(channel, outOfBandBuffers));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.deserialize(channel, outOfBandBuffers);
+    } finally {
+      release(entry);
+    }
   }
 
   @Override
   public <T> T copy(T obj) {
-    return execute(fory -> fory.copy(obj));
+    PooledEntry entry = acquire();
+    try {
+      return entry.fory.copy(obj);
+    } finally {
+      release(entry);
+    }
   }
 
-  @Override
-  public void setClassLoader(ClassLoader classLoader) {
-    setClassLoader(classLoader, LoaderBinding.StagingType.SOFT_STAGING);
-  }
+  private static final class PooledEntry {
+    private final Fory fory;
+    private final int homeIndex;
 
-  @Override
-  public void setClassLoader(ClassLoader classLoader, LoaderBinding.StagingType stagingType) {
-    foryPooledObjectFactory.setClassLoader(classLoader, stagingType);
-  }
-
-  @Override
-  public ClassLoader getClassLoader() {
-    return foryPooledObjectFactory.getClassLoader();
-  }
-
-  @Override
-  public void clearClassLoader(ClassLoader loader) {
-    foryPooledObjectFactory.clearClassLoader(loader);
+    private PooledEntry(Fory fory, int homeIndex) {
+      this.fory = fory;
+      this.homeIndex = homeIndex;
+    }
   }
 }

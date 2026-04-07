@@ -29,7 +29,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.fory.Fory;
+import org.apache.fory.context.CopyContext;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
@@ -104,12 +105,13 @@ public class ImmutableCollectionSerializers {
   }
 
   public static class ImmutableListSerializer extends CollectionSerializer {
-    public ImmutableListSerializer(Fory fory, Class cls) {
-      super(fory, cls, true);
+    public ImmutableListSerializer(TypeResolver typeResolver, Class cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    public Collection newCollection(MemoryBuffer buffer) {
+    public Collection newCollection(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       if (Platform.JAVA_VERSION > 8) {
@@ -120,7 +122,7 @@ public class ImmutableCollectionSerializers {
     }
 
     @Override
-    public Collection copy(Collection originCollection) {
+    public Collection copy(CopyContext copyContext, Collection originCollection) {
       if (Platform.JAVA_VERSION <= 8) {
         throw new UnsupportedOperationException(
             String.format(
@@ -128,7 +130,7 @@ public class ImmutableCollectionSerializers {
                 originCollection.getClass()));
       }
       Object[] elements = new Object[originCollection.size()];
-      copyElements(originCollection, elements);
+      copyElements(copyContext, originCollection, elements);
       try {
         return (List) listFactory.invoke(elements);
       } catch (Throwable e) {
@@ -153,12 +155,13 @@ public class ImmutableCollectionSerializers {
   }
 
   public static class ImmutableSetSerializer extends CollectionSerializer {
-    public ImmutableSetSerializer(Fory fory, Class cls) {
-      super(fory, cls, true);
+    public ImmutableSetSerializer(TypeResolver typeResolver, Class cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    public Collection newCollection(MemoryBuffer buffer) {
+    public Collection newCollection(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       if (Platform.JAVA_VERSION > 8) {
@@ -169,7 +172,7 @@ public class ImmutableCollectionSerializers {
     }
 
     @Override
-    public Collection copy(Collection originCollection) {
+    public Collection copy(CopyContext copyContext, Collection originCollection) {
       if (Platform.JAVA_VERSION <= 8) {
         throw new UnsupportedOperationException(
             String.format(
@@ -177,7 +180,7 @@ public class ImmutableCollectionSerializers {
                 originCollection.getClass()));
       }
       Object[] elements = new Object[originCollection.size()];
-      copyElements(originCollection, elements);
+      copyElements(copyContext, originCollection, elements);
       try {
         return (Set) setFactory.invoke(elements);
       } catch (Throwable e) {
@@ -202,12 +205,13 @@ public class ImmutableCollectionSerializers {
   }
 
   public static class ImmutableMapSerializer extends MapSerializer {
-    public ImmutableMapSerializer(Fory fory, Class cls) {
-      super(fory, cls, true);
+    public ImmutableMapSerializer(TypeResolver typeResolver, Class cls) {
+      super(typeResolver, cls, true);
     }
 
     @Override
-    public Map newMap(MemoryBuffer buffer) {
+    public Map newMap(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
       int numElements = buffer.readVarUint32Small7();
       setNumElements(numElements);
       if (Platform.JAVA_VERSION > 8) {
@@ -218,7 +222,7 @@ public class ImmutableCollectionSerializers {
     }
 
     @Override
-    public Map copy(Map originMap) {
+    public Map copy(CopyContext copyContext, Map originMap) {
       if (Platform.JAVA_VERSION <= 8) {
         throw new UnsupportedOperationException(
             String.format(
@@ -227,7 +231,7 @@ public class ImmutableCollectionSerializers {
       }
       int size = originMap.size();
       Object[] elements = new Object[size * 2];
-      copyEntry(originMap, elements);
+      copyEntry(copyContext, originMap, elements);
       try {
         if (size == 1) {
           return (Map) map1Factory.invoke(elements[0], elements[1]);
@@ -259,14 +263,13 @@ public class ImmutableCollectionSerializers {
     }
   }
 
-  public static void registerSerializers(Fory fory) {
-    TypeResolver resolver = fory.getTypeResolver();
-    resolver.registerInternalSerializer(List12, new ImmutableListSerializer(fory, List12));
-    resolver.registerInternalSerializer(ListN, new ImmutableListSerializer(fory, ListN));
-    resolver.registerInternalSerializer(SubList, new ImmutableListSerializer(fory, SubList));
-    resolver.registerInternalSerializer(Set12, new ImmutableSetSerializer(fory, Set12));
-    resolver.registerInternalSerializer(SetN, new ImmutableSetSerializer(fory, SetN));
-    resolver.registerInternalSerializer(Map1, new ImmutableMapSerializer(fory, Map1));
-    resolver.registerInternalSerializer(MapN, new ImmutableMapSerializer(fory, MapN));
+  public static void registerSerializers(TypeResolver resolver) {
+    resolver.registerInternalSerializer(List12, new ImmutableListSerializer(resolver, List12));
+    resolver.registerInternalSerializer(ListN, new ImmutableListSerializer(resolver, ListN));
+    resolver.registerInternalSerializer(SubList, new ImmutableListSerializer(resolver, SubList));
+    resolver.registerInternalSerializer(Set12, new ImmutableSetSerializer(resolver, Set12));
+    resolver.registerInternalSerializer(SetN, new ImmutableSetSerializer(resolver, SetN));
+    resolver.registerInternalSerializer(Map1, new ImmutableMapSerializer(resolver, Map1));
+    resolver.registerInternalSerializer(MapN, new ImmutableMapSerializer(resolver, MapN));
   }
 }

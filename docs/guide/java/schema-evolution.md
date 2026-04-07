@@ -76,13 +76,13 @@ Fory supports sharing type metadata (class name, field name, final field type in
 //   .withMetaShare(true)
 
 // Not thread-safe fory.
-MetaContext context = xxx;
-fory.getSerializationContext().setMetaContext(context);
+MetaWriteContext writeContext = xxx;
+fory.setMetaWriteContext(writeContext);
 byte[] bytes = fory.serialize(o);
 
 // Not thread-safe fory.
-MetaContext context = xxx;
-fory.getSerializationContext().setMetaContext(context);
+MetaReadContext readContext = xxx;
+fory.setMetaReadContext(readContext);
 fory.deserialize(bytes);
 ```
 
@@ -90,25 +90,27 @@ fory.deserialize(bytes);
 
 ```java
 // Thread-safe fory
-fory.setClassLoader(beanA.getClass().getClassLoader());
 byte[] serialized = fory.execute(
   f -> {
-    f.getSerializationContext().setMetaContext(context);
+    f.setMetaWriteContext(writeContext);
     return f.serialize(beanA);
   }
 );
 
 // Thread-safe fory
-fory.setClassLoader(beanA.getClass().getClassLoader());
 Object newObj = fory.execute(
   f -> {
-    f.getSerializationContext().setMetaContext(context);
+    f.setMetaReadContext(readContext);
     return f.deserialize(serialized);
   }
 );
 ```
 
-**Note**: `MetaContext` is not thread-safe and cannot be reused across instances of Fory or multiple threads. In cases of multi-threading, a separate `MetaContext` must be created for each Fory instance.
+**Note**: `MetaWriteContext` and `MetaReadContext` are not thread-safe and cannot be reused across
+instances of Fory or multiple threads. In cases of multi-threading, a separate pair of meta
+contexts must be created for each Fory instance. If you need a different classloader, create a
+separate `Fory` or `ThreadSafeFory` configured with that loader instead of switching loaders on an
+existing instance.
 
 For more details, please refer to the [Meta Sharing specification](https://fory.apache.org/docs/specification/fory_java_serialization_spec#meta-share).
 

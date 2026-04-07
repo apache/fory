@@ -29,7 +29,9 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.MapSerializer;
@@ -48,17 +50,17 @@ public class ResolverValidateSerializerTest {
     }
 
     public static final class InvalidListSerializer extends Serializer<InvalidList> {
-      public InvalidListSerializer(Fory fory) {
-        super(fory, InvalidList.class);
+      public InvalidListSerializer(TypeResolver typeResolver) {
+        super(typeResolver.getConfig(), InvalidList.class);
       }
 
       @Override
-      public void write(MemoryBuffer buffer, InvalidList value) {
+      public void write(WriteContext writeContext, InvalidList value) {
         // no-op
       }
 
       @Override
-      public InvalidList read(MemoryBuffer buffer) {
+      public InvalidList read(ReadContext readContext) {
         return new InvalidList();
       }
     }
@@ -76,17 +78,17 @@ public class ResolverValidateSerializerTest {
     }
 
     public static final class ValidListSerializer extends CollectionSerializer<ValidList> {
-      public ValidListSerializer(Fory fory) {
-        super(fory, ValidList.class);
+      public ValidListSerializer(TypeResolver typeResolver) {
+        super(typeResolver, ValidList.class);
       }
 
       @Override
-      public Collection<?> onCollectionWrite(MemoryBuffer buffer, ValidList value) {
+      public Collection<?> onCollectionWrite(WriteContext writeContext, ValidList value) {
         return Collections.emptyList();
       }
 
       @Override
-      public ValidList read(MemoryBuffer buffer) {
+      public ValidList read(ReadContext readContext) {
         return onCollectionRead(Collections.emptyList());
       }
 
@@ -104,17 +106,17 @@ public class ResolverValidateSerializerTest {
     }
 
     public static final class InvalidMapSerializer extends Serializer<InvalidMap> {
-      public InvalidMapSerializer(Fory fory) {
-        super(fory, InvalidMap.class);
+      public InvalidMapSerializer(TypeResolver typeResolver) {
+        super(typeResolver.getConfig(), InvalidMap.class);
       }
 
       @Override
-      public void write(MemoryBuffer buffer, InvalidMap value) {
+      public void write(WriteContext writeContext, InvalidMap value) {
         // no-op
       }
 
       @Override
-      public InvalidMap read(MemoryBuffer buffer) {
+      public InvalidMap read(ReadContext readContext) {
         return new InvalidMap();
       }
     }
@@ -127,12 +129,12 @@ public class ResolverValidateSerializerTest {
     }
 
     public static final class ValidMapSerializer extends MapSerializer<ValidMap> {
-      public ValidMapSerializer(Fory fory) {
-        super(fory, ValidMap.class);
+      public ValidMapSerializer(TypeResolver typeResolver) {
+        super(typeResolver, ValidMap.class);
       }
 
       @Override
-      public Map<?, ?> onMapWrite(MemoryBuffer buffer, ValidMap value) {
+      public Map<?, ?> onMapWrite(WriteContext writeContext, ValidMap value) {
         return Collections.emptyMap();
       }
 
@@ -142,7 +144,7 @@ public class ResolverValidateSerializerTest {
       }
 
       @Override
-      public ValidMap read(MemoryBuffer buffer) {
+      public ValidMap read(ReadContext readContext) {
         return onMapRead(Collections.emptyMap());
       }
 
@@ -163,7 +165,7 @@ public class ResolverValidateSerializerTest {
         IllegalArgumentException.class,
         () ->
             fory.registerSerializer(
-                InvalidList.class, new InvalidList.InvalidListSerializer(fory)));
+                InvalidList.class, new InvalidList.InvalidListSerializer(fory.getTypeResolver())));
     assertThrows(
         IllegalArgumentException.class,
         () ->
@@ -171,21 +173,25 @@ public class ResolverValidateSerializerTest {
                 InvalidList.class, f -> new InvalidList.InvalidListSerializer(f)));
     // List valid
     fory.register(ValidList.class);
-    fory.registerSerializer(ValidList.class, new ValidList.ValidListSerializer(fory));
+    fory.registerSerializer(
+        ValidList.class, new ValidList.ValidListSerializer(fory.getTypeResolver()));
     // Map invalid
     assertThrows(
         IllegalArgumentException.class,
         () -> fory.registerSerializer(InvalidMap.class, InvalidMap.InvalidMapSerializer.class));
     assertThrows(
         IllegalArgumentException.class,
-        () -> fory.registerSerializer(InvalidMap.class, new InvalidMap.InvalidMapSerializer(fory)));
+        () ->
+            fory.registerSerializer(
+                InvalidMap.class, new InvalidMap.InvalidMapSerializer(fory.getTypeResolver())));
     assertThrows(
         IllegalArgumentException.class,
         () ->
             fory.registerSerializer(InvalidMap.class, f -> new InvalidMap.InvalidMapSerializer(f)));
     // Map valid
     fory.register(ValidMap.class);
-    fory.registerSerializer(ValidMap.class, new ValidMap.ValidMapSerializer(fory));
+    fory.registerSerializer(
+        ValidMap.class, new ValidMap.ValidMapSerializer(fory.getTypeResolver()));
     Object listResult = fory.deserialize(fory.serialize(new ValidList()));
     assertTrue(listResult instanceof ValidList);
     Object mapResult = fory.deserialize(fory.serialize(new ValidMap()));

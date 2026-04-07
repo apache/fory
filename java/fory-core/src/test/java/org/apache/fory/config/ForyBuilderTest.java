@@ -21,6 +21,7 @@ package org.apache.fory.config;
 
 import static org.testng.Assert.*;
 
+import org.apache.fory.Fory;
 import org.apache.fory.meta.MetaCompressor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -71,5 +72,21 @@ public class ForyBuilderTest {
                 return getClass().hashCode();
               }
             });
+  }
+
+  @Test
+  public void testCompatibleStateIsBooleanBacked() {
+    Fory compatibleFromMode =
+        new ForyBuilder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+    Fory compatibleFromBoolean = new ForyBuilder().withCompatible(true).build();
+    Fory schemaConsistent = new ForyBuilder().withCompatible(false).build();
+
+    assertTrue(compatibleFromMode.getConfig().isCompatible());
+    assertEquals(compatibleFromMode.getConfig().getCompatibleMode(), CompatibleMode.COMPATIBLE);
+    assertEquals(compatibleFromMode.getConfig(), compatibleFromBoolean.getConfig());
+
+    assertFalse(schemaConsistent.getConfig().isCompatible());
+    assertEquals(
+        schemaConsistent.getConfig().getCompatibleMode(), CompatibleMode.SCHEMA_CONSISTENT);
   }
 }

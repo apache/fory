@@ -108,7 +108,7 @@ public class TypeDefTest extends ForyTestBase {
               ImmutableList.of(TestFieldsOrderClass1.class.getDeclaredField("longField")));
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
       typeDef.writeTypeDef(buffer);
-      TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+      TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
       assertEquals(typeDef1.getClassName(), typeDef.getClassName());
       assertEquals(typeDef1, typeDef);
     }
@@ -124,7 +124,7 @@ public class TypeDefTest extends ForyTestBase {
           ReflectionUtils.getFields(TestFieldsOrderClass1.class, true).size());
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
       typeDef.writeTypeDef(buffer);
-      TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+      TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
       assertEquals(typeDef1.getClassName(), typeDef.getClassName());
       assertEquals(typeDef1, typeDef);
     }
@@ -140,7 +140,7 @@ public class TypeDefTest extends ForyTestBase {
           ReflectionUtils.getFields(TestFieldsOrderClass2.class, true).size());
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
       typeDef.writeTypeDef(buffer);
-      TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+      TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
       assertEquals(typeDef1.getClassName(), typeDef.getClassName());
       assertEquals(typeDef1, typeDef);
     }
@@ -161,7 +161,7 @@ public class TypeDefTest extends ForyTestBase {
           ReflectionUtils.getFields(DuplicateFieldClass.class, true).size());
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
       typeDef.writeTypeDef(buffer);
-      TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+      TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
       assertEquals(typeDef1.getClassName(), typeDef.getClassName());
       assertEquals(typeDef1, typeDef);
     }
@@ -177,7 +177,7 @@ public class TypeDefTest extends ForyTestBase {
     assertEquals(typeDef.getFieldsInfo().size(), fields.size());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     typeDef.writeTypeDef(buffer);
-    TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
     assertEquals(typeDef1, typeDef);
   }
@@ -185,7 +185,7 @@ public class TypeDefTest extends ForyTestBase {
   @Test
   public void testInterface() {
     Fory fory = Fory.builder().withMetaShare(true).build();
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, Map.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Map.class);
     assertTrue(typeDef.getFieldsInfo().isEmpty());
     assertTrue(typeDef.hasFieldsMeta());
   }
@@ -516,10 +516,11 @@ public class TypeDefTest extends ForyTestBase {
   public void testTypeDefSerializationBasic() {
     Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(TestFieldsOrderClass1.class, "demo.Class1");
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, TestFieldsOrderClass1.class, true);
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(fory.getTypeResolver(), TestFieldsOrderClass1.class, true);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     typeDef.writeTypeDef(buffer);
-    TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
     assertEquals(typeDef1, typeDef);
   }
@@ -528,7 +529,7 @@ public class TypeDefTest extends ForyTestBase {
   public void testTypeDefInheritanceDuplicatedFields() {
     Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(TestFieldsOrderClass2.class, "demo.Class2");
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, TestFieldsOrderClass2.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), TestFieldsOrderClass2.class);
     assertEquals(typeDef.getClassName(), TestFieldsOrderClass2.class.getName());
     // xtype ignore duplicate fields from parent class.
     assertEquals(
@@ -536,7 +537,7 @@ public class TypeDefTest extends ForyTestBase {
         ReflectionUtils.getFields(TestFieldsOrderClass2.class, true).size() - 1);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     typeDef.writeTypeDef(buffer);
-    TypeDef typeDef1 = TypeDef.readTypeDef(fory, buffer);
+    TypeDef typeDef1 = TypeDef.readTypeDef(fory.getTypeResolver(), buffer);
     assertEquals(typeDef1.getClassName(), typeDef.getClassName());
     assertEquals(typeDef1, typeDef);
   }
@@ -545,7 +546,7 @@ public class TypeDefTest extends ForyTestBase {
   public void testUnsignedScalarFieldsTypeIds() {
     Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(UnsignedScalarFields.class, "test.UnsignedScalarFields");
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, UnsignedScalarFields.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), UnsignedScalarFields.class);
 
     // Build expected type IDs map: field name -> type id
     Map<String, Integer> expectedTypeIds = new HashMap<>();
@@ -572,7 +573,7 @@ public class TypeDefTest extends ForyTestBase {
   public void testUnsignedArrayFieldsTypeIds() {
     Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(UnsignedArrayFields.class, "test.UnsignedArrayFields");
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, UnsignedArrayFields.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), UnsignedArrayFields.class);
 
     // Build expected type IDs map: field name -> type id
     Map<String, Integer> expectedTypeIds = new HashMap<>();
@@ -596,7 +597,7 @@ public class TypeDefTest extends ForyTestBase {
   public void testAllUnsignedFieldsTypeIds() {
     Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
     fory.register(AllUnsignedFields.class, "test.AllUnsignedFields");
-    TypeDef typeDef = TypeDef.buildTypeDef(fory, AllUnsignedFields.class);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), AllUnsignedFields.class);
 
     // Build expected type IDs map: field name -> type id
     Map<String, Integer> expectedTypeIds = new HashMap<>();

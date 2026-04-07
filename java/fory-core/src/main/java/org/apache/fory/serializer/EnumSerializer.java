@@ -20,24 +20,22 @@
 package org.apache.fory.serializer;
 
 import java.util.Arrays;
-import org.apache.fory.Fory;
-import org.apache.fory.collection.ForyObjectMap;
-import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.meta.Encoders;
-import org.apache.fory.resolver.MetaStringRef;
-import org.apache.fory.resolver.MetaStringResolver;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings("rawtypes")
 public class EnumSerializer extends ImmutableSerializer<Enum> {
-  private final MetaStringResolver metaStringResolver;
+  private final Config config;
   private final Enum[] enumConstants;
-  private final ForyObjectMap<MetaStringRef, Enum> metaStringtoEnumRepresentation;
-  private final MetaStringRef[] metaStringStateArrByEnumOrdinal;
+  private final Map<String, Enum> stringToEnum;
 
-  public EnumSerializer(Fory fory, Class<Enum> cls) {
-    super(fory, cls, false);
-    metaStringResolver = fory.getMetaStringResolver();
+  public EnumSerializer(Config config, Class<Enum> cls) {
+    super(config, cls, false);
+    this.config = config;
     if (cls.isEnum()) {
       enumConstants = cls.getEnumConstants();
     } else {
@@ -48,50 +46,36 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
       Preconditions.checkArgument(enclosingClass.isEnum());
       enumConstants = enclosingClass.getEnumConstants();
     }
-
-    metaStringStateArrByEnumOrdinal = new MetaStringRef[enumConstants.length];
-
-    if (fory.getConfig().serializeEnumByName()) {
-      // as we know the size of enum is fixed, initialize the size of map with that value
-      int initialCapacity = (int) Math.ceil(enumConstants.length / 0.5f);
-
-      metaStringtoEnumRepresentation = new ForyObjectMap<>(initialCapacity, 0.5f);
-
+    if (config.serializeEnumByName()) {
+      stringToEnum = new HashMap<>();
       for (Enum enumConstant : enumConstants) {
-        if (enumConstant != null) {
-          MetaStringRef msb =
-              metaStringResolver.getOrCreateGenericMetaStringBytes(enumConstant.name());
-          metaStringtoEnumRepresentation.put(msb, enumConstant);
-          metaStringStateArrByEnumOrdinal[enumConstant.ordinal()] = msb;
-        }
+        stringToEnum.put(enumConstant.name(), enumConstant);
       }
-
     } else {
-      metaStringtoEnumRepresentation = null;
+      stringToEnum = null;
     }
   }
 
   @Override
-  public void write(MemoryBuffer buffer, Enum value) {
-    if (isJava && fory.getConfig().serializeEnumByName()) {
-      MetaStringRef metaStringState = metaStringStateArrByEnumOrdinal[value.ordinal()];
-      metaStringResolver.writeMetaStringBytes(buffer, metaStringState);
+  public void write(WriteContext writeContext, Enum value) {
+    if (!config.isXlang() && config.serializeEnumByName()) {
+      writeContext.writeString(value.name());
     } else {
-      buffer.writeVarUint32Small7(value.ordinal());
+      writeContext.getBuffer().writeVarUint32Small7(value.ordinal());
     }
   }
 
   @Override
-  public Enum read(MemoryBuffer buffer) {
-    if (isJava && fory.getConfig().serializeEnumByName()) {
-      MetaStringRef metaStringState = metaStringResolver.readMetaStringBytes(buffer);
-      Enum e = metaStringtoEnumRepresentation.get(metaStringState);
+  public Enum read(ReadContext readContext) {
+    if (!config.isXlang() && config.serializeEnumByName()) {
+      String name = readContext.readString();
+      Enum e = stringToEnum.get(name);
       if (e != null) {
         return e;
       }
-      return handleUnknownEnumValue(metaStringState.decode(Encoders.GENERIC_DECODER));
+      return handleUnknownEnumValue(name);
     } else {
-      int value = buffer.readVarUint32Small7();
+      int value = readContext.getBuffer().readVarUint32Small7();
       if (value >= enumConstants.length) {
         return handleUnknownEnumValue(value);
       }
@@ -100,7 +84,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
   }
 
   private Enum handleUnknownEnumValue(int value) {
-    switch (fory.getConfig().getUnknownEnumValueStrategy()) {
+    switch (config.getUnknownEnumValueStrategy()) {
       case RETURN_NULL:
         return null;
       case RETURN_FIRST_VARIANT:
@@ -114,7 +98,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
   }
 
   private Enum handleUnknownEnumValue(String value) {
-    switch (fory.getConfig().getUnknownEnumValueStrategy()) {
+    switch (config.getUnknownEnumValueStrategy()) {
       case RETURN_NULL:
         return null;
       case RETURN_FIRST_VARIANT:
@@ -125,5 +109,10 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
         throw new IllegalArgumentException(
             String.format("Enum string %s not in %s", value, Arrays.toString(enumConstants)));
     }
+  }
+
+  @Override
+  public boolean shareable() {
+    return config.forVirtualThread();
   }
 }

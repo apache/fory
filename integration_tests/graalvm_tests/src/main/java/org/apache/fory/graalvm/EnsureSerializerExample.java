@@ -20,7 +20,9 @@
 package org.apache.fory.graalvm;
 
 import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.Preconditions;
 
@@ -34,7 +36,7 @@ public class EnsureSerializerExample {
             .requireClassRegistration(true)
             .build();
     // register and generate serializer code.
-    fory.registerSerializer(Custom.class, new CustomSerializer(fory));
+    fory.registerSerializer(Custom.class, new CustomSerializer(fory.getConfig()));
     fory.register(EnsureSerializerExample.class);
     fory.ensureSerializersCompiled();
   }
@@ -57,15 +59,15 @@ public class EnsureSerializerExample {
   }
 
   private static class CustomSerializer extends Serializer<Custom> {
-    public CustomSerializer(Fory fory) {
-      super(fory, Custom.class);
+    public CustomSerializer(Config config) {
+      super(config, Custom.class);
     }
 
     @Override
-    public void write(MemoryBuffer buffer, Custom value) {}
+    public void write(WriteContext writeContext, Custom value) {}
 
     @Override
-    public Custom read(MemoryBuffer buffer) {
+    public Custom read(ReadContext readContext) {
       return new Custom();
     }
   }

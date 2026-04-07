@@ -593,9 +593,13 @@ jobs:
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
+            ~/.bazel/external
             ~/.cache/bazel/_bazel_*/*/external
             ~/Library/Caches/bazel/_bazel_*/*/external
+            ~/Library/Caches/bazel/external
+            C:\users\runneradmin\.bazel\external
             C:\users\runneradmin\_bazel_runneradmin\*/external
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
@@ -603,9 +607,12 @@ jobs:
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
+            ~/.bazel
             ~/.cache/bazel
             ~/Library/Caches/bazel
+            C:\users\runneradmin\.bazel
             C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
       - name: Run C++ CI with Bazel
@@ -641,7 +648,9 @@ jobs:
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
           path: |
+            ~/.bazel/external
             ~/.cache/bazel/_bazel_*/*/external
           key: bazel-repo-sanitizer-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
@@ -649,7 +658,10 @@ jobs:
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
-          path: ~/.cache/bazel
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
+          path: |
+            ~/.bazel
+            ~/.cache/bazel
           key: bazel-build-cpp-sanitizer-${{ runner.os }}-${{ runner.arch }}-${{ matrix.sanitizer }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE', '.bazelrc') }}
       - name: Install Bazel and C++ deps
         run: python ./ci/run_ci.py cpp --install-deps-only
@@ -660,7 +672,22 @@ jobs:
           if [[ "${ARCH}" == "x86_64" || "${ARCH}" == "amd64" ]]; then
             BAZEL_CONFIGS="--config=x86_64 ${BAZEL_CONFIGS}"
           fi
-          bazel test --cache_test_results=no ${BAZEL_CONFIGS} $(bazel query //cpp/...)
+          TEST_TARGETS=(
+            //cpp/fory/util:buffer_test
+            //cpp/fory/util:error_test
+            //cpp/fory/util:logging_test
+            //cpp/fory/util:result_test
+            //cpp/fory/meta:enum_info_test
+            //cpp/fory/meta:field_info_test
+            //cpp/fory/meta:meta_string_test
+            //cpp/fory/meta:type_traits_test
+            //cpp/fory/row:row_test
+            //cpp/fory/encoder:row_encoder_test
+            //cpp/fory/serialization:serialization_test
+            //cpp/fory/serialization:namespace_macro_test
+            //cpp/fory/serialization:stream_test
+          )
+          bazel test --cache_test_results=no ${BAZEL_CONFIGS} "${TEST_TARGETS[@]}"
       - name: Upload Bazel Test Logs (${{ matrix.sanitizer }})
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

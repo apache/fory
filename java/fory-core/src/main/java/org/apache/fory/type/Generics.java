@@ -19,8 +19,7 @@
 
 package org.apache.fory.type;
 
-import org.apache.fory.Fory;
-import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeInfo;
 
 // Derived from
@@ -32,34 +31,31 @@ import org.apache.fory.resolver.TypeInfo;
  * loop.
  */
 public class Generics {
-  private final Fory fory;
   private int genericTypesSize;
-  private GenericType[] genericTypes = new GenericType[16];
+  private GenericType[] genericTypes = new GenericType[1];
   // Use depth and `genericTypesSize` as index to query `genericTypes`, this
   // ensures `genericTypes` are dense, which avoid sparse array to waste memory in recursive
   // circular serialization.
-  private int[] depths = new int[16];
+  private int[] depths = new int[1];
 
-  public Generics(Fory fory) {
-    this.fory = fory;
-  }
+  public Generics() {}
 
   /**
    * Sets the type that is currently being serialized. Must be balanced by {@link
-   * #popGenericType()}. Between those calls, the {@link GenericType generic type} are returned by
-   * {@link #nextGenericType}. Fory serialization depth should be increased after this call and
-   * before {@link #nextGenericType}.
+   * #popGenericType(int)}. Between those calls, the {@link GenericType generic type} are returned
+   * by {@link #nextGenericType(int)}. Fory serialization depth should be increased after this call
+   * and before {@link #nextGenericType(int)}.
    *
-   * @see Fory#writeRef(MemoryBuffer, Object, TypeInfo)
+   * @see WriteContext#writeRef(Object, TypeInfo)
    */
-  public void pushGenericType(GenericType fieldType) {
+  public void pushGenericType(GenericType fieldType, int depth) {
     int size = genericTypesSize++;
     GenericType[] genericTypes = this.genericTypes;
     if (size == genericTypes.length) {
       genericTypes = allocateGenericTypes(genericTypes, size);
     }
     genericTypes[size] = fieldType;
-    depths[size] = fory.getDepth();
+    depths[size] = depth;
   }
 
   private GenericType[] allocateGenericTypes(GenericType[] genericTypes, int size) {
@@ -74,19 +70,19 @@ public class Generics {
 
   /**
    * Removes the generic types being tracked since the corresponding {@link
-   * #pushGenericType(GenericType)}. This is safe to call even if {@link
-   * #pushGenericType(GenericType)} was not called. Fory serialization depth should be decreased
-   * before this call and after {@link #nextGenericType}.
+   * #pushGenericType(GenericType, int)}. This is safe to call even if {@link
+   * #pushGenericType(GenericType, int)} was not called. Fory serialization depth should be
+   * decreased before this call and after {@link #nextGenericType(int)}.
    *
-   * @see Fory#writeRef(MemoryBuffer, Object, TypeInfo)
+   * @see WriteContext#writeRef(Object, TypeInfo)
    */
-  public void popGenericType() {
+  public void popGenericType(int depth) {
     int size = genericTypesSize;
     if (size == 0) {
       return;
     }
     size--;
-    if (depths[size] < fory.getDepth()) {
+    if (depths[size] < depth) {
       return;
     }
     genericTypes[size] = null;
@@ -98,14 +94,14 @@ public class Generics {
    *
    * @return May be null.
    */
-  public GenericType nextGenericType() {
+  public GenericType nextGenericType(int depth) {
     int index = genericTypesSize;
     if (index > 0) {
       index--;
       GenericType genericType = genericTypes[index];
       // The depth must match to prevent the types being wrong if a serializer doesn't call
       // nextGenericType.
-      if (depths[index] == fory.getDepth() - 1) {
+      if (depths[index] == depth - 1) {
         return genericType;
       }
     }

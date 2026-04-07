@@ -98,19 +98,16 @@ object ForyHolder {
 For multi-threaded applications, use `ThreadSafeFory`:
 
 ```scala
+import org.apache.fory.Fory
 import org.apache.fory.ThreadSafeFory
-import org.apache.fory.ThreadLocalFory
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 object ForyHolder {
-  val fory: ThreadSafeFory = new ThreadLocalFory(classLoader => {
-    val f = Fory.builder()
-      .withScalaOptimizationEnabled(true)
-      .withClassLoader(classLoader)
-      .build()
-    ScalaSerializers.registerSerializers(f)
-    f
-  })
+  val fory: ThreadSafeFory = Fory.builder()
+    .withScalaOptimizationEnabled(true)
+    .buildThreadSafeFory()
+
+  ScalaSerializers.registerSerializers(fory)
 }
 ```
 

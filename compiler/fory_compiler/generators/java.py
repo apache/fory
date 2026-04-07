@@ -1585,7 +1585,7 @@ class JavaGenerator(BaseGenerator):
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
         lines.append(
-            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildFastForyPool();"
+            "        ThreadSafeFory fory = Fory.builder().withXlang(true).withRefTracking(true).buildThreadSafeFory();"
         )
         imported_packages = self._collect_imported_packages()
         if imported_packages:
@@ -1697,9 +1697,7 @@ class JavaGenerator(BaseGenerator):
         """Generate registration code for a union."""
         class_ref = f"{parent_path}.{union.name}" if parent_path else union.name
         type_name = union.name
-        serializer_ref = (
-            f"new org.apache.fory.serializer.UnionSerializer(fory, {class_ref}.class)"
-        )
+        serializer_ref = f"new org.apache.fory.serializer.UnionSerializer(resolver, {class_ref}.class)"
 
         if self.should_register_by_id(union):
             lines.append(

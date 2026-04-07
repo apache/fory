@@ -19,24 +19,21 @@
 
 package org.apache.fory.serializer.kotlin
 
-import org.apache.fory.Fory
-import org.apache.fory.memory.MemoryBuffer
+import org.apache.fory.context.ReadContext
+import org.apache.fory.context.WriteContext
+import org.apache.fory.resolver.TypeResolver
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 /** Serializer for kotlin collections. */
 @Suppress("UNCHECKED_CAST")
 public abstract class AbstractKotlinCollectionSerializer<E, T : Iterable<E>>(
-  fory: Fory,
+  typeResolver: TypeResolver,
   cls: Class<T>
-) : CollectionLikeSerializer<T>(fory, cls) {
-  abstract override fun onCollectionWrite(buffer: MemoryBuffer, value: T): Collection<E>
-
-  override fun read(buffer: MemoryBuffer): T {
-    val collection = newCollection(buffer)
-    val numElements = getAndClearNumElements()
-    if (numElements != 0) readElements(fory, buffer, collection, numElements)
-    return onCollectionRead(collection)
-  }
+) : CollectionLikeSerializer<T>(typeResolver, cls) {
+  abstract override fun onCollectionWrite(
+    writeContext: WriteContext,
+    value: T,
+  ): Collection<E>
 
   override fun onCollectionRead(collection: Collection<*>): T {
     val builder = collection as CollectionBuilder<E, T>
@@ -46,17 +43,21 @@ public abstract class AbstractKotlinCollectionSerializer<E, T : Iterable<E>>(
 
 /** Serializer for [[kotlin.collections.ArrayDeque]]. */
 public class KotlinArrayDequeSerializer<E>(
-  fory: Fory,
+  typeResolver: TypeResolver,
   cls: Class<ArrayDeque<E>>,
-) : AbstractKotlinCollectionSerializer<E, ArrayDeque<E>>(fory, cls) {
-  override fun onCollectionWrite(buffer: MemoryBuffer, value: ArrayDeque<E>): Collection<E> {
+) : AbstractKotlinCollectionSerializer<E, ArrayDeque<E>>(typeResolver, cls) {
+  override fun onCollectionWrite(
+    writeContext: WriteContext,
+    value: ArrayDeque<E>,
+  ): Collection<E> {
     val adapter = IterableAdapter<E>(value)
-    buffer.writeVarUint32Small7(adapter.size)
+    writeContext.buffer.writeVarUint32Small7(adapter.size)
     return adapter
   }
 
-  override fun newCollection(buffer: MemoryBuffer): Collection<E> {
-    val numElements = buffer.readVarUint32()
+  override fun newCollection(readContext: ReadContext): Collection<E> {
+    val buffer = readContext.buffer
+    val numElements = buffer.readVarUint32Small7()
     setNumElements(numElements)
     return ArrayDequeBuilder<E>(ArrayDeque<E>(numElements))
   }

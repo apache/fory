@@ -20,17 +20,20 @@
 package org.apache.fory.extension.serializer;
 
 import com.google.protobuf.ByteString;
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
+import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.Serializer;
 
 public class ByteStringSerializer extends Serializer<ByteString> {
-  public ByteStringSerializer(Fory fory, Class<ByteString> type) {
-    super(fory, type);
+  public ByteStringSerializer(Config config, Class<ByteString> type) {
+    super(config, type, true);
   }
 
   @Override
-  public void write(MemoryBuffer buffer, ByteString value) {
+  public void write(WriteContext writeContext, ByteString value) {
+    MemoryBuffer buffer = writeContext.getBuffer();
     int size = value.size();
     buffer.writeVarUint32(size);
     buffer.grow(size);
@@ -45,7 +48,8 @@ public class ByteStringSerializer extends Serializer<ByteString> {
   }
 
   @Override
-  public ByteString read(MemoryBuffer buffer) {
+  public ByteString read(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int size = buffer.readVarUint32Small14();
     buffer.checkReadableBytes(size);
     byte[] heapMemory = buffer.getHeapMemory();
@@ -58,5 +62,10 @@ public class ByteStringSerializer extends Serializer<ByteString> {
       buffer.increaseReaderIndex(size);
       return bytes;
     }
+  }
+
+  @Override
+  public boolean shareable() {
+    return true;
   }
 }

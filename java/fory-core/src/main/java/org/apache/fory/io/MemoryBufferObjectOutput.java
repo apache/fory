@@ -22,40 +22,42 @@ package org.apache.fory.io;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.OutputStream;
-import org.apache.fory.Fory;
+import org.apache.fory.config.Config;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
-import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.util.Preconditions;
 
-/** ObjectOutput based on {@link Fory} and {@link MemoryBuffer}. */
+/** ObjectOutput based on {@link MemoryBuffer}. */
 public class MemoryBufferObjectOutput extends OutputStream implements ObjectOutput {
-  private final Fory fory;
   private final boolean compressInt;
   private final LongEncoding longEncoding;
-  private final StringSerializer stringSerializer;
+  private WriteContext writeContext;
   private MemoryBuffer buffer;
 
-  public MemoryBufferObjectOutput(Fory fory, MemoryBuffer buffer) {
-    this.fory = fory;
-    this.compressInt = fory.compressInt();
-    this.longEncoding = fory.longEncoding();
-    this.buffer = buffer;
-    this.stringSerializer = fory.getStringSerializer();
+  public MemoryBufferObjectOutput(Config config, WriteContext writeContext) {
+    this.compressInt = config.compressInt();
+    this.longEncoding = config.longEncoding();
+    this.writeContext = writeContext;
+    if (writeContext != null) {
+      this.buffer = writeContext.getBuffer();
+    }
   }
 
-  public MemoryBuffer getBuffer() {
-    return buffer;
+  public void setWriteContext(WriteContext writeContext) {
+    this.writeContext = writeContext;
+    this.buffer = writeContext.getBuffer();
   }
 
-  public void setBuffer(MemoryBuffer buffer) {
-    this.buffer = buffer;
+  public void clearWriteContext() {
+    this.writeContext = null;
+    this.buffer = null;
   }
 
   @Override
   public void writeObject(Object obj) throws IOException {
-    fory.writeRef(buffer, obj);
+    writeContext.writeRef(obj);
   }
 
   @Override
@@ -129,13 +131,13 @@ public class MemoryBufferObjectOutput extends OutputStream implements ObjectOutp
   @Override
   public void writeChars(String s) throws IOException {
     Preconditions.checkNotNull(s);
-    stringSerializer.writeString(buffer, s);
+    writeContext.writeString(s);
   }
 
   @Override
   public void writeUTF(String s) throws IOException {
     Preconditions.checkNotNull(s);
-    stringSerializer.writeString(buffer, s);
+    writeContext.writeString(s);
   }
 
   @Override
