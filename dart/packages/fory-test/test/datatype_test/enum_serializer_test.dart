@@ -20,6 +20,7 @@
 library;
 
 import 'package:checks/checks.dart';
+import 'package:fory/fory.dart';
 import 'package:fory/src/collection/stack.dart';
 import 'package:fory/src/config/fory_config.dart';
 import 'package:fory/src/deserialization_dispatcher.dart';
@@ -203,6 +204,30 @@ void main() {
           _newSerializationContext(),
         ),
       ).throws<RangeError>();
+    });
+
+    test('round-trips every annotated enum value via Fory serialize/deserialize',
+        () {
+      final Fory fory = Fory()..register(EnumWithIds);
+
+      for (final EnumWithIds value in EnumWithIds.values) {
+        final bytes = fory.serialize(value);
+        final EnumWithIds decoded = fory.deserialize(bytes) as EnumWithIds;
+        check(decoded).equals(value);
+      }
+    });
+
+    test(
+        'round-trips every field-based annotated enum value via Fory serialize/deserialize',
+        () {
+      final Fory fory = Fory()..register(EnumFieldBasedIds);
+
+      for (final EnumFieldBasedIds value in EnumFieldBasedIds.values) {
+        final bytes = fory.serialize(value);
+        final EnumFieldBasedIds decoded =
+            fory.deserialize(bytes) as EnumFieldBasedIds;
+        check(decoded).equals(value);
+      }
     });
   });
 }
