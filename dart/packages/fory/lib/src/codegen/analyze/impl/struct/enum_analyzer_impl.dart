@@ -22,9 +22,13 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/interface/enum_analyzer.dart';
 import 'package:fory/src/codegen/meta/impl/enum_spec_generator.dart';
+import 'package:fory/src/fory_exception.dart';
 
 class EnumAnalyzerImpl implements EnumAnalyzer {
   const EnumAnalyzerImpl();
+
+  static const int _minEnumId = 0;
+  static const int _maxEnumId = (1024 * 1024 * 1024 * 4) - 1; // 2^32 - 1
 
   /// Finds a non-constant field annotated with @ForyEnumId().
   String? _findIdField(EnumElement enumElement) {
@@ -69,6 +73,7 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
     final Map<int, String> usedIds = <int, String>{};
     final List<String> duplicateIds = <String>[];
     final List<String> missingIdValues = <String>[];
+    final List<String> outOfRangeIds = <String>[];
 
     for (final FieldElement enumField in enumFields) {
       final int? id = idFieldName != null
@@ -77,6 +82,11 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
 
       if (id == null) {
         missingIdValues.add(enumField.name);
+        continue;
+      }
+
+      if (id < _minEnumId || id > _maxEnumId) {
+        outOfRangeIds.add('$id for ${enumField.name}');
         continue;
       }
 
@@ -90,8 +100,15 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
     }
 
     final bool useAnnotatedIds =
-        missingIdValues.isEmpty && duplicateIds.isEmpty;
+      missingIdValues.isEmpty && duplicateIds.isEmpty && outOfRangeIds.isEmpty;
     final bool hasAnyAnnotatedIds = enumIds.isNotEmpty;
+    if (outOfRangeIds.isNotEmpty) {
+      throw InvalidDataException(
+        'Enum $enumName in $packageName has @ForyEnumId values outside the '
+        'unsigned 32-bit range (0 to 4294967295). '
+        'Offending values: ${outOfRangeIds.join('; ')}.',
+      );
+    }
     if (hasAnyAnnotatedIds && !useAnnotatedIds) {
       if (missingIdValues.isNotEmpty) {
         print(

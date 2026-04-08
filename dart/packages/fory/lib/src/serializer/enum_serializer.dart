@@ -50,6 +50,9 @@ final class _EnumSerializerCache extends SerializerCache {
 final class EnumSerializer extends CustomSerializer<Enum> {
   static const SerializerCache cache = _EnumSerializerCache();
 
+  static const int _minEnumId = 0;
+  static const int _maxEnumId = (1024 * 1024 * 1024 * 4) - 1; // 2^32 - 1
+
   final List<Enum> values;
   final Map<int, Enum>? _idToValue;
   final Map<Enum, int>? _valueToId;
@@ -99,6 +102,15 @@ final class EnumSerializer extends CustomSerializer<Enum> {
           v,
           'v',
           'Enum value is missing from EnumSpec.idToValue mapping.',
+        );
+      }
+      if (id < _minEnumId || id > _maxEnumId) {
+        throw RangeError.range(
+          id,
+          _minEnumId,
+          _maxEnumId,
+          'id',
+          'Enum id must be within unsigned 32-bit range.',
         );
       }
       bw.writeVarUint32Small7(id);

@@ -187,5 +187,22 @@ void main() {
       final ByteReader reader = ByteReader.forBytes(writer.takeBytes());
       check(reader.readVarUint32Small7()).equals(1);
     });
+
+    test('throws when enum id is outside unsigned 32-bit range', () {
+      final EnumSerializer serializer = EnumSerializer(false, [
+        EnumWithIds.A,
+      ], {
+        -1: EnumWithIds.A,
+      });
+
+      final ByteWriter writer = ByteWriter();
+      check(
+        () => serializer.write(
+          writer,
+          EnumWithIds.A,
+          _newSerializationContext(),
+        ),
+      ).throws<RangeError>();
+    });
   });
 }
