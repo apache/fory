@@ -1,6 +1,21 @@
 # How to contribute to Apache Fory™
 
 ## Finding good first issues
+## First Time Contributor Guide
+
+If you're new to the project, follow these steps:
+
+1. Fork the repository
+2. Clone your fork locally
+3. Create a new branch:
+   git checkout -b your-branch-name
+4. Make changes and commit:
+   git commit -m "feat: your change"
+5. Push your branch:
+   git push origin your-branch-name
+6. Open a Pull Request
+
+Tip: Always create a new branch instead of committing directly to main.
 
 See [Good First Issues](https://github.com/apache/fory/contribute).
 
