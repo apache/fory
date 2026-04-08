@@ -43,7 +43,9 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
       const caseEntries: string[] = [];
       for (const [caseIdx, caseTypeInfo] of Object.entries(cases)) {
         const ti = caseTypeInfo as TypeInfo;
-        caseEntries.push(`${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1} }`);
+        const isNamed = TypeId.isNamedType(ti._typeId);
+        const named = isNamed ? `"${ti.named}"` : "null";
+        caseEntries.push(`${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1}, named: ${named} }`);
       }
       this.caseTypesVar = this.scope.declareVar("caseTypes", `{ ${caseEntries.join(", ")} }`);
     } else {
@@ -68,7 +70,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
       } else {
         const ${caseInfo} = ${this.caseTypesVar} ? ${this.caseTypesVar}[${caseIndex}] : null;
         if (${caseInfo}) {
-          ${this.writerSerializer} = fory.typeResolver.getSerializerById(${caseInfo}.typeId, ${caseInfo}.userTypeId);
+          ${this.writerSerializer} = ${caseInfo}.named ? fory.typeResolver.getSerializerByName(${caseInfo}.named) : fory.typeResolver.getSerializerById(${caseInfo}.typeId, ${caseInfo}.userTypeId);
         } else {
           ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getForyName()}, ${unionValue});
         }

@@ -328,9 +328,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readEmbed() {
-    const serializerExpr = TypeId.isNamedType(this.typeInfo.typeId)
-      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-      : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+    const serializerExpr = this.serializerExpr;
     const scope = this.scope;
     const builder = this.builder;
     return new Proxy({}, {
@@ -387,9 +385,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   writeEmbed() {
-    const serializerExpr = TypeId.isNamedType(this.typeInfo.typeId)
-      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`
-      : `fory.typeResolver.getSerializerById(${this.typeInfo.typeId}, ${this.typeInfo.userTypeId})`;
+    const serializerExpr = this.serializerExpr;
     const scope = this.scope;
     return new Proxy({}, {
       get: (target, prop: string) => {
