@@ -18,10 +18,10 @@
  */
 
 /**
- * Integration tests for TypeScript IDL-generated code.
+ * Integration tests for JavaScript IDL-generated code.
  *
  * These tests verify that:
- * 1. Generated TypeScript types compile correctly
+ * 1. Generated JavaScript types compile correctly
  * 2. Objects can be constructed conforming to the generated interfaces
  * 3. Roundtrip serialization works via the Fory JS runtime
  */

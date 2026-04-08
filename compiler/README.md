@@ -434,10 +434,10 @@ Generates interfaces with:
 
 ```javascript
 export interface Cat {
-  friend?: Dog | undefined;
-  name?: string | undefined;
+  friend?: Dog | null;
+  name?: string | null;
   tags: string[];
-  scores: Record<string, number>;
+  scores: Map<string, number>;
   lives: number;
 }
 ```

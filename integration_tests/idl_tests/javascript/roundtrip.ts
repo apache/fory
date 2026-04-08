@@ -18,7 +18,7 @@
  */
 
 /**
- * Cross-language roundtrip program for TypeScript IDL tests.
+ * Cross-language roundtrip program for JavaScript IDL tests.
  *
  * This script is invoked by the Java IdlRoundTripTest as a peer process.
  * It reads binary data files (written by Java), deserializes them,
@@ -156,4 +156,4 @@ fileRoundTrip(
   { compatible }
 );
 
-console.log("TypeScript roundtrip finished.");
+console.log("JavaScript roundtrip finished.");

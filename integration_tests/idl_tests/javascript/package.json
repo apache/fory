@@ -1,7 +1,7 @@
 {
   "name": "fory-idl-tests",
   "version": "1.0.0",
-  "description": "Fory IDL integration tests for TypeScript",
+  "description": "Fory IDL integration tests for JavaScript",
   "main": "index.js",
   "scripts": {
     "test": "jest",

@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""JavaScript/TypeScript code generator."""
+"""JavaScript code generator."""
 
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
@@ -38,12 +38,12 @@ from fory_compiler.ir.types import PrimitiveKind
 
 
 class JavaScriptGenerator(BaseGenerator):
-    """Generates JavaScript/TypeScript type definitions and Fory registration helpers from IDL."""
+    """Generates JavaScript type definitions and Fory registration helpers from IDL."""
 
     language_name = "javascript"
     file_extension = ".ts"
 
-    # TypeScript/JavaScript reserved keywords that cannot be used as identifiers
+    # JavaScript reserved keywords that cannot be used as identifiers
     TS_KEYWORDS = {
         "abstract",
         "any",
@@ -121,7 +121,7 @@ class JavaScriptGenerator(BaseGenerator):
         "yield",
     }
 
-    # Mapping from FDL primitive types to TypeScript types
+    # Mapping from FDL primitive types to JavaScript types
     PRIMITIVE_MAP = {
         PrimitiveKind.BOOL: "boolean",
         PrimitiveKind.INT8: "number",
@@ -206,7 +206,7 @@ class JavaScriptGenerator(BaseGenerator):
 
     def __init__(self, schema: Schema, options):
         super().__init__(schema, options)
-        self.indent_str = "  "  # TypeScript uses 2 spaces
+        self.indent_str = "  "  # JavaScript uses 2 spaces
         self._qualified_type_names: Dict[int, str] = {}
         self._ts_type_names: Dict[int, str] = {}
         self._schema_cache: Dict[Path, Schema] = {}
@@ -255,13 +255,13 @@ class JavaScriptGenerator(BaseGenerator):
             visit_message(message, [], [])
 
     def safe_identifier(self, name: str) -> str:
-        """Escape identifiers that collide with TypeScript reserved words."""
+        """Escape identifiers that collide with JavaScript reserved words."""
         if name in self.TS_KEYWORDS:
             return f"{name}_"
         return name
 
     def safe_type_identifier(self, name: str) -> str:
-        """Escape type names that collide with TypeScript reserved words."""
+        """Escape type names that collide with JavaScript reserved words."""
         return self.safe_identifier(self.to_pascal_case(name))
 
     def safe_member_name(self, name: str) -> str:
@@ -317,6 +317,20 @@ class JavaScriptGenerator(BaseGenerator):
         except Exception:
             return location.file != self.schema.source_file
 
+    def _get_type_package(self, type_def: object) -> str:
+        """Return the package that owns *type_def*.
+
+        For types defined in the current schema this is ``self.schema.package``.
+        For imported types it is the package declared in the imported schema.
+        """
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        if file_path and self.is_imported_type(type_def):
+            imported_schema = self._load_schema(file_path)
+            if imported_schema and imported_schema.package:
+                return imported_schema.package
+        return self.schema.package or "default"
+
     def split_imported_types(
         self, items: List[object]
     ) -> Tuple[List[object], List[object]]:
@@ -330,7 +344,7 @@ class JavaScriptGenerator(BaseGenerator):
         return imported, local  # Return (imported, local) tuple
 
     def get_module_name(self) -> str:
-        """Get the TypeScript module name from source file or package."""
+        """Get the JavaScript module name from source file or package."""
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
             return Path(self.schema.source_file).stem
         if self.package:
@@ -441,14 +455,14 @@ class JavaScriptGenerator(BaseGenerator):
         nullable: bool = False,
         parent_stack: Optional[List[Message]] = None,
     ) -> str:
-        """Generate TypeScript type string for a field type."""
+        """Generate JavaScript type string for a field type."""
         parent_stack = parent_stack or []
         type_str = ""
 
         if isinstance(field_type, PrimitiveType):
             if field_type.kind not in self.PRIMITIVE_MAP:
                 raise ValueError(
-                    f"Unsupported primitive type for TypeScript: {field_type.kind}"
+                    f"Unsupported primitive type for JavaScript: {field_type.kind}"
                 )
             type_str = self.PRIMITIVE_MAP[field_type.kind]
         elif isinstance(field_type, NamedType):
@@ -557,11 +571,11 @@ class JavaScriptGenerator(BaseGenerator):
         return lines
 
     def generate(self) -> List[GeneratedFile]:
-        """Generate TypeScript files for the schema."""
+        """Generate JavaScript files for the schema."""
         return [self.generate_file()]
 
     def generate_file(self) -> GeneratedFile:
-        """Generate a single TypeScript module with all types."""
+        """Generate a single JavaScript module with all types."""
         lines: List[str] = []
 
         # License header
@@ -621,7 +635,7 @@ class JavaScriptGenerator(BaseGenerator):
         indent: int = 0,
         ts_name: Optional[str] = None,
     ) -> List[str]:
-        """Generate a TypeScript enum."""
+        """Generate a JavaScript enum."""
         lines: List[str] = []
         ind = self.indent_str * indent
         comment = self.format_type_id_comment(enum, f"{ind}//")
@@ -647,7 +661,7 @@ class JavaScriptGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]] = None,
         ts_name: Optional[str] = None,
     ) -> List[str]:
-        """Generate a TypeScript interface for a message."""
+        """Generate a JavaScript interface for a message."""
         lines: List[str] = []
         ind = self.indent_str * indent
         parent_stack = parent_stack or []
@@ -731,7 +745,7 @@ class JavaScriptGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]] = None,
         ts_name: Optional[str] = None,
     ) -> List[str]:
-        """Generate a TypeScript discriminated union.
+        """Generate a JavaScript discriminated union.
 
         ts_name overrides the emitted identifier for the union type alias and
         its companion case enum; used for nested unions prefixed with the
@@ -808,7 +822,7 @@ class JavaScriptGenerator(BaseGenerator):
                 if self.should_register_by_id(resolved):
                     name_info = str(resolved.type_id)
                 else:
-                    ns = self.schema.package or "default"
+                    ns = self._get_type_package(resolved)
                     qname = self._qualified_type_names.get(id(resolved), resolved.name)
                     name_info = f'"{ns}.{qname}"'
                 props = ", ".join(
@@ -839,10 +853,10 @@ class JavaScriptGenerator(BaseGenerator):
                         return f"Type.struct({resolved.type_id})"
                     else:
                         return f"Type.struct({{ typeId: {resolved.type_id}, evolving: false }})"
-                ns = self.schema.package or "default"
+                ns = self._get_type_package(resolved)
                 qname = self._qualified_type_names.get(id(resolved), resolved.name)
                 if evolving:
-                    return f'Type.struct("{ns}.{qname}")'
+                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}" }})'
                 else:
                     return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}", evolving: false }})'
             # Unresolved — fall back to any
@@ -893,8 +907,9 @@ class JavaScriptGenerator(BaseGenerator):
 
         field_parent_stack = (parent_stack or []) + [type_def]
         props_parts: List[str] = []
+        used_field_names: Set[str] = set()
         for field in type_def.fields:
-            member = self.safe_member_name(field.name)
+            member = self._field_member_name(field, type_def, used_field_names)
             expr = self._field_type_expr(field.field_type, field_parent_stack)
             if field.tag_id is not None and field.tag_id > 0:
                 expr += f".setId({field.tag_id})"

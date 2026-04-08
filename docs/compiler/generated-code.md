@@ -761,7 +761,7 @@ export interface Person {
   name: string;
   id: number;
   phones: PhoneNumber[];
-  pet?: Animal | undefined;
+  pet?: Animal | null;
 }
 ```
 

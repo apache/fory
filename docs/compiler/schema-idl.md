@@ -878,7 +878,7 @@ message User {
 | Go         | `Name string`      | `Name *string`                                  |
 | Rust       | `name: String`     | `name: Option<String>`                          |
 | C++        | `std::string name` | `std::optional<std::string> name`               |
-| JavaScript | `name: string`     | `name?: string \| undefined`                    |
+| JavaScript | `name: string`     | `name?: string \| null`                         |
 
 **Default Values:**
 
