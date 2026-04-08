@@ -496,15 +496,12 @@ class JavaScriptGenerator(BaseGenerator):
                 nullable=False,
                 parent_stack=parent_stack,
             )
-            if key_type in ("string", "number"):
-                type_str = f"Record<{key_type}, {value_type}>"
-            else:
-                type_str = f"Map<{key_type}, {value_type}>"
+            type_str = f"Map<{key_type}, {value_type}>"
         else:
             type_str = "any"
 
         if nullable:
-            type_str += " | undefined"
+            type_str += " | null"
 
         return type_str
 

@@ -74,7 +74,7 @@ function buildperson(): Person {
     id: 123,
     email: 'alice@example.com',
     tags: ['friend', 'colleague'],
-    scores: { math: 100, science: 98 },
+    scores: new Map([['math', 100], ['science', 98]]),
     salary: 120000.5,
     phones: [
       buildPersonPhoneNumber('555-0100', Person.PhoneType.MOBILE),
@@ -88,7 +88,7 @@ function buildaddressBook(): AddressBook {
   const person = buildperson();
   return {
     people: [person],
-    peopleByName: { [person.name]: person },
+    peopleByName: new Map([[person.name, person]]),
   };
 }
 
@@ -140,7 +140,7 @@ describe('Generated types compile and construct correctly', () => {
     expect(book.people[0].phones).toHaveLength(2);
     expect(book.people[0].phones[0].phoneType).toBe(Person.PhoneType.MOBILE);
     expect(book.people[0].phones[1].phoneType).toBe(Person.PhoneType.WORK);
-    expect(book.peopleByName['Alice']).toBe(book.people[0]);
+    expect(book.peopleByName.get('Alice')).toBe(book.people[0]);
   });
 
   test('Union (animal) type construction', () => {

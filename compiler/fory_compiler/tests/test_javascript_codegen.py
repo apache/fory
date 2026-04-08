@@ -82,7 +82,7 @@ def test_javascript_message_generation():
     assert "export interface Person" in output
     assert "name: string;" in output
     assert "age: number;" in output
-    assert "email?: string | undefined;" in output
+    assert "email?: string | null;" in output
     assert "Type ID 102" in output
 
 
@@ -216,7 +216,7 @@ def test_javascript_collection_types():
 
     # Check collection types
     assert "items: string[];" in output
-    assert "config: Record<string, number>;" in output
+    assert "config: Map<string, number>;" in output
 
 
 def test_javascript_map_key_fallback_to_map():
@@ -235,11 +235,9 @@ def test_javascript_map_key_fallback_to_map():
     )
     output = generate_javascript(source)
 
-    # string and number keys -> Record
-    assert "strKey: Record<string, number>;" in output
-    assert "numKey: Record<number, string>;" in output
-
-    # bigint | number keys -> Map (bigint is not a valid Record key)
+    # All map types use Map to match the JS runtime contract
+    assert "strKey: Map<string, number>;" in output
+    assert "numKey: Map<number, string>;" in output
     assert "bigintKey: Map<bigint | number, string>;" in output
     assert "bigintKey2: Map<bigint | number, boolean>;" in output
 
