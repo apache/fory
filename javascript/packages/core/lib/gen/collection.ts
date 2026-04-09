@@ -320,7 +320,6 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
             fory.checkCollectionSize(${len});
-            const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${len} > 0) {
