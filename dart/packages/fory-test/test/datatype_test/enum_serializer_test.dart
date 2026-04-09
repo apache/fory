@@ -106,7 +106,7 @@ void main() {
       check(value).equals(EnumWithIds.C);
     });
 
-    test('falls back to ordinal serialization when id mapping is absent', () {
+    test('uses ordinal serialization when no @ForyEnumId annotations are present', () {
       final EnumSerializer serializer = EnumSerializer(false, [
         EnumFoo.A,
         EnumFoo.B,

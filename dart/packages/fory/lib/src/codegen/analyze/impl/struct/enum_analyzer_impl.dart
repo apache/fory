@@ -70,7 +70,7 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
 
     final String? idFieldName = _findIdField(enumElement);
     final Map<String, int> enumIds = <String, int>{};
-    final Map<int, String> usedIds = <int, String>{};
+    final Map<int, String> seenIds = <int, String>{};
     final List<String> duplicateIds = <String>[];
     final List<String> missingIdValues = <String>[];
     final List<String> outOfRangeIds = <String>[];
@@ -90,12 +90,12 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
         continue;
       }
 
-      final String? firstValueWithId = usedIds[id];
+      final String? firstValueWithId = seenIds[id];
       if (firstValueWithId != null) {
         duplicateIds.add('$id for $firstValueWithId and ${enumField.name}');
         continue;
       }
-      usedIds[id] = enumField.name;
+      seenIds[id] = enumField.name;
       enumIds[enumField.name] = id;
     }
 
