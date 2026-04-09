@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import logging
 import os
 from abc import ABC, abstractmethod
 from typing import Union, Iterable, TypeVar
@@ -25,29 +24,11 @@ _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBL
     "true",
 }
 
-from pyfory.resolver import (
-    MapRefResolver,
-    NoRefResolver,
-    NULL_FLAG,
-    NOT_NULL_VALUE_FLAG,
-)
-from pyfory.utils import set_bit, get_bit, clear_bit
+from pyfory.resolver import NOT_NULL_VALUE_FLAG
 from pyfory.types import TypeId
 from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 
-try:
-    import numpy as np
-except ImportError:
-    np = None
-
-
-logger = logging.getLogger(__name__)
-
-
-DEFAULT_DYNAMIC_WRITE_META_STR_ID = -1
 DYNAMIC_TYPE_ID = -1
-USE_TYPE_NAME = 0
-USE_TYPE_ID = 1
 # preserve 0 as flag for type id not set in TypeInfo`
 NO_TYPE_ID = 0
 # 0xffffffff means "unset" for user type id.
@@ -58,12 +39,10 @@ BOOL_TYPE_ID = TypeId.BOOL
 STRING_TYPE_ID = TypeId.STRING
 # `NOT_NULL_VALUE_FLAG` + `TYPE_ID << 1` in little-endian order
 NOT_NULL_INT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (INT64_TYPE_ID << 8)
-NOT_NULL_FLOAT64_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (FLOAT64_TYPE_ID << 8)
-NOT_NULL_BOOL_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (BOOL_TYPE_ID << 8)
-NOT_NULL_STRING_FLAG = NOT_NULL_VALUE_FLAG & 0b11111111 | (STRING_TYPE_ID << 8)
-SMALL_STRING_THRESHOLD = 16
 
-from pyfory.serialization import Buffer
+from pyfory.serialization import Buffer, Config, ENABLE_FORY_CYTHON_SERIALIZATION
+from pyfory.utils import set_bit, get_bit, clear_bit
+from pyfory.context import WriteContext, ReadContext
 
 
 class BufferObject(ABC):
@@ -141,23 +120,16 @@ class Fory:
     """
 
     __slots__ = (
+        "config",
         "xlang",
         "compatible",
         "track_ref",
-        "ref_resolver",
         "type_resolver",
-        "serialization_context",
+        "write_context",
+        "read_context",
         "strict",
         "buffer",
-        "buffer_callback",
-        "_buffers",
-        "metastring_resolver",
-        "_unsupported_callback",
-        "_unsupported_objects",
-        "is_peer_out_of_band_enabled",
         "max_depth",
-        "depth",
-        "_output_stream",
         "field_nullable",
         "policy",
         "max_collection_size",
@@ -234,33 +206,38 @@ class Fory:
         """
         self.xlang = xlang
         self.track_ref = ref
-        if self.track_ref:
-            self.ref_resolver = MapRefResolver()
-        else:
-            self.ref_resolver = NoRefResolver()
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
         self.field_nullable = field_nullable
-        from pyfory.serialization import MetaStringResolver, SerializationContext
-        from pyfory.registry import TypeResolver
-
-        self.metastring_resolver = MetaStringResolver()
-        self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
-        self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
-        self.type_resolver.initialize()
-
-        self.max_binary_size = max_binary_size
-        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
-        self.buffer_callback = None
-        self._buffers = None
-        self._unsupported_callback = None
-        self._unsupported_objects = None
-        self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
-        self.depth = 0
         self.max_collection_size = max_collection_size
-        self._output_stream = None
+        self.max_binary_size = max_binary_size
+        self.config = Config(
+            xlang=xlang,
+            track_ref=ref,
+            strict=self.strict,
+            compatible=compatible,
+            meta_share=compatible,
+            scoped_meta_share_enabled=compatible,
+            max_depth=max_depth,
+            field_nullable=field_nullable,
+            policy=self.policy,
+            meta_compressor=meta_compressor,
+            max_collection_size=max_collection_size,
+            max_binary_size=max_binary_size,
+        )
+        from pyfory.registry import SharedRegistry, TypeResolver
+
+        shared_registry = SharedRegistry()
+        self.type_resolver = TypeResolver(
+            self.config,
+            shared_registry=shared_registry,
+        )
+        self.type_resolver.initialize()
+        self.write_context = WriteContext(self.config, self.type_resolver)
+        self.read_context = ReadContext(self.config, self.type_resolver)
+        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
 
     def register(
         self,
@@ -430,8 +407,8 @@ class Fory:
         """
         try:
             self.buffer.set_writer_index(0)
-            self._output_stream = Buffer.wrap_output_stream(stream)
-            self.buffer.bind_output_stream(self._output_stream)
+            output_stream = Buffer.wrap_output_stream(stream)
+            self.buffer.bind_output_stream(output_stream)
             self._serialize(
                 obj,
                 self.buffer,
@@ -441,7 +418,6 @@ class Fory:
             self.force_flush()
         finally:
             self.buffer.bind_output_stream(None)
-            self._output_stream = None
             self.reset_write()
 
     def loads(
@@ -506,15 +482,12 @@ class Fory:
         buffer_callback=None,
         unsupported_callback=None,
     ) -> Buffer:
-        assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref."
-        self.depth += 1
-        self.buffer_callback = buffer_callback
-        self._unsupported_callback = unsupported_callback
         if buffer is None:
             self.buffer.set_writer_index(0)
             buffer = self.buffer
+        write_context = self.write_context
+        write_context.prepare(buffer, buffer_callback=buffer_callback, unsupported_callback=unsupported_callback)
         mask_index = buffer.get_writer_index()
-        # 1byte used for bit mask
         buffer.grow(1)
         buffer.set_writer_index(mask_index + 1)
         buffer.put_int8(mask_index, 0)
@@ -522,79 +495,25 @@ class Fory:
             set_bit(buffer, mask_index, 0)
         else:
             clear_bit(buffer, mask_index, 0)
-
-        # Unified protocol always writes xlang-compatible payload framing.
         set_bit(buffer, mask_index, 1)
-        if self.buffer_callback is not None:
+        if buffer_callback is not None:
             set_bit(buffer, mask_index, 2)
         else:
             clear_bit(buffer, mask_index, 2)
-        # Type definitions are now written inline (streaming) instead of deferred to end
-
-        self.write_ref(buffer, obj)
+        write_context.write_ref(obj)
         return buffer
 
     def enter_flush_barrier(self):
-        output_stream = self._output_stream
-        if output_stream is not None:
-            output_stream.enter_flush_barrier()
+        self.write_context.enter_flush_barrier()
 
     def exit_flush_barrier(self):
-        output_stream = self._output_stream
-        if output_stream is not None:
-            output_stream.exit_flush_barrier()
+        self.write_context.exit_flush_barrier()
 
     def try_flush(self):
-        if self._output_stream is None or self.buffer.get_writer_index() <= 4096:
-            return
-        output_stream = self._output_stream
-        output_stream.try_flush()
+        self.write_context.try_flush()
 
     def force_flush(self):
-        output_stream = self._output_stream
-        if output_stream is None:
-            return
-        output_stream.force_flush()
-
-    def write_ref(self, buffer, obj, typeinfo=None, serializer=None):
-        if serializer is None and typeinfo is not None:
-            serializer = typeinfo.serializer
-        if serializer is None or serializer.need_to_write_ref:
-            if self.ref_resolver.write_ref_or_null(buffer, obj):
-                return
-            self.write_no_ref(buffer, obj, serializer=serializer, typeinfo=typeinfo)
-        else:
-            if obj is None:
-                buffer.write_int8(NULL_FLAG)
-            else:
-                buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.write_no_ref(buffer, obj, serializer=serializer, typeinfo=typeinfo)
-
-    def write_no_ref(self, buffer, obj, serializer=None, typeinfo=None):
-        if serializer is not None:
-            serializer.write(buffer, obj)
-            return
-        cls = type(obj)
-        if cls is str:
-            buffer.write_uint8(STRING_TYPE_ID)
-            buffer.write_string(obj)
-            return
-        elif cls is int:
-            buffer.write_uint8(INT64_TYPE_ID)
-            buffer.write_varint64(obj)
-            return
-        elif cls is bool:
-            buffer.write_uint8(BOOL_TYPE_ID)
-            buffer.write_bool(obj)
-            return
-        elif cls is float:
-            buffer.write_uint8(FLOAT64_TYPE_ID)
-            buffer.write_double(obj)
-            return
-        if typeinfo is None:
-            typeinfo = self.type_resolver.get_type_info(cls)
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        typeinfo.serializer.write(buffer, obj)
+        self.write_context.force_flush()
 
     def deserialize(
         self,
@@ -635,180 +554,53 @@ class Fory:
         buffers: Iterable = None,
         unsupported_objects: Iterable = None,
     ):
-        assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref."
-        self.depth += 1
         if isinstance(buffer, bytes):
             buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
-        if unsupported_objects is not None:
-            self._unsupported_objects = iter(unsupported_objects)
+        read_context = self.read_context
         reader_index = buffer.get_reader_index()
         buffer.set_reader_index(reader_index + 1)
         if get_bit(buffer, reader_index, 0):
             return None
-        self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
-        if self.is_peer_out_of_band_enabled:
+        peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
+        if peer_out_of_band_enabled:
             assert buffers is not None, "buffers shouldn't be null when the serialized stream is produced with buffer_callback not null."
-            self._buffers = iter(buffers)
         else:
             assert buffers is None, "buffers should be null when the serialized stream is produced with buffer_callback null."
-
-        # Type definitions are now read inline (streaming) instead of at the end
-
-        return self.read_ref(buffer)
-
-    def read_ref(self, buffer, serializer=None):
-        if serializer is None or serializer.need_to_write_ref:
-            ref_resolver = self.ref_resolver
-            ref_id = ref_resolver.try_preserve_ref_id(buffer)
-            # indicates that the object is first read.
-            if ref_id >= NOT_NULL_VALUE_FLAG:
-                o = self._read_no_ref_internal(buffer, serializer)
-                ref_resolver.set_read_object(ref_id, o)
-                return o
-            else:
-                return ref_resolver.get_read_object()
-        head_flag = buffer.read_int8()
-        if head_flag == NULL_FLAG:
-            return None
-        return self.read_no_ref(buffer, serializer=serializer)
-
-    def read_no_ref(self, buffer, serializer=None):
-        """Deserialize not-null and non-reference object from buffer."""
-        if self.track_ref:
-            # Push -1 so reference() can pop and skip tracking for read_no_ref direct calls.
-            self.ref_resolver.read_ref_ids.append(-1)
-        return self._read_no_ref_internal(buffer, serializer)
-
-    def _read_no_ref_internal(self, buffer, serializer):
-        """Internal method to read without modifying read_ref_ids."""
-        if serializer is None:
-            serializer = self.type_resolver.read_type_info(buffer).serializer
-
-        self.inc_depth()
-        o = serializer.read(buffer)
-        self.dec_depth()
-        return o
-
-    def write_buffer_object(self, buffer, buffer_object: BufferObject):
-        if self.buffer_callback is None:
-            size = buffer_object.total_bytes()
-            # writer length.
-            buffer.write_var_uint32(size)
-            writer_index = buffer.get_writer_index()
-            buffer.ensure(writer_index + size)
-            buf = buffer.slice(writer_index, size)
-            buffer_object.write_to(buf)
-            buffer.set_writer_index(writer_index + size)
-            return
-        if self.buffer_callback(buffer_object):
-            buffer.write_bool(True)
-            size = buffer_object.total_bytes()
-            # writer length.
-            buffer.write_var_uint32(size)
-            writer_index = buffer.get_writer_index()
-            buffer.ensure(writer_index + size)
-            buf = buffer.slice(writer_index, size)
-            buffer_object.write_to(buf)
-            buffer.set_writer_index(writer_index + size)
-        else:
-            buffer.write_bool(False)
-
-    def read_buffer_object(self, buffer) -> Buffer:
-        if not self.is_peer_out_of_band_enabled:
-            size = buffer.read_var_uint32()
-            if buffer.has_input_stream():
-                return buffer.read_bytes(size)
-            reader_index = buffer.get_reader_index()
-            buf = buffer.slice(reader_index, size)
-            buffer.set_reader_index(reader_index + size)
-            return buf
-        in_band = buffer.read_bool()
-        if not in_band:
-            assert self._buffers is not None
-            return next(self._buffers)
-        size = buffer.read_var_uint32()
-        if buffer.has_input_stream():
-            return buffer.read_bytes(size)
-        reader_index = buffer.get_reader_index()
-        buf = buffer.slice(reader_index, size)
-        buffer.set_reader_index(reader_index + size)
-        return buf
-
-    def handle_unsupported_write(self, buffer, obj):
-        if self._unsupported_callback is None or self._unsupported_callback(obj):
-            raise NotImplementedError(f"{type(obj)} is not supported for write")
-
-    def handle_unsupported_read(self, buffer):
-        assert self._unsupported_objects is not None
-        return next(self._unsupported_objects)
-
-    def write_ref_pyobject(self, buffer, value, typeinfo=None):
-        if self.ref_resolver.write_ref_or_null(buffer, value):
-            return
-        if typeinfo is None:
-            typeinfo = self.type_resolver.get_type_info(type(value))
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        typeinfo.serializer.write(buffer, value)
-
-    def read_ref_pyobject(self, buffer):
-        return self.read_ref(buffer)
+        read_context.prepare(
+            buffer,
+            buffers=buffers,
+            unsupported_objects=unsupported_objects,
+            peer_out_of_band_enabled=peer_out_of_band_enabled,
+        )
+        return read_context.read_ref()
 
     def reset_write(self):
         """
         Reset write state after serialization.
 
-        Clears internal write buffers, reference tracking state, and type resolution
-        caches. This method is automatically called after each serialization.
+        Clears internal write buffers and reference tracking state. This method
+        is automatically called after each serialization.
         """
-        self.depth = 0
-        self.ref_resolver.reset_write()
-        self.type_resolver.reset_write()
-        self.serialization_context.reset_write()
-        self.metastring_resolver.reset_write()
-        self.buffer_callback = None
-        self._unsupported_callback = None
-        self._output_stream = None
+        self.write_context.reset()
 
     def reset_read(self):
         """
         Reset read state after deserialization.
 
-        Clears internal read buffers, reference tracking state, and type resolution
-        caches. This method is automatically called after each deserialization.
+        Clears internal read buffers and reference tracking state. This method
+        is automatically called after each deserialization.
         """
-        self.depth = 0
-        self.ref_resolver.reset_read()
-        self.type_resolver.reset_read()
-        self.serialization_context.reset_read()
-        self.metastring_resolver.reset_write()
-        self._buffers = None
-        self._unsupported_objects = None
-        self.is_peer_out_of_band_enabled = False
+        self.read_context.reset()
 
     def reset(self):
         """
         Reset both write and read state.
 
-        Clears all internal state including buffers, reference tracking, and type
-        resolution caches. Use this to ensure a clean state before reusing a Fory
-        instance.
+        Clears all per-operation state including buffers and reference tracking.
+        Use this to ensure a clean state before reusing a Fory instance.
         """
         self.reset_write()
         self.reset_read()
-
-    def inc_depth(self):
-        self.depth += 1
-        if self.depth > self.max_depth:
-            self.throw_depth_limit_exceeded_exception()
-
-    def dec_depth(self):
-        self.depth -= 1
-
-    def throw_depth_limit_exceeded_exception(self):
-        raise Exception(
-            f"Read depth exceed max depth: {self.depth}, the deserialization data may be malicious. If it's not malicious, "
-            "please increase max read depth by Fory(..., max_depth=...)"
-        )
 
 
 class ThreadSafeFory:
@@ -875,20 +667,15 @@ class ThreadSafeFory:
         self._callbacks = []
         self._lock = threading.Lock()
         self._pool = []
-        self._fory_class = None if fory_factory is not None else self._get_fory_class()
+        if fory_factory is not None:
+            self._fory_class = None
+        elif ENABLE_FORY_CYTHON_SERIALIZATION:
+            from pyfory.serialization import Fory as CythonFory
+
+            self._fory_class = CythonFory
+        else:
+            self._fory_class = Fory
         self._instances_created = False
-
-    def _get_fory_class(self):
-        try:
-            from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
-
-            if ENABLE_FORY_CYTHON_SERIALIZATION:
-                from pyfory.serialization import Fory as CythonFory
-
-                return CythonFory
-        except ImportError:
-            pass
-        return Fory
 
     def _get_fory(self):
         with self._lock:

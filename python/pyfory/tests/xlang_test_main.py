@@ -125,12 +125,12 @@ class MyExt:
 
 
 class MyExtSerializer(pyfory.serializer.Serializer):
-    def write(self, buffer, value):
-        buffer.write_varint32(value.id)
+    def write(self, write_context, value):
+        write_context.write_varint32(value.id)
 
-    def read(self, buffer):
+    def read(self, read_context):
         obj = MyExt()
-        obj.id = buffer.read_varint32()
+        obj.id = read_context.read_varint32()
         return obj
 
 
@@ -484,13 +484,13 @@ def _test_skip_custom(fory1, fory2):
 def test_skip_id_custom():
     """Test skipping custom types registered by ID."""
     fory1 = pyfory.Fory(xlang=True, compatible=True)
-    fory1.register_type(MyExt, type_id=103, serializer=MyExtSerializer(fory1, MyExt))
+    fory1.register_type(MyExt, type_id=103, serializer=MyExtSerializer(fory1.type_resolver, MyExt))
     fory1.register_type(EmptyWrapper, type_id=104)
 
     fory2 = pyfory.Fory(xlang=True, compatible=True)
     fory2.register_type(Color, type_id=101)
     fory2.register_type(MyStruct, type_id=102)
-    fory2.register_type(MyExt, type_id=103, serializer=MyExtSerializer(fory2, MyExt))
+    fory2.register_type(MyExt, type_id=103, serializer=MyExtSerializer(fory2.type_resolver, MyExt))
     fory2.register_type(MyWrapper, type_id=104)
 
     _test_skip_custom(fory1, fory2)
@@ -499,13 +499,13 @@ def test_skip_id_custom():
 def test_skip_name_custom():
     """Test skipping custom types registered by name."""
     fory1 = pyfory.Fory(xlang=True, compatible=True)
-    fory1.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory1, MyExt))
+    fory1.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory1.type_resolver, MyExt))
     fory1.register_type(EmptyWrapper, typename="my_wrapper")
 
     fory2 = pyfory.Fory(xlang=True, compatible=True)
     fory2.register_type(Color, typename="color")
     fory2.register_type(MyStruct, typename="my_struct")
-    fory2.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory2, MyExt))
+    fory2.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory2.type_resolver, MyExt))
     fory2.register_type(MyWrapper, typename="my_wrapper")
 
     _test_skip_custom(fory1, fory2)
@@ -521,7 +521,7 @@ def test_consistent_named():
     fory = pyfory.Fory(xlang=True, compatible=False)
     fory.register_type(Color, typename="color")
     fory.register_type(MyStruct, typename="my_struct")
-    fory.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory, MyExt))
+    fory.register_type(MyExt, typename="my_ext", serializer=MyExtSerializer(fory.type_resolver, MyExt))
 
     color = Color.White
     my_struct = MyStruct(id=42)

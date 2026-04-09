@@ -22,6 +22,7 @@ library;
 
 import 'package:checks/checks.dart';
 import 'package:fory/fory.dart';
+import 'package:fory_test/entity/enum_id_foo.dart';
 import 'package:fory_test/entity/enum_foo.dart';
 import 'package:test/test.dart';
 
@@ -33,6 +34,22 @@ void main() {
           EnumSpec(EnumSubClass, [EnumSubClass.A, EnumSubClass.B]);
       check($EnumFoo).equals(enumSpec);
       check($EnumSubClass).equals(enumSubTypeSpec);
+    });
+
+    test('test per-value @ForyEnumId spec generation', () {
+      EnumSpec enumWithIdsSpec = EnumSpec(EnumWithIds,
+          [EnumWithIds.A, EnumWithIds.B, EnumWithIds.C],
+          {10: EnumWithIds.A, 20: EnumWithIds.B, 30: EnumWithIds.C});
+
+      check($EnumWithIds).equals(enumWithIdsSpec);
+    });
+
+    test('test field-based @ForyEnumId spec generation', () {
+      EnumSpec enumFieldBasedIdsSpec = EnumSpec(EnumFieldBasedIds,
+          [EnumFieldBasedIds.A, EnumFieldBasedIds.B, EnumFieldBasedIds.C],
+          {10: EnumFieldBasedIds.A, 20: EnumFieldBasedIds.B, 30: EnumFieldBasedIds.C});
+
+      check($EnumFieldBasedIds).equals(enumFieldBasedIdsSpec);
     });
   });
 }

@@ -612,17 +612,17 @@ def struct_round_back(data_file_path, fory, obj1):
 
 
 class ComplexObject1Serializer(pyfory.serializer.Serializer):
-    def write(self, buffer, value):
-        self.fory.write_ref(buffer, value.f1)
-        self.fory.write_ref(buffer, value.f2)
-        self.fory.write_ref(buffer, value.f3)
+    def write(self, write_context, value):
+        write_context.write_ref(value.f1)
+        write_context.write_ref(value.f2)
+        write_context.write_ref(value.f3)
 
-    def read(self, buffer):
+    def read(self, read_context):
         obj = ComplexObject1(*([None] * len(typing.get_type_hints(ComplexObject1).keys())))
-        self.fory.ref_resolver.reference(obj)
-        obj.f1 = self.fory.read_ref(buffer)
-        obj.f2 = self.fory.read_ref(buffer)
-        obj.f3 = self.fory.read_ref(buffer)
+        read_context.reference(obj)
+        obj.f1 = read_context.read_ref()
+        obj.f2 = read_context.read_ref()
+        obj.f3 = read_context.read_ref()
         return obj
 
 
@@ -636,7 +636,7 @@ def test_register_serializer(data_file_path):
     fory.register_type(
         ComplexObject1,
         typename="test.ComplexObject1",
-        serializer=ComplexObject1Serializer(fory, ComplexObject1),
+        serializer=ComplexObject1Serializer(fory.type_resolver, ComplexObject1),
     )
     expected = ComplexObject1(*[None] * 12)
     expected.f1, expected.f2, expected.f3 = True, "abc", ["abc", "abc"]

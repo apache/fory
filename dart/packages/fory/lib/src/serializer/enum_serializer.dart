@@ -41,7 +41,7 @@ final class _EnumSerializerCache extends SerializerCache {
       return serializer;
     }
     // In foryJava, EnumSerializer does not perform reference tracking
-    serializer = EnumSerializer(false, spec.values);
+    serializer = EnumSerializer(false, spec.values, spec.idToValue);
     _cache[dartType] = serializer;
     return serializer;
   }
@@ -50,23 +50,73 @@ final class _EnumSerializerCache extends SerializerCache {
 final class EnumSerializer extends CustomSerializer<Enum> {
   static const SerializerCache cache = _EnumSerializerCache();
 
+  static const int _minEnumId = 0;
+  static const int _maxEnumId = (1024 * 1024 * 1024 * 4) - 1; // 2^32 - 1
+
   final List<Enum> values;
-  EnumSerializer(bool writeRef, this.values)
-      : super(ObjType.NAMED_ENUM, writeRef);
+  final Map<int, Enum>? _idToValue;
+  final Map<Enum, int>? _valueToId;
+  final List<Object>? _idCandidates;
+
+  EnumSerializer(bool writeRef, this.values, [Map<int, Enum>? idToValue])
+      : _idToValue = idToValue,
+        _valueToId = idToValue == null
+            ? null
+            : <Enum, int>{
+                for (final MapEntry<int, Enum> entry in idToValue.entries)
+                  entry.value: entry.key,
+              },
+        _idCandidates = idToValue == null
+            ? null
+            : List<Object>.unmodifiable(idToValue.keys),
+        super(ObjType.NAMED_ENUM, writeRef);
 
   @override
   Enum read(ByteReader br, int refId, DeserializationContext pack) {
-    int index = br.readVarUint32Small7();
+    final int indexOrId = br.readVarUint32Small7();
+    final Map<int, Enum>? idToValue = _idToValue;
+    if (idToValue != null) {
+      final Enum? enumValue = idToValue[indexOrId];
+      if (enumValue == null) {
+        throw DeserializationRangeException(indexOrId, _idCandidates!);
+      }
+      return enumValue;
+    }
     // foryJava supports deserializeUnknownEnumValueAsNull,
     // but here in Dart, it will definitely throw an error if the index is out of range
-    if (index < 0 || index >= values.length) {
-      throw DeserializationRangeException(index, values);
+    // This is for the ordinal-based deserailization only when previous check fails
+    // and the variable here still means index, not id.
+    if (indexOrId < 0 || indexOrId >= values.length) {
+      throw DeserializationRangeException(indexOrId, values);
     }
-    return values[index];
+    return values[indexOrId];
   }
 
   @override
   void write(ByteWriter bw, Enum v, SerializationContext pack) {
+    final Map<Enum, int>? valueToId = _valueToId;
+    if (valueToId != null) {
+      final int? id = valueToId[v];
+      if (id == null) {
+        throw ArgumentError.value(
+          v,
+          'v',
+          'Enum value is missing from EnumSpec.idToValue mapping.',
+        );
+      }
+      if (id < _minEnumId || id > _maxEnumId) {
+        throw RangeError.range(
+          id,
+          _minEnumId,
+          _maxEnumId,
+          'id',
+          'Enum id must be within unsigned 32-bit range.',
+        );
+      }
+      bw.writeVarUint32Small7(id);
+      return;
+    }
+
     bw.writeVarUint32Small7(v.index);
   }
 }

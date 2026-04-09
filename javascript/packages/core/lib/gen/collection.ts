@@ -159,6 +159,7 @@ class CollectionAnySerializer {
     if (len === 0) {
       return result;
     }
+    this.fory.checkCollectionSize(len);
     const flags = this.fory.binaryReader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
@@ -318,6 +319,8 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const foryName = this.builder.getForyName();
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
+            fory.checkCollectionSize(${len});
+            const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${len} > 0) {

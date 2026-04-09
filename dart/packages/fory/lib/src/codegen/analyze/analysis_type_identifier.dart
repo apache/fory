@@ -43,7 +43,8 @@ class AnalysisTypeIdentifier {
     null,
     null,
     null,
-    null
+    null,
+    null,
   ];
   static final List<TypeStringKey> _keys = [
     TypeStringKey(
@@ -63,6 +64,11 @@ class AnalysisTypeIdentifier {
     ),
     TypeStringKey(
       'ForyEnum',
+      'package',
+      'fory/src/annotation/fory_enum.dart',
+    ),
+    TypeStringKey(
+      'ForyEnumId',
       'package',
       'fory/src/annotation/fory_enum.dart',
     ),
@@ -121,6 +127,10 @@ class AnalysisTypeIdentifier {
     return _check(element, 3);
   }
 
+  static bool isForyEnumId(ClassElement element) {
+    return _check(element, 4);
+  }
+
   static void cacheForyEnumAnnotationId(int id) {
     _ids[3] = id;
   }
@@ -130,18 +140,18 @@ class AnalysisTypeIdentifier {
   }
 
   static bool isUint8Type(ClassElement element) {
-    return _check(element, 4);
-  }
-
-  static bool isUint16Type(ClassElement element) {
     return _check(element, 5);
   }
 
-  static bool isUint32Type(ClassElement element) {
+  static bool isUint16Type(ClassElement element) {
     return _check(element, 6);
   }
 
-  static bool isUint64Type(ClassElement element) {
+  static bool isUint32Type(ClassElement element) {
     return _check(element, 7);
+  }
+
+  static bool isUint64Type(ClassElement element) {
+    return _check(element, 8);
   }
 }

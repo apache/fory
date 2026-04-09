@@ -79,7 +79,7 @@ class TypeDef:
             resolved_field_names: Optional list of resolved field names (for TAG_ID encoding).
                                   If None, uses field_info.name directly.
         """
-        field_nullable = resolver.fory.field_nullable
+        field_nullable = resolver.field_nullable
         field_types = infer_field_types(self.cls, field_nullable=field_nullable)
         serializers = []
         for i, field_info in enumerate(self.fields):
@@ -150,13 +150,11 @@ class TypeDef:
             except Exception:
                 from pyfory.serializer import NonExistEnumSerializer
 
-                return NonExistEnumSerializer(resolver.fory)
+                return NonExistEnumSerializer(resolver)
         if self.type_id == TypeId.NAMED_UNION:
             return resolver.get_type_info_by_name(self.namespace, self.typename).serializer
 
         from pyfory.struct import DataClassSerializer
-
-        fory = resolver.fory
 
         # Resolve actual field names from TAG_ID encoding if needed
         field_names = self._resolve_field_names_from_tag_ids()
@@ -177,7 +175,7 @@ class TypeDef:
                 dynamic_fields[resolved_name] = True
 
         return DataClassSerializer(
-            fory,
+            resolver,
             self.cls,
             field_names=field_names,
             serializers=self.create_fields_serializer(resolver, field_names),
@@ -331,7 +329,7 @@ class FieldType:
                 pass
             from pyfory.serializer import NonExistEnumSerializer
 
-            return NonExistEnumSerializer(resolver.fory)
+            return NonExistEnumSerializer(resolver)
         typeinfo = resolver.get_type_info_by_id(self.type_id)
         return typeinfo.serializer
 
@@ -372,10 +370,10 @@ class CollectionFieldType(FieldType):
         elem_override = getattr(self.element_type, "tracking_ref_override", None)
         if self.type_id == TypeId.LIST:
             if declared_root_type in (tuple, typing.Tuple):
-                return TupleSerializer(resolver.fory, tuple, elem_serializer, elem_override)
-            return ListSerializer(resolver.fory, list, elem_serializer, elem_override)
+                return TupleSerializer(resolver, tuple, elem_serializer, elem_override)
+            return ListSerializer(resolver, list, elem_serializer, elem_override)
         elif self.type_id == TypeId.SET:
-            return SetSerializer(resolver.fory, set, elem_serializer, elem_override)
+            return SetSerializer(resolver, set, elem_serializer, elem_override)
         else:
             raise ValueError(f"Unknown collection type: {self.type_id}")
 
@@ -407,7 +405,7 @@ class MapFieldType(FieldType):
         from pyfory.serializer import MapSerializer
 
         return MapSerializer(
-            resolver.fory,
+            resolver,
             dict,
             key_serializer,
             value_serializer,
@@ -476,9 +474,9 @@ def build_field_infos(type_resolver, cls):
 
     field_infos = []
     nullable_map = {}
-    visitor = StructTypeIdVisitor(type_resolver.fory, cls)
-    field_nullable = type_resolver.fory.field_nullable
-    global_ref_tracking = type_resolver.fory.track_ref
+    visitor = StructTypeIdVisitor(type_resolver, cls)
+    field_nullable = type_resolver.field_nullable
+    global_ref_tracking = type_resolver.track_ref
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
@@ -666,7 +664,7 @@ def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_null
 
 
 def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False, type_hint=None):
-    tracking_ref = type_resolver.fory.track_ref
+    tracking_ref = type_resolver.track_ref
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN

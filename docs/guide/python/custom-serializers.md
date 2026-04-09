@@ -36,22 +36,22 @@ class Foo:
     f2: str
 
 class FooSerializer(Serializer):
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
 
-    def write(self, buffer, obj: Foo):
+    def write(self, write_context, obj: Foo):
         # Custom serialization logic
-        buffer.write_varint32(obj.f1)
-        buffer.write_string(obj.f2)
+        write_context.write_varint32(obj.f1)
+        write_context.write_string(obj.f2)
 
-    def read(self, buffer):
+    def read(self, read_context):
         # Custom deserialization logic
-        f1 = buffer.read_varint32()
-        f2 = buffer.read_string()
+        f1 = read_context.read_varint32()
+        f2 = read_context.read_string()
         return Foo(f1, f2)
 
 f = pyfory.Fory()
-f.register(Foo, type_id=100, serializer=FooSerializer(f, Foo))
+f.register(Foo, type_id=100, serializer=FooSerializer(f.type_resolver, Foo))
 
 # Now Foo uses your custom serializer
 data = f.dumps(Foo(42, "hello"))
@@ -125,10 +125,10 @@ value = buffer.read_bool()
 fory = pyfory.Fory()
 
 # Register with type_id
-fory.register(MyClass, type_id=100, serializer=MySerializer(fory, MyClass))
+fory.register(MyClass, type_id=100, serializer=MySerializer(fory.type_resolver, MyClass))
 
 # Register with typename (for xlang)
-fory.register(MyClass, typename="com.example.MyClass", serializer=MySerializer(fory, MyClass))
+fory.register(MyClass, typename="com.example.MyClass", serializer=MySerializer(fory.type_resolver, MyClass))
 ```
 
 ## Related Topics

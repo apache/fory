@@ -60,9 +60,9 @@ class UnionSerializer(Serializer):
         "_case_type_infos",
     )
 
-    def __init__(self, fory, type_, alternative_types):
-        super().__init__(fory, type_)
-        self.type_resolver = fory.type_resolver
+    def __init__(self, type_resolver, type_, alternative_types):
+        super().__init__(type_resolver, type_)
+        self.type_resolver = type_resolver
         if isinstance(alternative_types, dict):
             self._typing_union = False
             self._case_types = alternative_types
@@ -76,33 +76,33 @@ class UnionSerializer(Serializer):
             self._case_type_infos = None
             self._alternative_serializers = []
             for alt_type in alternative_types:
-                serializer = fory.type_resolver.get_serializer(alt_type)
+                serializer = type_resolver.get_serializer(alt_type)
                 self._alternative_serializers.append((alt_type, serializer))
 
-    def write(self, buffer, value):
+    def write(self, write_context, value):
         if self._typing_union:
-            self._write_typing_union(buffer, value)
+            self._write_typing_union(write_context, value)
             return
         case_id = value.case_id()
-        buffer.write_var_uint32(case_id)
+        write_context.write_var_uint32(case_id)
         typeinfo = self._get_case_type_info(case_id)
         serializer = typeinfo.serializer
         if serializer.need_to_write_ref:
-            if self.fory.ref_resolver.write_ref_or_null(buffer, value._value):
+            if write_context.write_ref_or_null(value._value):
                 return
         else:
             if value._value is None:
-                buffer.write_int8(NULL_FLAG)
+                write_context.write_int8(NULL_FLAG)
                 return
-            buffer.write_int8(NOT_NULL_VALUE_FLAG)
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        serializer.write(buffer, value._value)
+            write_context.write_int8(NOT_NULL_VALUE_FLAG)
+        self.type_resolver.write_type_info(write_context, typeinfo)
+        serializer.write(write_context, value._value)
 
-    def read(self, buffer):
+    def read(self, read_context):
         if self._typing_union:
-            return self._read_typing_union(buffer)
-        case_id = buffer.read_var_uint32()
-        value = self.fory.read_ref(buffer)
+            return self._read_typing_union(read_context)
+        case_id = read_context.read_var_uint32()
+        value = read_context.read_ref()
         return self._build_union(case_id, value)
 
     def _get_case_type_info(self, case_id: int):
@@ -123,7 +123,7 @@ class UnionSerializer(Serializer):
             raise TypeError(f"{self.type_} must define _from_case_id for union deserialization")
         return builder(case_id, value)
 
-    def _write_typing_union(self, buffer, value):
+    def _write_typing_union(self, write_context, value):
         active_index = None
         active_serializer = None
         active_type = None
@@ -138,14 +138,14 @@ class UnionSerializer(Serializer):
         if active_index is None:
             raise TypeError(f"Value {value} of type {type(value)} doesn't match any alternative in Union{self._alternative_types}")
 
-        buffer.write_var_uint32(active_index)
+        write_context.write_var_uint32(active_index)
         typeinfo = self.type_resolver.get_type_info(active_type)
-        self.type_resolver.write_type_info(buffer, typeinfo)
-        active_serializer.write(buffer, value)
+        self.type_resolver.write_type_info(write_context, typeinfo)
+        active_serializer.write(write_context, value)
 
-    def _read_typing_union(self, buffer):
-        stored_index = buffer.read_var_uint32()
+    def _read_typing_union(self, read_context):
+        stored_index = read_context.read_var_uint32()
         if stored_index >= len(self._alternative_serializers):
             raise ValueError(f"Union index out of bounds: {stored_index} (max: {len(self._alternative_serializers) - 1})")
-        typeinfo = self.type_resolver.read_type_info(buffer)
-        return typeinfo.serializer.read(buffer)
+        typeinfo = self.type_resolver.read_type_info(read_context)
+        return typeinfo.serializer.read(read_context)

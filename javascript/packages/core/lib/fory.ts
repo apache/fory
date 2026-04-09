@@ -32,6 +32,8 @@ import { MetaStringResolver } from "./metaStringResolver";
 
 const DEFAULT_DEPTH_LIMIT = 50 as const;
 const MIN_DEPTH_LIMIT = 2 as const;
+const DEFAULT_MAX_COLLECTION_SIZE = 1_000_000 as const;
+const DEFAULT_MAX_BINARY_SIZE = 64 * 1024 * 1024; // 64 MiB
 
 export default class {
   binaryReader: BinaryReader;
@@ -45,6 +47,8 @@ export default class {
   config: Config;
   depth = 0;
   maxDepth: number;
+  maxBinarySize: number;
+  maxCollectionSize: number;
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
@@ -53,6 +57,16 @@ export default class {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.maxDepth = maxDepth;
+    const maxBinarySize = config?.maxBinarySize ?? DEFAULT_MAX_BINARY_SIZE;
+    if (!Number.isInteger(maxBinarySize) || maxBinarySize < 0) {
+      throw new Error(`maxBinarySize must be a non-negative integer but got ${maxBinarySize}`);
+    }
+    this.maxBinarySize = maxBinarySize;
+    const maxCollectionSize = config?.maxCollectionSize ?? DEFAULT_MAX_COLLECTION_SIZE;
+    if (!Number.isInteger(maxCollectionSize) || maxCollectionSize < 0) {
+      throw new Error(`maxCollectionSize must be a non-negative integer but got ${maxCollectionSize}`);
+    }
+    this.maxCollectionSize = maxCollectionSize;
     this.binaryReader = new BinaryReader(this.config);
     this.binaryWriter = new BinaryWriter(this.config);
     this.referenceResolver = new ReferenceResolver(this.binaryReader);
@@ -68,6 +82,8 @@ export default class {
       refTracking: config?.refTracking !== null ? Boolean(config?.refTracking) : null,
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
+      maxBinarySize: config?.maxBinarySize,
+      maxCollectionSize: config?.maxCollectionSize,
       hooks: config?.hooks || {},
       compatible: Boolean(config?.compatible),
     };
@@ -89,6 +105,24 @@ export default class {
 
   decReadDepth(): void {
     this.depth--;
+  }
+
+  checkCollectionSize(size: number): void {
+    if (size > this.maxCollectionSize) {
+      throw new Error(
+        `Collection size ${size} exceeds maxCollectionSize ${this.maxCollectionSize}. `
+        + "The data may be malicious, or increase maxCollectionSize if needed."
+      );
+    }
+  }
+
+  checkBinarySize(size: number): void {
+    if (size > this.maxBinarySize) {
+      throw new Error(
+        `Binary size ${size} exceeds maxBinarySize ${this.maxBinarySize}. `
+        + "The data may be malicious, or increase maxBinarySize if needed."
+      );
+    }
   }
 
   private resetRead(): void {

@@ -242,6 +242,7 @@ class MapAnySerializer {
 
   read(fromRef: boolean): any {
     let count = this.fory.binaryReader.readVarUint32Small7();
+    this.fory.checkCollectionSize(count);
     const result = new Map();
     if (fromRef) {
       this.fory.referenceResolver.reference(result);
@@ -409,6 +410,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
+      fory.checkCollectionSize(${count});
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

@@ -71,7 +71,7 @@ fory.register(MyClass, typename="com.example.MyClass")
 ### Pattern 3: With Custom Serializer
 
 ```python
-fory.register(MyClass, type_id=100, serializer=MySerializer(fory, MyClass))
+fory.register(MyClass, type_id=100, serializer=MySerializer(fory.type_resolver, MyClass))
 ```
 
 ### Pattern 4: Batch Registration

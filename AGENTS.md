@@ -27,6 +27,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Do not preserve legacy, dead, or useless code, tests, or docs unless the user explicitly requests it.
 - Ignore internal API compatibility unless the user explicitly requests it. Do not keep shims, wrappers, or transitional paths only to preserve internal call sites.
 - Performance is the top priority. Do not introduce regressions without explicit justification.
+- "Refactor" means changing structure, ownership, naming, or API shape without changing behavior, wire format, or implementation strategy unless the user explicitly asks for those changes.
+- Do not make design tradeoffs the user did not request. If a refactor appears to require a behavior, logic, protocol, or performance tradeoff, stop and ask.
+- Treat existing low-level or optimized code as deliberate by default. During a refactor, preserve the current implementation strategy unless the user explicitly asks to redesign or optimize it.
+- Do not replace existing C, C++, Cython, unsafe, or other low-level optimized paths with simpler high-level implementations just to make a refactor easier.
+- If a refactor accidentally changes logic or implementation strategy, revert that part and re-implement the refactor around the existing logic.
 - Use English only in code, comments, and documentation.
 - Add comments only when behavior is hard to understand or an algorithm is non-obvious.
 - Only add tests that verify internal behaviors or fix specific bugs; do not create unnecessary tests unless requested.
@@ -78,6 +83,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.
 - For performance-optimization rounds, append the hypothesis, change, benchmark command, before/after numbers, and keep/revert decision to `tasks/perf_optimization_rounds.md`.
+- For refactors on performance-sensitive code, validate not only tests but also that no implementation-strategy drift was introduced relative to `apache/main` unless the user explicitly asked for that change.
 
 ## Working Process
 
@@ -87,6 +93,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 4. Follow the language-specific rules in `.agents/languages/*.md` for the touched runtimes.
 5. Update docs, examples, and specs when public behavior, protocol behavior, or workflows change.
 6. Format and verify the changed areas before concluding.
+7. For refactors, identify the invariants that must not change before editing: behavior, protocol or wire format, implementation strategy, and performance-sensitive data structures.
+8. If code is already optimized, refactor around it instead of simplifying it.
+9. When in doubt during a refactor, prefer preserving the existing implementation over cleaning it up.
 
 ## Repo Map
 

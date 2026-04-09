@@ -1106,10 +1106,10 @@ class PythonGenerator(BaseGenerator):
         )
         if self.should_register_by_id(union):
             lines.append(
-                f"    fory.register_union({class_ref}, type_id={union.type_id}, serializer={serializer_ref}(fory))"
+                f"    fory.register_union({class_ref}, type_id={union.type_id}, serializer={serializer_ref}(fory.type_resolver))"
             )
         else:
             ns = self.package or "default"
             lines.append(
-                f'    fory.register_union({class_ref}, namespace="{ns}", typename="{type_name}", serializer={serializer_ref}(fory))'
+                f'    fory.register_union({class_ref}, namespace="{ns}", typename="{type_name}", serializer={serializer_ref}(fory.type_resolver))'
             )

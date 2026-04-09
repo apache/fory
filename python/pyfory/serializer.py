@@ -42,8 +42,13 @@ _WINDOWS = os.name == "nt"
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 
+# Keep the mode switch here instead of inside `_serializer.py`.
+# In Cython mode the active hot-path serializer classes, including primitive,
+# enum/slice, and collection serializers, must come from `pyfory.serialization`.
+# `_serializer.py` and `collection.py` stay pure-Python shims for debugging and
+# Python-only execution.
 if ENABLE_FORY_CYTHON_SERIALIZATION:
-    from pyfory.serialization import (  # noqa: F401, F811
+    from pyfory.serialization import (  # noqa: F401 # pylint: disable=unused-import
         Serializer,
         BooleanSerializer,
         ByteSerializer,
@@ -143,8 +148,8 @@ from pyfory.utils import is_little_endian
 
 
 class NoneSerializer(Serializer):
-    def __init__(self, fory):
-        super().__init__(fory, None)
+    def __init__(self, type_resolver):
+        super().__init__(type_resolver, None)
         self.need_to_write_ref = False
 
     def write(self, buffer, value):
@@ -157,61 +162,60 @@ class NoneSerializer(Serializer):
 class PandasRangeIndexSerializer(Serializer):
     __slots__ = "_cached"
 
-    def __init__(self, fory):
+    def __init__(self, type_resolver):
         import pandas as pd
 
-        super().__init__(fory, pd.RangeIndex)
+        super().__init__(type_resolver, pd.RangeIndex)
 
-    def write(self, buffer, value):
-        fory = self.fory
+    def write(self, write_context, value):
         start = value.start
         stop = value.stop
         step = value.step
         if type(start) is int:
-            buffer.write_int16(NOT_NULL_INT64_FLAG)
-            buffer.write_varint64(start)
+            write_context.write_int16(NOT_NULL_INT64_FLAG)
+            write_context.write_varint64(start)
         else:
             if start is None:
-                buffer.write_int8(NULL_FLAG)
+                write_context.write_int8(NULL_FLAG)
             else:
-                buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                fory.write_no_ref(buffer, start)
+                write_context.write_int8(NOT_NULL_VALUE_FLAG)
+                write_context.write_no_ref(start)
         if type(stop) is int:
-            buffer.write_int16(NOT_NULL_INT64_FLAG)
-            buffer.write_varint64(stop)
+            write_context.write_int16(NOT_NULL_INT64_FLAG)
+            write_context.write_varint64(stop)
         else:
             if stop is None:
-                buffer.write_int8(NULL_FLAG)
+                write_context.write_int8(NULL_FLAG)
             else:
-                buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                fory.write_no_ref(buffer, stop)
+                write_context.write_int8(NOT_NULL_VALUE_FLAG)
+                write_context.write_no_ref(stop)
         if type(step) is int:
-            buffer.write_int16(NOT_NULL_INT64_FLAG)
-            buffer.write_varint64(step)
+            write_context.write_int16(NOT_NULL_INT64_FLAG)
+            write_context.write_varint64(step)
         else:
             if step is None:
-                buffer.write_int8(NULL_FLAG)
+                write_context.write_int8(NULL_FLAG)
             else:
-                buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                fory.write_no_ref(buffer, step)
-        fory.write_ref(buffer, value.dtype)
-        fory.write_ref(buffer, value.name)
+                write_context.write_int8(NOT_NULL_VALUE_FLAG)
+                write_context.write_no_ref(step)
+        write_context.write_ref(value.dtype)
+        write_context.write_ref(value.name)
 
-    def read(self, buffer):
-        if buffer.read_int8() == NULL_FLAG:
+    def read(self, read_context):
+        if read_context.read_int8() == NULL_FLAG:
             start = None
         else:
-            start = self.fory.read_no_ref(buffer)
-        if buffer.read_int8() == NULL_FLAG:
+            start = read_context.read_no_ref()
+        if read_context.read_int8() == NULL_FLAG:
             stop = None
         else:
-            stop = self.fory.read_no_ref(buffer)
-        if buffer.read_int8() == NULL_FLAG:
+            stop = read_context.read_no_ref()
+        if read_context.read_int8() == NULL_FLAG:
             step = None
         else:
-            step = self.fory.read_no_ref(buffer)
-        dtype = self.fory.read_ref(buffer)
-        name = self.fory.read_ref(buffer)
+            step = read_context.read_no_ref()
+        dtype = read_context.read_ref()
+        name = read_context.read_ref()
         return self.type_(start, stop, step, dtype=dtype, name=name)
 
 
@@ -304,8 +308,8 @@ class PyArraySerializer(Serializer):
         }
     )
 
-    def __init__(self, fory, ftype, type_id: str):
-        super().__init__(fory, ftype)
+    def __init__(self, type_resolver, ftype, type_id: str):
+        super().__init__(type_resolver, ftype)
         self.typecode = typeid_code[type_id]
         self.itemsize, ftype, self.type_id = typecode_dict[self.typecode]
 
@@ -338,8 +342,8 @@ class PyArraySerializer(Serializer):
 class DynamicPyArraySerializer(Serializer):
     """Serializer for dynamic Python arrays that handles any typecode."""
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
 
     def write(self, buffer, value):
         itemsize, ftype, type_id = typecode_dict[value.typecode]
@@ -413,8 +417,8 @@ _np_typeid_to_dtype = {type_id: dtype for dtype, (_, _, _, type_id) in _np_dtype
 class Numpy1DArraySerializer(Serializer):
     dtypes_dict = _np_dtypes_dict
 
-    def __init__(self, fory, ftype, dtype):
-        super().__init__(fory, ftype)
+    def __init__(self, type_resolver, ftype, dtype):
+        super().__init__(type_resolver, ftype)
         self.dtype = dtype
         self.itemsize, self.typecode, _, self.type_id = _np_dtypes_dict[self.dtype]
 
@@ -490,31 +494,30 @@ class NDArraySerializer(Serializer):
 
 
 class PythonNDArraySerializer(NDArraySerializer):
-    def write(self, buffer, value):
+    def write(self, write_context, value):
         dtype_info = _np_dtypes_dict.get(value.dtype)
         if dtype_info is not None and value.ndim == 1:
-            super().write(buffer, value)
+            super().write(write_context, value)
             return
 
-        fory = self.fory
         dtype = value.dtype
-        buffer.write_string(dtype.str)
-        buffer.write_var_uint32(len(value.shape))
+        write_context.write_string(dtype.str)
+        write_context.write_var_uint32(len(value.shape))
         for dim in value.shape:
-            buffer.write_var_uint32(dim)
+            write_context.write_var_uint32(dim)
         if dtype.kind == "O":
-            buffer.write_varint32(len(value))
+            write_context.write_varint32(len(value))
             for item in value:
-                fory.write_ref(buffer, item)
+                write_context.write_ref(item)
         else:
-            fory.write_buffer_object(buffer, NDArrayBufferObject(value))
+            write_context.write_buffer_object(NDArrayBufferObject(value))
 
-    def read(self, buffer):
-        reader_index = buffer.get_reader_index()
-        type_id = buffer.read_uint8()
+    def read(self, read_context):
+        reader_index = read_context.get_reader_index()
+        type_id = read_context.read_uint8()
         dtype = _np_typeid_to_dtype.get(type_id)
         if dtype is not None:
-            data = buffer.read_bytes_and_size()
+            data = read_context.read_bytes_and_size()
             arr = np.frombuffer(data, dtype=dtype.newbyteorder("<"))
             if dtype.itemsize > 1:
                 if is_little_endian:
@@ -523,16 +526,15 @@ class PythonNDArraySerializer(NDArraySerializer):
                     arr = arr.astype(dtype)
             return arr
 
-        buffer.set_reader_index(reader_index)
-        fory = self.fory
-        dtype = np.dtype(buffer.read_string())
-        ndim = buffer.read_var_uint32()
-        shape = tuple(buffer.read_var_uint32() for _ in range(ndim))
+        read_context.set_reader_index(reader_index)
+        dtype = np.dtype(read_context.read_string())
+        ndim = read_context.read_var_uint32()
+        shape = tuple(read_context.read_var_uint32() for _ in range(ndim))
         if dtype.kind == "O":
-            length = buffer.read_varint32()
-            items = [fory.read_ref(buffer) for _ in range(length)]
+            length = read_context.read_varint32()
+            items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)
-        fory_buf = fory.read_buffer_object(buffer)
+        fory_buf = read_context.read_buffer_object()
         if isinstance(fory_buf, memoryview):
             return np.frombuffer(fory_buf, dtype=dtype).reshape(shape)
         elif isinstance(fory_buf, bytes):
@@ -541,16 +543,16 @@ class PythonNDArraySerializer(NDArraySerializer):
 
 
 class BytesSerializer(Serializer):
-    def write(self, buffer, value):
-        if self.fory.buffer_callback is None:
-            buffer.write_bytes_and_size(value)
+    def write(self, write_context, value):
+        if write_context.buffer_callback is None:
+            write_context.write_bytes_and_size(value)
             return
-        self.fory.write_buffer_object(buffer, BytesBufferObject(value))
+        write_context.write_buffer_object(BytesBufferObject(value))
 
-    def read(self, buffer):
-        if not self.fory.is_peer_out_of_band_enabled:
-            return buffer.read_bytes_and_size()
-        fory_buf = self.fory.read_buffer_object(buffer)
+    def read(self, read_context):
+        if not read_context.peer_out_of_band_enabled:
+            return read_context.read_bytes_and_size()
+        fory_buf = read_context.read_buffer_object()
         if isinstance(fory_buf, memoryview):
             return bytes(fory_buf)
         elif isinstance(fory_buf, bytes):
@@ -578,11 +580,11 @@ class BytesBufferObject(BufferObject):
 
 
 class PickleBufferSerializer(Serializer):
-    def write(self, buffer, value):
-        self.fory.write_buffer_object(buffer, PickleBufferObject(value))
+    def write(self, write_context, value):
+        write_context.write_buffer_object(PickleBufferObject(value))
 
-    def read(self, buffer):
-        fory_buf = self.fory.read_buffer_object(buffer)
+    def read(self, read_context):
+        fory_buf = read_context.read_buffer_object()
         if isinstance(fory_buf, (bytes, memoryview, bytearray, Buffer)):
             return pickle.PickleBuffer(fory_buf)
         return pickle.PickleBuffer(fory_buf.to_pybytes())
@@ -641,14 +643,14 @@ class StatefulSerializer(Serializer):
     Uses Fory's native serialization for better cross-language support.
     """
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
         self.cls = cls
         # Cache the method references as fields in the serializer.
         self._getnewargs_ex = getattr(cls, "__getnewargs_ex__", None)
         self._getnewargs = getattr(cls, "__getnewargs__", None)
 
-    def write(self, buffer, value):
+    def write(self, write_context, value):
         state = value.__getstate__()
         args = ()
         kwargs = {}
@@ -658,17 +660,16 @@ class StatefulSerializer(Serializer):
             args = self._getnewargs(value)
 
         # Serialize constructor arguments first
-        self.fory.write_ref(buffer, args)
-        self.fory.write_ref(buffer, kwargs)
+        write_context.write_ref(args)
+        write_context.write_ref(kwargs)
 
         # Then serialize the state
-        self.fory.write_ref(buffer, state)
+        write_context.write_ref(state)
 
-    def read(self, buffer):
-        fory = self.fory
-        args = fory.read_ref(buffer)
-        kwargs = fory.read_ref(buffer)
-        state = fory.read_ref(buffer)
+    def read(self, read_context):
+        args = read_context.read_ref()
+        kwargs = read_context.read_ref()
+        state = read_context.read_ref()
 
         if args or kwargs:
             # Case 1: __getnewargs__ was used. Re-create by calling __init__.
@@ -678,7 +679,7 @@ class StatefulSerializer(Serializer):
             obj = self.cls.__new__(self.cls)
 
         if state:
-            fory.policy.intercept_setstate(obj, state)
+            read_context.policy.intercept_setstate(obj, state)
             obj.__setstate__(state)
         return obj
 
@@ -690,8 +691,8 @@ class ReduceSerializer(Serializer):
     Has higher precedence than StatefulSerializer.
     """
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
         self.cls = cls
         # Cache the method references as fields in the serializer.
         self._reduce_ex = getattr(cls, "__reduce_ex__", None)
@@ -699,7 +700,7 @@ class ReduceSerializer(Serializer):
         self._getnewargs_ex = getattr(cls, "__getnewargs_ex__", None)
         self._getnewargs = getattr(cls, "__getnewargs__", None)
 
-    def write(self, buffer, value):
+    def write(self, write_context, value):
         # Try __reduce_ex__ first (with protocol 5 for pickle5 out-of-band buffer support), then __reduce__
         # Check if the object has a custom __reduce_ex__ method (not just the default from object)
         if hasattr(value, "__reduce_ex__") and value.__class__.__reduce_ex__ is not object.__reduce_ex__:
@@ -745,18 +746,16 @@ class ReduceSerializer(Serializer):
                 raise ValueError(f"Invalid __reduce__ result length: {len(reduce_result)}")
         else:
             raise ValueError(f"Invalid __reduce__ result type: {type(reduce_result)}")
-        buffer.write_var_uint32(len(reduce_data))
-        fory = self.fory
+        write_context.write_var_uint32(len(reduce_data))
         for item in reduce_data:
-            fory.write_ref(buffer, item)
+            write_context.write_ref(item)
 
-    def read(self, buffer):
-        reduce_data_num_items = buffer.read_var_uint32()
-        assert reduce_data_num_items <= 6, buffer
+    def read(self, read_context):
+        reduce_data_num_items = read_context.read_var_uint32()
+        assert reduce_data_num_items <= 6, read_context
         reduce_data = [None] * 6
-        fory = self.fory
         for i in range(reduce_data_num_items):
-            reduce_data[i] = fory.read_ref(buffer)
+            reduce_data[i] = read_context.read_ref()
 
         if reduce_data[0] == 0:
             # Case 1: Global name
@@ -783,7 +782,7 @@ class ReduceSerializer(Serializer):
             listitems = reduce_data[4]
             dictitems = reduce_data[5] if len(reduce_data) > 5 else None
 
-            obj = fory.policy.intercept_reduce_call(callable_obj, args)
+            obj = read_context.policy.intercept_reduce_call(callable_obj, args)
             if obj is None:
                 # Create the object using the callable and args
                 obj = callable_obj(*args)
@@ -806,7 +805,7 @@ class ReduceSerializer(Serializer):
                 for key, value in dictitems:
                     obj[key] = value
 
-            result = fory.policy.inspect_reduced_object(obj)
+            result = read_context.policy.inspect_reduced_object(obj)
             if result is not None:
                 obj = result
             return obj
@@ -820,57 +819,48 @@ __skip_class_attr_names__ = ("__module__", "__qualname__", "__dict__", "__weakre
 class TypeSerializer(Serializer):
     """Serializer for Python type objects (classes), including local classes."""
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
         self.cls = cls
 
-    def write(self, buffer, value):
+    def write(self, write_context, value):
         module_name = value.__module__
         qualname = value.__qualname__
 
         if module_name == "__main__" or "<locals>" in qualname:
-            # Local class - serialize full context
-            buffer.write_int8(1)  # Local class marker
-            self._serialize_local_class(buffer, value)
-        else:
-            buffer.write_int8(0)  # Global class marker
-            buffer.write_string(module_name)
-            buffer.write_string(qualname)
+            write_context.write_int8(1)
+            self._serialize_local_class(write_context, value)
+            return
+        write_context.write_int8(0)
+        write_context.write_string(module_name)
+        write_context.write_string(qualname)
 
-    def read(self, buffer):
-        class_type = buffer.read_int8()
+    def read(self, read_context):
+        class_type = read_context.read_int8()
 
         if class_type == 1:
-            # Local class - deserialize from full context
-            return self._deserialize_local_class(buffer)
-        else:
-            # Global class - import by module and name
-            module_name = buffer.read_string()
-            qualname = buffer.read_string()
-            cls = importlib.import_module(module_name)
-            for name in qualname.split("."):
-                cls = getattr(cls, name)
-            result = self.fory.policy.validate_class(cls, is_local=False)
-            if result is not None:
-                cls = result
-            return cls
+            return self._deserialize_local_class(read_context)
+        module_name = read_context.read_string()
+        qualname = read_context.read_string()
+        cls = importlib.import_module(module_name)
+        for name in qualname.split("."):
+            cls = getattr(cls, name)
+        result = read_context.policy.validate_class(cls, is_local=False)
+        if result is not None:
+            cls = result
+        return cls
 
-    def _serialize_local_class(self, buffer, cls):
+    def _serialize_local_class(self, write_context, cls):
         """Serialize a local class by capturing its creation context."""
-        assert self.fory.track_ref, "Reference tracking must be enabled for local classes serialization"
-        # Basic class information
+        assert self.type_resolver.track_ref, "Reference tracking must be enabled for local classes serialization"
         module = cls.__module__
         qualname = cls.__qualname__
-        buffer.write_string(module)
-        buffer.write_string(qualname)
-        fory = self.fory
-
-        # Serialize base classes
-        # Let Fory's normal serialization handle bases (including other local classes)
+        write_context.write_string(module)
+        write_context.write_string(qualname)
         bases = cls.__bases__
-        buffer.write_var_uint32(len(bases))
+        write_context.write_var_uint32(len(bases))
         for base in bases:
-            fory.write_ref(buffer, base)
+            write_context.write_ref(base)
 
         # Serialize class dictionary (excluding special attributes)
         # FunctionSerializer will automatically handle methods with closures
@@ -885,51 +875,40 @@ class TypeSerializer(Serializer):
                 class_methods.append(attr_value)
             else:
                 class_dict[attr_name] = attr_value
-        # serialize method specially to avoid circular deps in method deserialization
-        buffer.write_var_uint32(len(class_methods))
+        write_context.write_var_uint32(len(class_methods))
         for i in range(len(class_methods)):
-            buffer.write_string(attr_names[i])
+            write_context.write_string(attr_names[i])
             class_method = class_methods[i]
-            fory.write_ref(buffer, class_method.__func__)
+            write_context.write_ref(class_method.__func__)
 
-        # Let Fory's normal serialization handle the class dict
-        # This will use FunctionSerializer for methods, which handles closures properly
-        fory.write_ref(buffer, class_dict)
+        write_context.write_ref(class_dict)
 
-    def _deserialize_local_class(self, buffer):
+    def _deserialize_local_class(self, read_context):
         """Deserialize a local class by recreating it with the captured context."""
-        fory = self.fory
-        assert fory.track_ref, "Reference tracking must be enabled for local classes deserialization"
-        # Read basic class information
-        module = buffer.read_string()
-        qualname = buffer.read_string()
+        assert self.type_resolver.track_ref, "Reference tracking must be enabled for local classes deserialization"
+        module = read_context.read_string()
+        qualname = read_context.read_string()
         name = qualname.rsplit(".", 1)[-1]
-        ref_id = fory.ref_resolver.last_preserved_ref_id()
+        ref_id = read_context.last_preserved_ref_id()
 
-        # Read base classes
-        num_bases = buffer.read_var_uint32()
-        bases = tuple([fory.read_ref(buffer) for _ in range(num_bases)])
-        # Create the class using type() constructor
+        num_bases = read_context.read_var_uint32()
+        bases = tuple(read_context.read_ref() for _ in range(num_bases))
         cls = type(name, bases, {})
-        # `class_dict` may reference to `cls`, which is a circular reference
-        fory.ref_resolver.set_read_object(ref_id, cls)
+        read_context.set_read_ref(ref_id, cls)
 
-        # classmethods
-        for i in range(buffer.read_var_uint32()):
-            attr_name = buffer.read_string()
-            func = fory.read_ref(buffer)
+        for _ in range(read_context.read_var_uint32()):
+            attr_name = read_context.read_string()
+            func = read_context.read_ref()
             method = types.MethodType(func, cls)
             setattr(cls, attr_name, method)
-        # Read class dictionary
-        # Fory's normal deserialization will handle methods via FunctionSerializer
-        class_dict = fory.read_ref(buffer)
+        class_dict = read_context.read_ref()
         for k, v in class_dict.items():
             setattr(cls, k, v)
 
         # Set module and qualname
         cls.__module__ = module
         cls.__qualname__ = qualname
-        result = fory.policy.validate_class(cls, is_local=True)
+        result = read_context.policy.validate_class(cls, is_local=True)
         if result is not None:
             cls = result
         return cls
@@ -938,15 +917,15 @@ class TypeSerializer(Serializer):
 class ModuleSerializer(Serializer):
     """Serializer for python module"""
 
-    def __init__(self, fory):
-        super().__init__(fory, types.ModuleType)
+    def __init__(self, type_resolver):
+        super().__init__(type_resolver, types.ModuleType)
 
     def write(self, buffer, value):
         buffer.write_string(value.__name__)
 
-    def read(self, buffer):
-        mod_name = buffer.read_string()
-        result = self.fory.policy.validate_module(mod_name)
+    def read(self, read_context):
+        mod_name = read_context.read_string()
+        result = read_context.policy.validate_module(mod_name)
         if result is not None:
             if isinstance(result, types.ModuleType):
                 return result
@@ -956,14 +935,14 @@ class ModuleSerializer(Serializer):
 
 
 class MappingProxySerializer(Serializer):
-    def __init__(self, fory):
-        super().__init__(fory, types.MappingProxyType)
+    def __init__(self, type_resolver):
+        super().__init__(type_resolver, types.MappingProxyType)
 
-    def write(self, buffer, value):
-        self.fory.write_ref(buffer, dict(value))
+    def write(self, write_context, value):
+        write_context.write_ref(dict(value))
 
-    def read(self, buffer):
-        return types.MappingProxyType(self.fory.read_ref(buffer))
+    def read(self, read_context):
+        return types.MappingProxyType(read_context.read_ref())
 
 
 class FunctionSerializer(Serializer):
@@ -997,7 +976,7 @@ class FunctionSerializer(Serializer):
         )
     )
 
-    def _serialize_function(self, buffer, func):
+    def _serialize_function(self, write_context, func):
         """Serialize a function by capturing all its components."""
         # Get function metadata
         instance = getattr(func, "__self__", None)
@@ -1006,10 +985,9 @@ class FunctionSerializer(Serializer):
             self_obj = instance
             func_name = func.__name__
             # Serialize as a tuple (is_method, self_obj, method_name)
-            buffer.write_int8(0)  # is a method
-            # For the 'self' object, we need to use fory's serialization
-            self.fory.write_ref(buffer, self_obj)
-            buffer.write_string(func_name)
+            write_context.write_int8(0)
+            write_context.write_ref(self_obj)
+            write_context.write_string(func_name)
             return
 
         # Regular function or lambda
@@ -1018,15 +996,14 @@ class FunctionSerializer(Serializer):
         qualname = func.__qualname__
 
         if "<locals>" not in qualname and module != "__main__":
-            buffer.write_int8(1)  # Not a method
-            buffer.write_string(module)
-            buffer.write_string(qualname)
+            write_context.write_int8(1)
+            write_context.write_string(module)
+            write_context.write_string(qualname)
             return
 
-        # Serialize function metadata
-        buffer.write_int8(2)  # Not a method
-        buffer.write_string(module)
-        buffer.write_string(qualname)
+        write_context.write_int8(2)
+        write_context.write_string(module)
+        write_context.write_string(qualname)
 
         defaults = func.__defaults__
         closure = func.__closure__
@@ -1035,35 +1012,32 @@ class FunctionSerializer(Serializer):
         # Instead of trying to serialize the code object in parts, use marshal
         # which is specifically designed for code objects
         marshalled_code = marshal.dumps(code)
-        buffer.write_bytes_and_size(marshalled_code)
+        write_context.write_bytes_and_size(marshalled_code)
 
         # Serialize defaults (or None if no defaults)
         # Write whether defaults exist
-        buffer.write_bool(defaults is not None)
+        write_context.write_bool(defaults is not None)
         if defaults is not None:
-            # Write the number of default arguments
-            buffer.write_var_uint32(len(defaults))
-            # Serialize each default value individually
+            write_context.write_var_uint32(len(defaults))
             for default_value in defaults:
-                self.fory.write_ref(buffer, default_value)
+                write_context.write_ref(default_value)
 
         # Handle closure
         # We need to serialize both the closure values and the fact that there is a closure
         # The code object's co_freevars tells us what variables are in the closure
-        buffer.write_bool(closure is not None)
-        buffer.write_var_uint32(len(code.co_freevars) if code.co_freevars else 0)
+        write_context.write_bool(closure is not None)
+        write_context.write_var_uint32(len(code.co_freevars) if code.co_freevars else 0)
 
         if closure:
-            # Extract and serialize each closure cell's contents
             for cell in closure:
-                self.fory.write_ref(buffer, cell.cell_contents)
+                write_context.write_ref(cell.cell_contents)
 
         # Serialize free variable names as a list of strings
         # Convert tuple to list since tuple might not be registered
         freevars_list = list(code.co_freevars) if code.co_freevars else []
-        buffer.write_var_uint32(len(freevars_list))
+        write_context.write_var_uint32(len(freevars_list))
         for name in freevars_list:
-            buffer.write_string(name)
+            write_context.write_string(name)
 
         # Handle globals
         # Identify which globals are actually used by the function
@@ -1081,7 +1055,7 @@ class FunctionSerializer(Serializer):
 
         # Create and serialize a dictionary with only the necessary globals
         globals_to_serialize = {name: globals_dict[name] for name in global_names if name in globals_dict}
-        self.fory.write_ref(buffer, globals_to_serialize)
+        write_context.write_ref(globals_to_serialize)
 
         # Handle additional attributes
         attrs = {}
@@ -1095,77 +1069,65 @@ class FunctionSerializer(Serializer):
             except (AttributeError, TypeError):
                 pass
 
-        self.fory.write_ref(buffer, attrs)
+        write_context.write_ref(attrs)
 
-    def _deserialize_function(self, buffer):
+    def _deserialize_function(self, read_context):
         """Deserialize a function from its components."""
 
-        # Check if it's a method
-        func_type_id = buffer.read_int8()
+        func_type_id = read_context.read_int8()
         if func_type_id == 0:
-            # Handle bound methods
-            self_obj = self.fory.read_ref(buffer)
-            method_name = buffer.read_string()
+            self_obj = read_context.read_ref()
+            method_name = read_context.read_string()
             func = getattr(self_obj, method_name)
-            result = self.fory.policy.validate_function(func, is_local=False)
+            result = read_context.policy.validate_function(func, is_local=False)
             if result is not None:
                 func = result
             return func
 
         if func_type_id == 1:
-            module = buffer.read_string()
-            qualname = buffer.read_string()
+            module = read_context.read_string()
+            qualname = read_context.read_string()
             mod = importlib.import_module(module)
             for name in qualname.split("."):
                 mod = getattr(mod, name)
-            result = self.fory.policy.validate_function(mod, is_local=False)
+            result = read_context.policy.validate_function(mod, is_local=False)
             if result is not None:
                 mod = result
             return mod
 
-        # Regular function or lambda
-        module = buffer.read_string()
-        qualname = buffer.read_string()
+        module = read_context.read_string()
+        qualname = read_context.read_string()
         name = qualname.rsplit(".")[-1]
 
-        # Use marshal to load the code object, which handles all Python versions correctly
-        marshalled_code = buffer.read_bytes_and_size()
+        marshalled_code = read_context.read_bytes_and_size()
         code = marshal.loads(marshalled_code)
 
-        # Deserialize defaults
-        has_defaults = buffer.read_bool()
+        has_defaults = read_context.read_bool()
         defaults = None
         if has_defaults:
-            # Read the number of default arguments
-            num_defaults = buffer.read_var_uint32()
-            # Deserialize each default value
+            num_defaults = read_context.read_var_uint32()
             default_values = []
             for _ in range(num_defaults):
-                default_values.append(self.fory.read_ref(buffer))
+                default_values.append(read_context.read_ref())
             defaults = tuple(default_values)
 
-        # Handle closure
-        has_closure = buffer.read_bool()
-        num_freevars = buffer.read_var_uint32()
+        has_closure = read_context.read_bool()
+        num_freevars = read_context.read_var_uint32()
         closure = None
 
-        # Read closure values if there are any
         closure_values = []
         if has_closure:
             for _ in range(num_freevars):
-                closure_values.append(self.fory.read_ref(buffer))
+                closure_values.append(read_context.read_ref())
 
-            # Create closure cells
             closure = tuple(types.CellType(value) for value in closure_values)
 
-        # Read free variable names from strings
-        num_freevars = buffer.read_var_uint32()
+        num_freevars = read_context.read_var_uint32()
         freevars = []
         for _ in range(num_freevars):
-            freevars.append(buffer.read_string())
+            freevars.append(read_context.read_string())
 
-        # Handle globals
-        globals_dict = self.fory.read_ref(buffer)
+        globals_dict = read_context.read_ref()
 
         # Create a globals dictionary with module's globals as the base
         func_globals = {}
@@ -1176,62 +1138,56 @@ class FunctionSerializer(Serializer):
         except (KeyError, AttributeError):
             pass
 
-        # Add the deserialized globals
         func_globals.update(globals_dict)
 
         # Ensure __builtins__ is available
         if "__builtins__" not in func_globals:
             func_globals["__builtins__"] = builtins
 
-        # Create function
         func = types.FunctionType(code, func_globals, name, defaults, closure)
 
-        # Set function attributes
         func.__module__ = module
         func.__qualname__ = qualname
 
-        # Deserialize and set additional attributes
-        attrs = self.fory.read_ref(buffer)
+        attrs = read_context.read_ref()
         for attr_name, attr_value in attrs.items():
             setattr(func, attr_name, attr_value)
 
-        result = self.fory.policy.validate_function(func, is_local=True)
+        result = read_context.policy.validate_function(func, is_local=True)
         if result is not None:
             func = result
         return func
 
-    def write(self, buffer, value):
-        """Serialize a function for Python-only mode."""
-        self._serialize_function(buffer, value)
+    def write(self, write_context, value):
+        self._serialize_function(write_context, value)
 
-    def read(self, buffer):
-        """Deserialize a function for Python-only mode."""
-        return self._deserialize_function(buffer)
+    def read(self, read_context):
+        return self._deserialize_function(read_context)
 
 
 class NativeFuncMethodSerializer(Serializer):
-    def write(self, buffer, func):
+    def write(self, write_context, func):
         name = func.__name__
-        buffer.write_string(name)
+        write_context.write_string(name)
         obj = getattr(func, "__self__", None)
         if obj is None or inspect.ismodule(obj):
-            buffer.write_bool(True)
+            write_context.write_bool(True)
             module = func.__module__
-            buffer.write_string(module)
+            write_context.write_string(module)
         else:
-            buffer.write_bool(False)
-            self.fory.write_ref(buffer, obj)
+            write_context.write_bool(False)
+            write_context.write_ref(obj)
 
-    def read(self, buffer):
-        name = buffer.read_string()
-        if buffer.read_bool():
-            module = buffer.read_string()
+    def read(self, read_context):
+        name = read_context.read_string()
+        if read_context.read_bool():
+            module = read_context.read_string()
             mod = importlib.import_module(module)
             func = getattr(mod, name)
         else:
-            obj = self.fory.read_ref(buffer)
+            obj = read_context.read_ref()
             func = getattr(obj, name)
-        result = self.fory.policy.validate_function(func, is_local=False)
+        result = read_context.policy.validate_function(func, is_local=False)
         if result is not None:
             func = result
         return func
@@ -1240,26 +1196,25 @@ class NativeFuncMethodSerializer(Serializer):
 class MethodSerializer(Serializer):
     """Serializer for bound method objects."""
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    def __init__(self, type_resolver, cls):
+        super().__init__(type_resolver, cls)
         self.cls = cls
 
-    def write(self, buffer, value):
-        # Serialize bound method as (instance, method_name)
+    def write(self, write_context, value):
         instance = value.__self__
         method_name = value.__func__.__name__
 
-        self.fory.write_ref(buffer, instance)
-        buffer.write_string(method_name)
+        write_context.write_ref(instance)
+        write_context.write_string(method_name)
 
-    def read(self, buffer):
-        instance = self.fory.read_ref(buffer)
-        method_name = buffer.read_string()
+    def read(self, read_context):
+        instance = read_context.read_ref()
+        method_name = read_context.read_string()
 
         method = getattr(instance, method_name)
         cls = method.__self__.__class__
         is_local = cls.__module__ == "__main__" or "<locals>" in cls.__qualname__
-        result = self.fory.policy.validate_method(method, is_local=is_local)
+        result = read_context.policy.validate_method(method, is_local=is_local)
         if result is not None:
             method = result
         return method
@@ -1270,8 +1225,8 @@ class ObjectSerializer(Serializer):
     It serializes objects based on `__dict__` or `__slots__`.
     """
 
-    def __init__(self, fory, clz: type):
-        super().__init__(fory, clz)
+    def __init__(self, type_resolver, clz: type):
+        super().__init__(type_resolver, clz)
         # If the class defines __slots__, compute and store a sorted list once
         slots = getattr(clz, "__slots__", None)
         self._slot_field_names = None
@@ -1281,29 +1236,27 @@ class ObjectSerializer(Serializer):
                 slots = [slots]
             self._slot_field_names = sorted(slots)
 
-    def write(self, buffer, value):
-        # Use precomputed slots if available, otherwise sort instance __dict__ keys
+    def write(self, write_context, value):
         if self._slot_field_names is not None:
             sorted_field_names = self._slot_field_names
         else:
             value_dict = getattr(value, "__dict__", None)
             sorted_field_names = [] if value_dict is None else sorted(value_dict.keys())
 
-        buffer.write_var_uint32(len(sorted_field_names))
+        write_context.write_var_uint32(len(sorted_field_names))
         for field_name in sorted_field_names:
-            buffer.write_string(field_name)
+            write_context.write_string(field_name)
             field_value = getattr(value, field_name)
-            self.fory.write_ref(buffer, field_value)
+            write_context.write_ref(field_value)
 
-    def read(self, buffer):
-        fory = self.fory
-        fory.policy.authorize_instantiation(self.type_)
+    def read(self, read_context):
+        read_context.policy.authorize_instantiation(self.type_)
         obj = self.type_.__new__(self.type_)
-        fory.ref_resolver.reference(obj)
-        num_fields = buffer.read_var_uint32()
+        read_context.reference(obj)
+        num_fields = read_context.read_var_uint32()
         for _ in range(num_fields):
-            field_name = buffer.read_string()
-            field_value = fory.read_ref(buffer)
+            field_name = read_context.read_string()
+            field_value = read_context.read_ref()
             setattr(obj, field_name, field_value)
         return obj
 
@@ -1315,8 +1268,8 @@ class NonExistEnum:
 
 
 class NonExistEnumSerializer(Serializer):
-    def __init__(self, fory):
-        super().__init__(fory, NonExistEnum)
+    def __init__(self, type_resolver):
+        super().__init__(type_resolver, NonExistEnum)
         self.need_to_write_ref = False
 
     @classmethod
@@ -1332,11 +1285,11 @@ class NonExistEnumSerializer(Serializer):
 
 
 class UnsupportedSerializer(Serializer):
-    def write(self, buffer, value):
-        self.fory.handle_unsupported_write(value)
+    def write(self, write_context, value):
+        write_context.handle_unsupported_write(value)
 
-    def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+    def read(self, read_context):
+        return read_context.handle_unsupported_read()
 
 
 __all__ = [

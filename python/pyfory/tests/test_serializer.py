@@ -34,7 +34,7 @@ import pytest
 
 import pyfory
 from pyfory.serialization import Buffer
-from pyfory import Fory, serialization, EnumSerializer
+from pyfory import Fory, EnumSerializer
 from pyfory.serializer import (
     TimestampSerializer,
     DateSerializer,
@@ -130,11 +130,11 @@ def test_big_chunk_dict(track_ref):
 def test_basic_serializer(xlang):
     fory = Fory(xlang=xlang, ref=True)
     typeinfo = fory.type_resolver.get_type_info(datetime.datetime)
-    assert isinstance(typeinfo.serializer, (TimestampSerializer, serialization.TimestampSerializer))
+    assert isinstance(typeinfo.serializer, TimestampSerializer)
     if xlang:
         assert typeinfo.type_id == TypeId.TIMESTAMP
     typeinfo = fory.type_resolver.get_type_info(datetime.date)
-    assert isinstance(typeinfo.serializer, (DateSerializer, serialization.DateSerializer))
+    assert isinstance(typeinfo.serializer, DateSerializer)
     if xlang:
         assert typeinfo.type_id == TypeId.DATE
     assert ser_de(fory, True) is True
@@ -375,12 +375,12 @@ class Bar(Foo):
 
 
 class BarSerializer(pyfory.Serializer):
-    def write(self, buffer, value: Bar):
-        buffer.write_int32(value.f1)
-        buffer.write_int32(value.f2)
+    def write(self, write_context, value: Bar):
+        write_context.write_int32(value.f1)
+        write_context.write_int32(value.f2)
 
-    def read(self, buffer):
-        return Bar(buffer.read_int32(), buffer.read_int32())
+    def read(self, read_context):
+        return Bar(read_context.read_int32(), read_context.read_int32())
 
 
 class RegisterClass:
@@ -392,15 +392,15 @@ def test_register_py_serializer():
     fory = Fory(xlang=False, ref=True, strict=False)
 
     class Serializer(pyfory.Serializer):
-        def write(self, buffer, value):
-            buffer.write_int32(value.f1)
+        def write(self, write_context, value):
+            write_context.write_int32(value.f1)
 
-        def read(self, buffer):
+        def read(self, read_context):
             a = A()
-            a.f1 = buffer.read_int32()
+            a.f1 = read_context.read_int32()
             return a
 
-    fory.register_type(A, serializer=Serializer(fory, RegisterClass))
+    fory.register_type(A, serializer=Serializer(fory.type_resolver, RegisterClass))
     assert fory.deserialize(fory.serialize(RegisterClass(100))).f1 == 100
 
 
@@ -414,15 +414,15 @@ def test_register_type():
     fory = Fory(xlang=False, ref=True)
 
     class Serializer(pyfory.Serializer):
-        def write(self, buffer, value):
+        def write(self, write_context, value):
             pass
 
-        def read(self, buffer):
+        def read(self, read_context):
             return self.type_()
 
-    fory.register_type(A, serializer=Serializer(fory, A))
-    fory.register_type(A.B, serializer=Serializer(fory, A.B))
-    fory.register_type(A.B.C, serializer=Serializer(fory, A.B.C))
+    fory.register_type(A, serializer=Serializer(fory.type_resolver, A))
+    fory.register_type(A.B, serializer=Serializer(fory.type_resolver, A.B))
+    fory.register_type(A.B.C, serializer=Serializer(fory.type_resolver, A.B.C))
     assert isinstance(fory.deserialize(fory.serialize(A())), A)
     assert isinstance(fory.deserialize(fory.serialize(A.B())), A.B)
     assert isinstance(fory.deserialize(fory.serialize(A.B.C())), A.B.C)
@@ -524,7 +524,7 @@ def test_duplicate_serialize():
 
 def test_pandas_range_index():
     fory = Fory(xlang=False, ref=True, strict=False)
-    fory.register_type(pd.RangeIndex, serializer=pyfory.serializer.PandasRangeIndexSerializer(fory))
+    fory.register_type(pd.RangeIndex, serializer=pyfory.serializer.PandasRangeIndexSerializer(fory.type_resolver))
     index = pd.RangeIndex(1, 100, 2, name="a")
     new_index = ser_de(fory, index)
     pd.testing.assert_index_equal(new_index, new_index)

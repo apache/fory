@@ -13,6 +13,7 @@ python/build
 python/pyfory.egg-info
 **/*.egg-info
 cython_debug
+python/pyfory/serialization.cpp
 **/*.prof
 **/*.pyc
 testresult
@@ -123,4 +124,7 @@ csharp/tests/Fory.XlangPeer/obj/
 csharp/artifacts/
 
 tasks/
+benchmarks/python/proto/
+benchmarks/java/dependency-reduced-pom.xml
 docs/superpowers
+test.md

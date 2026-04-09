@@ -31,6 +31,7 @@ import 'fory_object.dart';
 ///   // enums
 /// }
 /// ```
+@Target({TargetKind.enumType})
 class ForyEnum extends ForyObject {
   static const String name = 'ForyEnum';
   static const List<TargetKind> targets = [TargetKind.enumType];
@@ -41,3 +42,41 @@ class ForyEnum extends ForyObject {
 
 /// A constant instance of [ForyEnum].
 const ForyEnum foryEnum = ForyEnum();
+
+/// A class representing an enumeration id in the Fory framework.
+///
+/// This class extends [ForyObject] and is used to annotate enum ids
+/// within the Fory framework.
+///
+/// Can be used in two ways:
+///
+/// 1. On each enum value with an explicit id:
+/// ```
+/// @foryEnum
+/// enum Color {
+///   @ForyEnumId(5)
+///   blue,
+///   @ForyEnumId(10)
+///   white,
+/// }
+/// ```
+///
+/// 2. On an int field of an enhanced enum to use its value as the id:
+/// ```
+/// @foryEnum
+/// enum UserRole {
+///   green(0),
+///   blue(1),
+///   white(2);
+///
+///   @ForyEnumId()
+///   final int code;
+///   const Color(this.code);
+/// }
+/// ```
+@Target({TargetKind.enumValue, TargetKind.field})
+class ForyEnumId extends ForyObject {
+  final int? id;
+
+  const ForyEnumId([this.id]);
+}

@@ -184,7 +184,7 @@ def test_sort_fields():
         f15: datetime.datetime
 
     fory = Fory(xlang=True, ref=True)
-    serializer = DataClassSerializer(fory, TestClass)
+    serializer = DataClassSerializer(fory.type_resolver, TestClass)
     # Sorting order:
     # 1. Non-compressed primitives (compress=0) by -size, then name:
     #    float64(8), float32(4), bool(1), int8(1) => f13, f5, f11, f7
@@ -431,7 +431,7 @@ def test_data_class_serializer_xlang_vs_non_xlang():
     fory_xlang.serialize(DataClassObject.create())
     # For Python mode, we can create the serializer directly since it doesn't require registration
     serializer_xlang = fory_xlang.type_resolver.get_serializer(DataClassObject)
-    serializer_python = DataClassSerializer(fory_python, DataClassObject)
+    serializer_python = DataClassSerializer(fory_python.type_resolver, DataClassObject)
 
     assert not hasattr(serializer_xlang, "_xlang")
     assert not hasattr(serializer_python, "_xlang")

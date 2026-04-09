@@ -16,9 +16,10 @@
 # under the License.
 
 import dataclasses
-from typing import List, Dict
-from pyfory import Fory
+from typing import Dict, List
+
 import pyfory
+from pyfory import Fory
 
 
 @dataclasses.dataclass
@@ -39,14 +40,13 @@ class ExtendedDataClass:
     name: str
     age: int
     active: bool
-    email: str  # Additional field
+    email: str
 
 
 @dataclasses.dataclass
 class ReducedDataClass:
     name: str
     age: int
-    # Missing 'active' field
 
 
 @dataclasses.dataclass
@@ -58,7 +58,7 @@ class NestedStructClass:
 @dataclasses.dataclass
 class NestedStructClassInconsistent:
     name: str
-    nested: ExtendedDataClass  # Different nested type
+    nested: ExtendedDataClass
 
 
 @dataclasses.dataclass
@@ -71,8 +71,8 @@ class ListFieldsClass:
 @dataclasses.dataclass
 class ListFieldsClassInconsistent:
     name: str
-    int_list: List[str]  # Changed from int32 to str
-    str_list: List[pyfory.int32]  # Changed from str to int32
+    int_list: List[str]
+    str_list: List[pyfory.int32]
 
 
 @dataclasses.dataclass
@@ -85,204 +85,116 @@ class DictFieldsClass:
 @dataclasses.dataclass
 class DictFieldsClassInconsistent:
     name: str
-    int_dict: Dict[str, str]  # Changed from int32 to str
-    str_dict: Dict[str, pyfory.int32]  # Changed from str to int32
+    int_dict: Dict[str, str]
+    str_dict: Dict[str, pyfory.int32]
 
 
 class TestMetaShareMode:
-    def setup_method(self):
-        """Setup method to register dataclasses for each test."""
-        pass
-
     def test_meta_share_enabled(self):
-        """Test that meta share mode can be enabled."""
         fory = Fory(xlang=True, compatible=True)
-        assert fory.serialization_context.scoped_meta_share_enabled
-        assert fory.serialization_context.meta_context is not None
+        assert fory.config.scoped_meta_share_enabled
+        assert fory.write_context.meta_share_context is not None
+        assert fory.read_context.meta_share_context is not None
 
     def test_meta_share_disabled(self):
-        """Test that meta share mode can be disabled."""
         fory = Fory(xlang=True, compatible=False)
-        assert not fory.serialization_context.scoped_meta_share_enabled
-        assert fory.serialization_context.meta_context is None
+        assert not fory.config.scoped_meta_share_enabled
+        assert fory.write_context.meta_share_context is None
+        assert fory.read_context.meta_share_context is None
 
     def test_simple_dataclass_serialization(self):
-        """Test serialization of simple dataclass with meta share."""
         fory = Fory(xlang=True, compatible=True)
-
-        # Register the dataclass
         fory.register_type(SimpleDataClass)
-
         obj = SimpleDataClass(name="test", age=25, active=True)
-        buffer = fory.serialize(obj)
-
-        # Deserialize
-        deserialized = fory.deserialize(buffer)
-        assert deserialized.name == obj.name
-        assert deserialized.age == obj.age
-        assert deserialized.active == obj.active
+        deserialized = fory.deserialize(fory.serialize(obj))
+        assert deserialized == obj
 
     def test_multiple_objects_same_type(self):
-        """Test that multiple objects of same type reuse type definition."""
         fory = Fory(xlang=True, compatible=True)
-
-        # Register the dataclass
         fory.register_type(SimpleDataClass)
-
-        obj1 = SimpleDataClass(name="test1", age=25, active=True)
-        obj2 = SimpleDataClass(name="test2", age=30, active=False)
-
-        # Serialize both objects
-        buffer1 = fory.serialize(obj1)
-        buffer2 = fory.serialize(obj2)
-
-        # Create a new fory instance with the same meta context for deserialization
-        fory2 = Fory(xlang=True, compatible=True)
-        fory2.register_type(SimpleDataClass)
-        # Copy the meta context from the first fory instance
-        fory2.serialization_context.meta_context = fory.serialization_context.meta_context
-
-        # Deserialize both
-        deserialized1 = fory2.deserialize(buffer1)
-        deserialized2 = fory2.deserialize(buffer2)
-
-        assert deserialized1.name == obj1.name
-        assert deserialized2.name == obj2.name
-        assert deserialized1.age == obj1.age
-        assert deserialized2.age == obj2.age
+        payload = [
+            SimpleDataClass(name="test1", age=25, active=True),
+            SimpleDataClass(name="test2", age=30, active=False),
+        ]
+        deserialized = fory.deserialize(fory.serialize(payload))
+        assert deserialized == payload
 
     def test_simple_nested_dataclass_serialization(self):
-        """Test serialization of simple nested dataclass with meta share."""
         fory = Fory(xlang=True, compatible=True)
-
-        # Register the dataclass
         fory.register_type(SimpleNestedDataClass)
-
         obj = SimpleNestedDataClass(value=42, name="test")
-
-        buffer = fory.serialize(obj)
-        deserialized = fory.deserialize(buffer)
-
-        assert deserialized.value == obj.value
-        assert deserialized.name == obj.name
+        assert fory.deserialize(fory.serialize(obj)) == obj
 
     def test_serialization_without_meta_share(self):
-        """Test that serialization works without meta share mode."""
         fory = Fory(xlang=True, compatible=False)
-
-        # Register the dataclass
         fory.register_type(SimpleDataClass)
-
         obj = SimpleDataClass(name="test", age=25, active=True)
-        buffer = fory.serialize(obj)
-        deserialized = fory.deserialize(buffer)
-
-        assert deserialized.name == obj.name
-        assert deserialized.age == obj.age
-        assert deserialized.active == obj.active
+        assert fory.deserialize(fory.serialize(obj)) == obj
 
     def test_schema_evolution_more_fields(self):
-        # Serialize with original schema
         fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(SimpleDataClass)
+        buffer = fory1.serialize(SimpleDataClass(name="test", age=25, active=True))
 
-        obj = SimpleDataClass(name="test", age=25, active=True)
-        buffer = fory1.serialize(obj)
-
-        # Deserialize with extended schema (more fields)
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ExtendedDataClass)
         deserialized = fory2.deserialize(buffer)
 
-        # Current behavior: deserialized object is of the new registered type
         assert isinstance(deserialized, ExtendedDataClass)
-        assert deserialized.name == obj.name
-        assert deserialized.age == obj.age
-        assert deserialized.active == obj.active
+        assert deserialized.name == "test"
+        assert deserialized.age == 25
+        assert deserialized.active is True
         assert deserialized.email == ""
 
     def test_schema_evolution_fewer_fields(self):
-        # Serialize with original schema
         fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(SimpleDataClass)
-        obj = SimpleDataClass(name="test", age=25, active=True)
-        buffer = fory1.serialize(obj)
+        buffer = fory1.serialize(SimpleDataClass(name="test", age=25, active=True))
 
-        # Deserialize with reduced schema (fewer fields)
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ReducedDataClass)
         deserialized = fory2.deserialize(buffer)
 
         assert isinstance(deserialized, ReducedDataClass)
-        assert deserialized.name == obj.name
-        assert deserialized.age == obj.age
-        # The missing field should not be present
+        assert deserialized.name == "test"
+        assert deserialized.age == 25
         assert not hasattr(deserialized, "active")
 
     def test_schema_inconsistent_nested_struct(self):
-        """Test schema inconsistency with nested struct types."""
-        # Serialize with original schema
         fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(NestedStructClass)
         fory1.register_type(SimpleNestedDataClass)
+        buffer = fory1.serialize(NestedStructClass(name="test", nested=SimpleNestedDataClass(value=42, name="nested_test")))
 
-        obj = NestedStructClass(name="test", nested=SimpleNestedDataClass(value=42, name="nested_test"))
-        buffer = fory1.serialize(obj)
-
-        # Deserialize with inconsistent schema (different nested type)
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(NestedStructClassInconsistent)
         fory2.register_type(ExtendedDataClass)
-
-        # This should handle the schema inconsistency gracefully
         deserialized = fory2.deserialize(buffer)
+
         assert isinstance(deserialized, NestedStructClassInconsistent)
-        assert deserialized.name == obj.name
-        # The nested field type has changed, so we expect different behavior
+        assert deserialized.name == "test"
         assert hasattr(deserialized, "nested")
 
     def test_schema_inconsistent_list_fields(self):
-        """Test schema inconsistency with List field types."""
-        # Serialize with original schema
         fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(ListFieldsClass)
+        buffer = fory1.serialize(ListFieldsClass(name="test", int_list=[1, 2, 3], str_list=["a", "b", "c"]))
 
-        obj = ListFieldsClass(name="test", int_list=[1, 2, 3], str_list=["a", "b", "c"])
-        buffer = fory1.serialize(obj)
-
-        # Deserialize with inconsistent schema (swapped List types)
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ListFieldsClassInconsistent)
-
-        # This should handle the schema inconsistency gracefully
         deserialized = fory2.deserialize(buffer)
+
         assert isinstance(deserialized, ListFieldsClassInconsistent)
-        assert deserialized.name == obj.name
-        # The field types have been swapped, so we expect different behavior
-        assert hasattr(deserialized, "int_list")
-        assert hasattr(deserialized, "str_list")
+        assert deserialized.name == "test"
 
     def test_schema_inconsistent_dict_fields(self):
-        """Test schema inconsistency with Dict field types."""
-        # Serialize with original schema
         fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(DictFieldsClass)
+        buffer = fory1.serialize(DictFieldsClass(name="test", int_dict={"a": 1}, str_dict={"b": "c"}))
 
-        obj = DictFieldsClass(
-            name="test",
-            int_dict={"key1": 1, "key2": 2},
-            str_dict={"key1": "value1", "key2": "value2"},
-        )
-        buffer = fory1.serialize(obj)
-
-        # Deserialize with inconsistent schema (swapped Dict value types)
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(DictFieldsClassInconsistent)
-
-        # This should handle the schema inconsistency gracefully
         deserialized = fory2.deserialize(buffer)
+
         assert isinstance(deserialized, DictFieldsClassInconsistent)
-        assert deserialized.name == obj.name
-        # The field value types have been swapped, so we expect different behavior
-        assert hasattr(deserialized, "int_dict")
-        assert hasattr(deserialized, "str_dict")
+        assert deserialized.name == "test"

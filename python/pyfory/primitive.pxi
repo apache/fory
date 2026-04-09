@@ -17,207 +17,219 @@
 
 @cython.final
 cdef class BooleanSerializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_bool(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_bool(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_bool()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_bool()
 
 
 @cython.final
 cdef class ByteSerializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_int8(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_int8(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_int8()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_int8()
 
 
 @cython.final
 cdef class Int16Serializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_int16(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_int16(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_int16()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_int16()
 
 
 @cython.final
 cdef class Int32Serializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varint32(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_varint32(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_varint32()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_varint32()
 
 
 @cython.final
 cdef class Int64Serializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varint64(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_varint64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_varint64()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_varint64()
 
 
 @cython.final
 cdef class FixedInt32Serializer(Serializer):
     """Serializer for fixed-width 32-bit signed integer (INT32 type_id=4)."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_int32(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_int32()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_int32(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_int32()
 
 
 @cython.final
 cdef class FixedInt64Serializer(Serializer):
     """Serializer for fixed-width 64-bit signed integer (INT64 type_id=6)."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_int64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_int64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_int64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_int64()
 
 
 @cython.final
 cdef class Varint32Serializer(Serializer):
     """Serializer for VARINT32 type - variable-length encoded signed 32-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varint32(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_varint32()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_varint32(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_varint32()
 
 
 @cython.final
 cdef class Varint64Serializer(Serializer):
     """Serializer for VARINT64 type - variable-length encoded signed 64-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varint64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_varint64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_varint64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_varint64()
 
 
 @cython.final
 cdef class TaggedInt64Serializer(Serializer):
     """Serializer for TAGGED_INT64 type - tagged encoding for signed 64-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_tagged_int64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_tagged_int64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_tagged_int64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_tagged_int64()
 
 
 @cython.final
 cdef class Uint8Serializer(Serializer):
     """Serializer for UINT8 type - unsigned 8-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_uint8(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_uint8()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_uint8(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_uint8()
 
 
 @cython.final
 cdef class Uint16Serializer(Serializer):
     """Serializer for UINT16 type - unsigned 16-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_uint16(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_uint16()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_uint16(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_uint16()
 
 
 @cython.final
 cdef class Uint32Serializer(Serializer):
     """Serializer for UINT32 type - fixed-size unsigned 32-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_uint32(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_uint32()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_uint32(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_uint32()
 
 
 @cython.final
 cdef class VarUint32Serializer(Serializer):
     """Serializer for VAR_UINT32 type - variable-length encoded unsigned 32-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_var_uint32(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_var_uint32()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_var_uint32(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_var_uint32()
 
 
 @cython.final
 cdef class Uint64Serializer(Serializer):
     """Serializer for UINT64 type - fixed-size unsigned 64-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_uint64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_uint64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_uint64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_uint64()
 
 
 @cython.final
 cdef class VarUint64Serializer(Serializer):
     """Serializer for VAR_UINT64 type - variable-length encoded unsigned 64-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_var_uint64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_var_uint64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_var_uint64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_var_uint64()
 
 
 @cython.final
 cdef class TaggedUint64Serializer(Serializer):
     """Serializer for TAGGED_UINT64 type - tagged encoding for unsigned 64-bit integer."""
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_tagged_uint64(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_tagged_uint64()
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_tagged_uint64(value)
+
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_tagged_uint64()
 
 
 @cython.final
 cdef class Float32Serializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_float(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_float(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_float()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_float()
 
 
 @cython.final
 cdef class Float64Serializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_double(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_double(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_double()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_double()
 
 
 @cython.final
 cdef class StringSerializer(Serializer):
-    def __init__(self, fory, type_, track_ref=False):
-        super().__init__(fory, type_)
+    def __init__(self, type_resolver, type_, track_ref=False):
+        super().__init__(type_resolver, type_)
         self.need_to_write_ref = track_ref
 
-    cpdef inline write(self, Buffer buffer, value):
-        buffer.write_string(value)
+    cpdef inline write(self, WriteContext write_context, value):
+        write_context.write_string(value)
 
-    cpdef inline read(self, Buffer buffer):
-        return buffer.read_string()
+    cpdef inline read(self, ReadContext read_context):
+        return read_context.read_string()
 
 
 cdef _base_date = datetime.date(1970, 1, 1)
-cdef int _base_date_ordinal = _base_date.toordinal()  # Precompute for faster date deserialization
+cdef int _base_date_ordinal = _base_date.toordinal()
 
 
 @cython.final
 cdef class DateSerializer(Serializer):
-    cpdef inline write(self, Buffer buffer, value):
+    cpdef inline write(self, WriteContext write_context, value):
         if type(value) is not datetime.date:
             raise TypeError(
                 "{} should be {} instead of {}".format(
@@ -225,10 +237,10 @@ cdef class DateSerializer(Serializer):
                 )
             )
         days = (value - _base_date).days
-        buffer.write_int32(days)
+        write_context.write_int32(days)
 
-    cpdef inline read(self, Buffer buffer):
-        days = buffer.read_int32()
+    cpdef inline read(self, ReadContext read_context):
+        days = read_context.read_int32()
         return datetime.date.fromordinal(_base_date_ordinal + days)
 
 
@@ -236,8 +248,8 @@ cdef class DateSerializer(Serializer):
 cdef class TimestampSerializer(Serializer):
     cdef bint win_platform
 
-    def __init__(self, fory, type_: Union[type, TypeVar]):
-        super().__init__(fory, type_)
+    def __init__(self, type_resolver, type_: Union[type, TypeVar]):
+        super().__init__(type_resolver, type_)
         self.win_platform = platform.system() == "Windows"
 
     cdef inline _get_timestamp(self, value):
@@ -260,7 +272,7 @@ cdef class TimestampSerializer(Serializer):
             micros_rem += 1000000
         return seconds, <unsigned int>(micros_rem * 1000)
 
-    cpdef inline write(self, Buffer buffer, value):
+    cpdef inline write(self, WriteContext write_context, value):
         if type(value) is not datetime.datetime:
             raise TypeError(
                 "{} should be {} instead of {}".format(value, datetime, type(value))
@@ -268,11 +280,11 @@ cdef class TimestampSerializer(Serializer):
         cdef long long seconds
         cdef unsigned int nanos
         seconds, nanos = self._get_timestamp(value)
-        buffer.write_int64(seconds)
-        buffer.write_uint32(nanos)
+        write_context.write_int64(seconds)
+        write_context.write_uint32(nanos)
 
-    cpdef inline read(self, Buffer buffer):
-        cdef long long seconds = buffer.read_int64()
-        cdef unsigned int nanos = buffer.read_uint32()
+    cpdef inline read(self, ReadContext read_context):
+        cdef long long seconds = read_context.read_int64()
+        cdef unsigned int nanos = read_context.read_uint32()
         ts = seconds + (<double>nanos) / 1000000000.0
         return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
