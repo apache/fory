@@ -32,7 +32,6 @@ void main() {
       EnumSpec enumSpec = EnumSpec(EnumFoo, [EnumFoo.A, EnumFoo.B]);
       EnumSpec enumSubTypeSpec =
           EnumSpec(EnumSubClass, [EnumSubClass.A, EnumSubClass.B]);
-
       check($EnumFoo).equals(enumSpec);
       check($EnumSubClass).equals(enumSubTypeSpec);
     });
@@ -41,25 +40,16 @@ void main() {
       EnumSpec enumWithIdsSpec = EnumSpec(EnumWithIds,
           [EnumWithIds.A, EnumWithIds.B, EnumWithIds.C],
           {10: EnumWithIds.A, 20: EnumWithIds.B, 30: EnumWithIds.C});
-      EnumSpec enumPartialIdsSpec = EnumSpec(
-          EnumPartialIds, [EnumPartialIds.A, EnumPartialIds.B, EnumPartialIds.C]);
-      EnumSpec enumDuplicateIdsSpec = EnumSpec(EnumDuplicateIds,
-          [EnumDuplicateIds.A, EnumDuplicateIds.B, EnumDuplicateIds.C]);
 
       check($EnumWithIds).equals(enumWithIdsSpec);
-      check($EnumPartialIds).equals(enumPartialIdsSpec);
-      check($EnumDuplicateIds).equals(enumDuplicateIdsSpec);
     });
 
     test('test field-based @ForyEnumId spec generation', () {
       EnumSpec enumFieldBasedIdsSpec = EnumSpec(EnumFieldBasedIds,
           [EnumFieldBasedIds.A, EnumFieldBasedIds.B, EnumFieldBasedIds.C],
           {10: EnumFieldBasedIds.A, 20: EnumFieldBasedIds.B, 30: EnumFieldBasedIds.C});
-      EnumSpec enumFieldBasedDuplicateIdsSpec = EnumSpec(EnumFieldBasedDuplicateIds,
-          [EnumFieldBasedDuplicateIds.A, EnumFieldBasedDuplicateIds.B, EnumFieldBasedDuplicateIds.C]);
 
       check($EnumFieldBasedIds).equals(enumFieldBasedIdsSpec);
-      check($EnumFieldBasedDuplicateIds).equals(enumFieldBasedDuplicateIdsSpec);
     });
   });
 }

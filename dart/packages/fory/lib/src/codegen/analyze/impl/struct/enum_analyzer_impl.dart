@@ -99,29 +99,32 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
       enumIds[enumField.name] = id;
     }
 
-    final bool useAnnotatedIds =
-      missingIdValues.isEmpty && duplicateIds.isEmpty && outOfRangeIds.isEmpty;
-    final bool hasAnyAnnotatedIds = enumIds.isNotEmpty;
-    if (outOfRangeIds.isNotEmpty) {
-      throw InvalidDataException(
-        'Enum $enumName in $packageName has @ForyEnumId values outside the '
-        'unsigned 32-bit range (0 to 4294967295). '
-        'Offending values: ${outOfRangeIds.join('; ')}.',
-      );
-    }
-    if (hasAnyAnnotatedIds && !useAnnotatedIds) {
-      if (missingIdValues.isNotEmpty) {
-        print(
-          '[WARNING] Enum $enumName in $packageName has partial @ForyEnumId annotations. '
-          'Missing values: ${missingIdValues.join(', ')}. '
-          'All @ForyEnumId annotations are ignored and ordinal serialization is used.',
+    // Any @ForyEnumId present means the whole configuration must be valid.
+    final bool anyAnnotationPresent = idFieldName != null ||
+      enumIds.isNotEmpty ||
+      outOfRangeIds.isNotEmpty ||
+      duplicateIds.isNotEmpty;
+
+    if (anyAnnotationPresent) {
+      if (outOfRangeIds.isNotEmpty) {
+        throw InvalidDataException(
+          'Enum $enumName in $packageName has @ForyEnumId values outside the '
+          'unsigned 32-bit range (0 to 4294967295). '
+          'Offending values: ${outOfRangeIds.join('; ')}.',
         );
       }
       if (duplicateIds.isNotEmpty) {
-        print(
-          '[WARNING] Enum $enumName in $packageName has duplicate @ForyEnumId values '
+        throw InvalidDataException(
+          'Enum $enumName in $packageName has duplicate @ForyEnumId values '
           '(${duplicateIds.join('; ')}). '
-          'All @ForyEnumId annotations are ignored and ordinal serialization is used.',
+          'All ids must be unique.',
+        );
+      }
+      if (missingIdValues.isNotEmpty) {
+        throw InvalidDataException(
+          'Enum $enumName in $packageName has partial @ForyEnumId annotations. '
+          'Missing values: ${missingIdValues.join(', ')}. '
+          'All values must have an id when @ForyEnumId is used.',
         );
       }
     }
@@ -130,7 +133,7 @@ class EnumAnalyzerImpl implements EnumAnalyzer {
       enumName,
       packageName,
       enumValues,
-      useAnnotatedIds ? enumIds : null,
+      anyAnnotationPresent ? enumIds : null,
     );
   }
 }

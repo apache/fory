@@ -37,6 +37,7 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serialization_dispatcher.dart';
 import 'package:fory/src/serialization_context.dart';
 import 'package:fory/src/serializer/enum_serializer.dart';
+import 'package:fory_test/entity/enum_foo.dart';
 import 'package:fory_test/entity/enum_id_foo.dart';
 import 'package:test/test.dart';
 
@@ -107,15 +108,14 @@ void main() {
 
     test('falls back to ordinal serialization when id mapping is absent', () {
       final EnumSerializer serializer = EnumSerializer(false, [
-        EnumPartialIds.A,
-        EnumPartialIds.B,
-        EnumPartialIds.C,
+        EnumFoo.A,
+        EnumFoo.B,
       ]);
 
       final ByteWriter writer = ByteWriter();
       serializer.write(
         writer,
-        EnumPartialIds.B,
+        EnumFoo.B,
         _newSerializationContext(),
       );
       final ByteReader encodedIdReader =
@@ -170,23 +170,6 @@ void main() {
         _newDeserializationContext(),
       );
       check(value).equals(EnumFieldBasedIds.C);
-    });
-
-    test('field-based duplicate ids fall back to ordinal', () {
-      final EnumSerializer serializer = EnumSerializer(false, [
-        EnumFieldBasedDuplicateIds.A,
-        EnumFieldBasedDuplicateIds.B,
-        EnumFieldBasedDuplicateIds.C,
-      ]);
-
-      final ByteWriter writer = ByteWriter();
-      serializer.write(
-        writer,
-        EnumFieldBasedDuplicateIds.B,
-        _newSerializationContext(),
-      );
-      final ByteReader reader = ByteReader.forBytes(writer.takeBytes());
-      check(reader.readVarUint32Small7()).equals(1);
     });
 
     test('throws when enum id is outside unsigned 32-bit range', () {

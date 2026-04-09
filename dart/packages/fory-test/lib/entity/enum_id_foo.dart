@@ -32,25 +32,6 @@ enum EnumWithIds {
 }
 
 @foryEnum
-enum EnumPartialIds {
-  @ForyEnumId(10)
-  A,
-  B,
-  @ForyEnumId(30)
-  C,
-}
-
-@foryEnum
-enum EnumDuplicateIds {
-  @ForyEnumId(10)
-  A,
-  @ForyEnumId(10)
-  B,
-  @ForyEnumId(30)
-  C,
-}
-
-@foryEnum
 enum EnumFieldBasedIds {
   A(10),
   B(20),
@@ -61,13 +42,3 @@ enum EnumFieldBasedIds {
   const EnumFieldBasedIds(this.code);
 }
 
-@foryEnum
-enum EnumFieldBasedDuplicateIds {
-  A(10),
-  B(10),
-  C(30);
-
-  @ForyEnumId()
-  final int code;
-  const EnumFieldBasedDuplicateIds(this.code);
-}
