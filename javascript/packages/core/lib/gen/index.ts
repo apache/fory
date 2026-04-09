@@ -99,6 +99,11 @@ export class Gen {
       this.traversalContainer((typeInfo).options!.key!);
       this.traversalContainer((typeInfo).options!.value!);
     }
+    if (typeInfo.options?.cases) {
+      Object.values(typeInfo.options.cases).forEach((caseTypeInfo) => {
+        this.traversalContainer(caseTypeInfo);
+      });
+    }
   }
 
   reGenerateSerializer(typeInfo: TypeInfo) {

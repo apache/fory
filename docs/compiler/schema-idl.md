@@ -1239,10 +1239,10 @@ message Config {
 
 **Language Mapping:**
 
-| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              | JavaScript               |
-| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- | ------------------------ |
-| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` | `Record<string, number>` |
-| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    | `Record<string, User>`   |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              | JavaScript            |
+| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- | --------------------- |
+| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` | `Map<string, number>` |
+| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    | `Map<string, User>`   |
 
 **Key Type Restrictions:**
 

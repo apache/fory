@@ -147,7 +147,7 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Date",
         PrimitiveKind.TIMESTAMP: "Date",
         PrimitiveKind.DURATION: "number",
-        PrimitiveKind.DECIMAL: "number",
+        PrimitiveKind.DECIMAL: "bigint",
         PrimitiveKind.ANY: "any",
     }
 
@@ -177,7 +177,7 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Type.date()",
         PrimitiveKind.TIMESTAMP: "Type.timestamp()",
         PrimitiveKind.DURATION: "Type.duration()",
-        PrimitiveKind.DECIMAL: "Type.float64()",
+        # DECIMAL is not yet supported by the JS runtime; omitted intentionally.
         PrimitiveKind.ANY: "Type.any()",
     }
 
@@ -498,7 +498,10 @@ class JavaScriptGenerator(BaseGenerator):
                 nullable=field_type.element_optional,
                 parent_stack=parent_stack,
             )
-            type_str = f"{element_type}[]"
+            if "|" in element_type:
+                type_str = f"({element_type})[]"
+            else:
+                type_str = f"{element_type}[]"
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -843,9 +846,14 @@ class JavaScriptGenerator(BaseGenerator):
                             case_field.field_type, parent_stack
                         )
                         case_parts.append(f"{case_num}: {case_type_expr}")
-                if case_parts:
-                    return f"Type.union({{ {', '.join(case_parts)} }})"
-                return "Type.union()"
+                cases_arg = f", {{ {', '.join(case_parts)} }}" if case_parts else ""
+                if self.should_register_by_id(resolved):
+                    name_info = str(resolved.type_id)
+                else:
+                    ns = self._get_type_package(resolved)
+                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
+                    name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+                return f"Type.union({name_info}{cases_arg})"
             if isinstance(resolved, Message):
                 evolving = self.get_effective_evolving(resolved)
                 if self.should_register_by_id(resolved):
@@ -911,7 +919,7 @@ class JavaScriptGenerator(BaseGenerator):
         for field in type_def.fields:
             member = self._field_member_name(field, type_def, used_field_names)
             expr = self._field_type_expr(field.field_type, field_parent_stack)
-            if field.tag_id is not None and field.tag_id > 0:
+            if field.tag_id is not None:
                 expr += f".setId({field.tag_id})"
             if field.optional:
                 expr += ".setNullable(true)"
