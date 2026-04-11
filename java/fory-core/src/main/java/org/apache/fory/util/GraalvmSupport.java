@@ -96,6 +96,9 @@ public class GraalvmSupport {
     registerDefaultSerializerClass(ChildContainerSerializers.ChildArrayListSerializer.class);
     registerDefaultSerializerClass(ChildContainerSerializers.ChildCollectionSerializer.class);
     registerDefaultSerializerClass(ChildContainerSerializers.ChildMapSerializer.class);
+    registerDefaultSerializerClass(ChildContainerSerializers.ChildSortedSetSerializer.class);
+    registerDefaultSerializerClass(ChildContainerSerializers.ChildPriorityQueueSerializer.class);
+    registerDefaultSerializerClass(ChildContainerSerializers.ChildSortedMapSerializer.class);
     registerDefaultSerializerClass(SingletonCollectionSerializer.class);
     registerDefaultSerializerClass(SingletonMapSerializer.class);
     registerDefaultSerializerClass(SingletonObjectSerializer.class);

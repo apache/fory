@@ -27,8 +27,8 @@ Custom serializers should not retain `Fory`.
 
 - Use `Config` when the serializer only depends on immutable configuration and can be shared.
 - Use `TypeResolver` when the serializer needs type metadata, generics, or nested dynamic dispatch.
-- If a serializer retains `TypeResolver`, it is usually not shareable and should keep the default
-  `shareable() == false`.
+- If a serializer retains `TypeResolver`, it is usually not shareable and should not implement
+  `Shareable`.
 
 ## Basic Serializer
 
@@ -41,8 +41,9 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.serializer.Shareable;
 
-public final class FooSerializer extends Serializer<Foo> {
+public final class FooSerializer extends Serializer<Foo> implements Shareable {
   public FooSerializer(Config config) {
     super(config, Foo.class);
   }
@@ -60,11 +61,6 @@ public final class FooSerializer extends Serializer<Foo> {
     foo.f1 = buffer.readInt64();
     foo.f2 = readContext.readString(buffer);
     return foo;
-  }
-
-  @Override
-  public boolean shareable() {
-    return true;
   }
 }
 ```
@@ -108,7 +104,7 @@ public final class EnvelopeSerializer extends Serializer<Envelope> {
 }
 ```
 
-This serializer can be shareable because it retains no runtime-local mutable state.
+This serializer can implement `Shareable` because it retains no runtime-local mutable state.
 
 ## Collection Serializers
 
@@ -218,9 +214,10 @@ fory.registerSerializer(
 
 ## Shareability
 
-Override `shareable()` only when the serializer can be safely reused across equivalent runtimes and
-concurrent operations. In practice, that means the serializer must not retain operation state,
-runtime-local mutable state, or mutable scratch buffers that are shared across calls.
+Implement the `Shareable` marker interface when the serializer can be safely reused across
+equivalent runtimes and concurrent operations. A shareable serializer must not retain operation
+state, runtime-local mutable state, or mutable scratch buffers shared across calls. Consumers can
+check shareability via `serializer instanceof Shareable`.
 
 In practice:
 

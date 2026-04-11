@@ -39,7 +39,7 @@ describe('array', () => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
         }
     } });
-    const { serialize, deserialize } = fory.registerSerializer(typeinfo);
+    const { serialize, deserialize } = fory.register(typeinfo);
     const o = { a: "123" };
     expect(deserialize(serialize({ c: [o, o] }))).toEqual({ c: [o, o] })
   });
@@ -55,7 +55,7 @@ describe('array', () => {
     });
 
     const fory = new Fory({ refTracking: true }); 
-    const serializer = fory.registerSerializer(typeinfo).serializer;
+    const serializer = fory.register(typeinfo).serializer;
     const input = fory.serialize({
       a: [true, false],
       a2: new Int16Array([1, 2, 3]),
@@ -83,7 +83,7 @@ describe('array', () => {
       a5: Type.float32Array(),
     })
 
-    const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
+    const fory = new Fory({ refTracking: true }); const serialize = fory.register(typeinfo).serializer;
     const input = fory.serialize({
       a5: new Float32Array([2.43, 654.4, 55]),
     }, serialize);
@@ -102,7 +102,7 @@ describe('array', () => {
       a6: Type.float16Array(),
     })
 
-    const fory = new Fory({ refTracking: true }); const serialize = fory.registerSerializer(typeinfo).serializer;
+    const fory = new Fory({ refTracking: true }); const serialize = fory.register(typeinfo).serializer;
     const input = fory.serialize({
       a6: [1.5, 2.5, -4.5],
     }, serialize);
@@ -121,7 +121,7 @@ describe('array', () => {
       a7: Type.bfloat16Array(),
     });
     const fory = new Fory({ refTracking: true });
-    const serialize = fory.registerSerializer(typeinfo).serializer;
+    const serialize = fory.register(typeinfo).serializer;
     const input = fory.serialize({
       a7: [1.5, 2.5, -4.5],
     }, serialize);
@@ -139,7 +139,7 @@ describe('array', () => {
       a7: Type.bfloat16Array(),
     });
     const fory = new Fory({ refTracking: true });
-    const serialize = fory.registerSerializer(typeinfo).serializer;
+    const serialize = fory.register(typeinfo).serializer;
     const arr = new BFloat16Array([1.25, -2.5, 0]);
     const input = fory.serialize({ a7: arr }, serialize);
     const result = fory.deserialize(input);

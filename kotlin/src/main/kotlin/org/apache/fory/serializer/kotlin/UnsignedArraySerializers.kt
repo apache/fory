@@ -26,13 +26,14 @@ import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.resolver.TypeResolver
 import org.apache.fory.serializer.Serializer
+import org.apache.fory.serializer.Shareable
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
   typeResolver: TypeResolver,
   cls: Class<T>,
   private val delegateClass: Class<T_Delegate>
-) : CollectionLikeSerializer<T>(typeResolver, cls, false) {
+) : CollectionLikeSerializer<T>(typeResolver, cls, false), Shareable {
 
   @Suppress("UNCHECKED_CAST")
   private fun delegatingSerializer(writeContext: WriteContext): Serializer<T_Delegate> {
@@ -64,8 +65,6 @@ public abstract class AbstractDelegatingArraySerializer<T, T_Delegate>(
   override fun onCollectionRead(collection: Collection<*>): T {
     throw IllegalStateException("supportCodegenHook is disabled for ${type.name}")
   }
-
-  override fun shareable(): Boolean = true
 }
 
 public class UByteArraySerializer(

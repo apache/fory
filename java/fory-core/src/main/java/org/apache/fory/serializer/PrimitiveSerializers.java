@@ -36,7 +36,8 @@ import org.apache.fory.util.Preconditions;
 /** Serializers for java primitive types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class PrimitiveSerializers {
-  public static final class BooleanSerializer extends ImmutableSerializer<Boolean> {
+  public static final class BooleanSerializer extends ImmutableSerializer<Boolean>
+      implements Shareable {
     public BooleanSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -50,14 +51,9 @@ public class PrimitiveSerializers {
     public Boolean read(ReadContext readContext) {
       return readContext.getBuffer().readBoolean();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class ByteSerializer extends ImmutableSerializer<Byte> {
+  public static final class ByteSerializer extends ImmutableSerializer<Byte> implements Shareable {
     public ByteSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -71,14 +67,10 @@ public class PrimitiveSerializers {
     public Byte read(ReadContext readContext) {
       return readContext.getBuffer().readByte();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Uint8Serializer extends ImmutableSerializer<Integer> {
+  public static final class Uint8Serializer extends ImmutableSerializer<Integer>
+      implements Shareable {
     public Uint8Serializer(Config config) {
       super(config, Integer.class);
     }
@@ -94,14 +86,10 @@ public class PrimitiveSerializers {
       int b = readContext.getBuffer().readByte();
       return b >>> 24;
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Uint16Serializer extends ImmutableSerializer<Integer> {
+  public static final class Uint16Serializer extends ImmutableSerializer<Integer>
+      implements Shareable {
     public Uint16Serializer(Config config) {
       super(config, Integer.class);
     }
@@ -117,14 +105,10 @@ public class PrimitiveSerializers {
       int b = readContext.getBuffer().readByte();
       return b >>> 16;
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class CharSerializer extends ImmutableSerializer<Character> {
+  public static final class CharSerializer extends ImmutableSerializer<Character>
+      implements Shareable {
     public CharSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -138,14 +122,10 @@ public class PrimitiveSerializers {
     public Character read(ReadContext readContext) {
       return readContext.getBuffer().readChar();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class ShortSerializer extends ImmutableSerializer<Short> {
+  public static final class ShortSerializer extends ImmutableSerializer<Short>
+      implements Shareable {
     public ShortSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -159,14 +139,10 @@ public class PrimitiveSerializers {
     public Short read(ReadContext readContext) {
       return readContext.getBuffer().readInt16();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class IntSerializer extends ImmutableSerializer<Integer> {
+  public static final class IntSerializer extends ImmutableSerializer<Integer>
+      implements Shareable {
     private final boolean compressNumber;
 
     public IntSerializer(Config config, Class<?> cls) {
@@ -191,14 +167,9 @@ public class PrimitiveSerializers {
       }
       return readContext.getBuffer().readInt32();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class VarUint32Serializer extends Serializer<Integer> {
+  public static final class VarUint32Serializer extends Serializer<Integer> implements Shareable {
     public VarUint32Serializer(Config config) {
       super(config, Integer.class);
     }
@@ -213,14 +184,9 @@ public class PrimitiveSerializers {
     public Integer read(ReadContext readContext) {
       return readContext.getBuffer().readVarUint32();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class LongSerializer extends ImmutableSerializer<Long> {
+  public static final class LongSerializer extends ImmutableSerializer<Long> implements Shareable {
     private final LongEncoding longEncoding;
 
     public LongSerializer(Config config, Class<?> cls) {
@@ -289,14 +255,9 @@ public class PrimitiveSerializers {
           throw new UnsupportedOperationException("Unsupported long encoding " + longEncoding);
       }
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class VarUint64Serializer extends Serializer<Long> {
+  public static final class VarUint64Serializer extends Serializer<Long> implements Shareable {
     public VarUint64Serializer(Config config) {
       super(config, Long.class);
     }
@@ -311,14 +272,10 @@ public class PrimitiveSerializers {
     public Long read(ReadContext readContext) {
       return readContext.getBuffer().readVarUint64();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class FloatSerializer extends ImmutableSerializer<Float> {
+  public static final class FloatSerializer extends ImmutableSerializer<Float>
+      implements Shareable {
     public FloatSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -332,14 +289,10 @@ public class PrimitiveSerializers {
     public Float read(ReadContext readContext) {
       return readContext.getBuffer().readFloat32();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class DoubleSerializer extends ImmutableSerializer<Double> {
+  public static final class DoubleSerializer extends ImmutableSerializer<Double>
+      implements Shareable {
     public DoubleSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -353,14 +306,10 @@ public class PrimitiveSerializers {
     public Double read(ReadContext readContext) {
       return readContext.getBuffer().readFloat64();
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Float16Serializer extends ImmutableSerializer<Float16> {
+  public static final class Float16Serializer extends ImmutableSerializer<Float16>
+      implements Shareable {
     public Float16Serializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
     }
@@ -373,11 +322,6 @@ public class PrimitiveSerializers {
     @Override
     public Float16 read(ReadContext readContext) {
       return Float16.fromBits(readContext.getBuffer().readInt16());
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

@@ -25,8 +25,9 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.serializer.Shareable;
 
-public class ByteStringSerializer extends Serializer<ByteString> {
+public class ByteStringSerializer extends Serializer<ByteString> implements Shareable {
   public ByteStringSerializer(Config config, Class<ByteString> type) {
     super(config, type, true);
   }
@@ -62,10 +63,5 @@ public class ByteStringSerializer extends Serializer<ByteString> {
       buffer.increaseReaderIndex(size);
       return bytes;
     }
-  }
-
-  @Override
-  public boolean shareable() {
-    return true;
   }
 }

@@ -21,7 +21,7 @@ const typeInfo = Type.struct('example.foo', {
   foo: Type.string(),
 });
 const fory = new Fory({ hps });
-const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+const { serialize, deserialize } = fory.register(typeInfo);
 const input = serialize({ foo: 'hello fory' });
 const result = deserialize(input);
 console.log(result);

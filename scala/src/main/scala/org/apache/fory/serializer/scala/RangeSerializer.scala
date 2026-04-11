@@ -22,6 +22,7 @@ package org.apache.fory.serializer.scala
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.reflect.FieldAccessor
+import org.apache.fory.serializer.Shareable
 import org.apache.fory.serializer.Serializer
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 import org.apache.fory.resolver.TypeResolver
@@ -32,7 +33,8 @@ import java.lang.invoke.{MethodHandle, MethodHandles}
 import scala.collection.immutable.NumericRange
 
 class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
-  extends CollectionLikeSerializer[T](typeResolver, cls, false) {
+  extends CollectionLikeSerializer[T](typeResolver, cls, false)
+  with Shareable {
   private val rangeClass = cls
 
   override def write(writeContext: WriteContext, value: T): Unit = {
@@ -52,9 +54,6 @@ class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
       Range.inclusive(start, end, step).asInstanceOf[T]
     }
   }
-
-  override def shareable(): Boolean = true
-
   override def onCollectionWrite(writeContext: WriteContext, value: T): util.Collection[_] =
     throw new IllegalStateException(s"supportCodegenHook is disabled for ${getType.getName}")
 
@@ -74,7 +73,8 @@ private object RangeUtils {
 
 
 class NumericRangeSerializer[A, T <: NumericRange[A]](typeResolver: TypeResolver, cls: Class[T])
-  extends CollectionLikeSerializer[T](typeResolver, cls, false) {
+  extends CollectionLikeSerializer[T](typeResolver, cls, false)
+  with Shareable {
   private val ctr = RangeUtils.lookupCache.get(cls)
   private val getter =
     FieldAccessor.createAccessor(
@@ -101,9 +101,6 @@ class NumericRangeSerializer[A, T <: NumericRange[A]](typeResolver: TypeResolver
     val step = serializer.read(readContext)
     ctr.invoke(start, end, step, readContext.readRef()).asInstanceOf[T]
   }
-
-  override def shareable(): Boolean = true
-
   override def onCollectionWrite(writeContext: WriteContext, value: T): util.Collection[_] =
     throw new IllegalStateException(s"supportCodegenHook is disabled for ${getType.getName}")
 

@@ -17,13 +17,12 @@
  * under the License.
  */
 
-import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32 } from "./type";
+import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32, Config } from "./type";
 import { Gen } from "./gen";
-import { Type, TypeInfo } from "./typeInfo";
-import Fory from "./fory";
+import { Dynamic, Type, TypeInfo } from "./typeInfo";
+import { ReadContext, WriteContext } from "./context";
 
 const uninitSerialize = {
-  // for writer
   fixedSize: 0,
   getTypeInfo: () => {
     throw new Error("uninitSerialize");
@@ -83,9 +82,84 @@ export default class TypeResolver {
   private internalSerializer: Serializer[] = new Array(300);
   private customSerializer: Map<number | string, Serializer> = new Map();
 
+  private writeContext!: WriteContext;
+  private readContext!: ReadContext;
+
+  private float64Serializer: null | Serializer = null;
+  private float32Serializer: null | Serializer = null;
+  private varint32Serializer: null | Serializer = null;
+  private varInt64Serializer: null | Serializer = null;
+  private int64Serializer: null | Serializer = null;
+  private boolSerializer: null | Serializer = null;
+  private datetimeSerializer: null | Serializer = null;
+  private stringSerializer: null | Serializer = null;
+  private setSerializer: null | Serializer = null;
+  private arraySerializer: null | Serializer = null;
+  private mapSerializer: null | Serializer = null;
+  private uint8ArraySerializer: null | Serializer = null;
+  private uint16ArraySerializer: null | Serializer = null;
+  private uint32ArraySerializer: null | Serializer = null;
+  private uint64ArraySerializer: null | Serializer = null;
+  private int8ArraySerializer: null | Serializer = null;
+  private int16ArraySerializer: null | Serializer = null;
+  private int32ArraySerializer: null | Serializer = null;
+  private int64ArraySerializer: null | Serializer = null;
+  private float32ArraySerializer: null | Serializer = null;
+  private float64ArraySerializer: null | Serializer = null;
+
+  constructor(readonly config: Config) {
+  }
+
+  bindContexts(writeContext: WriteContext, readContext: ReadContext) {
+    this.writeContext = writeContext;
+    this.readContext = readContext;
+  }
+
+  isCompatible() {
+    return this.config.compatible === true;
+  }
+
+  computeTypeId(typeInfo: TypeInfo) {
+    const internalTypeId = typeInfo.typeId;
+    if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
+      return internalTypeId;
+    }
+    if (internalTypeId === TypeId.NAMED_STRUCT && this.isCompatible() && typeInfo.evolving) {
+      return TypeId.NAMED_COMPATIBLE_STRUCT;
+    }
+    if (internalTypeId === TypeId.STRUCT && this.isCompatible() && typeInfo.evolving) {
+      return TypeId.COMPATIBLE_STRUCT;
+    }
+    return internalTypeId;
+  }
+
+  isMonomorphic(typeInfo: TypeInfo, dynamic: Dynamic = Dynamic.AUTO) {
+    switch (dynamic) {
+      case Dynamic.TRUE:
+        return false;
+      case Dynamic.FALSE:
+        return true;
+      default:
+        if (TypeId.structType(typeInfo.typeId)) {
+          return false;
+        }
+        if (TypeId.enumType(typeInfo.typeId)) {
+          return true;
+        }
+        if (this.isCompatible()) {
+          return !TypeId.userDefinedType(typeInfo.typeId) && typeInfo.typeId !== TypeId.UNKNOWN;
+        }
+        return typeInfo.typeId !== TypeId.UNKNOWN;
+    }
+  }
+
+  private makeUserTypeKey(userTypeId: number) {
+    return `u:${userTypeId}`;
+  }
+
   private initInternalSerializer() {
     const registerSerializer = (typeInfo: TypeInfo) => {
-      return this.registerSerializer(typeInfo, new Gen(this.fory).generateSerializer(typeInfo));
+      return this.registerSerializer(typeInfo, new Gen(this).generateSerializer(typeInfo));
     };
     registerSerializer(Type.string());
     registerSerializer(new TypeInfo(TypeId.ENUM));
@@ -138,13 +212,13 @@ export default class TypeResolver {
     this.float32Serializer = this.getSerializerById(TypeId.FLOAT32);
     this.varint32Serializer = this.getSerializerById(TypeId.VARINT32);
     this.varInt64Serializer = this.getSerializerById(TypeId.VARINT64);
-    this.int64Serializer = this.getSerializerById((TypeId.INT64));
-    this.boolSerializer = this.getSerializerById((TypeId.BOOL));
-    this.datetimeSerializer = this.getSerializerById((TypeId.TIMESTAMP));
-    this.stringSerializer = this.getSerializerById((TypeId.STRING));
-    this.setSerializer = this.getSerializerById((TypeId.SET));
-    this.arraySerializer = this.getSerializerById((TypeId.LIST));
-    this.mapSerializer = this.getSerializerById((TypeId.MAP));
+    this.int64Serializer = this.getSerializerById(TypeId.INT64);
+    this.boolSerializer = this.getSerializerById(TypeId.BOOL);
+    this.datetimeSerializer = this.getSerializerById(TypeId.TIMESTAMP);
+    this.stringSerializer = this.getSerializerById(TypeId.STRING);
+    this.setSerializer = this.getSerializerById(TypeId.SET);
+    this.arraySerializer = this.getSerializerById(TypeId.LIST);
+    this.mapSerializer = this.getSerializerById(TypeId.MAP);
     this.uint8ArraySerializer = this.getSerializerById(TypeId.UINT8_ARRAY);
     this.uint16ArraySerializer = this.getSerializerById(TypeId.UINT16_ARRAY);
     this.uint32ArraySerializer = this.getSerializerById(TypeId.UINT32_ARRAY);
@@ -157,43 +231,12 @@ export default class TypeResolver {
     this.float64ArraySerializer = this.getSerializerById(TypeId.FLOAT64_ARRAY);
   }
 
-  private float64Serializer: null | Serializer = null;
-  private float32Serializer: null | Serializer = null;
-  private varint32Serializer: null | Serializer = null;
-  private varInt64Serializer: null | Serializer = null;
-  private int64Serializer: null | Serializer = null;
-  private boolSerializer: null | Serializer = null;
-  private datetimeSerializer: null | Serializer = null;
-  private stringSerializer: null | Serializer = null;
-  private setSerializer: null | Serializer = null;
-  private arraySerializer: null | Serializer = null;
-  private mapSerializer: null | Serializer = null;
-  private uint8ArraySerializer: null | Serializer = null;
-  private uint16ArraySerializer: null | Serializer = null;
-  private uint32ArraySerializer: null | Serializer = null;
-  private uint64ArraySerializer: null | Serializer = null;
-  private int8ArraySerializer: null | Serializer = null;
-  private int16ArraySerializer: null | Serializer = null;
-  private int32ArraySerializer: null | Serializer = null;
-  private int64ArraySerializer: null | Serializer = null;
-  private float32ArraySerializer: null | Serializer = null;
-  private float64ArraySerializer: null | Serializer = null;
-
-  constructor(private fory: Fory) {
-  }
-
-  private makeUserTypeKey(userTypeId: number) {
-    return `u:${userTypeId}`;
-  }
-
   init() {
-    TypeInfo.attach(this.fory);
     this.initInternalSerializer();
-    TypeInfo.detach();
   }
 
   registerSerializer(typeInfo: TypeInfo, serializer: Serializer = uninitSerialize) {
-    const typeId = typeInfo.typeId;
+    const typeId = this.computeTypeId(typeInfo);
     if (!TypeId.isNamedType(typeId)) {
       if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
         const key = this.makeUserTypeKey(typeInfo.userTypeId);
@@ -204,37 +247,47 @@ export default class TypeResolver {
         }
         return this.customSerializer.get(key);
       }
-      const id = typeId;
-      if (id <= 0xFF) {
-        if (this.internalSerializer[id]) {
-          Object.assign(this.internalSerializer[id], serializer);
+      if (typeId <= 0xFF) {
+        if (this.internalSerializer[typeId]) {
+          Object.assign(this.internalSerializer[typeId], serializer);
         } else {
-          this.internalSerializer[id] = { ...serializer };
+          this.internalSerializer[typeId] = { ...serializer };
         }
-        return this.internalSerializer[id];
+        return this.internalSerializer[typeId];
       }
-      if (this.customSerializer.has(id)) {
-        Object.assign(this.customSerializer.get(id)!, serializer);
+      if (this.customSerializer.has(typeId)) {
+        Object.assign(this.customSerializer.get(typeId)!, serializer);
       } else {
-        this.customSerializer.set(id, { ...serializer });
+        this.customSerializer.set(typeId, { ...serializer });
       }
-      return this.customSerializer.get(id);
-    } else {
-      const namedTypeInfo = typeInfo;
-      const name = namedTypeInfo.named!;
-      if (this.customSerializer.has(name)) {
-        Object.assign(this.customSerializer.get(name)!, serializer);
-      } else {
-        this.customSerializer.set(name, { ...serializer });
-      }
-      return this.customSerializer.get(name);
+      return this.customSerializer.get(typeId);
     }
+
+    const name = typeInfo.named!;
+    if (this.customSerializer.has(name)) {
+      Object.assign(this.customSerializer.get(name)!, serializer);
+    } else {
+      this.customSerializer.set(name, { ...serializer });
+    }
+    return this.customSerializer.get(name);
+  }
+
+  regenerateReadSerializer(typeInfo: TypeInfo) {
+    const serializer = new Gen(this, { creator: typeInfo.options?.creator }).reGenerateSerializer(typeInfo);
+    return this.registerSerializer(typeInfo, {
+      getHash: serializer.getHash,
+      read: serializer.read,
+      readNoRef: serializer.readNoRef,
+      readRef: serializer.readRef,
+      readTypeInfo: serializer.readTypeInfo,
+      readRefWithoutTypeInfo: serializer.readRefWithoutTypeInfo,
+    } as any)!;
   }
 
   getSerializerByTypeInfo(typeInfo: TypeInfo) {
-    const typeId = typeInfo.computeTypeId(this.fory);
+    const typeId = this.computeTypeId(typeInfo);
     if (TypeId.isNamedType(typeId)) {
-      return this.customSerializer.get((typeInfo).named!);
+      return this.customSerializer.get(typeInfo.named!);
     }
     return this.getSerializerById(typeId, typeInfo.userTypeId);
   }
@@ -245,9 +298,8 @@ export default class TypeResolver {
     }
     if (id <= 0xff) {
       return this.internalSerializer[id]!;
-    } else {
-      return this.customSerializer.get(id)!;
     }
+    return this.customSerializer.get(id)!;
   }
 
   getSerializerByName(typeIdOrName: number | string) {
@@ -258,7 +310,6 @@ export default class TypeResolver {
     if (v === null || v === undefined) {
       return null;
     }
-    // internal types
     if (typeof v === "number") {
       if (Number.isInteger(v)) {
         if (v > MaxInt32 || v < MinInt32) {
@@ -344,7 +395,6 @@ export default class TypeResolver {
       return this.setSerializer;
     }
 
-    // custome types
     if (typeof v === "object" && v !== null && ForyTypeInfoSymbol in v) {
       const typeInfo = (v[ForyTypeInfoSymbol] as WithForyClsInfo).structTypeInfo;
       return this.getSerializerByTypeInfo(typeInfo);

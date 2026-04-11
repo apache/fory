@@ -32,7 +32,8 @@ import org.apache.fory.type.unsigned.Uint8;
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class UnsignedSerializers {
 
-  public static final class Uint8Serializer extends ImmutableSerializer<Uint8> {
+  public static final class Uint8Serializer extends ImmutableSerializer<Uint8>
+      implements Shareable {
     public Uint8Serializer(Config config) {
       super(config, Uint8.class, false);
     }
@@ -46,14 +47,10 @@ public class UnsignedSerializers {
     public Uint8 read(ReadContext readContext) {
       return new Uint8(readContext.getBuffer().readByte());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Uint16Serializer extends ImmutableSerializer<Uint16> {
+  public static final class Uint16Serializer extends ImmutableSerializer<Uint16>
+      implements Shareable {
     public Uint16Serializer(Config config) {
       super(config, Uint16.class, false);
     }
@@ -67,14 +64,10 @@ public class UnsignedSerializers {
     public Uint16 read(ReadContext readContext) {
       return new Uint16(readContext.getBuffer().readInt16());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Uint32Serializer extends ImmutableSerializer<Uint32> {
+  public static final class Uint32Serializer extends ImmutableSerializer<Uint32>
+      implements Shareable {
     public Uint32Serializer(Config config) {
       super(config, Uint32.class, false);
     }
@@ -88,14 +81,10 @@ public class UnsignedSerializers {
     public Uint32 read(ReadContext readContext) {
       return new Uint32(readContext.getBuffer().readInt32());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class Uint64Serializer extends ImmutableSerializer<Uint64> {
+  public static final class Uint64Serializer extends ImmutableSerializer<Uint64>
+      implements Shareable {
     public Uint64Serializer(Config config) {
       super(config, Uint64.class, false);
     }
@@ -108,11 +97,6 @@ public class UnsignedSerializers {
     @Override
     public Uint64 read(ReadContext readContext) {
       return new Uint64(readContext.getBuffer().readInt64());
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

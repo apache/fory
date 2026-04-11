@@ -204,7 +204,8 @@ public class TimeSerializers {
     }
   }
 
-  public static final class LocalDateSerializer extends ImmutableTimeSerializer<LocalDate> {
+  public static final class LocalDateSerializer extends ImmutableTimeSerializer<LocalDate>
+      implements Shareable {
     public LocalDateSerializer(Config config) {
       super(config, LocalDate.class);
     }
@@ -245,14 +246,10 @@ public class TimeSerializers {
       int dayOfMonth = buffer.readByte();
       return LocalDate.of(year, month, dayOfMonth);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class InstantSerializer extends ImmutableTimeSerializer<Instant> {
+  public static final class InstantSerializer extends ImmutableTimeSerializer<Instant>
+      implements Shareable {
     public InstantSerializer(Config config) {
       super(config, Instant.class);
     }
@@ -275,14 +272,10 @@ public class TimeSerializers {
       int nanos = buffer.readInt32();
       return Instant.ofEpochSecond(seconds, nanos);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class DurationSerializer extends ImmutableTimeSerializer<Duration> {
+  public static class DurationSerializer extends ImmutableTimeSerializer<Duration>
+      implements Shareable {
     public DurationSerializer(Config config) {
       super(config, Duration.class);
     }
@@ -305,14 +298,10 @@ public class TimeSerializers {
       int nanos = buffer.readInt32();
       return Duration.ofSeconds(seconds, nanos);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class LocalDateTimeSerializer extends ImmutableTimeSerializer<LocalDateTime> {
+  public static class LocalDateTimeSerializer extends ImmutableTimeSerializer<LocalDateTime>
+      implements Shareable {
     public LocalDateTimeSerializer(Config config) {
       super(config, LocalDateTime.class);
     }
@@ -335,14 +324,10 @@ public class TimeSerializers {
       LocalTime time = LocalTimeSerializer.readLocalTime(buffer);
       return LocalDateTime.of(date, time);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class LocalTimeSerializer extends ImmutableTimeSerializer<LocalTime> {
+  public static class LocalTimeSerializer extends ImmutableTimeSerializer<LocalTime>
+      implements Shareable {
     public LocalTimeSerializer(Config config) {
       super(config, LocalTime.class);
     }
@@ -406,11 +391,6 @@ public class TimeSerializers {
         }
       }
       return LocalTime.of(hour, minute, second, nano);
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 
@@ -496,7 +476,8 @@ public class TimeSerializers {
     }
   }
 
-  public static class ZoneIdSerializer extends ImmutableTimeSerializer<ZoneId> {
+  public static class ZoneIdSerializer extends ImmutableTimeSerializer<ZoneId>
+      implements Shareable {
     public ZoneIdSerializer(Config config, Class<ZoneId> type) {
       super(config, type);
     }
@@ -514,14 +495,10 @@ public class TimeSerializers {
     public ZoneId read(ReadContext readContext) {
       return ZoneId.of(readContext.readString());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class ZoneOffsetSerializer extends ImmutableTimeSerializer<ZoneOffset> {
+  public static class ZoneOffsetSerializer extends ImmutableTimeSerializer<ZoneOffset>
+      implements Shareable {
 
     // cached zone offsets for the single byte representation, using this overrides the JDK zone
     // offset caching which uses a concurrent hash map for zone offsets that causes a noticeable
@@ -569,14 +546,10 @@ public class TimeSerializers {
       }
       return COMPRESSED_ZONE_OFFSETS[offsetByte + 72];
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class ZonedDateTimeSerializer extends ImmutableTimeSerializer<ZonedDateTime> {
+  public static class ZonedDateTimeSerializer extends ImmutableTimeSerializer<ZonedDateTime>
+      implements Shareable {
 
     public ZonedDateTimeSerializer(Config config) {
       super(config, ZonedDateTime.class);
@@ -600,14 +573,9 @@ public class TimeSerializers {
       ZoneId zone = ZoneId.of(readContext.readString());
       return ZonedDateTime.of(date, time, zone);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class YearSerializer extends ImmutableTimeSerializer<Year> {
+  public static class YearSerializer extends ImmutableTimeSerializer<Year> implements Shareable {
     public YearSerializer(Config config) {
       super(config, Year.class);
     }
@@ -627,14 +595,10 @@ public class TimeSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       return Year.of(buffer.readInt32());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class YearMonthSerializer extends ImmutableTimeSerializer<YearMonth> {
+  public static class YearMonthSerializer extends ImmutableTimeSerializer<YearMonth>
+      implements Shareable {
     public YearMonthSerializer(Config config) {
       super(config, YearMonth.class);
     }
@@ -657,14 +621,10 @@ public class TimeSerializers {
       byte month = buffer.readByte();
       return YearMonth.of(year, month);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class MonthDaySerializer extends ImmutableTimeSerializer<MonthDay> {
+  public static class MonthDaySerializer extends ImmutableTimeSerializer<MonthDay>
+      implements Shareable {
     public MonthDaySerializer(Config config) {
       super(config, MonthDay.class);
     }
@@ -685,14 +645,10 @@ public class TimeSerializers {
       byte day = buffer.readByte();
       return MonthDay.of(month, day);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class PeriodSerializer extends ImmutableTimeSerializer<Period> {
+  public static class PeriodSerializer extends ImmutableTimeSerializer<Period>
+      implements Shareable {
     public PeriodSerializer(Config config) {
       super(config, Period.class);
     }
@@ -715,14 +671,10 @@ public class TimeSerializers {
       int days = buffer.readInt32();
       return Period.of(years, months, days);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class OffsetTimeSerializer extends ImmutableTimeSerializer<OffsetTime> {
+  public static class OffsetTimeSerializer extends ImmutableTimeSerializer<OffsetTime>
+      implements Shareable {
     public OffsetTimeSerializer(Config config) {
       super(config, OffsetTime.class);
     }
@@ -743,14 +695,10 @@ public class TimeSerializers {
       ZoneOffset offset = ZoneOffsetSerializer.readZoneOffset(buffer);
       return OffsetTime.of(time, offset);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class OffsetDateTimeSerializer extends ImmutableTimeSerializer<OffsetDateTime> {
+  public static class OffsetDateTimeSerializer extends ImmutableTimeSerializer<OffsetDateTime>
+      implements Shareable {
     public OffsetDateTimeSerializer(Config config) {
       super(config, OffsetDateTime.class);
     }
@@ -772,11 +720,6 @@ public class TimeSerializers {
       LocalTime time = LocalTimeSerializer.readLocalTime(buffer);
       ZoneOffset offset = ZoneOffsetSerializer.readZoneOffset(buffer);
       return OffsetDateTime.of(date, time, offset);
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

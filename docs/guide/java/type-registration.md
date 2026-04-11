@@ -60,14 +60,15 @@ If there are no duplicate names for types, `namespace` can be left as empty to r
 
 ### Type Checker
 
-If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can set `org.apache.fory.resolver.TypeChecker` by `TypeResolver#setTypeChecker` to control which classes are allowed for serialization.
+If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can configure `org.apache.fory.resolver.TypeChecker` by `ForyBuilder#withTypeChecker` or `TypeResolver#setTypeChecker` to control which classes are allowed for serialization.
 
 For example, you can allow classes started with `org.example.*`:
 
 ```java
-Fory fory = xxx;
-fory.getTypeResolver().setTypeChecker(
-  (typeResolver, className) -> className.startsWith("org.example."));
+Fory fory = Fory.builder()
+  .requireClassRegistration(false)
+  .withTypeChecker((typeResolver, className) -> className.startsWith("org.example."))
+  .build();
 ```
 
 ### AllowListChecker
@@ -76,12 +77,17 @@ Fory provides a `org.apache.fory.resolver.AllowListChecker` which is an allowed/
 
 ```java
 AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-ThreadSafeFory fory = Fory.builder().requireClassRegistration(false).buildThreadSafeFory();
-fory.setTypeChecker(checker);
 checker.allowClass("org.example.*");
+ThreadSafeFory fory = Fory.builder()
+  .requireClassRegistration(false)
+  .withTypeChecker(checker)
+  .buildThreadSafeFory();
 ```
 
-You can use this checker or implement a more sophisticated checker by yourself.
+`withTypeChecker` installs the checker on every created runtime immediately, which also avoids the
+generic startup warning emitted when class registration is disabled without any checker. You can
+still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later if you need to
+replace the checker after build time.
 
 ## Limit Max Deserialization Depth
 

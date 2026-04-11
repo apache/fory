@@ -34,10 +34,11 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.serializer.Shareable;
 import org.apache.fory.util.unsafe._JDKAccess;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class ProtobufSerializer extends Serializer<Message> {
+public class ProtobufSerializer extends Serializer<Message> implements Shareable {
   private static final int SMALL_BYTES_THRESHOLD = 32;
 
   private static final ClassValue<MethodHandle[]> parseFromMethodCache =
@@ -122,10 +123,5 @@ public class ProtobufSerializer extends Serializer<Message> {
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
-  }
-
-  @Override
-  public boolean shareable() {
-    return true;
   }
 }

@@ -107,7 +107,7 @@ describe('bool', () => {
 
     test('should root any work', () => {
         const fory = new Fory();
-        const { serialize, deserialize } = fory.registerSerializer(Type.any());
+        const { serialize, deserialize } = fory.register(Type.any());
         const bin = serialize("hello");
         const result = deserialize(bin);
         expect(result).toEqual("hello")

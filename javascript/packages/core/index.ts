@@ -27,6 +27,7 @@ import Fory from "./lib/fory";
 import { BinaryReader } from "./lib/reader";
 import { BinaryWriter } from "./lib/writer";
 import { BFloat16, BFloat16Array } from "./lib/bfloat16";
+import { ReadContext, WriteContext } from "./lib/context";
 
 export {
   Serializer,
@@ -38,6 +39,8 @@ export {
   BinaryReader,
   BFloat16,
   BFloat16Array,
+  ReadContext,
+  WriteContext,
 };
 
 export default Fory;

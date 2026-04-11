@@ -33,9 +33,10 @@ import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.serializer.ImmutableSerializer
 import org.apache.fory.serializer.Serializer
+import org.apache.fory.serializer.Shareable
 
 public class DurationSerializer(config: Config) :
-  ImmutableSerializer<Duration>(config, Duration::class.java, !config.isTimeRefIgnored) {
+  ImmutableSerializer<Duration>(config, Duration::class.java, !config.isTimeRefIgnored), Shareable {
 
   @Suppress("UNCHECKED_CAST")
   private fun durationUnitSerializer(writeContext: WriteContext): Serializer<DurationUnit> {
@@ -121,6 +122,4 @@ public class DurationSerializer(config: Config) :
       return DurationUnit.DAYS
     }
   }
-
-  override fun shareable(): Boolean = true
 }

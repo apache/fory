@@ -24,15 +24,22 @@ import com.google.common.collect.ImmutableMap;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.SortedMap;
+import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
@@ -411,6 +418,146 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     ChildMapHolder holder = new ChildMapHolder("config-456", map4);
     ChildMapHolder deserialized = serDe(fory, holder);
     Assert.assertEquals(deserialized, holder);
+  }
+
+  private static final class LengthThenNaturalComparator implements Comparator<String> {
+    @Override
+    public int compare(String left, String right) {
+      int delta = Integer.compare(left.length(), right.length());
+      if (delta != 0) {
+        return delta;
+      }
+      return left.compareTo(right);
+    }
+  }
+
+  public static class AutoChildTreeSet extends TreeSet<String> {
+    private String state;
+
+    public AutoChildTreeSet() {}
+  }
+
+  public static class AutoChildConcurrentSkipListSet extends ConcurrentSkipListSet<String> {
+    private String state;
+
+    public AutoChildConcurrentSkipListSet(SortedSet<String> values) {
+      super(values);
+    }
+  }
+
+  public static class AutoChildPriorityQueue extends PriorityQueue<String> {
+    private String state;
+
+    public AutoChildPriorityQueue(SortedSet<String> values) {
+      super(values);
+    }
+  }
+
+  public static class AutoChildTreeMap extends TreeMap<String, String> {
+    private String state;
+
+    public AutoChildTreeMap() {}
+  }
+
+  public static class AutoChildConcurrentSkipListMap extends ConcurrentSkipListMap<String, String> {
+    private String state;
+
+    public AutoChildConcurrentSkipListMap(SortedMap<String, String> values) {
+      super(values);
+    }
+  }
+
+  private static SortedSet<String> newComparatorSortedSetSource() {
+    TreeSet<String> set = new TreeSet<>(new LengthThenNaturalComparator());
+    set.addAll(ImmutableList.of("bbb", "a", "cc"));
+    return set;
+  }
+
+  private static SortedMap<String, String> newComparatorSortedMapSource() {
+    TreeMap<String, String> map = new TreeMap<>(new LengthThenNaturalComparator());
+    map.put("bbb", "B");
+    map.put("a", "A");
+    map.put("cc", "C");
+    return map;
+  }
+
+  private static List<String> drainPriorityQueue(PriorityQueue<String> queue) {
+    PriorityQueue<String> copy = new PriorityQueue<>(queue);
+    List<String> values = new ArrayList<>();
+    while (!copy.isEmpty()) {
+      values.add(copy.poll());
+    }
+    return values;
+  }
+
+  @Test(dataProvider = "foryConfig")
+  public void testAutoSelectsOptimizedSortedCollectionChildSerializers(Fory fory) {
+    Assert.assertEquals(
+        fory.getTypeResolver().getSerializerClass(AutoChildTreeSet.class),
+        ChildContainerSerializers.ChildSortedSetSerializer.class);
+    AutoChildTreeSet treeSet = new AutoChildTreeSet();
+    treeSet.state = "tree-state";
+    treeSet.addAll(ImmutableList.of("b", "a", "c"));
+    AutoChildTreeSet treeSetCopy = serDe(fory, treeSet);
+    Assert.assertEquals(treeSetCopy, treeSet);
+    Assert.assertEquals(treeSetCopy.state, treeSet.state);
+    Assert.assertNull(treeSetCopy.comparator());
+
+    Assert.assertEquals(
+        fory.getTypeResolver().getSerializerClass(AutoChildConcurrentSkipListSet.class),
+        ChildContainerSerializers.ChildSortedSetSerializer.class);
+    AutoChildConcurrentSkipListSet skipListSet =
+        new AutoChildConcurrentSkipListSet(newComparatorSortedSetSource());
+    skipListSet.state = "skip-state";
+    AutoChildConcurrentSkipListSet skipListSetCopy = serDe(fory, skipListSet);
+    Assert.assertEquals(skipListSetCopy, skipListSet);
+    Assert.assertEquals(skipListSetCopy.state, skipListSet.state);
+    Assert.assertEquals(new ArrayList<>(skipListSetCopy), new ArrayList<>(skipListSet));
+    Assert.assertNotNull(skipListSetCopy.comparator());
+    Assert.assertEquals(skipListSetCopy.comparator().getClass(), LengthThenNaturalComparator.class);
+
+    Assert.assertEquals(
+        fory.getTypeResolver().getSerializerClass(AutoChildPriorityQueue.class),
+        ChildContainerSerializers.ChildPriorityQueueSerializer.class);
+    AutoChildPriorityQueue priorityQueue =
+        new AutoChildPriorityQueue(newComparatorSortedSetSource());
+    priorityQueue.state = "queue-state";
+    AutoChildPriorityQueue priorityQueueCopy = serDe(fory, priorityQueue);
+    Assert.assertEquals(priorityQueueCopy.state, priorityQueue.state);
+    Assert.assertEquals(drainPriorityQueue(priorityQueueCopy), drainPriorityQueue(priorityQueue));
+    Assert.assertNotNull(priorityQueueCopy.comparator());
+    Assert.assertEquals(
+        priorityQueueCopy.comparator().getClass(), LengthThenNaturalComparator.class);
+  }
+
+  @Test(dataProvider = "foryConfig")
+  public void testAutoSelectsOptimizedSortedMapChildSerializers(Fory fory) {
+    Assert.assertEquals(
+        fory.getTypeResolver().getSerializerClass(AutoChildTreeMap.class),
+        ChildContainerSerializers.ChildSortedMapSerializer.class);
+    AutoChildTreeMap treeMap = new AutoChildTreeMap();
+    treeMap.state = "tree-map-state";
+    treeMap.put("b", "B");
+    treeMap.put("a", "A");
+    treeMap.put("c", "C");
+    AutoChildTreeMap treeMapCopy = serDe(fory, treeMap);
+    Assert.assertEquals(treeMapCopy, treeMap);
+    Assert.assertEquals(treeMapCopy.state, treeMap.state);
+    Assert.assertNull(treeMapCopy.comparator());
+
+    Assert.assertEquals(
+        fory.getTypeResolver().getSerializerClass(AutoChildConcurrentSkipListMap.class),
+        ChildContainerSerializers.ChildSortedMapSerializer.class);
+    AutoChildConcurrentSkipListMap skipListMap =
+        new AutoChildConcurrentSkipListMap(newComparatorSortedMapSource());
+    skipListMap.state = "skip-map-state";
+    AutoChildConcurrentSkipListMap skipListMapCopy = serDe(fory, skipListMap);
+    Assert.assertEquals(skipListMapCopy, skipListMap);
+    Assert.assertEquals(skipListMapCopy.state, skipListMap.state);
+    Assert.assertEquals(
+        new ArrayList<>(skipListMapCopy.keySet()), new ArrayList<>(skipListMap.keySet()));
+    Assert.assertNotNull(skipListMapCopy.comparator());
+    Assert.assertEquals(skipListMapCopy.comparator().getClass(), LengthThenNaturalComparator.class);
   }
 
   /* Mixed collection subclass test (TreeSet + HashMap subclasses) */

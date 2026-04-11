@@ -60,7 +60,8 @@ public final class OptionalSerializers {
     }
   }
 
-  public static final class OptionalIntSerializer extends ImmutableSerializer<OptionalInt> {
+  public static final class OptionalIntSerializer extends ImmutableSerializer<OptionalInt>
+      implements Shareable {
     public OptionalIntSerializer(Config config) {
       super(config, OptionalInt.class);
     }
@@ -82,14 +83,10 @@ public final class OptionalSerializers {
         return OptionalInt.empty();
       }
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class OptionalLongSerializer extends ImmutableSerializer<OptionalLong> {
+  public static final class OptionalLongSerializer extends ImmutableSerializer<OptionalLong>
+      implements Shareable {
     public OptionalLongSerializer(Config config) {
       super(config, OptionalLong.class);
     }
@@ -111,14 +108,10 @@ public final class OptionalSerializers {
         return OptionalLong.empty();
       }
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class OptionalDoubleSerializer extends ImmutableSerializer<OptionalDouble> {
+  public static final class OptionalDoubleSerializer extends ImmutableSerializer<OptionalDouble>
+      implements Shareable {
     public OptionalDoubleSerializer(Config config) {
       super(config, OptionalDouble.class);
     }
@@ -139,11 +132,6 @@ public final class OptionalSerializers {
       } else {
         return OptionalDouble.empty();
       }
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

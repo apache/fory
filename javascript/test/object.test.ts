@@ -31,7 +31,7 @@ describe('object', () => {
       a: number;
     }
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(Foo);
+    const { serialize, deserialize } = fory.register(Foo);
     const foo = new Foo();
     foo.a = 123;
     const input = serialize(foo);
@@ -51,7 +51,7 @@ describe('object', () => {
       a: number;
     }
     const fory = new Fory({ refTracking: true });
-    fory.registerSerializer(Foo);
+    fory.register(Foo);
 
     const foo = new Foo();
     foo.a = 123;
@@ -69,7 +69,7 @@ describe('object', () => {
     })
 
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: { b: "hel" } });
     const result = deserialize(
       input
@@ -85,7 +85,7 @@ describe('object', () => {
       }).setNullable(true)
     })
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: null });
     const result = deserialize(
       input
@@ -105,7 +105,7 @@ describe('object', () => {
     })
 
     const fory = new Fory({ refTracking: true });
-    const serializer = fory.registerSerializer(typeInfo).serializer;
+    const serializer = fory.register(typeInfo).serializer;
     const input = fory.serialize({ a: [{ b: "hel", c: true, d: 123, e: 123, f: new Uint8Array([1, 2, 3]) }] }, serializer);
     const result = fory.deserialize(
       input
@@ -122,7 +122,7 @@ describe('object', () => {
       a2: Type.struct("example.bar")
     });
     const fory = new Fory({ refTracking: true });
-    const serializer = fory.registerSerializer(typeInfo).serializer;
+    const serializer = fory.register(typeInfo).serializer;
     const input = fory.serialize({ a: { b: "hel" }, a2: { b: "hel2" } }, serializer);
     const result = fory.deserialize(
       input
@@ -146,7 +146,7 @@ describe('object', () => {
         }
       }
     });
-    const serialize = fory.registerSerializer(typeInfo).serializer;
+    const serialize = fory.register(typeInfo).serializer;
     const param: any = {};
     param.a = { b: "hel" };
     param.a2 = param;
@@ -169,7 +169,7 @@ describe('object', () => {
     })
 
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ "+a": { "delete": "hel", c: [{ d: "hello" }] } });
     const result = deserialize(
       input
@@ -189,7 +189,7 @@ describe('object', () => {
     })
 
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: { b: "hel", c: [{ d: "hello" }] } });
     const result = deserialize(
       input
@@ -205,7 +205,7 @@ describe('object', () => {
     });
 
     const fory = new Fory({ hps });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const bin = serialize({
       kind: "123",
     });
@@ -219,7 +219,7 @@ describe('object', () => {
     });
 
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+    const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: "Hello, world! 🌍😊" });
     const result = deserialize(input);
     expect(result).toEqual({ a: "Hello, world! 🌍😊" });
@@ -240,8 +240,8 @@ describe('object', () => {
       }
     );
 
-    const evolvingSerializer = fory.registerSerializer(evolvingType);
-    const fixedSerializer = fory.registerSerializer(fixedType);
+    const evolvingSerializer = fory.register(evolvingType);
+    const fixedSerializer = fory.register(fixedType);
 
     const evolvingPayload = evolvingSerializer.serialize({ f1: "payload" }) as Buffer;
     const fixedPayload = fixedSerializer.serialize({ f1: "payload" }) as Buffer;

@@ -1341,13 +1341,13 @@ func dynamicAnyWriteMethodName(_ codec: DynamicAnyCodecKind) -> String {
     case .anyValue, .anyHashableValue:
         return "writeAny"
     case .anyList:
-        return "writeAnyList"
+        return "writeListOfAny"
     case .stringAnyMap:
-        return "writeStringAnyMap"
+        return "writeMapStringToAny"
     case .int32AnyMap:
-        return "writeInt32AnyMap"
+        return "writeMapInt32ToAny"
     case .anyHashableAnyMap:
-        return "writeAnyHashableAnyMap"
+        return "writeMapAnyHashableToAny"
     }
 }
 
@@ -1356,13 +1356,13 @@ func dynamicAnyReadMethodName(_ codec: DynamicAnyCodecKind) -> String {
     case .anyValue, .anyHashableValue:
         return "readAny"
     case .anyList:
-        return "readAnyList"
+        return "readListOfAny"
     case .stringAnyMap:
-        return "readStringAnyMap"
+        return "readMapStringToAny"
     case .int32AnyMap:
-        return "readInt32AnyMap"
+        return "readMapInt32ToAny"
     case .anyHashableAnyMap:
-        return "readAnyHashableAnyMap"
+        return "readMapAnyHashableToAny"
     }
 }
 

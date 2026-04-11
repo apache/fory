@@ -72,12 +72,12 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         namesStmt = `
           ${
             // skip the namespace
-            this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())
+            this.builder.metaStringResolver.readNamespace()
           }
 
           ${
           // skip the namespace
-          this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())
+          this.builder.metaStringResolver.readTypeName()
           }
         `;
         break;
@@ -108,8 +108,8 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
           typeMeta = `
-              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
-              ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+              ${this.builder.metaStringResolver.writeBytes(nsBytes)}
+              ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
             `;
         }
         break;

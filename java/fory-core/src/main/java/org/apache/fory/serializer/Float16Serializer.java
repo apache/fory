@@ -24,7 +24,7 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.type.Float16;
 
-public final class Float16Serializer extends ImmutableSerializer<Float16> {
+public final class Float16Serializer extends ImmutableSerializer<Float16> implements Shareable {
 
   public Float16Serializer(Config config) {
     super(config, Float16.class);
@@ -38,10 +38,5 @@ public final class Float16Serializer extends ImmutableSerializer<Float16> {
   @Override
   public Float16 read(ReadContext readContext) {
     return Float16.fromBits(readContext.getBuffer().readInt16());
-  }
-
-  @Override
-  public boolean shareable() {
-    return true;
   }
 }

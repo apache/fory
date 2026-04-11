@@ -47,7 +47,7 @@ function build(inner: TypeInfo, creator: string, size: number) {
 
       return `
                 const ${len} = ${this.builder.reader.readVarUInt32()};
-                fory.checkBinarySize(${len});
+                ${this.builder.getReadContextName()}.checkBinarySize(${len});
                 const ${copied} = ${this.builder.reader.buffer(len)}
                 const ${result} = new ${creator}(${copied}.buffer, ${copied}.byteOffset, ${copied}.byteLength / ${size});
                 ${this.maybeReference(result, refState)}
@@ -86,7 +86,7 @@ class BoolArraySerializerGenerator extends BaseSerializerGenerator {
     const idx = this.scope.uniqueName("idx");
     return `
                 const ${len} = ${this.builder.reader.readVarUInt32()};
-                fory.checkCollectionSize(${len});
+                ${this.builder.getReadContextName()}.checkCollectionSize(${len});
                 const ${result} = new Array(${len});
                 ${this.maybeReference(result, refState)}
                 for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
@@ -127,7 +127,7 @@ class Float16ArraySerializerGenerator extends BaseSerializerGenerator {
     const idx = this.scope.uniqueName("idx");
     return `
         const ${rawLen} = ${this.builder.reader.readVarUInt32()};
-        fory.checkBinarySize(${rawLen});
+        ${this.builder.getReadContextName()}.checkBinarySize(${rawLen});
         const ${len} = ${rawLen} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}
@@ -169,7 +169,7 @@ class BFloat16ArraySerializerGenerator extends BaseSerializerGenerator {
     const idx = this.scope.uniqueName("idx");
     return `
         const ${rawLen} = ${this.builder.reader.readVarUInt32()};
-        fory.checkBinarySize(${rawLen});
+        ${this.builder.getReadContextName()}.checkBinarySize(${rawLen});
         const ${len} = ${rawLen} / 2;
         const ${result} = new Array(${len});
         ${this.maybeReference(result, refState)}

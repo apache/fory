@@ -35,6 +35,7 @@ import org.apache.fory.meta.MetaCompressor;
 import org.apache.fory.pool.ThreadPoolFory;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.ObjectStreamSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -97,6 +98,7 @@ public final class ForyBuilder {
   int maxDepth = 50;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
+  TypeChecker typeChecker;
   private List<Consumer<ForyBuilder>> actions = new ArrayList<>();
   private boolean replayingActions = false;
 
@@ -349,14 +351,29 @@ public final class ForyBuilder {
    * attack if the classes `constructor`/`equals`/`hashCode` method contain malicious code. Do not
    * disable class registration if you can't ensure your environment are *indeed secure*. We are not
    * responsible for security risks if you disable this option. If you disable this option, you can
-   * configure {@link org.apache.fory.resolver.TypeChecker} by {@link
-   * org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are allowed
-   * being serialized.
+   * configure {@link org.apache.fory.resolver.TypeChecker} by {@link #withTypeChecker(TypeChecker)}
+   * or {@link org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are
+   * allowed being serialized.
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;
     recordAction(b -> b.requireClassRegistration(requireClassRegistration));
     return this;
+  }
+
+  /**
+   * Configure a {@link TypeChecker} during build time so it is installed on every created runtime.
+   * This checker is only consulted for unknown class names when class registration checks are
+   * disabled.
+   */
+  public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
+    this.typeChecker = typeChecker;
+    recordAction(b -> b.withTypeChecker(typeChecker));
+    return this;
+  }
+
+  public TypeChecker getTypeChecker() {
+    return typeChecker;
   }
 
   /**
@@ -572,11 +589,13 @@ public final class ForyBuilder {
       }
     }
     if (!requireClassRegistration) {
-      LOG.warn(
-          "Class registration isn't forced, unknown classes can be deserialized. "
-              + "If the environment isn't secure, please enable class registration by "
-              + "`ForyBuilder#requireClassRegistration(true)` or configure TypeChecker by "
-              + "`TypeResolver#setTypeChecker`");
+      if (typeChecker == null) {
+        LOG.warn(
+            "Class registration isn't forced, unknown classes can be deserialized. "
+                + "If the environment isn't secure, please enable class registration by "
+                + "`ForyBuilder#requireClassRegistration(true)` or configure TypeChecker by "
+                + "`ForyBuilder#withTypeChecker` or `TypeResolver#setTypeChecker`");
+      }
     }
     if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && asyncCompilationEnabled) {
       LOG.info("Use sync compilation for graalvm native image since it doesn't support JIT.");

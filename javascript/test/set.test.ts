@@ -38,7 +38,7 @@ describe('set', () => {
         });
         
         const fory = new Fory({ refTracking: true });    
-        const { serialize, deserialize } = fory.registerSerializer(typeinfo);
+        const { serialize, deserialize } = fory.register(typeinfo);
         const input = serialize({ a: new Set(["foo1", "bar2"]) });
         const result = deserialize(
             input

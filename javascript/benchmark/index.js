@@ -171,7 +171,7 @@ const sample = {
 
 
 const typeinfo = utils.data2TypeInfo(sample, "fory.test.foo");
-const { serialize, deserialize, serializeVolatile } = fory.registerSerializer(typeinfo);
+const { serialize, deserialize } = fory.register(typeinfo);
 
 const foryAb = serialize(sample);
 const sampleJson = JSON.stringify(sample);
@@ -228,7 +228,7 @@ async function start() {
     var suite = new Benchmark.Suite();
     suite
       .add("fory", function () {
-        serializeVolatile(sample).dispose();
+        serialize(sample);
       })
       .add("json", function () {
         JSON.stringify(sample);

@@ -212,7 +212,7 @@ public extension WriteContext {
         writeTypeInfo: Bool = true,
         hasGenerics: Bool = false
     ) throws {
-        try DynamicAnyValue.wrapped(value).foryWrite(
+        try SerializableAny.wrapped(value).foryWrite(
             self,
             refMode: refMode,
             writeTypeInfo: writeTypeInfo,
@@ -220,13 +220,13 @@ public extension WriteContext {
         )
     }
 
-    func writeAnyList(
+    func writeListOfAny(
         _ value: [Any]?,
         refMode: RefMode,
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        let wrapped = value?.map { DynamicAnyValue.wrapped($0) }
+        let wrapped = value?.map { SerializableAny.wrapped($0) }
         try wrapped.foryWrite(
             self,
             refMode: refMode,
@@ -235,14 +235,14 @@ public extension WriteContext {
         )
     }
 
-    func writeStringAnyMap(
+    func writeMapStringToAny(
         _ value: [String: Any]?,
         refMode: RefMode,
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        let wrapped = value?.reduce(into: [String: DynamicAnyValue]()) { result, pair in
-            result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+        let wrapped = value?.reduce(into: [String: SerializableAny]()) { result, pair in
+            result[pair.key] = SerializableAny.wrapped(pair.value)
         }
         try wrapped.foryWrite(
             self,
@@ -252,14 +252,14 @@ public extension WriteContext {
         )
     }
 
-    func writeInt32AnyMap(
+    func writeMapInt32ToAny(
         _ value: [Int32: Any]?,
         refMode: RefMode,
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        let wrapped = value?.reduce(into: [Int32: DynamicAnyValue]()) { result, pair in
-            result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+        let wrapped = value?.reduce(into: [Int32: SerializableAny]()) { result, pair in
+            result[pair.key] = SerializableAny.wrapped(pair.value)
         }
         try wrapped.foryWrite(
             self,
@@ -269,14 +269,14 @@ public extension WriteContext {
         )
     }
 
-    func writeAnyHashableAnyMap(
+    func writeMapAnyHashableToAny(
         _ value: [AnyHashable: Any]?,
         refMode: RefMode,
         writeTypeInfo: Bool = false,
         hasGenerics: Bool = true
     ) throws {
-        let wrapped = value?.reduce(into: [AnyHashable: DynamicAnyValue]()) { result, pair in
-            result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+        let wrapped = value?.reduce(into: [AnyHashable: SerializableAny]()) { result, pair in
+            result[pair.key] = SerializableAny.wrapped(pair.value)
         }
         try wrapped.foryWrite(
             self,

@@ -23,6 +23,7 @@ import org.apache.fory.config.Config
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.serializer.ImmutableSerializer
+import org.apache.fory.serializer.Shareable
 
 /**
  * UByteSerializer
@@ -31,13 +32,7 @@ import org.apache.fory.serializer.ImmutableSerializer
  */
 public class UByteSerializer(
   config: Config,
-) :
-  ImmutableSerializer<UByte>(
-    config,
-    UByte::class.java,
-    false,
-    true
-  ) {
+) : ImmutableSerializer<UByte>(config, UByte::class.java, false, true), Shareable {
 
   override fun write(writeContext: WriteContext, value: UByte) {
     writeContext.buffer.writeByte(value.toInt())
@@ -46,8 +41,6 @@ public class UByteSerializer(
   override fun read(readContext: ReadContext): UByte {
     return readContext.buffer.readByte().toUByte()
   }
-
-  override fun shareable(): Boolean = true
 }
 
 /**
@@ -57,13 +50,7 @@ public class UByteSerializer(
  */
 public class UShortSerializer(
   config: Config,
-) :
-  ImmutableSerializer<UShort>(
-    config,
-    UShort::class.java,
-    false,
-    true
-  ) {
+) : ImmutableSerializer<UShort>(config, UShort::class.java, false, true), Shareable {
   override fun write(writeContext: WriteContext, value: UShort) {
     writeContext.buffer.writeVarUint32(value.toInt())
   }
@@ -71,8 +58,6 @@ public class UShortSerializer(
   override fun read(readContext: ReadContext): UShort {
     return readContext.buffer.readVarUint32().toUShort()
   }
-
-  override fun shareable(): Boolean = true
 }
 
 /**
@@ -82,13 +67,7 @@ public class UShortSerializer(
  */
 public class UIntSerializer(
   config: Config,
-) :
-  ImmutableSerializer<UInt>(
-    config,
-    UInt::class.java,
-    false,
-    true
-  ) {
+) : ImmutableSerializer<UInt>(config, UInt::class.java, false, true), Shareable {
 
   override fun write(writeContext: WriteContext, value: UInt) {
     writeContext.buffer.writeVarUint32(value.toInt())
@@ -97,8 +76,6 @@ public class UIntSerializer(
   override fun read(readContext: ReadContext): UInt {
     return readContext.buffer.readVarUint32().toUInt()
   }
-
-  override fun shareable(): Boolean = true
 }
 
 /**
@@ -108,13 +85,7 @@ public class UIntSerializer(
  */
 public class ULongSerializer(
   config: Config,
-) :
-  ImmutableSerializer<ULong>(
-    config,
-    ULong::class.java,
-    false,
-    true
-  ) {
+) : ImmutableSerializer<ULong>(config, ULong::class.java, false, true), Shareable {
   override fun write(writeContext: WriteContext, value: ULong) {
     writeContext.buffer.writeVarUint64(value.toLong())
   }
@@ -122,6 +93,4 @@ public class ULongSerializer(
   override fun read(readContext: ReadContext): ULong {
     return readContext.buffer.readVarUint64().toULong()
   }
-
-  override fun shareable(): Boolean = true
 }

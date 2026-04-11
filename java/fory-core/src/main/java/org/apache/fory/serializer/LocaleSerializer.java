@@ -28,7 +28,7 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 
 /** Local serializer for {@link Locale}. */
-public final class LocaleSerializer extends ImmutableSerializer<Locale> {
+public final class LocaleSerializer extends ImmutableSerializer<Locale> implements Shareable {
   // Using `new HashMap<>` to ensure thread safety by java constructor semantics.
   private static final Map<Tuple3<String, String, String>, Locale> LOCALE_CACHE =
       new HashMap<>(createCacheMap());
@@ -102,10 +102,5 @@ public final class LocaleSerializer extends ImmutableSerializer<Locale> {
     return (locale.getLanguage().equals(language)
         && locale.getCountry().equals(country)
         && locale.getVariant().equals(variant));
-  }
-
-  @Override
-  public boolean shareable() {
-    return true;
   }
 }

@@ -31,8 +31,10 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.serializer.Shareable;
 import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -80,6 +82,13 @@ public class RegisterTest extends ForyTestBase {
       MyExt obj = new MyExt();
       obj.id = readContext.getBuffer().readVarInt32();
       return obj;
+    }
+  }
+
+  private static class ShareableMyExtSerializer extends MyExtSerializer implements Shareable {
+
+    public ShareableMyExtSerializer(TypeResolver typeResolver, Class<MyExt> cls) {
+      super(typeResolver, cls);
     }
   }
 
@@ -144,6 +153,47 @@ public class RegisterTest extends ForyTestBase {
     Object intValue = fory.deserialize(fory.serialize(1));
     Assert.assertSame(intValue.getClass(), Integer.class);
     Assert.assertEquals(intValue, 1);
+  }
+
+  @Test
+  public void testShareableSerializerOverrideStaysLocal() {
+    ForyBuilder builder =
+        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);
+
+    TypeResolver resolver1 = fory1.getTypeResolver();
+    TypeResolver resolver2 = fory2.getTypeResolver();
+
+    fory1.register(MyExt.class, 103);
+    fory2.register(MyExt.class, 103);
+    resolver1.registerSerializer(MyExt.class, ShareableMyExtSerializer.class);
+    resolver2.registerSerializer(MyExt.class, ShareableMyExtSerializer.class);
+
+    Assert.assertNotSame(
+        resolver1.getSerializer(MyExt.class), resolver2.getSerializer(MyExt.class));
+  }
+
+  @Test
+  public void testShareableInternalSerializerSharedAcrossRuntimes() {
+    ForyBuilder builder =
+        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);
+
+    TypeResolver resolver1 = fory1.getTypeResolver();
+    TypeResolver resolver2 = fory2.getTypeResolver();
+
+    resolver1.registerInternalSerializer(
+        MyExt.class, new ShareableMyExtSerializer(resolver1, MyExt.class));
+    resolver2.registerInternalSerializer(
+        MyExt.class, new ShareableMyExtSerializer(resolver2, MyExt.class));
+
+    Assert.assertSame(resolver1.getSerializer(MyExt.class), resolver2.getSerializer(MyExt.class));
   }
 
   private static void finishBuilder(ForyBuilder builder) {

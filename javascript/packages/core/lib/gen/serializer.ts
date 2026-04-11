@@ -74,10 +74,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   abstract getFixedSize(): number;
 
   needToWriteRef(): boolean {
-    if (refTrackingUnableTypeId(this.typeInfo.typeId)) {
+    if (refTrackingUnableTypeId(this.getTypeId())) {
       return false;
     }
-    if (this.builder.fory.config.refTracking !== true) {
+    if (this.builder.resolver.config.refTracking !== true) {
       return false;
     }
     if (typeof this.typeInfo.trackingRef === "boolean") {
@@ -133,7 +133,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     if (this.needToWriteRef()) {
       const existsId = this.scope.uniqueName("existsId");
       refFlagStmt = `
-        const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(accessor)};
+        const ${existsId} = ${this.builder.referenceResolver.getWrittenRefId(accessor)};
         if (typeof ${existsId} === "number") {
             ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
             ${this.builder.writer.writeVarUInt32(existsId)}
@@ -170,11 +170,11 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   }
 
   getType() {
-    return this.typeInfo.typeId;
+    return this.getTypeId();
   }
 
   getTypeId() {
-    return this.typeInfo.typeId;
+    return this.builder.resolver.computeTypeId(this.typeInfo);
   }
 
   getUserTypeId() {
@@ -190,10 +190,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   readWithDepth(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
-      fory.incReadDepth();
+      ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
       ${this.read(v => `${result} = ${v}`, refState)};
-      fory.decReadDepth();
+      ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
   }
@@ -228,7 +228,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
                 ${this.readWithDepth(v => `${result} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
-                ${result} = ${this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32())};
+                ${result} = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())};
                 break;
             case ${RefFlags.NullFlag}:
                 ${result} = null;
@@ -248,7 +248,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
                 ${this.readNoRef(assignStmt, `${refFlag} === ${RefFlags.RefValueFlag}`)}
                 break;
             case ${RefFlags.RefFlag}:
-                ${assignStmt(this.builder.referenceResolver.getReadObject(this.builder.reader.readVarUInt32()))}
+                ${assignStmt(this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32()))}
                 break;
             case ${RefFlags.NullFlag}:
                 ${assignStmt("null")}
@@ -280,7 +280,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     this.scope.assertNameNotDuplicate("readInner");
     this.scope.assertNameNotDuplicate("write");
     this.scope.assertNameNotDuplicate("writeInner");
-    this.scope.assertNameNotDuplicate("fory");
+    this.scope.assertNameNotDuplicate("typeResolver");
     this.scope.assertNameNotDuplicate("external");
     this.scope.assertNameNotDuplicate("options");
     this.scope.assertNameNotDuplicate("typeInfo");
@@ -321,7 +321,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       };
     `;
     return `
-        return function (fory, external, typeInfo, options) {
+        return function (typeResolver, external, typeInfo, options) {
             ${this.scope.generate()}
             ${declare}
             return {

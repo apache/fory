@@ -18,21 +18,10 @@
  */
 
 import { Scope } from "./scope";
-import Fory from "../fory";
-
-class TypeMetaBuilder {
-  constructor(private fory: string) {
-
-  }
-
-  fromBytes(reader: string) {
-    return `${this.fory}.typeMeta.fromBytes(${reader})`;
-  }
-}
+import TypeResolver from "../typeResolver";
 
 export class BinaryReaderBuilder {
   constructor(private holder: string) {
-
   }
 
   ownName() {
@@ -158,7 +147,6 @@ export class BinaryReaderBuilder {
 
 class BinaryWriterBuilder {
   constructor(private holder: string) {
-
   }
 
   ownName() {
@@ -245,7 +233,7 @@ class BinaryWriterBuilder {
     return `${this.holder}.writeUint64(${v})`;
   }
 
-  buffer(v: string) { // Accepting Uint8Array as a parameter
+  buffer(v: string) {
     return `${this.holder}.buffer(${v})`;
   }
 
@@ -299,34 +287,40 @@ class BinaryWriterBuilder {
 }
 
 class ReferenceResolverBuilder {
-  constructor(private holder: string) {
-
+  constructor(private readHolder: string, private writeHolder: string) {
   }
 
-  ownName() {
-    return this.holder;
+  ownReadName() {
+    return this.readHolder;
   }
 
-  getReadObject(id: string | number) {
-    return `${this.holder}.getReadObject(${id})`;
+  ownWriteName() {
+    return this.writeHolder;
+  }
+
+  getReadRef(id: string | number) {
+    return `${this.readHolder}.getReadRef(${id})`;
+  }
+
+  readRefFlag() {
+    return `${this.readHolder}.readRefFlag()`;
   }
 
   reference(obj: string) {
-    return `${this.holder}.reference(${obj})`;
+    return `${this.readHolder}.reference(${obj})`;
   }
 
   writeRef(obj: string) {
-    return `${this.holder}.writeRef(${obj})`;
+    return `${this.writeHolder}.writeRef(${obj})`;
   }
 
-  existsWriteObject(obj: string) {
-    return `${this.holder}.existsWriteObject(${obj})`;
+  getWrittenRefId(obj: string) {
+    return `${this.writeHolder}.getWrittenRefId(${obj})`;
   }
 }
 
 class TypeResolverBuilder {
   constructor(private holder: string) {
-
   }
 
   ownName() {
@@ -345,87 +339,83 @@ class TypeResolverBuilder {
   }
 
   getSerializerByData(v: string) {
-    return `${this.holder}.readTag(${v})`;
-  }
-
-  getTypeInfo(v: string) {
-    return `${this.holder}.getTypeInfo("${v}")`;
+    return `${this.holder}.getSerializerByData(${v})`;
   }
 }
 
-class TypeMetaResolverBuilder {
-  constructor(private holder: string) {
-
+class TypeMetaContextBuilder {
+  constructor(private writeHolder: string, private readHolder: string) {
   }
 
-  ownName() {
-    return this.holder;
+  writeTypeMeta(typeInfo: string, bytes: string) {
+    return `${this.writeHolder}.writeTypeMeta(${typeInfo}, ${bytes})`;
   }
 
-  writeTypeMeta(typeInfo: string, writer: string, bytes: string) {
-    return `${this.holder}.writeTypeMeta(${typeInfo}, ${writer}, ${bytes})`;
+  readTypeMeta() {
+    return `${this.readHolder}.readTypeMeta()`;
   }
 
-  readTypeMeta(reader: string) {
-    return `${this.holder}.readTypeMeta(${reader})`;
-  }
-
-  genSerializerByTypeMetaRuntime(typeMeta: string) {
-    return `${this.holder}.genSerializerByTypeMetaRuntime(${typeMeta})`;
+  genSerializerByTypeMetaRuntime(typeMeta: string, original?: string) {
+    if (original) {
+      return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta}, ${original})`;
+    }
+    return `${this.readHolder}.genSerializerByTypeMetaRuntime(${typeMeta})`;
   }
 }
 
-class MetaStringResolverBuilder {
-  constructor(private holder: string) {
-
+class MetaStringContextBuilder {
+  constructor(
+    private writeContextHolder: string,
+    private readContextHolder: string,
+    private writeHelperHolder: string,
+  ) {
   }
 
-  ownName() {
-    return this.holder;
+  writeBytes(bytes: string) {
+    return `${this.writeContextHolder}.writeMetaStringBytes(${bytes})`;
   }
 
-  writeBytes(writer: string, bytes: string) {
-    return `${this.holder}.writeBytes(${writer}, ${bytes})`;
+  readTypeName() {
+    return `${this.readContextHolder}.readTypeName()`;
   }
 
-  readTypeName(reader: string) {
-    return `${this.holder}.readTypeName(${reader})`;
-  }
-
-  readNamespace(reader: string) {
-    return `${this.holder}.readNamespace(${reader})`;
+  readNamespace() {
+    return `${this.readContextHolder}.readNamespace()`;
   }
 
   encodeNamespace(input: string) {
-    return `${this.holder}.encodeNamespace("${input}")`;
+    return `${this.writeHelperHolder}.encodeNamespace("${input}")`;
   }
 
   encodeTypeName(input: string) {
-    return `${this.holder}.encodeTypeName("${input}")`;
+    return `${this.writeHelperHolder}.encodeTypeName("${input}")`;
   }
 }
 
 export class CodecBuilder {
-  reader: BinaryReaderBuilder;
-  writer: BinaryWriterBuilder;
-  typeMeta: TypeMetaBuilder; // Use the TypeMetaWrapper
-  referenceResolver: ReferenceResolverBuilder;
-  typeResolver: TypeResolverBuilder;
-  typeMetaResolver: TypeMetaResolverBuilder;
-  metaStringResolver: MetaStringResolverBuilder;
+  readonly reader: BinaryReaderBuilder;
+  readonly writer: BinaryWriterBuilder;
+  readonly referenceResolver: ReferenceResolverBuilder;
+  readonly typeResolver: TypeResolverBuilder;
+  readonly typeMetaResolver: TypeMetaContextBuilder;
+  readonly metaStringResolver: MetaStringContextBuilder;
 
-  constructor(scope: Scope, public fory: Fory) {
-    const br = scope.declareByName("br", "fory.binaryReader");
-    const bw = scope.declareByName("bw", "fory.binaryWriter");
-    const cr = scope.declareByName("cr", "fory.typeResolver");
-    const rr = scope.declareByName("rr", "fory.referenceResolver");
+  constructor(scope: Scope, readonly resolver: TypeResolver) {
+    const writeContext = scope.declareByName("writeContext", "typeResolver.writeContext");
+    const readContext = scope.declareByName("readContext", "typeResolver.readContext");
+    const br = scope.declareByName("br", "readContext.reader");
+    const bw = scope.declareByName("bw", "writeContext.writer");
+    const cr = scope.declareByName("cr", "typeResolver");
+    const rw = scope.declareByName("rw", "writeContext.refWriter");
+    const rr = scope.declareByName("rr", "readContext.refReader");
+    const mw = scope.declareByName("mw", "writeContext.metaStringWriter");
+    scope.declareByName("mr", "readContext.metaStringReader");
     this.reader = new BinaryReaderBuilder(br);
     this.writer = new BinaryWriterBuilder(bw);
     this.typeResolver = new TypeResolverBuilder(cr);
-    this.referenceResolver = new ReferenceResolverBuilder(rr);
-    this.typeMeta = new TypeMetaBuilder("fory"); // Initialize the TypeMetaWrapper
-    this.typeMetaResolver = new TypeMetaResolverBuilder("fory.typeMetaResolver");
-    this.metaStringResolver = new MetaStringResolverBuilder("fory.metaStringResolver");
+    this.referenceResolver = new ReferenceResolverBuilder(rr, rw);
+    this.typeMetaResolver = new TypeMetaContextBuilder(writeContext, readContext);
+    this.metaStringResolver = new MetaStringContextBuilder(writeContext, readContext, mw);
   }
 
   static isReserved(key: string) {
@@ -461,8 +451,16 @@ export class CodecBuilder {
     return prop;
   }
 
-  getForyName() {
-    return "fory";
+  getTypeResolverName() {
+    return "typeResolver";
+  }
+
+  getWriteContextName() {
+    return "writeContext";
+  }
+
+  getReadContextName() {
+    return "readContext";
   }
 
   getExternal(key: string) {

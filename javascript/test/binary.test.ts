@@ -28,7 +28,7 @@ describe('binary', () => {
         })
 
         const fory = new Fory({ refTracking: true });    
-        const serializer = fory.registerSerializer(typeinfo).serializer;
+        const serializer = fory.register(typeinfo).serializer;
         const input = fory.serialize({ a: new Uint8Array([1, 2, 3]) }, serializer);
         const result = fory.deserialize(
             input

@@ -20,8 +20,10 @@
 import Fory, {
   BinaryReader,
   BinaryWriter,
+  ReadContext,
   Type,
   Dynamic,
+  WriteContext,
 } from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 import * as fs from "node:fs";
@@ -199,7 +201,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 7 test strings
       const deserializedString = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedStrings.push(deserializedString);
     }
     const bfs = []
@@ -223,13 +225,13 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    const { serialize: colorSerialize } = fory.registerSerializer(Type.enum(101, Color));
+    const { serialize: colorSerialize } = fory.register(Type.enum(101, Color));
     // Deserialize various data types from Java
     const deserializedData = [];
     let cursor = 0;
     for (let i = 0; i < 27; i++) { // 28 serialized items from Java
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -278,7 +280,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory.registerSerializer(Type.enum(101, Color));
+    fory.register(Type.enum(101, Color));
 
     // Define Item class with field type registration
     @Type.struct(102, {
@@ -287,7 +289,7 @@ describe("bool", () => {
     class Item {
       name: string = "";
     }
-    fory.registerSerializer(Item);
+    fory.register(Item);
 
     // Define SimpleStruct class with field type registration
     @Type.struct(103, {
@@ -312,7 +314,7 @@ describe("bool", () => {
       f8: number = 0;
       last: number = 0;
     }
-    fory.registerSerializer(SimpleStruct);
+    fory.register(SimpleStruct);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -338,7 +340,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory.registerSerializer(Type.enum({ namespace: 'demo', typeName: "color" }, Color));
+    fory.register(Type.enum({ namespace: 'demo', typeName: "color" }, Color));
 
     // Define Item class with field type registration
     @Type.struct({ namespace: "demo", typeName: "item" }, {
@@ -347,7 +349,7 @@ describe("bool", () => {
     class Item {
       name: string = "";
     }
-    fory.registerSerializer(Item);
+    fory.register(Item);
 
     // Define SimpleStruct class with field type registration
     @Type.struct({ namespace: "demo", typeName: "simple_struct" }, {
@@ -372,7 +374,7 @@ describe("bool", () => {
       f8: number = 0;
       last: number = 0;
     }
-    fory.registerSerializer(SimpleStruct);
+    fory.register(SimpleStruct);
 
     // Deserialize the object from Java
     const deserializedObj = fory.deserialize(content);
@@ -392,7 +394,7 @@ describe("bool", () => {
     class EvolvingOverrideStruct {
       f1: string = "";
     }
-    fory.registerSerializer(EvolvingOverrideStruct);
+    fory.register(EvolvingOverrideStruct);
 
     @Type.struct({ namespace: "test", typeName: "evolving_off", evolving: false }, {
       f1: Type.string()
@@ -400,13 +402,13 @@ describe("bool", () => {
     class FixedOverrideStruct {
       f1: string = "";
     }
-    fory.registerSerializer(FixedOverrideStruct);
+    fory.register(FixedOverrideStruct);
 
     let cursor = 0;
     const evolving = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
     const fixed = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     expect(evolving).toEqual({ f1: "payload" });
     expect(fixed).toEqual({ f1: "payload" });
@@ -429,7 +431,7 @@ describe("bool", () => {
     class Item {
       name: string = "";
     }
-    fory.registerSerializer(Item);
+    fory.register(Item);
 
 
     // Deserialize all lists from Java
@@ -437,7 +439,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 lists
       const deserializedList = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedLists.push(deserializedList);
     }
 
@@ -463,14 +465,14 @@ describe("bool", () => {
       name: string = "";
     }
 
-    fory.registerSerializer(Item);
+    fory.register(Item);
 
     // Deserialize maps from Java
     const deserializedMaps = [];
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 maps
       const deserializedMap = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedMaps.push(deserializedMap);
     }
 
@@ -507,7 +509,7 @@ describe("bool", () => {
       f6: number | null = null;
     }
 
-    fory.registerSerializer(Item1);
+    fory.register(Item1);
 
 
     // Deserialize item and individual integers from Java
@@ -515,7 +517,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 7; i++) { // 1 item + 6 integers
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -540,7 +542,7 @@ describe("bool", () => {
     class Item {
       name: string = "";
     }
-    fory.registerSerializer(Item);
+    fory.register(Item);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -550,7 +552,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 3; i++) { // 3 items
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedItems.push(deserializedItem);
     }
 
@@ -576,7 +578,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    const { serialize: enumSerialize } = fory.registerSerializer(Type.enum(101, Color));
+    const { serialize: enumSerialize } = fory.register(Type.enum(101, Color));
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -586,7 +588,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 4; i++) { // 4 colors
       const deserializedColor = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedColors.push(deserializedColor);
     }
 
@@ -612,7 +614,7 @@ describe("bool", () => {
     class StructWithList {
       items: (string | null)[] = [];
     }
-    fory.registerSerializer(StructWithList);
+    fory.register(StructWithList);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -622,7 +624,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
       const deserializedStruct = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -649,7 +651,7 @@ describe("bool", () => {
     class StructWithMap {
       data: Map<string | null, string | null> = new Map();
     }
-    fory.registerSerializer(StructWithMap);
+    fory.register(StructWithMap);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -659,7 +661,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // 2 structs
       const deserializedStruct = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedStructs.push(deserializedStruct);
     }
 
@@ -706,8 +708,8 @@ describe("bool", () => {
       map_field: Map<string, RefOverrideElement> = new Map();
     }
 
-    fory.registerSerializer(RefOverrideElement);
-    fory.registerSerializer(RefOverrideContainer);
+    fory.register(RefOverrideElement);
+    fory.register(RefOverrideContainer);
 
     const outer = fory.deserialize(content);
     console.log("Deserialized:", outer);
@@ -735,19 +737,19 @@ describe("bool", () => {
     class MyExt {
       id: number = 0;
     }
-    fory1.registerSerializer(MyExt, {
-      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.writeVarInt32(value.id);
+    fory1.register(MyExt, {
+      write: (writeContext: WriteContext, value: MyExt) => {
+        writeContext.writeVarInt32(value.id);
       },
-      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.readVarInt32();
+      read: (readContext: ReadContext, result: MyExt) => {
+        result.id = readContext.readVarInt32();
       }
     });
 
     // Define empty wrapper for deserialization
     @Type.struct(104)
     class Empty { }
-    fory1.registerSerializer(Empty);
+    fory1.register(Empty);
 
     const fory2 = new Fory({
       compatible: true
@@ -760,7 +762,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory2.registerSerializer(Type.enum(101, Color));
+    fory2.register(Type.enum(101, Color));
 
     @Type.struct(102, {
       id: Type.varInt32()
@@ -768,14 +770,14 @@ describe("bool", () => {
     class MyStruct {
       id: number = 0;
     }
-    fory2.registerSerializer(MyStruct);
+    fory2.register(MyStruct);
 
-    fory2.registerSerializer(MyExt, {
-      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.writeVarInt32(value.id);
+    fory2.register(MyExt, {
+      write: (writeContext: WriteContext, value: MyExt) => {
+        writeContext.writeVarInt32(value.id);
       },
-      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.readVarInt32();
+      read: (readContext: ReadContext, result: MyExt) => {
+        result.id = readContext.readVarInt32();
       }
     });
 
@@ -789,13 +791,13 @@ describe("bool", () => {
       myStruct: MyStruct = new MyStruct();
       myExt: MyExt = new MyExt();
     }
-    fory2.registerSerializer(MyWrapper);
+    fory2.register(MyWrapper);
 
 
     // Deserialize empty from Java
     let cursor = 0;
     const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
-    cursor += fory1.binaryReader.readGetCursor();
+    cursor += fory1.readContext.reader.readGetCursor();
     expect(deserializedEmpty instanceof Empty).toEqual(true);
 
     // Create wrapper object
@@ -820,19 +822,19 @@ describe("bool", () => {
     class MyExt {
       id: number = 0;
     }
-    fory1.registerSerializer(MyExt, {
-      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.writeVarInt32(value.id);
+    fory1.register(MyExt, {
+      write: (writeContext: WriteContext, value: MyExt) => {
+        writeContext.writeVarInt32(value.id);
       },
-      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.readVarInt32();
+      read: (readContext: ReadContext, result: MyExt) => {
+        result.id = readContext.readVarInt32();
       }
     });
 
     // Define empty wrapper for deserialization
     @Type.struct("my_wrapper")
     class Empty { }
-    fory1.registerSerializer(Empty);
+    fory1.register(Empty);
 
     const fory2 = new Fory({
       compatible: true
@@ -845,7 +847,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    fory2.registerSerializer(Type.enum("color", Color));
+    fory2.register(Type.enum("color", Color));
 
     @Type.struct("my_struct", {
       id: Type.varInt32()
@@ -853,14 +855,14 @@ describe("bool", () => {
     class MyStruct {
       id: number = 0;
     }
-    fory2.registerSerializer(MyStruct);
+    fory2.register(MyStruct);
 
-    fory2.registerSerializer(MyExt, {
-      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.writeVarInt32(value.id);
+    fory2.register(MyExt, {
+      write: (writeContext: WriteContext, value: MyExt) => {
+        writeContext.writeVarInt32(value.id);
       },
-      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.readVarInt32();
+      read: (readContext: ReadContext, result: MyExt) => {
+        result.id = readContext.readVarInt32();
       }
     });
 
@@ -874,13 +876,13 @@ describe("bool", () => {
       myStruct: MyStruct = new MyStruct();
       myExt: MyExt = new MyExt();
     }
-    fory2.registerSerializer(MyWrapper);
+    fory2.register(MyWrapper);
 
 
     // Deserialize empty from Java
     let cursor = 0;
     const deserializedEmpty = fory1.deserialize(content.subarray(cursor));
-    cursor += fory1.binaryReader.readGetCursor();
+    cursor += fory1.readContext.reader.readGetCursor();
     expect(deserializedEmpty instanceof Empty).toEqual(true);
 
     // Create wrapper object
@@ -908,7 +910,7 @@ describe("bool", () => {
       Blue: 2,
       White: 3,
     };
-    const { serialize: enumSerialize } = fory.registerSerializer(Type.enum({ namespace: "", typeName: "color" }, Color));
+    const { serialize: enumSerialize } = fory.register(Type.enum({ namespace: "", typeName: "color" }, Color));
 
     @Type.struct({ namespace: "", typeName: "my_struct" }, {
       id: Type.varInt32()
@@ -916,18 +918,18 @@ describe("bool", () => {
     class MyStruct {
       id: number = 0;
     }
-    fory.registerSerializer(MyStruct);
+    fory.register(MyStruct);
 
     @Type.ext({ namespace: "", typeName: "my_ext" })
     class MyExt {
       id: number = 0;
     }
-    fory.registerSerializer(MyExt, {
-      write: (value: MyExt, writer: BinaryWriter, fory: Fory) => {
-        writer.writeVarInt32(value.id);
+    fory.register(MyExt, {
+      write: (writeContext: WriteContext, value: MyExt) => {
+        writeContext.writeVarInt32(value.id);
       },
-      read: (result: MyExt, reader: BinaryReader, fory: Fory) => {
-        result.id = reader.readVarInt32();
+      read: (readContext: ReadContext, result: MyExt) => {
+        result.id = readContext.readVarInt32();
       }
     });
 
@@ -936,7 +938,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 9; i++) { // 3 colors + 3 structs + 3 exts
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -972,7 +974,7 @@ describe("bool", () => {
       f2: string | null = null;
       f3: number = 0;
     }
-    fory.registerSerializer(VersionCheckStruct);
+    fory.register(VersionCheckStruct);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -980,7 +982,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1001,7 +1003,7 @@ describe("bool", () => {
       age: number = 0;
       name: string | null = null;
     }
-    fory.registerSerializer(Dog);
+    fory.register(Dog);
 
     @Type.struct(303, {
       age: Type.varInt32(),
@@ -1011,7 +1013,7 @@ describe("bool", () => {
       age: number = 0;
       lives: number = 0;
     }
-    fory.registerSerializer(Cat);
+    fory.register(Cat);
 
     @Type.struct(304, {
       animals: Type.array(Type.any()) // Polymorphic array
@@ -1019,7 +1021,7 @@ describe("bool", () => {
     class AnimalListHolder {
       animals: (Dog | Cat)[] = [];
     }
-    fory.registerSerializer(AnimalListHolder);
+    fory.register(AnimalListHolder);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1029,7 +1031,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // animals array + holder
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -1060,7 +1062,7 @@ describe("bool", () => {
       age: number = 0;
       name: string | null = null;
     }
-    fory.registerSerializer(Dog);
+    fory.register(Dog);
 
     @Type.struct(303, {
       age: Type.varInt32(),
@@ -1070,7 +1072,7 @@ describe("bool", () => {
       age: number = 0;
       lives: number = 0;
     }
-    fory.registerSerializer(Cat);
+    fory.register(Cat);
 
     @Type.struct(305, {
       animal_map: Type.map(Type.string(), Type.any()) // Polymorphic map
@@ -1078,7 +1080,7 @@ describe("bool", () => {
     class AnimalMapHolder {
       animal_map: Map<string, Dog | Cat> = new Map();
     }
-    fory.registerSerializer(AnimalMapHolder);
+    fory.register(AnimalMapHolder);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1088,7 +1090,7 @@ describe("bool", () => {
     let cursor = 0;
     for (let i = 0; i < 2; i++) { // animal map + holder
       const deserializedItem = fory.deserialize(content.subarray(cursor));
-      cursor += fory.binaryReader.readGetCursor();
+      cursor += fory.readContext.reader.readGetCursor();
       deserializedData.push(deserializedItem);
     }
 
@@ -1115,12 +1117,12 @@ describe("bool", () => {
       @Type.string().setNullable(true)
       f1: string | null = null;
     }
-    fory.registerSerializer(OneStringFieldStruct);
+    fory.register(OneStringFieldStruct);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1137,7 +1139,7 @@ describe("bool", () => {
     class OneStringFieldStruct {
       f1: string | null = null;
     }
-    fory.registerSerializer(OneStringFieldStruct);
+    fory.register(OneStringFieldStruct);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1145,7 +1147,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1165,12 +1167,12 @@ describe("bool", () => {
       f1: string = "";
       f2: string = "";
     }
-    fory.registerSerializer(TwoStringFieldStruct);
+    fory.register(TwoStringFieldStruct);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1189,12 +1191,12 @@ describe("bool", () => {
       @Type.string()
       f2: string = "";
     }
-    fory.registerSerializer(TwoStringFieldStruct);
+    fory.register(TwoStringFieldStruct);
 
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1208,12 +1210,12 @@ describe("bool", () => {
 
     @Type.struct(200)
     class EmptyStruct { }
-    fory.registerSerializer(EmptyStruct);
+    fory.register(EmptyStruct);
 
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1230,7 +1232,7 @@ describe("bool", () => {
       VALUE_B: 1,
       VALUE_C: 2,
     };
-    fory.registerSerializer(Type.enum(210, TestEnum));
+    fory.register(Type.enum(210, TestEnum));
 
     @Type.struct(211, {
       f1: Type.enum(210, TestEnum)
@@ -1238,7 +1240,7 @@ describe("bool", () => {
     class OneEnumFieldStruct {
       f1: number = 0; // enum value
     }
-    fory.registerSerializer(OneEnumFieldStruct);
+    fory.register(OneEnumFieldStruct);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1246,7 +1248,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1264,7 +1266,7 @@ describe("bool", () => {
       VALUE_B: 1,
       VALUE_C: 2,
     };
-    fory.registerSerializer(Type.enum(210, TestEnum));
+    fory.register(Type.enum(210, TestEnum));
 
     @Type.struct(211, {
       f1: Type.enum(210, TestEnum)
@@ -1272,12 +1274,12 @@ describe("bool", () => {
     class OneEnumFieldStruct {
       f1: number = 0; // enum value
     }
-    fory.registerSerializer(OneEnumFieldStruct);
+    fory.register(OneEnumFieldStruct);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1295,7 +1297,7 @@ describe("bool", () => {
       VALUE_B: 1,
       VALUE_C: 2,
     };
-    fory.registerSerializer(Type.enum(210, TestEnum));
+    fory.register(Type.enum(210, TestEnum));
 
     @Type.struct(212, {
       f1: Type.enum(210, TestEnum),
@@ -1305,12 +1307,12 @@ describe("bool", () => {
       f1: number = 0; // enum value
       f2: number = 0; // enum value
     }
-    fory.registerSerializer(TwoEnumFieldStruct);
+    fory.register(TwoEnumFieldStruct);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1328,7 +1330,7 @@ describe("bool", () => {
       VALUE_B: 1,
       VALUE_C: 2,
     };
-    fory.registerSerializer(Type.enum(210, TestEnum));
+    fory.register(Type.enum(210, TestEnum));
 
     @Type.struct(211, {
       f1: Type.enum(210, TestEnum),
@@ -1338,12 +1340,12 @@ describe("bool", () => {
       f1: number = 0; // enum value
       f2: number = 0; // enum value
     }
-    fory.registerSerializer(TwoEnumFieldStruct);
+    fory.register(TwoEnumFieldStruct);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1362,16 +1364,16 @@ describe("bool", () => {
       VALUE_B: 1,
       VALUE_C: 2,
     };
-    fory.registerSerializer(Type.enum(210, TestEnum));
+    fory.register(Type.enum(210, TestEnum));
 
     @Type.struct(211)
     class EmptyStruct { }
-    fory.registerSerializer(EmptyStruct);
+    fory.register(EmptyStruct);
 
     // Deserialize empty struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1518,12 +1520,12 @@ describe("bool", () => {
       compatible: false
     });
 
-    fory.registerSerializer(buildClassConsistent(401));
+    fory.register(buildClassConsistent(401));
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1535,7 +1537,7 @@ describe("bool", () => {
     const fory = new Fory({
       compatible: false
     });
-    fory.registerSerializer(buildClassConsistent());
+    fory.register(buildClassConsistent());
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1543,7 +1545,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1556,12 +1558,12 @@ describe("bool", () => {
       compatible: true
     });
 
-    fory.registerSerializer(buildClass());
+    fory.register(buildClass());
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1573,7 +1575,7 @@ describe("bool", () => {
       compatible: true
     });
 
-    fory.registerSerializer(buildClass());
+    fory.register(buildClass());
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1581,7 +1583,7 @@ describe("bool", () => {
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct: InstanceType<ReturnType<typeof buildClass>> | null = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     if (deserializedStruct === null) {
       throw new Error("deserializedStruct is null");
@@ -1605,7 +1607,7 @@ describe("bool", () => {
       id: number = 0;
       name: string = "";
     }
-    fory.registerSerializer(RefInner);
+    fory.register(RefInner);
 
     @Type.struct(502, {
       inner1: Type.struct(501).setTrackingRef(true).setNullable(true).setDynamic(Dynamic.FALSE),
@@ -1616,12 +1618,12 @@ describe("bool", () => {
 
       inner2: RefInner | null = null;
     }
-    fory.registerSerializer(RefOuter);
+    fory.register(RefOuter);
 
     // Deserialize outer struct from Java
     let cursor = 0;
     const deserializedOuter = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1642,7 +1644,7 @@ describe("bool", () => {
       id: number = 0;
       name: string = "";
     }
-    fory.registerSerializer(RefInner);
+    fory.register(RefInner);
 
     @Type.struct(504, {
       inner1: Type.struct(503).setTrackingRef(true).setNullable(true),
@@ -1652,13 +1654,13 @@ describe("bool", () => {
       inner1: RefInner | null = null;
       inner2: RefInner | null = null;
     }
-    fory.registerSerializer(RefOuter);
+    fory.register(RefOuter);
 
 
     // Deserialize outer struct from Java
     let cursor = 0;
     const deserializedOuter = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized outer struct back
     const serializedData = fory.serialize(deserializedOuter);
@@ -1679,7 +1681,7 @@ describe("bool", () => {
       name: string = "";
       selfRef: CircularRefStruct | null = null;
     }
-    fory.registerSerializer(CircularRefStruct);
+    fory.register(CircularRefStruct);
 
     const reader = new BinaryReader({});
     reader.reset(content);
@@ -1687,7 +1689,7 @@ describe("bool", () => {
     // Deserialize circular struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1708,12 +1710,12 @@ describe("bool", () => {
       name: string = "";
       selfRef: CircularRefStruct | null = null;
     }
-    fory.registerSerializer(CircularRefStruct);
+    fory.register(CircularRefStruct);
 
     // Deserialize circular struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1734,12 +1736,12 @@ describe("bool", () => {
 
       u64TaggedNullable: bigint | null = null;
     }
-    fory.registerSerializer(UnsignedSchemaConsistentSimple);
+    fory.register(UnsignedSchemaConsistentSimple);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);
@@ -1790,12 +1792,12 @@ describe("bool", () => {
       @(Type.taggedUInt64().setNullable(true))
       u64TaggedNullableField: bigint = 0n;
     }
-    fory.registerSerializer(UnsignedSchemaConsistent);
+    fory.register(UnsignedSchemaConsistent);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedBackData = fory.serialize(deserializedStruct);
@@ -1846,12 +1848,12 @@ describe("bool", () => {
       @(Type.taggedUInt64().setNullable(true))
       u64TaggedField2: bigint = 0n;
     }
-    fory.registerSerializer(UnsignedSchemaCompatible);
+    fory.register(UnsignedSchemaCompatible);
 
     // Deserialize struct from Java
     let cursor = 0;
     const deserializedStruct = fory.deserialize(content.subarray(cursor));
-    cursor += fory.binaryReader.readGetCursor();
+    cursor += fory.readContext.reader.readGetCursor();
 
     // Serialize the deserialized struct back
     const serializedData = fory.serialize(deserializedStruct);

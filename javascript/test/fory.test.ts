@@ -81,7 +81,7 @@ describe('fory', () => {
 
     function testTypeInfo(typeinfo: TypeInfo, input: any, expected?: any) {
         const fory = new Fory();
-        const serialize = fory.registerSerializer(typeinfo);
+        const serialize = fory.register(typeinfo);
         const result = serialize.deserialize(
             serialize.serialize(input)
         );

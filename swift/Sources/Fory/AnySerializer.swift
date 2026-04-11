@@ -117,15 +117,15 @@ extension Optional: OptionalTypeMarker {
     static var noneValue: Wrapped? { nil }
 }
 
-struct DynamicAnyValue: Serializer {
+struct SerializableAny: Serializer {
     var value: Any = ForyAnyNullValue()
 
     init(_ value: Any) {
         self.value = value
     }
 
-    static func foryDefault() -> DynamicAnyValue {
-        DynamicAnyValue(ForyAnyNullValue())
+    static func foryDefault() -> SerializableAny {
+        SerializableAny(ForyAnyNullValue())
     }
 
     static var staticTypeId: TypeId {
@@ -144,7 +144,7 @@ struct DynamicAnyValue: Serializer {
         value is ForyAnyNullValue
     }
 
-    static func wrapped(_ value: Any?) -> DynamicAnyValue {
+    static func wrapped(_ value: Any?) -> SerializableAny {
         guard let value else {
             return .foryDefault()
         }
@@ -154,7 +154,7 @@ struct DynamicAnyValue: Serializer {
         if unwrapped is NSNull {
             return .foryDefault()
         }
-        return DynamicAnyValue(unwrapped)
+        return SerializableAny(unwrapped)
     }
 
     func anyValue() -> Any? {
@@ -172,19 +172,19 @@ struct DynamicAnyValue: Serializer {
         try writeAnyPayload(value, context: context, hasGenerics: hasGenerics)
     }
 
-    static func foryReadData(_ context: ReadContext) throws -> DynamicAnyValue {
+    static func foryReadData(_ context: ReadContext) throws -> SerializableAny {
         _ = context
         throw ForyError.invalidData(
             "dynamic Any read requires type info; foryReadData should not be called directly"
         )
     }
 
-    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> DynamicAnyValue {
+    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> SerializableAny {
         let typeInfo = remoteTypeInfo
         if typeInfo.typeID == .none {
             return .foryDefault()
         }
-        return DynamicAnyValue(try context.readAnyValue(typeInfo: typeInfo))
+        return SerializableAny(try context.readAnyValue(typeInfo: typeInfo))
     }
 
     static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
@@ -234,7 +234,7 @@ struct DynamicAnyValue: Serializer {
         _ context: ReadContext,
         refMode: RefMode,
         readTypeInfo: Bool
-    ) throws -> DynamicAnyValue {
+    ) throws -> SerializableAny {
         @inline(__always)
         func requireDynamicTypeInfo() throws -> TypeInfo {
             if readTypeInfo {
@@ -261,13 +261,13 @@ struct DynamicAnyValue: Serializer {
             case .ref:
                 let refID = try context.buffer.readVarUInt32()
                 let referenced = try context.refReader.readRefValue(refID)
-                if let value = referenced as? DynamicAnyValue {
+                if let value = referenced as? SerializableAny {
                     return value
                 }
                 if referenced is NSNull {
                     return .foryDefault()
                 }
-                return DynamicAnyValue(referenced)
+                return SerializableAny(referenced)
             case .refValue:
                 let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
                 let remoteTypeInfo = try requireDynamicTypeInfo()
@@ -343,22 +343,22 @@ private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: B
         return
     }
     if let list = value as? [Any] {
-        try writeAnyList(list, context: context, refMode: .none, hasGenerics: hasGenerics)
+        try writeListOfAny(list, context: context, refMode: .none, hasGenerics: hasGenerics)
         return
     }
     if let map = value as? [String: Any] {
         // Always include key type info for dynamic map payload.
-        try writeStringAnyMap(map, context: context, refMode: .none, hasGenerics: false)
+        try writeMapStringToAny(map, context: context, refMode: .none, hasGenerics: false)
         return
     }
     if let map = value as? [Int32: Any] {
         // Always include key type info for dynamic map payload.
-        try writeInt32AnyMap(map, context: context, refMode: .none, hasGenerics: false)
+        try writeMapInt32ToAny(map, context: context, refMode: .none, hasGenerics: false)
         return
     }
     if let map = value as? [AnyHashable: Any] {
         // Always include key type info for dynamic map payload.
-        try writeAnyHashableAnyMap(map, context: context, refMode: .none, hasGenerics: false)
+        try writeMapAnyHashableToAny(map, context: context, refMode: .none, hasGenerics: false)
         return
     }
     throw ForyError.invalidData("unsupported dynamic Any runtime type \(type(of: value))")
@@ -401,7 +401,7 @@ public func writeAny(
     writeTypeInfo: Bool = true,
     hasGenerics: Bool = false
 ) throws {
-    try DynamicAnyValue.wrapped(value).foryWrite(
+    try SerializableAny.wrapped(value).foryWrite(
         context,
         refMode: refMode,
         writeTypeInfo: writeTypeInfo,
@@ -414,17 +414,17 @@ public func readAny(
     refMode: RefMode,
     readTypeInfo: Bool = true
 ) throws -> Any? {
-    try DynamicAnyValue.foryRead(context, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
+    try SerializableAny.foryRead(context, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
 }
 
-public func writeAnyList(
+public func writeListOfAny(
     _ value: [Any]?,
     context: WriteContext,
     refMode: RefMode,
     writeTypeInfo: Bool = false,
     hasGenerics: Bool = true
 ) throws {
-    let wrapped = value?.map { DynamicAnyValue.wrapped($0) }
+    let wrapped = value?.map { SerializableAny.wrapped($0) }
     try wrapped.foryWrite(
         context,
         refMode: refMode,
@@ -433,12 +433,12 @@ public func writeAnyList(
     )
 }
 
-public func readAnyList(
+public func readListOfAny(
     context: ReadContext,
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [Any]? {
-    let wrapped: [DynamicAnyValue]? = try [DynamicAnyValue]?.foryRead(
+    let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
         context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -446,15 +446,15 @@ public func readAnyList(
     return wrapped?.map { $0.anyValueForCollection() }
 }
 
-public func writeStringAnyMap(
+public func writeMapStringToAny(
     _ value: [String: Any]?,
     context: WriteContext,
     refMode: RefMode,
     writeTypeInfo: Bool = false,
     hasGenerics: Bool = true
 ) throws {
-    let wrapped = value?.reduce(into: [String: DynamicAnyValue]()) { result, pair in
-        result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+    let wrapped = value?.reduce(into: [String: SerializableAny]()) { result, pair in
+        result[pair.key] = SerializableAny.wrapped(pair.value)
     }
     try wrapped.foryWrite(
         context,
@@ -464,12 +464,12 @@ public func writeStringAnyMap(
     )
 }
 
-public func readStringAnyMap(
+public func readMapStringToAny(
     context: ReadContext,
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [String: Any]? {
-    let wrapped: [String: DynamicAnyValue]? = try [String: DynamicAnyValue]?.foryRead(
+    let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
         context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -485,15 +485,15 @@ public func readStringAnyMap(
     return map
 }
 
-public func writeInt32AnyMap(
+public func writeMapInt32ToAny(
     _ value: [Int32: Any]?,
     context: WriteContext,
     refMode: RefMode,
     writeTypeInfo: Bool = false,
     hasGenerics: Bool = true
 ) throws {
-    let wrapped = value?.reduce(into: [Int32: DynamicAnyValue]()) { result, pair in
-        result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+    let wrapped = value?.reduce(into: [Int32: SerializableAny]()) { result, pair in
+        result[pair.key] = SerializableAny.wrapped(pair.value)
     }
     try wrapped.foryWrite(
         context,
@@ -503,12 +503,12 @@ public func writeInt32AnyMap(
     )
 }
 
-public func readInt32AnyMap(
+public func readMapInt32ToAny(
     context: ReadContext,
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [Int32: Any]? {
-    let wrapped: [Int32: DynamicAnyValue]? = try [Int32: DynamicAnyValue]?.foryRead(
+    let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
         context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -524,15 +524,15 @@ public func readInt32AnyMap(
     return map
 }
 
-public func writeAnyHashableAnyMap(
+public func writeMapAnyHashableToAny(
     _ value: [AnyHashable: Any]?,
     context: WriteContext,
     refMode: RefMode,
     writeTypeInfo: Bool = false,
     hasGenerics: Bool = true
 ) throws {
-    let wrapped = value?.reduce(into: [AnyHashable: DynamicAnyValue]()) { result, pair in
-        result[pair.key] = DynamicAnyValue.wrapped(pair.value)
+    let wrapped = value?.reduce(into: [AnyHashable: SerializableAny]()) { result, pair in
+        result[pair.key] = SerializableAny.wrapped(pair.value)
     }
     try wrapped.foryWrite(
         context,
@@ -542,12 +542,12 @@ public func writeAnyHashableAnyMap(
     )
 }
 
-public func readAnyHashableAnyMap(
+public func readMapAnyHashableToAny(
     context: ReadContext,
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [AnyHashable: Any]? {
-    let wrapped: [AnyHashable: DynamicAnyValue]? = try [AnyHashable: DynamicAnyValue]?.foryRead(
+    let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
         context,
         refMode: refMode,
         readTypeInfo: readTypeInfo
@@ -564,7 +564,7 @@ public func readAnyHashableAnyMap(
 }
 
 func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
-    let map = try readAnyHashableAnyMap(context: context, refMode: .none) ?? [:]
+    let map = try readMapAnyHashableToAny(context: context, refMode: .none) ?? [:]
     if map.isEmpty {
         return [String: Any]()
     }

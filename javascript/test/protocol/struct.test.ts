@@ -25,7 +25,7 @@ describe('protocol', () => {
     test('should polymorphic work', () => {
 
         const fory = new Fory({ refTracking: true });
-        const { serialize, deserialize } = fory.registerSerializer(Type.struct({
+        const { serialize, deserialize } = fory.register(Type.struct({
             typeName: "example.foo"
         }, {
             foo: Type.string(),
@@ -53,7 +53,7 @@ describe('protocol', () => {
         }, {
             a: Type.string(),
         });
-        const nonNullableSer = fory.registerSerializer(nonNullable);
+        const nonNullableSer = fory.register(nonNullable);
         expect(() => nonNullableSer.serialize({ a: null })).toThrow(/Field "a" is not nullable/);
 
         // 2) nullable not specified => keep old behavior (null allowed)
@@ -62,7 +62,7 @@ describe('protocol', () => {
         }, {
             a: Type.string().setNullable(true),
         });
-        const { serialize, deserialize } = fory.registerSerializer(nullableUnspecified);
+        const { serialize, deserialize } = fory.register(nullableUnspecified);
         expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
     });
 
@@ -77,7 +77,7 @@ describe('protocol', () => {
             },
         );
 
-        const { serialize, deserialize } = fory.registerSerializer(schema);
+        const { serialize, deserialize } = fory.register(schema);
 
         // non-nullable field must throw
         expect(() => serialize({ a: null, b: 'ok' }))

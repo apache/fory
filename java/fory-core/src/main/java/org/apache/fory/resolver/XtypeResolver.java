@@ -86,6 +86,7 @@ import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.serializer.Shareable;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
 import org.apache.fory.serializer.UnknownClass;
@@ -128,8 +129,6 @@ public class XtypeResolver extends TypeResolver {
   private final TypeInfoHolder classInfoCache = new TypeInfoHolder(NIL_TYPE_INFO);
   // Every deserialization for unregistered class will query it, performance is important.
   private final ObjectMap<TypeNameBytes, TypeInfo> compositeClassNameBytes2TypeInfo =
-      new ObjectMap<>(16, loadFactor);
-  private final ObjectMap<String, TypeInfo> qualifiedType2TypeInfo =
       new ObjectMap<>(16, loadFactor);
   // typeDefMap is inherited from TypeResolver
   private final boolean shareMeta;
@@ -326,8 +325,12 @@ public class XtypeResolver extends TypeResolver {
       }
     }
     typeInfo.setSerializer(this, serializer);
-    qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
+    if (typeInfo.typeName != null) {
+      TypeNameBytes typeNameBytes =
+          new TypeNameBytes(typeInfo.namespace.hash, typeInfo.typeName.hash);
+      compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
+    }
     registerGraalvmClass(type);
     updateTypeInfo(type, typeInfo);
   }
@@ -451,6 +454,11 @@ public class XtypeResolver extends TypeResolver {
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());
     }
+    boolean localOverride = typeInfo.serializer != null;
+    boolean shouldShare = serializer instanceof Shareable && !localOverride;
+    if (shouldShare) {
+      serializer = sharedRegistry.cacheRegisteredSerializer(type, serializer);
+    }
     int oldTypeId = typeInfo.typeId;
     int foryId = oldTypeId;
 
@@ -461,10 +469,11 @@ public class XtypeResolver extends TypeResolver {
     }
     typeInfo = typeInfo.copy(foryId);
     typeInfo.setSerializer(this, serializer);
+    if (shouldShare) {
+      typeInfo = sharedRegistry.cacheRegisteredTypeInfo(type, typeInfo);
+    }
     updateTypeInfo(type, typeInfo);
     if (typeInfo.typeName != null) {
-      String qualifiedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
-      qualifiedType2TypeInfo.put(qualifiedName, typeInfo);
       TypeNameBytes typeNameBytes =
           new TypeNameBytes(typeInfo.namespace.hash, typeInfo.typeName.hash);
       compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
@@ -482,14 +491,22 @@ public class XtypeResolver extends TypeResolver {
       return;
     }
     TypeInfo typeInfo = classInfoMap.get(type);
-    if (typeInfo != null) {
-      if (typeInfo.serializer == null) {
-        typeInfo.setSerializer(this, serializer);
-      }
+    if (typeInfo != null && typeInfo.serializer != null) {
       return;
     }
-    int typeId = determineTypeIdForClass(type);
-    typeInfo = newTypeInfo(type, serializer, typeId);
+    boolean shareable = serializer instanceof Shareable;
+    if (shareable) {
+      serializer = sharedRegistry.cacheRegisteredSerializer(type, serializer);
+    }
+    if (typeInfo != null) {
+      typeInfo.setSerializer(this, serializer);
+    } else {
+      int typeId = determineTypeIdForClass(type);
+      typeInfo = newTypeInfo(type, serializer, typeId);
+    }
+    if (shareable) {
+      typeInfo = sharedRegistry.cacheRegisteredTypeInfo(type, typeInfo);
+    }
     classInfoMap.put(type, typeInfo);
   }
 
@@ -699,8 +716,10 @@ public class XtypeResolver extends TypeResolver {
   }
 
   public TypeInfo getUserTypeInfo(String namespace, String typeName) {
-    String name = qualifiedName(namespace, typeName);
-    return qualifiedType2TypeInfo.get(name);
+    EncodedMetaString namespaceBytes = sharedRegistry.getPackageEncodedMetaString(namespace);
+    EncodedMetaString typeNameBytes = sharedRegistry.getTypeNameEncodedMetaString(typeName);
+    return compositeClassNameBytes2TypeInfo.get(
+        new TypeNameBytes(namespaceBytes.hash, typeNameBytes.hash));
   }
 
   public TypeInfo getUserTypeInfo(int userTypeId) {
@@ -1188,39 +1207,45 @@ public class XtypeResolver extends TypeResolver {
     String namespace = packageBytes.decode(PACKAGE_DECODER);
     String typeName = simpleClassNameBytes.decode(TYPE_NAME_DECODER);
     String qualifiedName = qualifiedName(namespace, typeName);
-    TypeInfo typeInfo = qualifiedType2TypeInfo.get(qualifiedName);
-    if (typeInfo == null) {
-      String msg = String.format("Class %s not registered", qualifiedName);
-      Class<?> type = null;
-      if (config.deserializeUnknownClass()) {
-        LOG.warn(msg);
-        switch (typeId) {
-          case Types.NAMED_ENUM:
-          case Types.NAMED_STRUCT:
-          case Types.NAMED_COMPATIBLE_STRUCT:
-            type =
-                UnknownClass.getUnknowClass(
-                    qualifiedName, isEnum(typeId), 0, config.isMetaShareEnabled());
-            break;
-          case Types.NAMED_EXT:
-            throw new SerializerUnregisteredException(qualifiedName);
-          default:
-            break;
-        }
-      } else {
-        throw new ClassUnregisteredException(qualifiedName);
+    Class<?> registeredType = extRegistry.registeredClasses.get(qualifiedName);
+    if (registeredType != null) {
+      TypeInfo typeInfo = classInfoMap.get(registeredType);
+      if (typeInfo == null) {
+        typeInfo = getTypeInfo(registeredType);
       }
-      typeInfo =
-          new TypeInfo(
-              type,
-              packageBytes,
-              simpleClassNameBytes,
-              null,
-              NOT_SUPPORT_XLANG,
-              INVALID_USER_TYPE_ID);
-      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-        typeInfo.serializer = UnknownClassSerializers.getSerializer(this, qualifiedName, type);
+      compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
+      return typeInfo;
+    }
+    String msg = String.format("Class %s not registered", qualifiedName);
+    Class<?> type = null;
+    if (config.deserializeUnknownClass()) {
+      LOG.warn(msg);
+      switch (typeId) {
+        case Types.NAMED_ENUM:
+        case Types.NAMED_STRUCT:
+        case Types.NAMED_COMPATIBLE_STRUCT:
+          type =
+              UnknownClass.getUnknowClass(
+                  qualifiedName, isEnum(typeId), 0, config.isMetaShareEnabled());
+          break;
+        case Types.NAMED_EXT:
+          throw new SerializerUnregisteredException(qualifiedName);
+        default:
+          break;
       }
+    } else {
+      throw new ClassUnregisteredException(qualifiedName);
+    }
+    TypeInfo typeInfo =
+        new TypeInfo(
+            type,
+            packageBytes,
+            simpleClassNameBytes,
+            null,
+            NOT_SUPPORT_XLANG,
+            INVALID_USER_TYPE_ID);
+    if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
+      typeInfo.serializer = UnknownClassSerializers.getSerializer(this, qualifiedName, type);
     }
     compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
     return typeInfo;

@@ -944,7 +944,7 @@ public abstract class TypeResolver {
       }
       return localTypeInfo;
     }
-    Integer classId = getRegisteredClassIdLocalOrFrozen(cls);
+    Integer classId = extRegistry.registeredClassIdMap.get(cls);
     int typeId;
     if (classId != null) {
       TypeInfo registeredInfo = classInfoMap.get(cls);
@@ -1071,7 +1071,7 @@ public abstract class TypeResolver {
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
     extRegistry.typeChecker.checkType(this, className);
-    Class<?> cls = getRegisteredClassLocalOrFrozen(className);
+    Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
       return cls;
     }
@@ -1580,7 +1580,10 @@ public abstract class TypeResolver {
   }
 
   public void setTypeChecker(TypeChecker typeChecker) {
-    extRegistry.typeChecker = typeChecker;
+    extRegistry.typeChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
+    if (extRegistry.typeChecker instanceof AllowListChecker && this instanceof ClassResolver) {
+      ((AllowListChecker) extRegistry.typeChecker).addListener((ClassResolver) this);
+    }
   }
 
   public void setSerializerFactory(SerializerFactory serializerFactory) {
@@ -1714,42 +1717,6 @@ public abstract class TypeResolver {
               cls, registry.getDeserializerClasses()));
     }
     return null;
-  }
-
-  /**
-   * Reads a registered class id from the mutable local maps before freeze or the shared maps after
-   * {@link #finishRegistration()}.
-   */
-  final Integer getRegisteredClassIdLocalOrFrozen(Class<?> cls) {
-    return extRegistry.registeredClassIdMap.get(cls);
-  }
-
-  /**
-   * Reads a registered class name from the mutable local maps before freeze or the shared maps
-   * after {@link #finishRegistration()}.
-   */
-  final String getRegisteredNameLocalOrFrozen(Class<?> cls) {
-    return extRegistry.registeredClasses.inverse().get(cls);
-  }
-
-  /**
-   * Reads a registered class lookup by name from the mutable local maps before freeze or the shared
-   * maps after {@link #finishRegistration()}.
-   */
-  final Class<?> getRegisteredClassLocalOrFrozen(String className) {
-    return extRegistry.registeredClasses.get(className);
-  }
-
-  final boolean isRegisteredByIdLocalOrFrozen(Class<?> cls) {
-    return getRegisteredClassIdLocalOrFrozen(cls) != null;
-  }
-
-  final boolean isRegisteredByNameLocalOrFrozen(Class<?> cls) {
-    return getRegisteredNameLocalOrFrozen(cls) != null;
-  }
-
-  final boolean isRegisteredByNameLocalOrFrozen(String className) {
-    return getRegisteredClassLocalOrFrozen(className) != null;
   }
 
   public GenericType getObjectGenericType() {

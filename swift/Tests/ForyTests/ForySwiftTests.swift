@@ -251,19 +251,27 @@ func namedInitializerBuildsConfig() {
     #expect(defaultConfig.config.xlang == true)
     #expect(defaultConfig.config.trackRef == false)
     #expect(defaultConfig.config.compatible == false)
+    #expect(defaultConfig.config.checkClassVersion == true)
     #expect(defaultConfig.config.maxDepth == 5)
 
     let explicitConfig = Fory(xlang: false, trackRef: true, compatible: true, maxDepth: 7)
     #expect(explicitConfig.config.xlang == false)
     #expect(explicitConfig.config.trackRef == true)
     #expect(explicitConfig.config.compatible == true)
+    #expect(explicitConfig.config.checkClassVersion == false)
     #expect(explicitConfig.config.maxDepth == 7)
 
     let configInit = Fory(config: .init(xlang: false, trackRef: false, compatible: true, maxDepth: 9))
     #expect(configInit.config.xlang == false)
     #expect(configInit.config.trackRef == false)
     #expect(configInit.config.compatible == true)
+    #expect(configInit.config.checkClassVersion == false)
     #expect(configInit.config.maxDepth == 9)
+
+    let nativeDirect = Fory(xlang: false, trackRef: true, compatible: false)
+    let nativeViaConfig = Fory(config: Config(xlang: false, trackRef: true, compatible: false))
+    #expect(nativeDirect.config.checkClassVersion == false)
+    #expect(nativeViaConfig.config.checkClassVersion == false)
 }
 
 @Test
@@ -489,6 +497,19 @@ func duplicateNameRegistrationIsRejected() throws {
         try resolver.register(Person.self, namespace: "demo", typeName: "entity")
         #expect(Bool(false))
     } catch {}
+}
+
+@Test
+func registrationIsRejectedAfterFirstTopLevelUse() throws {
+    let fory = Fory()
+    _ = try fory.serialize(Int32(7))
+
+    do {
+        try fory.register(Address.self, name: "demo.address")
+        #expect(Bool(false))
+    } catch {
+        #expect("\(error)".contains("cannot register more types"))
+    }
 }
 
 @Test

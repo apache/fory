@@ -17,10 +17,8 @@
  * under the License.
  */
 
-import Fory from "./fory";
-import { BinaryReader } from "./reader";
 import { TypeInfo } from "./typeInfo";
-import { BinaryWriter } from "./writer";
+import type { ReadContext, WriteContext } from "./context";
 
 export const TypeId = {
   // Unknown/polymorphic type marker.
@@ -204,8 +202,8 @@ export enum ConfigFlags {
 }
 
 export type CustomSerializer<T> = {
-  read: (result: T, reader: BinaryReader, fory: Fory) => void;
-  write: (v: T, writer: BinaryWriter, fory: Fory) => void;
+  read: (readContext: ReadContext, result: T) => void;
+  write: (writeContext: WriteContext, v: T) => void;
 };
 
 // read, write

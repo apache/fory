@@ -246,6 +246,15 @@ public class Serializers {
     if (serializerClass == ChildContainerSerializers.ChildMapSerializer.class) {
       return new ChildContainerSerializers.ChildMapSerializer(typeResolver, type);
     }
+    if (serializerClass == ChildContainerSerializers.ChildSortedSetSerializer.class) {
+      return new ChildContainerSerializers.ChildSortedSetSerializer(typeResolver, type);
+    }
+    if (serializerClass == ChildContainerSerializers.ChildPriorityQueueSerializer.class) {
+      return new ChildContainerSerializers.ChildPriorityQueueSerializer(typeResolver, type);
+    }
+    if (serializerClass == ChildContainerSerializers.ChildSortedMapSerializer.class) {
+      return new ChildContainerSerializers.ChildSortedMapSerializer(typeResolver, type);
+    }
     if (serializerClass == SingletonCollectionSerializer.class) {
       return new SingletonCollectionSerializer(typeResolver, type);
     }
@@ -407,7 +416,8 @@ public class Serializers {
     }
   }
 
-  public static final class BigDecimalSerializer extends ImmutableSerializer<BigDecimal> {
+  public static final class BigDecimalSerializer extends ImmutableSerializer<BigDecimal>
+      implements Shareable {
     public BigDecimalSerializer(Config config) {
       super(config, BigDecimal.class);
     }
@@ -432,14 +442,10 @@ public class Serializers {
       final BigInteger bigInteger = new BigInteger(bytes);
       return new BigDecimal(bigInteger, scale, new MathContext(precision));
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class BigIntegerSerializer extends ImmutableSerializer<BigInteger> {
+  public static final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
+      implements Shareable {
     public BigIntegerSerializer(Config config) {
       super(config, BigInteger.class);
     }
@@ -459,14 +465,10 @@ public class Serializers {
       byte[] bytes = buffer.readBytes(len);
       return new BigInteger(bytes);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class AtomicBooleanSerializer extends Serializer<AtomicBoolean> {
+  public static final class AtomicBooleanSerializer extends Serializer<AtomicBoolean>
+      implements Shareable {
 
     public AtomicBooleanSerializer(Config config) {
       super(config, AtomicBoolean.class);
@@ -486,14 +488,10 @@ public class Serializers {
     public AtomicBoolean read(ReadContext readContext) {
       return new AtomicBoolean(readContext.getBuffer().readBoolean());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class AtomicIntegerSerializer extends Serializer<AtomicInteger> {
+  public static final class AtomicIntegerSerializer extends Serializer<AtomicInteger>
+      implements Shareable {
 
     public AtomicIntegerSerializer(Config config) {
       super(config, AtomicInteger.class);
@@ -513,14 +511,10 @@ public class Serializers {
     public AtomicInteger read(ReadContext readContext) {
       return new AtomicInteger(readContext.getBuffer().readInt32());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class AtomicLongSerializer extends Serializer<AtomicLong> {
+  public static final class AtomicLongSerializer extends Serializer<AtomicLong>
+      implements Shareable {
 
     public AtomicLongSerializer(Config config) {
       super(config, AtomicLong.class);
@@ -540,14 +534,10 @@ public class Serializers {
     public AtomicLong read(ReadContext readContext) {
       return new AtomicLong(readContext.getBuffer().readInt64());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class AtomicReferenceSerializer extends Serializer<AtomicReference> {
+  public static final class AtomicReferenceSerializer extends Serializer<AtomicReference>
+      implements Shareable {
 
     public AtomicReferenceSerializer(Config config) {
       super(config, AtomicReference.class);
@@ -567,14 +557,10 @@ public class Serializers {
     public AtomicReference read(ReadContext readContext) {
       return new AtomicReference(readContext.readRef());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class CurrencySerializer extends ImmutableSerializer<Currency> {
+  public static final class CurrencySerializer extends ImmutableSerializer<Currency>
+      implements Shareable {
     public CurrencySerializer(Config config) {
       super(config, Currency.class);
     }
@@ -588,15 +574,11 @@ public class Serializers {
     public Currency read(ReadContext readContext) {
       return Currency.getInstance(readContext.readString());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
   /** Serializer for {@link Charset}. */
-  public static final class CharsetSerializer<T extends Charset> extends ImmutableSerializer<T> {
+  public static final class CharsetSerializer<T extends Charset> extends ImmutableSerializer<T>
+      implements Shareable {
     public CharsetSerializer(Config config, Class<T> type) {
       super(config, type);
     }
@@ -608,14 +590,10 @@ public class Serializers {
     public T read(ReadContext readContext) {
       return (T) Charset.forName(readContext.readString());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class URISerializer extends ImmutableSerializer<java.net.URI> {
+  public static final class URISerializer extends ImmutableSerializer<java.net.URI>
+      implements Shareable {
 
     public URISerializer(Config config) {
       super(config, URI.class);
@@ -630,14 +608,10 @@ public class Serializers {
     public URI read(ReadContext readContext) {
       return URI.create(readContext.readString());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class RegexSerializer extends ImmutableSerializer<Pattern> {
+  public static final class RegexSerializer extends ImmutableSerializer<Pattern>
+      implements Shareable {
     public RegexSerializer(Config config) {
       super(config, Pattern.class);
     }
@@ -656,14 +630,9 @@ public class Serializers {
       int flags = buffer.readInt32();
       return Pattern.compile(regex, flags);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class UUIDSerializer extends ImmutableSerializer<UUID> {
+  public static final class UUIDSerializer extends ImmutableSerializer<UUID> implements Shareable {
 
     public UUIDSerializer(Config config) {
       super(config, UUID.class);
@@ -681,14 +650,10 @@ public class Serializers {
       MemoryBuffer buffer = readContext.getBuffer();
       return new UUID(buffer.readInt64(), buffer.readInt64());
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static final class ClassSerializer extends ImmutableSerializer<Class> {
+  public static final class ClassSerializer extends ImmutableSerializer<Class>
+      implements Shareable {
     public ClassSerializer(Config config) {
       super(config, Class.class);
     }
@@ -702,11 +667,6 @@ public class Serializers {
     public Class read(ReadContext readContext) {
       return ((ClassResolver) readContext.getTypeResolver()).readClassInternal(readContext);
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
   /**
@@ -716,7 +676,8 @@ public class Serializers {
    * serializable or class registration checks.
    */
   // Use a separate serializer to avoid codegen for empty object.
-  public static final class EmptyObjectSerializer extends ImmutableSerializer<Object> {
+  public static final class EmptyObjectSerializer extends ImmutableSerializer<Object>
+      implements Shareable {
 
     public EmptyObjectSerializer(Config config) {
       super(config, Object.class);
@@ -728,11 +689,6 @@ public class Serializers {
     @Override
     public Object read(ReadContext readContext) {
       return new Object();
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

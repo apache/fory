@@ -25,6 +25,10 @@ import { TypeId } from "../type";
 import { x64hash128 } from "../murmurHash3";
 import { fromString } from "../platformBuffer";
 
+type TypeResolverLike = {
+  computeTypeId(typeInfo: TypeInfo): number;
+};
+
 const fieldEncoder = new MetaStringEncoder("$", "_");
 const fieldDecoder = new MetaStringDecoder("$", "_");
 const pkgEncoder = new MetaStringEncoder(".", "_");
@@ -246,12 +250,12 @@ export class TypeMeta {
     return result;
   }
 
-  static fromTypeInfo(typeInfo: TypeInfo) {
+  static fromTypeInfo(typeInfo: TypeInfo, typeResolver?: TypeResolverLike) {
     let fieldInfo: FieldInfo[] = [];
     if (TypeId.structType(typeInfo.typeId)) {
       const structTypeInfo = typeInfo;
       fieldInfo = Object.entries(structTypeInfo.options!.props!).map(([fieldName, typeInfo]) => {
-        let fieldTypeId = typeInfo.typeId;
+        let fieldTypeId = typeResolver ? typeResolver.computeTypeId(typeInfo) : typeInfo.typeId;
         if (fieldTypeId === TypeId.NAMED_ENUM) {
           fieldTypeId = TypeId.ENUM;
         } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
@@ -272,7 +276,7 @@ export class TypeMeta {
     fieldInfo = TypeMeta.groupFieldsByType(fieldInfo);
 
     return new TypeMeta(fieldInfo, {
-      typeId: typeInfo.typeId,
+      typeId: typeResolver ? typeResolver.computeTypeId(typeInfo) : typeInfo.typeId,
       namespace: typeInfo.namespace,
       typeName: typeInfo.typeName,
       userTypeId: typeInfo.userTypeId ?? -1,

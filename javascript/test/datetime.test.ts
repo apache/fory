@@ -38,7 +38,7 @@ describe('datetime', () => {
       b: Type.duration(),
     })
     const fory = new Fory({ refTracking: true });    
-    const serializer = fory.registerSerializer(typeinfo).serializer;
+    const serializer = fory.register(typeinfo).serializer;
     const d = new Date('2021/10/20 09:13');
     const input = fory.serialize({ a:  d, b: d}, serializer);
     const result = fory.deserialize(

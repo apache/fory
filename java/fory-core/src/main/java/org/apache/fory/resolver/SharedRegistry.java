@@ -37,11 +37,19 @@ import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.util.GraalvmSupport;
 
-/** Shared caches reused by multiple equivalent {@link org.apache.fory.Fory} instances. */
+/**
+ * Shared caches reused by multiple equivalent {@link org.apache.fory.Fory} instances.
+ *
+ * <p>A {@code SharedRegistry} is scoped to one effective Fory config/mode family. Equivalent
+ * runtimes may share the same registry, but incompatible runtimes must not. In particular, the
+ * registered serializer and registered {@link TypeInfo} caches below assume one config scope and
+ * therefore are keyed only by class.
+ */
 @Internal
 public final class SharedRegistry {
   private static final int MAX_CACHED_ENCODED_META_STRINGS = 32768;
@@ -67,6 +75,10 @@ public final class SharedRegistry {
       new ConcurrentHashMap<>();
   final ConcurrentHashMap<EncodedMetaStringKey, EncodedMetaString> encodedMetaStringMap =
       new ConcurrentHashMap<>();
+  final ConcurrentIdentityMap<Class<?>, TypeInfo> registeredTypeInfoCache =
+      new ConcurrentIdentityMap<>();
+  final ConcurrentIdentityMap<Class<?>, Serializer<?>> registeredSerializerCache =
+      new ConcurrentIdentityMap<>();
   private final Object metaStringCacheLock = new Object();
   volatile IdentityHashMap<Class<?>, Integer> registeredClassIdMap;
   volatile BiMap<String, Class<?>> registeredClasses;
@@ -88,6 +100,29 @@ public final class SharedRegistry {
 
   synchronized BiMap<String, Class<?>> getRegisteredClasses() {
     return Objects.requireNonNull(registeredClasses);
+  }
+
+  Serializer<?> getRegisteredSerializer(Class<?> type) {
+    return registeredSerializerCache.get(type);
+  }
+
+  Serializer<?> cacheRegisteredSerializer(Class<?> type, Serializer<?> serializer) {
+    Serializer<?> existing = registeredSerializerCache.putIfAbsent(type, serializer);
+    if (existing == null) {
+      return serializer;
+    }
+    if (existing.getClass() != serializer.getClass()) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Conflicting shareable serializer registration for %s. Existing=%s, new=%s",
+              type.getName(), existing, serializer));
+    }
+    return existing;
+  }
+
+  TypeInfo cacheRegisteredTypeInfo(Class<?> type, TypeInfo typeInfo) {
+    TypeInfo existing = registeredTypeInfoCache.putIfAbsent(type, typeInfo);
+    return existing == null ? typeInfo : existing;
   }
 
   EncodedMetaString getPackageEncodedMetaString(String string) {

@@ -24,17 +24,17 @@ describe('depth-limit', () => {
   describe('configuration', () => {
     test('should have default maxDepth of 50', () => {
       const fory = new Fory();
-      expect(fory.maxDepth).toBe(50);
+      expect(fory.readContext.maxDepth).toBe(50);
     });
 
     test('should accept custom maxDepth', () => {
       const fory = new Fory({ maxDepth: 100 });
-      expect(fory.maxDepth).toBe(100);
+      expect(fory.readContext.maxDepth).toBe(100);
     });
 
     test('should initialize depth counter to 0', () => {
       const fory = new Fory();
-      expect(fory.depth).toBe(0);
+      expect(fory.readContext.depth).toBe(0);
     });
 
     test('should reject maxDepth < 2', () => {
@@ -71,39 +71,39 @@ describe('depth-limit', () => {
   describe('depth operations', () => {
     test('should have incReadDepth method', () => {
       const fory = new Fory();
-      expect(typeof fory.incReadDepth).toBe('function');
+      expect(typeof fory.readContext.incReadDepth).toBe('function');
     });
 
     test('should have decReadDepth method', () => {
       const fory = new Fory();
-      expect(typeof fory.decReadDepth).toBe('function');
+      expect(typeof fory.readContext.decReadDepth).toBe('function');
     });
 
     test('incReadDepth should increment depth', () => {
       const fory = new Fory({ maxDepth: 100 });
-      expect(fory.depth).toBe(0);
-      fory.incReadDepth();
-      expect(fory.depth).toBe(1);
-      fory.incReadDepth();
-      expect(fory.depth).toBe(2);
+      expect(fory.readContext.depth).toBe(0);
+      fory.readContext.incReadDepth();
+      expect(fory.readContext.depth).toBe(1);
+      fory.readContext.incReadDepth();
+      expect(fory.readContext.depth).toBe(2);
     });
 
     test('decReadDepth should decrement depth', () => {
       const fory = new Fory({ maxDepth: 100 });
-      fory.incReadDepth();
-      fory.incReadDepth();
-      expect(fory.depth).toBe(2);
-      fory.decReadDepth();
-      expect(fory.depth).toBe(1);
-      fory.decReadDepth();
-      expect(fory.depth).toBe(0);
+      fory.readContext.incReadDepth();
+      fory.readContext.incReadDepth();
+      expect(fory.readContext.depth).toBe(2);
+      fory.readContext.decReadDepth();
+      expect(fory.readContext.depth).toBe(1);
+      fory.readContext.decReadDepth();
+      expect(fory.readContext.depth).toBe(0);
     });
 
     test('incReadDepth should throw when depth exceeds limit', () => {
       const fory = new Fory({ maxDepth: 2 });
-      fory.incReadDepth(); // depth = 1
-      fory.incReadDepth(); // depth = 2
-      expect(() => fory.incReadDepth()).toThrow(
+      fory.readContext.incReadDepth(); // depth = 1
+      fory.readContext.incReadDepth(); // depth = 2
+      expect(() => fory.readContext.incReadDepth()).toThrow(
         'Deserialization depth limit exceeded: 3 > 2'
       );
     });
@@ -112,7 +112,7 @@ describe('depth-limit', () => {
       const fory = new Fory({ maxDepth: 5 });
       try {
         for (let i = 0; i < 6; i++) {
-          fory.incReadDepth();
+          fory.readContext.incReadDepth();
         }
         throw new Error('Should have thrown depth limit error');
       } catch (e) {
@@ -133,13 +133,13 @@ describe('depth-limit', () => {
         b: Type.string(),
       });
 
-      const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+      const { serialize, deserialize } = fory.register(typeInfo);
       const data = { a: 42, b: 'hello' };
       const serialized = serialize(data);
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      expect(fory.depth).toBe(0); // Should be reset after deserialization
+      expect(fory.readContext.depth).toBe(0); // Should be reset after deserialization
     });
 
     test('should deserialize nested struct within depth limit', () => {
@@ -155,45 +155,45 @@ describe('depth-limit', () => {
         }).setNullable(true),
       });
 
-      const { serialize, deserialize } = fory.registerSerializer(nestedType);
+      const { serialize, deserialize } = fory.register(nestedType);
       const data = { value: 1, inner: { innerValue: 2 } };
       const serialized = serialize(data);
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      expect(fory.depth).toBe(0); // Should be reset after deserialization
+      expect(fory.readContext.depth).toBe(0); // Should be reset after deserialization
     });
 
     test('should deserialize array of primitives within depth limit', () => {
       const fory = new Fory({ maxDepth: 10 });
       const arrayType = Type.array(Type.int32());
 
-      const { serialize, deserialize } = fory.registerSerializer(arrayType);
+      const { serialize, deserialize } = fory.register(arrayType);
       const data = [1, 2, 3, 4, 5];
       const serialized = serialize(data);
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      expect(fory.depth).toBe(0); // Should be 0 after deserialization
+      expect(fory.readContext.depth).toBe(0); // Should be 0 after deserialization
     });
 
     test('should deserialize map within depth limit', () => {
       const fory = new Fory({ maxDepth: 10 });
       const mapType = Type.map(Type.string(), Type.int32());
 
-      const { serialize, deserialize } = fory.registerSerializer(mapType);
+      const { serialize, deserialize } = fory.register(mapType);
       const data = new Map([['a', 1], ['b', 2]]);
       const serialized = serialize(data);
       const deserialized = deserialize(serialized);
 
       expect(deserialized).toEqual(data);
-      expect(fory.depth).toBe(0); // Should be 0 after deserialization
+      expect(fory.readContext.depth).toBe(0); // Should be 0 after deserialization
     });
 
     test('should throw when nested arrays exceed maxDepth', () => {
       const fory = new Fory({ maxDepth: 2 });
       const nestedArrayType = Type.array(Type.array(Type.array(Type.int32())));
-      const { serialize, deserialize } = fory.registerSerializer(nestedArrayType);
+      const { serialize, deserialize } = fory.register(nestedArrayType);
       const serialized = serialize([[[1]]]);
 
       expect(() => deserialize(serialized)).toThrow(
@@ -219,7 +219,7 @@ describe('depth-limit', () => {
         mid,
       });
 
-      const { serialize, deserialize } = fory.registerSerializer(root);
+      const { serialize, deserialize } = fory.register(root);
       const serialized = serialize({ mid: { leaf: { value: 7 } } });
 
       expect(() => deserialize(serialized)).toThrow(
@@ -235,14 +235,14 @@ describe('depth-limit', () => {
         a: Type.int32(),
       });
 
-      const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+      const { serialize, deserialize } = fory.register(typeInfo);
       deserialize(serialize({ a: 1 }));
 
       // Depth will be reset at the start of resetRead() call
-      expect(fory.depth).toBe(0);
+      expect(fory.readContext.depth).toBe(0);
 
       deserialize(serialize({ a: 2 }));
-      expect(fory.depth).toBe(0);
+      expect(fory.readContext.depth).toBe(0);
     });
   });
 
@@ -261,14 +261,14 @@ describe('depth-limit', () => {
 
       // Serialize with high limit
       const forySerialize = new Fory({ maxDepth: 100 });
-      const { serialize } = forySerialize.registerSerializer(serializeType);
+      const { serialize } = forySerialize.register(serializeType);
 
       const data = { value: 1, next: { innerValue: 2 } };
       const serialized = serialize(data);
 
       // Deserialize with different instance
       const foryDeserialize = new Fory({ maxDepth: 50 });
-      const { deserialize } = foryDeserialize.registerSerializer(serializeType);
+      const { deserialize } = foryDeserialize.register(serializeType);
 
       const deserialized = deserialize(serialized);
       expect(deserialized).toEqual(data);
@@ -278,16 +278,16 @@ describe('depth-limit', () => {
       const fory1 = new Fory({ maxDepth: 50 });
       const fory2 = new Fory({ maxDepth: 100 });
 
-      fory1.incReadDepth();
-      fory1.incReadDepth();
-      expect(fory1.depth).toBe(2);
+      fory1.readContext.incReadDepth();
+      fory1.readContext.incReadDepth();
+      expect(fory1.readContext.depth).toBe(2);
 
-      fory2.incReadDepth();
-      expect(fory2.depth).toBe(1);
+      fory2.readContext.incReadDepth();
+      expect(fory2.readContext.depth).toBe(1);
 
       // Both instances have independent depth counters
-      expect(fory1.depth).toBe(2);
-      expect(fory2.depth).toBe(1);
+      expect(fory1.readContext.depth).toBe(2);
+      expect(fory2.readContext.depth).toBe(1);
     });
   });
 
@@ -296,7 +296,7 @@ describe('depth-limit', () => {
       const fory = new Fory({ maxDepth: 2 });
       try {
         for (let i = 0; i < 3; i++) {
-          fory.incReadDepth();
+          fory.readContext.incReadDepth();
         }
         throw new Error('Should have thrown');
       } catch (e) {
@@ -312,17 +312,17 @@ describe('depth-limit', () => {
       });
 
       const fory = new Fory({ maxDepth: 50 });
-      const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+      const { serialize, deserialize } = fory.register(typeInfo);
 
       // First deserialization
       let result = deserialize(serialize({ a: 1 }));
       expect(result).toEqual({ a: 1 });
-      expect(fory.depth).toBe(0);
+      expect(fory.readContext.depth).toBe(0);
 
       // Second deserialization should also work (depth reset)
       result = deserialize(serialize({ a: 2 }));
       expect(result).toEqual({ a: 2 });
-      expect(fory.depth).toBe(0);
+      expect(fory.readContext.depth).toBe(0);
     });
   });
 
@@ -335,7 +335,7 @@ describe('depth-limit', () => {
       });
 
       const fory = new Fory({ maxDepth: 2 });
-      const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+      const { serialize, deserialize } = fory.register(typeInfo);
       // Should deserialize without error
       const result = deserialize(serialize({ a: 42 }));
       expect(result).toEqual({ a: 42 });
@@ -343,7 +343,7 @@ describe('depth-limit', () => {
 
     test('should handle large maxDepth values', () => {
       const fory = new Fory({ maxDepth: 10000 });
-      expect(fory.maxDepth).toBe(10000);
+      expect(fory.readContext.maxDepth).toBe(10000);
     });
 
     test('should handle minimum valid maxDepth of 2', () => {
@@ -354,8 +354,8 @@ describe('depth-limit', () => {
       });
 
       const fory = new Fory({ maxDepth: 2 });
-      expect(fory.maxDepth).toBe(2);
-      const { serialize, deserialize } = fory.registerSerializer(typeInfo);
+      expect(fory.readContext.maxDepth).toBe(2);
+      const { serialize, deserialize } = fory.register(typeInfo);
       // Should deserialize without error
       const result = deserialize(serialize({ a: 42 }));
       expect(result).toEqual({ a: 42 });
@@ -368,7 +368,7 @@ describe('depth-limit', () => {
         maxDepth: 50,
         refTracking: true,
       });
-      expect(fory.maxDepth).toBe(50);
+      expect(fory.readContext.maxDepth).toBe(50);
     });
 
     test('should work with compatible mode enabled', () => {
@@ -376,7 +376,7 @@ describe('depth-limit', () => {
         maxDepth: 50,
         compatible: true,
       });
-      expect(fory.maxDepth).toBe(50);
+      expect(fory.readContext.maxDepth).toBe(50);
     });
 
     test('should work with useSliceString option', () => {
@@ -384,7 +384,7 @@ describe('depth-limit', () => {
         maxDepth: 50,
         useSliceString: true,
       });
-      expect(fory.maxDepth).toBe(50);
+      expect(fory.readContext.maxDepth).toBe(50);
     });
 
     test('should work with all options combined', () => {
@@ -394,7 +394,7 @@ describe('depth-limit', () => {
         compatible: true,
         useSliceString: true,
       });
-      expect(fory.maxDepth).toBe(100);
+      expect(fory.readContext.maxDepth).toBe(100);
     });
   });
 });

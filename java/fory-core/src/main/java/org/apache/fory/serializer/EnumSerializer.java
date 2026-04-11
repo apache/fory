@@ -28,7 +28,7 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings("rawtypes")
-public class EnumSerializer extends ImmutableSerializer<Enum> {
+public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareable {
   private final Config config;
   private final Enum[] enumConstants;
   private final Map<String, Enum> stringToEnum;
@@ -109,10 +109,5 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
         throw new IllegalArgumentException(
             String.format("Enum string %s not in %s", value, Arrays.toString(enumConstants)));
     }
-  }
-
-  @Override
-  public boolean shareable() {
-    return config.forVirtualThread();
   }
 }

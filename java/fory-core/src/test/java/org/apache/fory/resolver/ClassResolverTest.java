@@ -20,6 +20,7 @@
 package org.apache.fory.resolver;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
@@ -65,6 +66,7 @@ import org.apache.fory.resolver.longlongpkg.C3;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.serializer.Shareable;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -654,6 +656,25 @@ public class ClassResolverTest extends ForyTestBase {
     }
   }
 
+  static class ShareableFooSerializer extends Serializer<Foo> implements Shareable {
+
+    public ShareableFooSerializer(TypeResolver typeResolver, Class<Foo> type) {
+      super(typeResolver.getConfig(), type);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Foo value) {
+      writeContext.getBuffer().writeInt32(value.f1);
+    }
+
+    @Override
+    public Foo read(ReadContext readContext) {
+      Foo foo = new Foo();
+      foo.f1 = readContext.getBuffer().readInt32();
+      return foo;
+    }
+  }
+
   @Test
   public void testFooCustomSerializer() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
@@ -665,6 +686,40 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(foo, serDe(fory, foo));
     Assert.assertEquals(
         fory.getTypeResolver().getSerializer(foo.getClass()).getClass(), FooCustomSerializer.class);
+  }
+
+  @Test
+  public void testShareableSerializerSharedAcrossRuntimes() {
+    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    Fory fory2 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+
+    ClassResolver resolver1 = (ClassResolver) fory1.getTypeResolver();
+    ClassResolver resolver2 = (ClassResolver) fory2.getTypeResolver();
+
+    resolver1.register(Foo.class, 101);
+    resolver2.register(Foo.class, 101);
+    resolver1.registerSerializer(Foo.class, ShareableFooSerializer.class);
+    resolver2.registerSerializer(Foo.class, ShareableFooSerializer.class);
+    resolver1.finishRegistration();
+    resolver2.finishRegistration();
+
+    Serializer<?> serializer1 = resolver1.getSerializer(Foo.class);
+    TypeInfo sharedTypeInfo = sharedRegistry.registeredTypeInfoCache.get(Foo.class);
+    assertNotNull(sharedTypeInfo);
+    assertSame(sharedRegistry.getRegisteredSerializer(Foo.class), serializer1);
+    assertSame(sharedTypeInfo, resolver1.getTypeInfo(Foo.class, false));
+
+    TypeInfo sharedTypeInfo2 = resolver2.getTypeInfo(Foo.class, false);
+    assertNotNull(sharedTypeInfo2);
+    assertSame(sharedTypeInfo2, sharedTypeInfo);
+    assertSame(sharedTypeInfo2.getSerializer(), serializer1);
+
+    Foo foo = new Foo();
+    foo.f1 = 123;
+    assertEquals(fory2.deserialize(fory1.serialize(foo)), foo);
   }
 
   @Test

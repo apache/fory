@@ -25,6 +25,7 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.serializer.Shareable;
 import org.apache.fory.serializer.Serializer;
 
 import java.lang.reflect.Field;
@@ -35,7 +36,7 @@ public class ToFactorySerializers  {
   static final Class<?> MapToFactoryClass = ReflectionUtils.loadClass(
     "scala.collection.MapFactory$ToFactory");
 
-  public static class IterableToFactorySerializer extends Serializer {
+  public static class IterableToFactorySerializer extends Serializer implements Shareable {
     private static final long fieldOffset;
 
     static {
@@ -63,14 +64,9 @@ public class ToFactorySerializers  {
       Platform.putObject(o, fieldOffset, readContext.readRef());
       return o;
     }
-
-    @Override
-    public boolean shareable() {
-      return true;
-    }
   }
 
-  public static class MapToFactorySerializer extends Serializer {
+  public static class MapToFactorySerializer extends Serializer implements Shareable {
     private static final long fieldOffset;
 
     static {
@@ -97,11 +93,6 @@ public class ToFactorySerializers  {
       Object o = Platform.newInstance(type);
       Platform.putObject(o, fieldOffset, readContext.readRef());
       return o;
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 }

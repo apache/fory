@@ -23,8 +23,8 @@ import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { TypeId, RefFlags, Serializer } from "../type";
 import { Scope } from "./scope";
-import Fory from "../fory";
 import { AnyHelper } from "./any";
+import { ReadContext, WriteContext } from "../context";
 
 export const CollectionFlags = {
   /** Whether track elements ref. */
@@ -41,14 +41,14 @@ export const CollectionFlags = {
 };
 
 class CollectionAnySerializer {
-  constructor(private fory: Fory) {
+  constructor(private writeContext: WriteContext, private readContext: ReadContext) {
 
   }
 
   private readSerializerWithDepth(serializer: Serializer, fromRef: boolean) {
-    this.fory.incReadDepth();
+    this.readContext.incReadDepth();
     const result = serializer.read(fromRef);
-    this.fory.decReadDepth();
+    this.readContext.decReadDepth();
     return result;
   }
 
@@ -64,7 +64,7 @@ class CollectionAnySerializer {
         includeNone = true;
         continue;
       }
-      const current = this.fory.typeResolver.getSerializerByData(item);
+      const current = this.writeContext.typeResolver.getSerializerByData(item);
       if (!current) {
         throw new Error("can't detect the type of item in list");
       }
@@ -89,7 +89,7 @@ class CollectionAnySerializer {
     if (trackingRef) {
       flag |= CollectionFlags.TRACKING_REF;
     }
-    this.fory.binaryWriter.writeUint8(flag);
+    this.writeContext.writer.writeUint8(flag);
     return {
       serializer,
       isSame,
@@ -100,7 +100,7 @@ class CollectionAnySerializer {
   }
 
   write(value: any, size: number) {
-    this.fory.binaryWriter.writeVarUint32Small7(size);
+    this.writeContext.writer.writeVarUint32Small7(size);
     if (size === 0) {
       return;
     }
@@ -116,9 +116,9 @@ class CollectionAnySerializer {
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
+            this.writeContext.writer.writeInt8(RefFlags.NullFlag);
           } else {
-            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
+            this.writeContext.writer.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.write(item);
           }
         }
@@ -130,22 +130,22 @@ class CollectionAnySerializer {
     } else {
       if (trackingRef) {
         for (const item of value) {
-          const serializer = this.fory.typeResolver.getSerializerByData(item);
+          const serializer = this.writeContext.typeResolver.getSerializerByData(item);
           serializer?.writeRef(item);
         }
       } else if (includeNone) {
         for (const item of value) {
           if (item === null || item === undefined) {
-            this.fory.binaryWriter.writeInt8(RefFlags.NullFlag);
+            this.writeContext.writer.writeInt8(RefFlags.NullFlag);
           } else {
-            const serializer = this.fory.typeResolver.getSerializerByData(item);
-            this.fory.binaryWriter.writeInt8(RefFlags.NotNullValueFlag);
+            const serializer = this.writeContext.typeResolver.getSerializerByData(item);
+            this.writeContext.writer.writeInt8(RefFlags.NotNullValueFlag);
             serializer!.writeNoRef(item);
           }
         }
       } else {
         for (const item of value) {
-          const serializer = this.fory.typeResolver.getSerializerByData(item);
+          const serializer = this.writeContext.typeResolver.getSerializerByData(item);
           serializer!.writeNoRef(item);
         }
       }
@@ -154,26 +154,26 @@ class CollectionAnySerializer {
 
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
-    const len = this.fory.binaryReader.readVarUint32Small7();
+    const len = this.readContext.reader.readVarUint32Small7();
     const result = createCollection(len);
     if (len === 0) {
       return result;
     }
-    this.fory.checkCollectionSize(len);
-    const flags = this.fory.binaryReader.readUint8();
+    this.readContext.checkCollectionSize(len);
+    const flags = this.readContext.reader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
     const refTracking = flags & CollectionFlags.TRACKING_REF;
 
     if (isSame) {
-      const serializer = AnyHelper.detectSerializer(this.fory);
+      const serializer = AnyHelper.detectSerializer(this.readContext);
       if (refTracking) {
         for (let i = 0; i < len; i++) {
           serializer.readRef();
-          const refFlag = this.fory.referenceResolver.readRefFlag();
+          const refFlag = this.readContext.readRefFlag();
           if (refFlag === RefFlags.RefFlag) {
-            const refId = this.fory.binaryReader.readVarUInt32();
-            accessor(result, i, this.fory.referenceResolver.getReadObject(refId));
+            const refId = this.readContext.reader.readVarUInt32();
+            accessor(result, i, this.readContext.getReadRef(refId));
           } else if (refFlag === RefFlags.RefValueFlag) {
             accessor(result, i, this.readSerializerWithDepth(serializer!, true));
           } else {
@@ -182,7 +182,7 @@ class CollectionAnySerializer {
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.readInt8();
+          const flag = this.readContext.reader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
@@ -197,22 +197,22 @@ class CollectionAnySerializer {
     } else {
       if (refTracking) {
         for (let i = 0; i < len; i++) {
-          const itemSerializer = AnyHelper.detectSerializer(this.fory);
+          const itemSerializer = AnyHelper.detectSerializer(this.readContext);
           accessor(result, i, itemSerializer!.readRef());
         }
       } else if (includeNone) {
         for (let i = 0; i < len; i++) {
-          const flag = this.fory.binaryReader.readInt8();
+          const flag = this.readContext.reader.readInt8();
           if (flag === RefFlags.NullFlag) {
             accessor(result, i, null);
           } else {
-            const itemSerializer = AnyHelper.detectSerializer(this.fory);
+            const itemSerializer = AnyHelper.detectSerializer(this.readContext);
             accessor(result, i, this.readSerializerWithDepth(itemSerializer!, false));
           }
         }
       } else {
         for (let i = 0; i < len; i++) {
-          const itemSerializer = AnyHelper.detectSerializer(this.fory);
+          const itemSerializer = AnyHelper.detectSerializer(this.readContext);
           accessor(result, i, this.readSerializerWithDepth(itemSerializer!, false));
         }
       }
@@ -277,7 +277,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (const ${item} of ${accessor}) {
                     if (${item} !== null && ${item} !== undefined) {
-                        const ${existsId} = ${this.builder.referenceResolver.existsWriteObject(item)};
+                        const ${existsId} = ${this.builder.referenceResolver.getWrittenRefId(item)};
                         if (typeof ${existsId} === "number") {
                             ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
                             ${this.builder.writer.writeVarUInt32(existsId)}
@@ -319,7 +319,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const foryName = this.builder.getForyName();
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
-            fory.checkCollectionSize(${len});
+            ${this.builder.getReadContextName()}.checkCollectionSize(${len});
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
             if (${len} > 0) {
@@ -383,7 +383,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
   write(accessor: string): string {
     if (this.isAny()) {
       return `
-                new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getForyName()}).write(${accessor}, ${accessor}.${this.sizeProp()})
+                new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getWriteContextName()}, ${this.builder.getReadContextName()}).write(${accessor}, ${accessor}.${this.sizeProp()})
             `;
     }
     return this.writeSpecificType(accessor);
@@ -391,7 +391,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
 
   read(accessor: (expr: string) => string, refState: string): string {
     if (this.isAny()) {
-      return accessor(`new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getForyName()}).read((result, i, v) => {
+      return accessor(`new (${this.builder.getExternal(CollectionAnySerializer.name)})(${this.builder.getWriteContextName()}, ${this.builder.getReadContextName()}).read((result, i, v) => {
               ${this.putAccessor("result", "v", "i")};
           }, (len) => ${this.newCollection("len")}, ${refState});
       `);

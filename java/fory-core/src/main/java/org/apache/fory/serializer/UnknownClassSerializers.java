@@ -254,7 +254,8 @@ public final class UnknownClassSerializers {
     }
   }
 
-  public static final class UnknownEnumSerializer extends ImmutableSerializer<UnknownEnum> {
+  public static final class UnknownEnumSerializer extends ImmutableSerializer<UnknownEnum>
+      implements Shareable {
     private final Config config;
     private final UnknownEnum[] enumConstants;
 
@@ -285,11 +286,6 @@ public final class UnknownClassSerializers {
         return UnknownEnum.UNKNOWN;
       }
       return enumConstants[ordinal];
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

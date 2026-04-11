@@ -52,6 +52,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
@@ -133,6 +134,10 @@ public final class Fory implements BaseFory {
             ? new XtypeResolver(config, classLoader, sharedRegistry, jitContext)
             : new ClassResolver(config, classLoader, sharedRegistry, jitContext);
     typeResolver.initialize();
+    TypeChecker configuredTypeChecker = builder.getTypeChecker();
+    if (configuredTypeChecker != null) {
+      typeResolver.setTypeChecker(configuredTypeChecker);
+    }
     MetaStringWriter metaStringWriter = new MetaStringWriter();
     MetaStringReader metaStringReader = new MetaStringReader(sharedRegistry);
     writeContext =

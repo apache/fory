@@ -25,9 +25,11 @@ import org.apache.fory.config.Config
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
 import org.apache.fory.serializer.ImmutableSerializer
+import org.apache.fory.serializer.Shareable
 
 @OptIn(ExperimentalUuidApi::class)
-public class UuidSerializer(config: Config) : ImmutableSerializer<Uuid>(config, Uuid::class.java) {
+public class UuidSerializer(config: Config) :
+  ImmutableSerializer<Uuid>(config, Uuid::class.java), Shareable {
   override fun write(writeContext: WriteContext, value: Uuid) {
     val buffer = writeContext.buffer
     value.toLongs { msb, lsb ->
@@ -40,6 +42,4 @@ public class UuidSerializer(config: Config) : ImmutableSerializer<Uuid>(config, 
     val buffer = readContext.buffer
     return Uuid.fromLongs(buffer.readInt64(), buffer.readInt64())
   }
-
-  override fun shareable(): Boolean = true
 }

@@ -252,17 +252,13 @@ public class ArraySerializers {
 
   // Implement all read/write methods in subclasses to avoid
   // virtual method call cost.
-  public abstract static class PrimitiveArraySerializer<T> extends Serializer<T> {
+  public abstract static class PrimitiveArraySerializer<T> extends Serializer<T>
+      implements Shareable {
     protected final Config config;
 
     public PrimitiveArraySerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver.getConfig(), cls);
       this.config = typeResolver.getConfig();
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
   }
 

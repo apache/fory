@@ -36,12 +36,12 @@ import "./enum";
 import "./any";
 import "./union";
 import "./ext";
-import Fory from "../fory";
+import TypeResolver from "../typeResolver";
 
 export class Gen {
   static external = CodegenRegistry.getExternal();
 
-  constructor(private fory: Fory, private regOptions: { [key: string]: any } = {}) {
+  constructor(private typeResolver: TypeResolver, private regOptions: { [key: string]: any } = {}) {
 
   }
 
@@ -51,11 +51,11 @@ export class Gen {
       throw new Error(`${typeInfo.typeId} generator not exists`);
     }
     const scope = new Scope();
-    const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.fory), scope);
+    const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.typeResolver), scope);
 
     const funcString = generator.toSerializer();
-    if (this.fory.config && this.fory.config.hooks) {
-      const afterCodeGenerated = this.fory.config.hooks.afterCodeGenerated;
+    if (this.typeResolver.config && this.typeResolver.config.hooks) {
+      const afterCodeGenerated = this.typeResolver.config.hooks.afterCodeGenerated;
       if (typeof afterCodeGenerated === "function") {
         return new Function(afterCodeGenerated(funcString));
       }
@@ -64,11 +64,11 @@ export class Gen {
   }
 
   private register(typeInfo: TypeInfo, serializer?: Serializer) {
-    this.fory.typeResolver.registerSerializer(typeInfo, serializer);
+    this.typeResolver.registerSerializer(typeInfo, serializer);
   }
 
   private isRegistered(typeInfo: TypeInfo) {
-    return !!this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
+    return !!this.typeResolver.getSerializerByTypeInfo(typeInfo);
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
@@ -83,7 +83,7 @@ export class Gen {
           this.traversalContainer(x);
         });
         const func = this.generate(typeInfo);
-        this.register(typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
+        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
       }
     }
     if (typeInfo.typeId === TypeId.LIST) {
@@ -108,14 +108,14 @@ export class Gen {
 
   reGenerateSerializer(typeInfo: TypeInfo) {
     const func = this.generate(typeInfo);
-    return func()(this.fory, Gen.external, typeInfo, this.regOptions);
+    return func()(this.typeResolver, Gen.external, typeInfo, this.regOptions);
   }
 
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
     const exists = this.isRegistered(typeInfo);
     if (exists) {
-      return this.fory.typeResolver.getSerializerByTypeInfo(typeInfo);
+      return this.typeResolver.getSerializerByTypeInfo(typeInfo);
     }
     return this.reGenerateSerializer(typeInfo);
   }

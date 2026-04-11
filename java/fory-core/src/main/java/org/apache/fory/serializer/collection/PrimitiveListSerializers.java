@@ -39,19 +39,16 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.Shareable;
 
 /** Serializers for primitive list types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class PrimitiveListSerializers {
 
-  private abstract static class PrimitiveListSerializer<T> extends CollectionLikeSerializer<T> {
+  private abstract static class PrimitiveListSerializer<T> extends CollectionLikeSerializer<T>
+      implements Shareable {
     private PrimitiveListSerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver, cls, false, false);
-    }
-
-    @Override
-    public boolean shareable() {
-      return true;
     }
 
     @Override

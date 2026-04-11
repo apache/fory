@@ -34,7 +34,7 @@ describe('map', () => {
   test('should map specific type work', () => {
     
     const fory = new Fory({ refTracking: true });  
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct("class.foo", {
+    const { serialize, deserialize } = fory.register(Type.struct("class.foo", {
       f1: Type.map(Type.string(), Type.varInt32())
     }))  
     const bin = serialize({

@@ -48,7 +48,7 @@ describe('typemeta', () => {
         }
     }
 
-    const { serialize } = fory.registerSerializer(Foo);
+    const { serialize } = fory.register(Foo);
     const bin = serialize(new Foo().setBar("hello").setBar2(123));
 
 
@@ -66,7 +66,7 @@ describe('typemeta', () => {
               }        
             }
     });    
-    const { deserialize  } = fory2.registerSerializer(Foo2);
+    const { deserialize  } = fory2.register(Foo2);
     const r = deserialize(bin);
     expect(r).toEqual({
         bar: "hello",

@@ -34,7 +34,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
-    this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo);
+    this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver);
     this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
       ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
       : `fory.typeResolver.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
@@ -43,7 +43,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
 
   write(accessor: string): string {
     return `
-      ${this.builder.getOptions("customSerializer")}.write(${accessor}, ${this.builder.writer.ownName()}, ${this.builder.getForyName()}, )
+      ${this.builder.getOptions("customSerializer")}.write(${this.builder.getWriteContextName()}, ${accessor})
     `;
   }
 
@@ -59,7 +59,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         `
       }
       ${this.maybeReference(result, refState)}
-      ${this.builder.getOptions("customSerializer")}.read(${result}, ${this.builder.reader.ownName()}, ${this.builder.getForyName()})
+      ${this.builder.getOptions("customSerializer")}.read(${this.builder.getReadContextName()}, ${result})
       ${
         accessor(result)
       }
@@ -70,10 +70,10 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     const result = this.scope.uniqueName("result");
     return `
       ${this.readTypeInfo()}
-      fory.incReadDepth();
+      ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
       ${this.read(v => `${result} = ${v}`, refState)};
-      fory.decReadDepth();
+      ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
   }
@@ -89,18 +89,18 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
         break;
       case TypeId.NAMED_EXT:
-        if (!this.builder.fory.isCompatible()) {
+        if (!this.builder.resolver.isCompatible()) {
           namesStmt = `
             ${
-              this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())
+              this.builder.metaStringResolver.readNamespace()
             };
             ${
-              this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())
+              this.builder.metaStringResolver.readTypeName()
             };
           `;
         } else {
           typeMetaStmt = `
-          const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta(this.builder.reader.ownName())};
+          const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta()};
           `;
         }
         break;
@@ -160,17 +160,17 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_EXT:
-        if (!this.builder.fory.isCompatible()) {
+        if (!this.builder.resolver.isCompatible()) {
           const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
           typeMeta = `
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
-            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+            ${this.builder.metaStringResolver.writeBytes(nsBytes)}
+            ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
           `;
         } else {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.ownTypeInfoExpr, this.builder.writer.ownName(), bytes);
+          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         }
         break;
       default:

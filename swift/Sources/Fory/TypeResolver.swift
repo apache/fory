@@ -363,6 +363,7 @@ private struct TypeNameKey: Hashable {
 
 final class TypeResolver {
     private let trackRef: Bool
+    private var registrationFinished = false
 
     private var bySwiftType = UInt64Map<TypeInfo>(initialCapacity: 64)
     private var byUserTypeID = UInt64Map<TypeInfo>(initialCapacity: 64)
@@ -374,11 +375,15 @@ final class TypeResolver {
         self.trackRef = trackRef
     }
 
+    func finishRegistration() {
+        registrationFinished = true
+    }
+
     func register<T: Serializer>(_ type: T.Type, id: UInt32) {
         do {
             try registerByID(type, id: id)
         } catch {
-            preconditionFailure("conflicting registration for \(type): \(error)")
+            preconditionFailure("registration failed for \(type): \(error)")
         }
     }
 
@@ -391,6 +396,7 @@ final class TypeResolver {
     }
 
     private func registerByID<T: Serializer>(_ type: T.Type, id: UInt32) throws {
+        try ensureRegistrationAllowed()
         let swiftTypeID = ObjectIdentifier(type)
         try validateIDRegistration(key: swiftTypeID, type: type, id: id)
         let evolving = evolving(for: type)
@@ -428,6 +434,7 @@ final class TypeResolver {
     }
 
     func register<T: Serializer>(_ type: T.Type, namespace: String, typeName: String) throws {
+        try ensureRegistrationAllowed()
         let namespaceMeta = try MetaStringEncoder.namespace.encode(
             namespace,
             allowedEncodings: namespaceMetaStringEncodings
@@ -650,6 +657,14 @@ final class TypeResolver {
             return typeInfo
         }
         throw ForyError.invalidData("missing user type id in compatible dynamic type meta")
+    }
+
+    private func ensureRegistrationAllowed() throws {
+        guard !registrationFinished else {
+            throw ForyError.invalidData(
+                "cannot register more types after top-level serialize/deserialize has frozen registration"
+            )
+        }
     }
 
 }

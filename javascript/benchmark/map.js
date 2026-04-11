@@ -32,12 +32,12 @@ const Type = Fory.Type;
 
 
 
-const { serialize: serialize1, deserialize: deserialize1, serializeVolatile: serializeVolatile1 } = fory.registerSerializer(Type.struct("any", {
+const { serialize: serialize1, deserialize: deserialize1 } = fory.register(Type.struct("any", {
   f1: Type.map(Type.any(), Type.any()),
   f2: Type.map(Type.any(), Type.any())
 }));
 
-const { serialize: serialize2, deserialize: deserialize2, serializeVolatile: serializeVolatile2 } = fory.registerSerializer(Type.struct("specific", {
+const { serialize: serialize2, deserialize: deserialize2 } = fory.register(Type.struct("specific", {
   f1: Type.map(Type.string(), Type.string()),
   f2: Type.map(Type.int32(), Type.string())
 }));
@@ -58,13 +58,13 @@ async function start() {
     var suite = new Benchmark.Suite();
     suite
       .add("any serialize", function () {
-        serializeVolatile1(sample).dispose()
+        serialize1(sample)
       })
       .add("any deserialize", function () {
         deserialize1(foryAb1)
       })
       .add("jit serialize", function () {
-        serializeVolatile2(sample).dispose()
+        serialize2(sample)
       })
       .add("jit deserialize", function () {
         deserialize2(foryAb2)

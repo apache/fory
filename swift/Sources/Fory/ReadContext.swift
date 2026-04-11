@@ -473,7 +473,7 @@ public final class ReadContext {
         case .float64Array:
             value = try [Double].foryRead(self, refMode: .none, readTypeInfo: false)
         case .array, .list:
-            value = try readAnyList(refMode: .none) ?? []
+            value = try readListOfAny(refMode: .none) ?? []
         case .set:
             value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
         case .map:
@@ -555,14 +555,14 @@ public extension ReadContext {
         refMode: RefMode,
         readTypeInfo: Bool = true
     ) throws -> Any? {
-        try DynamicAnyValue.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
+        try SerializableAny.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
     }
 
-    func readAnyList(
+    func readListOfAny(
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Any]? {
-        let wrapped: [DynamicAnyValue]? = try [DynamicAnyValue]?.foryRead(
+        let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
             self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -570,11 +570,11 @@ public extension ReadContext {
         return wrapped?.map { $0.anyValueForCollection() }
     }
 
-    func readStringAnyMap(
+    func readMapStringToAny(
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [String: Any]? {
-        let wrapped: [String: DynamicAnyValue]? = try [String: DynamicAnyValue]?.foryRead(
+        let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
             self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -590,11 +590,11 @@ public extension ReadContext {
         return map
     }
 
-    func readInt32AnyMap(
+    func readMapInt32ToAny(
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [Int32: Any]? {
-        let wrapped: [Int32: DynamicAnyValue]? = try [Int32: DynamicAnyValue]?.foryRead(
+        let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
             self,
             refMode: refMode,
             readTypeInfo: readTypeInfo
@@ -610,11 +610,11 @@ public extension ReadContext {
         return map
     }
 
-    func readAnyHashableAnyMap(
+    func readMapAnyHashableToAny(
         refMode: RefMode,
         readTypeInfo: Bool = false
     ) throws -> [AnyHashable: Any]? {
-        let wrapped: [AnyHashable: DynamicAnyValue]? = try [AnyHashable: DynamicAnyValue]?.foryRead(
+        let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
             self,
             refMode: refMode,
             readTypeInfo: readTypeInfo

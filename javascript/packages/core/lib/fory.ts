@@ -18,61 +18,43 @@
  */
 
 import TypeResolver from "./typeResolver";
-import { BinaryWriter } from "./writer";
-import { BinaryReader } from "./reader";
-import { ReferenceResolver } from "./referenceResolver";
 import { ConfigFlags, Serializer, Config, ForyTypeInfoSymbol, WithForyClsInfo, TypeId, CustomSerializer } from "./type";
-import { OwnershipError } from "./error";
 import { InputType, ResultType, TypeInfo } from "./typeInfo";
 import { Gen } from "./gen";
-import { TypeMeta } from "./meta/TypeMeta";
 import { PlatformBuffer } from "./platformBuffer";
-import { TypeMetaResolver } from "./typeMetaResolver";
-import { MetaStringResolver } from "./metaStringResolver";
+import { ReadContext, WriteContext } from "./context";
 
 const DEFAULT_DEPTH_LIMIT = 50 as const;
 const MIN_DEPTH_LIMIT = 2 as const;
 const DEFAULT_MAX_COLLECTION_SIZE = 1_000_000 as const;
 const DEFAULT_MAX_BINARY_SIZE = 64 * 1024 * 1024; // 64 MiB
 
-export default class {
-  binaryReader: BinaryReader;
-  binaryWriter: BinaryWriter;
-  typeResolver: TypeResolver;
-  typeMetaResolver: TypeMetaResolver;
-  metaStringResolver: MetaStringResolver;
-  referenceResolver: ReferenceResolver;
-  anySerializer: Serializer;
-  typeMeta = TypeMeta;
-  config: Config;
-  depth = 0;
-  maxDepth: number;
-  maxBinarySize: number;
-  maxCollectionSize: number;
+export default class Fory {
+  readonly typeResolver: TypeResolver;
+  readonly anySerializer: Serializer;
+  readonly config: Config;
+  readonly writeContext: WriteContext;
+  readonly readContext: ReadContext;
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
-    const maxDepth = config?.maxDepth ?? DEFAULT_DEPTH_LIMIT;
+    const maxDepth = this.config.maxDepth ?? DEFAULT_DEPTH_LIMIT;
     if (!Number.isInteger(maxDepth) || maxDepth < MIN_DEPTH_LIMIT) {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
-    this.maxDepth = maxDepth;
-    const maxBinarySize = config?.maxBinarySize ?? DEFAULT_MAX_BINARY_SIZE;
+    const maxBinarySize = this.config.maxBinarySize ?? DEFAULT_MAX_BINARY_SIZE;
     if (!Number.isInteger(maxBinarySize) || maxBinarySize < 0) {
       throw new Error(`maxBinarySize must be a non-negative integer but got ${maxBinarySize}`);
     }
-    this.maxBinarySize = maxBinarySize;
-    const maxCollectionSize = config?.maxCollectionSize ?? DEFAULT_MAX_COLLECTION_SIZE;
+    const maxCollectionSize = this.config.maxCollectionSize ?? DEFAULT_MAX_COLLECTION_SIZE;
     if (!Number.isInteger(maxCollectionSize) || maxCollectionSize < 0) {
       throw new Error(`maxCollectionSize must be a non-negative integer but got ${maxCollectionSize}`);
     }
-    this.maxCollectionSize = maxCollectionSize;
-    this.binaryReader = new BinaryReader(this.config);
-    this.binaryWriter = new BinaryWriter(this.config);
-    this.referenceResolver = new ReferenceResolver(this.binaryReader);
-    this.typeMetaResolver = new TypeMetaResolver(this);
-    this.typeResolver = new TypeResolver(this);
-    this.metaStringResolver = new MetaStringResolver(this);
+
+    this.typeResolver = new TypeResolver(this.config);
+    this.writeContext = new WriteContext(this.typeResolver, this.config);
+    this.readContext = new ReadContext(this.typeResolver, this.config);
+    this.typeResolver.bindContexts(this.writeContext, this.readContext);
     this.typeResolver.init();
     this.anySerializer = this.typeResolver.getSerializerById(TypeId.UNKNOWN);
   }
@@ -89,106 +71,37 @@ export default class {
     };
   }
 
-  isCompatible() {
-    return this.config.compatible === true;
-  }
-
-  incReadDepth(): void {
-    this.depth++;
-    if (this.depth > this.maxDepth) {
-      throw new Error(
-        `Deserialization depth limit exceeded: ${this.depth} > ${this.maxDepth}. `
-        + "The data may be malicious, or increase maxDepth if needed."
-      );
-    }
-  }
-
-  decReadDepth(): void {
-    this.depth--;
-  }
-
-  checkCollectionSize(size: number): void {
-    if (size > this.maxCollectionSize) {
-      throw new Error(
-        `Collection size ${size} exceeds maxCollectionSize ${this.maxCollectionSize}. `
-        + "The data may be malicious, or increase maxCollectionSize if needed."
-      );
-    }
-  }
-
-  checkBinarySize(size: number): void {
-    if (size > this.maxBinarySize) {
-      throw new Error(
-        `Binary size ${size} exceeds maxBinarySize ${this.maxBinarySize}. `
-        + "The data may be malicious, or increase maxBinarySize if needed."
-      );
-    }
-  }
-
-  private resetRead(): void {
-    this.referenceResolver.resetRead();
-    this.typeMetaResolver.resetRead();
-    this.metaStringResolver.resetRead();
-    this.depth = 0;
-  }
-
-  private resetWrite(): void {
-    this.binaryWriter.reset();
-    this.referenceResolver.resetWrite();
-    this.metaStringResolver.resetWrite();
-    this.typeMetaResolver.resetWrite();
-  }
-
-  registerSerializer<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
+  register<T>(constructor: new () => T, customSerializer: CustomSerializer<T>): {
     serializer: Serializer;
     serialize(data: InputType<T> | null): PlatformBuffer;
-    serializeVolatile(data: InputType<T>): {
-      get: () => Uint8Array;
-      dispose: () => void;
-    };
     deserialize(bytes: Uint8Array): ResultType<T>;
   };
-  registerSerializer<T extends TypeInfo>(typeInfo: T): {
+  register<T extends TypeInfo>(typeInfo: T): {
     serializer: Serializer;
     serialize(data: InputType<T> | null): PlatformBuffer;
-    serializeVolatile(data: InputType<T>): {
-      get: () => Uint8Array;
-      dispose: () => void;
-    };
     deserialize(bytes: Uint8Array): ResultType<T>;
   };
-  registerSerializer<T extends new () => any>(constructor: T): {
+  register<T extends new () => any>(constructor: T): {
     serializer: Serializer;
     serialize(data: Partial<InstanceType<T>> | null): PlatformBuffer;
-    serializeVolatile(data: Partial<InstanceType<T>>): {
-      get: () => Uint8Array;
-      dispose: () => void;
-    };
     deserialize(bytes: Uint8Array): InstanceType<T> | null;
   };
-  registerSerializer(constructor: any, customSerializer?: CustomSerializer<any>) {
+  register(constructor: any, customSerializer?: CustomSerializer<any>) {
     let serializer: Serializer;
-    TypeInfo.attach(this);
     if (constructor.prototype?.[ForyTypeInfoSymbol]) {
-      const typeInfo: TypeInfo = (<WithForyClsInfo>(constructor.prototype[ForyTypeInfoSymbol])).structTypeInfo;
+      const typeInfo: TypeInfo = (constructor.prototype[ForyTypeInfoSymbol] as WithForyClsInfo).structTypeInfo;
       typeInfo.freeze();
-      serializer = new Gen(this, { creator: constructor, customSerializer }).generateSerializer(typeInfo);
+      serializer = new Gen(this.typeResolver, { creator: constructor, customSerializer }).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     } else {
       const typeInfo = constructor;
       typeInfo.freeze();
-      serializer = new Gen(this).generateSerializer(typeInfo);
+      serializer = new Gen(this.typeResolver, { customSerializer }).generateSerializer(typeInfo);
       this.typeResolver.registerSerializer(typeInfo, serializer);
     }
-    TypeInfo.detach();
     return {
       serializer,
-      serialize: (data: any) => {
-        return this.serialize(data, serializer);
-      },
-      serializeVolatile: (data: any) => {
-        return this.serializeVolatile(data, serializer);
-      },
+      serialize: (data: any) => this.serialize(data, serializer),
       deserialize: (bytes: Uint8Array) => {
         if (TypeId.polymorphicType(serializer.getTypeId())) {
           return this.deserialize(bytes, serializer);
@@ -198,29 +111,14 @@ export default class {
     };
   }
 
-  replaceSerializerReader(typeInfo: TypeInfo) {
-    TypeInfo.attach(this);
-    const serializer = new Gen(this, { creator: (typeInfo).options!.creator! }).reGenerateSerializer(typeInfo);
-    const result = this.typeResolver.registerSerializer(typeInfo, {
-      getHash: serializer.getHash,
-      read: serializer.read,
-      readNoRef: serializer.readNoRef,
-      readRef: serializer.readRef,
-      readTypeInfo: serializer.readTypeInfo,
-      readRefWithoutTypeInfo: serializer.readRefWithoutTypeInfo,
-    } as any)!;
-    TypeInfo.detach();
-    return result;
-  }
-
   deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
-    this.resetRead();
-    this.binaryReader.reset(bytes);
-    const bitmap = this.binaryReader.readUint8();
+    this.readContext.reset(bytes);
+    const reader = this.readContext.reader;
+    const bitmap = reader.readUint8();
     if ((bitmap & ConfigFlags.isNullFlag) === ConfigFlags.isNullFlag) {
       return null;
     }
-    const isCrossLanguage = (bitmap & ConfigFlags.isCrossLanguageFlag) == ConfigFlags.isCrossLanguageFlag;
+    const isCrossLanguage = (bitmap & ConfigFlags.isCrossLanguageFlag) === ConfigFlags.isCrossLanguageFlag;
     if (!isCrossLanguage) {
       throw new Error("support crosslanguage mode only");
     }
@@ -232,32 +130,20 @@ export default class {
   }
 
   private serializeInternal<T = any>(data: T, serializer: Serializer) {
-    try {
-      this.resetWrite();
-    } catch (e) {
-      if (e instanceof OwnershipError) {
-        throw new Error("Permission denied. To release the serialization ownership, you must call the dispose function returned by serializeVolatile.");
-      }
-      throw e;
-    }
+    this.writeContext.reset();
+    const writer = this.writeContext.writer;
     let bitmap = 0;
     if (data === null) {
       bitmap |= ConfigFlags.isNullFlag;
     }
     bitmap |= ConfigFlags.isCrossLanguageFlag;
-    this.binaryWriter.writeUint8(bitmap);
-    // reserve fixed size
-    this.binaryWriter.reserve(serializer.fixedSize);
-    // start write
+    writer.writeUint8(bitmap);
+    writer.reserve(serializer.fixedSize);
     serializer.writeRef(data);
-    return this.binaryWriter;
+    return writer;
   }
 
   serialize<T = any>(data: T, serializer: Serializer = this.anySerializer) {
     return this.serializeInternal(data, serializer).dump();
-  }
-
-  serializeVolatile<T = any>(data: T, serializer: Serializer = this.anySerializer) {
-    return this.serializeInternal(data, serializer).dumpAndOwn();
   }
 }

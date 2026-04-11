@@ -7,6 +7,7 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - Run all Maven commands from within `java/`.
 - Changes under `java/` must pass code style checks and tests.
 - Fory Java requires JDK `17+`.
+- Run Java `spotless` with JDK `21+`. If the current runtime is lower than 21, export `JAVA_HOME` to a JDK 21 installation before running `mvn spotless:check` or `mvn spotless:apply`.
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
 - Do not use wildcard imports.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
@@ -43,6 +44,10 @@ mvn -T16 spotless:check
 
 # Apply formatting
 mvn -T16 spotless:apply
+
+# Spotless with JDK 21 when the current runtime is older
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+mvn -T16 spotless:check
 
 # Style check
 mvn -T16 checkstyle:check

@@ -17,9 +17,7 @@
  * under the License.
  */
 
-import Fory from "./fory";
-import { refTrackingUnableTypeId } from "./meta/TypeMeta";
-import { ForyTypeInfoSymbol, TypeId, Mode } from "./type";
+import { ForyTypeInfoSymbol, TypeId } from "./type";
 import { BFloat16 } from "./bfloat16";
 
 
@@ -84,16 +82,6 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   setDynamic(v: Dynamic) {
     this.dynamic = v;
     return this;
-  }
-
-  static fory: WeakRef<Fory> | null = null;
-
-  static attach(fory: Fory) {
-    TypeInfo.fory = new WeakRef(fory);
-  }
-
-  static detach() {
-    TypeInfo.fory = null;
   }
 
   initMeta(target: new () => any) {
@@ -184,50 +172,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   }
 
 
-  computeTypeId(fory?: Fory) {
-    const internalTypeId = this._typeId;
-    if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
-      return this._typeId;
-    }
-    if (!fory) {
-      throw new Error("fory is not attached")
-    }
-    if (internalTypeId === TypeId.NAMED_STRUCT && fory.isCompatible() && this.evolving) {
-      return TypeId.NAMED_COMPATIBLE_STRUCT;
-    }
-    if (internalTypeId === TypeId.STRUCT && fory.isCompatible() && this.evolving) {
-      return TypeId.COMPATIBLE_STRUCT;
-    }
-    return this._typeId;
-  }
-
   get typeId() {
-    return this.computeTypeId(TypeInfo.fory?.deref());
-  }
-
-  isMonomorphic(dynamic: Dynamic = Dynamic.AUTO) {
-    switch (dynamic) {
-      case "TRUE":
-        return false;
-      case "FALSE":
-        return true;
-      default:
-        if (TypeId.enumType(this._typeId)) {
-          return true;
-        }
-        if (this._typeId === TypeId.UNION || this._typeId === TypeId.TYPED_UNION || this._typeId === TypeId.NAMED_UNION) {
-          return true;
-        }
-        const internalTypeId = this._typeId;
-        const fory = TypeInfo.fory?.deref();
-        if (!fory) {
-          throw new Error("fory is not attached")
-        }
-        if (fory.isCompatible()) {
-          return !TypeId.userDefinedType(this._typeId) && internalTypeId != TypeId.UNKNOWN;
-        }
-        return internalTypeId != TypeId.UNKNOWN;
-    }
+    return this._typeId;
   }
 
   isNamedType() {

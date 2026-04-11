@@ -23,25 +23,27 @@ import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
-import Fory from "../fory";
 import { TypeMeta } from "../meta/TypeMeta";
+import { ReadContext, WriteContext } from "../context";
 
 export class AnyHelper {
-  static detectSerializer(fory: Fory) {
-    const typeId = fory.binaryReader.readUint8();
+  static detectSerializer(readContext: ReadContext) {
+    const reader = readContext.reader;
+    const typeResolver = readContext.typeResolver;
+    const typeId = reader.readUint8();
     let userTypeId = -1;
     if (TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT) {
-      userTypeId = fory.binaryReader.readVarUInt32();
+      userTypeId = reader.readVarUInt32();
     }
     let serializer: Serializer | undefined;
 
     function tryUpdateSerializer(serializer: Serializer | undefined | null, typeMeta: TypeMeta) {
       if (!serializer) {
-        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+        return readContext.genSerializerByTypeMetaRuntime(typeMeta);
       }
       const hash = serializer.getHash();
       if (hash !== typeMeta.getHash()) {
-        return fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta, serializer);
+        return readContext.genSerializerByTypeMetaRuntime(typeMeta, serializer);
       }
       return serializer;
     }
@@ -49,8 +51,8 @@ export class AnyHelper {
     switch (typeId) {
       case TypeId.COMPATIBLE_STRUCT:
         {
-          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
-          serializer = fory.typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
+          const typeMeta = readContext.readTypeMeta();
+          serializer = typeResolver.getSerializerById(typeId, typeMeta.getUserTypeId());
           serializer = tryUpdateSerializer(serializer, typeMeta);
         }
         break;
@@ -70,21 +72,21 @@ export class AnyHelper {
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_EXT:
       case TypeId.NAMED_COMPATIBLE_STRUCT:
-        if (fory.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
-          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+        if (readContext.isCompatible() || typeId === TypeId.NAMED_COMPATIBLE_STRUCT) {
+          const typeMeta = readContext.readTypeMeta();
           const ns = typeMeta.getNs();
           const typeName = typeMeta.getTypeName();
           const named = `${ns}$${typeName}`;
-          const namedSerializer = fory.typeResolver.getSerializerByName(named);
+          const namedSerializer = typeResolver.getSerializerByName(named);
           serializer = tryUpdateSerializer(namedSerializer, typeMeta);
         } else {
-          const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
-          const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
-          serializer = fory.typeResolver.getSerializerByName(`${ns}$${typeName}`);
+          const ns = readContext.readNamespace();
+          const typeName = readContext.readTypeName();
+          serializer = typeResolver.getSerializerByName(`${ns}$${typeName}`);
         }
         break;
       default:
-        serializer = fory.typeResolver.getSerializerById(typeId, userTypeId);
+        serializer = typeResolver.getSerializerById(typeId, userTypeId);
         break;
     }
     if (!serializer) {
@@ -93,16 +95,16 @@ export class AnyHelper {
     return serializer;
   }
 
-  static getSerializer(fory: Fory, v: any) {
+  static getSerializer(writeContext: WriteContext, v: any) {
     if (v === null || v === undefined) {
       throw new Error("can not guess the type of null or undefined");
     }
 
-    const serializer = fory.typeResolver.getSerializerByData(v);
+    const serializer = writeContext.typeResolver.getSerializerByData(v);
     if (!serializer) {
       throw new Error(`Failed to detect the Fory serializer from JavaScript type: ${typeof v}`);
     }
-    fory.binaryWriter.reserve(serializer.fixedSize);
+    writeContext.writer.reserve(serializer.fixedSize);
     return serializer;
   }
 }
@@ -126,14 +128,14 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
 
   writeTypeInfo(accessor: string): string {
     return `
-      ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getForyName()}, ${accessor});
+      ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getWriteContextName()}, ${accessor});
       ${this.writerSerializer}.writeTypeInfo();
     `;
   }
 
   readTypeInfo(): string {
     return `
-      ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getForyName()});
+      ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getReadContextName()});
     `;
   }
 
