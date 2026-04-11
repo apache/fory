@@ -147,7 +147,7 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Date",
         PrimitiveKind.TIMESTAMP: "Date",
         PrimitiveKind.DURATION: "number",
-        PrimitiveKind.DECIMAL: "bigint",
+        # DECIMAL is not supported by the JS runtime; rejected in _field_type_expr.
         PrimitiveKind.ANY: "any",
     }
 
@@ -473,6 +473,12 @@ class JavaScriptGenerator(BaseGenerator):
                 "float": PrimitiveKind.FLOAT32,
                 "double": PrimitiveKind.FLOAT64,
             }
+            # Reject unsupported primitives referenced by name
+            for pk in PrimitiveKind:
+                if pk.value == primitive_name and pk not in self.PRIMITIVE_MAP:
+                    raise ValueError(
+                        f"Unsupported primitive type for JavaScript: {pk}"
+                    )
             if primitive_name in shorthand_map:
                 type_str = self.PRIMITIVE_MAP.get(shorthand_map[primitive_name], "any")
             else:
@@ -802,6 +808,11 @@ class JavaScriptGenerator(BaseGenerator):
         """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
+            if field_type.kind == PrimitiveKind.DECIMAL:
+                raise ValueError(
+                    "decimal is not supported by the JavaScript runtime. "
+                    "Use a different type or wait for runtime support."
+                )
             expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
             if expr is None:
                 return "Type.any()"
@@ -817,7 +828,18 @@ class JavaScriptGenerator(BaseGenerator):
                 return self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
             for pk in PrimitiveKind:
                 if pk.value == lower:
-                    return self.PRIMITIVE_RUNTIME_MAP.get(pk, "Type.any()")
+                    if pk == PrimitiveKind.DECIMAL:
+                        raise ValueError(
+                            "decimal is not supported by the JavaScript runtime. "
+                            "Use a different type or wait for runtime support."
+                        )
+                    expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
+                    if expr is None:
+                        raise ValueError(
+                            f"Primitive type '{pk.value}' has no JavaScript "
+                            f"runtime mapping."
+                        )
+                    return expr
 
             # Named type — could be a Message, Enum, or Union
             resolved = self._resolve_named_type(field_type.name, parent_stack)

@@ -87,6 +87,38 @@ describe('union', () => {
     expect(result).toEqual(input);
   });
 
+  test('should named union roundtrip', () => {
+    const fory = new Fory({ refTracking: true });
+    fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Msg" }, {
+      text: Type.string(),
+    }));
+    const { serialize, deserialize } = fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Wrapper" }, {
+      payload: Type.union({ namespace: "test", typeName: "MyUnion" }, {
+        1: Type.string(),
+        2: Type.struct({ namespace: "test", typeName: "Msg" }),
+      }),
+    }));
+    const input = { payload: { case: 1, value: "hello" } };
+    const result = deserialize(serialize(input));
+    expect(result).toEqual(input);
+  });
+
+  test('should named union with struct case roundtrip', () => {
+    const fory = new Fory({ refTracking: true });
+    fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Note" }, {
+      text: Type.string(),
+    }));
+    const { serialize, deserialize } = fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Holder" }, {
+      payload: Type.union({ namespace: "test", typeName: "ContentUnion" }, {
+        1: Type.struct({ namespace: "test", typeName: "Note" }),
+        2: Type.varInt32(),
+      }),
+    }));
+    const input = { payload: { case: 1, value: { text: "a note" } } };
+    const result = deserialize(serialize(input));
+    expect(result).toEqual(input);
+  });
+
   test('should union alongside other fields roundtrip', () => {
     const fory = new Fory({ refTracking: true });
     fory.registerSerializer(Type.struct(601, {

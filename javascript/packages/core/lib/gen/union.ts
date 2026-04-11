@@ -24,6 +24,7 @@ import { CodegenRegistry } from "./router";
 import { RefFlags, TypeId } from "../type";
 import { Scope } from "./scope";
 import { AnyHelper } from "./any";
+import { TypeMeta } from "../meta/TypeMeta";
 
 class UnionSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
@@ -119,12 +120,71 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
+  writeTypeInfo(): string {
+    const internalTypeId = this.typeInfo._typeId;
+    let writeUserTypeIdStmt = "";
+    let typeMeta = "";
+    switch (internalTypeId) {
+      case TypeId.TYPED_UNION:
+        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
+        break;
+      case TypeId.NAMED_UNION:
+        if (this.builder.fory.isCompatible()) {
+          const bytes = this.scope.declare("unionTypeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
+          const serializerExpr = `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`;
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(`${serializerExpr}.getTypeInfo()`, this.builder.writer.ownName(), bytes);
+        } else {
+          const nsBytes = this.scope.declare("unionNsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.namespace)));
+          const typeNameBytes = this.scope.declare("unionTypeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.typeName)));
+          typeMeta = `
+            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), nsBytes)}
+            ${this.builder.metaStringResolver.writeBytes(this.builder.writer.ownName(), typeNameBytes)}
+          `;
+        }
+        break;
+    }
+    return `
+      ${this.builder.writer.writeUint8(this.getTypeId())};
+      ${writeUserTypeIdStmt}
+      ${typeMeta}
+    `;
+  }
+
+  readTypeInfo(): string {
+    const internalTypeId = this.typeInfo._typeId;
+    let readUserTypeIdStmt = "";
+    let namesStmt = "";
+    switch (internalTypeId) {
+      case TypeId.TYPED_UNION:
+        readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
+        break;
+      case TypeId.NAMED_UNION:
+        if (this.builder.fory.isCompatible()) {
+          const typeMeta = this.scope.uniqueName("unionTypeMeta");
+          namesStmt = `
+            const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta(this.builder.reader.ownName())};
+          `;
+        } else {
+          namesStmt = `
+            ${this.builder.metaStringResolver.readNamespace(this.builder.reader.ownName())};
+            ${this.builder.metaStringResolver.readTypeName(this.builder.reader.ownName())};
+          `;
+        }
+        break;
+    }
+    return `
+      ${this.builder.reader.readUint8()};
+      ${readUserTypeIdStmt}
+      ${namesStmt}
+    `;
+  }
+
   getFixedSize(): number {
     return 12;
   }
 
   getTypeId() {
-    return TypeId.TYPED_UNION;
+    return this.typeInfo._typeId;
   }
 }
 
