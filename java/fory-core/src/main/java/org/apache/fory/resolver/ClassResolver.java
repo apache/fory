@@ -35,7 +35,6 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -127,6 +126,7 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.Shareable;
+import org.apache.fory.serializer.SqlTimeSerializers;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
@@ -329,6 +329,11 @@ public class ClassResolver extends TypeResolver {
     ArraySerializers.registerDefaultSerializers(this);
     PrimitiveListSerializers.registerDefaultSerializers(this);
     TimeSerializers.registerDefaultSerializers(this);
+    if (SqlTimeSerializers.isSqlModuleAvailable()) {
+      SqlTimeSerializers.registerDefaultSerializers(this);
+    } else {
+      reserveInternalTypeIds(SqlTimeSerializers.getNumReservedTypeIds());
+    }
     OptionalSerializers.registerDefaultSerializers(this);
     CollectionSerializers.registerDefaultSerializers(this);
     MapSerializers.registerDefaultSerializers(this);
@@ -352,7 +357,11 @@ public class ClassResolver extends TypeResolver {
     ImmutableCollectionSerializers.registerSerializers(this);
     SubListSerializers.registerSerializers(this, true);
     if (config.registerGuavaTypes()) {
-      GuavaCollectionSerializers.registerDefaultSerializers(this);
+      if (GuavaCollectionSerializers.isGuavaAvailable()) {
+        GuavaCollectionSerializers.registerDefaultSerializers(this);
+      } else {
+        reserveInternalTypeIds(GuavaCollectionSerializers.getNumReservedTypeIds());
+      }
     }
     if (config.deserializeUnknownClass()) {
       if (metaContextShareEnabled) {
@@ -370,11 +379,30 @@ public class ClassResolver extends TypeResolver {
     registerInternal(type);
   }
 
+  private void reserveInternalTypeIds(int numTypeIds) {
+    Preconditions.checkArgument(numTypeIds >= 0, "numTypeIds must be non-negative");
+    for (int i = 0; i < numTypeIds; i++) {
+      Preconditions.checkArgument(
+          extRegistry.classIdGenerator < INTERNAL_NATIVE_ID_LIMIT,
+          "Internal type id overflow: %s",
+          extRegistry.classIdGenerator);
+      while (extRegistry.classIdGenerator < typeIdToTypeInfo.length
+          && typeIdToTypeInfo[extRegistry.classIdGenerator] != null) {
+        extRegistry.classIdGenerator++;
+      }
+      Preconditions.checkArgument(
+          extRegistry.classIdGenerator < INTERNAL_NATIVE_ID_LIMIT,
+          "Internal type id overflow: %s",
+          extRegistry.classIdGenerator);
+      extRegistry.classIdGenerator++;
+    }
+  }
+
   /** Register common class ahead to get smaller class id for serialization. */
   private void registerCommonUsedClasses() {
     registerInternal(LinkedList.class, TreeSet.class);
     registerInternal(LinkedHashMap.class, TreeMap.class);
-    registerInternal(Date.class, Timestamp.class, LocalDateTime.class, Instant.class);
+    registerInternal(Date.class, LocalDateTime.class, Instant.class);
     registerInternal(BigInteger.class, BigDecimal.class);
     registerInternal(Optional.class, OptionalInt.class);
     registerInternal(Boolean[].class, Byte[].class, Short[].class, Character[].class);

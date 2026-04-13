@@ -23,7 +23,7 @@ import {describe, expect, test} from '@jest/globals';
 describe('datetime', () => {
   test('should date work', () => {
     
-    const fory = new Fory({ refTracking: true });    
+    const fory = new Fory({ ref: true });    
     const now = new Date();
     const input = fory.serialize(now);
     const result: Date | null = fory.deserialize(
@@ -37,7 +37,7 @@ describe('datetime', () => {
       a: Type.timestamp(),
       b: Type.duration(),
     })
-    const fory = new Fory({ refTracking: true });    
+    const fory = new Fory({ ref: true });    
     const serializer = fory.register(typeinfo).serializer;
     const d = new Date('2021/10/20 09:13');
     const input = fory.serialize({ a:  d, b: d}, serializer);
@@ -47,5 +47,4 @@ describe('datetime', () => {
     expect(result).toEqual({ a: d, b: d.getTime() })
   });
 });
-
 

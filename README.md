@@ -135,6 +135,14 @@ For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmark
 
 For more detailed benchmarks and methodology, see [SwiftBenchmarks](docs/benchmarks/swift).
 
+### Dart Serialization Performance
+
+<p align="center">
+<img src="docs/benchmarks/dart/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [Dart Benchmarks](docs/benchmarks/dart).
+
 ## Installation
 
 **Java**:

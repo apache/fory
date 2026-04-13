@@ -19,6 +19,8 @@ import json
 import os
 import platform
 import argparse
+import shutil
+import subprocess
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import defaultdict
@@ -444,6 +446,10 @@ if sizes:
 report_path = os.path.join(output_dir, "README.md")
 with open(report_path, "w", encoding="utf-8") as f:
     f.writelines(md_report)
+
+prettier = shutil.which("prettier")
+if prettier is not None:
+    subprocess.run([prettier, "--write", report_path], check=True)
 
 print(f"✅ Plots saved in: {output_dir}")
 print(f"📄 Markdown report generated at: {report_path}")

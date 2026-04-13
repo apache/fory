@@ -19,9 +19,9 @@
 
 package org.apache.fory.serializer.converter;
 
-import com.google.common.collect.ImmutableSet;
 import java.lang.reflect.Field;
 import java.util.Set;
+import org.apache.fory.collection.Collections;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.type.TypeUtils;
 
@@ -31,6 +31,9 @@ import org.apache.fory.type.TypeUtils;
  * automatic type conversion during serialization/deserialization processes.
  */
 public class FieldConverters {
+  private static Set<Class<?>> compatibleTypes(Class<?>... types) {
+    return java.util.Collections.unmodifiableSet(Collections.ofHashSet(types));
+  }
 
   /**
    * Creates an appropriate field converter based on the target field type and source object type.
@@ -128,7 +131,7 @@ public class FieldConverters {
    * false for null values and incompatible types.
    */
   public static class BooleanConverter extends FieldConverter<Boolean> {
-    static Set<Class<?>> compatibleTypes = ImmutableSet.of(String.class, Boolean.class);
+    static Set<Class<?>> compatibleTypes = compatibleTypes(String.class, Boolean.class);
 
     protected BooleanConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -193,7 +196,7 @@ public class FieldConverters {
    */
   public static class ByteConverter extends FieldConverter<Byte> {
     static Set<Class<?>> compatibleTypes =
-        ImmutableSet.of(String.class, Integer.class, Long.class, Short.class, Byte.class);
+        compatibleTypes(String.class, Integer.class, Long.class, Short.class, Byte.class);
 
     protected ByteConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -266,7 +269,7 @@ public class FieldConverters {
    */
   public static class ShortConverter extends FieldConverter<Short> {
     static Set<Class<?>> compatibleTypes =
-        ImmutableSet.of(String.class, Integer.class, Long.class, Short.class);
+        compatibleTypes(String.class, Integer.class, Long.class, Short.class);
 
     protected ShortConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -330,7 +333,7 @@ public class FieldConverters {
    * values.
    */
   public static class IntConverter extends FieldConverter<Integer> {
-    static Set<Class<?>> compatibleTypes = ImmutableSet.of(String.class, Long.class, Integer.class);
+    static Set<Class<?>> compatibleTypes = compatibleTypes(String.class, Long.class, Integer.class);
 
     protected IntConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -398,7 +401,7 @@ public class FieldConverters {
    * null values.
    */
   public static class LongConverter extends FieldConverter<Long> {
-    static Set<Class<?>> compatibleTypes = ImmutableSet.of(String.class, Long.class);
+    static Set<Class<?>> compatibleTypes = compatibleTypes(String.class, Long.class);
 
     protected LongConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -463,7 +466,7 @@ public class FieldConverters {
    * for null values. Only allows conversion from String.
    */
   public static class FloatConverter extends FieldConverter<Float> {
-    static Set<Class<?>> compatibleTypes = ImmutableSet.of(String.class, Float.class);
+    static Set<Class<?>> compatibleTypes = compatibleTypes(String.class, Float.class);
 
     protected FloatConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -528,7 +531,7 @@ public class FieldConverters {
    * for null values. Allows conversion from String and Float.
    */
   public static class DoubleConverter extends FieldConverter<Double> {
-    static Set<Class<?>> compatibleTypes = ImmutableSet.of(String.class, Float.class, Double.class);
+    static Set<Class<?>> compatibleTypes = compatibleTypes(String.class, Float.class, Double.class);
 
     protected DoubleConverter(FieldAccessor fieldAccessor) {
       super(fieldAccessor);
@@ -596,7 +599,7 @@ public class FieldConverters {
    */
   public static class StringConverter extends FieldConverter<String> {
     static Set<Class<?>> compatibleTypes =
-        ImmutableSet.of(
+        compatibleTypes(
             Integer.class,
             Long.class,
             Short.class,

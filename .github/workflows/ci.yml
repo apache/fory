@@ -948,8 +948,14 @@ jobs:
           dart pub get
       - name: Generate Dart code
         run: |
-          cd dart/packages/fory-test
-          dart run build_runner build --delete-conflicting-outputs
+          (
+            cd dart/packages/fory
+            dart run build_runner build --delete-conflicting-outputs
+          )
+          (
+            cd dart/packages/fory-test
+            dart run build_runner build --delete-conflicting-outputs
+          )
       - name: Run Dart Xlang Test
         env:
           FORY_DART_JAVA_CI: "1"
@@ -981,8 +987,14 @@ jobs:
           dart pub get
       - name: Generate code
         run: |
-          cd dart/packages/fory-test
-          dart run build_runner build --delete-conflicting-outputs
+          (
+            cd dart/packages/fory
+            dart run build_runner build --delete-conflicting-outputs
+          )
+          (
+            cd dart/packages/fory-test
+            dart run build_runner build --delete-conflicting-outputs
+          )
       - name: Run tests
         run: |
           cd dart/packages/fory-test
@@ -995,6 +1007,126 @@ jobs:
         run: |
           cd dart
           dart analyze
+
+  dart_flutter:
+    name: Dart Flutter CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set Flutter smoke dir
+        run: echo "FLUTTER_SMOKE_DIR=$RUNNER_TEMP/fory_flutter_smoke" >> "$GITHUB_ENV"
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install Flutter Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libgtk-3-dev
+      - name: Display Flutter version
+        run: flutter --version
+      - name: Create Flutter smoke app
+        run: |
+          rm -rf "$FLUTTER_SMOKE_DIR"
+          flutter create --empty --project-name fory_flutter_smoke "$FLUTTER_SMOKE_DIR"
+      - name: Configure Flutter smoke app
+        run: |
+          mkdir -p "$FLUTTER_SMOKE_DIR/lib" "$FLUTTER_SMOKE_DIR/test"
+          cat <<EOF | sed 's/^          //' > "$FLUTTER_SMOKE_DIR/pubspec.yaml"
+          name: fory_flutter_smoke
+          description: Flutter smoke app for Apache Fory CI.
+          publish_to: none
+
+          environment:
+            sdk: ^3.6.1
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            fory:
+              path: ${GITHUB_WORKSPACE}/dart/packages/fory
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^5.0.0
+            build_runner: ^2.4.13
+
+          flutter:
+            uses-material-design: true
+          EOF
+          cat <<'EOF' | sed 's/^          //' > "$FLUTTER_SMOKE_DIR/lib/person.dart"
+          import 'package:fory/fory.dart';
+
+          part 'person.fory.dart';
+
+          @ForyStruct()
+          class Person {
+            Person();
+
+            String name = '';
+            Int32 age = Int32(0);
+          }
+          EOF
+          cat <<'EOF' | sed 's/^          //' > "$FLUTTER_SMOKE_DIR/lib/main.dart"
+          import 'package:flutter/material.dart';
+
+          import 'person.dart';
+
+          void main() {
+            final person = Person()..name = 'Ada';
+            runApp(
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: Text(person.name),
+              ),
+            );
+          }
+          EOF
+          cat <<'EOF' | sed 's/^          //' > "$FLUTTER_SMOKE_DIR/test/fory_smoke_test.dart"
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:fory/fory.dart';
+          import 'package:fory_flutter_smoke/person.dart';
+
+          void main() {
+            test('generated fory serializers work in flutter', () {
+              final fory = Fory();
+              PersonFory.register(fory, Person, id: 1);
+
+              final person = Person()
+                ..name = 'Ada'
+                ..age = Int32(36);
+
+              final bytes = fory.serialize(person);
+              final roundTrip = fory.deserialize<Person>(bytes);
+
+              expect(roundTrip.name, 'Ada');
+              expect(roundTrip.age, Int32(36));
+            });
+          }
+          EOF
+      - name: Get Flutter dependencies
+        run: |
+          cd "$FLUTTER_SMOKE_DIR"
+          flutter pub get
+      - name: Generate Flutter smoke code
+        run: |
+          cd "$FLUTTER_SMOKE_DIR"
+          dart run build_runner build --delete-conflicting-outputs
+      - name: Run Flutter smoke tests
+        run: |
+          cd "$FLUTTER_SMOKE_DIR"
+          flutter test
+      - name: Analyze Flutter smoke app
+        run: |
+          cd "$FLUTTER_SMOKE_DIR"
+          flutter analyze
+      - name: Build Flutter smoke app (AOT)
+        run: |
+          flutter config --enable-linux-desktop
+          cd "$FLUTTER_SMOKE_DIR"
+          flutter build linux --release
 
   lint:
     name: Code Style Check

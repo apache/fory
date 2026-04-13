@@ -22,8 +22,6 @@ package org.apache.fory.resolver;
 import static org.apache.fory.type.TypeUtils.getSizeOfPrimitiveType;
 import static org.apache.fory.type.Types.INVALID_USER_TYPE_ID;
 
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
 import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
@@ -53,6 +51,7 @@ import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
+import org.apache.fory.collection.BiMap;
 import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
@@ -1755,7 +1754,8 @@ public abstract class TypeResolver {
     // shared across multiple fory instances.
     IdentityHashMap<Class<?>, Integer> registeredClassIdMap =
         new IdentityHashMap<>(isCrossLanguage() ? 4 : 200);
-    BiMap<String, Class<?>> registeredClasses = HashBiMap.create(isCrossLanguage() ? 4 : 200);
+    BiMap<String, Class<?>> registeredClasses =
+        BiMap.newHashIdentityBiMap(isCrossLanguage() ? 4 : 200);
     final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef;
     // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
     final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>

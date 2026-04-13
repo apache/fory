@@ -19,7 +19,6 @@
 
 package org.apache.fory.resolver;
 
-import com.google.common.collect.BiMap;
 import java.lang.reflect.Member;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,6 +29,7 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.CodeGenerator;
+import org.apache.fory.collection.BiMap;
 import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.EncodedMetaString;

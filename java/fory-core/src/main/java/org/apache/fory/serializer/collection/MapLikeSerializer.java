@@ -32,7 +32,6 @@ import static org.apache.fory.serializer.collection.MapFlags.VALUE_DECL_TYPE;
 import static org.apache.fory.serializer.collection.MapFlags.VALUE_HAS_NULL;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
 
-import com.google.common.collect.ImmutableMap.Builder;
 import java.lang.invoke.MethodHandle;
 import java.util.Iterator;
 import java.util.Map;
@@ -593,30 +592,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
         }
       }
       newMap.put(key, value);
-    }
-  }
-
-  protected <K, V> void copyEntry(
-      CopyContext copyContext, Map<K, V> originMap, Builder<K, V> builder) {
-    TypeResolver classResolver = typeResolver;
-    MapTypeCache state = mapTypeCache();
-    for (Entry<K, V> entry : originMap.entrySet()) {
-      K key = entry.getKey();
-      if (key != null) {
-        TypeInfo typeInfo = classResolver.getTypeInfo(key.getClass(), state.keyTypeInfoWriteCache);
-        if (!typeInfo.getSerializer().isImmutable()) {
-          key = copyContext.copyObject(key, typeInfo.getTypeId());
-        }
-      }
-      V value = entry.getValue();
-      if (value != null) {
-        TypeInfo typeInfo =
-            classResolver.getTypeInfo(value.getClass(), state.valueTypeInfoWriteCache);
-        if (!typeInfo.getSerializer().isImmutable()) {
-          value = copyContext.copyObject(value, typeInfo.getTypeId());
-        }
-      }
-      builder.put(key, value);
     }
   }
 

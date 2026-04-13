@@ -601,5 +601,7 @@ public class User {
 ## Related Topics
 
 - [Basic Serialization](basic-serialization.md) - Getting started with Fory serialization
+- [Configuration](configuration.md) - Runtime builder options
+- [Enum Configuration](enum-configuration.md) - `@ForyEnumId` and enum name/tag behavior
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema evolution
 - [Cross-Language](cross-language.md) - Interoperability with Python, Rust, C++, Go

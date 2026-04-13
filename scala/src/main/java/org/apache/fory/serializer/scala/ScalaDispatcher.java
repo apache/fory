@@ -19,11 +19,11 @@
 
 package org.apache.fory.serializer.scala;
 
-import com.google.common.base.Preconditions;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
+import org.apache.fory.util.Preconditions;
 import scala.collection.generic.DefaultSerializable;
 
 import java.lang.reflect.Method;

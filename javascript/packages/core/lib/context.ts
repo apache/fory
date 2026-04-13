@@ -26,6 +26,7 @@ import { Config, RefFlags, Serializer, TypeId } from "./type";
 
 type TypeResolverLike = {
   config: Config;
+  trackingRef: boolean;
   computeTypeId(typeInfo: TypeInfo): number;
   getSerializerById(id: number, userTypeId?: number): Serializer | undefined;
   getSerializerByName(name: string): Serializer | undefined;
@@ -227,7 +228,7 @@ export class WriteContext {
       this.writer.writeInt8(RefFlags.NullFlag);
       return true;
     }
-    if (this.typeResolver.config.refTracking === true) {
+    if (this.typeResolver.trackingRef) {
       const refId = this.refWriter.getWrittenRefId(object);
       if (typeof refId === "number") {
         this.writer.writeInt8(RefFlags.RefFlag);

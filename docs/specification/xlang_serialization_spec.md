@@ -1229,9 +1229,12 @@ The implementation can accumulate read count with map size to decide whether to 
 
 ### enum
 
-Enums are serialized as an unsigned var int. If the order of enum values change, the deserialized enum value may not be
-the value users expect. In such cases, users must register enum serializer by make it write enum value as an enumerated
-string with unique hash disabled.
+Enums are serialized as an unsigned var int tag. For plain enums, this tag is typically the
+declaration ordinal. Some implementations or generated enum forms may instead use an explicit
+stable enum value or variant ID. If the encoding relies on declaration order, reordering enum
+values can change the deserialized result. In such cases, users should prefer an explicit stable
+ID-based encoding or register a custom enum serializer that writes a stable string representation
+with unique hash disabled.
 
 ### timestamp
 

@@ -79,7 +79,7 @@ describe('size-limit guardrails', () => {
         maxDepth: 100,
         maxBinarySize: 1024,
         maxCollectionSize: 500,
-        refTracking: true,
+        ref: true,
         compatible: true,
       });
       expect(fory.readContext.maxDepth).toBe(100);
@@ -165,7 +165,7 @@ describe('size-limit guardrails', () => {
 
   describe('set deserialization with maxCollectionSize', () => {
     test('should deserialize set within limit', () => {
-      const fory = new Fory({ maxCollectionSize: 10, refTracking: true });
+      const fory = new Fory({ maxCollectionSize: 10, ref: true });
       const { serialize, deserialize } = fory.register(Type.set(Type.int32()));
       const data = new Set([1, 2, 3]);
       const result = deserialize(serialize(data));
@@ -173,11 +173,11 @@ describe('size-limit guardrails', () => {
     });
 
     test('should throw when set exceeds maxCollectionSize', () => {
-      const serializeFory = new Fory({ refTracking: true });
+      const serializeFory = new Fory({ ref: true });
       const { serialize } = serializeFory.register(Type.set(Type.int32()));
       const bytes = serialize(new Set([1, 2, 3, 4, 5]));
 
-      const deserializeFory = new Fory({ maxCollectionSize: 3, refTracking: true });
+      const deserializeFory = new Fory({ maxCollectionSize: 3, ref: true });
       const { deserialize } = deserializeFory.register(Type.set(Type.int32()));
       expect(() => deserialize(bytes)).toThrow('exceeds maxCollectionSize');
     });
@@ -185,7 +185,7 @@ describe('size-limit guardrails', () => {
 
   describe('map deserialization with maxCollectionSize', () => {
     test('should deserialize map within limit', () => {
-      const fory = new Fory({ maxCollectionSize: 10, refTracking: true });
+      const fory = new Fory({ maxCollectionSize: 10, ref: true });
       const { serialize, deserialize } = fory.register(
         Type.map(Type.string(), Type.int32())
       );
@@ -195,13 +195,13 @@ describe('size-limit guardrails', () => {
     });
 
     test('should throw when map exceeds maxCollectionSize', () => {
-      const serializeFory = new Fory({ refTracking: true });
+      const serializeFory = new Fory({ ref: true });
       const { serialize } = serializeFory.register(
         Type.map(Type.string(), Type.int32())
       );
       const bytes = serialize(new Map([['a', 1], ['b', 2], ['c', 3], ['d', 4]]));
 
-      const deserializeFory = new Fory({ maxCollectionSize: 2, refTracking: true });
+      const deserializeFory = new Fory({ maxCollectionSize: 2, ref: true });
       const { deserialize } = deserializeFory.register(
         Type.map(Type.string(), Type.int32())
       );
@@ -211,7 +211,7 @@ describe('size-limit guardrails', () => {
 
   describe('binary deserialization with maxBinarySize', () => {
     test('should deserialize binary within limit', () => {
-      const fory = new Fory({ maxBinarySize: 1024, refTracking: true });
+      const fory = new Fory({ maxBinarySize: 1024, ref: true });
       const { serialize, deserialize } = fory.register(Type.struct("test.binary", {
         data: Type.binary(),
       }));
@@ -223,13 +223,13 @@ describe('size-limit guardrails', () => {
     });
 
     test('should throw when binary exceeds maxBinarySize', () => {
-      const serializeFory = new Fory({ refTracking: true });
+      const serializeFory = new Fory({ ref: true });
       const { serialize } = serializeFory.register(Type.struct("test.binary2", {
         data: Type.binary(),
       }));
       const bytes = serialize({ data: new Uint8Array(100) });
 
-      const deserializeFory = new Fory({ maxBinarySize: 50, refTracking: true });
+      const deserializeFory = new Fory({ maxBinarySize: 50, ref: true });
       const { deserialize } = deserializeFory.register(Type.struct("test.binary2", {
         data: Type.binary(),
       }));
@@ -239,7 +239,7 @@ describe('size-limit guardrails', () => {
 
   describe('default limits allow normal payloads', () => {
     test('should allow large collections within default limit', () => {
-      const fory = new Fory({ refTracking: true });
+      const fory = new Fory({ ref: true });
       const { serialize, deserialize } = fory.register(Type.array(Type.int32()));
       const bigArray = Array.from({ length: 1000 }, (_, i) => i);
       const result = deserialize(serialize(bigArray));
@@ -249,18 +249,18 @@ describe('size-limit guardrails', () => {
 
   describe('polymorphic (any-typed) collection paths', () => {
     test('should enforce maxCollectionSize on untyped list', () => {
-      const serializeFory = new Fory({ refTracking: true });
+      const serializeFory = new Fory({ ref: true });
       const bytes = serializeFory.serialize([1, "two", 3.0]);
 
-      const deserializeFory = new Fory({ maxCollectionSize: 2, refTracking: true });
+      const deserializeFory = new Fory({ maxCollectionSize: 2, ref: true });
       expect(() => deserializeFory.deserialize(bytes)).toThrow('exceeds maxCollectionSize');
     });
 
     test('should enforce maxCollectionSize on untyped map', () => {
-      const serializeFory = new Fory({ refTracking: true });
+      const serializeFory = new Fory({ ref: true });
       const bytes = serializeFory.serialize(new Map([["a", 1], ["b", 2], ["c", 3]]));
 
-      const deserializeFory = new Fory({ maxCollectionSize: 2, refTracking: true });
+      const deserializeFory = new Fory({ maxCollectionSize: 2, ref: true });
       expect(() => deserializeFory.deserialize(bytes)).toThrow('exceeds maxCollectionSize');
     });
   });

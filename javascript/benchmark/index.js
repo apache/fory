@@ -20,7 +20,7 @@
 const Fory = require("@apache-fory/core");
 const utils = require("@apache-fory/core/dist/lib/util");
 const hps = require('@apache-fory/hps').default;
-const fory = new Fory.default({ hps, refTracking: false, useSliceString: true });
+const fory = new Fory.default({ hps, ref: false, useSliceString: true });
 const Benchmark = require("benchmark");
 const protobuf = require("protobufjs");
 const path = require('path');

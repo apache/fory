@@ -872,7 +872,7 @@ class CSharpGenerator(BaseGenerator):
         lines.append(f"{self.indent_str}private static ThreadSafeFory CreateFory()")
         lines.append(f"{self.indent_str}{{")
         lines.append(
-            f"{self.indent_str * 2}ThreadSafeFory fory = Fory.Builder().Xlang(true).TrackRef(true).BuildThreadSafe();"
+            f"{self.indent_str * 2}ThreadSafeFory fory = Fory.Builder().TrackRef(true).BuildThreadSafe();"
         )
         lines.append(f"{self.indent_str * 2}Register(fory);")
         lines.append(f"{self.indent_str * 2}return fory;")

@@ -172,9 +172,9 @@ class RustGenerator(BaseGenerator):
         if "." in type_name:
             parts = type_name.split(".")
             parents = [self.to_snake_case(name) for name in parts[:-1]]
-            path = "::".join(parents + [parts[-1]])
+            path = "::".join(parents + [self.to_pascal_case(parts[-1])])
             return f"crate::{module}::{path}"
-        return f"crate::{module}::{type_name}"
+        return f"crate::{module}::{self.to_pascal_case(type_name)}"
 
     def generate_bytes_impl(self, type_name: str) -> List[str]:
         lines = []
@@ -413,7 +413,7 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust struct."""
         lines = []
 
-        type_name = message.name
+        type_name = self.to_pascal_case(message.name)
 
         # Derive macros
         comment = self.format_type_id_comment(message, "//")
@@ -487,7 +487,7 @@ class RustGenerator(BaseGenerator):
     def generate_debug_impl(self, message: Message) -> List[str]:
         """Generate a Debug impl that avoids recursive ref expansion."""
         lines: List[str] = []
-        type_name = message.name
+        type_name = self.to_pascal_case(message.name)
         lines.append(f"impl std::fmt::Debug for {type_name} {{")
         lines.append(
             "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {"
@@ -766,20 +766,20 @@ class RustGenerator(BaseGenerator):
             target_parents = parts[:-1]
             base_name = parts[-1]
             return self.build_relative_type_name(
-                current_parents, target_parents, base_name
+                current_parents, target_parents, self.to_pascal_case(base_name)
             )
         if not parent_stack:
-            return type_name
+            return self.to_pascal_case(type_name)
 
         for i in range(len(parent_stack) - 1, -1, -1):
             message = parent_stack[i]
             if message.get_nested_type(type_name) is not None:
                 target_parents = [msg.name for msg in parent_stack[: i + 1]]
                 return self.build_relative_type_name(
-                    current_parents, target_parents, type_name
+                    current_parents, target_parents, self.to_pascal_case(type_name)
                 )
 
-        return type_name
+        return self.to_pascal_case(type_name)
 
     def collect_uses(self, field_type: FieldType, uses: Set[str]):
         """Collect required use statements for a field type."""
@@ -921,7 +921,7 @@ class RustGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ):
         """Generate registration code for a message and its nested types."""
-        type_name = self.get_type_path(message.name, parent_stack)
+        type_name = self.get_type_path(self.to_pascal_case(message.name), parent_stack)
         reg_name = self.get_registration_type_name(message.name, parent_stack)
 
         # Register nested enums first

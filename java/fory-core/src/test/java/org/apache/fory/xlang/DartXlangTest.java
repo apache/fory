@@ -41,7 +41,7 @@ public class DartXlangTest extends XlangTestBase {
   private static final File DART_XLANG_SOURCE_FILE =
       new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.dart");
   private static final File DART_XLANG_GENERATED_FILE =
-      new File(DART_FORY_TEST_WORK_DIR, "lib/generated/xlang_test_models.g.dart");
+      new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.g.dart");
   private static final String DART_MODULE =
       "packages/fory-test/test/cross_lang_test/xlang_test_main.dart";
   private static final List<String> DART_CODEGEN_COMMAND =

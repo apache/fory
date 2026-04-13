@@ -363,10 +363,10 @@ describe('depth-limit', () => {
   });
 
   describe('configuration with other options', () => {
-    test('should work with refTracking enabled', () => {
+    test('should work with ref enabled', () => {
       const fory = new Fory({
         maxDepth: 50,
-        refTracking: true,
+        ref: true,
       });
       expect(fory.readContext.maxDepth).toBe(50);
     });
@@ -390,7 +390,7 @@ describe('depth-limit', () => {
     test('should work with all options combined', () => {
       const fory = new Fory({
         maxDepth: 100,
-        refTracking: true,
+        ref: true,
         compatible: true,
         useSliceString: true,
       });

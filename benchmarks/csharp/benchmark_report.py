@@ -20,6 +20,8 @@ import argparse
 import json
 import os
 import platform
+import shutil
+import subprocess
 from collections import defaultdict
 from datetime import datetime
 
@@ -547,6 +549,10 @@ def main() -> None:
     report_path = os.path.join(output_dir, "README.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
+
+    prettier = shutil.which("prettier")
+    if prettier is not None:
+        subprocess.run([prettier, "--write", report_path], check=True)
 
     if coverage["is_partial"]:
         print(

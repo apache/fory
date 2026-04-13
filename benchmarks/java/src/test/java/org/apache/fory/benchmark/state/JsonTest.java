@@ -20,8 +20,7 @@
 package org.apache.fory.benchmark.state;
 
 import com.alibaba.fastjson2.JSONObject;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Sets;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.Collections;
@@ -44,15 +43,18 @@ public class JsonTest {
 
   @DataProvider
   public static Object[][] config() {
-    return Sets.cartesianProduct(
-            ImmutableSet.of(true, false), // referenceTracking
-            ImmutableSet.of(true, false), // compatible mode
-            ImmutableSet.of(true, false), // scoped meta share mode
-            ImmutableSet.of(true, false) // fory enable codegen
-            )
-        .stream()
-        .map(List::toArray)
-        .toArray(Object[][]::new);
+    boolean[] options = new boolean[] {true, false};
+    List<Object[]> configs = new ArrayList<>(16);
+    for (boolean trackingRef : options) {
+      for (boolean compatible : options) {
+        for (boolean scoped : options) {
+          for (boolean codegen : options) {
+            configs.add(new Object[] {trackingRef, compatible, scoped, codegen});
+          }
+        }
+      }
+    }
+    return configs.toArray(new Object[0][]);
   }
 
   @Test(dataProvider = "config")

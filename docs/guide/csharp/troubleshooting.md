@@ -38,13 +38,15 @@ Ensure the same type-ID/name mapping exists on both write and read sides.
 
 ## `InvalidDataException: xlang bitmap mismatch`
 
-**Cause**: Writer/reader disagree on `Xlang` mode.
+**Cause**: The payload is not an xlang Fory frame, or it came from a peer/runtime mode that does
+not emit the xlang header C# requires.
 
-**Fix**: Use the same `Xlang(...)` value on both peers.
+**Fix**: Ensure the payload was produced by an xlang-compatible Fory runtime. C# always expects the
+xlang header and does not expose a separate `Xlang(...)` builder option.
 
 ```csharp
-Fory writer = Fory.Builder().Xlang(true).Build();
-Fory reader = Fory.Builder().Xlang(true).Build();
+Fory writer = Fory.Builder().Compatible(true).Build();
+Fory reader = Fory.Builder().Compatible(true).Build();
 ```
 
 ## Schema Version Mismatch in Strict Mode

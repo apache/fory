@@ -23,7 +23,7 @@ import { describe, expect, test } from '@jest/globals';
 describe('set', () => {
     test('should set work', () => {
         
-        const fory = new Fory({ refTracking: true });    
+        const fory = new Fory({ ref: true });    
         const input = fory.serialize(new Set(["foo1", "bar1", "cc2"]));
         const result = fory.deserialize(
             input
@@ -37,7 +37,7 @@ describe('set', () => {
             a: Type.set(Type.string())
         });
         
-        const fory = new Fory({ refTracking: true });    
+        const fory = new Fory({ ref: true });    
         const { serialize, deserialize } = fory.register(typeinfo);
         const input = serialize({ a: new Set(["foo1", "bar2"]) });
         const result = deserialize(
@@ -46,5 +46,4 @@ describe('set', () => {
         expect(result).toEqual({ a: new Set(["foo1", "bar2"]) })
     });
 });
-
 

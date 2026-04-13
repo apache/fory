@@ -26,7 +26,7 @@ describe('enum', () => {
             f1: 1,
             f2: 2
         }
-        const fory = new Fory({ refTracking: true });   
+        const fory = new Fory({ ref: true });   
         const {serialize, deserialize} = fory.register(Type.enum("example.foo", Foo)) 
         const input = serialize(Foo.f1);
         const result = deserialize(
@@ -40,7 +40,7 @@ describe('enum', () => {
             f1: "hello",
             f2: "world"
         }
-        const fory = new Fory({ refTracking: true });   
+        const fory = new Fory({ ref: true });   
         fory.register(Type.enum("example.foo", Foo)) 
         const input = fory.serialize(Foo.f1);
         const result = fory.deserialize(
@@ -53,7 +53,7 @@ describe('enum', () => {
         f1 = 1,
         f2 = 2
     }
-    const fory = new Fory({ refTracking: true });   
+    const fory = new Fory({ ref: true });   
     const {serialize, deserialize} = fory.register(Type.enum("example.foo", Foo)) 
     const input = serialize(Foo.f1);
     const result = deserialize(
@@ -67,7 +67,7 @@ describe('enum', () => {
         f1 = "hello",
         f2 = "world"
     }
-    const fory = new Fory({ refTracking: true });   
+    const fory = new Fory({ ref: true });   
     fory.register(Type.enum("example.foo", Foo)) 
     const input = fory.serialize(Foo.f1);
     const result = fory.deserialize(
@@ -76,5 +76,4 @@ describe('enum', () => {
     expect(result).toEqual(Foo.f1)
   });
 });
-
 

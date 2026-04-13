@@ -77,7 +77,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     if (refTrackingUnableTypeId(this.getTypeId())) {
       return false;
     }
-    if (this.builder.resolver.config.refTracking !== true) {
+    if (!this.builder.resolver.trackingRef) {
       return false;
     }
     if (typeof this.typeInfo.trackingRef === "boolean") {

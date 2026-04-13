@@ -27,7 +27,7 @@ Apache Fory Go is a high-performance, cross-language serialization library for G
 - **Cross-Language**: Seamless data exchange with Java, Python, C++, Rust, and JavaScript
 - **Automatic Serialization**: No IDL definitions or schema compilation required
 - **Reference Tracking**: Built-in support for circular references and shared objects
-- **Type Safety**: Strong typing with compile-time verification (optional codegen)
+- **Type Safety**: Strong typing with schema-aware serializers
 - **Schema Evolution**: Compatible mode for forward/backward compatibility
 - **Thread-Safe Option**: Pool-based thread-safe wrapper for concurrent use
 
@@ -84,22 +84,16 @@ func main() {
 }
 ```
 
-## Architecture
+## Default Serialization Path
 
-Fory Go provides two serialization paths:
-
-### Reflection-Based (Default)
-
-The default path uses Go's reflection to inspect types at runtime. This works out-of-the-box with any struct. Although this mode uses reflection, it is highly optimized with type caching, inlined hot paths, delivering excellent performance for most use cases:
+Fory Go works out-of-the-box with ordinary Go structs. The standard runtime path caches type
+metadata and keeps hot serialization paths optimized, so most applications can use it directly
+without any extra build step:
 
 ```go
 f := fory.New()
 data, _ := f.Serialize(myStruct)
 ```
-
-### Code Generation (Experimental)
-
-For performance-critical paths, Fory provides optional ahead-of-time code generation that eliminates reflection overhead. See the [Code Generation](codegen.md) guide for details.
 
 ## Configuration
 
@@ -153,7 +147,6 @@ See [Cross-Language Serialization](cross-language.md) for type mapping and compa
 | [Struct Tags](struct-tags.md)                 | Field-level configuration              |
 | [Schema Evolution](schema-evolution.md)       | Forward/backward compatibility         |
 | [Cross-Language](cross-language.md)           | Multi-language serialization           |
-| [Code Generation](codegen.md)                 | Experimental AOT code generation       |
 | [Thread Safety](thread-safety.md)             | Concurrent usage patterns              |
 | [Troubleshooting](troubleshooting.md)         | Common issues and solutions            |
 

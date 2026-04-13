@@ -17,146 +17,40 @@
  * under the License.
  */
 
+library;
+
 import 'package:fory/fory.dart';
 
-part '../generated/xlang_test_models.g.dart';
+import 'xlang_test_manual.dart' as manual;
 
-bool _xlangSpecLookupReady = false;
+part 'xlang_test_models.fory.dart';
 
-void _ensureXlangSpecLookupReady() {
-  if (_xlangSpecLookupReady) {
+void registerXlangType(
+  Fory fory,
+  Type type, {
+  int? id,
+  String? namespace,
+  String? typeName,
+}) {
+  if (manual.registerXlangManualType(
+    fory,
+    type,
+    id: id,
+    namespace: namespace,
+    typeName: typeName,
+  )) {
     return;
   }
-  SpecLookup.register($TestEnum);
-  SpecLookup.register($TwoEnumFieldStructEvolution);
-  SpecLookup.register($RefOverrideElement);
-  SpecLookup.register($RefOverrideContainer);
-  SpecLookup.register($NullableComprehensiveCompatible);
-  SpecLookup.register($Color);
-  SpecLookup.register($Item);
-  SpecLookup.register($SimpleStruct);
-  SpecLookup.register($EvolvingOverrideStruct);
-  SpecLookup.register($FixedOverrideStruct);
-  SpecLookup.register($Item1);
-  SpecLookup.register($StructWithList);
-  SpecLookup.register($StructWithMap);
-  SpecLookup.register($VersionCheckStruct);
-  SpecLookup.register($OneStringFieldStruct);
-  SpecLookup.register($TwoStringFieldStruct);
-  SpecLookup.register($OneEnumFieldStruct);
-  SpecLookup.register($TwoEnumFieldStruct);
-  SpecLookup.register($NullableComprehensiveSchemaConsistent);
-  SpecLookup.register($RefInnerSchemaConsistent);
-  SpecLookup.register($RefOuterSchemaConsistent);
-  SpecLookup.register($RefInnerCompatible);
-  SpecLookup.register($RefOuterCompatible);
-  SpecLookup.register($CircularRefStruct);
-  _xlangSpecLookupReady = true;
-}
-
-void registerXlangStruct(
-  Fory fory,
-  Type type, {
-  int? typeId,
-  String? namespace,
-  String? typename,
-}) {
-  _ensureXlangSpecLookupReady();
-  fory.registerStruct(
+  XlangTestModelsFory.register(
+    fory,
     type,
-    typeId: typeId,
+    id: id,
     namespace: namespace,
-    typename: typename,
+    typeName: typeName,
   );
 }
 
-void registerXlangEnum(
-  Fory fory,
-  Type type, {
-  int? typeId,
-  String? namespace,
-  String? typename,
-}) {
-  _ensureXlangSpecLookupReady();
-  fory.registerEnum(
-    type,
-    typeId: typeId,
-    namespace: namespace,
-    typename: typename,
-  );
-}
-
-@foryEnum
-enum TestEnum {
-  valueA,
-  valueB,
-  valueC,
-}
-
-@foryClass
-class TwoEnumFieldStructEvolution {
-  TestEnum f1 = TestEnum.valueA;
-
-  @ForyKey(includeFromFory: false)
-  TestEnum f2 = TestEnum.valueA;
-}
-
-@foryClass
-class RefOverrideElement {
-  Int32 id = Int32(0);
-  String name = '';
-}
-
-@foryClass
-class RefOverrideContainer {
-  List<RefOverrideElement> listField = <RefOverrideElement>[];
-  Map<String, RefOverrideElement> mapField = <String, RefOverrideElement>{};
-}
-
-@foryClass
-class NullableComprehensiveCompatible {
-  double boxedDouble = 0.0;
-  double doubleField = 0.0;
-  Float32 boxedFloat = Float32(0);
-  Float32 floatField = Float32(0);
-  Int16 shortField = Int16(0);
-  Int8 byteField = Int8(0);
-  bool boolField = false;
-  bool boxedBool = false;
-  int boxedLong = 0;
-  int longField = 0;
-  Int32 boxedInt = Int32(0);
-  Int32 intField = Int32(0);
-
-  double? nullableDouble1;
-  Float32? nullableFloat1;
-  bool? nullableBool1;
-  int? nullableLong1;
-  Int32? nullableInt1;
-
-  String? nullableString2;
-  String stringField = '';
-  List<String?> listField = <String?>[];
-  List<String?>? nullableList2;
-  Set<String?>? nullableSet2;
-  Set<String?> setField = <String?>{};
-  Map<String?, String?> mapField = <String?, String?>{};
-  Map<String?, String?>? nullableMap2;
-
-  void normalizeForCompatibleRoundTrip() {
-    nullableDouble1 ??= 0.0;
-    nullableFloat1 ??= Float32(0);
-    nullableBool1 ??= false;
-    nullableLong1 ??= 0;
-    nullableInt1 ??= Int32(0);
-    nullableString2 ??= '';
-    nullableList2 ??= <String>[];
-    nullableSet2 ??= <String>{};
-    nullableMap2 ??= <String, String>{};
-  }
-}
-
-@foryEnum
+@ForyStruct()
 enum Color {
   green,
   red,
@@ -164,13 +58,32 @@ enum Color {
   white,
 }
 
-@foryClass
+@ForyStruct()
+enum TestEnum {
+  valueA,
+  valueB,
+  valueC,
+}
+
+@ForyStruct()
+class TwoEnumFieldStructEvolution {
+  TwoEnumFieldStructEvolution();
+
+  TestEnum f1 = TestEnum.valueA;
+  TestEnum f2 = TestEnum.valueA;
+}
+
+@ForyStruct()
 class Item {
+  Item();
+
   String name = '';
 }
 
-@foryClass
+@ForyStruct()
 class SimpleStruct {
+  SimpleStruct();
+
   Map<Int32?, double?> f1 = <Int32?, double?>{};
   Int32 f2 = Int32(0);
   Item f3 = Item();
@@ -182,18 +95,24 @@ class SimpleStruct {
   Int32 last = Int32(0);
 }
 
-@foryClass
+@ForyStruct()
 class EvolvingOverrideStruct {
+  EvolvingOverrideStruct();
+
   String f1 = '';
 }
 
-@ForyClass(evolving: false)
+@ForyStruct(evolving: false)
 class FixedOverrideStruct {
+  FixedOverrideStruct();
+
   String f1 = '';
 }
 
-@foryClass
+@ForyStruct()
 class Item1 {
+  Item1();
+
   Int32 f1 = Int32(0);
   Int32 f2 = Int32(0);
   Int32 f3 = Int32(0);
@@ -202,103 +121,427 @@ class Item1 {
   Int32 f6 = Int32(0);
 }
 
-@foryClass
+final class Union2 {
+  const Union2._(this.index, this.value);
+
+  final int index;
+  final Object value;
+
+  factory Union2.ofString(String value) => Union2._(0, value);
+
+  factory Union2.ofInt64(int value) => Union2._(1, value);
+
+  factory Union2.of(int index, Object value) => Union2._(index, value);
+
+  bool get isString => index == 0;
+
+  bool get isInt64 => index == 1;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Union2 && other.index == index && other.value == value;
+
+  @override
+  int get hashCode => Object.hash(index, value);
+}
+
+@ForyStruct()
+class StructWithUnion2 {
+  StructWithUnion2();
+
+  Union2 union = Union2.ofString('');
+}
+
+@ForyStruct()
 class StructWithList {
+  StructWithList();
+
   List<String?> items = <String?>[];
 }
 
-@foryClass
+@ForyStruct()
 class StructWithMap {
+  StructWithMap();
+
   Map<String?, String?> data = <String?, String?>{};
 }
 
-@foryClass
+@ForyStruct()
+class MyStruct {
+  MyStruct();
+
+  @Int32Type()
+  int id = 0;
+}
+
+final class MyExt {
+  MyExt([this.id = 0]);
+
+  int id;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) || other is MyExt && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
+}
+
+@ForyStruct()
+class MyWrapper {
+  MyWrapper();
+
+  Color color = Color.white;
+  MyExt myExt = MyExt();
+  MyStruct myStruct = MyStruct();
+}
+
+@ForyStruct()
+class EmptyWrapper {
+  EmptyWrapper();
+}
+
+@ForyStruct()
 class VersionCheckStruct {
-  Int32 f1 = Int32(0);
-  String? f2 = '';
-  double f3 = 0.0;
+  VersionCheckStruct();
+
+  @Int32Type()
+  int f1 = 0;
+
+  @ForyField(nullable: true)
+  String? f2;
+
+  double f3 = 0;
 }
 
-@foryClass
+abstract interface class Animal {
+  int get age;
+}
+
+@ForyStruct()
+class Dog implements Animal {
+  Dog();
+
+  @override
+  @Int32Type()
+  int age = 0;
+
+  @ForyField(nullable: true)
+  String? name;
+}
+
+@ForyStruct()
+class Cat implements Animal {
+  Cat();
+
+  @Int32Type()
+  @override
+  int age = 0;
+
+  @Int32Type()
+  int lives = 0;
+}
+
+@ForyStruct()
+class AnimalListHolder {
+  AnimalListHolder();
+
+  List<Animal> animals = <Animal>[];
+}
+
+@ForyStruct()
+class AnimalMapHolder {
+  AnimalMapHolder();
+
+  Map<String, Animal> animalMap = <String, Animal>{};
+}
+
+@ForyStruct()
+class EmptyStruct {
+  EmptyStruct();
+}
+
+@ForyStruct()
 class OneStringFieldStruct {
-  String? f1 = '';
+  OneStringFieldStruct();
+
+  @ForyField(nullable: true)
+  String? f1;
 }
 
-@foryClass
+@ForyStruct()
 class TwoStringFieldStruct {
+  TwoStringFieldStruct();
+
   String f1 = '';
   String f2 = '';
 }
 
-@foryClass
+@ForyStruct()
 class OneEnumFieldStruct {
+  OneEnumFieldStruct();
+
   TestEnum f1 = TestEnum.valueA;
 }
 
-@foryClass
+@ForyStruct()
 class TwoEnumFieldStruct {
+  TwoEnumFieldStruct();
+
   TestEnum f1 = TestEnum.valueA;
   TestEnum f2 = TestEnum.valueA;
 }
 
-@foryClass
+@ForyStruct()
 class NullableComprehensiveSchemaConsistent {
+  NullableComprehensiveSchemaConsistent();
+
   Int8 byteField = Int8(0);
   Int16 shortField = Int16(0);
   Int32 intField = Int32(0);
   int longField = 0;
   Float32 floatField = Float32(0);
-  double doubleField = 0.0;
+  double doubleField = 0;
   bool boolField = false;
   String stringField = '';
-  List<String?> listField = <String?>[];
-  Set<String?> setField = <String?>{};
-  Map<String?, String?> mapField = <String?, String?>{};
+  List<String> listField = <String>[];
+  Set<String> setField = <String>{};
+  Map<String, String> mapField = <String, String>{};
+
+  @ForyField(nullable: true)
   Int32? nullableInt;
+
+  @ForyField(nullable: true)
   int? nullableLong;
+
+  @ForyField(nullable: true)
   Float32? nullableFloat;
+
+  @ForyField(nullable: true)
   double? nullableDouble;
+
+  @ForyField(nullable: true)
   bool? nullableBool;
+
+  @ForyField(nullable: true)
   String? nullableString;
-  List<String?>? nullableList;
-  Set<String?>? nullableSet;
-  Map<String?, String?>? nullableMap;
+
+  @ForyField(nullable: true)
+  List<String>? nullableList;
+
+  @ForyField(nullable: true)
+  Set<String>? nullableSet;
+
+  @ForyField(nullable: true)
+  Map<String, String>? nullableMap;
 }
 
-@foryClass
+@ForyStruct()
+class NullableComprehensiveCompatible {
+  NullableComprehensiveCompatible();
+
+  Int8 byteField = Int8(0);
+  Int16 shortField = Int16(0);
+  Int32 intField = Int32(0);
+  int longField = 0;
+  Float32 floatField = Float32(0);
+  double doubleField = 0;
+  bool boolField = false;
+
+  Int32 boxedInt = Int32(0);
+  int boxedLong = 0;
+  Float32 boxedFloat = Float32(0);
+  double boxedDouble = 0;
+  bool boxedBool = false;
+
+  String stringField = '';
+  List<String> listField = <String>[];
+  Set<String> setField = <String>{};
+  Map<String, String> mapField = <String, String>{};
+
+  Int32 nullableInt1 = Int32(0);
+  int nullableLong1 = 0;
+  Float32 nullableFloat1 = Float32(0);
+  double nullableDouble1 = 0;
+  bool nullableBool1 = false;
+  String nullableString2 = '';
+  List<String> nullableList2 = <String>[];
+  Set<String> nullableSet2 = <String>{};
+  Map<String, String> nullableMap2 = <String, String>{};
+}
+
+@ForyStruct()
 class RefInnerSchemaConsistent {
-  Int32 id = Int32(0);
+  RefInnerSchemaConsistent();
+
+  @Int32Type()
+  int id = 0;
   String name = '';
 }
 
-@foryClass
+@ForyStruct()
 class RefOuterSchemaConsistent {
-  @ForyKey(ref: true)
+  RefOuterSchemaConsistent();
+
+  @ForyField(ref: true, nullable: true, dynamic: false)
   RefInnerSchemaConsistent? inner1;
 
-  @ForyKey(ref: true)
+  @ForyField(ref: true, nullable: true, dynamic: false)
   RefInnerSchemaConsistent? inner2;
 }
 
-@foryClass
+@ForyStruct()
 class RefInnerCompatible {
+  RefInnerCompatible();
+
+  @Int32Type()
+  int id = 0;
+  String name = '';
+}
+
+@ForyStruct()
+class RefOuterCompatible {
+  RefOuterCompatible();
+
+  @ForyField(ref: true, nullable: true)
+  RefInnerCompatible? inner1;
+
+  @ForyField(ref: true, nullable: true)
+  RefInnerCompatible? inner2;
+}
+
+@ForyStruct()
+class RefOverrideElement {
+  RefOverrideElement();
+
   Int32 id = Int32(0);
   String name = '';
 }
 
-@foryClass
-class RefOuterCompatible {
-  @ForyKey(ref: true)
-  RefInnerCompatible? inner1;
+class RefOverrideContainer {
+  RefOverrideContainer();
 
-  @ForyKey(ref: true)
-  RefInnerCompatible? inner2;
+  List<RefOverrideElement> listField = <RefOverrideElement>[];
+  Map<String, RefOverrideElement> mapField = <String, RefOverrideElement>{};
 }
 
-@foryClass
+@ForyStruct()
 class CircularRefStruct {
+  CircularRefStruct();
+
   String name = '';
 
-  @ForyKey(ref: true)
+  @ForyField(ref: true, nullable: true)
   CircularRefStruct? selfRef;
+}
+
+@ForyStruct()
+class UnsignedSchemaConsistent {
+  UnsignedSchemaConsistent();
+
+  UInt8 u8Field = UInt8(0);
+  UInt16 u16Field = UInt16(0);
+
+  @Uint32Type(compress: true)
+  UInt32 u32VarField = UInt32(0);
+
+  @Uint32Type(compress: false)
+  UInt32 u32FixedField = UInt32(0);
+
+  @Uint64Type(encoding: LongEncoding.varint)
+  int u64VarField = 0;
+
+  @Uint64Type(encoding: LongEncoding.fixed)
+  int u64FixedField = 0;
+
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int u64TaggedField = 0;
+
+  @ForyField(nullable: true)
+  UInt8? u8NullableField;
+
+  @ForyField(nullable: true)
+  UInt16? u16NullableField;
+
+  @ForyField(nullable: true)
+  @Uint32Type(compress: true)
+  UInt32? u32VarNullableField;
+
+  @ForyField(nullable: true)
+  @Uint32Type(compress: false)
+  UInt32? u32FixedNullableField;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.varint)
+  int? u64VarNullableField;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.fixed)
+  int? u64FixedNullableField;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int? u64TaggedNullableField;
+}
+
+@ForyStruct()
+class UnsignedSchemaConsistentSimple {
+  UnsignedSchemaConsistentSimple();
+
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int u64Tagged = 0;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int? u64TaggedNullable;
+}
+
+@ForyStruct()
+class UnsignedSchemaCompatible {
+  UnsignedSchemaCompatible();
+
+  @ForyField(nullable: true)
+  UInt8? u8Field1;
+
+  @ForyField(nullable: true)
+  UInt16? u16Field1;
+
+  @ForyField(nullable: true)
+  @Uint32Type(compress: true)
+  UInt32? u32VarField1;
+
+  @ForyField(nullable: true)
+  @Uint32Type(compress: false)
+  UInt32? u32FixedField1;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.varint)
+  int? u64VarField1;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.fixed)
+  int? u64FixedField1;
+
+  @ForyField(nullable: true)
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int? u64TaggedField1;
+
+  UInt8 u8Field2 = UInt8(0);
+  UInt16 u16Field2 = UInt16(0);
+
+  @Uint32Type(compress: true)
+  UInt32 u32VarField2 = UInt32(0);
+
+  @Uint32Type(compress: false)
+  UInt32 u32FixedField2 = UInt32(0);
+
+  @Uint64Type(encoding: LongEncoding.varint)
+  int u64VarField2 = 0;
+
+  @Uint64Type(encoding: LongEncoding.fixed)
+  int u64FixedField2 = 0;
+
+  @Uint64Type(encoding: LongEncoding.tagged)
+  int u64TaggedField2 = 0;
 }

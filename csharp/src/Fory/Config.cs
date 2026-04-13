@@ -19,40 +19,52 @@ namespace Apache.Fory;
 
 /// <summary>
 /// Immutable runtime configuration used by <see cref="Fory"/> and <see cref="ThreadSafeFory"/>.
+/// Instances are created by <see cref="ForyBuilder"/>.
 /// </summary>
-/// <param name="Xlang">Whether cross-language protocol mode is enabled.</param>
-/// <param name="TrackRef">Whether shared and circular reference tracking is enabled.</param>
-/// <param name="Compatible">Whether schema-compatible mode is enabled.</param>
-/// <param name="CheckStructVersion">Whether generated struct schema hash checks are enforced.</param>
-/// <param name="MaxDepth">Maximum allowed nesting depth for dynamic object payload reads.</param>
-public sealed record Config(
-    bool Xlang = true,
-    bool TrackRef = false,
-    bool Compatible = false,
-    bool CheckStructVersion = false,
-    int MaxDepth = 20);
+public sealed class Config
+{
+    internal Config(
+        bool trackRef,
+        bool compatible,
+        bool checkStructVersion,
+        int maxDepth)
+    {
+        TrackRef = trackRef;
+        Compatible = compatible;
+        CheckStructVersion = checkStructVersion;
+        MaxDepth = maxDepth;
+    }
+
+    /// <summary>
+    /// Gets whether shared and circular reference tracking is enabled.
+    /// </summary>
+    public bool TrackRef { get; }
+
+    /// <summary>
+    /// Gets whether schema-compatible mode is enabled.
+    /// </summary>
+    public bool Compatible { get; }
+
+    /// <summary>
+    /// Gets whether generated struct schema hash checks are enforced.
+    /// </summary>
+    public bool CheckStructVersion { get; }
+
+    /// <summary>
+    /// Gets the maximum allowed nesting depth for dynamic object payload reads.
+    /// </summary>
+    public int MaxDepth { get; }
+}
 
 /// <summary>
 /// Fluent builder for creating <see cref="Fory"/> and <see cref="ThreadSafeFory"/> runtimes.
 /// </summary>
 public sealed class ForyBuilder
 {
-    private bool _xlang = true;
     private bool _trackRef;
     private bool _compatible;
     private bool _checkStructVersion;
     private int _maxDepth = 20;
-
-    /// <summary>
-    /// Enables or disables cross-language protocol mode.
-    /// </summary>
-    /// <param name="enabled">Whether to enable cross-language mode. Defaults to <c>true</c>.</param>
-    /// <returns>The same builder instance.</returns>
-    public ForyBuilder Xlang(bool enabled = true)
-    {
-        _xlang = enabled;
-        return this;
-    }
 
     /// <summary>
     /// Enables or disables reference tracking for shared and circular object graphs.
@@ -107,11 +119,10 @@ public sealed class ForyBuilder
     private Config BuildConfig()
     {
         return new Config(
-            Xlang: _xlang,
-            TrackRef: _trackRef,
-            Compatible: _compatible,
-            CheckStructVersion: _checkStructVersion,
-            MaxDepth: _maxDepth);
+            trackRef: _trackRef,
+            compatible: _compatible,
+            checkStructVersion: _checkStructVersion,
+            maxDepth: _maxDepth);
     }
 
     /// <summary>

@@ -216,7 +216,6 @@ Use consistent registration mappings across languages.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Xlang(true)
     .Compatible(true)
     .Build();
 

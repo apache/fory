@@ -646,7 +646,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       return new StaticInvoke(
           DateTimeUtils.class, "daysToLocalDate", TypeUtils.LOCAL_DATE_TYPE, false, value);
     } else if (rawType == java.sql.Date.class) {
-      return new StaticInvoke(DateTimeUtils.class, "toJavaDate", TypeUtils.DATE_TYPE, false, value);
+      return new StaticInvoke(
+          DateTimeUtils.class, "toJavaDate", TypeUtils.SQL_DATE_TYPE, false, value);
     } else if (rawType == java.sql.Timestamp.class) {
       return new StaticInvoke(
           DateTimeUtils.class, "toJavaTimestamp", TypeUtils.TIMESTAMP_TYPE, false, value);

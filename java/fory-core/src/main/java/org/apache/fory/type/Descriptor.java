@@ -21,8 +21,6 @@ package org.apache.fory.type;
 
 import static org.apache.fory.util.Preconditions.checkArgument;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
@@ -59,6 +57,8 @@ import org.apache.fory.annotation.Uint64ArrayType;
 import org.apache.fory.annotation.Uint64Type;
 import org.apache.fory.annotation.Uint8ArrayType;
 import org.apache.fory.annotation.Uint8Type;
+import org.apache.fory.collection.Cache;
+import org.apache.fory.collection.CacheBuilder;
 import org.apache.fory.collection.Collections;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.Platform;

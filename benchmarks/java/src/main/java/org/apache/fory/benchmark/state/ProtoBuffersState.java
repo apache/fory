@@ -19,7 +19,6 @@
 
 package org.apache.fory.benchmark.state;
 
-import com.google.common.base.Preconditions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.util.HashMap;
 import java.util.function.Function;
@@ -31,6 +30,7 @@ import org.apache.fory.benchmark.data.Sample;
 import org.apache.fory.benchmark.state.Example.Bar;
 import org.apache.fory.benchmark.state.Example.Foo;
 import org.apache.fory.integration_tests.state.generated.ProtoMessage;
+import org.apache.fory.util.Preconditions;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.openjdk.jmh.annotations.CompilerControl;
 import org.openjdk.jmh.annotations.Fork;

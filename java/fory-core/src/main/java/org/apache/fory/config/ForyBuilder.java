@@ -335,7 +335,9 @@ public final class ForyBuilder {
 
   /**
    * Whether pre-register guava types such as `RegularImmutableMap`/`RegularImmutableList`. Those
-   * types are not public API, but seems pretty stable.
+   * types are not public API, but seems pretty stable. When Guava is absent at runtime, enabling
+   * this option still reserves the Guava internal id block so later internal registrations keep the
+   * same ids.
    *
    * @see GuavaCollectionSerializers
    */

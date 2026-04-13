@@ -23,6 +23,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import subprocess
 from collections import defaultdict
 from pathlib import Path
 
@@ -291,6 +293,11 @@ def write_report(
     report_path = os.path.join(output_dir, "REPORT.md")
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+
+    prettier = shutil.which("prettier")
+    if prettier is not None:
+        subprocess.run([prettier, "--write", report_path], check=True)
+
     return report_path
 
 

@@ -19,7 +19,5 @@ include: package:lints/recommended.yaml
 
 analyzer:
   exclude:
-    - vault/**
-    - lib/generated/**
-  errors:
-    unnecessary_const: ignore
+    - .dart_tool/**
+    - lib/**/*.fory.dart

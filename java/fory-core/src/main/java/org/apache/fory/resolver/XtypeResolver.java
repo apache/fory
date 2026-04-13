@@ -29,7 +29,6 @@ import static org.apache.fory.type.Types.INVALID_USER_TYPE_ID;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -87,6 +86,7 @@ import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.Shareable;
+import org.apache.fory.serializer.SqlTimeSerializers;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.UnionSerializer;
 import org.apache.fory.serializer.UnknownClass;
@@ -943,9 +943,16 @@ public class XtypeResolver extends TypeResolver {
     registerType(Types.DURATION, Duration.class, new TimeSerializers.DurationSerializer(config));
     registerType(Types.TIMESTAMP, Instant.class, new TimeSerializers.InstantSerializer(config));
     registerType(Types.TIMESTAMP, Date.class, new TimeSerializers.DateSerializer(config));
-    registerType(
-        Types.TIMESTAMP, java.sql.Date.class, new TimeSerializers.SqlDateSerializer(config));
-    registerType(Types.TIMESTAMP, Timestamp.class, new TimeSerializers.TimestampSerializer(config));
+    if (SqlTimeSerializers.isSqlModuleAvailable()) {
+      registerType(
+          Types.TIMESTAMP,
+          TypeUtils.SQL_DATE_TYPE.getRawType(),
+          SqlTimeSerializers.newSqlDateSerializer(config));
+      registerType(
+          Types.TIMESTAMP,
+          TypeUtils.TIMESTAMP_TYPE.getRawType(),
+          SqlTimeSerializers.newTimestampSerializer(config));
+    }
     registerType(
         Types.TIMESTAMP, LocalDateTime.class, new TimeSerializers.LocalDateTimeSerializer(config));
     registerType(Types.DATE, LocalDate.class, new TimeSerializers.LocalDateSerializer(config));

@@ -1,3 +1,3 @@
-## 1.0.0
+## 0.17.0-dev
 
-- Initial version.
+- Dart runtime implementation around `Fory`, `Buffer`, `WriteContext`, `ReadContext`, and `TypeResolver`.

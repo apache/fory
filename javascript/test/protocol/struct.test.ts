@@ -24,7 +24,7 @@ import { describe, expect, test } from '@jest/globals';
 describe('protocol', () => {
     test('should polymorphic work', () => {
 
-        const fory = new Fory({ refTracking: true });
+        const fory = new Fory({ ref: true });
         const { serialize, deserialize } = fory.register(Type.struct({
             typeName: "example.foo"
         }, {
@@ -88,7 +88,6 @@ describe('protocol', () => {
             .toEqual({ a: 'ok', b: null });
     });
 });
-
 
 
 

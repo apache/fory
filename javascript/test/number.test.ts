@@ -23,7 +23,7 @@ import { describe, expect, test } from '@jest/globals';
 describe('number', () => {
   test('should i8 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serialize = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -37,7 +37,7 @@ describe('number', () => {
   });
   test('should i16 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serialize = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -51,7 +51,7 @@ describe('number', () => {
   });
   test('should i32 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -65,7 +65,7 @@ describe('number', () => {
   });
   test('should i64 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -81,7 +81,7 @@ describe('number', () => {
 
   test('should float32 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -95,7 +95,7 @@ describe('number', () => {
   });
   test('should float64 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -110,7 +110,7 @@ describe('number', () => {
 
   test('should float16 work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -125,7 +125,7 @@ describe('number', () => {
 
   test('should float16 NAN work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -140,7 +140,7 @@ describe('number', () => {
 
   test('should float16 Infinity work', () => {
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -154,7 +154,7 @@ describe('number', () => {
   });
 
   test('should bfloat16 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -167,7 +167,7 @@ describe('number', () => {
   });
 
   test('should bfloat16 accept number', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -180,7 +180,7 @@ describe('number', () => {
   });
 
   test('should bfloat16 NaN work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -193,7 +193,7 @@ describe('number', () => {
   });
 
   test('should bfloat16 Infinity work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -206,7 +206,7 @@ describe('number', () => {
   });
 
   test('should bfloat16 zero and neg zero round-trip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -222,7 +222,7 @@ describe('number', () => {
   });
 
   test('should uint8 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -234,7 +234,7 @@ describe('number', () => {
   });
 
   test('should uint16 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -246,7 +246,7 @@ describe('number', () => {
   });
 
   test('should uint32 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -258,7 +258,7 @@ describe('number', () => {
   });
 
   test('should varUInt32 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -270,7 +270,7 @@ describe('number', () => {
   });
 
   test('should uint64 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -282,7 +282,7 @@ describe('number', () => {
   });
 
   test('should varUInt64 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -294,7 +294,7 @@ describe('number', () => {
   });
 
   test('should taggedUInt64 work', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
@@ -305,5 +305,4 @@ describe('number', () => {
     expect(result).toEqual({ a: 1n });
   });
 });
-
 

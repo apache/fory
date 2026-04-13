@@ -51,7 +51,7 @@ public class BinaryUtils {
       return "getFloat64";
     } else if (TypeUtils.BIG_DECIMAL_TYPE.equals(type)) {
       return "getDecimal";
-    } else if (TypeUtils.DATE_TYPE.equals(type)) {
+    } else if (TypeUtils.SQL_DATE_TYPE.equals(type)) {
       return "getDate";
     } else if (TypeUtils.TIMESTAMP_TYPE.equals(type)) {
       return "getTimestamp";
@@ -103,7 +103,7 @@ public class BinaryUtils {
       return TypeUtils.PRIMITIVE_DOUBLE_TYPE;
     } else if (TypeUtils.BIG_DECIMAL_TYPE.equals(type)) {
       return TypeUtils.BIG_DECIMAL_TYPE;
-    } else if (TypeUtils.DATE_TYPE.equals(type)) {
+    } else if (TypeUtils.SQL_DATE_TYPE.equals(type)) {
       return TypeUtils.INT_TYPE;
     } else if (TypeUtils.TIMESTAMP_TYPE.equals(type)) {
       return TypeUtils.LONG_TYPE;

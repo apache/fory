@@ -332,7 +332,6 @@ public sealed class RoundtripTests
     private static ForyRuntime BuildFory(bool compatible, bool trackRef)
     {
         return ForyRuntime.Builder()
-            .Xlang(true)
             .Compatible(compatible)
             .TrackRef(trackRef)
             .Build();

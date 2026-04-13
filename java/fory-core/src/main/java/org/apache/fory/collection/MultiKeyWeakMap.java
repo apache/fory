@@ -19,8 +19,8 @@
 
 package org.apache.fory.collection;
 
-import com.google.common.base.FinalizableReferenceQueue;
-import com.google.common.base.FinalizableWeakReference;
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.fory.util.GraalvmSupport;
@@ -42,7 +43,8 @@ import org.apache.fory.util.GraalvmSupport;
  */
 public class MultiKeyWeakMap<T> {
   private static final Set<KeyReference> REFERENCES = ConcurrentHashMap.newKeySet();
-  private static volatile FinalizableReferenceQueue referenceQueue;
+  private static final AtomicBoolean CLEANER_STARTED = new AtomicBoolean(false);
+  private static volatile ReferenceQueue<Object> referenceQueue;
   private final Map<Object, T> map;
 
   public MultiKeyWeakMap() {
@@ -76,21 +78,48 @@ public class MultiKeyWeakMap<T> {
     return keyRefs;
   }
 
-  private static FinalizableReferenceQueue getReferenceQueue() {
-    FinalizableReferenceQueue queue = referenceQueue;
+  private static ReferenceQueue<Object> getReferenceQueue() {
+    ReferenceQueue<Object> queue = referenceQueue;
     if (queue == null) {
       synchronized (MultiKeyWeakMap.class) {
         queue = referenceQueue;
         if (queue == null) {
-          queue = new FinalizableReferenceQueue();
+          queue = new ReferenceQueue<>();
           referenceQueue = queue;
+          startCleaner(queue);
         }
       }
     }
     return queue;
   }
 
+  private static void startCleaner(ReferenceQueue<Object> queue) {
+    if (!CLEANER_STARTED.compareAndSet(false, true)) {
+      return;
+    }
+    Thread cleaner =
+        new Thread(
+            () -> {
+              while (true) {
+                try {
+                  CleanupReference reference = (CleanupReference) queue.remove();
+                  reference.cleanup();
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                  return;
+                }
+              }
+            },
+            "fory-multi-key-weak-map-cleaner");
+    cleaner.setDaemon(true);
+    cleaner.start();
+  }
+
   private interface KeyReference {}
+
+  private interface CleanupReference {
+    void cleanup();
+  }
 
   private static final class NoCallbackRef implements KeyReference {
     private final Object obj;
@@ -117,8 +146,8 @@ public class MultiKeyWeakMap<T> {
     }
   }
 
-  private final class FinalizableKeyReference extends FinalizableWeakReference<Object>
-      implements KeyReference {
+  private final class FinalizableKeyReference extends WeakReference<Object>
+      implements KeyReference, CleanupReference {
     private final boolean[] reclaimedFlags;
     private final int index;
     private final List<FinalizableKeyReference> keyRefs;
@@ -135,7 +164,7 @@ public class MultiKeyWeakMap<T> {
     }
 
     @Override
-    public void finalizeReferent() {
+    public void cleanup() {
       reclaimedFlags[index] = true;
       REFERENCES.remove(this);
       if (IntStream.range(0, reclaimedFlags.length).allMatch(i -> reclaimedFlags[i])) {

@@ -30,7 +30,7 @@ describe('object', () => {
       @Type.int32()
       a: number;
     }
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(Foo);
     const foo = new Foo();
     foo.a = 123;
@@ -50,7 +50,7 @@ describe('object', () => {
       @Type.int32()
       a: number;
     }
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     fory.register(Foo);
 
     const foo = new Foo();
@@ -68,7 +68,7 @@ describe('object', () => {
       })
     })
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: { b: "hel" } });
     const result = deserialize(
@@ -84,7 +84,7 @@ describe('object', () => {
         b: Type.string()
       }).setNullable(true)
     })
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: null });
     const result = deserialize(
@@ -104,7 +104,7 @@ describe('object', () => {
       }))
     })
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(typeInfo).serializer;
     const input = fory.serialize({ a: [{ b: "hel", c: true, d: 123, e: 123, f: new Uint8Array([1, 2, 3]) }] }, serializer);
     const result = fory.deserialize(
@@ -121,7 +121,7 @@ describe('object', () => {
       }),
       a2: Type.struct("example.bar")
     });
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const serializer = fory.register(typeInfo).serializer;
     const input = fory.serialize({ a: { b: "hel" }, a2: { b: "hel2" } }, serializer);
     const result = fory.deserialize(
@@ -139,7 +139,7 @@ describe('object', () => {
     })
 
     const fory = new Fory({
-      refTracking: true, 
+      ref: true, 
       hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
@@ -168,7 +168,7 @@ describe('object', () => {
       }),
     })
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ "+a": { "delete": "hel", c: [{ d: "hello" }] } });
     const result = deserialize(
@@ -188,7 +188,7 @@ describe('object', () => {
       }),
     })
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: { b: "hel", c: [{ d: "hello" }] } });
     const result = deserialize(
@@ -218,7 +218,7 @@ describe('object', () => {
       a: Type.string()
     });
 
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(typeInfo);
     const input = serialize({ a: "Hello, world! 🌍😊" });
     const result = deserialize(input);

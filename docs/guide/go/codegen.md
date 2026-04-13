@@ -20,18 +20,18 @@ license: |
 ---
 
 :::warning Experimental Feature
-Code generation is an **experimental** feature in Fory Go. The API and behavior may change in future releases. The reflection-based path remains the stable, recommended approach for most use cases.
+Code generation is an **experimental** feature in Fory Go. The API and behavior may change in future releases. The standard runtime path remains the stable, recommended approach for most use cases.
 :::
 
-Fory Go provides optional ahead-of-time (AOT) code generation for performance-critical paths. This eliminates reflection overhead and provides compile-time type safety.
+Fory Go provides optional ahead-of-time (AOT) code generation for performance-critical paths. This generates dedicated serializers ahead of time and adds compile-time shape checks.
 
 ## Why Code Generation?
 
-| Aspect      | Reflection-Based   | Code Generation        |
+| Aspect      | Standard Path      | Code Generation        |
 | ----------- | ------------------ | ---------------------- |
 | Setup       | Zero configuration | Requires `go generate` |
-| Performance | Good               | Better (no reflection) |
-| Type Safety | Runtime            | Compile-time           |
+| Performance | Excellent          | Better on hot paths    |
+| Type Safety | Runtime validation | Compile-time checks    |
 | Maintenance | Automatic          | Requires regeneration  |
 
 **Use code generation when**:
@@ -40,7 +40,7 @@ Fory Go provides optional ahead-of-time (AOT) code generation for performance-cr
 - Compile-time type safety is important
 - Hot paths are performance-critical
 
-**Use reflection when**:
+**Use the standard path when**:
 
 - Simple setup is preferred
 - Types change frequently
@@ -307,7 +307,7 @@ type HotPathStruct struct {
 }
 
 type ColdPathStruct struct {
-    // Not annotated, uses reflection
+    // Not annotated, uses the standard runtime serializer
 }
 ```
 
@@ -326,12 +326,12 @@ type ColdPathStruct struct {
 - Private (unexported) fields
 - Custom serializers
 
-### Reflection Fallback
+### Standard Path Fallback
 
-If codegen fails, Fory falls back to reflection:
+If generated serializers are unavailable, Fory falls back to the standard serializer path:
 
 ```go
-// If User_ForyGenSerializer not found, uses reflection
+// If User_ForyGenSerializer is not linked in, Fory uses the standard path
 f.Serialize(&User{})
 ```
 
@@ -405,7 +405,7 @@ type User struct {
 
 ### Is codegen required?
 
-No. Reflection-based serialization works without code generation.
+No. The standard serializer path works without code generation.
 
 ### Does generated code work across Go versions?
 

@@ -79,6 +79,7 @@ const uninitSerialize = {
 };
 
 export default class TypeResolver {
+  readonly trackingRef: boolean;
   private internalSerializer: Serializer[] = new Array(300);
   private customSerializer: Map<number | string, Serializer> = new Map();
 
@@ -108,6 +109,7 @@ export default class TypeResolver {
   private float64ArraySerializer: null | Serializer = null;
 
   constructor(readonly config: Config) {
+    this.trackingRef = config.ref;
   }
 
   bindContexts(writeContext: WriteContext, readContext: ReadContext) {

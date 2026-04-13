@@ -231,11 +231,7 @@ public sealed class Fory
     /// <param name="isNone">Whether the payload value is null.</param>
     internal void WriteHead(ByteWriter writer, bool isNone)
     {
-        byte bitmap = 0;
-        if (Config.Xlang)
-        {
-            bitmap |= ForyHeaderFlag.IsXlang;
-        }
+        byte bitmap = ForyHeaderFlag.IsXlang;
 
         if (isNone)
         {
@@ -255,7 +251,7 @@ public sealed class Fory
     {
         byte bitmap = reader.ReadUInt8();
         bool peerIsXlang = (bitmap & ForyHeaderFlag.IsXlang) != 0;
-        if (peerIsXlang != Config.Xlang)
+        if (!peerIsXlang)
         {
             throw new InvalidDataException("xlang bitmap mismatch");
         }

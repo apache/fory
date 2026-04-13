@@ -21,13 +21,14 @@ license: |
 
 Apache Fory™ C# supports cross-language serialization with other Fory runtimes.
 
-## Enable Cross-Language Mode
+## Cross-Language Runtime
 
-C# defaults to `Xlang(true)`, but it is good practice to configure it explicitly in interoperability code.
+C# always writes and reads the xlang frame header. There is no separate `Xlang(...)` builder
+option, so interoperability code only needs to configure the remaining runtime behavior such as
+compatibility mode and reference tracking.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Xlang(true)
     .Compatible(true)
     .Build();
 ```
@@ -43,7 +44,6 @@ public sealed class Person
 }
 
 Fory fory = Fory.Builder()
-    .Xlang(true)
     .Compatible(true)
     .Build();
 

@@ -19,8 +19,6 @@
 
 package org.apache.fory.collection;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import org.apache.fory.annotation.Internal;

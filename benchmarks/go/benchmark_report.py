@@ -25,6 +25,8 @@ import json
 import os
 import platform
 import re
+import shutil
+import subprocess
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -444,6 +446,10 @@ def generate_markdown_report(results, output_dir):
     report_path = os.path.join(output_dir, "benchmark_report.md")
     with open(report_path, "w") as f:
         f.write("\n".join(report))
+
+    prettier = shutil.which("prettier")
+    if prettier is not None:
+        subprocess.run([prettier, "--write", report_path], check=True)
 
     print(f"Report generated: {report_path}")
 

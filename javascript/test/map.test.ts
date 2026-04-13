@@ -23,7 +23,7 @@ import {describe, expect, test} from '@jest/globals';
 describe('map', () => {
   test('should map work', () => {
     
-    const fory = new Fory({ refTracking: true });    
+    const fory = new Fory({ ref: true });    
     const input = fory.serialize(new Map([["foo", "bar"], ["foo2", "bar2"]]));
     const result = fory.deserialize(
         input
@@ -33,7 +33,7 @@ describe('map', () => {
   
   test('should map specific type work', () => {
     
-    const fory = new Fory({ refTracking: true });  
+    const fory = new Fory({ ref: true });  
     const { serialize, deserialize } = fory.register(Type.struct("class.foo", {
       f1: Type.map(Type.string(), Type.varInt32())
     }))  
@@ -44,5 +44,4 @@ describe('map', () => {
     expect(result).toEqual({ f1: new Map([["hello", 123],["world", 456]])})
   });
 });
-
 

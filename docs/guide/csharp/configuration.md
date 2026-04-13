@@ -20,6 +20,7 @@ license: |
 ---
 
 This page covers `ForyBuilder` options and default configuration values for Apache Fory™ C#.
+`Config` is an immutable runtime snapshot created by `ForyBuilder`.
 
 ## Build a Runtime
 
@@ -36,7 +37,6 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 
 | Option               | Default | Description                                    |
 | -------------------- | ------- | ---------------------------------------------- |
-| `Xlang`              | `true`  | Cross-language protocol mode                   |
 | `TrackRef`           | `false` | Reference tracking disabled                    |
 | `Compatible`         | `false` | Schema-consistent mode (no evolution metadata) |
 | `CheckStructVersion` | `false` | Struct schema hash checks disabled             |
@@ -44,15 +44,8 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 
 ## Builder Options
 
-### `Xlang(bool enabled = true)`
-
-Controls cross-language mode.
-
-```csharp
-Fory fory = Fory.Builder()
-    .Xlang(true)
-    .Build();
-```
+C# always uses xlang-compatible framing, so `ForyBuilder` does not expose a separate `Xlang(...)`
+toggle.
 
 ### `TrackRef(bool enabled = false)`
 
@@ -111,7 +104,6 @@ Fory fory = Fory.Builder()
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Xlang(true)
     .Compatible(true)
     .TrackRef(true)
     .Build();

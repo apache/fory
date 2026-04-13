@@ -1,6 +1,6 @@
 ---
 title: Cross-Language Serialization
-sidebar_position: 8
+sidebar_position: 11
 id: cross_language
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

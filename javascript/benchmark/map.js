@@ -21,7 +21,7 @@ const Fory = require("@apache-fory/core");
 const beautify = require("js-beautify");
 const hps = require('@apache-fory/hps');
 const fory = new Fory.default({
-  hps, refTracking: false, useSliceString: true, hooks: {
+  hps, ref: false, useSliceString: true, hooks: {
     afterCodeGenerated: (code) => {
       return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
     }

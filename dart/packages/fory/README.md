@@ -1,214 +1,234 @@
-# Apache Fory™ Dart
+# Apache Fory Dart
 
-## Overview
-
-This PR adds Dart language support to Apache Fory™, implementing a comprehensive serialization solution for Dart and Flutter applications. Apache Fory™ Dart consists of approximately 15,000 lines of code and provides an efficient serialization mechanism that works within Flutter's reflection limitations.
-
-## Implementation Approach
-
-Dart supports reflection, but Flutter explicitly prohibits it. To address this constraint, Apache Fory™ Dart uses a combination of:
-
-1. Core serialization/deserialization logic
-2. Static code generation for type handling
-
-This approach ensures compatibility with Flutter while maintaining the performance and flexibility expected from Apache Fory™.
+Apache Fory Dart is the Dart xlang runtime for Apache Fory. It reads and writes
+Fory's cross-language wire format and is designed around generated serializers
+for annotated Dart models, with customized serializers available for advanced use
+cases.
 
 ## Features
 
-- XLANG mode support for cross-language serialization
-- Reference tracking for handling object graphs
-- Support for primitive types, collections, and custom classes
-- Serializer registration system
-- Code generation for class and enum serialization
-- Support for nested collections with automatic generic type conversion
-- Custom serializer registration
-- Support for using ByteWriter/ByteReader as serialization sources
+- Cross-language serialization with the Fory xlang format
+- Generated serializers for annotated structs and enums
+- Compatible mode for schema evolution
+- Optional reference tracking for shared and circular object graphs
+- Manual serializers for external types, custom payloads, and unions
+- Explicit xlang value wrappers such as `Int32`, `UInt32`, `Float16`,
+  `Float32`, `LocalDate`, and `Timestamp`
 
-## Usage Examples
+## Getting Started
 
-### Basic Class Serialization
+Add `fory` to your package dependencies.
+
+```yaml
+dependencies:
+  fory: ^0.17.0-dev
+
+dev_dependencies:
+  build_runner: ^2.4.13
+```
+
+## Basic Usage
+
+Use `@ForyStruct()` for generated struct serializers and include the generated
+part file.
 
 ```dart
 import 'package:fory/fory.dart';
 
-part 'example.g.dart';
+part 'person.fory.dart';
 
-@foryClass
-class SomeClass {
-  late int id;
-  late String name;
-  late Map<String, double> map;
+enum Color {
+  red,
+  blue,
+}
 
-  SomeClass(this.id, this.name, this.map);
+@ForyStruct()
+class Person {
+  Person();
 
-  SomeClass.noArgs();
+  String name = '';
+  Int32 age = Int32(0);
+  Color favoriteColor = Color.red;
+  List<String> tags = <String>[];
+}
+
+void main() {
+  final fory = Fory();
+
+  PersonFory.register(
+    fory,
+    Color,
+    namespace: 'example',
+    typeName: 'Color',
+  );
+  PersonFory.register(
+    fory,
+    Person,
+    namespace: 'example',
+    typeName: 'Person',
+  );
+
+  final person = Person()
+    ..name = 'Ada'
+    ..age = Int32(36)
+    ..favoriteColor = Color.blue
+    ..tags = <String>['engineer', 'mathematician'];
+
+  final bytes = fory.serialize(person);
+  final roundTrip = fory.deserialize<Person>(bytes);
+
+  print(roundTrip.name);
 }
 ```
 
-After annotating your class with `@foryClass`, run:
+Generate the companion file before running the program:
 
 ```bash
-dart run build_runner build
+dart run build_runner build --delete-conflicting-outputs
 ```
 
-This generates the necessary schema metadata in `example.g.dart`.
+## Type Registration
 
-### Serializing and Deserializing
+Generated types register through the generated library namespace.
 
 ```dart
-Fory fory = Fory(ref: true);
-fory.registerStruct(SomeClass, typename: "example.SomeClass");
-SomeClass obj = SomeClass(1, 'SomeClass', {'a': 1.0});
-
-// Serialize
-Uint8List bytes = fory.serialize(obj);
-
-// Deserialize
-obj = fory.deserialize(bytes) as SomeClass;
+PersonFory.register(fory, Person, id: 100);
 ```
 
-### Enum Serialization
+Or use namespace and type name registration:
+
+```dart
+PersonFory.register(
+  fory,
+  Person,
+  namespace: 'example',
+  typeName: 'Person',
+);
+```
+
+Exactly one registration mode is required:
+
+- `id: ...`
+- `namespace: ...` and `typeName: ...`
+
+Keep the same registration identity on all runtimes that exchange the type.
+
+## Configuration
+
+Configure the runtime through `Config`.
+
+```dart
+final fory = Fory(
+  compatible: true,
+  maxDepth: 256,
+  maxCollectionSize: 1 << 20,
+  maxBinarySize: 64 * 1024 * 1024,
+);
+```
+
+Key options:
+
+- `compatible`: enables compatible struct encoding and decoding
+- `checkStructVersion`: enables struct-version validation in
+  schema-consistent mode
+- `maxDepth`: limits nesting depth for one operation
+- `maxCollectionSize`: limits collection and map payload sizes
+- `maxBinarySize`: limits binary payload size
+
+## Reference Tracking
+
+Enable root-level reference tracking only when the root value itself is a graph
+or container that needs shared-reference tracking.
+
+```dart
+final shared = String.fromCharCodes('shared'.codeUnits);
+final bytes = fory.serialize(<Object?>[shared, shared], trackRef: true);
+final roundTrip = fory.deserialize<List<Object?>>(bytes);
+```
+
+For generated structs, prefer field-level reference metadata:
+
+```dart
+@ForyStruct()
+class NodeList {
+  NodeList();
+
+  @ForyField(ref: true)
+  List<Object?> values = <Object?>[];
+}
+```
+
+## Customized Serializers
+
+Use `Serializer<T>` when a type cannot use generated struct support or when you
+need custom wire behavior.
 
 ```dart
 import 'package:fory/fory.dart';
 
-part 'example.g.dart';
+final class Person {
+  Person(this.name, this.age);
 
-@foryEnum
-enum EnumFoo {
-  A,
-  B
+  final String name;
+  final int age;
+}
+
+final class PersonSerializer extends Serializer<Person> {
+  const PersonSerializer();
+
+  @override
+  void write(WriteContext context, Person value) {
+    final buffer = context.buffer;
+    buffer.writeUtf8(value.name);
+    buffer.writeInt64(value.age);
+  }
+
+  @override
+  Person read(ReadContext context) {
+    final buffer = context.buffer;
+    return Person(buffer.readUtf8(), buffer.readInt64());
+  }
+}
+
+void main() {
+  final fory = Fory();
+  fory.registerSerializer(
+    Person,
+    const PersonSerializer(),
+    namespace: 'example',
+    typeName: 'Person',
+  );
+
+  final bytes = fory.serialize(Person('Ada', 36));
+  final roundTrip = fory.deserialize<Person>(bytes);
+  print(roundTrip.name);
 }
 ```
 
-Registration is similar to classes:
+## Public API
 
-```dart
-fory.registerEnum(EnumFoo, typename: "example.EnumFoo");
-```
+The main exported API includes:
 
-## Type Support
+- `Fory`
+- `Config`
+- `Buffer`
+- `WriteContext`
+- `ReadContext`
+- `Serializer`
+- `UnionSerializer`
+- `ForyStruct`
+- `ForyField`
+- Numeric and temporal wrappers such as `Int8`, `Int16`, `Int32`, `UInt8`,
+  `UInt16`, `UInt32`, `Float16`, `Float32`, `LocalDate`, and `Timestamp`
 
-Fory Dart currently supports the following type mappings in XLANG mode:
+## Cross-Language Notes
 
-| Fory Type     | Dart Type                                  |
-| ------------- | ------------------------------------------ |
-| bool          | bool                                       |
-| int8          | fory.Int8                                  |
-| int16         | fory.Int16                                 |
-| int32         | fory.Int32                                 |
-| var_int32     | fory.Int32                                 |
-| int64         | int                                        |
-| var_int64     | int                                        |
-| sli_int64     | int                                        |
-| float32       | fory.Float32                               |
-| float64       | double                                     |
-| string        | String                                     |
-| enum          | Enum                                       |
-| named_enum    | Enum                                       |
-| named_struct  | class                                      |
-| list          | List                                       |
-| set           | Set (LinkedHashSet, HashSet, SplayTreeSet) |
-| map           | Map (LinkedHashMap, HashMap, SplayTreeMap) |
-| timestamp     | fory.TimeStamp                             |
-| local_date    | fory.LocalDate                             |
-| binary        | Uint8List                                  |
-| bool_array    | BoolList                                   |
-| int8_array    | Int8List                                   |
-| int16_array   | Int16List                                  |
-| int32_array   | Int32List                                  |
-| int64_array   | Int64List                                  |
-| float32_array | Float32List                                |
-| float64_array | Float64List                                |
+- The Dart runtime only supports xlang payloads.
+- Register user-defined types before serialization or deserialization.
+- Keep numeric IDs or `namespace + typeName` mappings consistent across
+  languages.
+- Use wrappers or numeric field annotations when the exact xlang wire type
+  matters.
 
-## Project Structure
-
-The implementation is organized into three main components:
-
-1. **Codegen**: Located at `dart/packages/fory/lib/src/codegen`  
-   Handles static code generation for serialization/deserialization.
-
-2. **ForyCore**: Located at `dart/packages/fory/lib/src`  
-   Contains the core serialization and deserialization logic.
-
-3. **ForyTest**: Located at `dart/fory_test`  
-   Comprehensive test suite for Apache Fory™ Dart functionality.
-
-## Testing Approach
-
-The test suite is inspired by Apache Fory™ Java's testing approach and includes:
-
-- **Datatype Tests**: Validates custom data types implemented for Dart
-- **Code Generation Tests**: Ensures correctness of the generated static code
-- **Buffer Tests**: Validates correct memory handling for primitive types
-- **Cross-Language Tests**: Tests functionality against other Apache Fory™ implementations
-- **Performance Tests**: Simple benchmarks for serialization/deserialization performance
-
-### Running Tests
-
-Tests use the standard [dart test](https://pub.dev/packages/test) framework.
-
-To run tests:
-
-```bash
-# First, generate necessary code
-cd fory-test
-dart run build_runner build
-
-# Run all tests
-dart test
-
-# For more options (skipping tests, platform-specific tests, etc.)
-# See: https://github.com/dart-lang/test/blob/master/pkgs/test/README.md
-```
-
-## Code Quality
-
-Apache Fory™ Dart maintains high code quality standards. You can verify this using:
-
-```bash
-dart analyze
-dart fix --dry-run
-dart fix --apply
-```
-
-## Current Limitations
-
-- Only supports XLANG mode (priority was given to cross-language compatibility)
-- No out-of-band buffer functionality
-- No data type compression (e.g., String compression)
-- Generic parameters in user-defined types can be serialized but require manual type conversion after deserialization
-
-## Development Information
-
-- **Dart SDK**: 3.6.1
-
-## Dependencies
-
-### fory package:
-
-```
-analyzer: '>=6.5.0 <8.0.0'
-build: ^2.4.1
-build_config: ^1.1.0
-collection: ^1.19.1
-meta: ^1.14.0
-source_gen: ^2.0.0
-glob: ^2.1.3
-decimal: ^3.2.1
-lints: ^5.0.0
-test: ^1.24.4
-```
-
-### fory-test package:
-
-```
-lints: ^5.0.0
-build: ^2.4.2
-build_runner: ^2.4.15
-test: ^1.24.0
-checks: ^0.3.0
-build_test: ^2.2.3
-analyzer: '>=6.5.0 <8.0.0'
-collection: ^1.19.1
-```
+For the xlang wire format and type mapping details, see the Apache Fory
+specification in the main repository.

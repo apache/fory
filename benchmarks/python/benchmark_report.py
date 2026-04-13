@@ -24,6 +24,8 @@ import argparse
 import json
 import os
 import platform
+import shutil
+import subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -405,6 +407,11 @@ def generate_markdown_report(
 
     report_path = output_dir / "README.md"
     report_path.write_text("".join(md), encoding="utf-8")
+
+    prettier = shutil.which("prettier")
+    if prettier is not None:
+        subprocess.run([prettier, "--write", str(report_path)], check=True)
+
     return report_path
 
 

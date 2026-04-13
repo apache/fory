@@ -200,7 +200,10 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 ## Next Steps
 
 - [Configuration](configuration.md) - Learn about ForyBuilder options
+- [Field Configuration](field-configuration.md) - `@ForyField`, `@Ignore`, and integer encoding annotations
+- [Enum Configuration](enum-configuration.md) - `serializeEnumByName` and `@ForyEnumId`
 - [Basic Serialization](basic-serialization.md) - Detailed serialization patterns
+- [Compression](compression.md) - Integer, long, and array compression options
 - [Virtual Threads](virtual-threads.md) - Virtual-thread usage and pool sizing guidance
 - [Type Registration](type-registration.md) - Class registration and security
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers

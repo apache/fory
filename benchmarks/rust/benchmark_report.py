@@ -20,6 +20,8 @@ import argparse
 import os
 import platform
 import re
+import shutil
+import subprocess
 from collections import defaultdict
 from datetime import datetime
 
@@ -424,6 +426,11 @@ def write_report(system_info, results, sizes, plot_images, output_dir, plot_pref
     report_path = os.path.join(output_dir, "README.md")
     with open(report_path, "w", encoding="utf-8") as file:
         file.writelines(report)
+
+    prettier = shutil.which("prettier")
+    if prettier is not None:
+        subprocess.run([prettier, "--write", report_path], check=True)
+
     return report_path
 
 

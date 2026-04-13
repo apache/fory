@@ -21,15 +21,18 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.*;
 
+import java.lang.reflect.Field;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ForyEnumId;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.Test;
 
 public class EnumSerializerTest extends ForyTestBase {
@@ -53,6 +56,95 @@ public class EnumSerializerTest extends ForyTestBase {
     };
 
     abstract void f();
+  }
+
+  public enum EnumWithIdField {
+    A(10),
+    B(20),
+    C(30);
+
+    @ForyEnumId private final int id;
+
+    EnumWithIdField(int id) {
+      this.id = id;
+    }
+  }
+
+  public enum EnumWithIdMethod {
+    A(100),
+    B(200),
+    C(300);
+
+    private final int id;
+
+    EnumWithIdMethod(int id) {
+      this.id = id;
+    }
+
+    @ForyEnumId
+    public int getId() {
+      return id;
+    }
+  }
+
+  public enum EnumWithConstantIds {
+    @ForyEnumId(3)
+    A,
+    @ForyEnumId(7)
+    B,
+    @ForyEnumId(11)
+    C
+  }
+
+  public enum EnumWithLargeIds {
+    A(4096),
+    B(8192);
+
+    private final int id;
+
+    EnumWithLargeIds(int id) {
+      this.id = id;
+    }
+
+    @ForyEnumId
+    public int getId() {
+      return id;
+    }
+  }
+
+  public enum EnumWithPartialConstantIds {
+    @ForyEnumId(1)
+    A,
+    B
+  }
+
+  public enum EnumWithDuplicateIds {
+    A(1),
+    B(1);
+
+    private final int id;
+
+    EnumWithDuplicateIds(int id) {
+      this.id = id;
+    }
+
+    @ForyEnumId
+    public int getId() {
+      return id;
+    }
+  }
+
+  public enum EnumWithConflictingIdStrategies {
+    @ForyEnumId(1)
+    A(10),
+    @ForyEnumId(2)
+    B(20);
+
+    @ForyEnumId private final int id;
+
+    EnumWithConflictingIdStrategies(int id) {
+      this.id = id;
+    }
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
@@ -82,6 +174,76 @@ public class EnumSerializerTest extends ForyTestBase {
     copyCheckWithoutSame(fory, EnumFoo.B);
     copyCheckWithoutSame(fory, EnumSubClass.A);
     copyCheckWithoutSame(fory, EnumSubClass.B);
+  }
+
+  @Test
+  public void testEnumSerializationUsesOrdinalArrayByDefault() throws Exception {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    EnumSerializer serializer = getEnumSerializer(fory, EnumFoo.class);
+
+    assertEquals(writeEnumTag(fory, serializer, EnumFoo.B), 1);
+    assertNotNull(readPrivateField(serializer, "enumConstantByTagArray"));
+    assertNull(readPrivateField(serializer, "enumConstantByTagMap"));
+  }
+
+  @Test
+  public void testEnumSerializationUsesAnnotatedFieldId() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    EnumSerializer serializer = getEnumSerializer(fory, EnumWithIdField.class);
+
+    assertEquals(writeEnumTag(fory, serializer, EnumWithIdField.B), 20);
+    assertEquals(serDe(fory, fory, EnumWithIdField.C), EnumWithIdField.C);
+  }
+
+  @Test
+  public void testEnumSerializationUsesAnnotatedMethodId() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    EnumSerializer serializer = getEnumSerializer(fory, EnumWithIdMethod.class);
+
+    assertEquals(writeEnumTag(fory, serializer, EnumWithIdMethod.B), 200);
+    assertEquals(serDe(fory, fory, EnumWithIdMethod.A), EnumWithIdMethod.A);
+  }
+
+  @Test
+  public void testEnumSerializationUsesAnnotatedConstantId() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    EnumSerializer serializer = getEnumSerializer(fory, EnumWithConstantIds.class);
+
+    assertEquals(writeEnumTag(fory, serializer, EnumWithConstantIds.B), 7);
+    assertEquals(serDe(fory, fory, EnumWithConstantIds.C), EnumWithConstantIds.C);
+  }
+
+  @Test
+  public void testEnumSerializationUsesSparseMapForLargeIds() throws Exception {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    EnumSerializer serializer = getEnumSerializer(fory, EnumWithLargeIds.class);
+
+    assertEquals(writeEnumTag(fory, serializer, EnumWithLargeIds.B), 8192);
+    assertNull(readPrivateField(serializer, "enumConstantByTagArray"));
+    assertNotNull(readPrivateField(serializer, "enumConstantByTagMap"));
+  }
+
+  @Test
+  public void testEnumSerializationRejectsPartialConstantIds() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> getEnumSerializer(fory, EnumWithPartialConstantIds.class));
+  }
+
+  @Test
+  public void testEnumSerializationRejectsDuplicateIds() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    assertThrows(
+        IllegalArgumentException.class, () -> getEnumSerializer(fory, EnumWithDuplicateIds.class));
+  }
+
+  @Test
+  public void testEnumSerializationRejectsConflictingIdStrategies() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> getEnumSerializer(fory, EnumWithConflictingIdStrategies.class));
   }
 
   @Test
@@ -285,5 +447,27 @@ public class EnumSerializerTest extends ForyTestBase {
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build(),
         new EnumSubclassFieldTest(EnumSubClass.B));
+  }
+
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  private static EnumSerializer getEnumSerializer(Fory fory, Class<? extends Enum> enumClass) {
+    return (EnumSerializer) fory.getSerializer((Class) enumClass);
+  }
+
+  private static int writeEnumTag(Fory fory, EnumSerializer serializer, Enum value) {
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
+    try {
+      fory.getWriteContext().prepare(buffer, null);
+      serializer.write(fory.getWriteContext(), value);
+      return buffer.readVarUint32Small7();
+    } finally {
+      fory.getWriteContext().reset();
+    }
+  }
+
+  private static Object readPrivateField(Object target, String fieldName) throws Exception {
+    Field field = target.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+    return field.get(target);
   }
 }

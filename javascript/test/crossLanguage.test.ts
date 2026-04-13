@@ -680,7 +680,7 @@ describe("bool", () => {
   test("test_collection_element_ref_override", () => {
     const fory = new Fory({
       compatible: false,
-      refTracking: true,
+      ref: true,
       hooks: {
         afterCodeGenerated: (code) => {
           return beautify.js(code, { indent_size: 2, space_in_empty_paren: true, indent_empty_lines: true });
@@ -1596,7 +1596,7 @@ describe("bool", () => {
   test("test_ref_schema_consistent", () => {
     const fory = new Fory({
       compatible: false,
-      refTracking: true,
+      ref: true,
     });
 
     @Type.struct(501, {
@@ -1633,7 +1633,7 @@ describe("bool", () => {
   test("test_ref_compatible", () => {
     const fory = new Fory({
       compatible: true,
-      refTracking: true,
+      ref: true,
     });
 
     @Type.struct(503, {
@@ -1670,7 +1670,7 @@ describe("bool", () => {
   test("test_circular_ref_schema_consistent", () => {
     const fory = new Fory({
       compatible: false,
-      refTracking: true,
+      ref: true,
     });
 
     @Type.struct(601, {
@@ -1699,7 +1699,7 @@ describe("bool", () => {
   test("test_circular_ref_compatible", () => {
     const fory = new Fory({
       compatible: true,
-      refTracking: true,
+      ref: true,
     });
 
     @Type.struct(602, {

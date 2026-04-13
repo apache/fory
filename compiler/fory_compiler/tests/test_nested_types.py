@@ -17,10 +17,15 @@
 
 """Tests for FDL nested type support."""
 
+from pathlib import Path
+from textwrap import dedent
+
 import pytest
 
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
+from fory_compiler.generators.base import GeneratorOptions
+from fory_compiler.generators.rust import RustGenerator
 from fory_compiler.ir.ast import NamedType, ListType
 from fory_compiler.ir.validator import SchemaValidator
 
@@ -367,6 +372,77 @@ class TestSchemaTypeLookup:
         assert "Status" in type_names
         assert "Inner" in type_names
         assert "Deep" in type_names
+
+
+class TestRustNestedTypeGeneration:
+    """Rust-specific tests for nested type code generation."""
+
+    def _generate_rust(self, source: str) -> str:
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+        options = GeneratorOptions(output_dir=Path("/tmp"))
+        generator = RustGenerator(schema, options)
+        files = generator.generate()
+        return "\n".join(f.content for f in files)
+
+    def test_nested_message_no_name_collision(self):
+        """Regression for #3547: struct and module must not share the same identifier."""
+        source = dedent("""
+            message foo {
+                message Bar {
+                    string baz = 1;
+                }
+                Bar bar = 1;
+            }
+        """)
+        content = self._generate_rust(source)
+        assert "pub mod foo {" in content
+        assert "pub struct Foo {" in content
+        assert "pub struct foo" not in content
+
+    def test_nested_message_field_type_qualified(self):
+        """Field referencing a nested type resolves to module-qualified path."""
+        source = dedent("""
+            message foo {
+                message Bar {
+                    string baz = 1;
+                }
+                Bar bar = 1;
+            }
+        """)
+        content = self._generate_rust(source)
+        assert "pub bar: foo::Bar," in content
+
+    def test_nested_message_registration_uses_pascal_struct(self):
+        """register_by_namespace must reference the PascalCase struct name."""
+        source = dedent("""
+            message foo {
+                message Bar {
+                    string baz = 1;
+                }
+                Bar bar = 1;
+            }
+        """)
+        content = self._generate_rust(source)
+        assert "register_by_namespace::<Foo>" in content
+        assert 'register_by_namespace::<Foo>("default", "foo")' in content
+        assert "register_by_namespace::<foo::Bar>" in content
+
+    def test_pascal_case_names_unchanged(self):
+        """Messages already in PascalCase must not be renamed."""
+        source = dedent("""
+            message Outer {
+                message Inner {
+                    string value = 1;
+                }
+                Inner inner = 1;
+            }
+        """)
+        content = self._generate_rust(source)
+        assert "pub struct Outer {" in content
+        assert "pub struct Inner {" in content
+        assert "pub outer: " not in content
 
 
 if __name__ == "__main__":

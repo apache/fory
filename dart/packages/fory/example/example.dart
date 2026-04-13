@@ -1,45 +1,46 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
-
-import 'dart:typed_data';
-
 import 'package:fory/fory.dart';
 
-part 'example.g.dart';
+part 'example.fory.dart';
 
-@foryClass
+enum Color {
+  red,
+  blue,
+}
+
+@ForyStruct()
 class Person {
-  final String firstName, lastName;
-  final int age;
-  final LocalDate dateOfBirth;
+  Person();
 
-  const Person(this.firstName, this.lastName, this.age, this.dateOfBirth);
+  String name = '';
+  Int32 age = Int32(0);
+  Color favoriteColor = Color.red;
+  List<String> tags = <String>[];
 }
 
 void main() {
-  Fory fory = Fory(ref: true);
-  fory.register(Person, typename: "example.Person");
-  Person obj = Person('Leo', 'Leo', 21, LocalDate(2004, 1, 1));
+  final fory = Fory();
+  ExampleFory.register(
+    fory,
+    Color,
+    namespace: 'example',
+    typeName: 'Color',
+  );
+  ExampleFory.register(
+    fory,
+    Person,
+    namespace: 'example',
+    typeName: 'Person',
+  );
 
-  // Serialize
-  Uint8List bytes = fory.serialize(obj);
+  final person = Person()
+    ..name = 'Ada'
+    ..age = Int32(36)
+    ..favoriteColor = Color.blue
+    ..tags = <String>['engineer', 'mathematician'];
 
-  // Deserialize
-  obj = fory.deserialize(bytes) as Person;
+  final bytes = fory.serialize(person);
+  final roundTrip = fory.deserialize<Person>(bytes);
+
+  print('${roundTrip.name} ${roundTrip.age} ${roundTrip.favoriteColor}');
+  print(roundTrip.tags);
 }

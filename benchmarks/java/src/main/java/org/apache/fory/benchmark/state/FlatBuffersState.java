@@ -19,7 +19,6 @@
 
 package org.apache.fory.benchmark.state;
 
-import com.google.common.base.Preconditions;
 import com.google.flatbuffers.FlatBufferBuilder;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -40,6 +39,7 @@ import org.apache.fory.benchmark.state.generated.FBSMedia;
 import org.apache.fory.benchmark.state.generated.FBSMediaContent;
 import org.apache.fory.benchmark.state.generated.FBSSample;
 import org.apache.fory.memory.ByteBufferUtil;
+import org.apache.fory.util.Preconditions;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Param;

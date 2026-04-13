@@ -359,7 +359,11 @@ UTF16 is encoded as little endian 2-byte code units.
 ### Enum
 
 - If `serializeEnumByName` is enabled: write enum name as a meta string.
-- Otherwise: write enum ordinal as varuint32 small7.
+- Otherwise: write an enum tag as varuint32 small7.
+  - By default the tag is the declaration ordinal.
+  - If the enum configures `@ForyEnumId`, write the configured stable id instead. Java supports
+    annotating exactly one id field, exactly one zero-argument id getter, or every enum constant
+    with explicit tag values.
 
 ### Binary (byte[])
 

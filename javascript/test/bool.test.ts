@@ -23,7 +23,7 @@ import {describe, expect, test} from '@jest/globals';
 describe('bool', () => {
   test('should false work', () => {
     
-    const fory = new Fory({ refTracking: true });    
+    const fory = new Fory({ ref: true });    
     const input = fory.serialize(false);
     const result = fory.deserialize(
         input
@@ -32,7 +32,7 @@ describe('bool', () => {
   });
   test('should true work', () => {
     
-    const fory = new Fory({ refTracking: true });    
+    const fory = new Fory({ ref: true });    
     const input = fory.serialize(true);
     const result = fory.deserialize(
         input
@@ -40,5 +40,4 @@ describe('bool', () => {
     expect(result).toEqual(true)
   });
 });
-
 
