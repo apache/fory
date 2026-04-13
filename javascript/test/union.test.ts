@@ -22,7 +22,7 @@ import { describe, expect, test } from '@jest/globals';
 
 describe('union', () => {
   test('should union with string case roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(Type.struct(100, {
       payload: Type.union({
         1: Type.string(),
@@ -35,7 +35,7 @@ describe('union', () => {
   });
 
   test('should union with int case roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(Type.struct(200, {
       payload: Type.union({
         1: Type.string(),
@@ -48,7 +48,7 @@ describe('union', () => {
   });
 
   test('should union with struct case roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     fory.register(Type.struct(301, {
       text: Type.string().setId(1),
     }));
@@ -64,7 +64,7 @@ describe('union', () => {
   });
 
   test('should nullable union roundtrip with value', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(Type.struct(400, {
       payload: Type.union({
         1: Type.string(),
@@ -76,7 +76,7 @@ describe('union', () => {
   });
 
   test('should nullable union roundtrip with null', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     const { serialize, deserialize } = fory.register(Type.struct(500, {
       payload: Type.union({
         1: Type.string(),
@@ -88,7 +88,7 @@ describe('union', () => {
   });
 
   test('should named union roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     fory.register(Type.struct({ namespace: "test", typeName: "Msg" }, {
       text: Type.string(),
     }));
@@ -104,7 +104,7 @@ describe('union', () => {
   });
 
   test('should named union with struct case roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     fory.register(Type.struct({ namespace: "test", typeName: "Note" }, {
       text: Type.string(),
     }));
@@ -120,7 +120,7 @@ describe('union', () => {
   });
 
   test('should union alongside other fields roundtrip', () => {
-    const fory = new Fory({ refTracking: true });
+    const fory = new Fory({ ref: true });
     fory.register(Type.struct(601, {
       value: Type.float64().setId(1),
     }));

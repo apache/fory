@@ -75,7 +75,7 @@ function fileRoundTrip(
 
   const fory = new Fory({
     compatible: foryOptions.compatible ?? false,
-    refTracking: foryOptions.refTracking ?? null,
+    ref: foryOptions.refTracking ?? false,
   });
 
   registerFn(fory, Type);
