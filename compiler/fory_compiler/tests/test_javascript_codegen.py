@@ -160,8 +160,8 @@ def test_javascript_nested_enum_registration_uses_simple_name():
     # Enums are skipped during registration in JavaScript (they are numeric
     # values at runtime and don't need separate Fory registration).
     assert "fory.register('PhoneType'" not in output
-    # Messages are registered via fory.registerSerializer(Type.struct(...)).
-    assert "fory.registerSerializer(Type.struct(100" in output
+    # Messages are registered via fory.register(Type.struct(...)).
+    assert "fory.register(Type.struct(100" in output
     # Ensure qualified names are NOT used
     assert "Person.PhoneType" not in output
 

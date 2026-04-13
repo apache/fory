@@ -476,9 +476,7 @@ class JavaScriptGenerator(BaseGenerator):
             # Reject unsupported primitives referenced by name
             for pk in PrimitiveKind:
                 if pk.value == primitive_name and pk not in self.PRIMITIVE_MAP:
-                    raise ValueError(
-                        f"Unsupported primitive type for JavaScript: {pk}"
-                    )
+                    raise ValueError(f"Unsupported primitive type for JavaScript: {pk}")
             if primitive_name in shorthand_map:
                 type_str = self.PRIMITIVE_MAP.get(shorthand_map[primitive_name], "any")
             else:
