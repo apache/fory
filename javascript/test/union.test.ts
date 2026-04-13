@@ -23,7 +23,7 @@ import { describe, expect, test } from '@jest/globals';
 describe('union', () => {
   test('should union with string case roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(100, {
+    const { serialize, deserialize } = fory.register(Type.struct(100, {
       payload: Type.union({
         1: Type.string(),
         2: Type.varInt32(),
@@ -36,7 +36,7 @@ describe('union', () => {
 
   test('should union with int case roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(200, {
+    const { serialize, deserialize } = fory.register(Type.struct(200, {
       payload: Type.union({
         1: Type.string(),
         2: Type.varInt32(),
@@ -49,10 +49,10 @@ describe('union', () => {
 
   test('should union with struct case roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    fory.registerSerializer(Type.struct(301, {
+    fory.register(Type.struct(301, {
       text: Type.string().setId(1),
     }));
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(300, {
+    const { serialize, deserialize } = fory.register(Type.struct(300, {
       payload: Type.union({
         1: Type.struct(301),
         2: Type.varInt32(),
@@ -65,7 +65,7 @@ describe('union', () => {
 
   test('should nullable union roundtrip with value', () => {
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(400, {
+    const { serialize, deserialize } = fory.register(Type.struct(400, {
       payload: Type.union({
         1: Type.string(),
       }).setNullable(true).setId(1),
@@ -77,7 +77,7 @@ describe('union', () => {
 
   test('should nullable union roundtrip with null', () => {
     const fory = new Fory({ refTracking: true });
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(500, {
+    const { serialize, deserialize } = fory.register(Type.struct(500, {
       payload: Type.union({
         1: Type.string(),
       }).setNullable(true).setId(1),
@@ -89,10 +89,10 @@ describe('union', () => {
 
   test('should named union roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Msg" }, {
+    fory.register(Type.struct({ namespace: "test", typeName: "Msg" }, {
       text: Type.string(),
     }));
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Wrapper" }, {
+    const { serialize, deserialize } = fory.register(Type.struct({ namespace: "test", typeName: "Wrapper" }, {
       payload: Type.union({ namespace: "test", typeName: "MyUnion" }, {
         1: Type.string(),
         2: Type.struct({ namespace: "test", typeName: "Msg" }),
@@ -105,10 +105,10 @@ describe('union', () => {
 
   test('should named union with struct case roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Note" }, {
+    fory.register(Type.struct({ namespace: "test", typeName: "Note" }, {
       text: Type.string(),
     }));
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct({ namespace: "test", typeName: "Holder" }, {
+    const { serialize, deserialize } = fory.register(Type.struct({ namespace: "test", typeName: "Holder" }, {
       payload: Type.union({ namespace: "test", typeName: "ContentUnion" }, {
         1: Type.struct({ namespace: "test", typeName: "Note" }),
         2: Type.varInt32(),
@@ -121,10 +121,10 @@ describe('union', () => {
 
   test('should union alongside other fields roundtrip', () => {
     const fory = new Fory({ refTracking: true });
-    fory.registerSerializer(Type.struct(601, {
+    fory.register(Type.struct(601, {
       value: Type.float64().setId(1),
     }));
-    const { serialize, deserialize } = fory.registerSerializer(Type.struct(600, {
+    const { serialize, deserialize } = fory.register(Type.struct(600, {
       id: Type.varInt32().setId(1),
       name: Type.string().setId(2),
       detail: Type.union({

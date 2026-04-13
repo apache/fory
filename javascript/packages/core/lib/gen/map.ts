@@ -355,7 +355,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         if (!keyIsNull) {
           ${this.keyGenerator.needToWriteRef()
           ? `
-              const ${keyRef} = ${this.builder.referenceResolver.existsWriteObject(k)};
+              const ${keyRef} = ${this.builder.referenceResolver.getWrittenRefId(v)};
               if (${keyRef} !== undefined) {
                 ${this.builder.writer.writeInt8(RefFlags.RefFlag)};
                 ${this.builder.writer.writeVarUInt32(keyRef)};

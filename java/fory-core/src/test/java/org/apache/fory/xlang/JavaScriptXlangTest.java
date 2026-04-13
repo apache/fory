@@ -431,7 +431,7 @@ public class JavaScriptXlangTest extends XlangTestBase {
   @Override
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
-    // JavaScript properly supports Optional and sends actual null values,
+    // JavaScript properly supports Optional and sends actual null values, 
     // unlike Rust which sends default values. Override with JavaScript-specific expectations.
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =

@@ -36,8 +36,8 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver);
     this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
-      ? `fory.typeResolver.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
-      : `fory.typeResolver.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
+      ? `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      : `${this.builder.getTypeResolverName()}.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
@@ -86,7 +86,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let readUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        readUserTypeIdStmt = `${this.builder.reader.readVarUInt32()};`;
+        readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {
@@ -157,7 +157,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUInt32(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {

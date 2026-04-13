@@ -929,7 +929,7 @@ class JavaScriptGenerator(BaseGenerator):
         target_var: str = "fory",
         parent_stack: Optional[List[Message]] = None,
     ) -> str:
-        """Return a single ``fory.registerSerializer(Type.struct(...))`` statement."""
+        """Return a single ``fory.register(Type.struct(...))`` statement."""
         if isinstance(type_def, Union):
             return ""
         if not isinstance(type_def, Message):
@@ -968,14 +968,14 @@ class JavaScriptGenerator(BaseGenerator):
                     f'{{ namespace: "{ns}", typeName: "{qname}", evolving: false }}'
                 )
 
-        return f"{target_var}.registerSerializer(Type.struct({name_info}{props_arg}));"
+        return f"{target_var}.register(Type.struct({name_info}{props_arg}));"
 
     def _register_union_line(
         self,
         union_def,
         target_var: str = "fory",
     ) -> str:
-        """Return a ``fory.registerSerializer(Type.union(...))`` statement."""
+        """Return a ``fory.register(Type.union(...))`` statement."""
         case_parts: List[str] = []
         for field in union_def.fields:
             case_num = field.tag_id if field.tag_id is not None else field.number
@@ -992,7 +992,7 @@ class JavaScriptGenerator(BaseGenerator):
             qname = self._qualified_type_names.get(id(union_def), union_def.name)
             name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
 
-        return f"{target_var}.registerSerializer(Type.union({name_info}{cases_arg}));"
+        return f"{target_var}.register(Type.union({name_info}{cases_arg}));"
 
     def _resolve_field_deps(
         self,

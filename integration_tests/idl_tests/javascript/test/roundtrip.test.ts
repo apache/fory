@@ -203,7 +203,7 @@ describe('Serialization roundtrip', () => {
     const fory = new Fory();
     registerAddressbookTypes(fory, Type);
     const serializer = fory.typeResolver.getSerializerByTypeInfo(
-      Type.struct(104),
+      Type.struct(104), 
     );
 
     const dog: Dog = builddog();

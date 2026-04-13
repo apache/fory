@@ -140,10 +140,10 @@ export default class TypeResolver {
       case Dynamic.FALSE:
         return true;
       default:
-        if (TypeId.structType(typeInfo.typeId)) {
-          return false;
-        }
         if (TypeId.enumType(typeInfo.typeId)) {
+          return true;
+        }
+        if (typeInfo.typeId === TypeId.UNION || typeInfo.typeId === TypeId.TYPED_UNION || typeInfo.typeId === TypeId.NAMED_UNION) {
           return true;
         }
         if (this.isCompatible()) {
