@@ -69,8 +69,10 @@ import monster.Color;
 import monster.Monster;
 import monster.MonsterForyRegistration;
 import monster.Vec3;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -729,30 +731,73 @@ public class IdlRoundTripTest {
 
   private void runPeer(PeerCommand command, String peer) throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command.command);
-    builder.inheritIO();
+    // Keep peer output off the forked JVM stdio so Surefire's control channel
+    // cannot be corrupted by child process logs.
+    builder.redirectErrorStream(true);
     builder.directory(command.workDir.toFile());
     builder.environment().putAll(command.environment);
 
     Process process = builder.start();
+    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
+    outputCollector.start();
     boolean finished = process.waitFor(180, TimeUnit.SECONDS);
     if (!finished) {
       process.destroyForcibly();
-      Assert.fail("Peer process timed out for " + peer);
+      process.waitFor(10, TimeUnit.SECONDS);
+      String output = outputCollector.awaitOutput();
+      Assert.fail(
+          "Peer process timed out for "
+              + peer
+              + (output.isEmpty() ? "" : "\noutput:\n" + output));
     }
 
     int exitCode = process.exitValue();
-    String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-    String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+    String output = outputCollector.awaitOutput();
     if (exitCode != 0) {
       Assert.fail(
           "Peer process failed for "
               + peer
               + " with exit code "
               + exitCode
-              + "\nstdout:\n"
-              + stdout
-              + "\nstderr:\n"
-              + stderr);
+              + (output.isEmpty() ? "" : "\noutput:\n" + output));
+    }
+  }
+
+  private static final class PeerOutputCollector extends Thread {
+    private final InputStream inputStream;
+    private final ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    private IOException readFailure;
+
+    private PeerOutputCollector(InputStream inputStream, String peer) {
+      super("idl-peer-output-" + peer);
+      setDaemon(true);
+      this.inputStream = inputStream;
+    }
+
+    @Override
+    public void run() {
+      byte[] buffer = new byte[4096];
+      int bytesRead;
+      try {
+        while ((bytesRead = inputStream.read(buffer)) != -1) {
+          outputStream.write(buffer, 0, bytesRead);
+        }
+      } catch (IOException e) {
+        readFailure = e;
+      } finally {
+        try {
+          inputStream.close();
+        } catch (IOException ignored) {
+        }
+      }
+    }
+
+    private String awaitOutput() throws IOException, InterruptedException {
+      join();
+      if (readFailure != null) {
+        throw readFailure;
+      }
+      return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
     }
   }
 
