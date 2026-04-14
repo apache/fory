@@ -33,11 +33,24 @@ cdef int8_t COLL_DECL_SAME_TYPE_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_S
 cdef int8_t COLL_DECL_SAME_TYPE_NOT_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
 
 
+cdef inline int _fixed_elem_byte_width(uint8_t type_id):
+    # Returns byte width for fixed-size primitive types that need byte-size header.
+    # 1-byte types (BOOL=1, INT8=2) are excluded: count == byte_size for them.
+    if type_id == 3:    # INT16
+        return 2
+    elif type_id == 4:  # INT32
+        return 4
+    elif type_id == 20: # FLOAT64
+        return 8
+    return 0
+
+
 cdef class CollectionSerializer(Serializer):
     cdef TypeResolver type_resolver
     cdef MapRefResolver ref_resolver
     cdef Serializer elem_serializer
     cdef int8_t elem_tracking_ref
+    cdef int elem_byte_width
     cdef elem_type
     cdef TypeInfo elem_type_info
 
@@ -50,12 +63,14 @@ cdef class CollectionSerializer(Serializer):
             self.elem_type = None
             self.elem_type_info = self.type_resolver.get_type_info(None)
             self.elem_tracking_ref = -1
+            self.elem_byte_width = 0
         else:
             self.elem_type = elem_serializer.type_
             self.elem_type_info = fory.type_resolver.get_type_info(self.elem_type)
             self.elem_tracking_ref = <int8_t> (elem_serializer.need_to_write_ref)
             if elem_tracking_ref is not None:
                 self.elem_tracking_ref = <int8_t> (1 if elem_tracking_ref else 0)
+            self.elem_byte_width = _fixed_elem_byte_width(self.elem_type_info.type_id)
 
     cdef inline TypeInfo write_header(self, Buffer buffer, value, int8_t *collect_flag_ptr):
         cdef int8_t collect_flag = COLL_DEFAULT_FLAG
@@ -113,7 +128,10 @@ cdef class CollectionSerializer(Serializer):
             elif self.elem_tracking_ref == -1:
                 if not has_same_type or elem_type_info.serializer.need_to_write_ref:
                     collect_flag |= COLL_TRACKING_REF
-        buffer.write_var_uint32(len(value))
+        if self.elem_byte_width > 0 and not has_null:
+            buffer.write_var_uint32(len(value) * self.elem_byte_width)
+        else:
+            buffer.write_var_uint32(len(value))
         buffer.write_int8(collect_flag)
         if (has_same_type and
                 collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0):
@@ -392,11 +410,16 @@ cdef class ListSerializer(CollectionSerializer):
     cpdef read(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
-        cdef int32_t len_ = buffer.read_var_uint32()
-        cdef list list_ = PyList_New(len_)
-        if len_ == 0:
-            return list_
+        cdef int32_t raw_len = buffer.read_var_uint32()
+        if raw_len == 0:
+            return PyList_New(0)
         cdef int8_t collect_flag = buffer.read_int8()
+        cdef int32_t len_
+        if self.elem_byte_width > 0 and (collect_flag & COLL_HAS_NULL) == 0:
+            len_ = raw_len // self.elem_byte_width
+        else:
+            len_ = raw_len
+        cdef list list_ = PyList_New(len_)
         ref_resolver.reference(list_)
         cdef TypeInfo typeinfo
         cdef uint8_t type_id = 0
@@ -492,11 +515,16 @@ cdef class TupleSerializer(CollectionSerializer):
     cpdef inline read(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.fory.ref_resolver
         cdef TypeResolver type_resolver = self.fory.type_resolver
-        cdef int32_t len_ = buffer.read_var_uint32()
-        cdef tuple tuple_ = PyTuple_New(len_)
-        if len_ == 0:
-            return tuple_
+        cdef int32_t raw_len = buffer.read_var_uint32()
+        if raw_len == 0:
+            return PyTuple_New(0)
         cdef int8_t collect_flag = buffer.read_int8()
+        cdef int32_t len_
+        if self.elem_byte_width > 0 and (collect_flag & COLL_HAS_NULL) == 0:
+            len_ = raw_len // self.elem_byte_width
+        else:
+            len_ = raw_len
+        cdef tuple tuple_ = PyTuple_New(len_)
         cdef TypeInfo typeinfo
         cdef uint8_t type_id = 0
         cdef c_bool tracking_ref
