@@ -101,6 +101,9 @@ class CollectionAnySerializer {
 
   write(value: any, size: number) {
     this.writeContext.writer.writeVarUint32Small7(size);
+    if (size === 0) {
+      return;
+    }
     const { serializer, isSame, includeNone, trackingRef } = this.writeElementsHeader(value);
     if (isSame) {
       serializer!.writeTypeInfo(value);
@@ -152,12 +155,15 @@ class CollectionAnySerializer {
   read(accessor: (result: any, index: number, v: any) => void, createCollection: (len: number) => any, fromRef: boolean): any {
     void fromRef;
     const len = this.readContext.reader.readVarUint32Small7();
+    const result = createCollection(len);
+    if (len === 0) {
+      return result;
+    }
     this.readContext.checkCollectionSize(len);
     const flags = this.readContext.reader.readUint8();
     const isSame = flags & CollectionFlags.SAME_TYPE;
     const includeNone = flags & CollectionFlags.HAS_NULL;
     const refTracking = flags & CollectionFlags.TRACKING_REF;
-    const result = createCollection(len);
 
     if (isSame) {
       const serializer = AnyHelper.detectSerializer(this.readContext);
@@ -238,6 +244,16 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
 
   abstract sizeProp(): string;
 
+  private isDeclaredElementType() {
+    const innerTypeId = this.innerGenerator.getTypeId();
+    return innerTypeId !== TypeId.STRUCT
+      && innerTypeId !== TypeId.COMPATIBLE_STRUCT
+      && innerTypeId !== TypeId.NAMED_STRUCT
+      && innerTypeId !== TypeId.NAMED_COMPATIBLE_STRUCT
+      && innerTypeId !== TypeId.EXT
+      && innerTypeId !== TypeId.NAMED_EXT;
+  }
+
   protected writeElementsHeader(accessor: string, flagAccessor: string) {
     const item = this.scope.uniqueName("item");
     const stmts = [
@@ -258,11 +274,17 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const item = this.scope.uniqueName("item");
     const flags = this.scope.uniqueName("flags");
     const existsId = this.scope.uniqueName("existsId");
-    const flag = CollectionFlags.SAME_TYPE | CollectionFlags.DECL_ELEMENT_TYPE;
+    const flag = this.isDeclaredElementType()
+      ? CollectionFlags.SAME_TYPE | CollectionFlags.DECL_ELEMENT_TYPE
+      : CollectionFlags.SAME_TYPE;
     return `
             let ${flags} = ${(this.innerGenerator.needToWriteRef() ? CollectionFlags.TRACKING_REF : 0) | flag};
             ${this.builder.writer.writeVarUint32Small7(`${accessor}.${this.sizeProp()}`)}
+            if (${accessor}.${this.sizeProp()} > 0) {
             ${this.writeElementsHeader(accessor, flags)}
+            if (!(${flags} & ${CollectionFlags.DECL_ELEMENT_TYPE})) {
+                ${this.innerGenerator.writeEmbed().writeTypeInfo("null")}
+            }
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
                 for (const ${item} of ${accessor}) {
@@ -294,6 +316,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
                     ${this.innerGenerator.writeEmbed().write(item)}
                 }
             }
+            }
         `;
   }
 
@@ -303,40 +326,73 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const flags = this.scope.uniqueName("flags");
     const idx = this.scope.uniqueName("idx");
     const refFlag = this.scope.uniqueName("refFlag");
+    const elemSerializer = this.scope.uniqueName("elemSerializer");
+    const anyHelper = this.builder.getExternal(AnyHelper.name);
+    const readContextName = this.builder.getReadContextName();
+    // Skip depth tracking for leaf element types (primitives, string, enum, time, typed arrays).
+    const innerIsLeaf = TypeId.isLeafTypeId(this.innerGenerator.getTypeId()!);
+    const readInnerElement = (assignStmt: (x: any) => string, refState: string) => {
+      return innerIsLeaf
+        ? this.innerGenerator.read(assignStmt, refState)
+        : this.innerGenerator.readWithDepth(assignStmt, refState);
+    };
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
             ${this.builder.getReadContextName()}.checkCollectionSize(${len});
-            const ${flags} = ${this.builder.reader.readUint8()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}
-            if (${flags} & ${CollectionFlags.TRACKING_REF}) {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    const ${refFlag} = ${this.builder.reader.readInt8()};
-                    switch (${refFlag}) {
-                        case ${RefFlags.NotNullValueFlag}:
-                        case ${RefFlags.RefValueFlag}:
-                            ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
-                            break;
-                        case ${RefFlags.RefFlag}:
-                            ${this.putAccessor(result, this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32()), idx)}
-                            break;
-                        case ${RefFlags.NullFlag}:
+            if (${len} > 0) {
+                const ${flags} = ${this.builder.reader.readUint8()};
+                let ${elemSerializer} = null;
+                if (!(${flags} & ${CollectionFlags.DECL_ELEMENT_TYPE})) {
+                    ${elemSerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                }
+                if (${flags} & ${CollectionFlags.TRACKING_REF}) {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                        const ${refFlag} = ${this.builder.reader.readInt8()};
+                        switch (${refFlag}) {
+                            case ${RefFlags.NotNullValueFlag}:
+                            case ${RefFlags.RefValueFlag}:
+                                if (${elemSerializer}) {
+                                    ${innerIsLeaf ? "" : `${readContextName}.incReadDepth();`}
+                                    ${this.putAccessor(result, `${elemSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag})`, idx)}
+                                    ${innerIsLeaf ? "" : `${readContextName}.decReadDepth();`}
+                                } else {
+                                    ${readInnerElement((x: any) => `${this.putAccessor(result, x, idx)}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+                                }
+                                break;
+                            case ${RefFlags.RefFlag}:
+                                ${this.putAccessor(result, this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32()), idx)}
+                                break;
+                            case ${RefFlags.NullFlag}:
+                                ${this.putAccessor(result, "null", idx)}
+                                break;
+                        }
+                    }
+                } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                        if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
                             ${this.putAccessor(result, "null", idx)}
-                            break;
+                        } else {
+                            if (${elemSerializer}) {
+                                ${innerIsLeaf ? "" : `${readContextName}.incReadDepth();`}
+                                ${this.putAccessor(result, `${elemSerializer}.read(false)`, idx)}
+                                ${innerIsLeaf ? "" : `${readContextName}.decReadDepth();`}
+                            } else {
+                                ${readInnerElement((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                            }
+                        }
                     }
-                }
-            } else if (${flags} & ${CollectionFlags.HAS_NULL}) {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    if (${this.builder.reader.readInt8()} == ${RefFlags.NullFlag}) {
-                        ${this.putAccessor(result, "null", idx)}
-                    } else {
-                        ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                } else {
+                    for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
+                        if (${elemSerializer}) {
+                            ${innerIsLeaf ? "" : `${readContextName}.incReadDepth();`}
+                            ${this.putAccessor(result, `${elemSerializer}.read(false)`, idx)}
+                            ${innerIsLeaf ? "" : `${readContextName}.decReadDepth();`}
+                        } else {
+                            ${readInnerElement((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
+                        }
                     }
-                }
-
-            } else {
-                for (let ${idx} = 0; ${idx} < ${len}; ${idx}++) {
-                    ${this.innerGenerator.readWithDepth((x: any) => `${this.putAccessor(result, x, idx)}`, "false")}
                 }
             }
             ${accessor(result)}

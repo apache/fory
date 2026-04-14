@@ -30,6 +30,8 @@ export class BinaryReader {
   private platformBuffer!: PlatformBuffer;
   private bigString = "";
   private byteLength = 0;
+  /** Cached ArrayBuffer for fast-path DataView reuse. */
+  private cachedArrayBuffer: ArrayBuffer | null = null;
 
   constructor(config: {
     useSliceString?: boolean;
@@ -40,7 +42,15 @@ export class BinaryReader {
   reset(ab: Uint8Array) {
     this.platformBuffer = fromUint8Array(ab);
     this.byteLength = this.platformBuffer.byteLength;
-    this.dataView = new DataView(this.platformBuffer.buffer, this.platformBuffer.byteOffset, this.byteLength);
+    // Reuse DataView when the underlying ArrayBuffer, byteOffset, and byteLength are unchanged.
+    const buf = this.platformBuffer.buffer;
+    if (buf !== this.cachedArrayBuffer
+      || !this.dataView
+      || this.dataView.byteOffset !== this.platformBuffer.byteOffset
+      || this.dataView.byteLength !== this.byteLength) {
+      this.dataView = new DataView(buf, this.platformBuffer.byteOffset, this.byteLength);
+      this.cachedArrayBuffer = buf;
+    }
     if (this.sliceStringEnable) {
       this.bigString = this.platformBuffer.toString("latin1", 0, this.byteLength);
     }
@@ -257,7 +267,7 @@ export class BinaryReader {
           }
         }
       }
-      return result;
+      return result >>> 0;
     }
     let byte = this.readUint8();
     let result = byte & 0x7f;
@@ -277,7 +287,7 @@ export class BinaryReader {
         }
       }
     }
-    return result;
+    return result >>> 0;
   }
 
   readVarUint32Small7(): number {
@@ -322,20 +332,20 @@ export class BinaryReader {
       }
     }
     this.cursor = readIdx;
-    return value;
+    return value >>> 0;
   }
 
   readVarUint36Small(): number {
     const readIdx = this.cursor;
-    if (this.byteLength - readIdx >= 9) {
-      const bulkValue = this.dataView.getBigUint64(readIdx, true);
+    if (this.byteLength - readIdx >= 5) {
+      const fourByteValue = this.dataView.getUint32(readIdx, true);
       this.cursor = readIdx + 1;
-      let result = Number(bulkValue & 0x7Fn);
-      if ((bulkValue & 0x80n) !== 0n) {
+      let result = fourByteValue & 0x7F;
+      if ((fourByteValue & 0x80) !== 0) {
         this.cursor++;
-        result |= Number((bulkValue >> 1n) & 0x3f80n);
-        if ((bulkValue & 0x8000n) !== 0n) {
-          return this.continueReadVarInt36(readIdx + 2, bulkValue, result);
+        result |= (fourByteValue >>> 1) & 0x3f80;
+        if ((fourByteValue & 0x8000) !== 0) {
+          return this.continueReadVarUint36(readIdx + 2, fourByteValue, result);
         }
       }
       return result;
@@ -344,15 +354,14 @@ export class BinaryReader {
     }
   }
 
-  private continueReadVarInt36(readIdx: number, bulkValue: bigint, result: number): number {
+  private continueReadVarUint36(readIdx: number, fourByteValue: number, result: number): number {
     readIdx++;
-    result |= Number((bulkValue >> 2n) & 0x1fc000n);
-    if ((bulkValue & 0x800000n) !== 0n) {
+    result |= (fourByteValue >>> 2) & 0x1fc000;
+    if ((fourByteValue & 0x800000) !== 0) {
       readIdx++;
-      result |= Number((bulkValue >> 3n) & 0xfe00000n);
-      if ((bulkValue & 0x80000000n) !== 0n) {
-        readIdx++;
-        result |= Number((bulkValue >> 4n) & 0xff0000000n);
+      result |= (fourByteValue >>> 3) & 0xfe00000;
+      if ((fourByteValue & 0x80000000) !== 0) {
+        result |= (this.dataView.getUint8(readIdx++) & 0xFF) << 28;
       }
     }
     this.cursor = readIdx;
@@ -378,7 +387,7 @@ export class BinaryReader {
         }
       }
     }
-    return result;
+    return result >>> 0;
   }
 
   readVarInt32() {

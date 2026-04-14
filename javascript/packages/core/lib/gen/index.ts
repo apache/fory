@@ -34,6 +34,7 @@ import "./struct";
 import "./typedArray";
 import "./enum";
 import "./any";
+import "./union";
 import "./ext";
 import TypeResolver from "../typeResolver";
 
@@ -70,19 +71,30 @@ export class Gen {
     return !!this.typeResolver.getSerializerByTypeInfo(typeInfo);
   }
 
+  private isFullyGenerated(typeInfo: TypeInfo) {
+    const ser = this.typeResolver.getSerializerByTypeInfo(typeInfo);
+    return ser && ser._initialized;
+  }
+
   private traversalContainer(typeInfo: TypeInfo) {
     if (TypeId.userDefinedType(typeInfo.typeId)) {
-      if (this.isRegistered(typeInfo)) {
+      if (this.isFullyGenerated(typeInfo)) {
         return;
       }
       const options = (typeInfo).options;
-      if (options?.props) {
+      if (options?.props && Object.keys(options.props).length > 0) {
         this.register(typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);
         });
         const func = this.generate(typeInfo);
         this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
+      } else if (!this.isRegistered(typeInfo) && TypeId.structType(typeInfo.typeId)) {
+        // Forward reference to a struct type not yet fully defined — register a
+        // placeholder so that serializer factories can capture the object
+        // reference.  The placeholder will be filled in via Object.assign
+        // when the real serializer is generated later.
+        this.register(typeInfo);
       }
     }
     if (typeInfo.typeId === TypeId.LIST) {
@@ -98,6 +110,11 @@ export class Gen {
       this.traversalContainer((typeInfo).options!.key!);
       this.traversalContainer((typeInfo).options!.value!);
     }
+    if (typeInfo.options?.cases) {
+      Object.values(typeInfo.options.cases).forEach((caseTypeInfo) => {
+        this.traversalContainer(caseTypeInfo);
+      });
+    }
   }
 
   reGenerateSerializer(typeInfo: TypeInfo) {
@@ -107,9 +124,9 @@ export class Gen {
 
   generateSerializer(typeInfo: TypeInfo) {
     this.traversalContainer(typeInfo);
-    const exists = this.isRegistered(typeInfo);
-    if (exists) {
-      return this.typeResolver.getSerializerByTypeInfo(typeInfo);
+    const serializer = this.typeResolver.getSerializerByTypeInfo(typeInfo);
+    if (serializer?._initialized) {
+      return serializer;
     }
     return this.reGenerateSerializer(typeInfo);
   }

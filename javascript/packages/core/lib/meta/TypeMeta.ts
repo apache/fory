@@ -283,18 +283,39 @@ export class TypeMeta {
     });
   }
 
-  static fromBytes(reader: BinaryReader): TypeMeta {
-    // Read header with hash and flags
+  /**
+   * Read the 8-byte type meta header and extract the body size.
+   * Returns [headerLong, metaSize] without advancing past the body.
+   */
+  static readHeader(reader: BinaryReader): [bigint, number] {
     const headerLong = reader.readInt64();
-    // todo support compress.
-    // const isCompressed = (headerLong & COMPRESS_META_FLAG) !== 0n;
-    // const hasFieldsMeta = (headerLong & HAS_FIELDS_META_FLAG) !== 0n;
     let metaSize = Number(headerLong & BigInt(META_SIZE_MASKS));
-
     if (metaSize === META_SIZE_MASKS) {
       metaSize += reader.readVarUInt32();
     }
+    return [headerLong, metaSize];
+  }
 
+  /**
+   * Skip the type meta body bytes after the header has already been read.
+   */
+  static skipBody(reader: BinaryReader, metaSize: number) {
+    reader.readSkip(metaSize);
+  }
+
+  static fromBytes(reader: BinaryReader): TypeMeta {
+    // Read header with hash and flags
+    const [headerLong, metaSize] = TypeMeta.readHeader(reader);
+    void headerLong;
+    void metaSize;
+    return TypeMeta.fromBytesAfterHeader(reader);
+  }
+
+  /**
+   * Parse the type meta body after the header has already been consumed
+   * by readHeader(). Used by ReadContext to avoid re-reading the header.
+   */
+  static fromBytesAfterHeader(reader: BinaryReader): TypeMeta {
     // Read class header
     const classHeader = reader.readUint8();
     let numFields = classHeader & SMALL_NUM_FIELDS_THRESHOLD;
@@ -701,14 +722,14 @@ export class TypeMeta {
       }
 
       // Categorize based on type_id
-      if (TypeId.isBuiltin(typeId)) {
-        internalTypeFields.push(typeInfo);
-      } else if (typeId === TypeId.LIST) {
+      if (typeId === TypeId.LIST) {
         listFields.push(typeInfo);
       } else if (typeId === TypeId.SET) {
         setFields.push(typeInfo);
       } else if (typeId === TypeId.MAP) {
         mapFields.push(typeInfo);
+      } else if (TypeId.isBuiltin(typeId)) {
+        internalTypeFields.push(typeInfo);
       } else {
         otherFields.push(typeInfo);
       }

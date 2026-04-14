@@ -25,6 +25,27 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
+/**
+ * Returns true when a field's read cannot recurse and needs no depth tracking.
+ * Covers leaf scalars, typed arrays, and collections/maps whose elements are all leaf types.
+ */
+function isDepthFreeField(typeInfo: TypeInfo): boolean {
+  const id = typeInfo.typeId;
+  if (TypeId.isLeafTypeId(id)) return true;
+  // LIST / SET with leaf element type
+  if (id === TypeId.LIST || id === TypeId.SET) {
+    const inner = typeInfo.options?.inner;
+    return !!inner && TypeId.isLeafTypeId(inner.typeId);
+  }
+  // MAP with leaf key and value types
+  if (id === TypeId.MAP) {
+    const key = typeInfo.options?.key;
+    const value = typeInfo.options?.value;
+    return !!key && !!value && TypeId.isLeafTypeId(key.typeId) && TypeId.isLeafTypeId(value.typeId);
+  }
+  return false;
+}
+
 const sortProps = (typeInfo: TypeInfo, typeResolver: CodecBuilder["resolver"]) => {
   const names = TypeMeta.fromTypeInfo(typeInfo, typeResolver).getFieldInfo();
   const props = typeInfo.options!.props;
@@ -63,6 +84,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   sortedProps: { key: string; typeInfo: TypeInfo }[];
   metaChangedSerializer: string;
   typeMeta: TypeMeta;
+  serializerExpr: string;
+  ownTypeInfoExpr: string;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
@@ -70,6 +93,17 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     this.sortedProps = sortProps(this.typeInfo, this.builder.resolver);
     this.metaChangedSerializer = this.scope.declareVar("metaChangedSerializer", "null");
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver);
+    // Build an expression that resolves this struct's own serializer at runtime.
+    // This is needed so that nested struct generators (e.g., Person inside
+    // AddressBook) use their own TypeInfo for meta-share tracking, not the
+    // enclosing struct's TypeInfo.
+    // Keep the raw expression for self-references (used in read/readNoRef for
+    // edge cases). The self-serializer may not be registered yet during factory
+    // initialization so we cannot hoist it eagerly.
+    this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
+      ? `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      : `${this.builder.getTypeResolverName()}.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
+    this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
   readField(fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
@@ -82,6 +116,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         stmt = `
           ${embedGenerator.readRefWithoutTypeInfo(assignStmt)}
         `;
+      } else if (isDepthFreeField(fieldTypeInfo)) {
+        // Leaf types and collections of leaf types cannot recurse — skip depth tracking.
+        stmt = embedGenerator.read(assignStmt, "false");
       } else {
         stmt = embedGenerator.readWithDepth(assignStmt, "false");
       }
@@ -154,6 +191,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   write(accessor: string): string {
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const hash = this.typeMeta.computeStructHash();
+      return `${!this.builder.resolver.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}`;
+    }
     const hash = this.typeMeta.computeStructHash();
     return `
       ${!this.builder.resolver.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}
@@ -172,6 +213,12 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      return `
+        let ${result} = ${this.serializerExpr}.read(${refState});
+        ${accessor(result)};
+      `;
+    }
     const hash = this.typeMeta.computeStructHash();
     return `
       ${!this.builder.resolver.isCompatible()
@@ -206,8 +253,30 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
+  readWithDepth(assignStmt: (v: string) => string, refState: string): string {
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      const result = this.scope.uniqueName("result");
+      return `
+        ${this.builder.getReadContextName()}.incReadDepth();
+        let ${result} = ${this.serializerExpr}.read(${refState});
+        ${this.builder.getReadContextName()}.decReadDepth();
+        ${assignStmt(result)};
+      `;
+    }
+    return super.readWithDepth(assignStmt, refState);
+  }
+
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
+      return `
+        ${this.readTypeInfo()}
+        ${this.builder.getReadContextName()}.incReadDepth();
+        let ${result} = ${this.serializerExpr}.read(${refState});
+        ${this.builder.getReadContextName()}.decReadDepth();
+        ${assignStmt(result)};
+      `;
+    }
     return `
       ${this.readTypeInfo()}
       ${this.builder.getReadContextName()}.incReadDepth();
@@ -286,35 +355,97 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readEmbed() {
+    // Hoist the serializer lookup into a scope-level const, evaluated once during
+    // factory init. This is safe because readEmbed() is called by the PARENT
+    // struct whose factory runs after all child serializers are registered.
+    const hoisted = this.scope.declare("ser", this.serializerExpr);
+    const scope = this.scope;
+    const builder = this.builder;
     return new Proxy({}, {
       get: (target, prop: string) => {
+        if (prop === "readNoRef") {
+          return (accessor: (expr: string) => string, refState: string) => {
+            const result = scope.uniqueName("result");
+            return `
+              ${hoisted}.readTypeInfo();
+              ${builder.getReadContextName()}.incReadDepth();
+              let ${result} = ${hoisted}.read(${refState});
+              ${builder.getReadContextName()}.decReadDepth();
+              ${accessor(result)};
+            `;
+          };
+        }
+        if (prop === "readRef") {
+          return (accessor: (expr: string) => string) => {
+            const refFlag = scope.uniqueName("refFlag");
+            const result = scope.uniqueName("result");
+            return `
+              const ${refFlag} = ${builder.reader.readInt8()};
+              let ${result};
+              if (${refFlag} === ${RefFlags.NullFlag}) {
+                ${result} = null;
+              } else if (${refFlag} === ${RefFlags.RefFlag}) {
+                ${result} = ${builder.referenceResolver.getReadRef(builder.reader.readVarUInt32())};
+              } else {
+                ${hoisted}.readTypeInfo();
+                ${builder.getReadContextName()}.incReadDepth();
+                ${result} = ${hoisted}.read(${refFlag} === ${RefFlags.RefValueFlag});
+                ${builder.getReadContextName()}.decReadDepth();
+              }
+              ${accessor(result)};
+            `;
+          };
+        }
+        if (prop === "readWithDepth") {
+          return (accessor: (expr: string) => string, refState: string) => {
+            const result = scope.uniqueName("result");
+            return `
+              ${builder.getReadContextName()}.incReadDepth();
+              let ${result} = ${hoisted}.read(${refState});
+              ${builder.getReadContextName()}.decReadDepth();
+              ${accessor(result)};
+            `;
+          };
+        }
         return (accessor: (expr: string) => string, ...args: string[]) => {
-          const name = this.scope.declare(
-            "tag_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
-          return accessor(`${name}.${prop}(${args.join(",")})`);
+          return accessor(`${hoisted}.${prop}(${args.join(",")})`);
         };
       },
     });
   }
 
   writeEmbed() {
+    // Hoist the serializer lookup — safe because writeEmbed() is used by
+    // the parent struct whose factory runs after child serializers exist.
+    const hoisted = this.scope.declare("ser", this.serializerExpr);
+    const scope = this.scope;
     return new Proxy({}, {
       get: (target, prop: string) => {
+        if (prop === "writeNoRef") {
+          return (accessor: string) => {
+            return `
+              ${hoisted}.writeTypeInfo(${accessor});
+              ${hoisted}.write(${accessor});
+            `;
+          };
+        }
+        if (prop === "writeRef") {
+          return (accessor: string) => {
+            const noneedWrite = scope.uniqueName("noneedWrite");
+            return `
+              let ${noneedWrite} = ${hoisted}.writeRefOrNull(${accessor});
+              if (!${noneedWrite}) {
+                ${hoisted}.writeTypeInfo(${accessor});
+                ${hoisted}.write(${accessor});
+              }
+            `;
+          };
+        }
         return (accessor: string, ...args: any) => {
-          const name = this.scope.declare(
-            "tag_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
           if (prop === "writeRefOrNull") {
-            return args[0](`${name}.${prop}(${accessor})`);
+            return args[0](`${hoisted}.${prop}(${accessor})`);
           }
-          return `${name}.${prop}(${accessor})`;
+          return `${hoisted}.${prop}(${accessor})`;
         };
       },
     });

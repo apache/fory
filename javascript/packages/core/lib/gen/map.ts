@@ -302,10 +302,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private isAny() {
-    return this.typeInfo.options?.key!.typeId === TypeId.UNKNOWN
-      || this.typeInfo.options?.value!.typeId === TypeId.UNKNOWN
-      || !this.builder.resolver.isMonomorphic(this.typeInfo.options!.key!)
-      || !this.builder.resolver.isMonomorphic(this.typeInfo.options!.value!);
+    const keyTypeId = this.typeInfo.options?.key!.typeId;
+    const valueTypeId = this.typeInfo.options?.value!.typeId;
+    return keyTypeId === TypeId.UNKNOWN || valueTypeId === TypeId.UNKNOWN
+      || !TypeId.isBuiltin(keyTypeId!) || !TypeId.isBuiltin(valueTypeId!);
   }
 
   private writeSpecificType(accessor: string) {
@@ -397,9 +397,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.writeSpecificType(accessor);
     }
     const innerSerializer = (innerTypeInfo: TypeInfo) => {
-      if (!this.builder.resolver.isMonomorphic(innerTypeInfo)) {
-        return null;
-      }
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)
@@ -415,6 +412,19 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
   private readSpecificType(accessor: (expr: string) => string, refState: string) {
     const count = this.scope.uniqueName("count");
     const result = this.scope.uniqueName("result");
+    // Skip depth tracking for leaf key/value types.
+    const keyIsLeaf = TypeId.isLeafTypeId(this.keyGenerator.getTypeId()!);
+    const valueIsLeaf = TypeId.isLeafTypeId(this.valueGenerator.getTypeId()!);
+    const readKey = (assignStmt: (x: string) => string, refState: string) => {
+      return keyIsLeaf
+        ? this.keyGenerator.read(assignStmt, refState)
+        : this.keyGenerator.readWithDepth(assignStmt, refState);
+    };
+    const readValue = (assignStmt: (x: string) => string, refState: string) => {
+      return valueIsLeaf
+        ? this.valueGenerator.read(assignStmt, refState)
+        : this.valueGenerator.readWithDepth(assignStmt, refState);
+    };
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
@@ -444,7 +454,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "true")}
+                ${readKey(x => `key = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
                 key = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())}
@@ -453,11 +463,11 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 key = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "false")}
+                ${readKey(x => `key = ${x}`, "false")}
                 break;
             }
           } else {
-              ${this.keyGenerator.readWithDepth(x => `key = ${x}`, "false")}
+              ${readKey(x => `key = ${x}`, "false")}
           }
           
           if (valueIncludeNone) {
@@ -466,7 +476,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "true")}
+                ${readValue(x => `value = ${x}`, "true")}
                 break;
               case ${RefFlags.RefFlag}:
                 value = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())}
@@ -475,11 +485,11 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 value = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "false")}
+                ${readValue(x => `value = ${x}`, "false")}
                 break;
             }
           } else {
-            ${this.valueGenerator.readWithDepth(x => `value = ${x}`, "false")}
+            ${readValue(x => `value = ${x}`, "false")}
           }
           
           ${result}.set(
@@ -499,9 +509,6 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.readSpecificType(accessor, refState);
     }
     const innerSerializer = (innerTypeInfo: TypeInfo) => {
-      if (!this.builder.resolver.isMonomorphic(innerTypeInfo)) {
-        return null;
-      }
       return this.scope.declare(
         "map_inner_ser",
         TypeId.isNamedType(innerTypeInfo.typeId)

@@ -163,7 +163,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     const userTypeStmt = TypeId.needsUserTypeId(typeId) && typeId !== TypeId.COMPATIBLE_STRUCT
       ? this.builder.writer.writeVarUint32Small7(userTypeId)
       : "";
-    return ` 
+    return `
       ${this.builder.writer.writeUint8(typeId)};
       ${userTypeStmt}
     `;
@@ -325,6 +325,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
             ${this.scope.generate()}
             ${declare}
             return {
+              _initialized: true,
               fixedSize: ${this.getFixedSize()},
               needToWriteRef: () => ${this.needToWriteRef()},
               getTypeId: () => ${this.getTypeId()},

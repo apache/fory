@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from enum import IntEnum
 import json
 import os
 import pickle
@@ -40,6 +41,7 @@ import timeit
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Tuple
 
+import numpy as np
 import pyfory
 
 
@@ -70,88 +72,118 @@ SERIALIZER_LABELS = {
 }
 
 
+def int32_array(values: Iterable[int]) -> np.ndarray:
+    return np.array(list(values), dtype=np.int32)
+
+
+def int64_array(values: Iterable[int]) -> np.ndarray:
+    return np.array(list(values), dtype=np.int64)
+
+
+def float32_array(values: Iterable[float]) -> np.ndarray:
+    return np.array(list(values), dtype=np.float32)
+
+
+def float64_array(values: Iterable[float]) -> np.ndarray:
+    return np.array(list(values), dtype=np.float64)
+
+
+def bool_array(values: Iterable[bool]) -> np.ndarray:
+    return np.array(list(values), dtype=np.bool_)
+
+
+class Player(IntEnum):
+    JAVA = 0
+    FLASH = 1
+
+
+class Size(IntEnum):
+    SMALL = 0
+    LARGE = 1
+
+
 @dataclass
 class NumericStruct:
-    f1: int
-    f2: int
-    f3: int
-    f4: int
-    f5: int
-    f6: int
-    f7: int
-    f8: int
+    f1: pyfory.int32 = pyfory.field(id=1)
+    f2: pyfory.int32 = pyfory.field(id=2)
+    f3: pyfory.int32 = pyfory.field(id=3)
+    f4: pyfory.int32 = pyfory.field(id=4)
+    f5: pyfory.int32 = pyfory.field(id=5)
+    f6: pyfory.int32 = pyfory.field(id=6)
+    f7: pyfory.int32 = pyfory.field(id=7)
+    f8: pyfory.int32 = pyfory.field(id=8)
 
 
 @dataclass
 class Sample:
-    int_value: int
-    long_value: int
-    float_value: float
-    double_value: float
-    short_value: int
-    char_value: int
-    boolean_value: bool
-    int_value_boxed: int
-    long_value_boxed: int
-    float_value_boxed: float
-    double_value_boxed: float
-    short_value_boxed: int
-    char_value_boxed: int
-    boolean_value_boxed: bool
-    int_array: List[int]
-    long_array: List[int]
-    float_array: List[float]
-    double_array: List[float]
-    short_array: List[int]
-    char_array: List[int]
-    boolean_array: List[bool]
-    string: str
+    int_value: pyfory.int32 = pyfory.field(id=1)
+    long_value: pyfory.int64 = pyfory.field(id=2)
+    float_value: pyfory.float32 = pyfory.field(id=3)
+    double_value: pyfory.float64 = pyfory.field(id=4)
+    short_value: pyfory.int32 = pyfory.field(id=5)
+    char_value: pyfory.int32 = pyfory.field(id=6)
+    boolean_value: bool = pyfory.field(id=7)
+    int_value_boxed: pyfory.int32 = pyfory.field(id=8)
+    long_value_boxed: pyfory.int64 = pyfory.field(id=9)
+    float_value_boxed: pyfory.float32 = pyfory.field(id=10)
+    double_value_boxed: pyfory.float64 = pyfory.field(id=11)
+    short_value_boxed: pyfory.int32 = pyfory.field(id=12)
+    char_value_boxed: pyfory.int32 = pyfory.field(id=13)
+    boolean_value_boxed: bool = pyfory.field(id=14)
+    int_array: pyfory.int32_ndarray = pyfory.field(id=15)
+    long_array: pyfory.int64_ndarray = pyfory.field(id=16)
+    float_array: pyfory.float32_ndarray = pyfory.field(id=17)
+    double_array: pyfory.float64_ndarray = pyfory.field(id=18)
+    short_array: pyfory.int32_ndarray = pyfory.field(id=19)
+    char_array: pyfory.int32_ndarray = pyfory.field(id=20)
+    boolean_array: pyfory.bool_ndarray = pyfory.field(id=21)
+    string: str = pyfory.field(id=22)
 
 
 @dataclass
 class Media:
-    uri: str
-    title: str
-    width: int
-    height: int
-    format: str
-    duration: int
-    size: int
-    bitrate: int
-    has_bitrate: bool
-    persons: List[str]
-    player: int
-    copyright: str
+    uri: str = pyfory.field(id=1)
+    title: str = pyfory.field(id=2)
+    width: pyfory.int32 = pyfory.field(id=3)
+    height: pyfory.int32 = pyfory.field(id=4)
+    format: str = pyfory.field(id=5)
+    duration: pyfory.int64 = pyfory.field(id=6)
+    size: pyfory.int64 = pyfory.field(id=7)
+    bitrate: pyfory.int32 = pyfory.field(id=8)
+    has_bitrate: bool = pyfory.field(id=9)
+    persons: List[str] = pyfory.field(id=10)
+    player: Player = pyfory.field(id=11)
+    copyright: str = pyfory.field(id=12)
 
 
 @dataclass
 class Image:
-    uri: str
-    title: str
-    width: int
-    height: int
-    size: int
+    uri: str = pyfory.field(id=1)
+    title: str = pyfory.field(id=2)
+    width: pyfory.int32 = pyfory.field(id=3)
+    height: pyfory.int32 = pyfory.field(id=4)
+    size: Size = pyfory.field(id=5)
 
 
 @dataclass
 class MediaContent:
-    media: Media
-    images: List[Image]
+    media: Media = pyfory.field(id=1)
+    images: List[Image] = pyfory.field(id=2)
 
 
 @dataclass
 class StructList:
-    struct_list: List[NumericStruct]
+    struct_list: List[NumericStruct] = pyfory.field(id=1)
 
 
 @dataclass
 class SampleList:
-    sample_list: List[Sample]
+    sample_list: List[Sample] = pyfory.field(id=1)
 
 
 @dataclass
 class MediaContentList:
-    media_content_list: List[MediaContent]
+    media_content_list: List[MediaContent] = pyfory.field(id=1)
 
 
 def create_numeric_struct() -> NumericStruct:
@@ -183,13 +215,19 @@ def create_sample() -> Sample:
         short_value_boxed=32100,
         char_value_boxed=ord("$"),
         boolean_value_boxed=False,
-        int_array=[-1234, -123, -12, -1, 0, 1, 12, 123, 1234],
-        long_array=[-123400, -12300, -1200, -100, 0, 100, 1200, 12300, 123400],
-        float_array=[-12.34, -12.3, -12.0, -1.0, 0.0, 1.0, 12.0, 12.3, 12.34],
-        double_array=[-1.234, -1.23, -12.0, -1.0, 0.0, 1.0, 12.0, 1.23, 1.234],
-        short_array=[-1234, -123, -12, -1, 0, 1, 12, 123, 1234],
-        char_array=[ord(c) for c in "asdfASDF"],
-        boolean_array=[True, False, False, True],
+        int_array=int32_array([-1234, -123, -12, -1, 0, 1, 12, 123, 1234]),
+        long_array=int64_array(
+            [-123400, -12300, -1200, -100, 0, 100, 1200, 12300, 123400]
+        ),
+        float_array=float32_array(
+            [-12.34, -12.3, -12.0, -1.0, 0.0, 1.0, 12.0, 12.3, 12.34]
+        ),
+        double_array=float64_array(
+            [-1.234, -1.23, -12.0, -1.0, 0.0, 1.0, 12.0, 1.23, 1.234]
+        ),
+        short_array=int32_array([-1234, -123, -12, -1, 0, 1, 12, 123, 1234]),
+        char_array=int32_array([ord(c) for c in "asdfASDF"]),
+        boolean_array=bool_array([True, False, False, True]),
         string="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
     )
 
@@ -206,7 +244,7 @@ def create_media_content() -> MediaContent:
         bitrate=0,
         has_bitrate=False,
         persons=["Bill Gates, Jr.", "Steven Jobs"],
-        player=1,
+        player=Player.FLASH,
         copyright="Copyright (c) 2009, Scooby Dooby Doo",
     )
     images = [
@@ -215,21 +253,21 @@ def create_media_content() -> MediaContent:
             title="Javaone Keynote\u1234",
             width=32000,
             height=24000,
-            size=1,
+            size=Size.LARGE,
         ),
         Image(
             uri="http://javaone.com/keynote_large.jpg",
             title="",
             width=1024,
             height=768,
-            size=1,
+            size=Size.LARGE,
         ),
         Image(
             uri="http://javaone.com/keynote_small.jpg",
             title="",
             width=320,
             height=240,
-            size=0,
+            size=Size.SMALL,
         ),
     ]
     return MediaContent(media=media, images=images)
@@ -316,13 +354,13 @@ def to_pb_sample(bench_pb2, obj: Sample):
     pb.short_value_boxed = obj.short_value_boxed
     pb.char_value_boxed = obj.char_value_boxed
     pb.boolean_value_boxed = obj.boolean_value_boxed
-    pb.int_array.extend(obj.int_array)
-    pb.long_array.extend(obj.long_array)
-    pb.float_array.extend(obj.float_array)
-    pb.double_array.extend(obj.double_array)
-    pb.short_array.extend(obj.short_array)
-    pb.char_array.extend(obj.char_array)
-    pb.boolean_array.extend(obj.boolean_array)
+    pb.int_array.extend(obj.int_array.tolist())
+    pb.long_array.extend(obj.long_array.tolist())
+    pb.float_array.extend(obj.float_array.tolist())
+    pb.double_array.extend(obj.double_array.tolist())
+    pb.short_array.extend(obj.short_array.tolist())
+    pb.char_array.extend(obj.char_array.tolist())
+    pb.boolean_array.extend(obj.boolean_array.tolist())
     pb.string = obj.string
     return pb
 
@@ -343,13 +381,13 @@ def from_pb_sample(pb_obj) -> Sample:
         short_value_boxed=pb_obj.short_value_boxed,
         char_value_boxed=pb_obj.char_value_boxed,
         boolean_value_boxed=pb_obj.boolean_value_boxed,
-        int_array=list(pb_obj.int_array),
-        long_array=list(pb_obj.long_array),
-        float_array=list(pb_obj.float_array),
-        double_array=list(pb_obj.double_array),
-        short_array=list(pb_obj.short_array),
-        char_array=list(pb_obj.char_array),
-        boolean_array=list(pb_obj.boolean_array),
+        int_array=int32_array(pb_obj.int_array),
+        long_array=int64_array(pb_obj.long_array),
+        float_array=float32_array(pb_obj.float_array),
+        double_array=float64_array(pb_obj.double_array),
+        short_array=int32_array(pb_obj.short_array),
+        char_array=int32_array(pb_obj.char_array),
+        boolean_array=bool_array(pb_obj.boolean_array),
         string=pb_obj.string,
     )
 
@@ -361,7 +399,7 @@ def to_pb_image(bench_pb2, obj: Image):
         pb.title = obj.title
     pb.width = obj.width
     pb.height = obj.height
-    pb.size = obj.size
+    pb.size = int(obj.size)
     return pb
 
 
@@ -372,7 +410,7 @@ def from_pb_image(pb_obj) -> Image:
         title=title,
         width=pb_obj.width,
         height=pb_obj.height,
-        size=pb_obj.size,
+        size=Size(pb_obj.size),
     )
 
 
@@ -389,7 +427,7 @@ def to_pb_media(bench_pb2, obj: Media):
     pb.bitrate = obj.bitrate
     pb.has_bitrate = obj.has_bitrate
     pb.persons.extend(obj.persons)
-    pb.player = obj.player
+    pb.player = int(obj.player)
     pb.copyright = obj.copyright
     return pb
 
@@ -407,7 +445,7 @@ def from_pb_media(pb_obj) -> Media:
         bitrate=pb_obj.bitrate,
         has_bitrate=pb_obj.has_bitrate,
         persons=list(pb_obj.persons),
-        player=pb_obj.player,
+        player=Player(pb_obj.player),
         copyright=pb_obj.copyright,
     )
 
@@ -480,6 +518,8 @@ PROTO_CONVERTERS = {
 
 def build_fory() -> pyfory.Fory:
     fory = pyfory.Fory(xlang=True, compatible=True, ref=False)
+    fory.register_type(Player, type_id=101)
+    fory.register_type(Size, type_id=102)
     fory.register_type(NumericStruct, type_id=1)
     fory.register_type(Sample, type_id=2)
     fory.register_type(Media, type_id=3)

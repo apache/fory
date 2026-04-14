@@ -28,11 +28,17 @@ import { TypeMeta } from "../meta/TypeMeta";
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   typeMeta: TypeMeta;
+  serializerExpr: string;
+  ownTypeInfoExpr: string;
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
     this.typeMeta = TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver);
+    this.serializerExpr = TypeId.isNamedType(typeInfo.typeId)
+      ? `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(typeInfo.named!)}")`
+      : `${this.builder.getTypeResolverName()}.getSerializerById(${typeInfo.typeId}, ${typeInfo.userTypeId})`;
+    this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
   write(accessor: string): string {

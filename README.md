@@ -117,9 +117,15 @@ For more detailed benchmarks and methodology, see [Go Benchmark](benchmarks/go).
 
 For more detailed benchmarks and methodology, see [Pythonk](benchmarks/python).
 
-### C# Serialization Performance
+### JavaScript/NodeJS Serialization Performance
 
-Fory C# demonstrates excellent performance compared to protobuf-net and MessagePack-CSharp:
+<p align="center">
+<img src="docs/benchmarks/javascript/throughput.png" width="95%">
+</p>
+
+For more detailed benchmarks and methodology, see [JavaScript Benchmarks](docs/benchmarks/javascript).
+
+### C# Serialization Performance
 
 <p align="center">
 <img src="docs/benchmarks/csharp/throughput.png" width="95%">
@@ -133,7 +139,7 @@ For more detailed benchmarks and methodology, see [C# Benchmarks](docs/benchmark
 <img src="docs/benchmarks/swift/throughput.png" width="95%">
 </p>
 
-For more detailed benchmarks and methodology, see [SwiftBenchmarks](docs/benchmarks/swift).
+For more detailed benchmarks and methodology, see [Swift Benchmarks](docs/benchmarks/swift).
 
 ### Dart Serialization Performance
 

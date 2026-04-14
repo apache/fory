@@ -387,6 +387,9 @@ export class ReadContext {
   readonly metaStringReader: MetaStringReader;
 
   private typeMeta: TypeMeta[] = [];
+  private typeMetaCount = 0;
+  /** Persistent cross-message cache keyed by 8-byte type meta header. */
+  private typeMetaCache: Map<bigint, TypeMeta> = new Map();
   private _depth = 0;
   private _maxDepth: number;
   private _maxBinarySize: number;
@@ -408,7 +411,7 @@ export class ReadContext {
     this.reader.reset(bytes);
     this.refReader.reset();
     this.metaStringReader.reset();
-    this.typeMeta = [];
+    this.typeMetaCount = 0;
     this._depth = 0;
   }
 
@@ -465,8 +468,23 @@ export class ReadContext {
     if (idOrLen & 1) {
       return this.typeMeta[idOrLen >> 1];
     }
-    const typeMeta = TypeMeta.fromBytes(this.reader);
-    this.typeMeta.push(typeMeta);
+    // Read the 8-byte header to check the cross-message cache.
+    const [headerLong, metaSize] = TypeMeta.readHeader(this.reader);
+    const cached = this.typeMetaCache.get(headerLong);
+    let typeMeta: TypeMeta;
+    if (cached) {
+      TypeMeta.skipBody(this.reader, metaSize);
+      typeMeta = cached;
+    } else {
+      typeMeta = TypeMeta.fromBytesAfterHeader(this.reader);
+      this.typeMetaCache.set(headerLong, typeMeta);
+    }
+    if (this.typeMetaCount < this.typeMeta.length) {
+      this.typeMeta[this.typeMetaCount] = typeMeta;
+    } else {
+      this.typeMeta.push(typeMeta);
+    }
+    this.typeMetaCount++;
     return typeMeta;
   }
 
