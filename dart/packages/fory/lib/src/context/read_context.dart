@@ -12,6 +12,7 @@ import 'package:fory/src/serializer/map_serializers.dart';
 import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
+import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/types/float16.dart';
 
@@ -29,7 +30,7 @@ final class ReadContext {
 
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
-  final Map<Object, Object?> _contextObjects = <Object, Object?>{};
+  StructReadSlots? _structReadSlots;
   int _depth = 0;
 
   @internal
@@ -50,7 +51,7 @@ final class ReadContext {
     _sharedTypes.clear();
     _refReader.reset();
     _metaStringReader.reset();
-    _contextObjects.clear();
+    _structReadSlots = null;
     _depth = 0;
   }
 
@@ -64,33 +65,11 @@ final class ReadContext {
   RefReader get refReader => _refReader;
 
   @internal
-  bool hasContextObject(Object key) {
-    return _contextObjects.containsKey(key);
-  }
+  StructReadSlots? get structReadSlots => _structReadSlots;
 
   @internal
-  T? getContextObject<T>(Object key) {
-    return _contextObjects[key] as T?;
-  }
-
-  @internal
-  Object? replaceContextObject(Object key, Object? next) {
-    final previous = _contextObjects[key];
-    if (next == null) {
-      _contextObjects.remove(key);
-    } else {
-      _contextObjects[key] = next;
-    }
-    return previous;
-  }
-
-  @internal
-  void restoreContextObject(Object key, Object? previous) {
-    if (previous == null) {
-      _contextObjects.remove(key);
-    } else {
-      _contextObjects[key] = previous;
-    }
+  set structReadSlots(StructReadSlots? value) {
+    _structReadSlots = value;
   }
 
   @internal

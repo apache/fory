@@ -15,6 +15,7 @@ import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/map_serializers.dart';
 import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
+import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/local_date.dart';
@@ -35,8 +36,7 @@ final class WriteContext {
   late Buffer _buffer;
   final LinkedHashMap<TypeDef, int> _typeDefIds =
       LinkedHashMap<TypeDef, int>.identity();
-  final LinkedHashMap<Object, Object?> _contextObjects =
-      LinkedHashMap<Object, Object?>.identity();
+  StructWriteSlots? _structWriteSlots;
   bool _rootTrackRef = false;
   int _depth = 0;
 
@@ -59,7 +59,7 @@ final class WriteContext {
     _typeDefIds.clear();
     _refWriter.reset();
     _metaStringWriter.reset();
-    _contextObjects.clear();
+    _structWriteSlots = null;
     _rootTrackRef = false;
     _depth = 0;
   }
@@ -77,33 +77,11 @@ final class WriteContext {
   bool get rootTrackRef => _rootTrackRef;
 
   @internal
-  bool hasContextObject(Object key) {
-    return _contextObjects.containsKey(key);
-  }
+  StructWriteSlots? get structWriteSlots => _structWriteSlots;
 
   @internal
-  T? getContextObject<T>(Object key) {
-    return _contextObjects[key] as T?;
-  }
-
-  @internal
-  Object? replaceContextObject(Object key, Object? next) {
-    final previous = _contextObjects[key];
-    if (next == null) {
-      _contextObjects.remove(key);
-    } else {
-      _contextObjects[key] = next;
-    }
-    return previous;
-  }
-
-  @internal
-  void restoreContextObject(Object key, Object? previous) {
-    if (previous == null) {
-      _contextObjects.remove(key);
-    } else {
-      _contextObjects[key] = previous;
-    }
+  set structWriteSlots(StructWriteSlots? value) {
+    _structWriteSlots = value;
   }
 
   /// Records entry into one more nested write frame.

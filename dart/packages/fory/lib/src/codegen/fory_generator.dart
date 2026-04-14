@@ -501,6 +501,14 @@ final class ForyGenerator extends Generator {
             output.writeln(
               '      value.${field.name} = ${_directGeneratedTypedContainerReadExpression(structSpec.name, field, 'fields[$index]')};',
             );
+          } else if (_usesDirectGeneratedStructFieldFastPath(field)) {
+            output.writeln(
+              '      value.${field.name} = $readerFunctionName(readGeneratedStructDirectValue(context, fields[$index]), value.${field.name});',
+            );
+          } else if (_usesDirectGeneratedDeclaredReadFastPath(field)) {
+            output.writeln(
+              '      value.${field.name} = $readerFunctionName(readGeneratedStructDeclaredValue(context, fields[$index]), value.${field.name});',
+            );
           } else {
             output.writeln(
               '      value.${field.name} = $readerFunctionName(readGeneratedStructFieldInfoValue(context, fields[$index], value.${field.name}), value.${field.name});',
@@ -531,12 +539,6 @@ final class ForyGenerator extends Generator {
         output.writeln('    return value;');
       case _ConstructorMode.constructor:
         output.writeln('    final slots = generatedStructReadSlots(context);');
-        for (var index = 0; index < structSpec.fields.length; index += 1) {
-          final field = structSpec.fields[index];
-          output.writeln(
-            '    late final ${field.displayType} ${field.localName};',
-          );
-        }
         output.writeln('    if (slots == null) {');
         if (hasDirectPrimitiveFastPath || directCursorRuns.isNotEmpty) {
           output.writeln('      final buffer = context.buffer;');
@@ -555,19 +557,27 @@ final class ForyGenerator extends Generator {
           }
           if (_usesReservedGeneratedFastPath(field)) {
             output.writeln(
-              '      ${field.localName} = ${_directGeneratedCursorReadExpression(field, 'cursor${directCursorStartByIndex[index]}')};',
+              '      final ${field.displayType} ${field.localName} = ${_directGeneratedCursorReadExpression(field, 'cursor${directCursorStartByIndex[index]}')};',
             );
           } else if (_usesDirectGeneratedBasicFastPath(field)) {
             output.writeln(
-              '      ${field.localName} = ${_directGeneratedReadExpression(field)};',
+              '      final ${field.displayType} ${field.localName} = ${_directGeneratedReadExpression(field)};',
             );
           } else if (_usesDirectGeneratedTypedContainerReadFastPath(field)) {
             output.writeln(
-              '      ${field.localName} = ${_directGeneratedTypedContainerReadExpression(structSpec.name, field, 'fields[$index]')};',
+              '      final ${field.displayType} ${field.localName} = ${_directGeneratedTypedContainerReadExpression(structSpec.name, field, 'fields[$index]')};',
+            );
+          } else if (_usesDirectGeneratedStructFieldFastPath(field)) {
+            output.writeln(
+              '      final ${field.displayType} ${field.localName} = $readerFunctionName(readGeneratedStructDirectValue(context, fields[$index]));',
+            );
+          } else if (_usesDirectGeneratedDeclaredReadFastPath(field)) {
+            output.writeln(
+              '      final ${field.displayType} ${field.localName} = $readerFunctionName(readGeneratedStructDeclaredValue(context, fields[$index]));',
             );
           } else {
             output.writeln(
-              '      ${field.localName} = $readerFunctionName(readGeneratedStructFieldInfoValue(context, fields[$index]));',
+              '      final ${field.displayType} ${field.localName} = $readerFunctionName(readGeneratedStructFieldInfoValue(context, fields[$index]));',
             );
           }
           final directCursorEndRun = directCursorRunByEnd[index];
@@ -575,28 +585,45 @@ final class ForyGenerator extends Generator {
             output.writeln('      cursor${directCursorEndRun.start}.finish();');
           }
         }
-        output.writeln('    } else {');
+        final constructorInvocation = _constructorInvocation(structSpec);
+        output
+          ..writeln('      final value = $constructorInvocation;')
+          ..writeln('      context.reference(value);');
+        for (final fieldName
+            in structSpec.constructorPlan.postConstructionFieldNames) {
+          final field =
+              structSpec.fields.firstWhere((item) => item.name == fieldName);
+          output.writeln('      value.${field.name} = ${field.localName};');
+        }
+        output.writeln('      return value;');
+        // Slow path: schema-evolution slots present. Use `late final` so each
+        // field can be conditionally assigned from its slot or read fresh.
+        output.writeln('    }');
+        for (var index = 0; index < structSpec.fields.length; index += 1) {
+          final field = structSpec.fields[index];
+          output.writeln(
+            '    late final ${field.displayType} ${field.localName};',
+          );
+        }
         for (var index = 0; index < structSpec.fields.length; index += 1) {
           final field = structSpec.fields[index];
           final readerFunctionName = field.readerFunctionName(structSpec.name);
           final rawValueName = 'raw${structSpec.name}$index';
           output.writeln(
-            '      if (slots.containsSlot($index)) {',
+            '    if (slots.containsSlot($index)) {',
           );
           output.writeln(
-            '        final $rawValueName = slots.valueForSlot($index);',
+            '      final $rawValueName = slots.valueForSlot($index);',
           );
           output.writeln(
-            '        ${field.localName} = $readerFunctionName(${_slotResolvedRawExpression(rawValueName)});',
+            '      ${field.localName} = $readerFunctionName(${_slotResolvedRawExpression(rawValueName)});',
           );
-          output.writeln('      } else {');
+          output.writeln('    } else {');
           output.writeln(
-            '        ${field.localName} = $readerFunctionName(null);',
+            '      ${field.localName} = $readerFunctionName(null);',
           );
-          output.writeln('      }');
+          output.writeln('    }');
         }
-        output.writeln('    }');
-        final constructorInvocation = _constructorInvocation(structSpec);
         output
           ..writeln('    final value = $constructorInvocation;')
           ..writeln('    context.reference(value);');
@@ -937,6 +964,31 @@ GeneratedFieldType(
         field.fieldType.typeId == TypeIds.string ||
         _isBuiltInTypeId(field.fieldType.typeId) ||
         field.fieldType.typeId == TypeIds.enumById;
+  }
+
+  bool _usesDirectGeneratedDeclaredReadFastPath(
+    _GeneratedFieldSpec field,
+  ) {
+    if (field.fieldType.nullable ||
+        field.fieldType.ref ||
+        field.fieldType.dynamic == true) {
+      return false;
+    }
+    final typeId = field.fieldType.typeId;
+    return typeId == TypeIds.ext || typeId == TypeIds.namedExt;
+  }
+
+  bool _usesDirectGeneratedStructFieldFastPath(_GeneratedFieldSpec field) {
+    if (field.fieldType.nullable ||
+        field.fieldType.ref ||
+        field.fieldType.dynamic == true) {
+      return false;
+    }
+    final typeId = field.fieldType.typeId;
+    return typeId == TypeIds.struct ||
+        typeId == TypeIds.compatibleStruct ||
+        typeId == TypeIds.namedStruct ||
+        typeId == TypeIds.namedCompatibleStruct;
   }
 
   bool _usesDirectGeneratedTypedContainerReadFastPath(

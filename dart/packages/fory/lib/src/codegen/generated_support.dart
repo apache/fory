@@ -559,16 +559,12 @@ void registerGeneratedStruct<T>(
 
 @internal
 StructWriteSlots? generatedStructWriteSlots(WriteContext context) {
-  return context.getContextObject<StructWriteSlots>(
-    structWriteSlotsKey,
-  );
+  return context.structWriteSlots;
 }
 
 @internal
 StructReadSlots? generatedStructReadSlots(ReadContext context) {
-  return context.getContextObject<StructReadSlots>(
-    structReadSlotsKey,
-  );
+  return context.structReadSlots;
 }
 
 @internal
@@ -685,6 +681,40 @@ Object? readGeneratedStructFieldInfoValue(
     return context.readResolvedValue(actualResolved, fieldType);
   }
   return readFieldValue(context, field, fallback);
+}
+
+@internal
+Object? readGeneratedStructDeclaredValue(
+  ReadContext context,
+  GeneratedStructFieldInfo field,
+) {
+  final resolved = fieldDeclaredTypeInfo(context.typeResolver, field)!;
+  if (fieldUsesDeclaredType(context.typeResolver, field)) {
+    return context.readResolvedValue(resolved, field.fieldType);
+  }
+  final actualResolved = context.readTypeMetaValue(
+    resolved.isNamed ? resolved : null,
+  );
+  return context.readResolvedValue(actualResolved, field.fieldType);
+}
+
+@internal
+Object readGeneratedStructDirectValue(
+  ReadContext context,
+  GeneratedStructFieldInfo field,
+) {
+  final declared = fieldDeclaredTypeInfo(context.typeResolver, field)!;
+  final resolver.TypeInfo resolved;
+  if (fieldUsesDeclaredType(context.typeResolver, field)) {
+    resolved = declared;
+  } else {
+    resolved =
+        context.readTypeMetaValue(declared.isNamed ? declared : null);
+  }
+  context.increaseDepth();
+  final value = resolved.structSerializer!.readValue(context, resolved);
+  context.decreaseDepth();
+  return value;
 }
 
 @internal

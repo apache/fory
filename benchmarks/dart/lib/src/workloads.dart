@@ -158,7 +158,7 @@ buildBenchmarkDefinitions() {
 }
 
 Fory newBenchmarkFory() {
-  final fory = Fory(config: const Config(compatible: true));
+  final fory = Fory(compatible: true);
   registerBenchmarkTypes(fory);
   return fory;
 }

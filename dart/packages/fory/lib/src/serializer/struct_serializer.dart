@@ -92,10 +92,7 @@ final class StructSerializer extends Serializer<Object?> {
     final previousCompatibleFields =
         _replaceWriteSlots(internal, resolved, value);
     _payloadSerializer.write(context, value);
-    internal.restoreContextObject(
-      structWriteSlotsKey,
-      previousCompatibleFields,
-    );
+    internal.structWriteSlots = previousCompatibleFields;
   }
 
   Object readValue(
@@ -122,35 +119,29 @@ final class StructSerializer extends Serializer<Object?> {
         hasCurrentPreservedRef: hasCurrentPreservedRef,
       );
     }
-    final previousReadSlots = internal.replaceContextObject(
-      structReadSlotsKey,
-      null,
-    );
+    final previousReadSlots = internal.structReadSlots;
+    internal.structReadSlots = null;
     final value = internal.readSerializerPayload(
       _payloadSerializer,
       resolved,
       hasCurrentPreservedRef: hasCurrentPreservedRef,
     );
-    internal.restoreContextObject(
-      structReadSlotsKey,
-      previousReadSlots,
-    );
+    internal.structReadSlots = previousReadSlots;
     _rememberRemoteMetadata(internal, resolved, value);
     return value;
   }
 
-  Object? _replaceWriteSlots(
+  StructWriteSlots? _replaceWriteSlots(
     WriteContext context,
     TypeInfo resolved,
     Object value,
   ) {
     final layout = _compatibleWriteLayoutForValue(context, resolved, value);
-    return context.replaceContextObject(
-      structWriteSlotsKey,
-      layout == null
-          ? null
-          : StructWriteSlots(layout.fields, _localFields.length),
-    );
+    final previous = context.structWriteSlots;
+    context.structWriteSlots = layout == null
+        ? null
+        : StructWriteSlots(layout.fields, _localFields.length);
+    return previous;
   }
 
   _CompatibleWriteLayout? _compatibleWriteLayoutForValue(
@@ -256,19 +247,14 @@ final class StructSerializer extends Serializer<Object?> {
       );
       presentSlots[slot] = true;
     }
-    final previousCompatibleFields = context.replaceContextObject(
-      structReadSlotsKey,
-      StructReadSlots(compatibleValues, presentSlots),
-    );
+    final previousCompatibleFields = context.structReadSlots;
+    context.structReadSlots = StructReadSlots(compatibleValues, presentSlots);
     final value = context.readSerializerPayload(
       _payloadSerializer,
       resolved,
       hasCurrentPreservedRef: hasCurrentPreservedRef,
     );
-    context.restoreContextObject(
-      structReadSlotsKey,
-      previousCompatibleFields,
-    );
+    context.structReadSlots = previousCompatibleFields;
     _rememberRemoteMetadata(context, resolved, value);
     return value;
   }

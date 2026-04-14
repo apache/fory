@@ -2,12 +2,6 @@ import 'package:meta/meta.dart';
 import 'package:fory/src/serializer/serialization_field_info.dart';
 
 @internal
-final Object structWriteSlotsKey = Object();
-
-@internal
-final Object structReadSlotsKey = Object();
-
-@internal
 final class StructWriteSlots {
   final List<SerializationFieldInfo> orderedFields;
   final List<SerializationFieldInfo?> _fieldsBySlot;
