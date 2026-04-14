@@ -8,7 +8,7 @@ This benchmark compares serialization and deserialization throughput for Apache 
 | --------------------- | ---------------------------------------------------------------- |
 | Timestamp             | 2026-04-13T21:55:28.456625Z                                      |
 | OS                    | Version 26.2 (Build 25C56)                                       |
-| Host                  | Macbook-Air.local                                               |
+| Host                  | Macbook-Air.local                                                |
 | CPU Cores (Logical)   | 8                                                                |
 | Memory (GB)           | 8.00                                                             |
 | Dart                  | 3.10.4 (stable) (Tue Dec 9 00:01:55 2025 -0800) on "macos_arm64" |
