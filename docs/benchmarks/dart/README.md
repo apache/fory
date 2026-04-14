@@ -4,36 +4,36 @@ This benchmark compares serialization and deserialization throughput for Apache 
 
 ## Hardware and Runtime Info
 
-| Key                   | Value                                                             |
-| --------------------- | ----------------------------------------------------------------- |
-| Timestamp             | 2026-04-13T06:44:47.141825Z                                       |
-| OS                    | Version 15.7.2 (Build 24G325)                                     |
-| Host                  | MacBook-Pro.local                                                 |
-| CPU Cores (Logical)   | 12                                                                |
-| Memory (GB)           | 48.00                                                             |
-| Dart                  | 3.10.7 (stable) (Tue Dec 23 00:01:57 2025 -0800) on "macos_arm64" |
-| Samples per case      | 5                                                                 |
-| Warmup per case (s)   | 1.0                                                               |
-| Duration per case (s) | 1.5                                                               |
+| Key                   | Value                                                            |
+| --------------------- | ---------------------------------------------------------------- |
+| Timestamp             | 2026-04-13T21:55:28.456625Z                                      |
+| OS                    | Version 26.2 (Build 25C56)                                       |
+| Host                  | Macbook-Air.local                                               |
+| CPU Cores (Logical)   | 8                                                                |
+| Memory (GB)           | 8.00                                                             |
+| Dart                  | 3.10.4 (stable) (Tue Dec 9 00:01:55 2025 -0800) on "macos_arm64" |
+| Samples per case      | 5                                                                |
+| Warmup per case (s)   | 1.0                                                              |
+| Duration per case (s) | 1.5                                                              |
 
 ## Throughput Results
 
 ![Throughput](throughput.png)
 
-| Datatype         | Operation   |  Fory TPS | Protobuf TPS | Fastest          |
-| ---------------- | ----------- | --------: | -----------: | ---------------- |
-| Struct           | Serialize   | 3,875,513 |    2,246,269 | fory (1.73x)     |
-| Struct           | Deserialize | 4,897,372 |    5,085,804 | protobuf (1.04x) |
-| Sample           | Serialize   | 1,686,476 |      579,225 | fory (2.91x)     |
-| Sample           | Deserialize | 1,865,579 |      972,355 | fory (1.92x)     |
-| MediaContent     | Serialize   |   785,533 |      448,202 | fory (1.75x)     |
-| MediaContent     | Deserialize | 1,109,347 |      806,526 | fory (1.38x)     |
-| StructList       | Serialize   | 1,262,676 |      402,451 | fory (3.14x)     |
-| StructList       | Deserialize | 1,444,735 |      765,407 | fory (1.89x)     |
-| SampleList       | Serialize   |   411,793 |       54,598 | fory (7.54x)     |
-| SampleList       | Deserialize |   441,751 |      118,623 | fory (3.72x)     |
-| MediaContentList | Serialize   |   178,695 |       86,306 | fory (2.07x)     |
-| MediaContentList | Deserialize |   266,480 |      156,231 | fory (1.71x)     |
+| Datatype         | Operation   |  Fory TPS | Protobuf TPS | Fastest      |
+| ---------------- | ----------- | --------: | -----------: | ------------ |
+| Struct           | Serialize   | 3,989,432 |    1,884,653 | fory (2.12x) |
+| Struct           | Deserialize | 5,828,197 |    4,199,680 | fory (1.39x) |
+| Sample           | Serialize   | 1,649,722 |      500,167 | fory (3.30x) |
+| Sample           | Deserialize | 2,060,113 |      785,109 | fory (2.62x) |
+| MediaContent     | Serialize   |   800,876 |      391,235 | fory (2.05x) |
+| MediaContent     | Deserialize | 1,315,115 |      683,533 | fory (1.92x) |
+| StructList       | Serialize   | 1,456,396 |      367,506 | fory (3.96x) |
+| StructList       | Deserialize | 1,921,006 |      645,958 | fory (2.97x) |
+| SampleList       | Serialize   |   411,144 |       48,508 | fory (8.48x) |
+| SampleList       | Deserialize |   464,273 |      103,558 | fory (4.48x) |
+| MediaContentList | Serialize   |   186,870 |       77,029 | fory (2.43x) |
+| MediaContentList | Deserialize |   330,293 |      128,215 | fory (2.58x) |
 
 ## Serialized Size (bytes)
 
