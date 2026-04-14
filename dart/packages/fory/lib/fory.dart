@@ -31,6 +31,7 @@ export 'src/serializer/enum_serializer.dart';
 export 'src/serializer/serializer.dart';
 export 'src/serializer/union_serializer.dart';
 export 'src/types/fixed_ints.dart';
+export 'src/types/bfloat16.dart';
 export 'src/types/float16.dart';
 export 'src/types/float32.dart';
 export 'src/types/local_date.dart';

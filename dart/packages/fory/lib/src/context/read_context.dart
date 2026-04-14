@@ -15,6 +15,7 @@ import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
+import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
 
 /// Read-side serializer context.
@@ -136,6 +137,9 @@ final class ReadContext {
 
   /// Reads a half-precision floating-point value.
   Float16 readFloat16() => _buffer.readFloat16();
+
+  /// Reads a brain floating-point (bfloat16) value.
+  BFloat16 readBfloat16() => _buffer.readBfloat16();
 
   /// Reads a single-precision floating-point value.
   double readFloat32() => _buffer.readFloat32();

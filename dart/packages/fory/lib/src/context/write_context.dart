@@ -18,6 +18,7 @@ import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
+import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/local_date.dart';
 import 'package:fory/src/types/timestamp.dart';
@@ -118,6 +119,9 @@ final class WriteContext {
 
   /// Writes a half-precision floating-point value.
   void writeFloat16(Float16 value) => _buffer.writeFloat16(value);
+
+  /// Writes a brain floating-point (bfloat16) value.
+  void writeBfloat16(BFloat16 value) => _buffer.writeBfloat16(value);
 
   /// Writes a single-precision floating-point value.
   void writeFloat32(double value) => _buffer.writeFloat32(value);
@@ -251,6 +255,7 @@ final class WriteContext {
       case TypeIds.varUint64:
       case TypeIds.taggedUint64:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
       case TypeIds.float32:
       case TypeIds.float64:
         PrimitiveSerializer.writePayload(this, resolved.typeId, value);

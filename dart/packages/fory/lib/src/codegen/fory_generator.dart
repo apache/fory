@@ -98,9 +98,7 @@ final class ForyGenerator extends Generator {
 
     final fields = element.fields
         .where(
-          (field) =>
-              !field.isStatic &&
-              !field.isSynthetic,
+          (field) => !field.isStatic && !field.isSynthetic,
         )
         .where((field) => !_isSkipped(field))
         .map(_analyzeField)
@@ -768,7 +766,8 @@ final class ForyGenerator extends Generator {
         "      throw ArgumentError('Exactly one registration mode is required: id, or namespace + typeName.');",
       )
       ..writeln('    }')
-      ..writeln('    if (hasNamed && (namespace == null || typeName == null)) {')
+      ..writeln(
+          '    if (hasNamed && (namespace == null || typeName == null)) {')
       ..writeln(
         "      throw ArgumentError('Both namespace and typeName are required for named registration.');",
       )
@@ -1161,6 +1160,7 @@ GeneratedFieldType(
       case TypeIds.int16:
       case TypeIds.uint16:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
         return 2;
       case TypeIds.int32:
       case TypeIds.uint32:
@@ -1224,6 +1224,8 @@ GeneratedFieldType(
         return 'buffer.writeTaggedUint64(${_directGeneratedScalarExpression(field, valueExpression)})';
       case TypeIds.float16:
         return 'buffer.writeFloat16($valueExpression)';
+      case TypeIds.bfloat16:
+        return 'buffer.writeBfloat16($valueExpression)';
       case TypeIds.float32:
         return 'buffer.writeFloat32(${_directGeneratedScalarExpression(field, valueExpression)})';
       case TypeIds.float64:
@@ -1247,6 +1249,7 @@ GeneratedFieldType(
       case TypeIds.uint32Array:
       case TypeIds.uint64Array:
       case TypeIds.float16Array:
+      case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
         return 'writeGeneratedFixedArrayValue(context, $valueExpression)';
@@ -1297,6 +1300,8 @@ GeneratedFieldType(
         return '$cursorExpression.writeTaggedUint64(${_directGeneratedScalarExpression(field, valueExpression)})';
       case TypeIds.float16:
         return '$cursorExpression.writeFloat16($valueExpression)';
+      case TypeIds.bfloat16:
+        return '$cursorExpression.writeBfloat16($valueExpression)';
       case TypeIds.float32:
         return '$cursorExpression.writeFloat32(${_directGeneratedScalarExpression(field, valueExpression)})';
       case TypeIds.float64:
@@ -1364,6 +1369,8 @@ GeneratedFieldType(
         return 'buffer.readTaggedUint64()';
       case TypeIds.float16:
         return 'buffer.readFloat16()';
+      case TypeIds.bfloat16:
+        return 'buffer.readBfloat16()';
       case TypeIds.float32:
         return field.type.isDartCoreDouble
             ? 'buffer.readFloat32()'
@@ -1392,6 +1399,7 @@ GeneratedFieldType(
         return 'readGeneratedBinaryValue(context)';
       case TypeIds.uint16Array:
       case TypeIds.float16Array:
+      case TypeIds.bfloat16Array:
         return 'readGeneratedTypedArrayValue<Uint16List>(context, 2, (bytes) => bytes.buffer.asUint16List(bytes.offsetInBytes, bytes.lengthInBytes ~/ 2))';
       case TypeIds.uint32Array:
         return 'readGeneratedTypedArrayValue<Uint32List>(context, 4, (bytes) => bytes.buffer.asUint32List(bytes.offsetInBytes, bytes.lengthInBytes ~/ 4))';
@@ -1459,6 +1467,8 @@ GeneratedFieldType(
         return '$cursorExpression.readTaggedUint64()';
       case TypeIds.float16:
         return '$cursorExpression.readFloat16()';
+      case TypeIds.bfloat16:
+        return '$cursorExpression.readBfloat16()';
       case TypeIds.float32:
         return field.type.isDartCoreDouble
             ? '$cursorExpression.readFloat32()'
@@ -1512,6 +1522,7 @@ GeneratedFieldType(
     }
     switch (field.fieldType.typeId) {
       case TypeIds.float16:
+      case TypeIds.bfloat16:
         return valueExpression;
       default:
         return '$valueExpression.value';
@@ -1740,6 +1751,7 @@ GeneratedFieldType(
       case TypeIds.int16:
       case TypeIds.uint16:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
         return 2;
       case TypeIds.int32:
       case TypeIds.varInt32:
@@ -1792,6 +1804,7 @@ GeneratedFieldType(
       case TypeIds.varUint64:
       case TypeIds.taggedUint64:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
       case TypeIds.float32:
       case TypeIds.float64:
         return true;
@@ -1816,6 +1829,7 @@ GeneratedFieldType(
       case TypeIds.uint32Array:
       case TypeIds.uint64Array:
       case TypeIds.float16Array:
+      case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
         return true;
@@ -2029,6 +2043,8 @@ GeneratedFieldType(
         return TypeIds.uint32;
       case 'Float16':
         return TypeIds.float16;
+      case 'BFloat16':
+        return TypeIds.bfloat16;
       case 'Float32':
         return TypeIds.float32;
       case 'Timestamp':

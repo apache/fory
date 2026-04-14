@@ -23,6 +23,7 @@ import 'package:fory/src/serializer/struct_serializer.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/serializer/union_serializer.dart';
 import 'package:fory/src/types/fixed_ints.dart';
+import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/float32.dart';
 import 'package:fory/src/types/local_date.dart';
@@ -310,6 +311,9 @@ final class TypeResolver {
     if (value is Float16) {
       return _builtin(Float16, TypeIds.float16);
     }
+    if (value is BFloat16) {
+      return _builtin(BFloat16, TypeIds.bfloat16);
+    }
     if (value is Float32) {
       return _builtin(Float32, TypeIds.float32);
     }
@@ -392,6 +396,7 @@ final class TypeResolver {
       case TypeIds.varUint64:
       case TypeIds.taggedUint64:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
       case TypeIds.float32:
       case TypeIds.float64:
       case TypeIds.string:
@@ -411,6 +416,7 @@ final class TypeResolver {
       case TypeIds.uint32Array:
       case TypeIds.uint64Array:
       case TypeIds.float16Array:
+      case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
         return _builtin(fieldType.type, fieldType.typeId);
@@ -984,6 +990,8 @@ final class TypeResolver {
         return _builtin(int, TypeIds.taggedUint64);
       case TypeIds.float16:
         return _builtin(Float16, TypeIds.float16);
+      case TypeIds.bfloat16:
+        return _builtin(BFloat16, TypeIds.bfloat16);
       case TypeIds.float32:
         return _builtin(Float32, TypeIds.float32);
       case TypeIds.float64:
@@ -1022,6 +1030,8 @@ final class TypeResolver {
         return _builtin(Uint64List, TypeIds.uint64Array);
       case TypeIds.float16Array:
         return _builtin(Uint16List, TypeIds.float16Array);
+      case TypeIds.bfloat16Array:
+        return _builtin(Uint16List, TypeIds.bfloat16Array);
       case TypeIds.float32Array:
         return _builtin(Float32List, TypeIds.float32Array);
       case TypeIds.float64Array:
@@ -1089,6 +1099,8 @@ final class TypeResolver {
         return taggedUint64Serializer as Serializer<Object?>;
       case TypeIds.float16:
         return float16Serializer as Serializer<Object?>;
+      case TypeIds.bfloat16:
+        return bfloat16Serializer as Serializer<Object?>;
       case TypeIds.float32:
         return float32Serializer as Serializer<Object?>;
       case TypeIds.float64:
@@ -1173,6 +1185,9 @@ final class TypeResolver {
     }
     if (type == Float16) {
       return TypeIds.float16;
+    }
+    if (type == BFloat16) {
+      return TypeIds.bfloat16;
     }
     if (type == Float32) {
       return TypeIds.float32;

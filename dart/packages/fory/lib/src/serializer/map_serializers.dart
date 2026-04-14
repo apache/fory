@@ -277,13 +277,13 @@ Map<K, V> readTypedMapPayload<K, V>(
     final valueTypeInfo = valueDeclared ? null : context.readTypeMetaValue();
     final tracksDepth =
         ((keyDeclared ? declaredKeyTypeInfo : keyTypeInfo) != null &&
-            tracksNestedPayloadDepth(
-              keyDeclared ? declaredKeyTypeInfo! : keyTypeInfo!,
-            )) ||
-        ((valueDeclared ? declaredValueTypeInfo : valueTypeInfo) != null &&
-            tracksNestedPayloadDepth(
-              valueDeclared ? declaredValueTypeInfo! : valueTypeInfo!,
-            ));
+                tracksNestedPayloadDepth(
+                  keyDeclared ? declaredKeyTypeInfo! : keyTypeInfo!,
+                )) ||
+            ((valueDeclared ? declaredValueTypeInfo : valueTypeInfo) != null &&
+                tracksNestedPayloadDepth(
+                  valueDeclared ? declaredValueTypeInfo! : valueTypeInfo!,
+                ));
     if (tracksDepth) {
       context.increaseDepth();
     }

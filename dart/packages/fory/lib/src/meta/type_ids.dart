@@ -17,6 +17,7 @@ abstract final class TypeIds {
   static const int varUint64 = 14;
   static const int taggedUint64 = 15;
   static const int float16 = 17;
+  static const int bfloat16 = 18;
   static const int float32 = 19;
   static const int float64 = 20;
   static const int string = 21;
@@ -48,6 +49,7 @@ abstract final class TypeIds {
   static const int uint32Array = 50;
   static const int uint64Array = 51;
   static const int float16Array = 53;
+  static const int bfloat16Array = 54;
   static const int float32Array = 55;
   static const int float64Array = 56;
 
@@ -68,6 +70,7 @@ abstract final class TypeIds {
       typeId == varUint64 ||
       typeId == taggedUint64 ||
       typeId == float16 ||
+      typeId == bfloat16 ||
       typeId == float32 ||
       typeId == float64;
 
@@ -103,6 +106,7 @@ abstract final class TypeIds {
       typeId == uint32Array ||
       typeId == uint64Array ||
       typeId == float16Array ||
+      typeId == bfloat16Array ||
       typeId == float32Array ||
       typeId == float64Array;
 
@@ -124,6 +128,7 @@ abstract final class TypeIds {
       case uint32Array:
       case uint64Array:
       case float16Array:
+      case bfloat16Array:
       case float32Array:
       case float64Array:
         return false;
