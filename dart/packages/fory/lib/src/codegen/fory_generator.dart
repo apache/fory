@@ -788,8 +788,7 @@ final class ForyGenerator extends Generator {
       )
       ..writeln('    }')
       ..writeln(
-        '    if (hasNamed && (namespace == null || typeName == null)) {',
-      )
+          '    if (hasNamed && (namespace == null || typeName == null)) {')
       ..writeln(
         "      throw ArgumentError('Both namespace and typeName are required for named registration.');",
       )

@@ -257,10 +257,10 @@ final class Buffer {
   Float16 readFloat16() => Float16.fromBits(readUint16());
 
   /// Writes a brain floating-point (bfloat16) value.
-  void writeBfloat16(BFloat16 value) => writeUint16(value.toBits());
+  void writeBfloat16(Bfloat16 value) => writeUint16(value.toBits());
 
   /// Reads a brain floating-point (bfloat16) value.
-  BFloat16 readBfloat16() => BFloat16.fromBits(readUint16());
+  Bfloat16 readBfloat16() => Bfloat16.fromBits(readUint16());
 
   /// Writes [value] verbatim.
   void writeBytes(List<int> value) {

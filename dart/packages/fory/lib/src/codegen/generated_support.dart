@@ -120,7 +120,7 @@ final class GeneratedWriteCursor {
     writeUint16(value.toBits());
   }
 
-  void writeBfloat16(BFloat16 value) {
+  void writeBfloat16(Bfloat16 value) {
     writeUint16(value.toBits());
   }
 
@@ -294,7 +294,7 @@ final class GeneratedReadCursor {
 
   Float16 readFloat16() => Float16.fromBits(readUint16());
 
-  BFloat16 readBfloat16() => BFloat16.fromBits(readUint16());
+  Bfloat16 readBfloat16() => Bfloat16.fromBits(readUint16());
 
   double readFloat32() {
     final value = _view.getFloat32(_offset, Endian.little);

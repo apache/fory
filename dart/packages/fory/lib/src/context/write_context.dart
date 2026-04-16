@@ -140,7 +140,7 @@ final class WriteContext {
   void writeFloat16(Float16 value) => _buffer.writeFloat16(value);
 
   /// Writes a brain floating-point (bfloat16) value.
-  void writeBfloat16(BFloat16 value) => _buffer.writeBfloat16(value);
+  void writeBfloat16(Bfloat16 value) => _buffer.writeBfloat16(value);
 
   /// Writes a single-precision floating-point value.
   void writeFloat32(double value) => _buffer.writeFloat32(value);

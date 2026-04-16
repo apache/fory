@@ -104,7 +104,7 @@ final class PrimitiveSerializer<T> extends Serializer<T> {
         buffer.writeFloat16(value as Float16);
         return;
       case TypeIds.bfloat16:
-        buffer.writeBfloat16(value as BFloat16);
+        buffer.writeBfloat16(value as Bfloat16);
         return;
       case TypeIds.float32:
         buffer.writeFloat32((value as Float32).value);
@@ -237,8 +237,8 @@ const PrimitiveSerializer<Float16> float16Serializer =
   TypeIds.float16,
   supportsRef: false,
 );
-const PrimitiveSerializer<BFloat16> bfloat16Serializer =
-    PrimitiveSerializer<BFloat16>(
+const PrimitiveSerializer<Bfloat16> bfloat16Serializer =
+    PrimitiveSerializer<Bfloat16>(
   TypeIds.bfloat16,
   supportsRef: false,
 );

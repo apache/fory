@@ -330,8 +330,8 @@ final class TypeResolver {
     if (value is Float16) {
       return _builtin(Float16, TypeIds.float16);
     }
-    if (value is BFloat16) {
-      return _builtin(BFloat16, TypeIds.bfloat16);
+    if (value is Bfloat16) {
+      return _builtin(Bfloat16, TypeIds.bfloat16);
     }
     if (value is Float32) {
       return _builtin(Float32, TypeIds.float32);
@@ -374,9 +374,6 @@ final class TypeResolver {
     }
     if (value is List<bool>) {
       return _builtin(List<bool>, TypeIds.boolArray);
-    }
-    if(value is BFloat16List) {
-      return _builtin(BFloat16List, TypeIds.bfloat16Array);
     }
     if (value is List) {
       return _builtin(List, TypeIds.list);
@@ -441,7 +438,6 @@ final class TypeResolver {
       case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
-      case TypeIds.bfloat16Array:
         return _builtin(fieldType.type, fieldType.typeId);
       default:
         return _registeredByType[fieldType.type];
@@ -1014,7 +1010,7 @@ final class TypeResolver {
       case TypeIds.float16:
         return _builtin(Float16, TypeIds.float16);
       case TypeIds.bfloat16:
-        return _builtin(BFloat16, TypeIds.bfloat16);
+        return _builtin(Bfloat16, TypeIds.bfloat16);
       case TypeIds.float32:
         return _builtin(Float32, TypeIds.float32);
       case TypeIds.float64:
@@ -1153,8 +1149,8 @@ final class TypeResolver {
         return float32ArraySerializer as Serializer<Object?>;
       case TypeIds.float64Array:
         return float64ArraySerializer as Serializer<Object?>;
-      case TypeIds.float16Array:
-        return float16ArraySerializer as Serializer<Object?>;
+      case TypeIds.bfloat16Array:
+        return uint16ArraySerializer as Serializer<Object?>;
       case TypeIds.list:
         return listSerializer as Serializer<Object?>;
       case TypeIds.set:
@@ -1211,7 +1207,7 @@ final class TypeResolver {
     if (type == Float16) {
       return TypeIds.float16;
     }
-    if (type == BFloat16) {
+    if (type == Bfloat16) {
       return TypeIds.bfloat16;
     }
     if (type == Float32) {

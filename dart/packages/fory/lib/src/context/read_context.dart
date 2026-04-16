@@ -158,7 +158,7 @@ final class ReadContext {
   Float16 readFloat16() => _buffer.readFloat16();
 
   /// Reads a brain floating-point (bfloat16) value.
-  BFloat16 readBfloat16() => _buffer.readBfloat16();
+  Bfloat16 readBfloat16() => _buffer.readBfloat16();
 
   /// Reads a single-precision floating-point value.
   double readFloat32() => _buffer.readFloat32();
