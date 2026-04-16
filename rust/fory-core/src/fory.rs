@@ -321,6 +321,65 @@ impl Fory {
         self
     }
 
+    /// Sets the maximum allowed size for binary data during deserialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_binary_size` - The maximum number of bytes allowed for a single binary/primitive-array
+    ///   payload during deserialization. Payloads exceeding this limit will cause a
+    ///   `SizeLimitExceeded` error.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `64 * 1024 * 1024` (64 MB).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // Limit binary payloads to 1 MB
+    /// let fory = Fory::default().max_binary_size(1024 * 1024);
+    /// ```
+    pub fn max_binary_size(mut self, max_binary_size: u32) -> Self {
+        self.config.max_binary_size = max_binary_size;
+        self
+    }
+
+    /// Sets the maximum allowed number of elements in a collection or entries in a map
+    /// during deserialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_collection_size` - The maximum number of elements/entries allowed for a single
+    ///   collection or map during deserialization. Payloads exceeding this limit will cause a
+    ///   `SizeLimitExceeded` error.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `1024 * 1024` (1 million elements).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // Limit collections to 10000 elements
+    /// let fory = Fory::default().max_collection_size(10000);
+    /// ```
+    pub fn max_collection_size(mut self, max_collection_size: u32) -> Self {
+        self.config.max_collection_size = max_collection_size;
+        self
+    }
+
     /// Returns whether cross-language serialization is enabled.
     pub fn is_xlang(&self) -> bool {
         self.config.xlang
@@ -356,6 +415,16 @@ impl Fory {
     /// Returns the maximum depth for nested dynamic object serialization.
     pub fn get_max_dyn_depth(&self) -> u32 {
         self.config.max_dyn_depth
+    }
+
+    /// Returns the maximum allowed binary data size in bytes.
+    pub fn get_max_binary_size(&self) -> u32 {
+        self.config.max_binary_size
+    }
+
+    /// Returns the maximum allowed collection/map element count.
+    pub fn get_max_collection_size(&self) -> u32 {
+        self.config.max_collection_size
     }
 
     /// Returns whether class version checking is enabled.

@@ -243,6 +243,13 @@ where
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
+    let max = context.max_collection_size();
+    if len > max {
+        return Err(Error::size_limit_exceeded(format!(
+            "Collection size {} exceeds limit {}",
+            len, max
+        )));
+    }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
     }
@@ -284,6 +291,13 @@ where
     let len = context.reader.read_varuint32()?;
     if len == 0 {
         return Ok(Vec::new());
+    }
+    let max = context.max_collection_size();
+    if len > max {
+        return Err(Error::size_limit_exceeded(format!(
+            "Collection size {} exceeds limit {}",
+            len, max
+        )));
     }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_vec_data_dyn_ref(context, len);

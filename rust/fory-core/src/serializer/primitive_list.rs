@@ -83,6 +83,13 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
     if size_bytes % std::mem::size_of::<T>() != 0 {
         return Err(Error::invalid_data("Invalid data length"));
     }
+    let max = context.max_binary_size() as usize;
+    if size_bytes > max {
+        return Err(Error::size_limit_exceeded(format!(
+            "Binary size {} exceeds limit {}",
+            size_bytes, max
+        )));
+    }
     let remaining = context.reader.slice_after_cursor().len();
     if size_bytes > remaining {
         let cursor = context.reader.get_cursor();
