@@ -73,6 +73,48 @@ fn test_binary_when_xlang() {
 }
 
 #[test]
+fn test_binary_max_size_guardrail_for_vec_u8() {
+    let fory = Fory::default();
+    let original = vec![1_u8, 2, 3, 4, 5];
+    let serialized = fory.serialize(&original).unwrap();
+
+    let limited_fory = Fory::default().max_binary_size(4);
+    let err = limited_fory
+        .deserialize::<Vec<u8>>(&serialized)
+        .expect_err("expected binary size guardrail to reject the payload");
+
+    assert!(
+        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
+        "expected SizeLimitExceeded, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("Binary size 5 exceeds limit 4"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn test_binary_max_size_guardrail_for_vec_u32() {
+    let fory = Fory::default();
+    let original = vec![10_u32, 20, 30];
+    let serialized = fory.serialize(&original).unwrap();
+
+    let limited_fory = Fory::default().max_binary_size(8);
+    let err = limited_fory
+        .deserialize::<Vec<u32>>(&serialized)
+        .expect_err("expected primitive array size guardrail to reject the payload");
+
+    assert!(
+        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
+        "expected SizeLimitExceeded, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("Binary size 12 exceeds limit 8"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
 fn test_unsigned_struct_non_compatible() {
     #[derive(ForyObject, Debug, PartialEq)]
     struct UnsignedData {
