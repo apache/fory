@@ -17,7 +17,7 @@
 
 name: fory_test
 description: Apache Fory Dart consumer and integration tests
-version: 0.17.0-dev
+version: 0.17.0
 
 resolution: workspace
 
@@ -25,7 +25,7 @@ environment:
   sdk: ^3.6.1
 
 dependencies:
-  fory: 0.17.0-dev
+  fory: 0.17.0
 
 dev_dependencies:
   build_runner: ^2.4.13
