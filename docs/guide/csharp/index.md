@@ -43,7 +43,7 @@ Reference the single `Apache.Fory` package. It includes the runtime and the sour
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="0.16.0" />
+  <PackageReference Include="Apache.Fory" Version="0.17.0" />
 </ItemGroup>
 ```
 
