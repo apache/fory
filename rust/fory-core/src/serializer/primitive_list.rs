@@ -22,6 +22,11 @@ use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
 use crate::types::TypeId;
 
+#[cold]
+fn binary_size_limit_exceeded(size_bytes: usize, max: usize) -> Error {
+    Error::size_limit_exceeded(format!("Binary size {} exceeds limit {}", size_bytes, max))
+}
+
 pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     // U128, USIZE, ISIZE, INT128 are Rust-specific and not supported in xlang mode
     if context.is_xlang() {
@@ -85,10 +90,7 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
     }
     let max = context.max_binary_size() as usize;
     if size_bytes > max {
-        return Err(Error::size_limit_exceeded(format!(
-            "Binary size {} exceeds limit {}",
-            size_bytes, max
-        )));
+        return Err(binary_size_limit_exceeded(size_bytes, max));
     }
     let remaining = context.reader.slice_after_cursor().len();
     if size_bytes > remaining {

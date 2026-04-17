@@ -32,6 +32,11 @@ pub const DECL_ELEMENT_TYPE: u8 = 0b100;
 //  Whether collection elements type same.
 pub const IS_SAME_TYPE: u8 = 0b1000;
 
+#[cold]
+fn collection_size_limit_exceeded(len: u32, max: u32) -> Error {
+    Error::size_limit_exceeded(format!("Collection size {} exceeds limit {}", len, max))
+}
+
 fn check_collection_len<T: Serializer>(context: &ReadContext, len: u32) -> Result<(), Error> {
     if std::mem::size_of::<T>() == 0 {
         return Ok(());
@@ -245,10 +250,7 @@ where
     }
     let max = context.max_collection_size();
     if len > max {
-        return Err(Error::size_limit_exceeded(format!(
-            "Collection size {} exceeds limit {}",
-            len, max
-        )));
+        return Err(collection_size_limit_exceeded(len, max));
     }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
@@ -294,10 +296,7 @@ where
     }
     let max = context.max_collection_size();
     if len > max {
-        return Err(Error::size_limit_exceeded(format!(
-            "Collection size {} exceeds limit {}",
-            len, max
-        )));
+        return Err(collection_size_limit_exceeded(len, max));
     }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_vec_data_dyn_ref(context, len);
