@@ -19,10 +19,10 @@ use super::field_meta::parse_field_meta;
 use super::util::{
     classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
     determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts, get_field_accessor,
-    get_field_name, get_filtered_source_fields_iter, get_option_inner_primitive_name,
-    get_primitive_writer_method_with_encoding, get_struct_name, get_type_id_by_type_ast,
-    is_debug_enabled, is_direct_primitive_type, is_option_encoding_primitive, FieldRefMode,
-    StructField,
+    get_field_name, get_filtered_source_fields_iter, get_max_primitive_bytes,
+    get_option_inner_primitive_name, get_primitive_writer_method_with_encoding,
+    get_put_at_method_with_encoding, get_struct_name, get_type_id_by_type_ast, is_debug_enabled,
+    is_direct_primitive_type, is_option_encoding_primitive, FieldRefMode, StructField,
 };
 use crate::util::SourceField;
 use fory_core::types::TypeId;
@@ -280,15 +280,10 @@ fn gen_write_field_impl(
                         <#ty as fory_core::Serializer>::fory_write_data(&#value_ts, context)?;
                     }
                 } else {
-                    // Numeric primitives: use direct buffer methods
-                    // For u32/u64, consider encoding attributes
                     let writer_method =
                         get_primitive_writer_method_with_encoding(&type_name, &meta);
                     let writer_ident =
                         syn::Ident::new(writer_method, proc_macro2::Span::call_site());
-                    // For primitives:
-                    // - use_self=true: #value_ts is `self.field`, which is T (copy happens automatically)
-                    // - use_self=false: #value_ts is `field` from pattern match on &self, which is &T
                     let value_expr = if use_self {
                         quote! { #value_ts }
                     } else {
@@ -359,18 +354,82 @@ fn gen_write_field_impl(
 
 pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
     let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
-    let write_fields_ts: Vec<_> = get_filtered_source_fields_iter(source_fields)
-        .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
-        .collect();
-
+    let filtered: Vec<_> = get_filtered_source_fields_iter(source_fields).collect();
     let version_hash_ts = gen_struct_version_hash_ts(&fields);
-    quote! {
-        if context.is_check_struct_version() {
-            let version_hash: i32 = #version_hash_ts;
-            context.writer.write_i32(version_hash);
+
+    let fast_count = if !is_debug_enabled() {
+        filtered
+            .iter()
+            .take_while(|sf| {
+                let ref_mode = determine_field_ref_mode(sf.field);
+                ref_mode == FieldRefMode::None
+                    && is_direct_primitive_type(&sf.field.ty)
+                    && extract_type_name(&sf.field.ty) != "String"
+            })
+            .count()
+    } else {
+        0
+    };
+
+    if fast_count > 0 {
+        let (fast, rest) = filtered.split_at(fast_count);
+
+        let max_bytes: usize = fast
+            .iter()
+            .map(|sf| {
+                let tn = extract_type_name(&sf.field.ty);
+                let meta = parse_field_meta(sf.field).unwrap_or_default();
+                get_max_primitive_bytes(&tn, &meta)
+            })
+            .sum();
+
+        let put_stmts: Vec<TokenStream> = fast
+            .iter()
+            .map(|sf| {
+                let value_ts = get_field_accessor(sf.field, sf.original_index, true);
+                let tn = extract_type_name(&sf.field.ty);
+                let meta = parse_field_meta(sf.field).unwrap_or_default();
+                let method = get_put_at_method_with_encoding(&tn, &meta);
+                let method_ident = syn::Ident::new(method, proc_macro2::Span::call_site());
+                quote! {
+                    offset += fory_core::buffer::Writer::#method_ident(ptr.add(offset), #value_ts);
+                }
+            })
+            .collect();
+
+        let remaining_ts: Vec<_> = rest
+            .iter()
+            .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
+            .collect();
+
+        quote! {
+            if context.is_check_struct_version() {
+                let version_hash: i32 = #version_hash_ts;
+                context.writer.write_i32(version_hash);
+            }
+            unsafe {
+                let (ptr, base_len) = context.writer.prepare_write(#max_bytes);
+                let mut offset = 0usize;
+                #(#put_stmts)*
+                context.writer.finish_write(base_len + offset);
+            }
+            #(#remaining_ts)*
+            Ok(())
         }
-        #(#write_fields_ts)*
-        Ok(())
+    } else {
+        let write_fields_ts: Vec<_> = filtered
+            .iter()
+            .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
+            .collect();
+
+        quote! {
+            if context.is_check_struct_version() {
+                let version_hash: i32 = #version_hash_ts;
+                context.writer.write_i32(version_hash);
+            }
+            #(#write_fields_ts)*
+            Ok(())
+        }
     }
 }
 
