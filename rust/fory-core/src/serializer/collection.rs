@@ -100,6 +100,8 @@ where
         context.writer.write_u8(header);
         T::fory_write_type_info(context)?;
     }
+    // Pre-reserve buffer space to avoid per-element capacity checks in the write loop.
+    context.writer.reserve(len * T::fory_reserved_space());
     if !has_null {
         for item in iter {
             item.fory_write_data_generic(context, has_generics)?;

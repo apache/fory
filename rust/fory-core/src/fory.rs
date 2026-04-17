@@ -668,12 +668,14 @@ impl Fory {
         WRITE_CONTEXTS.with(|cache| {
             let cache = unsafe { &mut *cache.get() };
             let id = self.id;
-            let config = self.config.clone();
 
             let context = cache.get_or_insert_result(id, || {
                 // Only fetch type resolver when creating a new context
                 let type_resolver = self.get_final_type_resolver()?;
-                Ok(Box::new(WriteContext::new(type_resolver.clone(), config)))
+                Ok(Box::new(WriteContext::new(
+                    type_resolver.clone(),
+                    self.config.clone(),
+                )))
             })?;
             f(context)
         })
@@ -1084,12 +1086,14 @@ impl Fory {
         READ_CONTEXTS.with(|cache| {
             let cache = unsafe { &mut *cache.get() };
             let id = self.id;
-            let config = self.config.clone();
 
             let context = cache.get_or_insert_result(id, || {
                 // Only fetch type resolver when creating a new context
                 let type_resolver = self.get_final_type_resolver()?;
-                Ok(Box::new(ReadContext::new(type_resolver.clone(), config)))
+                Ok(Box::new(ReadContext::new(
+                    type_resolver.clone(),
+                    self.config.clone(),
+                )))
             })?;
             f(context)
         })
