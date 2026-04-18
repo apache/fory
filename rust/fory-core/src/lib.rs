@@ -187,6 +187,7 @@ pub mod row;
 pub mod serializer;
 pub mod types;
 pub use float16::float16 as Float16;
+pub mod unsafe_util;
 pub mod util;
 
 // Re-export paste for use in macros

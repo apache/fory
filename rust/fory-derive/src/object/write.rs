@@ -392,7 +392,7 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
                 let method = get_put_at_method_with_encoding(&tn, &meta);
                 let method_ident = syn::Ident::new(method, proc_macro2::Span::call_site());
                 quote! {
-                    offset += fory_core::buffer::Writer::#method_ident(ptr.add(offset), #value_ts);
+                    offset += fory_core::unsafe_util::#method_ident(ptr.add(offset), #value_ts);
                 }
             })
             .collect();
