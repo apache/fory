@@ -90,7 +90,7 @@ macro_rules! downcast_and_serialize {
 /// register_trait_type!(Animal, Dog, Cat);
 ///
 /// # fn main() {
-/// let mut fory = Fory::default().compatible(true);
+/// let mut fory = Fory::builder().compatible(true).build();
 /// fory.register::<Dog>(100);
 /// fory.register::<Cat>(101);
 ///

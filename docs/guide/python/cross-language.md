@@ -85,9 +85,9 @@ struct Person {
     age: i32,
 }
 
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 fory.register_by_namespace::<Person>("example", "Person");
 let person: Person = fory.deserialize(&binary_data)?;

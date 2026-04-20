@@ -64,9 +64,9 @@ auto fory = fory::Fory::builder().xlang(true).track_ref(true).build();
 ### Rust
 
 ```rust
-let fory = Fory::default()
+let fory = Fory::builder()
     .xlang(true)
-    .track_ref(true);
+    .track_ref(true).build();
 ```
 
 ## Wire Format
@@ -158,7 +158,7 @@ FORY_STRUCT(Document, title, author, data, tag_owner);
 ```
 
 To disable reference tracking for C++ entirely, set
-`Fory::builder().track_ref(false)` on the serializer.
+`Fory::builder().track_ref(false).build()` on the serializer.
 
 #### Rust: Field Attributes
 

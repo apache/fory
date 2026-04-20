@@ -1,0 +1,193 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Publish C#
+run-name: "C# Release: ${{ github.ref_name }}"
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-csharp-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-csharp:
+    runs-on: ubuntu-latest
+    if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
+    env:
+      NUGET_SOURCE: https://api.nuget.org/v3/index.json
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Bump C# version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          python ci/release.py bump_version -l csharp -version "$VERSION"
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+          cache: true
+          cache-dependency-path: |
+            csharp/**/*.csproj
+            csharp/Fory.sln
+
+      - name: Restore C# dependencies
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          dotnet restore Fory.sln
+
+      - name: Build C# solution
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          dotnet build Fory.sln -c Release --no-restore
+
+      - name: Run C# tests
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          dotnet test Fory.sln -c Release --no-build
+
+      - name: Pack Apache.Fory
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          rm -rf artifacts/nuget
+          mkdir -p artifacts/nuget
+          dotnet pack src/Fory/Fory.csproj \
+            -c Release \
+            --no-restore \
+            -o artifacts/nuget \
+            -p:ContinuousIntegrationBuild=true
+
+      - name: Verify packed artifacts
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          test -f "artifacts/nuget/Apache.Fory.$VERSION.nupkg"
+          test -f "artifacts/nuget/Apache.Fory.$VERSION.snupkg"
+          ls -l artifacts/nuget
+
+      - name: Exchange GitHub OIDC token for NuGet API key
+        id: nuget-login
+        shell: bash
+        env:
+          NUGET_AUDIENCE: https://www.nuget.org
+          NUGET_TOKEN_SERVICE_URL: https://www.nuget.org/api/v2/token
+        run: |
+          set -euo pipefail
+          if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+            echo "GitHub OIDC token exchange is unavailable. Ensure the job has id-token: write permission." >&2
+            exit 1
+          fi
+          python <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          def fetch_json(url: str, headers: dict[str, str], data: bytes | None = None) -> dict:
+              request = urllib.request.Request(url, data=data, headers=headers)
+              try:
+                  with urllib.request.urlopen(request) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  body = error.read().decode("utf-8", errors="replace")
+                  raise SystemExit(f"HTTP {error.code} from {url}: {body}") from error
+
+          request_token = os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]
+          request_url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"]
+          audience = os.environ["NUGET_AUDIENCE"]
+          token_service_url = os.environ["NUGET_TOKEN_SERVICE_URL"]
+
+          print(f"::add-mask::{request_token}")
+
+          oidc_response = fetch_json(
+              f"{request_url}&audience={urllib.parse.quote(audience, safe='')}",
+              {"Authorization": f"Bearer {request_token}"},
+          )
+          oidc_token = oidc_response.get("value")
+          if not oidc_token:
+              raise SystemExit("GitHub OIDC response did not contain a token value.")
+          print(f"::add-mask::{oidc_token}")
+
+          api_key_response = fetch_json(
+              token_service_url,
+              {
+                  "Authorization": f"Bearer {oidc_token}",
+                  "Content-Type": "application/json",
+                  "User-Agent": "apache-fory-release-csharp-workflow",
+              },
+              json.dumps({"username": "chaokunyang", "tokenType": "ApiKey"}).encode("utf-8"),
+          )
+          api_key = api_key_response.get("apiKey")
+          if not api_key:
+              raise SystemExit('NuGet token exchange response did not contain "apiKey".')
+          print(f"::add-mask::{api_key}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"NUGET_API_KEY={api_key}\n")
+          PY
+
+      - name: Publish Apache.Fory package
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          dotnet nuget push "artifacts/nuget/Apache.Fory.$VERSION.nupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source "$NUGET_SOURCE" \
+            --skip-duplicate
+
+      - name: Publish Apache.Fory symbols
+        shell: bash
+        working-directory: csharp
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          dotnet nuget push "artifacts/nuget/Apache.Fory.$VERSION.snupkg" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
+            --source "$NUGET_SOURCE" \
+            --skip-duplicate

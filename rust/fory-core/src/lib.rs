@@ -99,7 +99,7 @@
 //! }
 //!
 //! # fn main() {
-//! let mut fory = Fory::default().compatible(true);
+//! let mut fory = Fory::builder().compatible(true).build();
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -147,7 +147,7 @@
 //! use std::collections::HashMap;
 //!
 //! // Create a Fory instance
-//! let mut fory = Fory::default().compatible(true);
+//! let mut fory = Fory::builder().compatible(true).build();
 //!
 //! // Serialize String
 //! let text = String::from("Hello, Fory!");
@@ -195,7 +195,7 @@ pub use paste;
 pub use crate::buffer::{Reader, Writer};
 pub use crate::config::Config;
 pub use crate::error::Error;
-pub use crate::fory::Fory;
+pub use crate::fory::{Fory, ForyBuilder};
 pub use crate::resolver::context::{ReadContext, WriteContext};
 pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 pub use crate::serializer::weak::{ArcWeak, RcWeak};

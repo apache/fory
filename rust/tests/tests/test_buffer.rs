@@ -18,7 +18,7 @@
 use fory_core::buffer::{Reader, Writer};
 
 #[test]
-fn test_varint32() {
+fn test_var_i32() {
     let test_data: Vec<i32> = vec![
         // 1 byte(0..127)
         0,
@@ -43,25 +43,25 @@ fn test_varint32() {
     for &data in &test_data {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_varint32(data);
+        writer.write_var_i32(data);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_varint32().unwrap();
+        let res = reader.read_var_i32().unwrap();
         assert_eq!(res, data);
     }
     for &data in &test_data {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_var_uint32(data as u32);
+        writer.write_var_u32(data as u32);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_varuint32().unwrap();
+        let res = reader.read_var_u32().unwrap();
         assert_eq!(res, data as u32);
     }
 }
 
 #[test]
-fn test_varuint36_small() {
+fn test_var_u36_small() {
     let test_data: Vec<u64> = vec![
         // 1 byte
         0,
@@ -88,11 +88,11 @@ fn test_varuint36_small() {
     for &data in &test_data {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_var_uint36_small(data);
+        writer.write_var_u36_small(data);
         let buf = writer.dump();
 
         let mut reader = Reader::new(buf.as_slice());
-        let value = reader.read_varuint36small().unwrap();
+        let value = reader.read_var_u36_small().unwrap();
         assert_eq!(value, data, "failed for data {}", data);
     }
 }
@@ -114,5 +114,5 @@ fn test_fixed_width_read_bounds_checks() {
     let mut bad_cursor = Reader::new(&[1, 2, 3, 4]);
     bad_cursor.set_cursor(10);
     assert!(bad_cursor.read_u16().is_err());
-    assert!(bad_cursor.read_varuint36small().is_err());
+    assert!(bad_cursor.read_var_u36_small().is_err());
 }

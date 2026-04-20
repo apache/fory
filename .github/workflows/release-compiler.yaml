@@ -29,7 +29,7 @@ permissions:
 jobs:
   publish-compiler:
     runs-on: ubuntu-latest
-    if: github.repository == 'apache/fory'
+    if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
     steps:
       - uses: actions/checkout@v5
 

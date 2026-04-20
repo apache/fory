@@ -163,14 +163,14 @@ KotlinSerializers.registerSerializers(fory)
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.16.0</version>
+  <version>0.17.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:0.16.0")
+implementation("org.apache.fory:fory-kotlin:0.17.0")
 ```
 
 ## Building

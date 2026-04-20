@@ -47,10 +47,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::default().compatible(true);
+let mut fory1 = Fory::builder().compatible(true).build();
 fory1.register::<PersonV1>(1);
 
-let mut fory2 = Fory::default().compatible(true);
+let mut fory2 = Fory::builder().compatible(true).build();
 fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
@@ -155,7 +155,7 @@ enum NewEvent {
     KeyPress(String),  // New variant
 }
 
-let mut fory = Fory::default().compatible(true);
+let mut fory = Fory::builder().compatible(true).build();
 
 // Serialize with old schema
 let old_bytes = fory.serialize(&OldEvent::Click { x: 100, y: 200 })?;

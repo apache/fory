@@ -338,7 +338,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         // Weak pointers require track_ref to be enabled on the Fory instance
         if !context.is_track_ref() {
             return Err(Error::invalid_ref(
-                "RcWeak requires track_ref to be enabled. Use Fory::default().track_ref(true)",
+                "RcWeak requires track_ref to be enabled. Use Fory::builder().track_ref(true).build()",
             ));
         }
         // Weak MUST use ref tracking - otherwise read value will be lost
@@ -511,7 +511,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         // Weak pointers require track_ref to be enabled on the Fory instance
         if !context.is_track_ref() {
             return Err(Error::invalid_ref(
-                "ArcWeak requires track_ref to be enabled. Use Fory::default().track_ref(true)",
+                "ArcWeak requires track_ref to be enabled. Use Fory::builder().track_ref(true).build()",
             ));
         }
         // Weak MUST use ref tracking - otherwise read value will be lost

@@ -113,9 +113,9 @@ impl<'a> Writer<'a> {
     // ============ VARINT32 (TypeId = 5) ============
 
     #[inline(always)]
-    pub fn write_varint32(&mut self, value: i32) {
+    pub fn write_var_i32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
-        self._write_var_uint32(zigzag as u32)
+        self._write_var_u32(zigzag as u32)
     }
 
     // ============ INT64 (TypeId = 6) ============
@@ -128,9 +128,9 @@ impl<'a> Writer<'a> {
     // ============ VARINT64 (TypeId = 7) ============
 
     #[inline(always)]
-    pub fn write_varint64(&mut self, value: i64) {
+    pub fn write_var_i64(&mut self, value: i64) {
         let zigzag = ((value << 1) ^ (value >> 63)) as u64;
-        self._write_var_uint64(zigzag);
+        self._write_var_u64(zigzag);
     }
 
     // ============ TAGGED_INT64 (TypeId = 8) ============
@@ -194,12 +194,12 @@ impl<'a> Writer<'a> {
     // ============ VAR_UINT32 (TypeId = 12) ============
 
     #[inline(always)]
-    pub fn write_var_uint32(&mut self, value: u32) {
-        self._write_var_uint32(value)
+    pub fn write_var_u32(&mut self, value: u32) {
+        self._write_var_u32(value)
     }
 
     #[inline(always)]
-    fn _write_var_uint32(&mut self, value: u32) {
+    fn _write_var_u32(&mut self, value: u32) {
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
@@ -255,12 +255,12 @@ impl<'a> Writer<'a> {
     // ============ VAR_UINT64 (TypeId = 14) ============
 
     #[inline(always)]
-    pub fn write_var_uint64(&mut self, value: u64) {
-        self._write_var_uint64(value);
+    pub fn write_var_u64(&mut self, value: u64) {
+        self._write_var_u64(value);
     }
 
     #[inline(always)]
-    fn _write_var_uint64(&mut self, value: u64) {
+    fn _write_var_u64(&mut self, value: u64) {
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
@@ -447,8 +447,8 @@ impl<'a> Writer<'a> {
         const SIZE: usize = std::mem::size_of::<isize>();
         match SIZE {
             2 => self.write_i16(value as i16),
-            4 => self.write_varint32(value as i32),
-            8 => self.write_varint64(value as i64),
+            4 => self.write_var_i32(value as i32),
+            8 => self.write_var_i64(value as i64),
             _ => unreachable!("unsupported isize size"),
         }
     }
@@ -458,8 +458,8 @@ impl<'a> Writer<'a> {
         const SIZE: usize = std::mem::size_of::<usize>();
         match SIZE {
             2 => self.write_u16(value as u16),
-            4 => self.write_var_uint32(value as u32),
-            8 => self.write_var_uint64(value as u64),
+            4 => self.write_var_u32(value as u32),
+            8 => self.write_var_u64(value as u64),
             _ => unreachable!("unsupported usize size"),
         }
     }
@@ -467,8 +467,11 @@ impl<'a> Writer<'a> {
     // ============ Other helper methods ============
 
     #[inline(always)]
-    pub fn write_var_uint36_small(&mut self, value: u64) {
-        assert!(value < (1u64 << 36), "value too large for 36-bit varint");
+    pub fn write_var_u36_small(&mut self, value: u64) {
+        assert!(
+            value < (1u64 << 36),
+            "value too large for 36-bit variable-length integer"
+        );
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
@@ -641,8 +644,8 @@ impl<'a> Reader<'a> {
     // ============ VARINT32 (TypeId = 5) ============
 
     #[inline(always)]
-    pub fn read_varint32(&mut self) -> Result<i32, Error> {
-        let encoded = self.read_varuint32()?;
+    pub fn read_var_i32(&mut self) -> Result<i32, Error> {
+        let encoded = self.read_var_u32()?;
         Ok(((encoded >> 1) as i32) ^ -((encoded & 1) as i32))
     }
 
@@ -656,8 +659,8 @@ impl<'a> Reader<'a> {
     // ============ VARINT64 (TypeId = 7) ============
 
     #[inline(always)]
-    pub fn read_varint64(&mut self) -> Result<i64, Error> {
-        let encoded = self.read_varuint64()?;
+    pub fn read_var_i64(&mut self) -> Result<i64, Error> {
+        let encoded = self.read_var_u64()?;
         Ok(((encoded >> 1) as i64) ^ -((encoded & 1) as i64))
     }
 
@@ -722,7 +725,7 @@ impl<'a> Reader<'a> {
     // ============ VAR_UINT32 (TypeId = 12) ============
 
     #[inline(always)]
-    pub fn read_varuint32(&mut self) -> Result<u32, Error> {
+    pub fn read_var_u32(&mut self) -> Result<u32, Error> {
         let b0 = self.value_at(self.cursor)? as u32;
         if b0 < 0x80 {
             self.move_next(1);
@@ -769,7 +772,7 @@ impl<'a> Reader<'a> {
     // ============ VAR_UINT64 (TypeId = 14) ============
 
     #[inline(always)]
-    pub fn read_varuint64(&mut self) -> Result<u64, Error> {
+    pub fn read_var_u64(&mut self) -> Result<u64, Error> {
         let b0 = self.value_at(self.cursor)? as u64;
         if b0 < 0x80 {
             self.move_next(1);
@@ -979,8 +982,8 @@ impl<'a> Reader<'a> {
         const SIZE: usize = std::mem::size_of::<isize>();
         match SIZE {
             2 => Ok(self.read_i16()? as isize),
-            4 => Ok(self.read_varint32()? as isize),
-            8 => Ok(self.read_varint64()? as isize),
+            4 => Ok(self.read_var_i32()? as isize),
+            8 => Ok(self.read_var_i64()? as isize),
             _ => unreachable!("unsupported isize size"),
         }
     }
@@ -990,8 +993,8 @@ impl<'a> Reader<'a> {
         const SIZE: usize = std::mem::size_of::<usize>();
         match SIZE {
             2 => Ok(self.read_u16()? as usize),
-            4 => Ok(self.read_varuint32()? as usize),
-            8 => Ok(self.read_varuint64()? as usize),
+            4 => Ok(self.read_var_u32()? as usize),
+            8 => Ok(self.read_var_u64()? as usize),
             _ => unreachable!("unsupported usize size"),
         }
     }
@@ -999,7 +1002,7 @@ impl<'a> Reader<'a> {
     // ============ Other helper methods ============
 
     #[inline(always)]
-    pub fn read_varuint36small(&mut self) -> Result<u64, Error> {
+    pub fn read_var_u36_small(&mut self) -> Result<u64, Error> {
         // Keep this API panic-free even if cursor is externally set past buffer end.
         self.check_bound(0)?;
         let start = self.cursor;
@@ -1041,7 +1044,7 @@ impl<'a> Reader<'a> {
             }
             shift += 7;
             if shift >= 36 {
-                return Err(Error::encode_error("varuint36small overflow"));
+                return Err(Error::encode_error("var_u36_small overflow"));
             }
         }
         Ok(result)

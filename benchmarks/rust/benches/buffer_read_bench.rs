@@ -54,20 +54,20 @@ fn prepare_f64_buffer() -> Vec<u8> {
     buf
 }
 
-fn prepare_varint32_buffer(multiplier: i32) -> Vec<u8> {
+fn prepare_var_i32_buffer(multiplier: i32) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut writer = Writer::from_buffer(&mut buf);
     for i in 0..1000 {
-        writer.write_varint32((i % 1000) * multiplier);
+        writer.write_var_i32((i % 1000) * multiplier);
     }
     buf
 }
 
-fn prepare_varint64_buffer(multiplier: i64) -> Vec<u8> {
+fn prepare_var_i64_buffer(multiplier: i64) -> Vec<u8> {
     let mut buf = Vec::new();
     let mut writer = Writer::from_buffer(&mut buf);
     for i in 0..1000 {
-        writer.write_varint64((i % 1000) * multiplier);
+        writer.write_var_i64((i % 1000) * multiplier);
     }
     buf
 }
@@ -152,18 +152,18 @@ fn bench_read_f64(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint32_small(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint32_small");
+fn bench_read_var_i32_small(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i32_small");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint32_buffer(1); // Small values (1 byte)
+    let buf = prepare_var_i32_buffer(1); // Small values (1 byte)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum += reader.read_varint32().unwrap() as i64;
+                sum += reader.read_var_i32().unwrap() as i64;
             }
             black_box(sum);
         })
@@ -172,18 +172,18 @@ fn bench_read_varint32_small(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint32_medium(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint32_medium");
+fn bench_read_var_i32_medium(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i32_medium");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint32_buffer(1000); // Medium values (2-3 bytes)
+    let buf = prepare_var_i32_buffer(1000); // Medium values (2-3 bytes)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum += reader.read_varint32().unwrap() as i64;
+                sum += reader.read_var_i32().unwrap() as i64;
             }
             black_box(sum);
         })
@@ -192,18 +192,18 @@ fn bench_read_varint32_medium(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint32_large(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint32_large");
+fn bench_read_var_i32_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i32_large");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint32_buffer(1000000); // Large values (4-5 bytes)
+    let buf = prepare_var_i32_buffer(1000000); // Large values (4-5 bytes)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum += reader.read_varint32().unwrap() as i64;
+                sum += reader.read_var_i32().unwrap() as i64;
             }
             black_box(sum);
         })
@@ -212,18 +212,18 @@ fn bench_read_varint32_large(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint64_small(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint64_small");
+fn bench_read_var_i64_small(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i64_small");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint64_buffer(1); // Small values (1 byte)
+    let buf = prepare_var_i64_buffer(1); // Small values (1 byte)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum = sum.wrapping_add(reader.read_varint64().unwrap());
+                sum = sum.wrapping_add(reader.read_var_i64().unwrap());
             }
             black_box(sum);
         })
@@ -232,18 +232,18 @@ fn bench_read_varint64_small(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint64_medium(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint64_medium");
+fn bench_read_var_i64_medium(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i64_medium");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint64_buffer(1000000); // Medium values (3-4 bytes)
+    let buf = prepare_var_i64_buffer(1000000); // Medium values (3-4 bytes)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum = sum.wrapping_add(reader.read_varint64().unwrap());
+                sum = sum.wrapping_add(reader.read_var_i64().unwrap());
             }
             black_box(sum);
         })
@@ -252,18 +252,18 @@ fn bench_read_varint64_medium(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_read_varint64_large(c: &mut Criterion) {
-    let mut group = c.benchmark_group("read_varint64_large");
+fn bench_read_var_i64_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("read_var_i64_large");
     group.throughput(Throughput::Elements(1000));
 
-    let buf = prepare_varint64_buffer(1000000000000); // Large values (6-9 bytes)
+    let buf = prepare_var_i64_buffer(1000000000000); // Large values (6-9 bytes)
 
     group.bench_function("current", |b| {
         b.iter(|| {
             let mut reader = Reader::new(&buf);
             let mut sum = 0i64;
             for _ in 0..1000 {
-                sum = sum.wrapping_add(reader.read_varint64().unwrap());
+                sum = sum.wrapping_add(reader.read_var_i64().unwrap());
             }
             black_box(sum);
         })
@@ -278,11 +278,11 @@ criterion_group!(
     bench_read_i64,
     bench_read_f32,
     bench_read_f64,
-    bench_read_varint32_small,
-    bench_read_varint32_medium,
-    bench_read_varint32_large,
-    bench_read_varint64_small,
-    bench_read_varint64_medium,
-    bench_read_varint64_large
+    bench_read_var_i32_small,
+    bench_read_var_i32_medium,
+    bench_read_var_i32_large,
+    bench_read_var_i64_small,
+    bench_read_var_i64_medium,
+    bench_read_var_i64_large
 );
 criterion_main!(benches);

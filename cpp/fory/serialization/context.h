@@ -239,7 +239,7 @@ public:
   }
 
   /// write int32_t value as zigzag varint to buffer.
-  FORY_ALWAYS_INLINE void write_varint32(int32_t value) {
+  FORY_ALWAYS_INLINE void write_var_int32(int32_t value) {
     buffer_.write_var_int32(value);
   }
 
@@ -249,7 +249,7 @@ public:
   }
 
   /// write int64_t value as zigzag varint to buffer.
-  FORY_ALWAYS_INLINE void write_varint64(int64_t value) {
+  FORY_ALWAYS_INLINE void write_var_int64(int64_t value) {
     buffer_.write_var_int64(value);
   }
 
@@ -569,7 +569,7 @@ public:
   }
 
   /// Read int32_t value as zigzag varint from buffer. Sets error on failure.
-  FORY_ALWAYS_INLINE int32_t read_varint32(Error &error) {
+  FORY_ALWAYS_INLINE int32_t read_var_int32(Error &error) {
     return buffer().read_var_int32(error);
   }
 
@@ -579,7 +579,7 @@ public:
   }
 
   /// Read int64_t value as zigzag varint from buffer. Sets error on failure.
-  FORY_ALWAYS_INLINE int64_t read_varint64(Error &error) {
+  FORY_ALWAYS_INLINE int64_t read_var_int64(Error &error) {
     return buffer().read_var_int64(error);
   }
 

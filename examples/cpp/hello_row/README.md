@@ -77,7 +77,7 @@ For your own project using Fory as a dependency:
 
 ```bazel
 # In your MODULE.bazel
-bazel_dep(name = "fory", version = "0.16.0")
+bazel_dep(name = "fory", version = "0.17.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",

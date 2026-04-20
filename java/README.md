@@ -39,7 +39,7 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 | Topic                       | Description                | Source Doc Link                                                                | Website Doc Link                                                                                   |
 | --------------------------- | -------------------------- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
 | **Java Serialization**      | Comprehensive usage guide  | [java_serialization_guide.md](../docs/guide/java_serialization_guide.md)       | [Java Serialization Guide](https://fory.apache.org/docs/docs/guide/java_serialization)             |
-| **GraalVM Native Image**    | Native image support       | [graalvm_guide.md](../docs/guide/graalvm_guide.md)                             | [GraalVM Guide](https://fory.apache.org/docs/docs/guide/graalvm_serialization)                     |
+| **GraalVM Native Image**    | Native image support       | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                         |
 | **Java Serialization Spec** | Protocol specification     | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/fory_java_serialization_spec) |
 | **Java Benchmarks**         | Performance data and plots | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                                    |
 
@@ -348,7 +348,7 @@ mvn package -Pnative
 ./target/my-app
 ```
 
-See [GraalVM Guide](../docs/guide/graalvm_guide.md) for details.
+See [GraalVM Support](../docs/guide/java/graalvm-support.md) for details.
 
 ## Development
 

@@ -357,7 +357,7 @@ fn test_trait_object_serialization() {
         skipped_animal: Box<dyn Animal>,
     }
 
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<Dog>(100).unwrap();
     fory.register::<Cat>(101).unwrap();
     fory.register::<Zoo>(102).unwrap();
@@ -397,7 +397,7 @@ fn test_trait_object_serialization() {
         normal_field: String,
     }
 
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<ComplexSkipExample>(106).unwrap();
 
     let complex = ComplexSkipExample {

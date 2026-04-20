@@ -16,8 +16,11 @@
 # under the License.
 
 name: fory
-description: Apache Fory Dart runtime
-version: 0.17.0-dev
+description: Cross-language Apache Fory runtime for Dart with generated serializers, schema evolution, and custom type support.
+version: 0.18.0-dev
+homepage: https://github.com/apache/fory
+repository: https://github.com/apache/fory/tree/main/dart/packages/fory
+issue_tracker: https://github.com/apache/fory/issues
 
 resolution: workspace
 

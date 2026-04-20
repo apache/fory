@@ -48,12 +48,12 @@ impl MetaWriterResolver {
         match self.type_id_index_map.get(&type_id) {
             Some(&index) => {
                 // Reference to previously written type: (index << 1) | 1, LSB=1
-                writer.write_var_uint32(((index as u32) << 1) | 1);
+                writer.write_var_u32(((index as u32) << 1) | 1);
             }
             None => {
                 // New type: index << 1, LSB=0, followed by TypeMeta bytes inline
                 let index = self.type_id_index_map.len();
-                writer.write_var_uint32((index as u32) << 1);
+                writer.write_var_u32((index as u32) << 1);
                 self.type_id_index_map.insert(type_id, index);
                 // Write TypeMeta bytes inline
                 let type_def = type_resolver.get_type_info(&type_id)?.get_type_def();
@@ -95,7 +95,7 @@ impl MetaReaderResolver {
         reader: &mut Reader,
         type_resolver: &TypeResolver,
     ) -> Result<Rc<TypeInfo>, Error> {
-        let index_marker = reader.read_varuint32()?;
+        let index_marker = reader.read_var_u32()?;
         let is_ref = (index_marker & 1) == 1;
         let index = (index_marker >> 1) as usize;
 

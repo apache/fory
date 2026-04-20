@@ -145,7 +145,7 @@ impl FieldType {
             if self.track_ref {
                 header |= 1;
             }
-            writer.write_var_uint32(header);
+            writer.write_var_u32(header);
         } else {
             writer.write_u8(header as u8);
         }
@@ -177,7 +177,7 @@ impl FieldType {
         nullable: Option<bool>,
     ) -> Result<Self, Error> {
         let header = if read_flag {
-            reader.read_varuint32()?
+            reader.read_var_u32()?
         } else {
             reader.read_u8()? as u32
         };
@@ -279,7 +279,7 @@ impl FieldInfo {
             let mut field_id = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as i16;
             if field_id == SMALL_FIELD_ID_THRESHOLD {
                 field_id = field_id
-                    .checked_add(reader.read_varuint32()? as i16)
+                    .checked_add(reader.read_var_u32()? as i16)
                     .ok_or_else(|| Error::invalid_data("field_id overflow"))?;
             }
 
@@ -296,7 +296,7 @@ impl FieldInfo {
             let encoding = Self::u8_to_encoding(encoding_bits)?;
             let mut name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as usize;
             if name_size == FIELD_NAME_SIZE_THRESHOLD {
-                name_size += reader.read_varuint32()? as usize;
+                name_size += reader.read_var_u32()? as usize;
             }
             name_size += 1;
 
@@ -338,7 +338,7 @@ impl FieldInfo {
             header |= FIELD_ID_ENCODING_MARKER << 6;
             writer.write_u8(header);
             if field_id >= SMALL_FIELD_ID_THRESHOLD {
-                writer.write_var_uint32((field_id - SMALL_FIELD_ID_THRESHOLD) as u32);
+                writer.write_var_u32((field_id - SMALL_FIELD_ID_THRESHOLD) as u32);
             }
             self.field_type.to_bytes(&mut writer, false, nullable)?;
             // No field name written in ID mode
@@ -364,7 +364,7 @@ impl FieldInfo {
             header |= encoding_idx << 6;
             writer.write_u8(header);
             if name_size >= FIELD_NAME_SIZE_THRESHOLD {
-                writer.write_var_uint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
+                writer.write_var_u32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
             }
             self.field_type.to_bytes(&mut writer, false, nullable)?;
             // write field_name
@@ -614,7 +614,7 @@ impl TypeMeta {
         let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
             writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
-            writer.write_var_uint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
+            writer.write_var_u32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
         } else {
             writer.write_u8((bytes.len() << 2) as u8 | encoding_idx);
         }
@@ -638,7 +638,7 @@ impl TypeMeta {
         let encoding_idx = header & 0b11;
         let length = header >> 2;
         let length = if length >= BIG_NAME_THRESHOLD as u8 {
-            BIG_NAME_THRESHOLD + reader.read_varuint32()? as usize
+            BIG_NAME_THRESHOLD + reader.read_var_u32()? as usize
         } else {
             length as usize
         };
@@ -670,7 +670,7 @@ impl TypeMeta {
         }
         writer.write_u8(meta_header);
         if num_fields >= SMALL_NUM_FIELDS_THRESHOLD {
-            writer.write_var_uint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
+            writer.write_var_u32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
         }
         if self.register_by_name {
             self.write_namespace(&mut writer);
@@ -682,7 +682,7 @@ impl TypeMeta {
                     "User type id is required for this type id",
                 ));
             }
-            writer.write_var_uint32(self.user_type_id);
+            writer.write_var_u32(self.user_type_id);
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -819,7 +819,7 @@ impl TypeMeta {
         let register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
-            num_fields += reader.read_varuint32()? as usize;
+            num_fields += reader.read_var_u32()? as usize;
         }
         // limit the number of fields to prevent potential OOM when creating Vec<FieldInfo>
         if num_fields > MAX_TYPE_META_FIELDS {
@@ -838,7 +838,7 @@ impl TypeMeta {
             type_id = 0;
         } else {
             type_id = reader.read_u8()? as u32;
-            user_type_id = reader.read_varuint32()?;
+            user_type_id = reader.read_var_u32()?;
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
@@ -978,8 +978,8 @@ impl TypeMeta {
         let header = reader.read_i64()?;
         let meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            // meta_size += reader.read_varuint32() as i64;
-            reader.read_varuint32()?;
+            // meta_size += reader.read_var_u32() as i64;
+            reader.read_var_u32()?;
         }
 
         // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
@@ -1000,8 +1000,8 @@ impl TypeMeta {
     ) -> Result<TypeMeta, Error> {
         let meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            // meta_size += reader.read_varuint32()? as i64;
-            reader.read_varuint32()?;
+            // meta_size += reader.read_var_u32()? as i64;
+            reader.read_var_u32()?;
         }
 
         // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
@@ -1019,7 +1019,7 @@ impl TypeMeta {
     pub fn skip_bytes(reader: &mut Reader, header: i64) -> Result<(), Error> {
         let mut meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            meta_size += reader.read_varuint32()? as i64;
+            meta_size += reader.read_var_u32()? as i64;
         }
         reader.skip(meta_size as usize)
     }
@@ -1067,7 +1067,7 @@ impl TypeMeta {
         header |= meta_hash_shifted;
         result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
-            result.write_var_uint32((meta_size - META_SIZE_MASK) as u32);
+            result.write_var_u32((meta_size - META_SIZE_MASK) as u32);
         }
         result.write_bytes(meta_buffer.as_slice());
         Ok((buffer, meta_hash))

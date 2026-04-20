@@ -16,6 +16,7 @@
 // under the License.
 
 use fory_core::buffer::Reader;
+use fory_core::error::Error;
 use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 
@@ -289,7 +290,6 @@ fn test_unregistered_type_error_message() {
 
 #[test]
 fn test_type_mismatch_error_shows_type_name() {
-    use fory_core::error::Error;
     use fory_core::types::{format_type_id, TypeId};
 
     // Test internal type (BOOL = 1), no registered_id
@@ -330,4 +330,37 @@ fn test_type_mismatch_error_shows_type_name() {
         "error should indicate local vs remote types, got: {}",
         err_str
     );
+}
+
+#[test]
+fn test_size_guardrail_configuration_accessors() {
+    let default_fory = Fory::default();
+    assert_eq!(default_fory.get_max_binary_size(), 64 * 1024 * 1024);
+    assert_eq!(default_fory.get_max_collection_size(), 1024 * 1024);
+
+    let configured_fory = Fory::builder()
+        .max_binary_size(4096)
+        .max_collection_size(128)
+        .build();
+    assert_eq!(configured_fory.get_max_binary_size(), 4096);
+    assert_eq!(configured_fory.get_max_collection_size(), 128);
+}
+
+#[test]
+fn test_max_binary_size_does_not_limit_string_reads() {
+    let fory = Fory::default();
+    let original = "this string should not be treated as binary".repeat(4);
+    let serialized = fory.serialize(&original).unwrap();
+
+    let limited_fory = Fory::builder().max_binary_size(4).build();
+    let deserialized: String = limited_fory.deserialize(&serialized).unwrap();
+
+    assert_eq!(deserialized, original);
+}
+
+#[test]
+fn test_size_limit_exceeded_error_display() {
+    let err = Error::size_limit_exceeded("Collection size 3 exceeds limit 2");
+    assert!(matches!(err, Error::SizeLimitExceeded(_)));
+    assert_eq!(err.to_string(), "Collection size 3 exceeds limit 2");
 }

@@ -54,7 +54,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
         }
         if ref_flag == (RefFlag::Ref as i8) {
             // Reference to already-seen object, skip the reference index
-            let _ref_index = context.reader.read_varuint32()?;
+            let _ref_index = context.reader.read_var_u32()?;
             return Ok(());
         }
         // RefValue (0) or NotNullValue (-1) means we need to read the actual object
@@ -65,7 +65,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     let internal_id = type_id;
     let _user_type_id = if types::needs_user_type_id(type_id) && type_id != types::COMPATIBLE_STRUCT
     {
-        Some(context.reader.read_varuint32()?)
+        Some(context.reader.read_var_u32()?)
     } else {
         None
     };
@@ -172,7 +172,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
 }
 
 fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
-    let length = context.reader.read_varuint32()? as usize;
+    let length = context.reader.read_var_u32()? as usize;
     if length == 0 {
         return Ok(());
     }
@@ -210,7 +210,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
 }
 
 fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
-    let length = context.reader.read_varuint32()?;
+    let length = context.reader.read_var_u32()?;
     if length == 0 {
         return Ok(());
     }
@@ -418,7 +418,7 @@ fn skip_value(
         }
         if ref_flag == (RefFlag::Ref as i8) {
             // Reference to already-seen object, skip the reference index
-            let _ref_index = context.reader.read_varuint32()?;
+            let _ref_index = context.reader.read_var_u32()?;
             return Ok(());
         }
         // RefValue (0) or NotNullValue (-1) means we need to read the actual object
@@ -443,7 +443,7 @@ fn skip_value(
             || type_id_num == types::TYPED_UNION
             || type_id_num == types::NAMED_UNION
         {
-            let _ordinal = context.reader.read_varuint32()?;
+            let _ordinal = context.reader.read_var_u32()?;
             return Ok(());
         } else if type_id_num == types::EXT || type_id_num == types::NAMED_EXT {
             return skip_ext(context, type_id_num, type_info);
@@ -572,12 +572,12 @@ fn skip_value(
 
         // ============ ENUM (TypeId = 23) ============
         types::ENUM => {
-            let _ordinal = context.reader.read_varuint32()?;
+            let _ordinal = context.reader.read_var_u32()?;
         }
 
         // ============ NAMED_ENUM (TypeId = 24) ============
         types::NAMED_ENUM => {
-            let _ordinal = context.reader.read_varuint32()?;
+            let _ordinal = context.reader.read_var_u32()?;
         }
 
         // ============ STRUCT (TypeId = 25) ============
@@ -612,19 +612,19 @@ fn skip_value(
 
         // ============ UNION (TypeId = 31) ============
         types::UNION => {
-            let _ = context.reader.read_varuint32()?;
+            let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 
         // ============ TYPED_UNION (TypeId = 32) ============
         types::TYPED_UNION => {
-            let _ = context.reader.read_varuint32()?;
+            let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 
         // ============ NAMED_UNION (TypeId = 33) ============
         types::NAMED_UNION => {
-            let _ = context.reader.read_varuint32()?;
+            let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 

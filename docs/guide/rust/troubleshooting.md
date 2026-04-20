@@ -51,7 +51,7 @@ Confirm that:
 - Ensure field types match across versions
 
 ```rust
-let fory = Fory::default().compatible(true);
+let fory = Fory::builder().compatible(true).build();
 ```
 
 ## Debugging Techniques

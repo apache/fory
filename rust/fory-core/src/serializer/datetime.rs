@@ -159,20 +159,20 @@ impl Serializer for Duration {
         let raw = self.as_secs();
         if raw > i64::MAX as u64 {
             return Err(Error::invalid_data(format!(
-                "std::time::Duration seconds {} exceeds i64::MAX and cannot be encoded as varint64",
+                "std::time::Duration seconds {} exceeds i64::MAX and cannot be encoded with write_var_i64",
                 raw
             )));
         }
         let secs = raw as i64;
         let nanos = self.subsec_nanos() as i32;
-        context.writer.write_varint64(secs);
+        context.writer.write_var_i64(secs);
         context.writer.write_i32(nanos);
         Ok(())
     }
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let secs = context.reader.read_varint64()?;
+        let secs = context.reader.read_var_i64()?;
         if secs < 0 {
             return Err(Error::invalid_data(format!(
                 "negative duration seconds {} cannot be represented as std::time::Duration; use chrono::Duration instead",
@@ -194,7 +194,7 @@ impl Serializer for Duration {
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
-        9 + mem::size_of::<i32>() // max varint64 is 9 bytes + 4 bytes for i32
+        9 + mem::size_of::<i32>() // max write_var_i64 payload is 9 bytes + 4 bytes for i32
     }
 
     #[inline(always)]
@@ -241,14 +241,14 @@ impl Serializer for ChronoDuration {
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let secs = self.num_seconds();
         let nanos = self.subsec_nanos();
-        context.writer.write_varint64(secs);
+        context.writer.write_var_i64(secs);
         context.writer.write_i32(nanos);
         Ok(())
     }
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let secs = context.reader.read_varint64()?;
+        let secs = context.reader.read_var_i64()?;
         let nanos = context.reader.read_i32()?;
         if !(-999_999_999..=999_999_999).contains(&nanos) {
             // chrono supports negative nanoseconds by applying normalization internally.
@@ -269,7 +269,7 @@ impl Serializer for ChronoDuration {
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
-        9 + mem::size_of::<i32>() // max varint64 is 9 bytes + 4 bytes for i32
+        9 + mem::size_of::<i32>() // max write_var_i64 payload is 9 bytes + 4 bytes for i32
     }
 
     #[inline(always)]

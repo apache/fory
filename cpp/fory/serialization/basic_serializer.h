@@ -280,7 +280,7 @@ template <> struct Serializer<int32_t> {
   }
 
   static inline void write_data(int32_t value, WriteContext &ctx) {
-    ctx.write_varint32(value);
+    ctx.write_var_int32(value);
   }
 
   static inline void write_data_generic(int32_t value, WriteContext &ctx,
@@ -305,11 +305,11 @@ template <> struct Serializer<int32_t> {
         return 0;
       }
     }
-    return ctx.read_varint32(ctx.error());
+    return ctx.read_var_int32(ctx.error());
   }
 
   static inline int32_t read_data(ReadContext &ctx) {
-    return ctx.read_varint32(ctx.error());
+    return ctx.read_var_int32(ctx.error());
   }
 
   static inline int32_t read_data_generic(ReadContext &ctx, bool) {
@@ -351,7 +351,7 @@ template <> struct Serializer<int64_t> {
   }
 
   static inline void write_data(int64_t value, WriteContext &ctx) {
-    ctx.write_varint64(value);
+    ctx.write_var_int64(value);
   }
 
   static inline void write_data_generic(int64_t value, WriteContext &ctx,
@@ -376,11 +376,11 @@ template <> struct Serializer<int64_t> {
         return 0;
       }
     }
-    return ctx.read_varint64(ctx.error());
+    return ctx.read_var_int64(ctx.error());
   }
 
   static inline int64_t read_data(ReadContext &ctx) {
-    return ctx.read_varint64(ctx.error());
+    return ctx.read_var_int64(ctx.error());
   }
 
   static inline int64_t read_data_generic(ReadContext &ctx, bool) {

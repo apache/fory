@@ -507,7 +507,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     // INT32 values are encoded as varint32 in the C++
     // serializer, so we must consume a varint32 here
     // instead of assuming fixed-width encoding.
-    ctx.read_varint32(ctx.error());
+    ctx.read_var_int32(ctx.error());
     return;
   }
 
@@ -519,7 +519,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     // INT64 values are encoded as varint64 in the C++
     // serializer, so we must consume a varint64 here
     // instead of assuming fixed-width encoding.
-    ctx.read_varint64(ctx.error());
+    ctx.read_var_int64(ctx.error());
     return;
   }
 

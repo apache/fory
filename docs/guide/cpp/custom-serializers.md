@@ -290,9 +290,9 @@ ctx.write_uint16(value);
 
 // Variable-length integers (compact encoding)
 ctx.write_var_uint32(value);   // Unsigned varint
-ctx.write_varint32(value);    // Signed zigzag varint
+ctx.write_var_int32(value);    // Signed zigzag varint
 ctx.write_var_uint64(value);   // Unsigned varint
-ctx.write_varint64(value);    // Signed zigzag varint
+ctx.write_var_int64(value);    // Signed zigzag varint
 
 // Tagged integers (for mixed-size encoding)
 ctx.write_tagged_uint64(value);
@@ -318,9 +318,9 @@ int8_t i8 = ctx.read_int8(ctx.error());
 
 // Variable-length integers
 uint32_t u32 = ctx.read_var_uint32(ctx.error());
-int32_t i32 = ctx.read_varint32(ctx.error());
+int32_t i32 = ctx.read_var_int32(ctx.error());
 uint64_t u64 = ctx.read_var_uint64(ctx.error());
-int64_t i64 = ctx.read_varint64(ctx.error());
+int64_t i64 = ctx.read_var_int64(ctx.error());
 
 // Check for errors after read operations
 if (ctx.has_error()) {

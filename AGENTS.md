@@ -51,10 +51,10 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Source of Truth
 
-- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/guide/DEVELOPMENT.md`, and language guides under `docs/guide/`.
+- Primary references: `README.md`, `CONTRIBUTING.md`, `docs/DEVELOPMENT.md`, and language guides under `docs/guide/`.
 - Protocol changes require reading and updating the relevant specs in `docs/specification/**` and aligning the relevant cross-language tests.
 - If instructions conflict, follow the most specific module docs and call out the conflict.
-- Updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
+- `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
 - When benchmark logic, scripts, configuration, or compared serializers change, rerun the relevant benchmarks and refresh the artifacts under `docs/benchmarks/**`.
 
 ## Shared Engineering Expectations

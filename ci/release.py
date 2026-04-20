@@ -293,6 +293,12 @@ def bump_dart_version(new_version):
         "dart/packages/fory-test",
     ]:
         _bump_version(p, "pubspec.yaml", new_version, _update_pubspec_version)
+    _bump_version(
+        "dart/packages/fory",
+        "README.md",
+        new_version,
+        _update_dart_readme_dependency_version,
+    )
 
 
 def bump_compiler_version(new_version):
@@ -495,6 +501,14 @@ def _update_pubspec_version(lines, v: str):
             if prefix:
                 lines[index] = f"{prefix.group(1)} {v}\n"
     return lines
+
+
+def _update_dart_readme_dependency_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if re.match(r"^\s*fory:\s*\^[^\s]+\s*$", line):
+            lines[index] = f"  fory: ^{v}\n"
+            return lines
+    raise ValueError("No Dart README dependency snippet for fory found")
 
 
 def _update_csharp_props_version(lines, v: str):

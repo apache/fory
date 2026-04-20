@@ -43,6 +43,303 @@ thread_local! {
         UnsafeCell::new(ContextCache::new());
 }
 
+/// Builder for configuring a [`Fory`] runtime before first use.
+///
+/// `ForyBuilder` owns the configuration phase. Call [`build`](Self::build) to create the
+/// runtime, then use [`Fory`] for registration and serialization operations.
+///
+/// ```rust
+/// use fory_core::Fory;
+///
+/// let fory = Fory::builder()
+///     .compatible(true)
+///     .compress_string(true)
+///     .max_dyn_depth(10)
+///     .build();
+/// ```
+#[derive(Default)]
+pub struct ForyBuilder {
+    config: Config,
+}
+
+impl ForyBuilder {
+    /// Sets the serialization compatible mode for this Fory builder.
+    ///
+    /// # Arguments
+    ///
+    /// * `compatible` - The serialization compatible mode to use. Options are:
+    ///   - `false`: Schema must be consistent between serialization and deserialization.
+    ///     No metadata is shared. This is the fastest mode.
+    ///   - true`: Supports schema evolution and type metadata sharing for better
+    ///     cross-version compatibility.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Note
+    ///
+    /// Setting the compatible mode also automatically configures the `share_meta` flag:
+    /// - `false` → `share_meta = false`
+    /// - true` → `share_meta = true`
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::builder().compatible(true).build();
+    /// ```
+    pub fn compatible(mut self, compatible: bool) -> Self {
+        // Setting share_meta individually is not supported currently
+        self.config.share_meta = compatible;
+        self.config.compatible = compatible;
+        if compatible {
+            self.config.check_struct_version = false;
+        }
+        self
+    }
+
+    /// Enables or disables cross-language serialization protocol.
+    ///
+    /// # Arguments
+    ///
+    /// * `xlang` - If `true`, uses the cross-language serialization format compatible with
+    ///   other Fory implementations (Java, Python, C++, etc.). If `false`, uses a Rust-only
+    ///   optimized format.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // For cross-language use (default)
+    /// let fory = Fory::builder().xlang(true).build();
+    ///
+    /// // For Rust-only optimization, this mode is faster and more compact since it avoids
+    /// // cross-language metadata and type system costs.
+    /// let fory = Fory::builder().xlang(false).build();
+    /// ```
+    pub fn xlang(mut self, xlang: bool) -> Self {
+        self.config.xlang = xlang;
+        if !self.config.check_struct_version {
+            self.config.check_struct_version = !self.config.compatible;
+        }
+        self
+    }
+
+    /// Enables or disables meta string compression.
+    ///
+    /// # Arguments
+    ///
+    /// * `compress_string` - If `true`, enables meta string compression to reduce serialized
+    ///   payload size by deduplicating and encoding frequently used strings (such as type names
+    ///   and field names). If `false`, strings are serialized without compression.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Trade-offs
+    ///
+    /// - **Enabled**: Smaller payload size, slightly higher CPU overhead
+    /// - **Disabled**: Larger payload size, faster serialization/deserialization
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::builder().compress_string(true).build();
+    /// ```
+    pub fn compress_string(mut self, compress_string: bool) -> Self {
+        self.config.compress_string = compress_string;
+        self
+    }
+
+    /// Enables or disables class version checking for schema consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `check_struct_version` - If `true`, enables class version checking to ensure
+    ///   schema consistency between serialization and deserialization. When enabled,
+    ///   a version hash computed from field types is written/read to detect schema mismatches.
+    ///   If `false`, no version checking is performed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Note
+    ///
+    /// This feature is only effective when `compatible` mode is `false`. In compatible mode,
+    /// schema evolution is supported and version checking is not needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::builder()
+    ///     .compatible(false)
+    ///     .check_struct_version(true)
+    ///     .build();
+    /// ```
+    pub fn check_struct_version(mut self, check_struct_version: bool) -> Self {
+        if self.config.compatible && check_struct_version {
+            // ignore setting if compatible mode is on
+            return self;
+        }
+        self.config.check_struct_version = check_struct_version;
+        self
+    }
+
+    /// Enables or disables reference tracking for shared and circular references.
+    ///
+    /// # Arguments
+    ///
+    /// * `track_ref` - If `true`, enables reference tracking which allows
+    ///   preserving shared object references and circular references during
+    ///   serialization/deserialization.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::builder().track_ref(true).build();
+    /// ```
+    pub fn track_ref(mut self, track_ref: bool) -> Self {
+        self.config.track_ref = track_ref;
+        self
+    }
+
+    /// Sets the maximum depth for nested dynamic object serialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_dyn_depth` - The maximum nesting depth allowed for dynamically-typed objects
+    ///   (e.g., trait objects, boxed types). This prevents stack overflow from deeply nested
+    ///   structures in dynamic serialization scenarios.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `5`.
+    ///
+    /// # Behavior
+    ///
+    /// When the depth limit is exceeded during deserialization, an error is returned to prevent
+    /// potential stack overflow or infinite recursion.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // Allow deeper nesting for complex object graphs
+    /// let fory = Fory::builder().max_dyn_depth(10).build();
+    ///
+    /// // Restrict nesting for safer deserialization
+    /// let fory = Fory::builder().max_dyn_depth(3).build();
+    /// ```
+    pub fn max_dyn_depth(mut self, max_dyn_depth: u32) -> Self {
+        self.config.max_dyn_depth = max_dyn_depth;
+        self
+    }
+
+    /// Sets the maximum allowed size for binary data during deserialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_binary_size` - The maximum number of bytes allowed for a single binary/primitive-array
+    ///   payload during deserialization. Payloads exceeding this limit will cause a
+    ///   `SizeLimitExceeded` error.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `64 * 1024 * 1024` (64 MB).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // Limit binary payloads to 1 MB
+    /// let fory = Fory::builder().max_binary_size(1024 * 1024).build();
+    /// ```
+    pub fn max_binary_size(mut self, max_binary_size: u32) -> Self {
+        self.config.max_binary_size = max_binary_size;
+        self
+    }
+
+    /// Sets the maximum allowed number of elements in a collection or entries in a map
+    /// during deserialization.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_collection_size` - The maximum number of elements/entries allowed for a single
+    ///   collection or map during deserialization. Payloads exceeding this limit will cause a
+    ///   `SizeLimitExceeded` error.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `1024 * 1024` (1 million elements).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// // Limit collections to 10000 elements
+    /// let fory = Fory::builder().max_collection_size(10000).build();
+    /// ```
+    pub fn max_collection_size(mut self, max_collection_size: u32) -> Self {
+        self.config.max_collection_size = max_collection_size;
+        self
+    }
+
+    /// Builds a [`Fory`] runtime with the current builder configuration.
+    pub fn build(self) -> Fory {
+        Fory::from_config(self.config)
+    }
+}
+
 /// The main Fory serialization framework instance.
 ///
 /// `Fory` provides high-performance cross-language serialization and deserialization
@@ -81,10 +378,11 @@ thread_local! {
 /// ```rust
 /// use fory_core::Fory;
 ///
-/// let fory = Fory::default()
+/// let fory = Fory::builder()
 ///     .compatible(true)
 ///     .compress_string(true)
-///     .max_dyn_depth(10);
+///     .max_dyn_depth(10)
+///     .build();
 /// ```
 pub struct Fory {
     /// Unique identifier for this Fory instance, used as key in thread-local context maps.
@@ -98,227 +396,26 @@ pub struct Fory {
 
 impl Default for Fory {
     fn default() -> Self {
-        Fory {
-            id: FORY_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
-            config: Config::default(),
-            type_resolver: TypeResolver::default(),
-            final_type_resolver: OnceLock::new(),
-        }
+        Self::builder().build()
     }
 }
 
 impl Fory {
-    /// Sets the serialization compatible mode for this Fory instance.
-    ///
-    /// # Arguments
-    ///
-    /// * `compatible` - The serialization compatible mode to use. Options are:
-    ///   - `false`: Schema must be consistent between serialization and deserialization.
-    ///     No metadata is shared. This is the fastest mode.
-    ///   - true`: Supports schema evolution and type metadata sharing for better
-    ///     cross-version compatibility.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Note
-    ///
-    /// Setting the compatible mode also automatically configures the `share_meta` flag:
-    /// - `false` → `share_meta = false`
-    /// - true` → `share_meta = true`
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default().compatible(true);
-    /// ```
-    pub fn compatible(mut self, compatible: bool) -> Self {
-        // Setting share_meta individually is not supported currently
-        self.config.share_meta = compatible;
-        self.config.compatible = compatible;
-        self.type_resolver.set_compatible(compatible);
-        if compatible {
-            self.config.check_struct_version = false;
+    /// Creates a builder for configuring a [`Fory`] runtime.
+    pub fn builder() -> ForyBuilder {
+        ForyBuilder::default()
+    }
+
+    fn from_config(config: Config) -> Self {
+        let mut type_resolver = TypeResolver::default();
+        type_resolver.set_compatible(config.compatible);
+        type_resolver.set_xlang(config.xlang);
+        Self {
+            id: FORY_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            config,
+            type_resolver,
+            final_type_resolver: OnceLock::new(),
         }
-        self
-    }
-
-    /// Enables or disables cross-language serialization protocol.
-    ///
-    /// # Arguments
-    ///
-    /// * `xlang` - If `true`, uses the cross-language serialization format compatible with
-    ///   other Fory implementations (Java, Python, C++, etc.). If `false`, uses a Rust-only
-    ///   optimized format.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// // For cross-language use (default)
-    /// let fory = Fory::default().xlang(true);
-    ///
-    /// // For Rust-only optimization, this mode is faster and more compact since it avoids
-    /// // cross-language metadata and type system costs.
-    /// let fory = Fory::default().xlang(false);
-    /// ```
-    pub fn xlang(mut self, xlang: bool) -> Self {
-        self.config.xlang = xlang;
-        if !self.config.check_struct_version {
-            self.config.check_struct_version = !self.config.compatible;
-        }
-        self.type_resolver.set_xlang(xlang);
-        self
-    }
-
-    /// Enables or disables meta string compression.
-    ///
-    /// # Arguments
-    ///
-    /// * `compress_string` - If `true`, enables meta string compression to reduce serialized
-    ///   payload size by deduplicating and encoding frequently used strings (such as type names
-    ///   and field names). If `false`, strings are serialized without compression.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Trade-offs
-    ///
-    /// - **Enabled**: Smaller payload size, slightly higher CPU overhead
-    /// - **Disabled**: Larger payload size, faster serialization/deserialization
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default().compress_string(true);
-    /// ```
-    pub fn compress_string(mut self, compress_string: bool) -> Self {
-        self.config.compress_string = compress_string;
-        self
-    }
-
-    /// Enables or disables class version checking for schema consistency.
-    ///
-    /// # Arguments
-    ///
-    /// * `check_struct_version` - If `true`, enables class version checking to ensure
-    ///   schema consistency between serialization and deserialization. When enabled,
-    ///   a version hash computed from field types is written/read to detect schema mismatches.
-    ///   If `false`, no version checking is performed.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Note
-    ///
-    /// This feature is only effective when `compatible` mode is `false`. In compatible mode,
-    /// schema evolution is supported and version checking is not needed.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default()
-    ///     .compatible(false)
-    ///     .check_struct_version(true);
-    /// ```
-    pub fn check_struct_version(mut self, check_struct_version: bool) -> Self {
-        if self.config.compatible && check_struct_version {
-            // ignore setting if compatible mode is on
-            return self;
-        }
-        self.config.check_struct_version = check_struct_version;
-        self
-    }
-
-    /// Enables or disables reference tracking for shared and circular references.
-    ///
-    /// # Arguments
-    ///
-    /// * `track_ref` - If `true`, enables reference tracking which allows
-    ///   preserving shared object references and circular references during
-    ///   serialization/deserialization.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default().track_ref(true);
-    /// ```
-    pub fn track_ref(mut self, track_ref: bool) -> Self {
-        self.config.track_ref = track_ref;
-        self
-    }
-
-    /// Sets the maximum depth for nested dynamic object serialization.
-    ///
-    /// # Arguments
-    ///
-    /// * `max_dyn_depth` - The maximum nesting depth allowed for dynamically-typed objects
-    ///   (e.g., trait objects, boxed types). This prevents stack overflow from deeply nested
-    ///   structures in dynamic serialization scenarios.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `5`.
-    ///
-    /// # Behavior
-    ///
-    /// When the depth limit is exceeded during deserialization, an error is returned to prevent
-    /// potential stack overflow or infinite recursion.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// // Allow deeper nesting for complex object graphs
-    /// let fory = Fory::default().max_dyn_depth(10);
-    ///
-    /// // Restrict nesting for safer deserialization
-    /// let fory = Fory::default().max_dyn_depth(3);
-    /// ```
-    pub fn max_dyn_depth(mut self, max_dyn_depth: u32) -> Self {
-        self.config.max_dyn_depth = max_dyn_depth;
-        self
     }
 
     /// Returns whether cross-language serialization is enabled.
@@ -356,6 +453,16 @@ impl Fory {
     /// Returns the maximum depth for nested dynamic object serialization.
     pub fn get_max_dyn_depth(&self) -> u32 {
         self.config.max_dyn_depth
+    }
+
+    /// Returns the maximum allowed binary data size in bytes.
+    pub fn get_max_binary_size(&self) -> u32 {
+        self.config.max_binary_size
+    }
+
+    /// Returns the maximum allowed collection/map element count.
+    pub fn get_max_collection_size(&self) -> u32 {
+        self.config.max_collection_size
     }
 
     /// Returns whether class version checking is enabled.
@@ -599,12 +706,14 @@ impl Fory {
         WRITE_CONTEXTS.with(|cache| {
             let cache = unsafe { &mut *cache.get() };
             let id = self.id;
-            let config = self.config.clone();
 
             let context = cache.get_or_insert_result(id, || {
                 // Only fetch type resolver when creating a new context
                 let type_resolver = self.get_final_type_resolver()?;
-                Ok(Box::new(WriteContext::new(type_resolver.clone(), config)))
+                Ok(Box::new(WriteContext::new(
+                    type_resolver.clone(),
+                    self.config.clone(),
+                )))
             })?;
             f(context)
         })
@@ -1015,12 +1124,14 @@ impl Fory {
         READ_CONTEXTS.with(|cache| {
             let cache = unsafe { &mut *cache.get() };
             let id = self.id;
-            let config = self.config.clone();
 
             let context = cache.get_or_insert_result(id, || {
                 // Only fetch type resolver when creating a new context
                 let type_resolver = self.get_final_type_resolver()?;
-                Ok(Box::new(ReadContext::new(type_resolver.clone(), config)))
+                Ok(Box::new(ReadContext::new(
+                    type_resolver.clone(),
+                    self.config.clone(),
+                )))
             })?;
             f(context)
         })

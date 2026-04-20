@@ -35,7 +35,7 @@ impl Serializer for String {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let bitor = (self.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
-        context.writer.write_var_uint36_small(bitor);
+        context.writer.write_var_u36_small(bitor);
         context.writer.write_utf8_string(self);
         Ok(())
     }
@@ -43,7 +43,7 @@ impl Serializer for String {
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         // xlang mode: read encoding header and decode accordingly
-        let bitor = context.reader.read_varuint36small()?;
+        let bitor = context.reader.read_var_u36_small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
         let s = match encoding {

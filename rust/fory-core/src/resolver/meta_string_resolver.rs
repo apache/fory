@@ -137,7 +137,7 @@ impl MetaStringWriterResolver {
         let mb_ptr: *const MetaStringBytes = mb_ref as *const _;
         let id = if let Some(exist_id) = self.bytes_id_map.get_mut(&mb_ptr) {
             if *exist_id != MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID {
-                writer.write_var_uint32(((*exist_id as u32 + 1) << 1) | 1);
+                writer.write_var_u32(((*exist_id as u32 + 1) << 1) | 1);
                 return Ok(());
             }
             let id = self.dynamic_write_id;
@@ -156,7 +156,7 @@ impl MetaStringWriterResolver {
         self.dynamic_written[id] = mb_ptr;
 
         let len = mb_ref.bytes.len();
-        writer.write_var_uint32((len as u32) << 1);
+        writer.write_var_u32((len as u32) << 1);
         if len > Self::SMALL_STRING_THRESHOLD {
             writer.write_i64(mb_ref.hash_code);
         } else if len != 0 {
@@ -237,7 +237,7 @@ impl MetaStringReaderResolver {
         &mut self,
         reader: &mut Reader,
     ) -> Result<&MetaStringBytes, Error> {
-        let header = reader.read_varuint32()?;
+        let header = reader.read_var_u32()?;
         let len = (header >> 1) as usize;
 
         if (header & 0b1) == 0 {

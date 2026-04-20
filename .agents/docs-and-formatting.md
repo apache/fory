@@ -6,7 +6,7 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 
 - `README.md`
 - `CONTRIBUTING.md`
-- `docs/guide/DEVELOPMENT.md`
+- `docs/DEVELOPMENT.md`
 - language guides under `docs/guide/`
 - `docs/specification/**`
 - `docs/compiler/**`
@@ -18,7 +18,7 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 - Keep examples working and aligned with the current API and protocol behavior.
 - Provide or update working examples when adding new features or materially changing workflows.
 - Add migration guidance when a change is breaking or materially changes workflow.
-- Updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content should be changed there instead of this repo.
+- `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content should be changed there instead of this repo.
 - When benchmark logic, scripts, config, or compared serializers change, rerun the relevant benchmarks and refresh the report and plots under `docs/benchmarks/**`.
 - Never manually edit generated code for compiler or IDL outputs; regenerate from the source schema or IDL.
 

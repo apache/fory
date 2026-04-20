@@ -280,7 +280,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::default().compatible(true);
+let mut fory = Fory::builder().compatible(true).build();
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<Zoo>(102);
@@ -339,10 +339,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::default().compatible(true);
+let mut fory1 = Fory::builder().compatible(true).build();
 fory1.register::<PersonV1>(1);
 
-let mut fory2 = Fory::default().compatible(true);
+let mut fory2 = Fory::builder().compatible(true).build();
 fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
@@ -468,13 +468,13 @@ struct CustomType {
 impl Serializer for CustomType {
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         context.writer.write_i32(self.value);
-        context.writer.write_varuint32(self.name.len() as u32);
+        context.writer.write_var_u32(self.name.len() as u32);
         context.writer.write_utf8_string(&self.name);
     }
 
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let value = context.reader.read_i32();
-        let len = context.reader.read_varuint32() as usize;
+        let len = context.reader.read_var_u32() as usize;
         let name = context.reader.read_utf8_string(len);
         Ok(Self { value, name })
     }
@@ -601,9 +601,9 @@ Apache Fory™ supports seamless data exchange across multiple languages:
 use fory::Fory;
 
 // Enable cross-language mode
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 // Register types with consistent IDs across languages
 fory.register::<MyStruct>(100);

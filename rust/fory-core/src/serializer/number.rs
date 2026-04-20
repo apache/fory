@@ -67,7 +67,7 @@ macro_rules! impl_num_serializer {
 
             #[inline(always)]
             fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_var_uint32($field_type as u32);
+                context.writer.write_var_u32($field_type as u32);
                 Ok(())
             }
 
@@ -89,14 +89,14 @@ impl_num_serializer!(i8, Writer::write_i8, Reader::read_i8, TypeId::INT8);
 impl_num_serializer!(i16, Writer::write_i16, Reader::read_i16, TypeId::INT16);
 impl_num_serializer!(
     i32,
-    Writer::write_varint32,
-    Reader::read_varint32,
+    Writer::write_var_i32,
+    Reader::read_var_i32,
     TypeId::VARINT32
 );
 impl_num_serializer!(
     i64,
-    Writer::write_varint64,
-    Reader::read_varint64,
+    Writer::write_var_i64,
+    Reader::read_var_i64,
     TypeId::VARINT64
 );
 impl_num_serializer!(f32, Writer::write_f32, Reader::read_f32, TypeId::FLOAT32);
@@ -135,7 +135,7 @@ impl Serializer for float16 {
     }
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_uint32(TypeId::FLOAT16 as u32);
+        context.writer.write_var_u32(TypeId::FLOAT16 as u32);
         Ok(())
     }
     #[inline(always)]

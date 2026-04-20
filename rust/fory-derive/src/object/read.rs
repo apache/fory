@@ -69,8 +69,8 @@ fn gen_compatible_unsigned_read(
             // Read u32 based on remote type_id
             match _field.field_type.type_id {
                 fory_core::types::UINT32 => context.reader.read_u32()?,
-                fory_core::types::VAR_UINT32 => context.reader.read_varuint32()?,
-                _ => context.reader.read_varuint32()?, // Default to varint
+                fory_core::types::VAR_UINT32 => context.reader.read_var_u32()?,
+                _ => context.reader.read_var_u32()?, // Default to varint
             }
         }
     } else {
@@ -79,9 +79,9 @@ fn gen_compatible_unsigned_read(
             // Read u64 based on remote type_id
             match _field.field_type.type_id {
                 fory_core::types::UINT64 => context.reader.read_u64()?,
-                fory_core::types::VAR_UINT64 => context.reader.read_varuint64()?,
+                fory_core::types::VAR_UINT64 => context.reader.read_var_u64()?,
                 fory_core::types::TAGGED_UINT64 => context.reader.read_tagged_u64()?,
-                _ => context.reader.read_varuint64()?, // Default to varint
+                _ => context.reader.read_var_u64()?, // Default to varint
             }
         }
     };

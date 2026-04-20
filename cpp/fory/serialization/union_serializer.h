@@ -327,13 +327,13 @@ inline void write_union_value_data(const T &value, WriteContext &ctx,
       ctx.write_tagged_uint64(static_cast<uint64_t>(inner));
       return;
     case TypeId::VARINT32:
-      ctx.write_varint32(static_cast<int32_t>(inner));
+      ctx.write_var_int32(static_cast<int32_t>(inner));
       return;
     case TypeId::INT32:
       ctx.buffer().write_int32(static_cast<int32_t>(inner));
       return;
     case TypeId::VARINT64:
-      ctx.write_varint64(static_cast<int64_t>(inner));
+      ctx.write_var_int64(static_cast<int64_t>(inner));
       return;
     case TypeId::INT64:
       ctx.buffer().write_int64(static_cast<int64_t>(inner));
@@ -370,13 +370,13 @@ inline T read_union_value_data(ReadContext &ctx, uint32_t type_id) {
       value = static_cast<Inner>(ctx.read_tagged_uint64(ctx.error()));
       break;
     case TypeId::VARINT32:
-      value = static_cast<Inner>(ctx.read_varint32(ctx.error()));
+      value = static_cast<Inner>(ctx.read_var_int32(ctx.error()));
       break;
     case TypeId::INT32:
       value = static_cast<Inner>(ctx.read_int32(ctx.error()));
       break;
     case TypeId::VARINT64:
-      value = static_cast<Inner>(ctx.read_varint64(ctx.error()));
+      value = static_cast<Inner>(ctx.read_var_int64(ctx.error()));
       break;
     case TypeId::INT64:
       value = static_cast<Inner>(ctx.read_int64(ctx.error()));

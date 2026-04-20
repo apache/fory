@@ -123,8 +123,8 @@ fn bench_write_f64(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint32_small(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint32_small");
+fn bench_write_var_i32_small(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i32_small");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i32> = (0..1000).map(|i| i % 128).collect(); // Small values (1 byte)
@@ -135,7 +135,7 @@ fn bench_write_varint32_small(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint32(black_box(val));
+                writer.write_var_i32(black_box(val));
             }
             black_box(&buf);
         })
@@ -144,8 +144,8 @@ fn bench_write_varint32_small(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint32_medium(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint32_medium");
+fn bench_write_var_i32_medium(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i32_medium");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i32> = (0..1000).map(|i| i * 1000).collect(); // Medium values (2-3 bytes)
@@ -156,7 +156,7 @@ fn bench_write_varint32_medium(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint32(black_box(val));
+                writer.write_var_i32(black_box(val));
             }
             black_box(&buf);
         })
@@ -165,8 +165,8 @@ fn bench_write_varint32_medium(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint32_large(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint32_large");
+fn bench_write_var_i32_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i32_large");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i32> = (0..1000).map(|i| i * 1000000).collect(); // Large values (4-5 bytes)
@@ -177,7 +177,7 @@ fn bench_write_varint32_large(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint32(black_box(val));
+                writer.write_var_i32(black_box(val));
             }
             black_box(&buf);
         })
@@ -186,8 +186,8 @@ fn bench_write_varint32_large(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint64_small(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint64_small");
+fn bench_write_var_i64_small(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i64_small");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i64> = (0..1000).map(|i| i % 128).collect(); // Small values (1 byte)
@@ -198,7 +198,7 @@ fn bench_write_varint64_small(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint64(black_box(val));
+                writer.write_var_i64(black_box(val));
             }
             black_box(&buf);
         })
@@ -207,8 +207,8 @@ fn bench_write_varint64_small(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint64_medium(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint64_medium");
+fn bench_write_var_i64_medium(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i64_medium");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i64> = (0..1000).map(|i| i * 1000000).collect(); // Medium values (3-4 bytes)
@@ -219,7 +219,7 @@ fn bench_write_varint64_medium(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint64(black_box(val));
+                writer.write_var_i64(black_box(val));
             }
             black_box(&buf);
         })
@@ -228,8 +228,8 @@ fn bench_write_varint64_medium(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_write_varint64_large(c: &mut Criterion) {
-    let mut group = c.benchmark_group("write_varint64_large");
+fn bench_write_var_i64_large(c: &mut Criterion) {
+    let mut group = c.benchmark_group("write_var_i64_large");
     group.throughput(Throughput::Elements(1000));
 
     let values: Vec<i64> = (0..1000).map(|i| i as i64 * 1000000000000).collect(); // Large values (6-9 bytes)
@@ -240,7 +240,7 @@ fn bench_write_varint64_large(c: &mut Criterion) {
             buf.clear();
             let mut writer = Writer::from_buffer(&mut buf);
             for &val in &values {
-                writer.write_varint64(black_box(val));
+                writer.write_var_i64(black_box(val));
             }
             black_box(&buf);
         })
@@ -256,11 +256,11 @@ criterion_group!(
     bench_write_i64,
     bench_write_f32,
     bench_write_f64,
-    bench_write_varint32_small,
-    bench_write_varint32_medium,
-    bench_write_varint32_large,
-    bench_write_varint64_small,
-    bench_write_varint64_medium,
-    bench_write_varint64_large
+    bench_write_var_i32_small,
+    bench_write_var_i32_medium,
+    bench_write_var_i32_large,
+    bench_write_var_i64_small,
+    bench_write_var_i64_medium,
+    bench_write_var_i64_large
 );
 criterion_main!(benches);

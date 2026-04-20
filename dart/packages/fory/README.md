@@ -280,3 +280,6 @@ The main exported API includes:
 
 For the xlang wire format and type mapping details, see the
 [Apache Fory specification](https://github.com/apache/fory/tree/main/docs/specification).
+
+For the full Dart guide, see
+[https://fory.apache.org/docs/guide/dart/](https://fory.apache.org/docs/guide/dart/).

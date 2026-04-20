@@ -1,6 +1,6 @@
 ---
 title: Schema Evolution
-sidebar_position: 9
+sidebar_position: 8
 id: schema_evolution
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

@@ -446,9 +446,9 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int(ReadContext &ctx) {
       return static_cast<FieldType>(ctx.read_tagged_int64(ctx.error()));
     }
     if constexpr (is_configurable_int32_v<FieldType>) {
-      return static_cast<FieldType>(ctx.read_varint32(ctx.error()));
+      return static_cast<FieldType>(ctx.read_var_int32(ctx.error()));
     }
-    return static_cast<FieldType>(ctx.read_varint64(ctx.error()));
+    return static_cast<FieldType>(ctx.read_var_int64(ctx.error()));
   } else {
     if constexpr (enc == Encoding::Varint) {
       if constexpr (is_configurable_int32_v<FieldType>) {
@@ -1880,7 +1880,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
       if constexpr (enc == Encoding::Fixed) {
         ctx.buffer().write_int32(static_cast<int32_t>(value));
       } else {
-        ctx.write_varint32(static_cast<int32_t>(value));
+        ctx.write_var_int32(static_cast<int32_t>(value));
       }
     } else if constexpr (std::is_same_v<InnerType, int64_t> ||
                          std::is_same_v<InnerType, long long>) {
@@ -1889,7 +1889,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
       } else if constexpr (enc == Encoding::Tagged) {
         ctx.write_tagged_int64(static_cast<int64_t>(value));
       } else {
-        ctx.write_varint64(static_cast<int64_t>(value));
+        ctx.write_var_int64(static_cast<int64_t>(value));
       }
     }
     return;
@@ -1927,7 +1927,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
         if constexpr (enc == Encoding::Fixed) {
           ctx.buffer().write_int32(static_cast<int32_t>(field_value));
         } else {
-          ctx.write_varint32(static_cast<int32_t>(field_value));
+          ctx.write_var_int32(static_cast<int32_t>(field_value));
         }
         return;
       } else if constexpr (std::is_same_v<FieldType, int64_t> ||
@@ -1937,7 +1937,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
         } else if constexpr (enc == Encoding::Tagged) {
           ctx.write_tagged_int64(static_cast<int64_t>(field_value));
         } else {
-          ctx.write_varint64(static_cast<int64_t>(field_value));
+          ctx.write_var_int64(static_cast<int64_t>(field_value));
         }
         return;
       }
@@ -2098,7 +2098,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
     return static_cast<TargetType>(ctx.read_int32(error));
   case TypeId::VARINT32:
     // VARINT32 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varint32(error));
+    return static_cast<TargetType>(ctx.read_var_int32(error));
   case TypeId::UINT32:
     // UINT32 uses fixed 4-byte encoding
     return static_cast<TargetType>(
@@ -2111,7 +2111,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
     return static_cast<TargetType>(ctx.read_int64(error));
   case TypeId::VARINT64:
     // VARINT64 uses varint encoding
-    return static_cast<TargetType>(ctx.read_varint64(error));
+    return static_cast<TargetType>(ctx.read_var_int64(error));
   case TypeId::TAGGED_INT64:
     // TAGGED_INT64 uses tagged encoding (special hybrid encoding)
     return static_cast<TargetType>(ctx.read_tagged_int64(error));
@@ -2176,13 +2176,13 @@ FORY_ALWAYS_INLINE FieldType read_primitive_field_direct(ReadContext &ctx,
     return static_cast<uint16_t>(v);
   } else if constexpr (std::is_same_v<FieldType, int32_t>) {
     // int32_t uses varint encoding
-    return ctx.read_varint32(error);
+    return ctx.read_var_int32(error);
   } else if constexpr (std::is_same_v<FieldType, uint32_t>) {
     // uint32_t uses fixed 4-byte encoding (not varint!)
     return static_cast<uint32_t>(ctx.read_int32(error));
   } else if constexpr (std::is_same_v<FieldType, int64_t>) {
     // int64_t uses varint encoding
-    return ctx.read_varint64(error);
+    return ctx.read_var_int64(error);
   } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
     // uint64_t uses fixed 8-byte encoding (not varint!)
     return static_cast<uint64_t>(ctx.read_int64(error));
@@ -2344,7 +2344,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
         if constexpr (enc == Encoding::Fixed) {
           value = static_cast<InnerType>(ctx.read_int32(ctx.error()));
         } else {
-          value = static_cast<InnerType>(ctx.read_varint32(ctx.error()));
+          value = static_cast<InnerType>(ctx.read_var_int32(ctx.error()));
         }
       } else if constexpr (std::is_same_v<InnerType, int64_t> ||
                            std::is_same_v<InnerType, long long>) {
@@ -2353,7 +2353,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
         } else if constexpr (enc == Encoding::Tagged) {
           value = static_cast<InnerType>(ctx.read_tagged_int64(ctx.error()));
         } else {
-          value = static_cast<InnerType>(ctx.read_varint64(ctx.error()));
+          value = static_cast<InnerType>(ctx.read_var_int64(ctx.error()));
         }
       }
       if constexpr (is_fory_field_v<RawFieldType>) {

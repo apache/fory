@@ -67,3 +67,53 @@ fn test_struct_with_maps() {
     let obj: MapContainer = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(container, obj);
 }
+
+#[test]
+fn test_hashmap_max_collection_size_guardrail() {
+    let fory = Fory::default();
+    let map = HashMap::from([
+        ("key1".to_string(), 1_i32),
+        ("key2".to_string(), 2_i32),
+        ("key3".to_string(), 3_i32),
+    ]);
+    let serialized = fory.serialize(&map).unwrap();
+
+    let limited_fory = Fory::builder().max_collection_size(2).build();
+    let err = limited_fory
+        .deserialize::<HashMap<String, i32>>(&serialized)
+        .expect_err("expected hashmap deserialization to fail on max_collection_size");
+
+    assert!(
+        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
+        "expected SizeLimitExceeded, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("Map size 3 exceeds limit 2"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn test_btreemap_max_collection_size_guardrail() {
+    let fory = Fory::default();
+    let map = BTreeMap::from([
+        ("key1".to_string(), 1_i32),
+        ("key2".to_string(), 2_i32),
+        ("key3".to_string(), 3_i32),
+    ]);
+    let serialized = fory.serialize(&map).unwrap();
+
+    let limited_fory = Fory::builder().max_collection_size(2).build();
+    let err = limited_fory
+        .deserialize::<BTreeMap<String, i32>>(&serialized)
+        .expect_err("expected btreemap deserialization to fail on max_collection_size");
+
+    assert!(
+        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
+        "expected SizeLimitExceeded, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("Map size 3 exceeds limit 2"),
+        "unexpected error message: {err}"
+    );
+}

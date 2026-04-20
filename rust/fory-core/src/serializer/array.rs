@@ -63,7 +63,7 @@ where
     T: Serializer + ForyDefault,
 {
     // Read the size in bytes
-    let size_bytes = context.reader.read_varuint32()? as usize;
+    let size_bytes = context.reader.read_var_u32()? as usize;
     let elem_size = mem::size_of::<T>();
     if size_bytes % elem_size != 0 {
         return Err(Error::invalid_data("Invalid data length"));
@@ -94,7 +94,7 @@ where
     T: Serializer + ForyDefault,
 {
     // Read collection length
-    let len = context.reader.read_varuint32()? as usize;
+    let len = context.reader.read_var_u32()? as usize;
     validate_array_length(len, N)?;
     // Handle zero-sized arrays
     if N == 0 {

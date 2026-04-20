@@ -120,3 +120,29 @@ fn test_heap_container() {
     assert_eq!(deserialized.binary_heap.len(), 3);
     assert_eq!(deserialized.binary_heap.peek(), Some(&3));
 }
+
+#[test]
+fn test_hashset_max_collection_size_guardrail() {
+    let fory = Fory::default();
+    let original = HashSet::from([
+        "apple".to_string(),
+        "banana".to_string(),
+        "cherry".to_string(),
+    ]);
+    let serialized = fory.serialize(&original).unwrap();
+
+    let limited_fory = Fory::builder().max_collection_size(2).build();
+    let err = limited_fory
+        .deserialize::<HashSet<String>>(&serialized)
+        .expect_err("expected collection size guardrail to reject the payload");
+
+    assert!(
+        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
+        "expected SizeLimitExceeded, got: {err}"
+    );
+    assert!(
+        err.to_string()
+            .contains("Collection size 3 exceeds limit 2"),
+        "unexpected error message: {err}"
+    );
+}

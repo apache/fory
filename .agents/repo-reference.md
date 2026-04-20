@@ -19,7 +19,7 @@ Load this file when you need repo layout, protocol context, compiler guidance, o
 - `CLAUDE.md`: compatibility shim that points back to `AGENTS.md`
 - `README.md`: project overview and quick start
 - `CONTRIBUTING.md`: contributor workflow and environment notes
-- `docs/guide/DEVELOPMENT.md`: development setup and build notes
+- `docs/DEVELOPMENT.md`: development setup and build notes
 - `docs/cpp_debug.md`: C++ debugging guidance
 - `licenserc.toml`: license header configuration
 

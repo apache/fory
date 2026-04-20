@@ -69,7 +69,7 @@ pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Re
         local_type_id_u32 == remote_type_id,
         Error::type_mismatch(local_type_id_u32, remote_type_id)
     );
-    let remote_user_type_id = context.reader.read_varuint32()?;
+    let remote_user_type_id = context.reader.read_var_u32()?;
     let local_user_type_id = context
         .get_type_resolver()
         .get_user_type_id_by_index(&std::any::TypeId::of::<T>(), T::fory_type_index())?;

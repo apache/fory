@@ -34,7 +34,7 @@ fn basic() {
         Map(HashMap<String, Token>),
     }
 
-    let mut fory = Fory::default().xlang(false);
+    let mut fory = Fory::builder().xlang(false).build();
     fory.register::<Token>(1000).unwrap();
 
     let mut map = HashMap::new();
@@ -75,10 +75,10 @@ fn named_enum() {
         Assign { value: i32, target: String },
     }
 
-    let mut fory1 = Fory::default().xlang(false);
+    let mut fory1 = Fory::builder().xlang(false).build();
     fory1.register::<Token1>(1000).unwrap();
 
-    let mut fory2 = Fory::default().xlang(false);
+    let mut fory2 = Fory::builder().xlang(false).build();
     fory2.register::<Token2>(1000).unwrap();
 
     let token = Token1::Assign {
@@ -132,7 +132,7 @@ fn struct_with_enum_field() {
         Color::fory_static_type_id()
     );
 
-    let mut fory = Fory::default().xlang(true).compatible(false);
+    let mut fory = Fory::builder().xlang(true).compatible(false).build();
     fory.register::<Color>(100).unwrap();
     fory.register::<StructWithEnum>(101).unwrap();
 
@@ -176,7 +176,7 @@ fn union_compatible_enum_xlang_format() {
     }
 
     // Test xlang mode serialization
-    let mut fory = Fory::default().xlang(true).compatible(false);
+    let mut fory = Fory::builder().xlang(true).compatible(false).build();
     fory.register::<StringOrLong>(300).unwrap();
     fory.register::<StructWithUnion>(301).unwrap();
 
@@ -224,7 +224,7 @@ fn struct_with_enum_field_explicit_nullable() {
         "Status should have ENUM TypeId"
     );
 
-    let mut fory = Fory::default().xlang(true).compatible(false);
+    let mut fory = Fory::builder().xlang(true).compatible(false).build();
     fory.register::<Status>(200).unwrap();
     fory.register::<StructWithExplicitNullable>(201).unwrap();
 

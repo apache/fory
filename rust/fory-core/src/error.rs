@@ -196,6 +196,15 @@ pub enum Error {
     /// Do not construct this variant directly; use [`Error::struct_version_mismatch`] instead.
     #[error("{0}")]
     StructVersionMismatch(Cow<'static, str>),
+
+    /// Deserialization size limit exceeded.
+    ///
+    /// Returned when a payload-driven length exceeds a configured guardrail
+    /// (e.g. `max_binary_size` or `max_collection_size`).
+    ///
+    /// Do not construct this variant directly; use [`Error::size_limit_exceeded`] instead.
+    #[error("{0}")]
+    SizeLimitExceeded(Cow<'static, str>),
 }
 
 impl Error {
@@ -489,6 +498,27 @@ impl Error {
     #[track_caller]
     pub fn unknown<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::Unknown(s.into());
+        if PANIC_ON_ERROR {
+            panic!("FORY_PANIC_ON_ERROR: {}", err);
+        }
+        err
+    }
+
+    /// Creates a new [`Error::SizeLimitExceeded`] from a string or static message.
+    ///
+    /// If `FORY_PANIC_ON_ERROR` environment variable is set, this will panic with the error message.
+    ///
+    /// # Example
+    /// ```
+    /// use fory_core::error::Error;
+    ///
+    /// let err = Error::size_limit_exceeded("Collection size 2000000 exceeds limit 1048576");
+    /// ```
+    #[inline(always)]
+    #[cold]
+    #[track_caller]
+    pub fn size_limit_exceeded<S: Into<Cow<'static, str>>>(s: S) -> Self {
+        let err = Error::SizeLimitExceeded(s.into());
         if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }

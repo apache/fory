@@ -32,6 +32,11 @@ pub const DECL_ELEMENT_TYPE: u8 = 0b100;
 //  Whether collection elements type same.
 pub const IS_SAME_TYPE: u8 = 0b1000;
 
+#[cold]
+fn collection_size_limit_exceeded(len: u32, max: u32) -> Error {
+    Error::size_limit_exceeded(format!("Collection size {} exceeds limit {}", len, max))
+}
+
 fn check_collection_len<T: Serializer>(context: &ReadContext, len: u32) -> Result<(), Error> {
     if std::mem::size_of::<T>() == 0 {
         return Ok(());
@@ -65,7 +70,7 @@ where
 {
     let iter = iter.into_iter();
     let len = iter.len();
-    context.writer.write_var_uint32(len as u32);
+    context.writer.write_var_u32(len as u32);
     if len == 0 {
         return Ok(());
     }
@@ -95,6 +100,8 @@ where
         context.writer.write_u8(header);
         T::fory_write_type_info(context)?;
     }
+    // Pre-reserve buffer space to avoid per-element capacity checks in the write loop.
+    context.writer.reserve(len * T::fory_reserved_space());
     if !has_null {
         for item in iter {
             item.fory_write_data_generic(context, has_generics)?;
@@ -239,9 +246,13 @@ where
     T: Serializer + ForyDefault,
     C: FromIterator<T>,
 {
-    let len = context.reader.read_varuint32()?;
+    let len = context.reader.read_var_u32()?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
+    }
+    let max = context.max_collection_size();
+    if len > max {
+        return Err(collection_size_limit_exceeded(len, max));
     }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_collection_data_dyn_ref(context, len);
@@ -281,9 +292,13 @@ pub fn read_vec_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error>
 where
     T: Serializer + ForyDefault,
 {
-    let len = context.reader.read_varuint32()?;
+    let len = context.reader.read_var_u32()?;
     if len == 0 {
         return Ok(Vec::new());
+    }
+    let max = context.max_collection_size();
+    if len > max {
+        return Err(collection_size_limit_exceeded(len, max));
     }
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         return read_vec_data_dyn_ref(context, len);

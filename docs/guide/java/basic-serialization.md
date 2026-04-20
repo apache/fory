@@ -73,6 +73,9 @@ System.out.println(fory.deserialize(bytes));
 
 Fory provides efficient deep copy functionality:
 
+For the full copy semantics, custom copy hooks, and troubleshooting guidance, see
+[Object Copy](object-copy.md).
+
 ### With Reference Tracking
 
 ```java
@@ -123,5 +126,6 @@ MyClass obj = fory.deserialize(bytes, MyClass.class);
 ## Related Topics
 
 - [Configuration](configuration.md) - All ForyBuilder options
+- [Object Copy](object-copy.md) - Deep-copy semantics and custom copy hooks
 - [Type Registration](type-registration.md) - Class registration
 - [Troubleshooting](troubleshooting.md) - Common API usage issues

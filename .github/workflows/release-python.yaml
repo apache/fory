@@ -31,7 +31,7 @@ permissions:
 jobs:
   publish-wheels:
     name: Publish Wheels
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && !startsWith(github.event.workflow_run.head_branch, 'go/fory') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download all wheel artifacts

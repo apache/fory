@@ -415,7 +415,7 @@ fn deserialize_nullable(fory: &Fory, bins: Vec<u8>, auto_conv: bool) {
 // non-null <-> non-null
 #[test]
 fn basic() {
-    let fory = Fory::default().compatible(true);
+    let fory = Fory::builder().compatible(true).build();
     // serialize
     let bins = serialize_non_null(&fory);
     // deserialize
@@ -425,7 +425,7 @@ fn basic() {
 // nullable <-> nullable
 #[test]
 fn basic_nullable() {
-    let fory = Fory::default().compatible(true);
+    let fory = Fory::builder().compatible(true).build();
     // serialize
     let bins = serialize_nullable(&fory);
     // deserialize
@@ -435,7 +435,7 @@ fn basic_nullable() {
 // non-null -> nullable -> non-null
 #[test]
 fn auto_conv() {
-    let fory = Fory::default().compatible(true);
+    let fory = Fory::builder().compatible(true).build();
     // serialize_non-null
     let bins = serialize_non_null(&fory);
     deserialize_nullable(&fory, bins, true);

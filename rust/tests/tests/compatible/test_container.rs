@@ -219,7 +219,7 @@ fn complex_container2() -> Vec<HashMap<Vec<Item>, Vec<Item>>> {
 
 #[test]
 fn container_outer_auto_conv() {
-    let fory = Fory::default().compatible(true);
+    let fory = Fory::builder().compatible(true).build();
     // serialize_outer_non-null
     let bytes = fory.serialize(&basic_list()).unwrap();
     assert_eq!(
@@ -285,9 +285,9 @@ fn container_outer_auto_conv() {
 
 #[test]
 fn collection_inner() {
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
@@ -348,9 +348,9 @@ fn collection_inner() {
 
 #[test]
 fn collection_inner_auto_conv() {
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non_null
@@ -416,9 +416,9 @@ fn collection_inner_auto_conv() {
 
 #[test]
 fn map_inner() {
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
@@ -453,9 +453,9 @@ fn map_inner() {
 
 #[test]
 fn map_inner_auto_conv() {
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non_null
@@ -493,9 +493,9 @@ fn map_inner_auto_conv() {
 
 #[test]
 fn complex() {
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         let mut bins = vec![

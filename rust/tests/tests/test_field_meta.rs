@@ -326,10 +326,10 @@ mod compatible_v2 {
 #[test]
 fn test_compatible_mode_v1_to_v2() {
     // Serialize with V1, deserialize with V2 (forward compatibility)
-    let mut fory_v1 = Fory::default().compatible(true);
+    let mut fory_v1 = Fory::builder().compatible(true).build();
     fory_v1.register::<compatible_v1::UserV1>(100).unwrap();
 
-    let mut fory_v2 = Fory::default().compatible(true);
+    let mut fory_v2 = Fory::builder().compatible(true).build();
     fory_v2.register::<compatible_v2::UserV2>(100).unwrap();
 
     let user_v1 = compatible_v1::UserV1 {
@@ -351,10 +351,10 @@ fn test_compatible_mode_v1_to_v2() {
 #[test]
 fn test_compatible_mode_v2_to_v1() {
     // Serialize with V2, deserialize with V1 (backward compatibility)
-    let mut fory_v1 = Fory::default().compatible(true);
+    let mut fory_v1 = Fory::builder().compatible(true).build();
     fory_v1.register::<compatible_v1::UserV1>(100).unwrap();
 
-    let mut fory_v2 = Fory::default().compatible(true);
+    let mut fory_v2 = Fory::builder().compatible(true).build();
     fory_v2.register::<compatible_v2::UserV2>(100).unwrap();
 
     let user_v2 = compatible_v2::UserV2 {
@@ -407,12 +407,12 @@ mod compatible_reorder_v2 {
 #[test]
 fn test_compatible_mode_field_reorder() {
     // Test that field IDs allow fields to be reordered between versions
-    let mut fory_v1 = Fory::default().compatible(true);
+    let mut fory_v1 = Fory::builder().compatible(true).build();
     fory_v1
         .register::<compatible_reorder_v1::DataV1>(200)
         .unwrap();
 
-    let mut fory_v2 = Fory::default().compatible(true);
+    let mut fory_v2 = Fory::builder().compatible(true).build();
     fory_v2
         .register::<compatible_reorder_v2::DataV2>(200)
         .unwrap();
@@ -466,12 +466,12 @@ mod compatible_remove_field_v2 {
 #[test]
 fn test_compatible_mode_field_removed() {
     // Test that removed fields are handled in compatible mode
-    let mut fory_v1 = Fory::default().compatible(true);
+    let mut fory_v1 = Fory::builder().compatible(true).build();
     fory_v1
         .register::<compatible_remove_field_v1::ConfigV1>(300)
         .unwrap();
 
-    let mut fory_v2 = Fory::default().compatible(true);
+    let mut fory_v2 = Fory::builder().compatible(true).build();
     fory_v2
         .register::<compatible_remove_field_v2::ConfigV2>(300)
         .unwrap();
@@ -525,7 +525,7 @@ fn test_skip_with_field_id() {
 #[test]
 fn test_compatible_mode_roundtrip() {
     // Test full roundtrip with compatible mode and field IDs
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<compatible_v2::UserV2>(400).unwrap();
 
     let original = compatible_v2::UserV2 {
@@ -582,12 +582,12 @@ fn test_field_id_payload_compatible_mode() {
     // Test that structs with field IDs produce smaller payloads in compatible mode.
     // Field IDs are encoded as compact 1-2 byte integers instead of full field names,
     // following the xlang serialization spec (TAG_ID encoding with 2-bit marker 0b11).
-    let mut fory_compact = Fory::default().compatible(true);
+    let mut fory_compact = Fory::builder().compatible(true).build();
     fory_compact
         .register::<payload_with_field_ids::CompactUser>(500)
         .unwrap();
 
-    let mut fory_verbose = Fory::default().compatible(true);
+    let mut fory_verbose = Fory::builder().compatible(true).build();
     fory_verbose
         .register::<payload_without_field_ids::VerboseUser>(501)
         .unwrap();

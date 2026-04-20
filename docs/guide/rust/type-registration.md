@@ -52,9 +52,9 @@ let decoded: User = fory.deserialize(&bytes)?;
 For cross-language compatibility, register with namespace and type name:
 
 ```rust
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 // Register with namespace-based naming
 fory.register_by_namespace::<MyStruct>("com.example", "MyStruct")?;

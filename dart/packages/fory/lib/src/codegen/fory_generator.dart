@@ -1,3 +1,22 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
 import 'dart:async';
 
 import 'package:analyzer/dart/element/element.dart';
@@ -6,7 +25,6 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:build/build.dart';
 import 'package:fory/fory.dart';
 import 'package:source_gen/source_gen.dart';
-
 
 class DebugGeneratedFieldTypeSpec {
   const DebugGeneratedFieldTypeSpec({
@@ -27,20 +45,23 @@ class DebugGeneratedFieldTypeSpec {
 }
 
 final class ForyGenerator extends Generator {
-  static final TypeChecker _foryStructChecker =
-      TypeChecker.fromRuntime(ForyStruct);
-  static final TypeChecker _foryFieldChecker =
-      TypeChecker.fromRuntime(ForyField);
-  static final TypeChecker _foryUnionChecker =
-      TypeChecker.fromRuntime(ForyUnion);
-  static final TypeChecker _listTypeChecker =
-      TypeChecker.fromRuntime(ListType);
-  static final TypeChecker _mapTypeChecker =
-      TypeChecker.fromRuntime(MapType);
-  static final TypeChecker _refOptionChecker =
-      TypeChecker.fromRuntime(RefOption);
-  static final TypeChecker _nullableOptionChecker =
-      TypeChecker.fromRuntime(NullableOption);
+  static final TypeChecker _foryStructChecker = TypeChecker.fromRuntime(
+    ForyStruct,
+  );
+  static final TypeChecker _foryFieldChecker = TypeChecker.fromRuntime(
+    ForyField,
+  );
+  static final TypeChecker _foryUnionChecker = TypeChecker.fromRuntime(
+    ForyUnion,
+  );
+  static final TypeChecker _listTypeChecker = TypeChecker.fromRuntime(ListType);
+  static final TypeChecker _mapTypeChecker = TypeChecker.fromRuntime(MapType);
+  static final TypeChecker _refOptionChecker = TypeChecker.fromRuntime(
+    RefOption,
+  );
+  static final TypeChecker _nullableOptionChecker = TypeChecker.fromRuntime(
+    NullableOption,
+  );
   static final TypeChecker _int32Checker = TypeChecker.fromRuntime(Int32Type);
   static final TypeChecker _int64Checker = TypeChecker.fromRuntime(Int64Type);
   static final TypeChecker _uint8Checker = TypeChecker.fromRuntime(Uint8Type);
@@ -48,7 +69,8 @@ final class ForyGenerator extends Generator {
   static final TypeChecker _uint32Checker = TypeChecker.fromRuntime(Uint32Type);
   static final TypeChecker _uint64Checker = TypeChecker.fromRuntime(Uint64Type);
 
-  final Map<String, String> _importPrefixByLibraryIdentifier = <String, String>{};
+  final Map<String, String> _importPrefixByLibraryIdentifier =
+      <String, String>{};
 
   @override
   FutureOr<String> generate(LibraryReader library, BuildStep buildStep) {
@@ -66,13 +88,14 @@ final class ForyGenerator extends Generator {
     );
     final generatedApiName = '${helperBaseName}Fory';
 
-    final enumSpecs =
-      enumElements.map(_analyzeEnum).toList(growable: false);
-    final structSpecs =
-        annotatedClasses.map(_analyzeStruct).toList(growable: false);
+    final enumSpecs = enumElements.map(_analyzeEnum).toList(growable: false);
+    final structSpecs = annotatedClasses
+        .map(_analyzeStruct)
+        .toList(growable: false);
     final output = StringBuffer()
       ..writeln(
-          '// ignore_for_file: implementation_imports, invalid_use_of_internal_member, unused_element, unnecessary_null_comparison')
+        '// ignore_for_file: implementation_imports, invalid_use_of_internal_member, unused_element, unnecessary_null_comparison',
+      )
       ..writeln();
 
     for (final enumSpec in enumSpecs) {
@@ -98,7 +121,7 @@ final class ForyGenerator extends Generator {
 
     final fields = element.fields
         .where(
-          (field) => !field.isStatic && !field.isSynthetic,
+          (field) => !field.isStatic && identical(field.nonSynthetic, field),
         )
         .where((field) => !_isSkipped(field))
         .map(_analyzeField)
@@ -107,7 +130,7 @@ final class ForyGenerator extends Generator {
     final sortedFields = _sortFields(fields);
     final constructorPlan = _buildConstructorPlan(element, sortedFields);
     return _GeneratedStructSpec(
-      name: element.name,
+      name: element.displayName,
       evolving: evolving,
       fields: sortedFields,
       constructorPlan: constructorPlan,
@@ -116,9 +139,10 @@ final class ForyGenerator extends Generator {
 
   void _buildImportPrefixMap(LibraryReader library) {
     _importPrefixByLibraryIdentifier.clear();
-    for (final import in library.element.definingCompilationUnit.libraryImports) {
+    for (final import
+        in library.element.definingCompilationUnit.libraryImports) {
       final importedLibrary = import.importedLibrary;
-      final prefix = import.prefix?.element.name;
+      final prefix = import.prefix?.element.displayName;
       if (importedLibrary == null || prefix == null || prefix.isEmpty) {
         continue;
       }
@@ -128,7 +152,7 @@ final class ForyGenerator extends Generator {
 
   _GeneratedEnumSpec _analyzeEnum(EnumElement element) {
     return _GeneratedEnumSpec(
-      name: element.name,
+      name: element.displayName,
       usesRawValue: _enumUsesRawValueElement(element),
     );
   }
@@ -152,12 +176,12 @@ final class ForyGenerator extends Generator {
     final typeSpec = _analyzeTypeSpecAnnotation(field);
 
     return _GeneratedFieldSpec(
-      name: field.name,
+      name: field.displayName,
       type: field.type,
       displayType: _typeCodeString(field.type),
       identifier: fieldId != null && fieldId >= 0
           ? '$fieldId'
-          : _toSnakeCase(field.name),
+          : _toSnakeCase(field.displayName),
       id: fieldId,
       nullable: nullable,
       ref: ref,
@@ -191,8 +215,9 @@ final class ForyGenerator extends Generator {
     }
     if (_isList(type) || _isSet(type)) {
       final argument = (type as InterfaceType).typeArguments.single;
-      final elementSpec =
-          typeSpec is _ListTypeSpecInfo ? typeSpec.element : null;
+      final elementSpec = typeSpec is _ListTypeSpecInfo
+          ? typeSpec.element
+          : null;
       return _GeneratedFieldTypeSpec(
         typeLiteral: _typeReferenceLiteral(type),
         typeId: _typeIdFor(type),
@@ -253,10 +278,12 @@ final class ForyGenerator extends Generator {
     List<_GeneratedFieldSpec> fields,
   ) {
     final unnamedConstructor = element.unnamedConstructor;
-    final hasZeroArgConstructor = unnamedConstructor != null &&
+    final hasZeroArgConstructor =
+        unnamedConstructor != null &&
         !unnamedConstructor.isFactory &&
-        unnamedConstructor.parameters
-            .every((parameter) => parameter.isOptional);
+        unnamedConstructor.parameters.every(
+          (parameter) => parameter.isOptional,
+        );
     if (hasZeroArgConstructor && fields.every((field) => field.writable)) {
       return const _ConstructorPlan.mutable();
     }
@@ -275,11 +302,12 @@ final class ForyGenerator extends Generator {
     final arguments = <_ConstructorArgumentSpec>[];
     final constructorFieldNames = <String>{};
     for (final parameter in unnamedConstructor.parameters) {
-      final field = fieldByName[parameter.name];
+      final parameterName = parameter.displayName;
+      final field = fieldByName[parameterName];
       if (field == null) {
         if (parameter.isRequiredNamed || parameter.isRequiredPositional) {
           throw InvalidGenerationSourceError(
-            'Constructor parameter ${parameter.name} does not match a serializable field.',
+            'Constructor parameter $parameterName does not match a serializable field.',
             element: parameter,
           );
         }
@@ -289,7 +317,7 @@ final class ForyGenerator extends Generator {
       arguments.add(
         _ConstructorArgumentSpec(
           fieldName: field.name,
-          parameterName: parameter.name,
+          parameterName: parameterName,
           named: parameter.isNamed,
         ),
       );
@@ -311,7 +339,7 @@ final class ForyGenerator extends Generator {
     if (selfRefField != null) {
       throw InvalidGenerationSourceError(
         'Constructor-based generated serializers cannot bind self references early. '
-        'Use a writable zero-argument constructor for ${element.name}.',
+        'Use a writable zero-argument constructor for ${element.displayName}.',
         element: selfRefField.type.element,
       );
     }
@@ -361,8 +389,9 @@ final class ForyGenerator extends Generator {
     final hasRuntimeFastPath = structSpec.fields.any(
       (field) => !_usesDirectGeneratedBasicFastPath(field),
     );
-    final directCursorRuns =
-        _directGeneratedWriteReservationRuns(structSpec.fields);
+    final directCursorRuns = _directGeneratedWriteReservationRuns(
+      structSpec.fields,
+    );
     final directCursorRunByStart = <int, _DirectGeneratedWriteReservationRun>{
       for (final run in directCursorRuns) run.start: run,
     };
@@ -424,9 +453,7 @@ final class ForyGenerator extends Generator {
       ..writeln(
         'final GeneratedStructRegistration<${structSpec.name}> $registrationName = GeneratedStructRegistration<${structSpec.name}>(',
       )
-      ..writeln(
-        '  fieldWritersBySlot: <_${structSpec.name}FieldWriter>[',
-      );
+      ..writeln('  fieldWritersBySlot: <_${structSpec.name}FieldWriter>[');
     for (var index = 0; index < structSpec.fields.length; index += 1) {
       output.writeln('    _write${structSpec.name}Field$index,');
     }
@@ -450,9 +477,7 @@ final class ForyGenerator extends Generator {
     }
     output
       ..writeln('  type: ${structSpec.name},')
-      ..writeln(
-        '  serializerFactory: _${structSpec.name}ForySerializer.new,',
-      )
+      ..writeln('  serializerFactory: _${structSpec.name}ForySerializer.new,')
       ..writeln('  evolving: ${structSpec.evolving},')
       ..writeln('  fields: $metadataListName,')
       ..writeln(');')
@@ -527,9 +552,7 @@ final class ForyGenerator extends Generator {
       ..writeln('      return;')
       ..writeln('    }')
       ..writeln('    final writers = $registrationName.fieldWritersBySlot;')
-      ..writeln(
-        '    for (final field in slots.orderedFields) {',
-      )
+      ..writeln('    for (final field in slots.orderedFields) {')
       ..writeln('      writers[field.slot](context, field, value);')
       ..writeln('    }')
       ..writeln('  }')
@@ -595,9 +618,7 @@ final class ForyGenerator extends Generator {
           final field = structSpec.fields[index];
           final readerFunctionName = field.readerFunctionName(structSpec.name);
           final rawValueName = 'raw${structSpec.name}$index';
-          output.writeln(
-            '    if (slots.containsSlot($index)) {',
-          );
+          output.writeln('    if (slots.containsSlot($index)) {');
           output.writeln(
             '      final $rawValueName = slots.valueForSlot($index);',
           );
@@ -661,8 +682,9 @@ final class ForyGenerator extends Generator {
           ..writeln('      context.reference(value);');
         for (final fieldName
             in structSpec.constructorPlan.postConstructionFieldNames) {
-          final field =
-              structSpec.fields.firstWhere((item) => item.name == fieldName);
+          final field = structSpec.fields.firstWhere(
+            (item) => item.name == fieldName,
+          );
           output.writeln('      value.${field.name} = ${field.localName};');
         }
         output.writeln('      return value;');
@@ -679,9 +701,7 @@ final class ForyGenerator extends Generator {
           final field = structSpec.fields[index];
           final readerFunctionName = field.readerFunctionName(structSpec.name);
           final rawValueName = 'raw${structSpec.name}$index';
-          output.writeln(
-            '    if (slots.containsSlot($index)) {',
-          );
+          output.writeln('    if (slots.containsSlot($index)) {');
           output.writeln(
             '      final $rawValueName = slots.valueForSlot($index);',
           );
@@ -699,8 +719,9 @@ final class ForyGenerator extends Generator {
           ..writeln('    context.reference(value);');
         for (final fieldName
             in structSpec.constructorPlan.postConstructionFieldNames) {
-          final field =
-              structSpec.fields.firstWhere((item) => item.name == fieldName);
+          final field = structSpec.fields.firstWhere(
+            (item) => item.name == fieldName,
+          );
           output.writeln('    value.${field.name} = ${field.localName};');
         }
         output.writeln('    return value;');
@@ -767,7 +788,8 @@ final class ForyGenerator extends Generator {
       )
       ..writeln('    }')
       ..writeln(
-          '    if (hasNamed && (namespace == null || typeName == null)) {')
+        '    if (hasNamed && (namespace == null || typeName == null)) {',
+      )
       ..writeln(
         "      throw ArgumentError('Both namespace and typeName are required for named registration.');",
       )
@@ -824,8 +846,10 @@ final class ForyGenerator extends Generator {
         positionalArguments.add(field.localName);
       }
     }
-    final arguments =
-        <String>[...positionalArguments, ...namedArguments].join(', ');
+    final arguments = <String>[
+      ...positionalArguments,
+      ...namedArguments,
+    ].join(', ');
     return '${structSpec.name}($arguments)';
   }
 
@@ -871,9 +895,6 @@ GeneratedFieldType(
       arguments: $argumentsLiteral,
     )''';
   }
-
-
-
 
   String debugConversionExpressionForType(
     DartType type,
@@ -940,10 +961,7 @@ GeneratedFieldType(
         nonNullableType,
         nonNullableFieldType,
         valueExpression,
-        nullExpression: _nullExpression(
-          nonNullableType,
-          errorTarget: 'value',
-        ),
+        nullExpression: _nullExpression(nonNullableType, errorTarget: 'value'),
       );
       return '$valueExpression == null ? $nullExpression : $converted';
     }
@@ -970,10 +988,7 @@ GeneratedFieldType(
         elementType,
         elementFieldType,
         'item',
-        nullExpression: _nullExpression(
-          elementType,
-          errorTarget: 'list item',
-        ),
+        nullExpression: _nullExpression(elementType, errorTarget: 'list item'),
       );
       return 'List<${_typeCodeString(elementType)}>.of((($valueExpression as List)).map((item) => $convertedElement))';
     }
@@ -987,10 +1002,7 @@ GeneratedFieldType(
         elementType,
         elementFieldType,
         'item',
-        nullExpression: _nullExpression(
-          elementType,
-          errorTarget: 'set item',
-        ),
+        nullExpression: _nullExpression(elementType, errorTarget: 'set item'),
       );
       return 'Set<${_typeCodeString(elementType)}>.of((($valueExpression as Set)).map((item) => $convertedElement))';
     }
@@ -1008,19 +1020,13 @@ GeneratedFieldType(
         keyType,
         keyFieldType,
         'key',
-        nullExpression: _nullExpression(
-          keyType,
-          errorTarget: 'map key',
-        ),
+        nullExpression: _nullExpression(keyType, errorTarget: 'map key'),
       );
       final convertedValue = _conversionExpressionForType(
         valueType,
         valueFieldType,
         'value',
-        nullExpression: _nullExpression(
-          valueType,
-          errorTarget: 'map value',
-        ),
+        nullExpression: _nullExpression(valueType, errorTarget: 'map value'),
       );
       return 'Map<${_typeCodeString(keyType)}, ${_typeCodeString(valueType)}>.of((($valueExpression as Map)).map((key, value) => MapEntry($convertedKey, $convertedValue)))';
     }
@@ -1075,9 +1081,7 @@ GeneratedFieldType(
         field.fieldType.typeId == TypeIds.enumById;
   }
 
-  bool _usesDirectGeneratedDeclaredReadFastPath(
-    _GeneratedFieldSpec field,
-  ) {
+  bool _usesDirectGeneratedDeclaredReadFastPath(_GeneratedFieldSpec field) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
         field.fieldType.dynamic == true) {
@@ -1113,11 +1117,8 @@ GeneratedFieldType(
         field.fieldType.typeId == TypeIds.map;
   }
 
-
   List<_DirectGeneratedWriteReservationRun>
-      _directGeneratedWriteReservationRuns(
-    List<_GeneratedFieldSpec> fields,
-  ) {
+  _directGeneratedWriteReservationRuns(List<_GeneratedFieldSpec> fields) {
     final runs = <_DirectGeneratedWriteReservationRun>[];
     int? start;
     var bytes = 0;
@@ -1545,7 +1546,8 @@ GeneratedFieldType(
   }
 
   _GeneratedFieldTypeSpec _nonNullableFieldType(
-      _GeneratedFieldTypeSpec fieldType) {
+    _GeneratedFieldTypeSpec fieldType,
+  ) {
     if (!fieldType.nullable) {
       return fieldType;
     }
@@ -1700,7 +1702,8 @@ GeneratedFieldType(
     if (leftCompressed != rightCompressed) {
       return leftCompressed ? 1 : -1;
     }
-    final sizeCompare = _primitiveSize(right.fieldType.typeId) -
+    final sizeCompare =
+        _primitiveSize(right.fieldType.typeId) -
         _primitiveSize(left.fieldType.typeId);
     if (sizeCompare != 0) {
       return sizeCompare;
@@ -1731,10 +1734,7 @@ GeneratedFieldType(
     return left.name.compareTo(right.name);
   }
 
-  int _compareOtherFields(
-    _GeneratedFieldSpec left,
-    _GeneratedFieldSpec right,
-  ) {
+  int _compareOtherFields(_GeneratedFieldSpec left, _GeneratedFieldSpec right) {
     final keyCompare = left.sortKey.compareTo(right.sortKey);
     if (keyCompare != 0) {
       return keyCompare;
@@ -1859,9 +1859,9 @@ GeneratedFieldType(
         'tagged' => TypeIds.taggedInt64,
         'fixed' => TypeIds.int64,
         _ => throw InvalidGenerationSourceError(
-            'Unsupported Int64Type encoding: $encodingValue.',
-            element: field,
-          ),
+          'Unsupported Int64Type encoding: $encodingValue.',
+          element: field,
+        ),
       };
       return _IntegerAnnotationSpec(typeId: typeId);
     }
@@ -1893,9 +1893,9 @@ GeneratedFieldType(
         'tagged' => TypeIds.taggedUint64,
         'fixed' => TypeIds.uint64,
         _ => throw InvalidGenerationSourceError(
-            'Unsupported Uint64Type encoding: $encodingValue.',
-            element: field,
-          ),
+          'Unsupported Uint64Type encoding: $encodingValue.',
+          element: field,
+        ),
       };
       return _IntegerAnnotationSpec(typeId: typeId);
     }
@@ -1968,7 +1968,8 @@ GeneratedFieldType(
         final optionType = optionObj.type;
         if (optionType != null && _refOptionChecker.isExactlyType(optionType)) {
           ref = optionReader.peek('tracked')?.boolValue ?? true;
-        } else if (optionType != null && _nullableOptionChecker.isExactlyType(optionType)) {
+        } else if (optionType != null &&
+            _nullableOptionChecker.isExactlyType(optionType)) {
           nullable = optionReader.peek('value')?.boolValue ?? true;
         }
       }
@@ -2184,7 +2185,7 @@ GeneratedFieldType(
       return 'Object';
     }
     if (type is InterfaceType) {
-      return type.element.name;
+      return type.element.displayName;
     }
     return type.getDisplayString().replaceAll('?', '');
   }
@@ -2196,8 +2197,10 @@ GeneratedFieldType(
     }
     if (nonNullable is InterfaceType) {
       final element = nonNullable.element;
-      final prefix = _importPrefixByLibraryIdentifier[element.library.identifier];
-      final baseName = prefix == null ? element.name : '$prefix.${element.name}';
+      final prefix =
+          _importPrefixByLibraryIdentifier[element.library.identifier];
+      final elementName = element.displayName;
+      final baseName = prefix == null ? elementName : '$prefix.$elementName';
       if (nonNullable.typeArguments.isEmpty) {
         return baseName;
       }
@@ -2332,9 +2335,9 @@ final class _ConstructorPlan {
   final List<String> postConstructionFieldNames;
 
   const _ConstructorPlan.mutable()
-      : mode = _ConstructorMode.mutable,
-        arguments = const <_ConstructorArgumentSpec>[],
-        postConstructionFieldNames = const <String>[];
+    : mode = _ConstructorMode.mutable,
+      arguments = const <_ConstructorArgumentSpec>[],
+      postConstructionFieldNames = const <String>[];
 
   const _ConstructorPlan.constructor({
     required this.arguments,

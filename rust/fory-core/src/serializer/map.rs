@@ -34,6 +34,11 @@ const TRACKING_VALUE_REF: u8 = 0b1000;
 pub const VALUE_NULL: u8 = 0b10000;
 pub const DECL_VALUE_TYPE: u8 = 0b100000;
 
+#[cold]
+fn map_size_limit_exceeded(len: u32, max: u32) -> Error {
+    Error::size_limit_exceeded(format!("Map size {} exceeds limit {}", len, max))
+}
+
 fn check_map_len(context: &ReadContext, len: u32) -> Result<(), Error> {
     let len = len as usize;
     let remaining = context.reader.slice_after_cursor().len();
@@ -59,7 +64,7 @@ where
     V: Serializer,
     I: Iterator<Item = (&'a K, &'a V)>,
 {
-    context.writer.write_var_uint32(length as u32);
+    context.writer.write_var_u32(length as u32);
     if length == 0 {
         return Ok(());
     }
@@ -556,9 +561,13 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.read_varuint32()?;
+        let len = context.reader.read_var_u32()?;
         if len == 0 {
             return Ok(HashMap::new());
+        }
+        let max = context.max_collection_size();
+        if len > max {
+            return Err(map_size_limit_exceeded(len, max));
         }
         check_map_len(context, len)?;
         if K::fory_is_polymorphic()
@@ -708,9 +717,13 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.read_varuint32()?;
+        let len = context.reader.read_var_u32()?;
         if len == 0 {
             return Ok(BTreeMap::new());
+        }
+        let max = context.max_collection_size();
+        if len > max {
+            return Err(map_size_limit_exceeded(len, max));
         }
         check_map_len(context, len)?;
         let mut map = BTreeMap::<K, V>::new();

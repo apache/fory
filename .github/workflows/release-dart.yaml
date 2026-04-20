@@ -1,0 +1,96 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Publish Dart
+run-name: "Dart Release: ${{ github.ref_name }}"
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-dart-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish-dart:
+    runs-on: ubuntu-latest
+    if: github.repository == 'apache/fory' && !startsWith(github.ref_name, 'go/fory')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Bump Dart package versions for the release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          python ci/release.py bump_version -l dart -version "$VERSION"
+          VERSION="$VERSION" ruby <<'RUBY'
+          require "yaml"
+
+          expected = ENV.fetch("VERSION")
+          files = [
+            "dart/pubspec.yaml",
+            "dart/packages/fory/pubspec.yaml",
+            "dart/packages/fory-test/pubspec.yaml",
+          ]
+
+          files.each do |path|
+            actual = YAML.load_file(path).fetch("version")
+            if actual != expected
+              abort("#{path} version mismatch after bump: expected #{expected}, got #{actual}")
+            end
+          end
+
+          puts "Verified bumped Dart package versions for #{expected}"
+          RUBY
+
+      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+
+      - name: Install Dart package dependencies
+        shell: bash
+        working-directory: dart/packages/fory
+        run: |
+          set -euo pipefail
+          dart pub get
+
+      - name: Verify publish contents
+        shell: bash
+        working-directory: dart/packages/fory
+        run: |
+          set -euo pipefail
+          dart pub publish --dry-run
+
+      - name: Publish to pub.dev
+        shell: bash
+        working-directory: dart/packages/fory
+        run: |
+          set -euo pipefail
+          dart pub publish --force

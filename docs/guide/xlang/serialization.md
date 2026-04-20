@@ -133,7 +133,7 @@ console.log(result);
 use fory::Fory;
 
 fn run() {
-    let fory = Fory::default().xlang(true);
+    let fory = Fory::builder().xlang(true).build();
     let bin = fory.serialize(&"hello".to_string()).expect("serialize success");
     let obj: String = fory.deserialize(&bin).expect("deserialize success");
     assert_eq!("hello".to_string(), obj);
@@ -399,7 +399,7 @@ fn complex_struct() {
         c6: 4.0,
     };
 
-    let mut fory = Fory::default().xlang(true);
+    let mut fory = Fory::builder().xlang(true).build();
     fory
         .register_by_namespace::<Animal>("example", "foo2")
         .expect("register Animal");

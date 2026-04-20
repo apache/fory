@@ -120,7 +120,7 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
             write_tuple_element(&self.0, context)?;
         } else {
             // Compatible mode: use collection protocol (heterogeneous)
-            context.writer.write_var_uint32(1);
+            context.writer.write_var_u32(1);
             let header = 0u8; // No IS_SAME_TYPE flag
             context.writer.write_u8(header);
             self.0.fory_write(context, RefMode::NullOnly, true, false)?;
@@ -141,7 +141,7 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
             Ok((elem0,))
         } else {
             // Compatible mode: read collection protocol (heterogeneous)
-            let len = context.reader.read_varuint32()?;
+            let len = context.reader.read_var_u32()?;
             let _header = context.reader.read_u8()?;
 
             let elem0 = if len > 0 {
@@ -360,7 +360,7 @@ macro_rules! impl_tuple_serializer {
                 } else {
                     // Compatible mode: use collection protocol (always heterogeneous)
                     let len = fory_tuple_count!($T0, $($T),*);
-                    context.writer.write_var_uint32(len as u32);
+                    context.writer.write_var_u32(len as u32);
 
                     // Write header without IS_SAME_TYPE flag
                     let header = 0u8;
@@ -393,7 +393,7 @@ macro_rules! impl_tuple_serializer {
                 } else {
                     // Compatible mode: read collection protocol (always heterogeneous)
                     // Handle flexible length: use defaults for missing elements, skip extras
-                    let len = context.reader.read_varuint32()?;
+                    let len = context.reader.read_var_u32()?;
                     let _header = context.reader.read_u8()?;
 
                     // Track how many elements we've read

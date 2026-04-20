@@ -879,10 +879,11 @@ class RustGenerator(BaseGenerator):
         lines.append("    pub(super) fn get_fory() -> &'static Fory {")
         lines.append("        static FORY: OnceLock<Fory> = OnceLock::new();")
         lines.append("        FORY.get_or_init(|| {")
-        lines.append("            let mut fory = Fory::default()")
+        lines.append("            let mut fory = Fory::builder()")
         lines.append("                .xlang(true)")
         lines.append("                .track_ref(true)")
-        lines.append("                .compatible(true);")
+        lines.append("                .compatible(true)")
+        lines.append("                .build();")
         for module in self._collect_imported_modules():
             lines.append(
                 f'            crate::{module}::register_types(&mut fory).expect("failed to register fory types");'

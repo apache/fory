@@ -112,8 +112,8 @@ context.writer.write_f64(value);
 context.writer.write_bool(value);
 
 // Variable-length integers
-context.writer.write_varint32(value);
-context.writer.write_varuint32(value);
+context.writer.write_var_i32(value);
+context.writer.write_var_u32(value);
 
 // Strings
 context.writer.write_utf8_string(&string);
@@ -132,8 +132,8 @@ let value = context.reader.read_f64();
 let value = context.reader.read_bool();
 
 // Variable-length integers
-let value = context.reader.read_varint32();
-let value = context.reader.read_varuint32();
+let value = context.reader.read_var_i32();
+let value = context.reader.read_var_u32();
 
 // Strings
 let string = context.reader.read_utf8_string(len);

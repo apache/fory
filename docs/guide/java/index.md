@@ -203,8 +203,10 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 - [Field Configuration](field-configuration.md) - `@ForyField`, `@Ignore`, and integer encoding annotations
 - [Enum Configuration](enum-configuration.md) - `serializeEnumByName` and `@ForyEnumId`
 - [Basic Serialization](basic-serialization.md) - Detailed serialization patterns
+- [Object Copy](object-copy.md) - Deep-copy Java object graphs in memory
 - [Compression](compression.md) - Integer, long, and array compression options
 - [Virtual Threads](virtual-threads.md) - Virtual-thread usage and pool sizing guidance
 - [Type Registration](type-registration.md) - Class registration and security
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers
 - [Cross-Language Serialization](cross-language.md) - Serialize data for other languages
+- [GraalVM Support](graalvm-support.md) - Build-time serializer compilation for native images
