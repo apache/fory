@@ -402,7 +402,7 @@ final class Buffer {
   /// Reads an unsigned 64-bit integer written by [writeTaggedUint64].
   int readTaggedUint64() {
     final readIndex = _readerIndex;
-    final first = _view.getInt32(readIndex, Endian.little);
+    final first = _view.getUint32(readIndex, Endian.little);
     if ((first & 1) == 0) {
       _readerIndex = readIndex + 4;
       return first >>> 1;
