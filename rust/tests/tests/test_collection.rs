@@ -131,7 +131,7 @@ fn test_hashset_max_collection_size_guardrail() {
     ]);
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::default().max_collection_size(2);
+    let limited_fory = Fory::builder().max_collection_size(2).build();
     let err = limited_fory
         .deserialize::<HashSet<String>>(&serialized)
         .expect_err("expected collection size guardrail to reject the payload");

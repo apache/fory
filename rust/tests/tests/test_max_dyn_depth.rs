@@ -32,7 +32,10 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
         return;
     }
     for compatible in [false, true] {
-        let mut fory = Fory::default().max_dyn_depth(2).compatible(compatible);
+        let mut fory = Fory::builder()
+            .max_dyn_depth(2)
+            .compatible(compatible)
+            .build();
         fory.register::<Container>(100).unwrap();
 
         let level3 = Container {
@@ -66,7 +69,7 @@ fn test_max_dyn_depth_within_limit_box_dyn_any() {
     if fory_core::error::should_panic_on_error() {
         return;
     }
-    let mut fory = Fory::default().max_dyn_depth(3);
+    let mut fory = Fory::builder().max_dyn_depth(3).build();
     fory.register::<Container>(100).unwrap();
 
     let level3 = Container {

@@ -27,9 +27,9 @@ Apache Fory™ supports seamless data exchange across multiple languages includi
 use fory::Fory;
 
 // Enable cross-language mode
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 // Register types with consistent IDs across languages
 fory.register::<MyStruct>(100);
@@ -45,9 +45,9 @@ fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 For fast, compact serialization with consistent IDs across languages:
 
 ```rust
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 fory.register::<User>(100);  // Same ID in Java, Python, etc.
 ```
@@ -74,9 +74,9 @@ struct Person {
     age: i32,
 }
 
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 fory.register::<Person>(100);
 

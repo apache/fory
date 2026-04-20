@@ -338,9 +338,10 @@ fn test_size_guardrail_configuration_accessors() {
     assert_eq!(default_fory.get_max_binary_size(), 64 * 1024 * 1024);
     assert_eq!(default_fory.get_max_collection_size(), 1024 * 1024);
 
-    let configured_fory = Fory::default()
+    let configured_fory = Fory::builder()
         .max_binary_size(4096)
-        .max_collection_size(128);
+        .max_collection_size(128)
+        .build();
     assert_eq!(configured_fory.get_max_binary_size(), 4096);
     assert_eq!(configured_fory.get_max_collection_size(), 128);
 }
@@ -351,7 +352,7 @@ fn test_max_binary_size_does_not_limit_string_reads() {
     let original = "this string should not be treated as binary".repeat(4);
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::default().max_binary_size(4);
+    let limited_fory = Fory::builder().max_binary_size(4).build();
     let deserialized: String = limited_fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized, original);

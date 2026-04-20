@@ -507,9 +507,9 @@ fn test_address_book_roundtrip_schema_consistent() {
 
 #[test]
 fn test_evolving_roundtrip() {
-    let mut fory_v1 = Fory::default().xlang(true).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(true).compatible(true).build();
     evolving1::register_types(&mut fory_v1).expect("register evolving1 types");
-    let mut fory_v2 = Fory::default().xlang(true).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(true).compatible(true).build();
     evolving2::register_types(&mut fory_v2).expect("register evolving2 types");
 
     let msg_v1 = evolving1::EvolvingMessage {
@@ -557,7 +557,10 @@ fn test_evolving_roundtrip() {
 }
 
 fn run_address_book_roundtrip(compatible: bool) {
-    let mut fory = Fory::default().xlang(true).compatible(compatible);
+    let mut fory = Fory::builder()
+        .xlang(true)
+        .compatible(compatible)
+        .build();
     complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
     auto_id::register_types(&mut fory).expect("register auto_id types");
@@ -764,10 +767,11 @@ fn run_address_book_roundtrip(compatible: bool) {
     let result: Result<AnyHolder, _> = fory.deserialize(&bytes);
     assert!(result.is_err());
 
-    let mut ref_fory = Fory::default()
+    let mut ref_fory = Fory::builder()
         .xlang(true)
         .compatible(compatible)
-        .track_ref(true);
+        .track_ref(true)
+        .build();
     tree::register_types(&mut ref_fory).expect("register tree types");
     graph::register_types(&mut ref_fory).expect("register graph types");
 

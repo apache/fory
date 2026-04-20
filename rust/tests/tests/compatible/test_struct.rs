@@ -45,8 +45,8 @@ fn simple() {
         f7: i16,
         last: i8,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Animal1>(999).unwrap();
     fory2.register::<Animal2>(999).unwrap();
     let animal: Animal1 = Animal1 {
@@ -84,8 +84,8 @@ fn skip_option() {
         f2: i8,
         last: i64,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item1>(999).unwrap();
     fory2.register::<Item2>(999).unwrap();
     let item1 = Item1 {
@@ -123,8 +123,8 @@ fn nonexistent_struct() {
         f3: i64,
         last: String,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item1>(899).unwrap();
     fory1.register::<Person1>(999).unwrap();
     fory2.register::<Item2>(799).unwrap();
@@ -155,7 +155,7 @@ fn option() {
         f5: Vec<Option<Vec<Option<String>>>>,
         last: i64,
     }
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<Animal>(999).unwrap();
     let animal: Animal = Animal {
         f1: Some(String::from("f1")),
@@ -199,8 +199,8 @@ fn nullable() {
         last: i64,
     }
 
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item1>(999).unwrap();
     fory2.register::<Item2>(999).unwrap();
 
@@ -253,8 +253,8 @@ fn nullable_container() {
         last: i64,
     }
 
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item1>(999).unwrap();
     fory2.register::<Item2>(999).unwrap();
 
@@ -305,8 +305,8 @@ fn inner_nullable() {
         f3: HashMap<i8, i8>,
         last: i64,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item1>(999).unwrap();
     fory2.register::<Item2>(999).unwrap();
 
@@ -352,8 +352,8 @@ fn nullable_struct() {
         f3: Item,
         last: i64,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Item>(199).unwrap();
     fory1.register::<Person1>(200).unwrap();
     fory2.register::<Item>(199).unwrap();
@@ -429,11 +429,11 @@ fn enum_without_payload() {
         last: i8,
     }
 
-    let mut fory1 = Fory::default().compatible(true).xlang(true);
+    let mut fory1 = Fory::builder().compatible(true).xlang(true).build();
     fory1.register::<Color1>(101).unwrap();
     fory1.register::<Color2>(102).unwrap();
     fory1.register::<Person1>(103).unwrap();
-    let mut fory2 = Fory::default().compatible(true).xlang(true);
+    let mut fory2 = Fory::builder().compatible(true).xlang(true).build();
     fory2.register::<Color1>(101).unwrap();
     fory2.register::<Color2>(102).unwrap();
     fory2.register::<Person2>(103).unwrap();
@@ -495,10 +495,10 @@ fn named_enum() {
         f6: Option<Color>,
         last: i8,
     }
-    let mut fory1 = Fory::default().compatible(true).xlang(true);
+    let mut fory1 = Fory::builder().compatible(true).xlang(true).build();
     fory1.register_by_name::<Color>("a").unwrap();
     fory1.register::<Item1>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true).xlang(true);
+    let mut fory2 = Fory::builder().compatible(true).xlang(true).build();
     fory2.register_by_name::<Color>("a").unwrap();
     fory2.register::<Item2>(101).unwrap();
     let item1 = Item1 {
@@ -551,9 +551,9 @@ fn boxed() {
         f6: Option<i32>,
     }
 
-    let mut fory1 = Fory::default().compatible(true).xlang(true);
+    let mut fory1 = Fory::builder().compatible(true).xlang(true).build();
     fory1.register::<Item1>(101).unwrap();
-    let mut fory2 = Fory::default().compatible(true).xlang(true);
+    let mut fory2 = Fory::builder().compatible(true).xlang(true).build();
     fory2.register::<Item2>(101).unwrap();
 
     let f1 = 1;
@@ -667,9 +667,9 @@ fn test_struct_with_generic() {
         }
     }
 
-    let mut fory1 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
     let mut fory2 = Fory::default(); // Without compatible it works fine.
-    let mut fory3 = Fory::default().xlang(true); // Works fine with xlang enabled
+    let mut fory3 = Fory::builder().xlang(true).build(); // Works fine with xlang enabled
 
     fn inner_test(fory: &mut Fory) -> Result<(), Error> {
         fory.register::<MyStruct>(1)?;

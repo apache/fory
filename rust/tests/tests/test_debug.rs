@@ -150,7 +150,7 @@ fn debug_hooks_trigger_for_struct() {
 
     event_log().lock().unwrap().clear();
 
-    let mut fory_compat = Fory::default().compatible(true);
+    let mut fory_compat = Fory::builder().compatible(true).build();
     fory_compat.register::<DebugSample>(4001).unwrap();
     let compat_bytes = fory_compat.serialize(&sample).unwrap();
     let _: DebugSample = fory_compat.deserialize(compat_bytes.as_slice()).unwrap();

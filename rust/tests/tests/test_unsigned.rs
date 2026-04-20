@@ -45,7 +45,7 @@ fn test_unsigned_arrays() {
 
 #[test]
 fn test_unsigned_arrays_when_xlang() {
-    let fory = Fory::default().xlang(true);
+    let fory = Fory::builder().xlang(true).build();
     // u8, u16, u32, u64 arrays are now supported in xlang mode
     assert!(fory.serialize(&vec![u8::MAX]).is_ok());
     assert!(fory.serialize(&vec![u16::MAX]).is_ok());
@@ -58,7 +58,7 @@ fn test_unsigned_arrays_when_xlang() {
 
 #[test]
 fn test_binary_when_xlang() {
-    let mut fory = Fory::default().xlang(true);
+    let mut fory = Fory::builder().xlang(true).build();
     #[derive(ForyObject, Debug, PartialEq)]
     struct UnsignedData {
         binary: Vec<u8>,
@@ -78,7 +78,7 @@ fn test_binary_max_size_guardrail_for_vec_u8() {
     let original = vec![1_u8, 2, 3, 4, 5];
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::default().max_binary_size(4);
+    let limited_fory = Fory::builder().max_binary_size(4).build();
     let err = limited_fory
         .deserialize::<Vec<u8>>(&serialized)
         .expect_err("expected binary size guardrail to reject the payload");
@@ -99,7 +99,7 @@ fn test_binary_max_size_guardrail_for_vec_u32() {
     let original = vec![10_u32, 20, 30];
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::default().max_binary_size(8);
+    let limited_fory = Fory::builder().max_binary_size(8).build();
     let err = limited_fory
         .deserialize::<Vec<u32>>(&serialized)
         .expect_err("expected primitive array size guardrail to reject the payload");
@@ -173,7 +173,7 @@ fn test_unsigned_struct_compatible() {
         vec_u128: Vec<u128>,
     }
 
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<UnsignedData>(100).unwrap();
 
     let data = UnsignedData {
@@ -211,8 +211,8 @@ fn test_unsigned_struct_compatible_add_field() {
         c: u32,
     }
 
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<UnsignedDataV1>(101).unwrap();
     fory2.register::<UnsignedDataV2>(101).unwrap();
 
@@ -239,8 +239,8 @@ fn test_unsigned_struct_compatible_remove_field() {
         b: u16,
     }
 
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<UnsignedDataV1>(102).unwrap();
     fory2.register::<UnsignedDataV2>(102).unwrap();
 
@@ -341,7 +341,7 @@ fn test_unsigned_with_option_compatible() {
         opt_u128: Option<u128>,
     }
 
-    let mut fory = Fory::default().compatible(true);
+    let mut fory = Fory::builder().compatible(true).build();
     fory.register::<OptionalUnsigned>(104).unwrap();
 
     // Test with Some values
@@ -393,8 +393,8 @@ fn test_unsigned_mixed_fields_compatible() {
         new_u128: u128,
     }
 
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<MixedDataV1>(105).unwrap();
     fory2.register::<MixedDataV2>(105).unwrap();
 

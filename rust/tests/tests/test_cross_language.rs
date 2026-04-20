@@ -243,15 +243,17 @@ fn test_string_serializer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
-    let fory = Fory::default()
+    let fory = Fory::builder()
         .compatible(true)
         .xlang(true)
-        .compress_string(false);
+        .compress_string(false)
+        .build();
     let mut reader_compress = Reader::new(bytes.as_slice());
-    let fory_compress = Fory::default()
+    let fory_compress = Fory::builder()
         .compatible(true)
         .xlang(true)
-        .compress_string(true);
+        .compress_string(true)
+        .build();
     let test_strings: Vec<String> = vec![
         // Latin1
         "ab".to_string(),
@@ -273,7 +275,7 @@ fn test_string_serializer() {
                 .unwrap()
         );
     }
-    let fory = Fory::default().compatible(true).xlang(true);
+    let fory = Fory::builder().compatible(true).xlang(true).build();
     let mut buf = Vec::new();
     for s in &test_strings {
         fory.serialize_to(&mut buf, s).unwrap();
@@ -305,7 +307,7 @@ fn test_cross_language_serializer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Color>(101).unwrap();
     assert_de!(fory, reader, bool, true);
     assert_de!(fory, reader, bool, false);
@@ -372,7 +374,7 @@ fn test_cross_language_serializer() {
 fn test_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Color>(101).unwrap();
     fory.register::<Item>(102).unwrap();
     fory.register::<SimpleStruct>(103).unwrap();
@@ -403,7 +405,7 @@ fn test_simple_struct() {
 fn test_named_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register_by_namespace::<Color>("demo", "color")
         .unwrap();
     fory.register_by_namespace::<Item>("demo", "item").unwrap();
@@ -436,7 +438,7 @@ fn test_named_simple_struct() {
 fn test_struct_evolving_override() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register_by_namespace::<EvolvingOverrideStruct>("test", "evolving_yes")
         .unwrap();
     fory.register_by_namespace::<FixedOverrideStruct>("test", "evolving_off")
@@ -470,7 +472,7 @@ fn test_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Item>(102).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -512,7 +514,7 @@ fn test_map() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Item>(102).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -585,7 +587,7 @@ fn test_integer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Item2>(101).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
     let f1 = 1;
@@ -692,10 +694,10 @@ fn _test_skip_custom(fory1: &Fory, fory2: &Fory) {
 #[test]
 #[ignore]
 fn test_skip_id_custom() {
-    let mut fory1 = Fory::default().compatible(true).xlang(true);
+    let mut fory1 = Fory::builder().compatible(true).xlang(true).build();
     fory1.register_serializer::<MyExt>(103).unwrap();
     fory1.register::<Empty>(104).unwrap();
-    let mut fory2 = Fory::default().compatible(true).xlang(true);
+    let mut fory2 = Fory::builder().compatible(true).xlang(true).build();
     fory2.register::<Color>(101).unwrap();
     fory2.register::<MyStruct>(102).unwrap();
     fory2.register_serializer::<MyExt>(103).unwrap();
@@ -706,12 +708,12 @@ fn test_skip_id_custom() {
 #[test]
 #[ignore]
 fn test_skip_name_custom() {
-    let mut fory1 = Fory::default().compatible(true).xlang(true);
+    let mut fory1 = Fory::builder().compatible(true).xlang(true).build();
     fory1
         .register_serializer_by_name::<MyExt>("my_ext")
         .unwrap();
     fory1.register_by_name::<Empty>("my_wrapper").unwrap();
-    let mut fory2 = Fory::default().compatible(true).xlang(true);
+    let mut fory2 = Fory::builder().compatible(true).xlang(true).build();
     fory2.register_by_name::<Color>("color").unwrap();
     fory2.register_by_name::<MyStruct>("my_struct").unwrap();
     fory2
@@ -724,7 +726,7 @@ fn test_skip_name_custom() {
 #[test]
 #[ignore]
 fn test_consistent_named() {
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register_by_name::<Color>("color").unwrap();
     fory.register_by_name::<MyStruct>("my_struct").unwrap();
     fory.register_serializer_by_name::<MyExt>("my_ext").unwrap();
@@ -827,10 +829,11 @@ struct TwoEnumFieldStruct {
 fn test_struct_version_check() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default()
+    let mut fory = Fory::builder()
         .compatible(false)
         .xlang(true)
-        .check_struct_version(true);
+        .check_struct_version(true)
+        .build();
     fory.register::<VersionCheckStruct>(201).unwrap();
 
     let local_obj = VersionCheckStruct {
@@ -852,7 +855,7 @@ fn test_item() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Item>(102).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -887,7 +890,7 @@ fn test_color() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Color>(101).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -914,7 +917,7 @@ fn test_struct_with_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<StructWithList>(201).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -946,7 +949,7 @@ fn test_struct_with_map() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<StructWithMap>(202).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
@@ -1009,7 +1012,7 @@ fn test_polymorphic_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Dog>(302).unwrap();
     fory.register::<Cat>(303).unwrap();
     fory.register::<AnimalListHolder>(304).unwrap();
@@ -1060,7 +1063,7 @@ fn test_polymorphic_map() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<Dog>(302).unwrap();
     fory.register::<Cat>(303).unwrap();
     fory.register::<AnimalMapHolder>(305).unwrap();
@@ -1123,7 +1126,7 @@ fn test_one_string_field_schema() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register::<OneStringFieldStruct>(200).unwrap();
 
     let value: OneStringFieldStruct = fory.deserialize(&bytes).unwrap();
@@ -1139,7 +1142,7 @@ fn test_one_string_field_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<OneStringFieldStruct>(200).unwrap();
 
     let value: OneStringFieldStruct = fory.deserialize(&bytes).unwrap();
@@ -1155,7 +1158,7 @@ fn test_two_string_field_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TwoStringFieldStruct>(201).unwrap();
 
     let value: TwoStringFieldStruct = fory.deserialize(&bytes).unwrap();
@@ -1173,7 +1176,7 @@ fn test_schema_evolution_compatible() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     // Read TwoStringFieldStruct data as EmptyStructEvolution
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<EmptyStructEvolution>(200).unwrap();
 
     let value: EmptyStructEvolution = fory.deserialize(&bytes).unwrap();
@@ -1190,7 +1193,7 @@ fn test_schema_evolution_compatible_reverse() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     // Read OneStringFieldStruct data as TwoStringFieldStruct (missing f2)
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TwoStringFieldStruct>(200).unwrap();
 
     let value: TwoStringFieldStruct = fory.deserialize(&bytes).unwrap();
@@ -1214,7 +1217,7 @@ fn test_one_enum_field_schema() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register::<TestEnum>(210).unwrap();
     fory.register::<OneEnumFieldStruct>(211).unwrap();
 
@@ -1231,7 +1234,7 @@ fn test_one_enum_field_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TestEnum>(210).unwrap();
     fory.register::<OneEnumFieldStruct>(211).unwrap();
 
@@ -1248,7 +1251,7 @@ fn test_two_enum_field_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TestEnum>(210).unwrap();
     fory.register::<TwoEnumFieldStruct>(212).unwrap();
 
@@ -1267,7 +1270,7 @@ fn test_enum_schema_evolution_compatible() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     // Read TwoEnumFieldStruct data as EmptyStructEvolution
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TestEnum>(210).unwrap();
     fory.register::<EmptyStructEvolution>(211).unwrap();
 
@@ -1285,7 +1288,7 @@ fn test_enum_schema_evolution_compatible_reverse() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     // Read OneEnumFieldStruct data as TwoEnumFieldStruct (missing f2)
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<TestEnum>(210).unwrap();
     fory.register::<TwoEnumFieldStruct>(211).unwrap();
 
@@ -1420,7 +1423,7 @@ fn test_nullable_field_schema_consistent_not_null() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register::<NullableComprehensiveSchemaConsistent>(401)
         .unwrap();
 
@@ -1470,7 +1473,7 @@ fn test_nullable_field_schema_consistent_null() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register::<NullableComprehensiveSchemaConsistent>(401)
         .unwrap();
 
@@ -1523,7 +1526,7 @@ fn test_nullable_field_compatible_not_null() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<NullableComprehensiveCompatible>(402)
         .unwrap();
 
@@ -1583,7 +1586,7 @@ fn test_nullable_field_compatible_null() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<NullableComprehensiveCompatible>(402)
         .unwrap();
 
@@ -1667,7 +1670,7 @@ fn test_union_xlang() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     // Register both the enum and the struct that contains it
     fory.register::<StringOrLong>(300).unwrap();
     fory.register::<StructWithUnion2>(301).unwrap();
@@ -1761,10 +1764,11 @@ fn test_ref_schema_consistent() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default()
+    let mut fory = Fory::builder()
         .compatible(false)
         .xlang(true)
-        .track_ref(true);
+        .track_ref(true)
+        .build();
     fory.register::<RefInnerSchemaConsistent>(501).unwrap();
     fory.register::<RefOuterSchemaConsistent>(502).unwrap();
 
@@ -1808,7 +1812,11 @@ fn test_ref_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true).track_ref(true);
+    let mut fory = Fory::builder()
+        .compatible(true)
+        .xlang(true)
+        .track_ref(true)
+        .build();
     fory.register::<RefInnerCompatible>(503).unwrap();
     fory.register::<RefOuterCompatible>(504).unwrap();
 
@@ -1848,10 +1856,11 @@ fn test_collection_element_ref_override() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default()
+    let mut fory = Fory::builder()
         .compatible(false)
         .xlang(true)
-        .track_ref(true);
+        .track_ref(true)
+        .build();
     fory.register::<RefOverrideElement>(701).unwrap();
     fory.register::<RefOverrideContainer>(702).unwrap();
 
@@ -1902,10 +1911,11 @@ fn test_circular_ref_schema_consistent() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default()
+    let mut fory = Fory::builder()
         .compatible(false)
         .xlang(true)
-        .track_ref(true);
+        .track_ref(true)
+        .build();
     fory.register::<CircularRefStruct>(601).unwrap();
 
     // Deserialize as Rc<CircularRefStruct> since the whole struct needs ref tracking
@@ -1946,7 +1956,11 @@ fn test_circular_ref_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true).track_ref(true);
+    let mut fory = Fory::builder()
+        .compatible(true)
+        .xlang(true)
+        .track_ref(true)
+        .build();
     fory.register::<CircularRefStruct>(602).unwrap();
 
     // Deserialize as Rc<CircularRefStruct> since the whole struct needs ref tracking
@@ -2061,7 +2075,7 @@ fn test_unsigned_schema_consistent() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(false).xlang(true);
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
     fory.register::<UnsignedSchemaConsistent>(501).unwrap();
 
     let local_obj = UnsignedSchemaConsistent {
@@ -2098,7 +2112,7 @@ fn test_unsigned_schema_compatible() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().compatible(true).xlang(true);
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
     fory.register::<UnsignedSchemaCompatible>(502).unwrap();
 
     let local_obj = UnsignedSchemaCompatible {

@@ -280,7 +280,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::default().compatible(true);
+let mut fory = Fory::builder().compatible(true).build();
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<Zoo>(102);
@@ -339,10 +339,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::default().compatible(true);
+let mut fory1 = Fory::builder().compatible(true).build();
 fory1.register::<PersonV1>(1);
 
-let mut fory2 = Fory::default().compatible(true);
+let mut fory2 = Fory::builder().compatible(true).build();
 fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
@@ -601,9 +601,9 @@ Apache Fory™ supports seamless data exchange across multiple languages:
 use fory::Fory;
 
 // Enable cross-language mode
-let mut fory = Fory::default()
+let mut fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 // Register types with consistent IDs across languages
 fory.register::<MyStruct>(100);

@@ -251,7 +251,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().track_ref(true);
+//! let mut fory = Fory::builder().track_ref(true).build();
 //! fory.register::<Node>(2000);
 //!
 //! let parent = Rc::new(RefCell::new(Node {
@@ -293,7 +293,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().track_ref(true);
+//! let mut fory = Fory::builder().track_ref(true).build();
 //! fory.register::<Node>(6000);
 //!
 //! let parent = Arc::new(Mutex::new(Node {
@@ -374,7 +374,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().compatible(true);
+//! let mut fory = Fory::builder().compatible(true).build();
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -501,7 +501,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().compatible(true);
+//! let mut fory = Fory::builder().compatible(true).build();
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<AnimalShelter>(102);
@@ -555,7 +555,7 @@
 //! register_trait_type!(Animal, Dog);
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().compatible(true);
+//! let mut fory = Fory::builder().compatible(true).build();
 //! fory.register::<Dog>(100);
 //!
 //! // For Rc<dyn Trait>
@@ -630,10 +630,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory1 = Fory::default().compatible(true);
+//! let mut fory1 = Fory::builder().compatible(true).build();
 //! fory1.register::<PersonV1>(1);
 //!
-//! let mut fory2 = Fory::default().compatible(true);
+//! let mut fory2 = Fory::builder().compatible(true).build();
 //! fory2.register::<PersonV2>(1);
 //!
 //! let person_v1 = PersonV1 {
@@ -727,10 +727,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory_old = Fory::default().compatible(true);
+//! let mut fory_old = Fory::builder().compatible(true).build();
 //! fory_old.register::<OldEvent>(5)?;
 //!
-//! let mut fory_new = Fory::default().compatible(true);
+//! let mut fory_new = Fory::builder().compatible(true).build();
 //! fory_new.register::<NewEvent>(5)?;
 //!
 //! // Serialize with old schema (2 fields)
@@ -1034,7 +1034,7 @@
 //! ```rust
 //! use fory::Fory;
 //!
-//! let fory = Fory::default().compatible(true);
+//! let fory = Fory::builder().compatible(true).build();
 //! ```
 //!
 //! ## Cross-Language Serialization
@@ -1051,9 +1051,9 @@
 //! use fory::Fory;
 //! use fory::ForyObject;
 //!
-//! let mut fory = Fory::default()
+//! let mut fory = Fory::builder()
 //!     .compatible(true)
-//!     .xlang(true);
+//!     .xlang(true).build();
 //!
 //! #[derive(ForyObject)]
 //! struct MyStruct {
@@ -1201,8 +1201,8 @@
 //! - **[GitHub Repository](https://github.com/apache/fory)** - Source code and issue tracking
 
 pub use fory_core::{
-    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::TypeId,
-    ArcWeak, ForyDefault, RcWeak, ReadContext, Reader, Serializer, TypeResolver, WriteContext,
-    Writer,
+    error::Error, fory::Fory, fory::ForyBuilder, register_trait_type, row::from_row, row::to_row,
+    types::TypeId, ArcWeak, ForyDefault, RcWeak, ReadContext, Reader, Serializer, TypeResolver,
+    WriteContext, Writer,
 };
 pub use fory_derive::{ForyObject, ForyRow};

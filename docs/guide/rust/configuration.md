@@ -38,7 +38,7 @@ let fory = Fory::default(); // SchemaConsistent by default
 Allows independent schema evolution:
 
 ```rust
-let fory = Fory::default().compatible(true);
+let fory = Fory::builder().compatible(true).build();
 ```
 
 ## Configuration
@@ -56,7 +56,7 @@ let fory = Fory::default(); // max_dyn_depth = 5
 **Custom depth limit:**
 
 ```rust
-let fory = Fory::default().max_dyn_depth(10); // Allow up to 10 levels
+let fory = Fory::builder().max_dyn_depth(10).build(); // Allow up to 10 levels
 ```
 
 **When to adjust:**
@@ -79,9 +79,9 @@ Note: Static data types (non-dynamic types) are secure by nature and not subject
 Enable cross-language serialization:
 
 ```rust
-let fory = Fory::default()
+let fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 ```
 
 ## Builder Pattern
@@ -93,21 +93,21 @@ use fory::Fory;
 let fory = Fory::default();
 
 // Compatible mode for schema evolution
-let fory = Fory::default().compatible(true);
+let fory = Fory::builder().compatible(true).build();
 
 // Cross-language mode
-let fory = Fory::default()
+let fory = Fory::builder()
     .compatible(true)
-    .xlang(true);
+    .xlang(true).build();
 
 // Custom depth limit
-let fory = Fory::default().max_dyn_depth(10);
+let fory = Fory::builder().max_dyn_depth(10).build();
 
 // Combined configuration
-let fory = Fory::default()
+let fory = Fory::builder()
     .compatible(true)
     .xlang(true)
-    .max_dyn_depth(10);
+    .max_dyn_depth(10).build();
 ```
 
 ## Configuration Summary

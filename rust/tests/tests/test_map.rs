@@ -78,7 +78,7 @@ fn test_hashmap_max_collection_size_guardrail() {
     ]);
     let serialized = fory.serialize(&map).unwrap();
 
-    let limited_fory = Fory::default().max_collection_size(2);
+    let limited_fory = Fory::builder().max_collection_size(2).build();
     let err = limited_fory
         .deserialize::<HashMap<String, i32>>(&serialized)
         .expect_err("expected hashmap deserialization to fail on max_collection_size");
@@ -103,7 +103,7 @@ fn test_btreemap_max_collection_size_guardrail() {
     ]);
     let serialized = fory.serialize(&map).unwrap();
 
-    let limited_fory = Fory::default().max_collection_size(2);
+    let limited_fory = Fory::builder().max_collection_size(2).build();
     let err = limited_fory
         .deserialize::<BTreeMap<String, i32>>(&serialized)
         .expect_err("expected btreemap deserialization to fail on max_collection_size");

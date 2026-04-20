@@ -64,7 +64,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::default().compatible(true);
+let mut fory = Fory::builder().compatible(true).build();
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<Zoo>(102);
@@ -153,7 +153,7 @@ struct AnimalShelter {
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fory = Fory::default().compatible(true);
+let mut fory = Fory::builder().compatible(true).build();
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<AnimalShelter>(102);

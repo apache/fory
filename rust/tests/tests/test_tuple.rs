@@ -230,7 +230,7 @@ fn test_tuple_type_id() {
 // Test tuples in xlang mode
 #[test]
 fn test_tuple_xlang_mode() {
-    let fory = Fory::default().xlang(true);
+    let fory = Fory::builder().xlang(true).build();
 
     // Test homogeneous tuple
     let homogeneous = (1i32, 2i32, 3i32);
@@ -268,7 +268,7 @@ fn run_struct_with_simple_tuple_fields(xlang: bool) {
         triple: (bool, u32, i64),
     }
 
-    let mut fory = Fory::default().xlang(xlang);
+    let mut fory = Fory::builder().xlang(xlang).build();
     fory.register::<SimpleTupleStruct>(1).unwrap();
 
     let data = SimpleTupleStruct {
@@ -304,7 +304,7 @@ fn run_struct_with_complex_tuple_fields(xlang: bool) {
         complex_nested: ComplexNestedTuple,
     }
 
-    let mut fory = Fory::default().xlang(xlang);
+    let mut fory = Fory::builder().xlang(xlang).build();
     fory.register::<ComplexTupleStruct>(2).unwrap();
 
     let data = ComplexTupleStruct {

@@ -573,7 +573,7 @@ struct Person {
 }
 
 fn main() -> Result<(), Error> {
-    let mut fory = Fory::default().xlang(true);
+    let mut fory = Fory::builder().xlang(true).build();
     fory.register::<Person>(1)?;
     // fory.register_by_name::<Person>("example.Person")?;
     let person = Person {

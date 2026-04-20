@@ -46,8 +46,8 @@ fn test_simple() {
         f7: i16,
         last: i8,
     }
-    let mut fory1 = Fory::default().compatible(true);
-    let mut fory2 = Fory::default().compatible(true);
+    let mut fory1 = Fory::builder().compatible(true).build();
+    let mut fory2 = Fory::builder().compatible(true).build();
     fory1.register::<Animal1>(999).unwrap();
     fory2.register::<Animal2>(999).unwrap();
     let animal: Animal1 = Animal1 {

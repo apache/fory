@@ -113,7 +113,7 @@ fory := forygo.NewFory(forygo.WithXlang(true), forygo.WithTrackRef(true))
 ```rust
 use fory::Fory;
 
-let fory = Fory::default().xlang(true);
+let fory = Fory::builder().xlang(true).build();
 ```
 
 ### JavaScript
@@ -173,7 +173,7 @@ struct Person {
     age: i32,
 }
 
-let mut fory = Fory::default().xlang(true);
+let mut fory = Fory::builder().xlang(true).build();
 fory
     .register_by_namespace::<Person>("example", "Person")
     .expect("register Person");

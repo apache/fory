@@ -234,7 +234,7 @@ fn test_tuple_struct_with_tuple_field() {
 
 #[test]
 fn test_tuple_struct_xlang_mode() {
-    let mut fory = Fory::default().xlang(true);
+    let mut fory = Fory::builder().xlang(true).build();
     fory.register::<Point>(100).unwrap();
     fory.register::<Wrapper>(102).unwrap();
     fory.register::<Triple>(103).unwrap();
@@ -328,13 +328,13 @@ mod remote_v3 {
 /// Test schema evolution: remote has fewer fields than local.
 #[test]
 fn test_tuple_struct_schema_evolution_add_field() {
-    let mut fory_writer = Fory::default().compatible(true);
+    let mut fory_writer = Fory::builder().compatible(true).build();
     fory_writer.register::<remote_v1::Point>(100).unwrap();
 
     let remote_data = remote_v1::Point(1.0, 2.0);
     let bytes = fory_writer.serialize(&remote_data).unwrap();
 
-    let mut fory_reader = Fory::default().compatible(true);
+    let mut fory_reader = Fory::builder().compatible(true).build();
     fory_reader.register::<local_v2::Point>(100).unwrap();
 
     let local_data: local_v2::Point = fory_reader.deserialize(&bytes).unwrap();
@@ -347,13 +347,13 @@ fn test_tuple_struct_schema_evolution_add_field() {
 /// Test schema evolution: remote has more fields than local.
 #[test]
 fn test_tuple_struct_schema_evolution_remove_field() {
-    let mut fory_writer = Fory::default().compatible(true);
+    let mut fory_writer = Fory::builder().compatible(true).build();
     fory_writer.register::<remote_v3::Point>(100).unwrap();
 
     let remote_data = remote_v3::Point(1.0, 2.0, 3.0, 4.0);
     let bytes = fory_writer.serialize(&remote_data).unwrap();
 
-    let mut fory_reader = Fory::default().compatible(true);
+    let mut fory_reader = Fory::builder().compatible(true).build();
     fory_reader.register::<remote_v1::Point>(100).unwrap();
 
     let local_data: remote_v1::Point = fory_reader.deserialize(&bytes).unwrap();
@@ -388,7 +388,7 @@ mod local_mixed_v3 {
 /// Test that adding i64 (compress=true) doesn't break schema evolution
 #[test]
 fn test_tuple_struct_schema_evolution_add_i64() {
-    let mut fory_writer = Fory::default().compatible(true);
+    let mut fory_writer = Fory::builder().compatible(true).build();
     fory_writer
         .register::<remote_mixed_v1::MixedPoint>(100)
         .unwrap();
@@ -396,7 +396,7 @@ fn test_tuple_struct_schema_evolution_add_i64() {
     let remote_data = remote_mixed_v1::MixedPoint(1.0, 2.0);
     let bytes = fory_writer.serialize(&remote_data).unwrap();
 
-    let mut fory_reader = Fory::default().compatible(true);
+    let mut fory_reader = Fory::builder().compatible(true).build();
     fory_reader
         .register::<local_mixed_v2::MixedPoint>(100)
         .unwrap();
@@ -411,7 +411,7 @@ fn test_tuple_struct_schema_evolution_add_i64() {
 /// Test that adding u8 (smaller size) doesn't break schema evolution
 #[test]
 fn test_tuple_struct_schema_evolution_add_u8() {
-    let mut fory_writer = Fory::default().compatible(true);
+    let mut fory_writer = Fory::builder().compatible(true).build();
     fory_writer
         .register::<remote_mixed_v1::MixedPoint>(100)
         .unwrap();
@@ -419,7 +419,7 @@ fn test_tuple_struct_schema_evolution_add_u8() {
     let remote_data = remote_mixed_v1::MixedPoint(1.0, 2.0);
     let bytes = fory_writer.serialize(&remote_data).unwrap();
 
-    let mut fory_reader = Fory::default().compatible(true);
+    let mut fory_reader = Fory::builder().compatible(true).build();
     fory_reader
         .register::<local_mixed_v3::MixedPoint>(100)
         .unwrap();

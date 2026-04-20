@@ -40,10 +40,10 @@ fn test_unnamed_enum_variant_compatible() {
     }
 
     // Test 1: Serialize v1 (2 fields), deserialize as v2 (3 fields)
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<EventV1>(2000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<EventV2>(2000).unwrap();
 
     let event_v1 = EventV1::Message(42, "hello".to_string());
@@ -80,7 +80,7 @@ fn test_unnamed_enum_variant_compatible() {
         NewVariant(bool), // This variant doesn't exist in EventV1
     }
 
-    let mut fory_v3 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v3 = Fory::builder().xlang(false).compatible(true).build();
     fory_v3.register::<EventV3>(2000).unwrap();
 
     let event_v3 = EventV3::NewVariant(true);
@@ -117,10 +117,10 @@ fn test_named_enum_variant_compatible() {
         },
     }
 
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<CommandV1>(3000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<CommandV2>(3000).unwrap();
 
     // Test 1: Serialize v1, deserialize as v2 (new field gets default value)
@@ -198,13 +198,13 @@ fn test_named_enum_field_evolution() {
         },
     }
 
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<ConfigV1>(4000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<ConfigV2>(4000).unwrap();
 
-    let mut fory_v3 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v3 = Fory::builder().xlang(false).compatible(true).build();
     fory_v3.register::<ConfigV3>(4000).unwrap();
 
     // Test V1 -> V2: New fields get default values
@@ -319,13 +319,13 @@ fn test_named_enum_variant_add_remove() {
         },
     }
 
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<TaskV1>(5000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<TaskV2>(5000).unwrap();
 
-    let mut fory_v3 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v3 = Fory::builder().xlang(false).compatible(true).build();
     fory_v3.register::<TaskV3>(5000).unwrap();
 
     // Test V2 (new variant Completed) -> V1: Unknown variant falls back to default
@@ -458,13 +458,13 @@ fn test_enum_variant_type_change() {
         Finished,                // Unnamed -> Unit
     }
 
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<StatusV1>(6000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<StatusV2>(6000).unwrap();
 
-    let mut fory_v3 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v3 = Fory::builder().xlang(false).compatible(true).build();
     fory_v3.register::<StatusV3>(6000).unwrap();
 
     // Test V1 Unit -> V2 Named: Type mismatch, uses default value
@@ -593,15 +593,15 @@ fn test_struct_with_enum_field_evolution() {
         sender: Option<String>, // New optional field
     }
 
-    let mut fory_v1 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v1 = Fory::builder().xlang(false).compatible(true).build();
     fory_v1.register::<StateV1>(7001).unwrap();
     fory_v1.register::<MessageV1>(7000).unwrap();
 
-    let mut fory_v2 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v2 = Fory::builder().xlang(false).compatible(true).build();
     fory_v2.register::<StateV2>(7001).unwrap();
     fory_v2.register::<MessageV2>(7000).unwrap();
 
-    let mut fory_v3 = Fory::default().xlang(false).compatible(true);
+    let mut fory_v3 = Fory::builder().xlang(false).compatible(true).build();
     fory_v3.register::<StateV3>(7001).unwrap();
     fory_v3.register::<MessageV3>(7000).unwrap();
 
