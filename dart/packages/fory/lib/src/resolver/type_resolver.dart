@@ -375,6 +375,9 @@ final class TypeResolver {
     if (value is List<bool>) {
       return _builtin(List<bool>, TypeIds.boolArray);
     }
+    if(value is BFloat16List) {
+      return _builtin(BFloat16List, TypeIds.bfloat16Array);
+    }
     if (value is List) {
       return _builtin(List, TypeIds.list);
     }
@@ -438,6 +441,7 @@ final class TypeResolver {
       case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
+      case TypeIds.bfloat16Array:
         return _builtin(fieldType.type, fieldType.typeId);
       default:
         return _registeredByType[fieldType.type];
@@ -1149,6 +1153,8 @@ final class TypeResolver {
         return float32ArraySerializer as Serializer<Object?>;
       case TypeIds.float64Array:
         return float64ArraySerializer as Serializer<Object?>;
+      case TypeIds.float16Array:
+        return float16ArraySerializer as Serializer<Object?>;
       case TypeIds.list:
         return listSerializer as Serializer<Object?>;
       case TypeIds.set:

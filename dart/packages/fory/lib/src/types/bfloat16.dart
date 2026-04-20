@@ -21,20 +21,20 @@ import 'dart:typed_data';
 
 /// Brain floating-point (bfloat16) wrapper used by the xlang type system.
 ///
-/// BFloat16 uses 1 sign bit, 8 exponent bits, and 7 mantissa bits.
+/// Bfloat16 uses 1 sign bit, 8 exponent bits, and 7 mantissa bits.
 /// It has the same exponent range as float32 but with reduced precision.
-final class BFloat16 implements Comparable<BFloat16> {
+final class Bfloat16 implements Comparable<Bfloat16> {
   final int _bits;
 
   /// Creates a value directly from raw bfloat16 bits.
-  const BFloat16.fromBits(int bits) : _bits = bits & 0xffff;
+  const Bfloat16.fromBits(int bits) : _bits = bits & 0xffff;
 
   /// Converts [value] to the closest representable bfloat16 value.
-  factory BFloat16(num value) => BFloat16.fromFloat32(value.toDouble());
+  factory Bfloat16(num value) => Bfloat16.fromFloat32(value.toDouble());
 
   /// Converts a float32 [value] to the closest representable bfloat16 value
   /// using round-to-nearest, ties-to-even.
-  factory BFloat16.fromFloat32(double value) {
+  factory Bfloat16.fromFloat32(double value) {
     final f32 = Float32List(1);
     final u32 = f32.buffer.asUint32List();
     f32[0] = value;
@@ -43,7 +43,7 @@ final class BFloat16 implements Comparable<BFloat16> {
 
     // NaN/Inf: preserve sign and truncate mantissa (keeps NaN payload bits).
     if (exponent == 255) {
-      return BFloat16.fromBits((bits >> 16) & 0xffff);
+      return Bfloat16.fromBits((bits >> 16) & 0xffff);
     }
 
     // Round-to-nearest, ties-to-even.
@@ -52,7 +52,7 @@ final class BFloat16 implements Comparable<BFloat16> {
     if (remainder == 0x8000 && (u & 1) != 0) {
       u--;
     }
-    return BFloat16.fromBits(u & 0xffff);
+    return Bfloat16.fromBits(u & 0xffff);
   }
 
   /// Returns the raw bfloat16 bits for this value.
@@ -68,13 +68,13 @@ final class BFloat16 implements Comparable<BFloat16> {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is BFloat16 && other._bits == _bits;
+      identical(this, other) || other is Bfloat16 && other._bits == _bits;
 
   @override
   int get hashCode => _bits.hashCode;
 
   @override
-  int compareTo(BFloat16 other) => toDouble().compareTo(other.toDouble());
+  int compareTo(Bfloat16 other) => toDouble().compareTo(other.toDouble());
 
   @override
   String toString() => toDouble().toString();
