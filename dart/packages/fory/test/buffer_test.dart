@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:fory/fory.dart';
+import 'package:fory/src/codegen/generated_support.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -26,6 +28,31 @@ void main() {
       expect(buffer.readVarUint32(), equals(300));
       expect(buffer.readVarInt64(), equals(-17));
       expect(buffer.readVarUint64(), equals(9000));
+    });
+
+    test('tagged uint64 sign extension regression', () {
+      final buffer = Buffer();
+      final testValue = 0x7FFFFFFF;
+
+      buffer.writeTaggedUint64(testValue);
+      buffer.wrap(buffer.toBytes());
+
+      final result = buffer.readTaggedUint64();
+
+      expect(result, equals(testValue));
+    });
+
+    test('GeneratedReadCursor tagged uint64 sign extension regression', () {
+      final buffer = Buffer();
+      final testValue = 0x7FFFFFFF;
+
+      buffer.writeTaggedUint64(testValue);
+      buffer.wrap(buffer.toBytes());
+
+      final cursor = GeneratedReadCursor.start(buffer);
+      final result = cursor.readTaggedUint64();
+
+      expect(result, equals(testValue));
     });
   });
 }

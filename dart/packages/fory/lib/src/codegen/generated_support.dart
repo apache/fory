@@ -345,7 +345,7 @@ final class GeneratedReadCursor {
 
   int readTaggedUint64() {
     final readIndex = _offset;
-    final first = _view.getInt32(readIndex, Endian.little);
+    final first = _view.getUint32(readIndex, Endian.little);
     if ((first & 1) == 0) {
       _offset = readIndex + 4;
       return first >>> 1;
