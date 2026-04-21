@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::ReadContext;
+use crate::context::WriteContext;
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::TypeId;
+use crate::type_id::TypeId;
 
 #[cold]
 fn binary_size_limit_exceeded(size_bytes: usize, max: usize) -> Error {

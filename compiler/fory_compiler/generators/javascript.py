@@ -147,7 +147,7 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Date",
         PrimitiveKind.TIMESTAMP: "Date",
         PrimitiveKind.DURATION: "number",
-        # DECIMAL is not supported by the JS runtime; rejected in _field_type_expr.
+        PrimitiveKind.DECIMAL: "Decimal",
         PrimitiveKind.ANY: "any",
     }
 
@@ -177,7 +177,7 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Type.date()",
         PrimitiveKind.TIMESTAMP: "Type.timestamp()",
         PrimitiveKind.DURATION: "Type.duration()",
-        # DECIMAL is not yet supported by the JS runtime; omitted intentionally.
+        PrimitiveKind.DECIMAL: "Type.decimal()",
         PrimitiveKind.ANY: "Type.any()",
     }
 
@@ -531,6 +531,9 @@ class JavaScriptGenerator(BaseGenerator):
         lines: List[str] = []
         imported_regs = self._collect_imported_registrations()
 
+        if self._schema_uses_primitive_kind(PrimitiveKind.DECIMAL):
+            lines.append("import { Decimal } from '@apache-fory/core';")
+
         # Collect all imported types used in this schema
         imported_types_by_module: Dict[str, Set[str]] = {}
 
@@ -576,6 +579,39 @@ class JavaScriptGenerator(BaseGenerator):
                 lines.append(f"import {{ {types_str} }} from '{mod_path}';")
 
         return lines
+
+    def _schema_uses_primitive_kind(self, primitive_kind: PrimitiveKind) -> bool:
+        def uses_field_type(field_type: FieldType) -> bool:
+            if isinstance(field_type, PrimitiveType):
+                return field_type.kind == primitive_kind
+            if isinstance(field_type, NamedType):
+                return field_type.name.lower() == primitive_kind.value
+            if isinstance(field_type, ListType):
+                return uses_field_type(field_type.element_type)
+            if isinstance(field_type, MapType):
+                return uses_field_type(field_type.key_type) or uses_field_type(
+                    field_type.value_type
+                )
+            return False
+
+        def uses_message(message: Message) -> bool:
+            for field in message.fields:
+                if uses_field_type(field.field_type):
+                    return True
+            for nested_union in message.nested_unions:
+                if any(
+                    uses_field_type(field.field_type) for field in nested_union.fields
+                ):
+                    return True
+            return any(uses_message(nested) for nested in message.nested_messages)
+
+        if any(
+            uses_field_type(field.field_type)
+            for union in self.schema.unions
+            for field in union.fields
+        ):
+            return True
+        return any(uses_message(message) for message in self.schema.messages)
 
     def generate(self) -> List[GeneratedFile]:
         """Generate JavaScript files for the schema."""
@@ -806,11 +842,6 @@ class JavaScriptGenerator(BaseGenerator):
         """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
-            if field_type.kind == PrimitiveKind.DECIMAL:
-                raise ValueError(
-                    "decimal is not supported by the JavaScript runtime. "
-                    "Use a different type or wait for runtime support."
-                )
             expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
             if expr is None:
                 return "Type.any()"
@@ -826,11 +857,6 @@ class JavaScriptGenerator(BaseGenerator):
                 return self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
             for pk in PrimitiveKind:
                 if pk.value == lower:
-                    if pk == PrimitiveKind.DECIMAL:
-                        raise ValueError(
-                            "decimal is not supported by the JavaScript runtime. "
-                            "Use a different type or wait for runtime support."
-                        )
                     expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
                     if expr is None:
                         raise ValueError(

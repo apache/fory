@@ -18,13 +18,13 @@
 // Re-exports for use in macros - these are needed for macro expansion in user crates
 // Even though they appear unused in this file, they are used by the macro-generated code
 
+use crate::context::{ReadContext, WriteContext};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::RefMode;
 use crate::RefFlag;
+use crate::RefMode;
 use crate::TypeId;
 use std::rc::Rc;
 
@@ -156,7 +156,7 @@ macro_rules! register_trait_type {
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 let concrete_type_id = any_ref.type_id();
                 type_resolver
@@ -220,7 +220,7 @@ macro_rules! register_trait_type {
                 $crate::not_allowed!("fory_read_data should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
-            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
+            fn fory_get_type_id(_type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 $crate::not_allowed!("fory_get_type_id should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
@@ -231,7 +231,7 @@ macro_rules! register_trait_type {
 
             #[inline(always)]
             fn fory_reserved_space() -> usize {
-                $crate::types::SIZE_OF_REF_AND_TYPE
+                $crate::type_id::SIZE_OF_REF_AND_TYPE
             }
 
             #[inline(always)]
@@ -502,7 +502,7 @@ macro_rules! impl_smart_pointer_serializer {
             }
 
             #[inline(always)]
-            fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
+            fn fory_get_type_id(_type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 Ok(fory_core::TypeId::STRUCT)
             }
 
@@ -532,7 +532,7 @@ macro_rules! impl_smart_pointer_serializer {
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::Error> {
                 let any_obj = <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0);
                 let concrete_type_id = any_obj.type_id();
                 type_resolver

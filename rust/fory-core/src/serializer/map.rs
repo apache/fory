@@ -15,13 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::RefMode;
+use crate::resolver::{TypeInfo, TypeResolver};
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{need_to_write_type_for_field, RefMode, TypeId, SIZE_OF_REF_AND_TYPE};
+use crate::type_id::{need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 

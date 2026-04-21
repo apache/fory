@@ -43,6 +43,7 @@ import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/serializer/union_serializer.dart';
 import 'package:fory/src/types/bfloat16.dart';
+import 'package:fory/src/types/decimal.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/float32.dart';
 import 'package:fory/src/types/int16.dart';
@@ -352,6 +353,9 @@ final class TypeResolver {
     if (value is String) {
       return _builtin(String, TypeIds.string);
     }
+    if (value is Decimal) {
+      return _builtin(Decimal, TypeIds.decimal);
+    }
     if (value is Uint8List) {
       return _builtin(Uint8List, TypeIds.binary);
     }
@@ -449,6 +453,7 @@ final class TypeResolver {
       case TypeIds.duration:
       case TypeIds.timestamp:
       case TypeIds.date:
+      case TypeIds.decimal:
       case TypeIds.boolArray:
       case TypeIds.int8Array:
       case TypeIds.int16Array:
@@ -835,7 +840,8 @@ final class TypeResolver {
         fieldType.typeId == TypeIds.binary ||
         fieldType.typeId == TypeIds.date ||
         fieldType.typeId == TypeIds.duration ||
-        fieldType.typeId == TypeIds.timestamp) {
+        fieldType.typeId == TypeIds.timestamp ||
+        fieldType.typeId == TypeIds.decimal) {
       return fieldType.typeId;
     }
     return fieldType.ref ? TypeIds.unknown : fieldType.typeId;
@@ -1050,6 +1056,8 @@ final class TypeResolver {
         return _builtin(Map, TypeIds.map);
       case TypeIds.none:
         return _builtin(Null, TypeIds.none);
+      case TypeIds.decimal:
+        return _builtin(Decimal, TypeIds.decimal);
       case TypeIds.binary:
         return _builtin(Uint8List, TypeIds.binary);
       case TypeIds.date:
@@ -1158,6 +1166,8 @@ final class TypeResolver {
         return stringSerializer as Serializer<Object?>;
       case TypeIds.none:
         return noneSerializer as Serializer<Object?>;
+      case TypeIds.decimal:
+        return decimalSerializer as Serializer<Object?>;
       case TypeIds.binary:
       case TypeIds.uint8Array:
         return binarySerializer as Serializer<Object?>;
@@ -1254,6 +1264,9 @@ final class TypeResolver {
     }
     if (type == Float32) {
       return TypeIds.float32;
+    }
+    if (type == Decimal) {
+      return TypeIds.decimal;
     }
     if (type == Float16List) {
       return TypeIds.float16Array;

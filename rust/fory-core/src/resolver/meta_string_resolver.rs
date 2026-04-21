@@ -23,8 +23,9 @@ use std::sync::OnceLock;
 
 use crate::buffer::Writer;
 use crate::error::Error;
-use crate::meta::{murmurhash3_x64_128, NAMESPACE_DECODER};
+use crate::meta::NAMESPACE_DECODER;
 use crate::meta::{Encoding, MetaString};
+use crate::util::murmurhash3_x64_128;
 use crate::Reader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

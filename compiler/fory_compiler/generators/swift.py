@@ -65,8 +65,9 @@ class SwiftGenerator(BaseGenerator):
         PrimitiveKind.FLOAT64: "Double",
         PrimitiveKind.STRING: "String",
         PrimitiveKind.BYTES: "Data",
-        PrimitiveKind.DATE: "ForyDate",
-        PrimitiveKind.TIMESTAMP: "ForyTimestamp",
+        PrimitiveKind.DATE: "LocalDate",
+        PrimitiveKind.TIMESTAMP: "Date",
+        PrimitiveKind.DECIMAL: "Decimal",
         PrimitiveKind.ANY: "Any",
     }
 
@@ -963,12 +964,13 @@ class SwiftGenerator(BaseGenerator):
 
             encoding = self.field_encoding_argument(field)
             field_id = self.message_field_id_argument(field)
-            if field_id is not None and encoding is not None:
-                lines.append(f"{ind}@ForyField(id: {field_id}, encoding: {encoding})")
-            elif field_id is not None:
-                lines.append(f"{ind}@ForyField(id: {field_id})")
-            elif encoding is not None:
-                lines.append(f"{ind}@ForyField(encoding: {encoding})")
+            attr_parts: List[str] = []
+            if field_id is not None:
+                attr_parts.append(f"id: {field_id}")
+            if encoding is not None:
+                attr_parts.append(f"encoding: {encoding}")
+            if attr_parts:
+                lines.append(f"{ind}@ForyField({', '.join(attr_parts)})")
 
             field_type = self.field_swift_type(field, lineage)
             weak_prefix = "weak " if self.is_weak_ref_field(field) else ""

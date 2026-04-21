@@ -21,7 +21,7 @@ import { LATIN1, UTF16, UTF8 } from "../type";
 import { isNodeEnv } from "../util";
 import { PlatformBuffer, alloc, fromUint8Array } from "../platformBuffer";
 import { readLatin1String } from "./string";
-import { BFloat16 } from "../bfloat16";
+import { BFloat16 } from "../types/bfloat16";
 
 export class BinaryReader {
   private sliceStringEnable;

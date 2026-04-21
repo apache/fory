@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer.kotlin
 
+import java.math.BigDecimal
+import java.math.BigInteger
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.time.Duration
@@ -227,5 +229,33 @@ class BuiltinClassSerializerTests {
     val value = Regex("12345")
     Assert.assertEquals(value.pattern, fory.deserialize(fory.serialize(value.pattern)))
     Assert.assertEquals(value.options, fory.deserialize(fory.serialize(value.options)))
+  }
+
+  @Test
+  fun testSerializeBigDecimal() {
+    val values =
+      listOf(
+        BigDecimal.ZERO,
+        BigDecimal(BigInteger.ZERO, 3),
+        BigDecimal.ONE,
+        BigDecimal.ONE.negate(),
+        BigDecimal.valueOf(12345, 2),
+        BigDecimal(BigInteger.valueOf(Long.MAX_VALUE), 0),
+        BigDecimal(BigInteger.valueOf(Long.MIN_VALUE), 0),
+        BigDecimal(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE), 0),
+        BigDecimal(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), 0),
+        BigDecimal(BigInteger("123456789012345678901234567890123456789"), 37),
+      )
+    for (language in listOf(Language.JAVA, Language.XLANG)) {
+      val fory =
+        Fory.builder()
+          .withLanguage(language)
+          .requireClassRegistration(true)
+          .withRefTracking(true)
+          .build()
+      for (value in values) {
+        Assert.assertEquals(value, fory.deserialize(fory.serialize(value)))
+      }
+    }
   }
 }

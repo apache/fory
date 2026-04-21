@@ -104,7 +104,7 @@ fn named_enum() {
 #[test]
 fn struct_with_enum_field() {
     use fory_core::serializer::Serializer;
-    use fory_core::types::TypeId;
+    use fory_core::type_id::TypeId;
 
     // Define a simple enum
     #[derive(ForyObject, Debug, PartialEq, Clone)]
@@ -153,7 +153,7 @@ fn struct_with_enum_field() {
 #[test]
 fn union_compatible_enum_xlang_format() {
     use fory_core::serializer::Serializer;
-    use fory_core::types::TypeId;
+    use fory_core::type_id::TypeId;
 
     // Define a Union-compatible enum (each variant has exactly one field)
     #[derive(ForyObject, Debug, PartialEq, Clone)]
@@ -201,7 +201,7 @@ fn union_compatible_enum_xlang_format() {
 #[test]
 fn struct_with_enum_field_explicit_nullable() {
     use fory_core::serializer::Serializer;
-    use fory_core::types::TypeId;
+    use fory_core::type_id::TypeId;
 
     #[derive(ForyObject, Debug, PartialEq, Clone)]
     enum Status {

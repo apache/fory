@@ -42,6 +42,8 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.util.DateTimeUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -66,6 +68,47 @@ public class TimeSerializersTest extends ForyTestBase {
     serDeCheckSerializerAndEqual(
         fory, Duration.between((Instant.now()), Instant.ofEpochSecond(-1)), "Time");
     serDeCheckSerializerAndEqual(fory, Period.of(100, 11, 20), "Time");
+  }
+
+  @Test
+  public void testXlangLocalDateUsesVarInt64Encoding() {
+    MemoryBuffer epochBuffer = MemoryUtils.buffer(16);
+    TimeSerializers.LocalDateSerializer.writeXlangLocalDate(epochBuffer, LocalDate.of(1970, 1, 1));
+    Assert.assertEquals(epochBuffer.writerIndex(), 1);
+    epochBuffer.readerIndex(0);
+    Assert.assertEquals(
+        TimeSerializers.LocalDateSerializer.readXlangLocalDate(epochBuffer),
+        LocalDate.of(1970, 1, 1));
+
+    MemoryBuffer beforeEpochBuffer = MemoryUtils.buffer(16);
+    TimeSerializers.LocalDateSerializer.writeXlangLocalDate(
+        beforeEpochBuffer, LocalDate.of(1969, 12, 31));
+    Assert.assertEquals(beforeEpochBuffer.writerIndex(), 1);
+    beforeEpochBuffer.readerIndex(0);
+    Assert.assertEquals(
+        TimeSerializers.LocalDateSerializer.readXlangLocalDate(beforeEpochBuffer),
+        LocalDate.of(1969, 12, 31));
+  }
+
+  @Test
+  public void testXlangLocalDateSupportsWideJavaRange() {
+    LocalDate[] values = {LocalDate.MIN, LocalDate.MAX};
+    for (LocalDate value : values) {
+      MemoryBuffer buffer = MemoryUtils.buffer(16);
+      TimeSerializers.LocalDateSerializer.writeXlangLocalDate(buffer, value);
+      buffer.readerIndex(0);
+      Assert.assertEquals(TimeSerializers.LocalDateSerializer.readXlangLocalDate(buffer), value);
+    }
+  }
+
+  @Test
+  public void testNativeLocalDateEncodingRemainsYearMonthDay() {
+    MemoryBuffer buffer = MemoryUtils.buffer(16);
+    LocalDate value = LocalDate.of(2024, 2, 29);
+    TimeSerializers.LocalDateSerializer.writeLocalDate(buffer, value);
+    Assert.assertEquals(buffer.writerIndex(), Integer.BYTES + 2);
+    buffer.readerIndex(0);
+    Assert.assertEquals(TimeSerializers.LocalDateSerializer.readLocalDate(buffer), value);
   }
 
   @Test(dataProvider = "foryCopyConfig")

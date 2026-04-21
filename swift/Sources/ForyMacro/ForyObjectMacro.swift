@@ -189,6 +189,7 @@ private enum ParsedEnumKind {
 private struct ParsedEnumPayloadField {
     let label: String?
     let typeText: String
+    let isOptional: Bool
     let hasGenerics: Bool
 }
 
@@ -268,6 +269,7 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
                         .init(
                             label: label,
                             typeText: payloadType,
+                            isOptional: optional.isOptional,
                             hasGenerics: hasGenerics
                         )
                     )
@@ -413,9 +415,9 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         var lines: [String] = []
         lines.append("case \(enumCasePattern(enumCase)):")
         lines.append("    context.buffer.writeVarUInt32(\(caseID))")
-        for payloadIndex in enumCase.payload.indices {
+        for (payloadIndex, payloadField) in enumCase.payload.enumerated() {
             let variableName = "__value\(payloadIndex)"
-            let hasGenerics = enumCase.payload[payloadIndex].hasGenerics ? "true" : "false"
+            let hasGenerics = payloadField.hasGenerics ? "true" : "false"
             lines.append(
                 "    try \(variableName).foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: \(hasGenerics))"
             )
@@ -665,7 +667,9 @@ private func parseForyFieldConfiguration(
                 continue
             }
 
-            throw MacroExpansionErrorMessage("@ForyField supports only 'id' and 'encoding' arguments")
+            throw MacroExpansionErrorMessage(
+                "@ForyField supports only 'id' and 'encoding' arguments"
+            )
         }
     }
 
@@ -673,7 +677,10 @@ private func parseForyFieldConfiguration(
         return nil
     }
 
-    return ParsedForyFieldConfiguration(encoding: parsedEncoding, id: parsedID)
+    return ParsedForyFieldConfiguration(
+        encoding: parsedEncoding,
+        id: parsedID
+    )
 }
 
 private func parseForyObjectConfiguration(_ attribute: AttributeSyntax) throws -> ParsedForyObjectConfiguration {
@@ -1369,7 +1376,7 @@ private func compatibleTypeMetaFieldExpression(
         typeText: field.typeText,
         nullableExpression: field.isOptional ? "true" : "false",
         trackRefExpression: fieldTrackRefExpression,
-        explicitTypeID: field.customCodecType == nil ? nil : field.typeID
+        explicitTypeID: field.customCodecType != nil ? field.typeID : nil
     )
 }
 
@@ -1557,7 +1564,9 @@ private struct TypeClassification {
     let primitiveSize: Int
 }
 
-private func classifyType(_ typeText: String) -> TypeClassification {
+private func classifyType(
+    _ typeText: String
+) -> TypeClassification {
     let normalized = trimKnownModulePrefix(trimType(typeText))
     if isDynamicAnyConcreteType(normalized) {
         return .init(typeID: 0, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
@@ -1590,10 +1599,20 @@ private func classifyType(_ typeText: String) -> TypeClassification {
         return .init(typeID: 21, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     case "Data":
         return .init(typeID: 41, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
-    case "Date", "ForyTimestamp":
-        return .init(typeID: 38, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
-    case "ForyDate":
+    case "Date":
+        return .init(
+            typeID: 38,
+            isPrimitive: false,
+            isBuiltIn: true,
+            isCollection: false,
+            isMap: false,
+            isCompressedNumeric: false,
+            primitiveSize: 0
+        )
+    case "LocalDate":
         return .init(typeID: 39, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+    case "Decimal":
+        return .init(typeID: 40, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     default:
         break
     }

@@ -18,6 +18,7 @@
 import array
 import dataclasses
 import datetime
+import decimal
 import enum
 import functools
 import inspect
@@ -58,6 +59,7 @@ from pyfory.serializer import (
     Float32Serializer,
     Float64Serializer,
     StringSerializer,
+    DecimalSerializer,
     DateSerializer,
     TimestampSerializer,
     BytesSerializer,
@@ -442,7 +444,7 @@ class TypeResolver:
         )
         register(float, type_id=TypeId.FLOAT64, serializer=Float64Serializer)
         register(str, type_id=TypeId.STRING, serializer=StringSerializer)
-        # TODO(chaokunyang) DURATION DECIMAL
+        register(decimal.Decimal, type_id=TypeId.DECIMAL, serializer=DecimalSerializer)
         register(datetime.datetime, type_id=TypeId.TIMESTAMP, serializer=TimestampSerializer)
         register(datetime.date, type_id=TypeId.DATE, serializer=DateSerializer)
         register(bytes, type_id=TypeId.BINARY, serializer=BytesSerializer)

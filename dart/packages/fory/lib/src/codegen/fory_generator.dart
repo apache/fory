@@ -1182,8 +1182,9 @@ GeneratedFieldType(
       case TypeIds.int32:
       case TypeIds.uint32:
       case TypeIds.float32:
-      case TypeIds.date:
         return 4;
+      case TypeIds.date:
+        return 10;
       case TypeIds.int64:
       case TypeIds.uint64:
       case TypeIds.float64:
@@ -1253,6 +1254,8 @@ GeneratedFieldType(
         return 'context.writeString($valueExpression)';
       case TypeIds.binary:
         return 'writeGeneratedBinaryValue(context, $valueExpression)';
+      case TypeIds.decimal:
+        return 'writeGeneratedDecimalValue(context, $valueExpression)';
       case TypeIds.date:
         return 'writeGeneratedLocalDateValue(context, $valueExpression)';
       case TypeIds.duration:
@@ -1330,7 +1333,7 @@ GeneratedFieldType(
       case TypeIds.float64:
         return '$cursorExpression.writeFloat64(${_directGeneratedScalarExpression(field, valueExpression)})';
       case TypeIds.date:
-        return '$cursorExpression.writeInt32($valueExpression.toEpochDay())';
+        return '$cursorExpression.writeVarInt64($valueExpression.toEpochDay())';
       case TypeIds.duration:
         return '$cursorExpression.writeVarInt64(generatedDurationWireSeconds($valueExpression)); $cursorExpression.writeInt32(generatedDurationWireNanoseconds($valueExpression))';
       case TypeIds.timestamp:
@@ -1414,6 +1417,8 @@ GeneratedFieldType(
         return 'context.readString()';
       case TypeIds.binary:
         return 'readGeneratedBinaryValue(context)';
+      case TypeIds.decimal:
+        return 'readGeneratedDecimalValue(context)';
       case TypeIds.date:
         return 'readGeneratedLocalDateValue(context)';
       case TypeIds.duration:
@@ -1521,7 +1526,7 @@ GeneratedFieldType(
       case TypeIds.float64:
         return '$cursorExpression.readFloat64()';
       case TypeIds.date:
-        return 'LocalDate.fromEpochDay($cursorExpression.readInt32())';
+        return 'LocalDate.fromEpochDay($cursorExpression.readVarInt64())';
       case TypeIds.duration:
         return 'readGeneratedDurationFromWire($cursorExpression.readVarInt64(), $cursorExpression.readInt32())';
       case TypeIds.timestamp:
@@ -1864,6 +1869,7 @@ GeneratedFieldType(
     switch (typeId) {
       case TypeIds.string:
       case TypeIds.binary:
+      case TypeIds.decimal:
       case TypeIds.date:
       case TypeIds.duration:
       case TypeIds.timestamp:
@@ -2101,6 +2107,8 @@ GeneratedFieldType(
         return TypeIds.bfloat16;
       case 'Float32':
         return TypeIds.float32;
+      case 'Decimal':
+        return TypeIds.decimal;
       case 'Timestamp':
       case 'DateTime':
         return TypeIds.timestamp;

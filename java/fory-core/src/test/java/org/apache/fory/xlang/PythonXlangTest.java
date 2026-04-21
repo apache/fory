@@ -135,6 +135,12 @@ public class PythonXlangTest extends XlangTestBase {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testDecimal(boolean enableCodegen) throws IOException {
+    super.testDecimal(enableCodegen);
+  }
+
   // ============================================================================
   // Explicitly re-declare inherited test methods to enable running individual
   // tests via Maven: mvn test -Dtest=org.apache.fory.xlang.PythonXlangTest#testXxx

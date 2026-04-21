@@ -372,7 +372,7 @@ fn test_array_rc_trait_objects() {
 
 #[test]
 fn test_array_float16() {
-    use fory_core::float16::float16;
+    use fory_core::types::float16::float16;
     let fory = fory_core::fory::Fory::default();
     let arr = [
         float16::from_f32(1.0),
@@ -389,7 +389,7 @@ fn test_array_float16() {
 
 #[test]
 fn test_array_float16_special_values() {
-    use fory_core::float16::float16;
+    use fory_core::types::float16::float16;
     let fory = fory_core::fory::Fory::default();
     let arr = [
         float16::INFINITY,

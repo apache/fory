@@ -17,9 +17,9 @@
 
 use fory_core::error::Error;
 use fory_core::fory::Fory;
-use fory_core::resolver::context::{ReadContext, WriteContext};
+use fory_core::resolver::TypeResolver;
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::TypeResolver;
+use fory_core::{ReadContext, WriteContext};
 use fory_derive::ForyObject;
 
 #[test]

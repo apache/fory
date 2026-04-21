@@ -40,10 +40,19 @@ final class LocalDate implements Comparable<LocalDate> {
     return LocalDate(instant.year, instant.month, instant.day);
   }
 
+  /// Creates a date from a [DateTime] by taking its UTC calendar date.
+  factory LocalDate.fromDateTime(DateTime value) {
+    final utcValue = value.toUtc();
+    return LocalDate(utcValue.year, utcValue.month, utcValue.day);
+  }
+
   /// Converts this date to xlang epoch-day form.
   int toEpochDay() =>
       DateTime.utc(year, month, day).millisecondsSinceEpoch ~/
       Duration.millisecondsPerDay;
+
+  /// Converts this date to a UTC [DateTime] at midnight.
+  DateTime toDateTime() => DateTime.utc(year, month, day);
 
   @override
   int compareTo(LocalDate other) {

@@ -15,16 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::ReadContext;
+use crate::context::WriteContext;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::ForyDefault;
 use crate::serializer::Serializer;
-use crate::types::TypeId;
+use crate::type_id::TypeId;
 use crate::util::EPOCH;
-use chrono::{Duration as ChronoDuration, NaiveDate, NaiveDateTime};
+use chrono::{Duration as ChronoDuration, NaiveDate, NaiveDateTime, TimeDelta};
 use std::mem;
 use std::time::Duration;
 
@@ -89,22 +89,44 @@ impl Serializer for NaiveDate {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let days_since_epoch = self.signed_duration_since(EPOCH).num_days();
-        context.writer.write_i32(days_since_epoch as i32);
+        if context.is_xlang() {
+            context.writer.write_var_i64(days_since_epoch);
+        } else {
+            let native_days = i32::try_from(days_since_epoch).map_err(|_| {
+                Error::invalid_data(format!(
+                    "date day count {} exceeds native i32 range",
+                    days_since_epoch
+                ))
+            })?;
+            context.writer.write_i32(native_days);
+        }
         Ok(())
     }
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let days = context.reader.read_i32()?;
-        use chrono::TimeDelta;
-        let duration = TimeDelta::days(days as i64);
-        let result = EPOCH + duration;
-        Ok(result)
+        let days = if context.is_xlang() {
+            context.reader.read_var_i64()?
+        } else {
+            i64::from(context.reader.read_i32()?)
+        };
+        let duration = TimeDelta::try_days(days).ok_or_else(|| {
+            Error::invalid_data(format!(
+                "date day count {} is out of chrono::TimeDelta range",
+                days
+            ))
+        })?;
+        EPOCH.checked_add_signed(duration).ok_or_else(|| {
+            Error::invalid_data(format!(
+                "date day count {} is out of chrono::NaiveDate range",
+                days
+            ))
+        })
     }
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
-        mem::size_of::<i32>()
+        9
     }
 
     #[inline(always)]

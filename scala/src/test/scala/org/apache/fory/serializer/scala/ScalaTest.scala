@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.scala
 
+import java.math.{BigDecimal => JBigDecimal, BigInteger}
 import org.apache.fory.Fory
 import org.apache.fory.config.Language
 import org.scalatest.matchers.should.Matchers
@@ -40,6 +41,32 @@ class ScalaTest extends AnyWordSpec with Matchers {
     "serialize/deserialize package object" in {
       val p = SomePackageObject.SomeClass(1)
       fory.deserialize(fory.serialize(p)) shouldEqual p
+    }
+    "serialize/deserialize java.math.BigDecimal" in {
+      val values = Seq(
+        JBigDecimal.ZERO,
+        new JBigDecimal(BigInteger.ZERO, 3),
+        JBigDecimal.ONE,
+        JBigDecimal.ONE.negate(),
+        JBigDecimal.valueOf(12345, 2),
+        new JBigDecimal(BigInteger.valueOf(Long.MaxValue), 0),
+        new JBigDecimal(BigInteger.valueOf(Long.MinValue), 0),
+        new JBigDecimal(BigInteger.valueOf(Long.MaxValue).add(BigInteger.ONE), 0),
+        new JBigDecimal(BigInteger.valueOf(Long.MinValue).subtract(BigInteger.ONE), 0),
+        new JBigDecimal(new BigInteger("123456789012345678901234567890123456789"), 37)
+      )
+      Seq(Language.JAVA, Language.XLANG).foreach { language =>
+        val decimalFory = Fory.builder()
+          .withLanguage(language)
+          .withRefTracking(true)
+          .withScalaOptimizationEnabled(true)
+          .requireClassRegistration(false)
+          .suppressClassRegistrationWarnings(false)
+          .build()
+        values.foreach { value =>
+          decimalFory.deserialize(decimalFory.serialize(value)) shouldEqual value
+        }
+      }
     }
   }
   "serialize/deserialize package object in app" in {

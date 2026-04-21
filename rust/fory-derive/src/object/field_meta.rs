@@ -29,7 +29,7 @@
 //! Both `compress` and `encoding` are converted to a `type_id` internally. If both are
 //! specified, they must not conflict.
 
-use fory_core::types::TypeId;
+use fory_core::type_id::TypeId;
 use quote::ToTokens;
 use std::collections::HashMap;
 use syn::{Field, GenericArgument, PathArguments, Type};

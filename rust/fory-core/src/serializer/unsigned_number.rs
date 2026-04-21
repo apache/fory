@@ -16,13 +16,13 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
+use crate::context::ReadContext;
+use crate::context::WriteContext;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::TypeId;
+use crate::type_id::TypeId;
 
 // Macro for xlang-compatible unsigned types (u8, u16, u32, u64)
 macro_rules! impl_xlang_unsigned_num_serializer {

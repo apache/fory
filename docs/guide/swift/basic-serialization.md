@@ -92,8 +92,12 @@ assert(fromBuffer == person)
 ### Date and time
 
 - `Date`
-- `ForyDate`
-- `ForyTimestamp`
+- `LocalDate`
+- `Duration`
+
+Use `Date` for timestamp values and `LocalDate` for day-only dates. `LocalDate`
+supports epoch-day and `Date` conversions through `fromEpochDay(_:)`,
+`toEpochDay()`, `init(date:)`, and `toDate()`.
 
 ### Collections
 

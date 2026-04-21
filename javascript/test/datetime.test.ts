@@ -19,6 +19,7 @@
 
 import Fory, { Type } from '../packages/core/index';
 import {describe, expect, test} from '@jest/globals';
+import { TypeId } from '../packages/core/lib/type';
 
 describe('datetime', () => {
   test('should date work', () => {
@@ -46,5 +47,13 @@ describe('datetime', () => {
     );
     expect(result).toEqual({ a: d, b: d.getTime() })
   });
-});
+  test('should use signed varint64 for date payloads', () => {
+    const fory = new Fory({ ref: true });
+    const serializer = fory.register(Type.date()).serializer;
+    const value = new Date(1969, 11, 31);
 
+    const encoded = fory.serialize(value, serializer);
+    expect(Array.from(encoded)).toEqual([0x02, 0xff, TypeId.DATE, 0x01]);
+    expect(fory.deserialize(encoded, serializer)).toEqual(value);
+  });
+});

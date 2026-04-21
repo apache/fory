@@ -67,6 +67,7 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "Vec<u8>",
         PrimitiveKind.DATE: "chrono::NaiveDate",
         PrimitiveKind.TIMESTAMP: "chrono::NaiveDateTime",
+        PrimitiveKind.DECIMAL: "fory::Decimal",
         PrimitiveKind.ANY: "Box<dyn Any>",
     }
 

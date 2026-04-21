@@ -27,11 +27,13 @@
 //!
 //! - **`fory`**: Main serialization engine and public API
 //! - **`buffer`**: Efficient binary buffer management with Reader/Writer
+//! - **`context`**: Per-operation read/write state and context pooling types
 //! - **`row`**: Row-based serialization for zero-copy operations
 //! - **`serializer`**: Type-specific serialization implementations
 //! - **`resolver`**: Type resolution and metadata management
 //! - **`meta`**: Metadata handling for schema evolution
-//! - **`types`**: Core type definitions and constants
+//! - **`types`**: Runtime value carriers such as decimal, float16, and weak refs
+//! - **`type_id`**: Type IDs and protocol header helpers
 //! - **`error`**: Error handling and result types
 //! - **`util`**: Utility functions and helpers
 //!
@@ -178,15 +180,15 @@
 
 pub mod buffer;
 pub mod config;
+pub mod context;
 pub mod error;
-pub mod float16;
 pub mod fory;
 pub mod meta;
 pub mod resolver;
 pub mod row;
 pub mod serializer;
+pub mod type_id;
 pub mod types;
-pub use float16::float16 as Float16;
 pub mod util;
 
 // Re-export paste for use in macros
@@ -194,10 +196,12 @@ pub use paste;
 
 pub use crate::buffer::{Reader, Writer};
 pub use crate::config::Config;
+pub use crate::context::{ReadContext, WriteContext};
 pub use crate::error::Error;
 pub use crate::fory::{Fory, ForyBuilder};
-pub use crate::resolver::context::{ReadContext, WriteContext};
-pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
-pub use crate::serializer::weak::{ArcWeak, RcWeak};
+pub use crate::meta::{compute_field_hash, compute_struct_hash};
+pub use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
 pub use crate::serializer::{read_data, write_data, ForyDefault, Serializer, StructSerializer};
-pub use crate::types::{RefFlag, RefMode, TypeId};
+pub use crate::type_id::TypeId;
+pub use crate::types::float16::float16 as Float16;
+pub use crate::types::{ArcWeak, Decimal, RcWeak};

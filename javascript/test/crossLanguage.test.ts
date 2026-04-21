@@ -20,6 +20,7 @@
 import Fory, {
   BinaryReader,
   BinaryWriter,
+  Decimal,
   ReadContext,
   Type,
   Dynamic,
@@ -48,6 +49,28 @@ const Integer = {
 const Long = {
   MAX_VALUE: BigInt("9223372036854775807"),
   MIN_VALUE: BigInt("-9223372036854775808"),
+}
+
+function decimal(unscaledValue: string | bigint | number, scale: number): Decimal {
+  return new Decimal(unscaledValue, scale);
+}
+
+function decimalValues(): Decimal[] {
+  return [
+    decimal(0n, 0),
+    decimal(0n, 3),
+    decimal(1n, 0),
+    decimal(-1n, 0),
+    decimal(12345n, 2),
+    decimal("9223372036854775807", 0),
+    decimal("-9223372036854775808", 0),
+    decimal("4611686018427387903", 0),
+    decimal("-4611686018427387904", 0),
+    decimal("9223372036854775808", 0),
+    decimal("-9223372036854775809", 0),
+    decimal("123456789012345678901234567890123456789", 37),
+    decimal("-123456789012345678901234567890123456789", -17),
+  ];
 }
 
 describe("bool", () => {
@@ -528,6 +551,29 @@ describe("bool", () => {
       bfs.push(serializedData);
     }
 
+    writeToFile(Buffer.concat(bfs));
+  });
+
+  test("test_decimal", () => {
+    const fory = new Fory({
+      compatible: true,
+    });
+
+    const expectedValues = decimalValues();
+    const actualValues: Decimal[] = [];
+    let cursor = 0;
+    for (let i = 0; i < expectedValues.length; i++) {
+      const value = fory.deserialize(content.subarray(cursor));
+      cursor += fory.readContext.reader.readGetCursor();
+      expect(value).toBeInstanceOf(Decimal);
+      expect((value as Decimal).equals(expectedValues[i])).toBe(true);
+      actualValues.push(value as Decimal);
+    }
+
+    const bfs = [];
+    for (const value of actualValues) {
+      bfs.push(fory.serialize(value));
+    }
     writeToFile(Buffer.concat(bfs));
   });
 

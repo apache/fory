@@ -156,6 +156,11 @@ public class GoXlangTest extends XlangTestBase {
     super.testInteger(enableCodegen);
   }
 
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testDecimal(boolean enableCodegen) throws java.io.IOException {
+    super.testDecimal(enableCodegen);
+  }
+
   // this test failed more frequently when refactor, create two separate tests
   // to make debug more easy
   @Test(groups = "xlang")

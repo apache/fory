@@ -220,7 +220,7 @@ fn test_compatible_map_to_empty_struct() {
 
 #[test]
 fn test_struct_with_float16_fields() {
-    use fory_core::float16::float16;
+    use fory_core::types::float16::float16;
 
     #[derive(ForyObject, Debug)]
     struct Float16Data {

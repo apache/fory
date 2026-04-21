@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::ReadContext;
+use crate::context::WriteContext;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::TypeId;
+use crate::type_id::TypeId;
 use std::mem;
 
 impl Serializer for bool {

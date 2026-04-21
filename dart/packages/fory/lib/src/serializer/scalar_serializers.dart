@@ -23,6 +23,38 @@ import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/string_encoding.dart';
+import 'package:fory/src/types/decimal.dart';
+
+// The small form reserves the low header bit to distinguish small/big
+// encodings, so the zigzag value itself must still fit in 63 bits before the
+// final << 1.
+final BigInt _decimalSmallMin = -(BigInt.one << 62);
+final BigInt _decimalSmallMax = (BigInt.one << 62) - BigInt.one;
+
+bool _canUseSmallDecimalEncoding(BigInt value) {
+  return value >= _decimalSmallMin && value <= _decimalSmallMax;
+}
+
+Uint8List _decimalMagnitudeToCanonicalLittleEndian(BigInt magnitude) {
+  if (magnitude == BigInt.zero) {
+    throw StateError('Zero must use the small decimal encoding.');
+  }
+  final bytes = <int>[];
+  var remaining = magnitude;
+  while (remaining > BigInt.zero) {
+    bytes.add((remaining & BigInt.from(0xff)).toInt());
+    remaining >>= 8;
+  }
+  return Uint8List.fromList(bytes);
+}
+
+BigInt _decimalMagnitudeFromCanonicalLittleEndian(Uint8List payload) {
+  var magnitude = BigInt.zero;
+  for (var index = payload.length - 1; index >= 0; index -= 1) {
+    magnitude = (magnitude << 8) | BigInt.from(payload[index]);
+  }
+  return magnitude;
+}
 
 final class NoneSerializer extends Serializer<Null> {
   const NoneSerializer();
@@ -104,6 +136,70 @@ final class BinarySerializer extends Serializer<Uint8List> {
   }
 }
 
+final class DecimalSerializer extends Serializer<Decimal> {
+  const DecimalSerializer();
+
+  @override
+  bool get supportsRef => false;
+
+  @override
+  void write(WriteContext context, Decimal value) {
+    writePayload(context, value);
+  }
+
+  @override
+  Decimal read(ReadContext context) {
+    return readPayload(context);
+  }
+
+  static void writePayload(WriteContext context, Decimal value) {
+    final buffer = context.buffer;
+    final unscaled = value.unscaledValue;
+    buffer.writeVarInt32(value.scale);
+    if (_canUseSmallDecimalEncoding(unscaled)) {
+      final smallValue = unscaled.toInt();
+      final zigZag = (smallValue << 1) ^ (smallValue >> 63);
+      buffer.writeVarUint64(zigZag << 1);
+      return;
+    }
+
+    final payload = _decimalMagnitudeToCanonicalLittleEndian(unscaled.abs());
+    final sign = unscaled.isNegative ? 1 : 0;
+    final meta = (payload.length << 1) | sign;
+    buffer.writeVarUint64((meta << 1) | 1);
+    buffer.writeBytes(payload);
+  }
+
+  static Decimal readPayload(ReadContext context) {
+    final scale = context.buffer.readVarInt32();
+    final header = context.buffer.readVarUint64();
+    if ((header & 1) == 0) {
+      final zigZag = header >>> 1;
+      final unscaled = (zigZag >>> 1) ^ -(zigZag & 1);
+      return Decimal(BigInt.from(unscaled), scale);
+    }
+
+    final meta = header >>> 1;
+    final length = meta >>> 1;
+    if (length <= 0) {
+      throw StateError('Invalid decimal magnitude length $length.');
+    }
+    final payload = context.buffer.copyBytes(length);
+    if (payload[length - 1] == 0) {
+      throw StateError(
+        'Non-canonical decimal payload: trailing zero byte.',
+      );
+    }
+    final magnitude = _decimalMagnitudeFromCanonicalLittleEndian(payload);
+    if (magnitude == BigInt.zero) {
+      throw StateError('Big decimal encoding must not represent zero.');
+    }
+    final sign = meta & 1;
+    return Decimal(sign == 0 ? magnitude : -magnitude, scale);
+  }
+}
+
 const NoneSerializer noneSerializer = NoneSerializer();
 const StringSerializer stringSerializer = StringSerializer();
 const BinarySerializer binarySerializer = BinarySerializer();
+const DecimalSerializer decimalSerializer = DecimalSerializer();

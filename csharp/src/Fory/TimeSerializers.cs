@@ -23,13 +23,13 @@ internal static class TimeCodec
 
     public static void WriteDate(WriteContext context, in DateOnly value)
     {
-        context.Writer.WriteInt32(value.DayNumber - Epoch.DayNumber);
+        context.Writer.WriteVarInt64(value.DayNumber - Epoch.DayNumber);
     }
 
     public static DateOnly ReadDate(ReadContext context)
     {
-        int days = context.Reader.ReadInt32();
-        return DateOnly.FromDayNumber(Epoch.DayNumber + days);
+        long days = context.Reader.ReadVarInt64();
+        return DateOnly.FromDayNumber(checked(Epoch.DayNumber + (int)days));
     }
 
     public static DateTimeOffset ToDateTimeOffset(in DateTime value)

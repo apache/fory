@@ -18,12 +18,14 @@
 import array
 import builtins
 import dataclasses
+import decimal
 import importlib
 import inspect
 import marshal
 import os
 import pickle
 import types
+from typing import Tuple
 
 from pyfory.serialization import Buffer
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
@@ -157,6 +159,110 @@ class NoneSerializer(Serializer):
 
     def read(self, buffer):
         return None
+
+
+_MIN_INT64 = -(1 << 63)
+_MAX_INT64 = (1 << 63) - 1
+_MAX_SMALL_ZIGZAG = (1 << 63) - 1
+_MIN_INT32 = -(1 << 31)
+_MAX_INT32 = (1 << 31) - 1
+_UINT64_MOD = 1 << 64
+
+
+def _encode_zigzag64(value: int) -> int:
+    return (value << 1) ^ (value >> 63)
+
+
+def _decode_zigzag64(value: int) -> int:
+    return (value >> 1) ^ -(value & 1)
+
+
+def _can_use_small_decimal_encoding(unscaled: int) -> bool:
+    if unscaled < _MIN_INT64 or unscaled > _MAX_INT64:
+        return False
+    return _encode_zigzag64(unscaled) <= _MAX_SMALL_ZIGZAG
+
+
+def _decimal_parts(value: decimal.Decimal) -> Tuple[int, int]:
+    if not value.is_finite():
+        raise ValueError(f"Decimal value must be finite, got {value!r}")
+    sign, digits, exponent = value.as_tuple()
+    scale = -exponent
+    if scale < _MIN_INT32 or scale > _MAX_INT32:
+        raise ValueError(f"Decimal scale {scale} is outside signed int32 range")
+    unscaled = 0
+    for digit in digits:
+        unscaled = unscaled * 10 + digit
+    if sign:
+        unscaled = -unscaled
+    return scale, unscaled
+
+
+def _decimal_from_parts(scale: int, unscaled: int) -> decimal.Decimal:
+    if unscaled == 0:
+        digits = (0,)
+        sign = 0
+    else:
+        sign = 1 if unscaled < 0 else 0
+        digits = tuple(int(ch) for ch in str(abs(unscaled)))
+    return decimal.Decimal((sign, digits, -scale))
+
+
+def _write_decimal_parts(write_context, scale: int, unscaled: int):
+    write_context.write_varint32(scale)
+    if _can_use_small_decimal_encoding(unscaled):
+        header = _encode_zigzag64(unscaled) << 1
+        _write_var_uint64(write_context, header)
+        return
+    magnitude = abs(unscaled)
+    if magnitude == 0:
+        raise ValueError("Zero must use the small decimal encoding")
+    payload = magnitude.to_bytes((magnitude.bit_length() + 7) // 8, "little", signed=False)
+    meta = (len(payload) << 1) | (1 if unscaled < 0 else 0)
+    _write_var_uint64(write_context, (meta << 1) | 1)
+    write_context.write_bytes(payload)
+
+
+def _write_var_uint64(write_context, value: int):
+    try:
+        write_context.write_var_uint64(value)
+    except OverflowError:
+        write_context.write_var_uint64(value - _UINT64_MOD)
+
+
+def _read_decimal_parts(read_context) -> Tuple[int, int]:
+    scale = read_context.read_varint32()
+    header = read_context.read_var_uint64()
+    if header < 0:
+        header += _UINT64_MOD
+    if (header & 1) == 0:
+        return scale, _decode_zigzag64(header >> 1)
+    meta = header >> 1
+    sign = meta & 1
+    length = meta >> 1
+    if length <= 0:
+        raise ValueError(f"Invalid decimal magnitude length {length}")
+    payload = read_context.read_bytes(length)
+    if payload[-1] == 0:
+        raise ValueError("Non-canonical decimal payload: trailing zero byte")
+    magnitude = int.from_bytes(payload, "little", signed=False)
+    if magnitude == 0:
+        raise ValueError("Big decimal encoding must not represent zero")
+    return scale, -magnitude if sign else magnitude
+
+
+class DecimalSerializer(Serializer):
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.need_to_write_ref = False
+
+    def write(self, write_context, value: decimal.Decimal):
+        scale, unscaled = _decimal_parts(value)
+        _write_decimal_parts(write_context, scale, unscaled)
+
+    def read(self, read_context):
+        scale, unscaled = _read_decimal_parts(read_context)
+        return _decimal_from_parts(scale, unscaled)
 
 
 class PandasRangeIndexSerializer(Serializer):

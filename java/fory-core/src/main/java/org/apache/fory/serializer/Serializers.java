@@ -27,7 +27,6 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.math.MathContext;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.util.Currency;
@@ -416,57 +415,6 @@ public class Serializers {
     }
   }
 
-  public static final class BigDecimalSerializer extends ImmutableSerializer<BigDecimal>
-      implements Shareable {
-    public BigDecimalSerializer(Config config) {
-      super(config, BigDecimal.class);
-    }
-
-    @Override
-    public void write(WriteContext writeContext, BigDecimal value) {
-      MemoryBuffer buffer = writeContext.getBuffer();
-      final byte[] bytes = value.unscaledValue().toByteArray();
-      buffer.writeVarUint32Small7(value.scale());
-      buffer.writeVarUint32Small7(value.precision());
-      buffer.writeVarUint32Small7(bytes.length);
-      buffer.writeBytes(bytes);
-    }
-
-    @Override
-    public BigDecimal read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int scale = buffer.readVarUint32Small7();
-      int precision = buffer.readVarUint32Small7();
-      int len = buffer.readVarUint32Small7();
-      byte[] bytes = buffer.readBytes(len);
-      final BigInteger bigInteger = new BigInteger(bytes);
-      return new BigDecimal(bigInteger, scale, new MathContext(precision));
-    }
-  }
-
-  public static final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
-      implements Shareable {
-    public BigIntegerSerializer(Config config) {
-      super(config, BigInteger.class);
-    }
-
-    @Override
-    public void write(WriteContext writeContext, BigInteger value) {
-      MemoryBuffer buffer = writeContext.getBuffer();
-      final byte[] bytes = value.toByteArray();
-      buffer.writeVarUint32Small7(bytes.length);
-      buffer.writeBytes(bytes);
-    }
-
-    @Override
-    public BigInteger read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int len = buffer.readVarUint32Small7();
-      byte[] bytes = buffer.readBytes(len);
-      return new BigInteger(bytes);
-    }
-  }
-
   public static final class AtomicBooleanSerializer extends Serializer<AtomicBoolean>
       implements Shareable {
 
@@ -698,7 +646,7 @@ public class Serializers {
     resolver.registerInternalSerializer(StringBuilder.class, new StringBuilderSerializer(config));
     resolver.registerInternalSerializer(StringBuffer.class, new StringBufferSerializer(config));
     resolver.registerInternalSerializer(BigInteger.class, new BigIntegerSerializer(config));
-    resolver.registerInternalSerializer(BigDecimal.class, new BigDecimalSerializer(config));
+    resolver.registerInternalSerializer(BigDecimal.class, new DecimalSerializer(config));
     resolver.registerInternalSerializer(AtomicBoolean.class, new AtomicBooleanSerializer(config));
     resolver.registerInternalSerializer(AtomicInteger.class, new AtomicIntegerSerializer(config));
     resolver.registerInternalSerializer(AtomicLong.class, new AtomicLongSerializer(config));

@@ -73,8 +73,8 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - duration: an absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
 - timestamp: a point in time, independent of any calendar/timezone, encoded as seconds (int64) and nanoseconds
   (uint32) since the epoch at UTC midnight on January 1, 1970.
-- date: a naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1, 1970.
-- decimal: exact decimal value represented as an integer value in two's complement.
+- date: a naive date without timezone, encoded as a signed varint64 count of days since the Unix epoch.
+- decimal: an exact decimal value encoded as a signed `scale` and an exact `unscaled` integer.
 - binary: an variable-length array of bytes.
 - array: only allow 1d numeric components. Other arrays will be taken as List. The implementation should support the
   interoperability between array and list.
@@ -203,8 +203,8 @@ Named types (`NAMED_*`) do not embed a user ID; their names are carried in metad
 | 36      | NONE                    | Empty/unit type (no data)                           |
 | 37      | DURATION                | Time duration (seconds + nanoseconds)               |
 | 38      | TIMESTAMP               | Point in time (seconds + nanoseconds since epoch)   |
-| 39      | DATE                    | Date without timezone (days since epoch)            |
-| 40      | DECIMAL                 | Arbitrary precision decimal                         |
+| 39      | DATE                    | Date without timezone (signed varint64 days)        |
+| 40      | DECIMAL                 | Arbitrary precision decimal (scale + unscaled)      |
 | 41      | BINARY                  | Raw binary data                                     |
 | 42      | ARRAY                   | Generic array type                                  |
 | 43      | BOOL_ARRAY              | 1D boolean array                                    |
@@ -1248,12 +1248,86 @@ This is a fixed-size 12-byte payload (8 bytes seconds + 4 bytes nanos).
 
 ### date
 
-Date represents a date without timezone. It is encoded as an `int32` count of days since the Unix epoch
-(1970-01-01). This is a fixed-size 4-byte payload.
+Date represents a date without timezone. It is encoded as:
+
+- `days` (varint64): signed count of days since the Unix epoch (`1970-01-01`)
+
+The value is reconstructed as `LocalDate.ofEpochDay(days)` or the equivalent calendar-date constructor in
+the target runtime.
+
+This `varint64` encoding applies to xlang serialization only. Native, language-specific local-date
+encodings are unchanged.
 
 ### decimal
 
-Not supported for now.
+A decimal value is encoded as:
+
+1. `scale`: signed varint32
+2. `unscaledHeader`: unsigned varint64
+3. optional `payload`: present only for large unscaled values
+
+The mathematical value is:
+
+`value = unscaled × 10^-scale`
+
+#### Scale
+
+- `scale` is encoded as signed varint32.
+- `scale` carries no extra flags or mode bits.
+
+#### Unscaled Header
+
+`unscaledHeader` selects the encoding of `unscaled`:
+
+- If `(unscaledHeader & 1) == 0`, the value uses the small encoding.
+- If `(unscaledHeader & 1) == 1`, the value uses the big encoding.
+
+#### Small Encoding
+
+For small values, `unscaled` must fit in signed 64-bit range and the zigzag-encoded value must fit in 63 bits.
+
+Encoding:
+
+- `unscaledHeader = zigzag(unscaled) << 1`
+- no payload is written
+
+Decoding:
+
+- `unscaled = zigzagDecode(unscaledHeader >>> 1)`
+
+#### Big Encoding
+
+For big values, `unscaled` is encoded as sign plus magnitude bytes.
+
+Encoding:
+
+- `sign = 0` if `unscaled >= 0`, otherwise `1`
+- `magnitude = abs(unscaled)`
+- `len = byte length of magnitude in canonical minimal little-endian form`
+- `meta = (len << 1) | sign`
+- `unscaledHeader = (meta << 1) | 1`
+- `payload = magnitude as canonical minimal little-endian bytes`
+
+Decoding:
+
+- `meta = unscaledHeader >>> 1`
+- `sign = meta & 1`
+- `len = meta >>> 1`
+- read `len` bytes as little-endian unsigned magnitude
+- `unscaled = magnitude` if `sign == 0`, otherwise `-magnitude`
+
+#### Canonical Rules
+
+- Zero must use the small encoding.
+- Big encoding must not be used for zero.
+- In big encoding, `payload` must be the minimal little-endian representation.
+- Therefore, for big encoding, `len > 0` and `payload[len - 1] != 0`.
+
+#### Final Value
+
+After decoding `scale` and `unscaled`, the decimal value is reconstructed as:
+
+`value = unscaled × 10^-scale`
 
 ### struct
 

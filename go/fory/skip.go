@@ -633,7 +633,11 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	// Date/Time types
 	case DATE:
-		_ = ctx.buffer.ReadUint8(err)
+		if ctx.TypeResolver().IsXlang() {
+			_ = ctx.buffer.ReadVarint64(err)
+		} else {
+			_ = ctx.buffer.ReadInt32(err)
+		}
 	case TIMESTAMP:
 		_ = ctx.buffer.ReadInt64(err)
 		_ = ctx.buffer.ReadUint32(err)

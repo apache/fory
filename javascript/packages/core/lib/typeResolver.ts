@@ -21,6 +21,7 @@ import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinI
 import { Gen } from "./gen";
 import { Dynamic, Type, TypeInfo } from "./typeInfo";
 import { ReadContext, WriteContext } from "./context";
+import { Decimal } from "./types/decimal";
 
 const uninitSerialize = {
   _initialized: false,
@@ -94,6 +95,7 @@ export default class TypeResolver {
   private int64Serializer: null | Serializer = null;
   private boolSerializer: null | Serializer = null;
   private datetimeSerializer: null | Serializer = null;
+  private decimalSerializer: null | Serializer = null;
   private stringSerializer: null | Serializer = null;
   private setSerializer: null | Serializer = null;
   private arraySerializer: null | Serializer = null;
@@ -195,6 +197,7 @@ export default class TypeResolver {
     registerSerializer(Type.timestamp());
     registerSerializer(Type.duration());
     registerSerializer(Type.date());
+    registerSerializer(Type.decimal());
     registerSerializer(Type.set(Type.any()));
     registerSerializer(Type.binary());
     registerSerializer(Type.boolArray());
@@ -218,6 +221,7 @@ export default class TypeResolver {
     this.int64Serializer = this.getSerializerById(TypeId.INT64);
     this.boolSerializer = this.getSerializerById(TypeId.BOOL);
     this.datetimeSerializer = this.getSerializerById(TypeId.TIMESTAMP);
+    this.decimalSerializer = this.getSerializerById(TypeId.DECIMAL);
     this.stringSerializer = this.getSerializerById(TypeId.STRING);
     this.setSerializer = this.getSerializerById(TypeId.SET);
     this.arraySerializer = this.getSerializerById(TypeId.LIST);
@@ -332,6 +336,10 @@ export default class TypeResolver {
 
     if (typeof v === "string") {
       return this.stringSerializer;
+    }
+
+    if (v instanceof Decimal) {
+      return this.decimalSerializer;
     }
 
     if (v instanceof Uint8Array) {

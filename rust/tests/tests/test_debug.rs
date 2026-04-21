@@ -19,11 +19,11 @@ use std::any::Any;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use fory_core::fory::Fory;
-use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::struct_::{
     reset_struct_debug_hooks, set_after_read_field_func, set_after_write_field_func,
     set_before_read_field_func, set_before_write_field_func,
 };
+use fory_core::{ReadContext, WriteContext};
 
 #[derive(fory_derive::ForyObject)]
 #[fory(debug)]

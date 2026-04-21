@@ -150,6 +150,11 @@ public class RustXlangTest extends XlangTestBase {
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testDecimal(boolean enableCodegen) throws java.io.IOException {
+    super.testDecimal(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testItem(boolean enableCodegen) throws java.io.IOException {
     super.testItem(enableCodegen);
   }

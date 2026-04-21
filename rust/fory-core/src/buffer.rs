@@ -16,8 +16,8 @@
 // under the License.
 
 use crate::error::Error;
-use crate::float16::float16;
-use crate::meta::buffer_rw_string::read_latin1_simd;
+use crate::types::float16::float16;
+use crate::util::buffer_rw_string::read_latin1_simd;
 use byteorder::{ByteOrder, LittleEndian};
 use std::cmp::max;
 

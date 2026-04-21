@@ -26,6 +26,7 @@ Data file path is passed via DATA_FILE environment variable.
 import enum
 import logging
 import os
+import decimal
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set
 
@@ -43,6 +44,30 @@ def debug_print(*params):
 def get_data_file() -> str:
     """Get the data file path from environment variable."""
     return os.environ["DATA_FILE"]
+
+
+def decimal_from_parts(unscaled: int, scale: int) -> decimal.Decimal:
+    sign = 1 if unscaled < 0 else 0
+    digits = tuple(int(ch) for ch in str(abs(unscaled))) if unscaled else (0,)
+    return decimal.Decimal((sign, digits, -scale))
+
+
+def decimal_values() -> List[decimal.Decimal]:
+    return [
+        decimal_from_parts(0, 0),
+        decimal_from_parts(0, 3),
+        decimal_from_parts(1, 0),
+        decimal_from_parts(-1, 0),
+        decimal_from_parts(12345, 2),
+        decimal_from_parts(9223372036854775807, 0),
+        decimal_from_parts(-9223372036854775808, 0),
+        decimal_from_parts(4611686018427387903, 0),
+        decimal_from_parts(-4611686018427387904, 0),
+        decimal_from_parts(9223372036854775808, 0),
+        decimal_from_parts(-9223372036854775809, 0),
+        decimal_from_parts(123456789012345678901234567890123456789, 37),
+        decimal_from_parts(-123456789012345678901234567890123456789, -17),
+    ]
 
 
 # ============================================================================
@@ -715,6 +740,29 @@ def test_two_string_field_compatible():
     new_bytes = fory.serialize(obj)
     with open(data_file, "wb") as f:
         f.write(new_bytes)
+
+
+def test_decimal():
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    buffer = pyfory.Buffer(data_bytes)
+    fory = pyfory.Fory(xlang=True, compatible=True)
+    expected_values = decimal_values()
+    actual_values = []
+    for expected in expected_values:
+        value = fory.deserialize(buffer)
+        debug_print(f"Deserialized decimal: {value!r}")
+        assert isinstance(value, decimal.Decimal)
+        assert value.as_tuple() == expected.as_tuple(), f"Mismatch: {value!r} != {expected!r}"
+        actual_values.append(value)
+
+    new_buffer = pyfory.Buffer.allocate(max(256, len(data_bytes) * 2))
+    for value in actual_values:
+        fory.serialize(value, buffer=new_buffer)
+    with open(data_file, "wb") as f:
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def test_schema_evolution_compatible():

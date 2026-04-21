@@ -44,5 +44,6 @@ pub mod util;
 pub mod weak;
 
 mod core;
+mod decimal;
 pub use any::{read_box_any, write_box_any};
 pub use core::{read_data, write_data, ForyDefault, Serializer, StructSerializer};

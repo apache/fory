@@ -25,7 +25,7 @@
 
 use fory_core::fory::Fory;
 use fory_core::serializer::Serializer;
-use fory_core::types::TypeId;
+use fory_core::type_id::TypeId;
 use fory_derive::ForyObject;
 use std::marker::PhantomData;
 
@@ -118,14 +118,14 @@ fn test_nested_struct_with_phantom_data() {
 #[test]
 fn test_union_type_id() {
     assert_eq!(TypeId::UNION as i16, 33);
-    assert_eq!(fory_core::types::UNION, 33);
+    assert_eq!(fory_core::type_id::UNION, 33);
 }
 
 /// Test that NONE TypeId matches xlang spec (36)
 #[test]
 fn test_none_type_id() {
     assert_eq!(TypeId::NONE as i16, 36);
-    assert_eq!(fory_core::types::NONE, 36);
+    assert_eq!(fory_core::type_id::NONE, 36);
 }
 
 /// Test that PhantomData uses NONE TypeId (no runtime data)

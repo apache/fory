@@ -15,13 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::RefMode;
+use crate::resolver::TypeResolver;
 use crate::serializer::collection::{read_collection_type_info, write_collection_type_info};
 use crate::serializer::skip::skip_any_value;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefMode, TypeId};
+use crate::type_id::TypeId;
 use std::mem;
 
 // Unit type () implementation - represents an empty/unit value with no data

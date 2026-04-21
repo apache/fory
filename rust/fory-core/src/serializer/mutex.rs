@@ -41,11 +41,12 @@
 //!   You should serialize in a quiescent state with no concurrent mutation.
 //! - A poisoned mutex (from a panicked holder) will cause `.lock().unwrap()` to panic
 //!   during serialization — it is assumed this is a programmer error.
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::RefMode;
+use crate::resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefMode, TypeId};
+use crate::type_id::TypeId;
 use std::rc::Rc;
 use std::sync::Mutex;
 

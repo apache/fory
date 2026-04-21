@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::serializer::weak::{ArcWeak, RcWeak};
+use fory_core::{ArcWeak, RcWeak};
 use fory_derive::ForyObject;
 use std::cell::RefCell;
 use std::rc::Rc;

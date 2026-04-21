@@ -15,13 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldInfo;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeInfo;
+use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
 use crate::serializer::{bool, struct_};
-use crate::types::{RefFlag, RefMode, TypeId};
-use crate::TypeResolver;
+use crate::type_id::TypeId;
 use std::any::Any;
 use std::rc::Rc;
 
@@ -346,7 +345,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust
     /// use fory_core::{Serializer, ForyDefault};
-    /// use fory_core::resolver::context::WriteContext;
+    /// use fory_core::WriteContext;
     /// use fory_core::error::Error;
     /// use std::any::Any;
     ///
@@ -369,7 +368,7 @@ pub trait Serializer: 'static {
     ///         Ok(())
     ///     }
     ///
-    ///     fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, Error>
+    ///     fn fory_read_data(context: &mut fory_core::ReadContext) -> Result<Self, Error>
     ///     where
     ///         Self: Sized + fory_core::ForyDefault,
     ///     {
@@ -378,7 +377,7 @@ pub trait Serializer: 'static {
     ///         Ok(Point { x, y })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -392,7 +391,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust
     /// use fory_core::{Serializer, ForyDefault, RefMode};
-    /// use fory_core::resolver::context::WriteContext;
+    /// use fory_core::WriteContext;
     /// use fory_core::error::Error;
     /// use std::any::Any;
     ///
@@ -421,7 +420,7 @@ pub trait Serializer: 'static {
     ///         Ok(())
     ///     }
     ///
-    ///     fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, Error>
+    ///     fn fory_read_data(context: &mut fory_core::ReadContext) -> Result<Self, Error>
     ///     where
     ///         Self: Sized + fory_core::ForyDefault,
     ///     {
@@ -431,7 +430,7 @@ pub trait Serializer: 'static {
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -692,7 +691,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust
     /// use fory_core::{Serializer, ForyDefault};
-    /// use fory_core::resolver::context::{ReadContext, WriteContext};
+    /// use fory_core::{ReadContext, WriteContext};
     /// use fory_core::error::Error;
     /// use std::any::Any;
     ///
@@ -725,7 +724,7 @@ pub trait Serializer: 'static {
     ///         Ok(Point { x, y })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -739,7 +738,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust
     /// use fory_core::{Serializer, ForyDefault, RefMode};
-    /// use fory_core::resolver::context::{ReadContext, WriteContext};
+    /// use fory_core::{ReadContext, WriteContext};
     /// use fory_core::error::Error;
     /// use std::any::Any;
     ///
@@ -779,7 +778,7 @@ pub trait Serializer: 'static {
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///
@@ -793,7 +792,7 @@ pub trait Serializer: 'static {
     ///
     /// ```rust,ignore
     /// use fory_core::{Serializer, ForyDefault};
-    /// use fory_core::resolver::context::{ReadContext, WriteContext};
+    /// use fory_core::{ReadContext, WriteContext};
     /// use fory_core::error::Error;
     /// use std::any::Any;
     ///
@@ -830,7 +829,7 @@ pub trait Serializer: 'static {
     ///         Ok(Config { name, timeout })
     ///     }
     ///
-    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<fory_core::TypeId, Error> {
+    ///     fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, Error> {
     ///         Self::fory_get_type_id(type_resolver)
     ///     }
     ///

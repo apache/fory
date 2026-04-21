@@ -68,6 +68,7 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "bytes",
         PrimitiveKind.DATE: "datetime.date",
         PrimitiveKind.TIMESTAMP: "datetime.datetime",
+        PrimitiveKind.DECIMAL: "decimal.Decimal",
         PrimitiveKind.ANY: "Any",
     }
 
@@ -138,6 +139,7 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.BYTES: 'b""',
         PrimitiveKind.DATE: "None",
         PrimitiveKind.TIMESTAMP: "None",
+        PrimitiveKind.DECIMAL: 'decimal.Decimal("0")',
         PrimitiveKind.ANY: "None",
     }
 
@@ -962,6 +964,8 @@ class PythonGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
                 imports.add("import datetime")
+            elif field_type.kind == PrimitiveKind.DECIMAL:
+                imports.add("import decimal")
             elif field_type.kind == PrimitiveKind.ANY:
                 imports.add("from typing import Any")
 

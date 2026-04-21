@@ -67,6 +67,7 @@ class DartGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "Uint8List",
         PrimitiveKind.DATE: "LocalDate",
         PrimitiveKind.TIMESTAMP: "Timestamp",
+        PrimitiveKind.DECIMAL: "Decimal",
         PrimitiveKind.ANY: "Object?",
     }
 
@@ -610,6 +611,7 @@ class DartGenerator(BaseGenerator):
                 PrimitiveKind.BYTES: "Uint8List(0)",
                 PrimitiveKind.DATE: "const LocalDate(1970, 1, 1)",
                 PrimitiveKind.TIMESTAMP: "Timestamp(0, 0)",
+                PrimitiveKind.DECIMAL: "const Decimal.zero()",
                 PrimitiveKind.ANY: "null",
             }[t.kind]
         if isinstance(t, ListType):

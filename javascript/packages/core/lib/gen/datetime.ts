@@ -100,20 +100,20 @@ class DateSerializerGenerator extends BaseSerializerGenerator {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
     return `
       if (${accessor} instanceof Date) {
-        ${this.builder.writer.writeInt32(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeVarInt64(`Math.floor((${accessor}.getTime() - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       } else {
-        ${this.builder.writer.writeInt32(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
+        ${this.builder.writer.writeVarInt64(`Math.floor((${accessor} - ${epoch}) / 1000 / (24 * 60 * 60))`)}
       }
     `;
   }
 
   read(accessor: (expr: string) => string): string {
     const epoch = this.scope.declareByName("epoch", `new Date("1970/01/01 00:00").getTime()`);
-    return accessor(`new Date(${epoch} + (${this.builder.reader.readInt32()} * (24 * 60 * 60) * 1000))`);
+    return accessor(`new Date(${epoch} + (Number(${this.builder.reader.readVarInt64()}) * (24 * 60 * 60) * 1000))`);
   }
 
   getFixedSize(): number {
-    return 7;
+    return 11;
   }
 }
 

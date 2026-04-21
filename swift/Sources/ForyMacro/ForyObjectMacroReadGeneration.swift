@@ -492,7 +492,10 @@ private func compatibleDefaultDecl(_ field: ParsedField) -> String {
 }
 
 private func fieldNeedsGeneralSchemaRead(_ field: ParsedField) -> Bool {
-    field.dynamicAnyCodec != nil || field.customCodecType != nil || field.isOptional || field.typeID == 27
+    field.dynamicAnyCodec != nil ||
+        field.customCodecType != nil ||
+        field.isOptional ||
+        field.typeID == 27
 }
 
 private func fieldNeedsGeneralCompatibleRead(_ field: ParsedField) -> Bool {

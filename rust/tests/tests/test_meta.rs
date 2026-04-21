@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::meta::{FieldInfo, FieldType, MetaString, TypeMeta};
-use fory_core::types::TypeId;
+use fory_core::type_id::TypeId;
 
 #[test]
 fn test_meta_hash() {

@@ -85,6 +85,47 @@ def test_swift_generator_emits_tagged_union_case_ids():
     assert "fory.register(Demo.Animal.self, id: 101)" in content
 
 
+def test_swift_generator_supports_decimal_fields_and_unions():
+    source = """
+    package demo;
+
+    message Money [id=100] {
+        decimal amount = 1;
+    }
+
+    union Value [id=101] {
+        decimal amount = 1;
+        Money money = 2;
+    }
+    """
+    content = generate_swift(source)
+    assert "public var amount: Decimal = Decimal.foryDefault()" in content
+    assert "case amount(Decimal)" in content
+
+
+def test_swift_generator_maps_date_to_local_date():
+    source = """
+    package demo;
+
+    message Temporal [id=100] {
+        date day = 1;
+        timestamp instant = 2;
+    }
+
+    union Value [id=101] {
+        date day = 1;
+        timestamp instant = 2;
+    }
+    """
+    content = generate_swift(source)
+    assert "@ForyField(id: 1)" in content
+    assert "@ForyField(id: 2)" in content
+    assert "public var day: LocalDate = LocalDate.foryDefault()" in content
+    assert "public var instant: Date = Date.foryDefault()" in content
+    assert "case day(LocalDate)" in content
+    assert "case instant(Date)" in content
+
+
 def test_swift_generator_uses_class_for_ref_targets_and_weak_fields():
     source = """
     package tree;

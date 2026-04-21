@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.math.BigDecimal;
@@ -42,6 +43,8 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -74,6 +77,84 @@ public class SerializersTest extends ForyTestBase {
     serDeCheck(fory1, bigDecimal);
     serDeCheck(
         fory1, new BigInteger("11111111110101010000283895380202208220050200000000111111111"));
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testXlangDecimalRoundTrip(boolean referenceTracking) {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(referenceTracking)
+            .requireClassRegistration(false);
+    Fory fory1 = builder.build();
+    Fory fory2 = builder.build();
+    List<BigDecimal> decimalValues =
+        Arrays.asList(
+            BigDecimal.ZERO,
+            BigDecimal.ONE,
+            BigDecimal.ONE.negate(),
+            BigDecimal.valueOf(12345, 2),
+            new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), 0),
+            new BigDecimal(new BigInteger("123456789012345678901234567890123456789"), 37),
+            new BigDecimal(new BigInteger("-123456789012345678901234567890123456789"), -17));
+    for (BigDecimal value : decimalValues) {
+      assertEquals(serDe(fory1, fory2, value), value);
+    }
+  }
+
+  @Test
+  public void testXlangDecimalCodecCanonicalRoundTrip() {
+    List<BigDecimal> values =
+        Arrays.asList(
+            BigDecimal.ZERO,
+            BigDecimal.ONE,
+            BigDecimal.ONE.negate(),
+            BigDecimal.valueOf(100, 2),
+            new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE), 0),
+            new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), 0),
+            new BigDecimal(new BigInteger("999999999999999999999999999999999999999999"), 200));
+    for (BigDecimal value : values) {
+      MemoryBuffer buffer = MemoryUtils.buffer(64);
+      DecimalSerializer.writeXlangDecimal(buffer, value.scale(), value.unscaledValue());
+      buffer.readerIndex(0);
+      assertEquals(DecimalSerializer.readXlangDecimal(buffer), value);
+    }
+  }
+
+  @Test
+  public void testXlangDecimalCodecRejectsNonCanonicalBigPayloads() {
+    MemoryBuffer zeroBigEncoding = MemoryUtils.buffer(16);
+    zeroBigEncoding.writeVarInt32(0);
+    zeroBigEncoding.writeVarUint64(1L);
+    zeroBigEncoding.readerIndex(0);
+    assertThrows(
+        IllegalArgumentException.class, () -> DecimalSerializer.readXlangDecimal(zeroBigEncoding));
+
+    MemoryBuffer trailingZeroPayload = MemoryUtils.buffer(16);
+    trailingZeroPayload.writeVarInt32(0);
+    trailingZeroPayload.writeVarUint64(9L);
+    trailingZeroPayload.writeBytes(new byte[] {1, 0});
+    trailingZeroPayload.readerIndex(0);
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> DecimalSerializer.readXlangDecimal(trailingZeroPayload));
+  }
+
+  @Test
+  public void testDecimalSerializerSelectionByLanguage() {
+    Fory nativeFory =
+        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory xlangFory =
+        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    assertEquals(nativeFory.getSerializer(BigDecimal.class).getClass(), DecimalSerializer.class);
+    assertEquals(xlangFory.getSerializer(BigDecimal.class).getClass(), DecimalSerializer.class);
+    assertEquals(nativeFory.getSerializer(BigInteger.class).getClass(), BigIntegerSerializer.class);
+    assertEquals(xlangFory.getSerializer(BigInteger.class).getClass(), BigIntegerSerializer.class);
   }
 
   @Test(dataProvider = "javaFory")

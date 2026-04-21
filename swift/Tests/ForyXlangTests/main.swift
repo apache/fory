@@ -398,6 +398,64 @@ private func debugLog(_ message: String) {
     }
 }
 
+private func decimalValueString(unscaled: String, scale: Int32) throws -> String {
+    guard !unscaled.isEmpty else {
+        throw PeerError.invalidFieldValue("decimal unscaled value must not be empty")
+    }
+
+    var digits = unscaled
+    var sign = ""
+    if digits.first == "-" {
+        sign = "-"
+        digits.removeFirst()
+    } else if digits.first == "+" {
+        digits.removeFirst()
+    }
+    guard !digits.isEmpty, digits.allSatisfy(\.isNumber) else {
+        throw PeerError.invalidFieldValue("decimal unscaled value must contain only digits")
+    }
+
+    if scale == 0 {
+        return sign + digits
+    }
+    if scale > 0 {
+        let scaleInt = Int(scale)
+        if digits.count > scaleInt {
+            let split = digits.index(digits.endIndex, offsetBy: -scaleInt)
+            return sign + String(digits[..<split]) + "." + String(digits[split...])
+        }
+        let padding = String(repeating: "0", count: scaleInt - digits.count)
+        return sign + "0." + padding + digits
+    }
+    return sign + digits + String(repeating: "0", count: Int(-scale))
+}
+
+private func decimal(_ unscaled: String, scale: Int32) throws -> Decimal {
+    let valueString = try decimalValueString(unscaled: unscaled, scale: scale)
+    guard let value = Decimal(string: valueString, locale: Locale(identifier: "en_US_POSIX")) else {
+        throw PeerError.invalidFieldValue("failed to parse decimal \(valueString)")
+    }
+    return value
+}
+
+private func decimalValues() throws -> [Decimal] {
+    try [
+        decimal("0", scale: 0),
+        decimal("0", scale: 3),
+        decimal("1", scale: 0),
+        decimal("-1", scale: 0),
+        decimal("12345", scale: 2),
+        decimal("9223372036854775807", scale: 0),
+        decimal("-9223372036854775808", scale: 0),
+        decimal("4611686018427387903", scale: 0),
+        decimal("-4611686018427387904", scale: 0),
+        decimal("9223372036854775808", scale: 0),
+        decimal("-9223372036854775809", scale: 0),
+        decimal("123456789012345678901234567890123456789", scale: 37),
+        decimal("-123456789012345678901234567890123456789", scale: -17),
+    ]
+}
+
 private func verifyBufferCase(_ caseName: String, _ payload: [UInt8]) throws -> [UInt8] {
     let inputBuffer = ByteBuffer(bytes: payload)
     let outputBuffer = ByteBuffer(capacity: payload.count)
@@ -508,8 +566,8 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         let f32: Float = try fory.deserialize(from: buffer)
         let f64: Double = try fory.deserialize(from: buffer)
         let str: String = try fory.deserialize(from: buffer)
-        let day: ForyDate = try fory.deserialize(from: buffer)
-        let ts: ForyTimestamp = try fory.deserialize(from: buffer)
+        let day: LocalDate = try fory.deserialize(from: buffer)
+        let ts: Date = try fory.deserialize(from: buffer)
         let boolArray: [Bool] = try fory.deserialize(from: buffer)
         let byteArray: [UInt8] = try fory.deserialize(from: buffer)
         let shortArray: [Int16] = try fory.deserialize(from: buffer)
@@ -649,6 +707,24 @@ private func handleColor(_ bytes: [UInt8]) throws -> [UInt8] {
             try fory.serialize(color, to: &out)
         }
     }
+}
+
+private func handleDecimal(_ bytes: [UInt8]) throws -> [UInt8] {
+    let expectedValues = try decimalValues()
+    let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    let rewritten = try roundTripStream(bytes) { buffer, out in
+        for expected in expectedValues {
+            let value: Decimal = try fory.deserialize(from: buffer)
+            guard value == expected else {
+                throw PeerError.invalidFieldValue("unexpected decimal value \(value), expected \(expected)")
+            }
+            try fory.serialize(value, to: &out)
+        }
+    }
+    guard rewritten == bytes else {
+        throw ForyError.invalidData("decimal roundtrip bytes differ from the Java payload")
+    }
+    return rewritten
 }
 
 private func handleStructWithList(_ bytes: [UInt8]) throws -> [UInt8] {
@@ -919,6 +995,8 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleMap(bytes)
     case "test_integer":
         return try handleInteger(bytes)
+    case "test_decimal":
+        return try handleDecimal(bytes)
     case "test_item":
         return try handleItem(bytes)
     case "test_color":

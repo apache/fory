@@ -14,6 +14,7 @@ cc_library(
         "collection_serializer.h",
         "config.h",
         "context.h",
+        "decimal_serializers.h",
         "enum_serializer.h",
         "fory.h",
         "map_serializer.h",

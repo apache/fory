@@ -143,6 +143,26 @@ def test_dart_generator_uses_typed_lists_for_non_nullable_primitive_lists():
     assert "factory ValueUnion.values(Uint32List value)" in file.content
 
 
+def test_dart_generator_supports_decimal_fields_and_unions():
+    file = generate_dart(
+        """
+        package demo;
+
+        message Money [id=100] {
+            decimal amount = 1;
+        }
+
+        union ValueUnion [id=101] {
+            decimal amount = 1;
+            Money money = 2;
+        }
+        """
+    )
+
+    assert "Decimal amount = const Decimal.zero();" in file.content
+    assert "factory ValueUnion.amount(Decimal value)" in file.content
+
+
 def test_dart_generator_emits_container_ref_annotations_for_builder_metadata():
     file = generate_dart(
         """

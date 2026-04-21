@@ -192,7 +192,8 @@ func isPrimitiveType(typeID TypeId) bool {
 		FLOAT16,
 		BFLOAT16,
 		FLOAT32,
-		FLOAT64:
+		FLOAT64,
+		DECIMAL:
 		return true
 	default:
 		return false
@@ -206,7 +207,7 @@ func NeedWriteRef(typeID TypeId) bool {
 	switch typeID {
 	case BOOL, INT8, INT16, INT32, INT64, VARINT32, VARINT64, TAGGED_INT64,
 		FLOAT32, FLOAT64, FLOAT16, FLOAT8, BFLOAT16,
-		STRING, TIMESTAMP, DATE, DURATION, NONE:
+		STRING, TIMESTAMP, DATE, DURATION, DECIMAL, NONE:
 		return false
 	default:
 		return true

@@ -66,6 +66,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "std::string",
         PrimitiveKind.BYTES: "std::vector<uint8_t>",
+        PrimitiveKind.DECIMAL: "fory::serialization::Decimal",
         PrimitiveKind.DATE: "fory::serialization::Date",
         PrimitiveKind.TIMESTAMP: "fory::serialization::Timestamp",
         PrimitiveKind.ANY: "std::any",
@@ -1779,6 +1780,8 @@ class CppGenerator(BaseGenerator):
                 includes.add("<string>")
             elif field_type.kind == PrimitiveKind.BYTES:
                 includes.add("<vector>")
+            elif field_type.kind == PrimitiveKind.DECIMAL:
+                includes.add('"fory/serialization/decimal_serializers.h"')
             elif field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
                 includes.add('"fory/serialization/temporal_serializers.h"')
             elif field_type.kind == PrimitiveKind.ANY:

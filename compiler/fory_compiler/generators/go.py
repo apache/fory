@@ -197,6 +197,7 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "[]byte",
         PrimitiveKind.DATE: "fory.Date",
         PrimitiveKind.TIMESTAMP: "time.Time",
+        PrimitiveKind.DECIMAL: "fory.Decimal",
         PrimitiveKind.ANY: "any",
     }
 
@@ -666,6 +667,7 @@ class GoGenerator(BaseGenerator):
                 PrimitiveKind.BYTES: "fory.BINARY",
                 PrimitiveKind.DATE: "fory.DATE",
                 PrimitiveKind.TIMESTAMP: "fory.TIMESTAMP",
+                PrimitiveKind.DECIMAL: "fory.DECIMAL",
                 PrimitiveKind.ANY: "fory.UNKNOWN",
             }
             return primitive_type_ids.get(kind, "fory.UNKNOWN")

@@ -15,13 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::ensure;
 use crate::error::Error;
 use crate::meta::FieldInfo;
-use crate::resolver::context::{ReadContext, WriteContext};
+use crate::resolver::{RefFlag, RefMode, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefFlag, RefMode, TypeId};
-use crate::TypeResolver;
+use crate::type_id::TypeId;
 
 #[inline(always)]
 pub fn actual_type_id(_type_id: u32, register_by_name: bool, _compatible: bool) -> u32 {

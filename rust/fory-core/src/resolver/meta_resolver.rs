@@ -18,8 +18,8 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::TypeMeta;
-use crate::resolver::type_resolver::{TypeInfo, NO_USER_TYPE_ID};
-use crate::TypeResolver;
+use crate::resolver::type_resolver::NO_USER_TYPE_ID;
+use crate::resolver::{TypeInfo, TypeResolver};
 use std::collections::HashMap;
 use std::rc::Rc;
 

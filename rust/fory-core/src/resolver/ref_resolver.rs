@@ -17,11 +17,80 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::types::RefFlag;
+use num_enum::TryFromPrimitive;
 use std::any::Any;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+#[derive(Debug, TryFromPrimitive)]
+#[repr(i8)]
+pub enum RefFlag {
+    Null = -3,
+    // Ref indicates that object is a not-null value.
+    // We don't use another byte to indicate REF, so that we can save one byte.
+    Ref = -2,
+    // NotNullValueFlag indicates that the object is a non-null value.
+    NotNullValue = -1,
+    // RefValueFlag indicates that the object is a referencable and first read.
+    RefValue = 0,
+}
+
+/// Controls how reference and null flags are handled during serialization.
+///
+/// This enum combines nullable semantics and reference tracking into one parameter,
+/// enabling fine-grained control per type and per field:
+/// - `None` = non-nullable, no ref tracking (primitives)
+/// - `NullOnly` = nullable, no circular ref tracking
+/// - `Tracking` = nullable, with circular ref tracking (Rc/Arc/Weak)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum RefMode {
+    /// Skip ref handling entirely. No ref/null flags are written/read.
+    /// Used for non-nullable primitives or when caller handles ref externally.
+    #[default]
+    None = 0,
+
+    /// Only null check without reference tracking.
+    /// Write: NullFlag (-3) for None, NotNullValueFlag (-1) for Some.
+    /// Read: Read flag and return ForyDefault on null.
+    NullOnly = 1,
+
+    /// Full reference tracking with circular reference support.
+    /// Write: Uses RefWriter which writes NullFlag, RefFlag+refId, or RefValueFlag.
+    /// Read: Uses RefReader with full reference resolution.
+    Tracking = 2,
+}
+
+impl RefMode {
+    /// Create RefMode from nullable and track_ref flags.
+    #[inline]
+    pub const fn from_flags(nullable: bool, track_ref: bool) -> Self {
+        match (nullable, track_ref) {
+            (false, false) => RefMode::None,
+            (true, false) => RefMode::NullOnly,
+            (_, true) => RefMode::Tracking,
+        }
+    }
+
+    /// Check if this mode reads/writes ref flags.
+    #[inline]
+    pub const fn has_ref_flag(self) -> bool {
+        !matches!(self, RefMode::None)
+    }
+
+    /// Check if this mode tracks circular references.
+    #[inline]
+    pub const fn tracks_refs(self) -> bool {
+        matches!(self, RefMode::Tracking)
+    }
+
+    /// Check if this mode handles nullable values.
+    #[inline]
+    pub const fn is_nullable(self) -> bool {
+        !matches!(self, RefMode::None)
+    }
+}
 
 /// Reference writer for tracking shared references during serialization.
 ///
@@ -34,7 +103,7 @@ use std::sync::Arc;
 ///
 /// ```rust
 /// use fory_core::buffer::Writer;
-/// use fory_core::resolver::ref_resolver::RefWriter;
+/// use fory_core::resolver::RefWriter;
 /// use std::rc::Rc;
 ///
 /// let mut ref_writer = RefWriter::new();
@@ -166,7 +235,7 @@ impl RefWriter {
 /// # Examples
 ///
 /// ```rust
-/// use fory_core::resolver::ref_resolver::RefReader;
+/// use fory_core::resolver::RefReader;
 /// use std::rc::Rc;
 ///
 /// let mut ref_reader = RefReader::new();

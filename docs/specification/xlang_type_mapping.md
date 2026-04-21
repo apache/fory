@@ -86,8 +86,8 @@ When reading type IDs:
 | none                    | 36           | null            | None                     | null                | `std::monostate`               | nil              | `()`              |
 | duration                | 37           | Duration        | timedelta                | Number              | duration                       | Duration         | Duration          |
 | timestamp               | 38           | Instant         | datetime                 | Number              | std::chrono::nanoseconds       | Time             | DateTime          |
-| date                    | 39           | Date            | datetime                 | Number              | fory::serialization::Date      | Time             | DateTime          |
-| decimal                 | 40           | BigDecimal      | Decimal                  | bigint              | /                              | /                | /                 |
+| date                    | 39           | LocalDate       | datetime.date            | Date                | fory::serialization::Date      | fory.Date        | chrono::NaiveDate |
+| decimal                 | 40           | BigDecimal      | Decimal                  | Decimal             | /                              | fory.Decimal     | fory::Decimal     |
 | binary                  | 41           | byte[]          | bytes                    | /                   | `uint8_t[n]/vector<T>`         | `[n]uint8/[]T`   | `Vec<uint8_t>`    |
 | array                   | 42           | array           | np.ndarray               | /                   | /                              | array/slice      | Vec               |
 | bool_array              | 43           | bool[]          | ndarray(np.bool\_)       | /                   | `bool[n]`                      | `[n]bool/[]T`    | `Vec<bool>`       |

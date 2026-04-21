@@ -219,6 +219,29 @@ def test_javascript_collection_types():
     assert "config: Map<string, number>;" in output
 
 
+def test_javascript_decimal_generation_uses_runtime_decimal_type():
+    source = dedent(
+        """
+        package example;
+
+        message Money [id=100] {
+            decimal amount = 1;
+        }
+
+        union Value [id=101] {
+            decimal amount = 1;
+            Money money = 2;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert "import { Decimal } from '@apache-fory/core';" in output
+    assert "amount: Decimal;" in output
+    assert "{ case: ValueCase.AMOUNT; value: Decimal }" in output
+    assert "amount: Type.decimal()" in output
+
+
 def test_javascript_map_key_fallback_to_map():
     """Test that map keys not valid for Record use Map<K, V> instead."""
     source = dedent(

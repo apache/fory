@@ -15,8 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod context;
 pub mod meta_resolver;
 pub mod meta_string_resolver;
 pub mod ref_resolver;
 pub mod type_resolver;
+
+pub use ref_resolver::{RefFlag, RefMode, RefReader, RefWriter};
+pub use type_resolver::{TypeInfo, TypeResolver};

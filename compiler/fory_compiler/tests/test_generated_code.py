@@ -543,6 +543,31 @@ def test_java_repeated_float16_generation_uses_float16_list():
     assert "private Float16List vals;" in java_output
 
 
+def test_cpp_generator_supports_decimal_fields_and_unions():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Money {
+                decimal amount = 1;
+            }
+
+            union Value {
+                decimal amount = 1;
+                Money money = 2;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert '#include "fory/serialization/decimal_serializers.h"' in cpp_output
+    assert "const fory::serialization::Decimal& amount() const" in cpp_output
+    assert "std::variant<fory::serialization::Decimal, Money> value_" in cpp_output
+    assert "(fory::serialization::Decimal, amount, fory::F(1))" in cpp_output
+
+
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
         dedent(

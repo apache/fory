@@ -83,6 +83,7 @@ public final class Fory {
         self.writeContext = WriteContext(
             buffer: ByteBuffer(),
             typeResolver: typeResolver,
+            xlang: self.config.xlang,
             trackRef: self.config.trackRef,
             compatible: self.config.compatible,
             checkClassVersion: self.config.checkClassVersion,
@@ -92,6 +93,7 @@ public final class Fory {
         self.readContext = ReadContext(
             buffer: ByteBuffer(),
             typeResolver: typeResolver,
+            xlang: self.config.xlang,
             trackRef: self.config.trackRef,
             compatible: self.config.compatible,
             checkClassVersion: self.config.checkClassVersion,

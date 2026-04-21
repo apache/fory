@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Numerics;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
 
@@ -47,6 +48,13 @@ public sealed class CustomPayload
 {
     public int Id { get; set; }
     public string Marker { get; set; } = string.Empty;
+}
+
+[ForyObject]
+public sealed class DecimalEnvelope
+{
+    public ForyDecimal Exact { get; set; }
+    public List<ForyDecimal> History { get; set; } = [];
 }
 
 public sealed class CustomPayloadSerializer : Serializer<CustomPayload>
@@ -158,6 +166,133 @@ public sealed class RuntimeEdgeCaseTests
         Assert.Equal(1L, reader.ReadVarInt64());
         Assert.Equal(300, reader.ReadInt32());
         Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void DateOnlyUsesVarInt64Days()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        byte[] payload = fory.Serialize(new DateOnly(2021, 11, 23));
+
+        ByteReader reader = new(payload);
+        Assert.False(fory.ReadHead(reader));
+        Assert.Equal((sbyte)RefFlag.NotNullValue, reader.ReadInt8());
+        Assert.Equal((uint)TypeId.Date, reader.ReadUInt8());
+        Assert.Equal(18_954L, reader.ReadVarInt64());
+        Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void DecimalRoundTripEdgeCases()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        ForyDecimal[] values =
+        [
+            new(BigInteger.Zero, 0),
+            new(BigInteger.Zero, 3),
+            new(BigInteger.One, 0),
+            new(BigInteger.MinusOne, 0),
+            new(new BigInteger(12_345), 2),
+            new(new BigInteger(long.MaxValue), 0),
+            new(new BigInteger(long.MinValue), 0),
+            new(new BigInteger(long.MaxValue) + BigInteger.One, 0),
+            new(new BigInteger(long.MinValue) - BigInteger.One, 0),
+            new(BigInteger.Parse("123456789012345678901234567890123456789"), 37),
+            new(BigInteger.Parse("-123456789012345678901234567890123456789"), -17),
+        ];
+
+        foreach (ForyDecimal value in values)
+        {
+            Assert.Equal(value, fory.Deserialize<ForyDecimal>(fory.Serialize(value)));
+        }
+    }
+
+    [Fact]
+    public void DecimalFieldsAndDynamicAnyRoundTrip()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<DecimalEnvelope>(706);
+        fory.Register<DynamicAnyHolder>(707);
+
+        DecimalEnvelope envelope = new()
+        {
+            Exact = new(BigInteger.Parse("987654321098765432109876543210"), 9),
+            History =
+            [
+                new ForyDecimal(BigInteger.Zero, 2),
+                new ForyDecimal(BigInteger.Parse("-12345678901234567890"), 4),
+                new ForyDecimal(BigInteger.Parse("9223372036854775808"), 0),
+            ],
+        };
+        DecimalEnvelope decodedEnvelope = fory.Deserialize<DecimalEnvelope>(fory.Serialize(envelope));
+        Assert.Equal(envelope.Exact, decodedEnvelope.Exact);
+        Assert.Equal(envelope.History, decodedEnvelope.History);
+
+        DynamicAnyHolder anyHolder = new()
+        {
+            AnyValue = envelope.Exact,
+            AnySet = [envelope.History[1], "marker"],
+            AnyMap = new Dictionary<object, object?>
+            {
+                ["decimal"] = envelope.History[2],
+                [envelope.History[0]] = "scaled-zero",
+            },
+        };
+        DynamicAnyHolder decodedAny = fory.Deserialize<DynamicAnyHolder>(fory.Serialize(anyHolder));
+        Assert.Equal(anyHolder.AnyValue, decodedAny.AnyValue);
+        Assert.Contains(envelope.History[1], decodedAny.AnySet);
+        Assert.Equal(envelope.History[2], decodedAny.AnyMap["decimal"]);
+        Assert.Equal("scaled-zero", decodedAny.AnyMap[envelope.History[0]]);
+    }
+
+    [Fact]
+    public void DecimalUsesCanonicalWireFormat()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        byte[] payload = fory.Serialize(new ForyDecimal(BigInteger.Zero, 2));
+
+        ByteReader reader = new(payload);
+        Assert.False(fory.ReadHead(reader));
+        Assert.Equal((sbyte)RefFlag.NotNullValue, reader.ReadInt8());
+        Assert.Equal((uint)TypeId.Decimal, reader.ReadUInt8());
+        Assert.Equal(2, reader.ReadVarInt32());
+        Assert.Equal(0UL, reader.ReadVarUInt64());
+        Assert.Equal(0, reader.Remaining);
+
+        payload = fory.Serialize(new ForyDecimal(BigInteger.Parse("9223372036854775808"), 0));
+        reader.Reset(payload);
+        Assert.False(fory.ReadHead(reader));
+        Assert.Equal((sbyte)RefFlag.NotNullValue, reader.ReadInt8());
+        Assert.Equal((uint)TypeId.Decimal, reader.ReadUInt8());
+        Assert.Equal(0, reader.ReadVarInt32());
+        ulong header = reader.ReadVarUInt64();
+        Assert.Equal(1UL, header & 1UL);
+        Assert.True(reader.Remaining > 0);
+    }
+
+    [Fact]
+    public void DecimalRejectsNonCanonicalBigPayload()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        ByteWriter writer = new();
+        fory.WriteHead(writer, isNone: false);
+        writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+        writer.WriteUInt8((byte)TypeId.Decimal);
+        writer.WriteVarInt32(0);
+        writer.WriteVarUInt64(1UL);
+        _ = Assert.Throws<InvalidDataException>(() => fory.Deserialize<ForyDecimal>(writer.ToArray()));
+
+        writer.Reset();
+        fory.WriteHead(writer, isNone: false);
+        writer.WriteInt8((sbyte)RefFlag.NotNullValue);
+        writer.WriteUInt8((byte)TypeId.Decimal);
+        writer.WriteVarInt32(0);
+        writer.WriteVarUInt64(((((ulong)2 << 1) | 0UL) << 1) | 1UL);
+        writer.WriteBytes([0x01, 0x00]);
+
+        InvalidDataException trailingZeroException =
+            Assert.Throws<InvalidDataException>(() => fory.Deserialize<ForyDecimal>(writer.ToArray()));
+        Assert.Contains("trailing zero byte", trailingZeroException.Message);
     }
 
     [Fact]

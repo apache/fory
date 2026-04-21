@@ -21,7 +21,7 @@ import { HalfMaxInt32, HalfMinInt32, Hps, LATIN1, UTF16, UTF8 } from "../type";
 import { PlatformBuffer, alloc, strByteLength } from "../platformBuffer";
 import { OwnershipError } from "../error";
 import { toFloat16, toBFloat16 } from "./number";
-import { BFloat16 } from "../bfloat16";
+import { BFloat16 } from "../types/bfloat16";
 
 const MAX_POOL_SIZE = 1024 * 1024 * 3; // 3MB
 

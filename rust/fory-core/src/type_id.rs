@@ -18,81 +18,6 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::mem;
 
-#[allow(dead_code)]
-pub enum StringFlag {
-    LATIN1 = 0,
-    UTF8 = 1,
-}
-
-#[derive(Debug, TryFromPrimitive)]
-#[repr(i8)]
-pub enum RefFlag {
-    Null = -3,
-    // Ref indicates that object is a not-null value.
-    // We don't use another byte to indicate REF, so that we can save one byte.
-    Ref = -2,
-    // NotNullValueFlag indicates that the object is a non-null value.
-    NotNullValue = -1,
-    // RefValueFlag indicates that the object is a referencable and first read.
-    RefValue = 0,
-}
-
-/// Controls how reference and null flags are handled during serialization.
-///
-/// This enum combines nullable semantics and reference tracking into one parameter,
-/// enabling fine-grained control per type and per field:
-/// - `None` = non-nullable, no ref tracking (primitives)
-/// - `NullOnly` = nullable, no circular ref tracking
-/// - `Tracking` = nullable, with circular ref tracking (Rc/Arc/Weak)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(u8)]
-pub enum RefMode {
-    /// Skip ref handling entirely. No ref/null flags are written/read.
-    /// Used for non-nullable primitives or when caller handles ref externally.
-    #[default]
-    None = 0,
-
-    /// Only null check without reference tracking.
-    /// Write: NullFlag (-3) for None, NotNullValueFlag (-1) for Some.
-    /// Read: Read flag and return ForyDefault on null.
-    NullOnly = 1,
-
-    /// Full reference tracking with circular reference support.
-    /// Write: Uses RefWriter which writes NullFlag, RefFlag+refId, or RefValueFlag.
-    /// Read: Uses RefReader with full reference resolution.
-    Tracking = 2,
-}
-
-impl RefMode {
-    /// Create RefMode from nullable and track_ref flags.
-    #[inline]
-    pub const fn from_flags(nullable: bool, track_ref: bool) -> Self {
-        match (nullable, track_ref) {
-            (false, false) => RefMode::None,
-            (true, false) => RefMode::NullOnly,
-            (_, true) => RefMode::Tracking,
-        }
-    }
-
-    /// Check if this mode reads/writes ref flags.
-    #[inline]
-    pub const fn has_ref_flag(self) -> bool {
-        !matches!(self, RefMode::None)
-    }
-
-    /// Check if this mode tracks circular references.
-    #[inline]
-    pub const fn tracks_refs(self) -> bool {
-        matches!(self, RefMode::Tracking)
-    }
-
-    /// Check if this mode handles nullable values.
-    #[inline]
-    pub const fn is_nullable(self) -> bool {
-        !matches!(self, RefMode::None)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[allow(non_camel_case_types)]
 #[repr(u8)]
@@ -257,21 +182,6 @@ pub const BOUND: u32 = TypeId::BOUND as u32;
 #[inline]
 pub const fn is_enum_type_id(type_id: TypeId) -> bool {
     matches!(type_id, TypeId::ENUM | TypeId::NAMED_ENUM | TypeId::UNION)
-}
-
-const MAX_UNT32: u64 = (1 << 31) - 1;
-
-// todo: struct hash
-#[allow(dead_code)]
-pub fn compute_string_hash(s: &str) -> u32 {
-    let mut hash: u64 = 17;
-    s.as_bytes().iter().for_each(|b| {
-        hash = (hash * 31) + (*b as u64);
-        while hash >= MAX_UNT32 {
-            hash /= 7;
-        }
-    });
-    hash as u32
 }
 
 pub static BASIC_TYPES: [TypeId; 34] = [
@@ -500,27 +410,10 @@ pub const fn needs_user_type_id(type_id: u32) -> bool {
     )
 }
 
-pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
-    let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);
-    while new_hash >= MAX_UNT32 {
-        new_hash /= 7;
-    }
-    new_hash as u32
-}
-
 pub mod config_flags {
     pub const IS_NULL_FLAG: u8 = 1 << 0;
     pub const IS_CROSS_LANGUAGE_FLAG: u8 = 1 << 1;
     pub const IS_OUT_OF_BAND_FLAG: u8 = 1 << 2;
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Mode {
-    // Type declaration must be consistent between serialization peer and deserialization peer.
-    SchemaConsistent,
-    // Type declaration can be different between serialization peer and deserialization peer.
-    // They can add/delete fields independently.
-    Compatible,
 }
 
 // every object start with i8 i16 reference flag and type flag

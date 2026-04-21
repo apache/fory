@@ -32,11 +32,12 @@
 //! let cell = RefCell::new(42);
 //! // Can be serialized by the Fory framework
 //! ```
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::RefMode;
+use crate::resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefMode, TypeId};
+use crate::type_id::TypeId;
 use std::cell::RefCell;
 use std::rc::Rc;
 

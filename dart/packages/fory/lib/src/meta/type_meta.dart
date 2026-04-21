@@ -269,6 +269,7 @@ final class WireTypeMetaDecoder {
       wireTypeId == TypeIds.none ||
       wireTypeId == TypeIds.binary ||
       wireTypeId == TypeIds.duration ||
+      wireTypeId == TypeIds.decimal ||
       wireTypeId == TypeIds.date ||
       wireTypeId == TypeIds.timestamp ||
       wireTypeId == TypeIds.boolArray ||

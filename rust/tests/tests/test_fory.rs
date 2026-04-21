@@ -290,7 +290,7 @@ fn test_unregistered_type_error_message() {
 
 #[test]
 fn test_type_mismatch_error_shows_type_name() {
-    use fory_core::types::{format_type_id, TypeId};
+    use fory_core::type_id::{format_type_id, TypeId};
 
     // Test internal type (BOOL = 1), no registered_id
     let formatted = format_type_id(TypeId::BOOL as u32);

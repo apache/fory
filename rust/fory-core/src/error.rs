@@ -29,7 +29,7 @@
 
 use std::borrow::Cow;
 
-use crate::types::format_type_id;
+use crate::type_id::format_type_id;
 use thiserror::Error;
 
 /// Global flag to check if FORY_PANIC_ON_ERROR environment variable is set at compile time.

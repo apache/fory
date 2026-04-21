@@ -259,10 +259,16 @@ class DateSerializer(Serializer):
         if not isinstance(value, datetime.date):
             raise TypeError("{} should be {} instead of {}".format(value, datetime.date, type(value)))
         days = (value - _base_date).days
-        write_context.write_int32(days)
+        if self.type_resolver.xlang:
+            write_context.write_varint64(days)
+        else:
+            write_context.write_int32(days)
 
     def read(self, read_context):
-        days = read_context.read_int32()
+        if self.type_resolver.xlang:
+            days = read_context.read_varint64()
+        else:
+            days = read_context.read_int32()
         return _base_date + datetime.timedelta(days=days)
 
 

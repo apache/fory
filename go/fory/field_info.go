@@ -487,7 +487,7 @@ func isStructField(t reflect.Type) bool {
 		return false
 	}
 	// Date/Timestamp are built-in types with dedicated encodings, not user structs.
-	if t == dateType || t == timestampType {
+	if t == dateType || t == timestampType || t == decimalType {
 		return false
 	}
 	if t.Kind() == reflect.Struct {
@@ -880,6 +880,9 @@ func typeIdFromKind(type_ reflect.Type) TypeId {
 	}
 	if type_ == timestampType {
 		return TIMESTAMP
+	}
+	if type_ == decimalType {
+		return DECIMAL
 	}
 	switch type_.Kind() {
 	case reflect.Bool:

@@ -21,6 +21,7 @@
 
 #include "fory/serialization/serializer.h"
 #include <chrono>
+#include <limits>
 
 namespace fory {
 namespace serialization {
@@ -37,17 +38,21 @@ using Timestamp = std::chrono::time_point<std::chrono::system_clock,
                                           std::chrono::nanoseconds>;
 
 /// Date: naive date without timezone as days since Unix epoch
-struct Date {
-  int32_t days_since_epoch; // Days since Jan 1, 1970 UTC
+class Date {
+public:
+  Date() : days_since_epoch_(0) {}
+  explicit Date(int32_t days) : days_since_epoch_(days) {}
 
-  Date() : days_since_epoch(0) {}
-  explicit Date(int32_t days) : days_since_epoch(days) {}
+  int32_t days_since_epoch() const { return days_since_epoch_; }
 
   bool operator==(const Date &other) const {
-    return days_since_epoch == other.days_since_epoch;
+    return days_since_epoch_ == other.days_since_epoch_;
   }
 
   bool operator!=(const Date &other) const { return !(*this == other); }
+
+private:
+  int32_t days_since_epoch_; // Days since Jan 1, 1970 UTC
 };
 
 // ============================================================================
@@ -229,7 +234,7 @@ template <> struct Serializer<Timestamp> {
 // ============================================================================
 
 /// Serializer for Date
-/// Per xlang spec: serialized as int32 day count since Unix epoch
+/// Per xlang spec: serialized as signed varint64 day count since Unix epoch
 template <> struct Serializer<Date> {
   static constexpr TypeId type_id = TypeId::DATE;
 
@@ -259,7 +264,7 @@ template <> struct Serializer<Date> {
   }
 
   static inline void write_data(const Date &date, WriteContext &ctx) {
-    ctx.write_bytes(&date.days_since_epoch, sizeof(int32_t));
+    ctx.write_var_int64(static_cast<int64_t>(date.days_since_epoch()));
   }
 
   static inline void write_data_generic(const Date &date, WriteContext &ctx,
@@ -287,9 +292,17 @@ template <> struct Serializer<Date> {
   }
 
   static inline Date read_data(ReadContext &ctx) {
-    Date date;
-    ctx.read_bytes(&date.days_since_epoch, sizeof(int32_t), ctx.error());
-    return date;
+    int64_t days = ctx.read_var_int64(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return Date();
+    }
+    if (FORY_PREDICT_FALSE(days < std::numeric_limits<int32_t>::min() ||
+                           days > std::numeric_limits<int32_t>::max())) {
+      ctx.set_error(Error::invalid_data(
+          "Date day count " + std::to_string(days) + " exceeds int32_t range"));
+      return Date();
+    }
+    return Date(static_cast<int32_t>(days));
   }
 
   static inline Date read_with_type_info(ReadContext &ctx, RefMode ref_mode,

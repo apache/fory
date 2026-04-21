@@ -18,15 +18,15 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::{
-    murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER,
-    FIELD_NAME_ENCODER, NAMESPACE_DECODER, TYPE_NAME_DECODER,
+    Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER, FIELD_NAME_ENCODER,
+    NAMESPACE_DECODER, TYPE_NAME_DECODER,
 };
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
-use crate::types::{
+use crate::resolver::{TypeInfo, TypeResolver};
+use crate::type_id::{
     TypeId, BINARY, COMPATIBLE_STRUCT, ENUM, EXT, INT8_ARRAY, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM,
     NAMED_EXT, NAMED_STRUCT, PRIMITIVE_TYPES, STRUCT, UINT8_ARRAY, UNKNOWN,
 };
-use crate::util::to_snake_case;
+use crate::util::{murmurhash3_x64_128, to_snake_case};
 
 /// Normalizes a type ID for comparison purposes in cross-language schema evolution.
 /// This treats all struct variants (STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
@@ -75,6 +75,7 @@ const COMPRESS_META_FLAG: i64 = 0b1 << 9;
 const HAS_FIELDS_META_FLAG: i64 = 0b1 << 8;
 const NUM_HASH_BITS: i8 = 50;
 const NO_USER_TYPE_ID: u32 = u32::MAX;
+const MAX_HASH32: u64 = (1 << 31) - 1;
 
 pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
     Encoding::Utf8,
@@ -420,6 +421,20 @@ fn compute_schema_hash(field_infos: &[FieldInfo]) -> i64 {
     hash as i64
 }
 
+#[inline(always)]
+pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
+    let mut next_hash = (hash as u64) * 31 + (id as u64);
+    while next_hash >= MAX_HASH32 {
+        next_hash /= 7;
+    }
+    next_hash as u32
+}
+
+#[inline(always)]
+pub fn compute_struct_hash(field_ids: impl IntoIterator<Item = i16>) -> u32 {
+    field_ids.into_iter().fold(17u32, compute_field_hash)
+}
+
 /// Sorts field infos according to the provided sorted field names and assigns field IDs.
 ///
 /// This function takes a vector of field infos and a slice of sorted field names,
@@ -717,7 +732,7 @@ impl TypeMeta {
                 set_fields.push(field_info);
             } else if TypeId::MAP as u32 == type_id {
                 map_fields.push(field_info);
-            } else if crate::types::is_internal_type(type_id) {
+            } else if crate::type_id::is_internal_type(type_id) {
                 internal_type_fields.push(field_info);
             } else {
                 other_fields.push(field_info);

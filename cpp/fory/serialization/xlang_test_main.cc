@@ -44,6 +44,7 @@ using ::fory::Buffer;
 using ::fory::Error;
 using ::fory::Result;
 using ::fory::serialization::Date;
+using ::fory::serialization::Decimal;
 using ::fory::serialization::Fory;
 using ::fory::serialization::ForyBuilder;
 using ::fory::serialization::Serializer;
@@ -939,6 +940,7 @@ void run_test_ref_compatible(const std::string &data_file);
 void run_test_collection_element_ref_override(const std::string &data_file);
 void run_test_circular_ref_schema_consistent(const std::string &data_file);
 void run_test_circular_ref_compatible(const std::string &data_file);
+void run_test_decimal(const std::string &data_file);
 void run_test_unsigned_schema_consistent_simple(const std::string &data_file);
 void run_test_unsigned_schema_consistent(const std::string &data_file);
 void run_test_unsigned_schema_compatible(const std::string &data_file);
@@ -987,6 +989,8 @@ int main(int argc, char **argv) {
       run_test_map(data_file);
     } else if (case_name == "test_integer") {
       run_test_integer(data_file);
+    } else if (case_name == "test_decimal") {
+      run_test_decimal(data_file);
     } else if (case_name == "test_item") {
       run_test_item(data_file);
     } else if (case_name == "test_color") {
@@ -1650,6 +1654,44 @@ void run_test_integer(const std::string &data_file) {
   // xlang mode uses nullable=false by default, so write 0 not null
   append_serialized(fory, 0, out);
   append_serialized(fory, 0, out);
+  write_file(data_file, out);
+}
+
+void run_test_decimal(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  std::vector<Decimal> expected_values = {
+      Decimal::from_int64(0, 0),
+      Decimal::from_int64(0, 3),
+      Decimal::from_int64(1, 0),
+      Decimal::from_int64(-1, 0),
+      Decimal::from_int64(12345, 2),
+      Decimal::from_int64(std::numeric_limits<int64_t>::max(), 0),
+      Decimal::from_int64(std::numeric_limits<int64_t>::min(), 0),
+      Decimal::from_int64(4611686018427387903LL, 0),
+      Decimal::from_int64(-4611686018427387904LL, 0),
+      Decimal::from_bytes(0, false, {0, 0, 0, 0, 0, 0, 0, 128}),
+      Decimal::from_bytes(0, true, {1, 0, 0, 0, 0, 0, 0, 128}),
+      Decimal::from_bytes(37, false,
+                          {21, 129, 57, 174, 40, 163, 223, 170, 197, 254, 21,
+                           96, 165, 233, 224, 92}),
+      Decimal::from_bytes(-17, true,
+                          {21, 129, 57, 174, 40, 163, 223, 170, 197, 254, 21,
+                           96, 165, 233, 224, 92}),
+  };
+
+  Buffer buffer = make_buffer(bytes);
+  std::vector<uint8_t> out;
+  for (size_t i = 0; i < expected_values.size(); ++i) {
+    Decimal actual = read_next<Decimal>(fory, buffer);
+    if (actual != expected_values[i]) {
+      fail("Decimal value mismatch at index " + std::to_string(i));
+    }
+    append_serialized(fory, actual, out);
+  }
+  if (buffer.remaining_size() != 0) {
+    fail("Unexpected trailing bytes after decimal payload");
+  }
   write_file(data_file, out);
 }
 

@@ -903,6 +903,10 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		f.writeCtx.WriteTypeId(FLOAT64)
 		f.writeCtx.buffer.WriteFloat64(val)
+	case Decimal:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(DECIMAL)
+		writeDecimalParts(f.writeCtx.buffer, val.Scale, &val.Unscaled)
 	case string:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		f.writeCtx.WriteTypeId(STRING)

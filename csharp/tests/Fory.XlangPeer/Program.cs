@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Buffers;
+using System.Numerics;
 using System.Text;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
@@ -117,6 +118,23 @@ internal static class Program
         long.MaxValue,
     ];
 
+    private static readonly ForyDecimal[] DecimalValues =
+    [
+        new(BigInteger.Zero, 0),
+        new(BigInteger.Zero, 3),
+        new(BigInteger.One, 0),
+        new(BigInteger.MinusOne, 0),
+        new(new BigInteger(12345), 2),
+        new(BigInteger.Parse("9223372036854775807"), 0),
+        new(BigInteger.Parse("-9223372036854775808"), 0),
+        new(BigInteger.Parse("4611686018427387903"), 0),
+        new(BigInteger.Parse("-4611686018427387904"), 0),
+        new(BigInteger.Parse("9223372036854775808"), 0),
+        new(BigInteger.Parse("-9223372036854775809"), 0),
+        new(BigInteger.Parse("123456789012345678901234567890123456789"), 37),
+        new(BigInteger.Parse("-123456789012345678901234567890123456789"), -17),
+    ];
+
     private static int Main(string[] args)
     {
         try
@@ -180,6 +198,7 @@ internal static class Program
             "test_list" => CaseList(input),
             "test_map" => CaseMap(input),
             "test_integer" => CaseInteger(input),
+            "test_decimal" => CaseDecimal(input),
             "test_item" => CaseItem(input),
             "test_color" => CaseColor(input),
             "test_union_xlang" => CaseUnionXlang(input),
@@ -512,6 +531,23 @@ internal static class Program
         Append(output, fory.Serialize<object?>(f4));
         Append(output, fory.Serialize<object?>(f5));
         Append(output, fory.Serialize<object?>(f6));
+        return output.ToArray();
+    }
+
+    private static byte[] CaseDecimal(byte[] input)
+    {
+        ForyRuntime fory = BuildFory(compatible: true);
+        ReadOnlySequence<byte> sequence = new(input);
+        List<byte> output = [];
+
+        for (int i = 0; i < DecimalValues.Length; i++)
+        {
+            ForyDecimal value = fory.Deserialize<ForyDecimal>(ref sequence);
+            Ensure(value == DecimalValues[i], $"decimal {i} mismatch");
+            Append(output, fory.Serialize<object?>(value));
+        }
+
+        EnsureConsumed(sequence, nameof(CaseDecimal));
         return output.ToArray();
     }
 

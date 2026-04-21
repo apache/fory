@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/big"
 	"os"
 	"reflect"
 	"runtime"
@@ -58,6 +59,14 @@ func assertEqual(expected, actual any, name string) {
 	if expected != actual {
 		panic(fmt.Sprintf("%s: expected %v, got %v", name, expected, actual))
 	}
+}
+
+func mustDecimal(unscaled string, scale int32) fory.Decimal {
+	value, ok := new(big.Int).SetString(unscaled, 10)
+	if !ok {
+		panic(fmt.Sprintf("invalid decimal unscaled value %s", unscaled))
+	}
+	return fory.NewDecimal(value, scale)
 }
 
 // getStructValue extracts the struct value from either a struct or a pointer to struct.
@@ -886,6 +895,51 @@ func testInteger() {
 	outData = append(outData, serialized...)
 	serialized, _ = f.Serialize(f6)
 	outData = append(outData, serialized...)
+
+	writeFile(dataFile, outData)
+}
+
+func testDecimal() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(true))
+	buf := fory.NewByteBuffer(data)
+	values := []fory.Decimal{
+		mustDecimal("0", 0),
+		mustDecimal("0", 3),
+		mustDecimal("1", 0),
+		mustDecimal("-1", 0),
+		mustDecimal("12345", 2),
+		mustDecimal("9223372036854775807", 0),
+		mustDecimal("-9223372036854775808", 0),
+		mustDecimal("4611686018427387903", 0),
+		mustDecimal("-4611686018427387904", 0),
+		mustDecimal("9223372036854775808", 0),
+		mustDecimal("-9223372036854775809", 0),
+		mustDecimal("123456789012345678901234567890123456789", 37),
+		mustDecimal("-123456789012345678901234567890123456789", -17),
+	}
+
+	for i, expected := range values {
+		var actual fory.Decimal
+		err := f.DeserializeWithCallbackBuffers(buf, &actual, nil)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to deserialize decimal %d: %v", i, err))
+		}
+		if !actual.Equal(expected) {
+			panic(fmt.Sprintf("decimal %d mismatch: expected %v, got %v", i, expected, actual))
+		}
+	}
+
+	var outData []byte
+	for _, value := range values {
+		serialized, err := fory.Serialize(f, value)
+		if err != nil {
+			panic(fmt.Sprintf("Failed to serialize decimal: %v", err))
+		}
+		outData = append(outData, serialized...)
+	}
 
 	writeFile(dataFile, outData)
 }
@@ -2511,6 +2565,8 @@ func main() {
 		testMap()
 	case "test_integer":
 		testInteger()
+	case "test_decimal":
+		testDecimal()
 	case "test_item":
 		testItem()
 	case "test_color":

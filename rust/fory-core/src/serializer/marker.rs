@@ -17,11 +17,11 @@
 
 //! Serializer implementations for marker types like `PhantomData<T>`.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::TypeId;
+use crate::type_id::TypeId;
 use std::marker::PhantomData;
 
 impl<T: 'static> Serializer for PhantomData<T> {

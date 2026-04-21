@@ -41,9 +41,9 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
         quote! {
             if xlang {
                 if register_by_name {
-                    fory_core::types::TypeId::NAMED_UNION as u32
+                    fory_core::type_id::TypeId::NAMED_UNION as u32
                 } else {
-                    fory_core::types::TypeId::TYPED_UNION as u32
+                    fory_core::type_id::TypeId::TYPED_UNION as u32
                 }
             } else {
                 fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
@@ -171,7 +171,7 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
                 &[#(#field_name_literals),*]
             }
 
-            fn fory_fields_info(type_resolver: &fory_core::TypeResolver) -> Result<Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
+            fn fory_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> Result<Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
                 #fields_info_ts
             }
         }
@@ -210,7 +210,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                             Self::#ident => {
                                 context.writer.write_var_u32(#tag_value);
                                 // Write null flag for unit variant (no value)
-                                context.writer.write_i8(fory_core::types::RefFlag::Null as i8);
+                                context.writer.write_i8(fory_core::RefFlag::Null as i8);
                             }
                         }
                     } else {
@@ -228,7 +228,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                             Self::#ident(ref value) => {
                                 context.writer.write_var_u32(#tag_value);
                                 use fory_core::serializer::Serializer;
-                                value.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
+                                value.fory_write(context, fory_core::RefMode::Tracking, true, false)?;
                             }
                         }
                     } else {
@@ -248,7 +248,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                             Self::#ident { ref #field_ident } => {
                                 context.writer.write_var_u32(#tag_value);
                                 use fory_core::serializer::Serializer;
-                                #field_ident.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
+                                #field_ident.fory_write(context, fory_core::RefMode::Tracking, true, false)?;
                             }
                         }
                     } else {
@@ -462,7 +462,7 @@ pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
         quote! {
             if context.is_xlang() {
                 let rs_type_id = std::any::TypeId::of::<Self>();
-                context.write_any_type_info(fory_core::types::UNKNOWN, rs_type_id)?;
+                context.write_any_type_info(fory_core::type_id::UNKNOWN, rs_type_id)?;
                 Ok(())
             } else {
                 fory_core::serializer::enum_::write_type_info::<Self>(context)
@@ -565,7 +565,7 @@ fn xlang_variant_read_branches(
                         quote! {
                             #tag_value => {
                                 use fory_core::serializer::Serializer;
-                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::types::RefMode::Tracking, true)?;
+                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::RefMode::Tracking, true)?;
                                 Ok(Self::#ident(value))
                             }
                         }
@@ -592,7 +592,7 @@ fn xlang_variant_read_branches(
                         quote! {
                             #tag_value => {
                                 use fory_core::serializer::Serializer;
-                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::types::RefMode::Tracking, true)?;
+                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::RefMode::Tracking, true)?;
                                 Ok(Self::#ident { #field_ident: value })
                             }
                         }

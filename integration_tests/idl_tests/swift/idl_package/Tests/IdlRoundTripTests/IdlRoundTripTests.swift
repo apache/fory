@@ -421,8 +421,8 @@ final class IdlRoundTripTests: XCTestCase {
             float64Value: 3.5,
             stringValue: "optional",
             bytesValue: Data([1, 2, 3]),
-            dateValue: ForyDate(daysSinceEpoch: 19724),
-            timestampValue: ForyTimestamp(seconds: 1704164645, nanos: 0),
+            dateValue: LocalDate(daysSinceEpoch: 19724),
+            timestampValue: Date(timeIntervalSince1970: 1704164645),
             int32List: [1, 2, 3],
             stringList: ["alpha", "beta"],
             int64Map: ["alpha": 10, "beta": 20]
@@ -437,7 +437,7 @@ final class IdlRoundTripTests: XCTestCase {
         AnyExample.AnyHolder(
             boolValue: true,
             stringValue: "hello",
-            dateValue: ForyDate(daysSinceEpoch: 19724),
+            dateValue: LocalDate(daysSinceEpoch: 19724),
             timestampValue: Date(timeIntervalSince1970: 1704164645),
             messageValue: AnyExample.AnyInner(name: "inner"),
             unionValue: AnyExample.AnyUnion.text("union"),
@@ -450,7 +450,7 @@ final class IdlRoundTripTests: XCTestCase {
         AnyExamplePb.AnyHolder(
             boolValue: true,
             stringValue: "hello",
-            dateValue: ForyDate(daysSinceEpoch: 19724),
+            dateValue: LocalDate(daysSinceEpoch: 19724),
             timestampValue: Date(timeIntervalSince1970: 1704164645),
             messageValue: AnyExamplePb.AnyInner(name: "inner"),
             unionValue: AnyExamplePb.AnyUnion(kind: .text("proto-union")),
@@ -462,7 +462,7 @@ final class IdlRoundTripTests: XCTestCase {
     private func assertAnyHolder(expected: AnyExample.AnyHolder, actual: AnyExample.AnyHolder) {
         XCTAssertEqual(actual.boolValue as? Bool, expected.boolValue as? Bool)
         XCTAssertEqual(actual.stringValue as? String, expected.stringValue as? String)
-        XCTAssertEqual(actual.dateValue as? ForyDate, expected.dateValue as? ForyDate)
+        XCTAssertEqual(actual.dateValue as? LocalDate, expected.dateValue as? LocalDate)
         XCTAssertEqual((actual.timestampValue as? Date)?.timeIntervalSince1970, (expected.timestampValue as? Date)?.timeIntervalSince1970)
         XCTAssertEqual(actual.messageValue as? AnyExample.AnyInner, expected.messageValue as? AnyExample.AnyInner)
         XCTAssertEqual(actual.unionValue as? AnyExample.AnyUnion, expected.unionValue as? AnyExample.AnyUnion)
@@ -473,7 +473,7 @@ final class IdlRoundTripTests: XCTestCase {
     private func assertAnyProtoHolder(expected: AnyExamplePb.AnyHolder, actual: AnyExamplePb.AnyHolder) {
         XCTAssertEqual(actual.boolValue as? Bool, expected.boolValue as? Bool)
         XCTAssertEqual(actual.stringValue as? String, expected.stringValue as? String)
-        XCTAssertEqual(actual.dateValue as? ForyDate, expected.dateValue as? ForyDate)
+        XCTAssertEqual(actual.dateValue as? LocalDate, expected.dateValue as? LocalDate)
         XCTAssertEqual((actual.timestampValue as? Date)?.timeIntervalSince1970, (expected.timestampValue as? Date)?.timeIntervalSince1970)
         XCTAssertEqual(actual.messageValue as? AnyExamplePb.AnyInner, expected.messageValue as? AnyExamplePb.AnyInner)
         XCTAssertEqual(actual.unionValue as? AnyExamplePb.AnyUnion, expected.unionValue as? AnyExamplePb.AnyUnion)

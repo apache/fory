@@ -27,6 +27,7 @@ import "./struct";
 import "./string";
 import "./bool";
 import "./datetime";
+import "./decimal";
 import "./map";
 import "./number";
 import "./set";

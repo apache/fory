@@ -18,7 +18,8 @@
  */
 
 import { ForyTypeInfoSymbol, TypeId } from "./type";
-import { BFloat16 } from "./bfloat16";
+import { BFloat16 } from "./types/bfloat16";
+import { Decimal } from "./types/decimal";
 
 
 const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
@@ -468,6 +469,10 @@ export type HintInput<T> = T extends {
   }
   ? Date
   : T extends {
+    type: typeof TypeId.DECIMAL;
+  }
+  ? Decimal
+  : T extends {
     type: typeof TypeId.TIMESTAMP;
   }
   ? number
@@ -537,6 +542,10 @@ export type HintResult<T> = T extends never ? any : T extends {
     type: typeof TypeId.DURATION;
   }
   ? number
+  : T extends {
+    type: typeof TypeId.DECIMAL;
+  }
+  ? Decimal
   : T extends {
     type: typeof TypeId.DATE;
   }
@@ -783,6 +792,11 @@ export const Type = {
   timestamp() {
     return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(
       (TypeId.TIMESTAMP),
+    );
+  },
+  decimal() {
+    return TypeInfo.fromNonParam<typeof TypeId.DECIMAL>(
+      (TypeId.DECIMAL),
     );
   },
   boolArray() {

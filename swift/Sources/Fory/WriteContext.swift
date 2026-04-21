@@ -56,6 +56,7 @@ final class MetaStringWriteState {
 public final class WriteContext {
     public let buffer: ByteBuffer
     let typeResolver: TypeResolver
+    public let xlang: Bool
     public let trackRef: Bool
     public let compatible: Bool
     public let checkClassVersion: Bool
@@ -71,6 +72,7 @@ public final class WriteContext {
     convenience init(
         buffer: ByteBuffer,
         typeResolver: TypeResolver,
+        xlang: Bool = false,
         trackRef: Bool,
         compatible: Bool = false,
         checkClassVersion: Bool = true,
@@ -79,6 +81,7 @@ public final class WriteContext {
         self.init(
             buffer: buffer,
             typeResolver: typeResolver,
+            xlang: xlang,
             trackRef: trackRef,
             compatible: compatible,
             checkClassVersion: checkClassVersion,
@@ -90,6 +93,7 @@ public final class WriteContext {
     init(
         buffer: ByteBuffer,
         typeResolver: TypeResolver,
+        xlang: Bool,
         trackRef: Bool,
         compatible: Bool,
         checkClassVersion: Bool,
@@ -98,6 +102,7 @@ public final class WriteContext {
     ) {
         self.buffer = buffer
         self.typeResolver = typeResolver
+        self.xlang = xlang
         self.trackRef = trackRef
         self.compatible = compatible
         self.checkClassVersion = checkClassVersion

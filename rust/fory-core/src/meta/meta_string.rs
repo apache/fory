@@ -17,7 +17,7 @@
 
 use crate::ensure;
 use crate::error::Error;
-use crate::meta::string_util;
+use crate::util::is_latin;
 use std::sync::OnceLock;
 
 // equal to "std::i16::MAX"
@@ -140,7 +140,7 @@ impl MetaStringEncoder {
     }
 
     fn is_latin(&self, s: &str) -> bool {
-        string_util::is_latin(s)
+        is_latin(s)
     }
 
     fn _encode(&self, input: &str) -> Result<Option<MetaString>, Error> {

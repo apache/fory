@@ -19,7 +19,7 @@ use crate::util::{
     detect_collection_with_trait_object, is_arc_dyn_trait, is_box_dyn_trait, is_rc_dyn_trait,
     CollectionTraitInfo,
 };
-use fory_core::types::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
+use fory_core::type_id::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
 use fory_core::util::to_snake_case;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
@@ -494,7 +494,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     if is_type_parameter(&node.name) {
         return quote! {
             fory_core::meta::FieldType::new(
-                fory_core::types::TypeId::UNKNOWN as u32,
+                fory_core::type_id::TypeId::UNKNOWN as u32,
                 true,
                 vec![]
             )
@@ -505,10 +505,10 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     if node.name == "Tuple" {
         return quote! {
             fory_core::meta::FieldType::new(
-                fory_core::types::TypeId::LIST as u32,
+                fory_core::type_id::TypeId::LIST as u32,
                 true,
                 vec![fory_core::meta::FieldType::new(
-                    fory_core::types::TypeId::UNKNOWN as u32,
+                    fory_core::type_id::TypeId::UNKNOWN as u32,
                     true,
                     vec![]
                 )]
@@ -525,21 +525,21 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             if is_primitive_elem {
                 // For primitive arrays, use primitive array type ID
                 let type_id_token = match elem_node.name.as_str() {
-                    "bool" => quote! { fory_core::types::TypeId::BOOL_ARRAY as u32 },
-                    "i8" => quote! { fory_core::types::TypeId::INT8_ARRAY as u32 },
-                    "i16" => quote! { fory_core::types::TypeId::INT16_ARRAY as u32 },
-                    "i32" => quote! { fory_core::types::TypeId::INT32_ARRAY as u32 },
-                    "i64" => quote! { fory_core::types::TypeId::INT64_ARRAY as u32 },
-                    "i128" => quote! { fory_core::types::TypeId::INT128_ARRAY as u32 },
-                    "float16" => quote! { fory_core::types::TypeId::FLOAT16_ARRAY as u32 },
-                    "f32" => quote! { fory_core::types::TypeId::FLOAT32_ARRAY as u32 },
-                    "f64" => quote! { fory_core::types::TypeId::FLOAT64_ARRAY as u32 },
-                    "u8" => quote! { fory_core::types::TypeId::BINARY as u32 },
-                    "u16" => quote! { fory_core::types::TypeId::UINT16_ARRAY as u32 },
-                    "u32" => quote! { fory_core::types::TypeId::UINT32_ARRAY as u32 },
-                    "u64" => quote! { fory_core::types::TypeId::UINT64_ARRAY as u32 },
-                    "u128" => quote! { fory_core::types::TypeId::U128_ARRAY as u32 },
-                    _ => quote! { fory_core::types::TypeId::LIST as u32 },
+                    "bool" => quote! { fory_core::type_id::TypeId::BOOL_ARRAY as u32 },
+                    "i8" => quote! { fory_core::type_id::TypeId::INT8_ARRAY as u32 },
+                    "i16" => quote! { fory_core::type_id::TypeId::INT16_ARRAY as u32 },
+                    "i32" => quote! { fory_core::type_id::TypeId::INT32_ARRAY as u32 },
+                    "i64" => quote! { fory_core::type_id::TypeId::INT64_ARRAY as u32 },
+                    "i128" => quote! { fory_core::type_id::TypeId::INT128_ARRAY as u32 },
+                    "float16" => quote! { fory_core::type_id::TypeId::FLOAT16_ARRAY as u32 },
+                    "f32" => quote! { fory_core::type_id::TypeId::FLOAT32_ARRAY as u32 },
+                    "f64" => quote! { fory_core::type_id::TypeId::FLOAT64_ARRAY as u32 },
+                    "u8" => quote! { fory_core::type_id::TypeId::BINARY as u32 },
+                    "u16" => quote! { fory_core::type_id::TypeId::UINT16_ARRAY as u32 },
+                    "u32" => quote! { fory_core::type_id::TypeId::UINT32_ARRAY as u32 },
+                    "u64" => quote! { fory_core::type_id::TypeId::UINT64_ARRAY as u32 },
+                    "u128" => quote! { fory_core::type_id::TypeId::U128_ARRAY as u32 },
+                    _ => quote! { fory_core::type_id::TypeId::LIST as u32 },
                 };
                 return quote! {
                     fory_core::meta::FieldType::new(
@@ -552,7 +552,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                 // For non-primitive arrays, use LIST type ID with element type as generic
                 return quote! {
                     fory_core::meta::FieldType::new(
-                        fory_core::types::TypeId::LIST as u32,
+                        fory_core::type_id::TypeId::LIST as u32,
                         false,
                         vec![#elem_token]
                     )
@@ -574,10 +574,10 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             if inner.name == "Tuple" {
                 return quote! {
                     fory_core::meta::FieldType::new(
-                        fory_core::types::TypeId::LIST as u32,
+                        fory_core::type_id::TypeId::LIST as u32,
                         true,
                         vec![fory_core::meta::FieldType::new(
-                            fory_core::types::TypeId::UNKNOWN as u32,
+                            fory_core::type_id::TypeId::UNKNOWN as u32,
                             true,
                             vec![]
                         )]
@@ -643,23 +643,23 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
             let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
             // For tuples and sets, if no generic info is available, add UNKNOWN element
             // This handles type aliases to tuples where we can't detect the tuple at macro time
-            if (type_id == fory_core::types::TypeId::LIST as u32
-                || type_id == fory_core::types::TypeId::SET as u32)
+            if (type_id == fory_core::type_id::TypeId::LIST as u32
+                || type_id == fory_core::type_id::TypeId::SET as u32)
                 && generics.is_empty() {
                 generics.push(fory_core::meta::FieldType::new(
-                    fory_core::types::TypeId::UNKNOWN as u32,
+                    fory_core::type_id::TypeId::UNKNOWN as u32,
                     true,
                     vec![]
                 ));
             }
-            let is_custom = !fory_core::types::is_internal_type(type_id);
+            let is_custom = !fory_core::type_id::is_internal_type(type_id);
             if is_custom {
                 let type_info = <#ty as fory_core::serializer::Serializer>::fory_get_type_info(type_resolver)?;
                 type_id = type_info.get_type_id() as u32;
                 user_type_id = type_info.get_user_type_id();
-                if type_id == fory_core::types::TypeId::TYPED_UNION as u32
-                    || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
-                    type_id = fory_core::types::TypeId::UNION as u32;
+                if type_id == fory_core::type_id::TypeId::TYPED_UNION as u32
+                    || type_id == fory_core::type_id::TypeId::NAMED_UNION as u32 {
+                    type_id = fory_core::type_id::TypeId::UNION as u32;
                     user_type_id = u32::MAX;
                 }
                 if type_resolver.is_xlang() && generics.len() > 0 {
@@ -667,9 +667,9 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                 } else {
                     generics = vec![];
                 }
-            } else if type_id == fory_core::types::TypeId::TYPED_UNION as u32
-                || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
-                type_id = fory_core::types::TypeId::UNION as u32;
+            } else if type_id == fory_core::type_id::TypeId::TYPED_UNION as u32
+                || type_id == fory_core::type_id::TypeId::NAMED_UNION as u32 {
+                type_id = fory_core::type_id::TypeId::UNION as u32;
             }
             fory_core::meta::FieldType {
                 type_id,
@@ -797,7 +797,7 @@ pub(super) fn get_primitive_writer_method_with_encoding(
     type_name: &str,
     meta: &super::field_meta::ForyFieldMeta,
 ) -> &'static str {
-    use fory_core::types::TypeId;
+    use fory_core::type_id::TypeId;
 
     // Handle i32 with type_id
     if type_name == "i32" {
@@ -863,7 +863,7 @@ pub(super) fn get_primitive_reader_method_with_encoding(
     type_name: &str,
     meta: &super::field_meta::ForyFieldMeta,
 ) -> &'static str {
-    use fory_core::types::TypeId;
+    use fory_core::type_id::TypeId;
 
     // Handle i32 with type_id
     if type_name == "i32" {
@@ -1483,7 +1483,7 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
 /// Generates TokenStream for struct version hash (computed at compile time).
 pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     let fingerprint = compute_struct_fingerprint(fields);
-    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), 47);
+    let (hash, _) = fory_core::util::murmurhash3_x64_128(fingerprint.as_bytes(), 47);
     let version_hash = (hash & 0xFFFF_FFFF) as i32;
 
     quote! {

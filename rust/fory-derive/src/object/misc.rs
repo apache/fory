@@ -54,7 +54,7 @@ fn hash(fields: &[&Field]) -> TokenStream {
             static name_hash_once: Once = Once::new();
             unsafe {
                 name_hash_once.call_once(|| {
-                        name_hash = fory_core::types::compute_struct_hash(vec![#(#props),*]);
+                        name_hash = fory_core::meta::compute_struct_hash(vec![#(#props),*]);
                 });
                 name_hash
             }
@@ -71,9 +71,9 @@ pub fn gen_actual_type_id() -> TokenStream {
 pub fn gen_actual_type_id_no_evolving() -> TokenStream {
     quote! {
         if register_by_name {
-            fory_core::types::TypeId::NAMED_STRUCT as u32
+            fory_core::type_id::TypeId::NAMED_STRUCT as u32
         } else {
-            fory_core::types::TypeId::STRUCT as u32
+            fory_core::type_id::TypeId::STRUCT as u32
         }
     }
 }
@@ -123,8 +123,8 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                 let has_array_override = matches!(
                     meta.type_id,
                     Some(tid)
-                        if tid == fory_core::types::TypeId::INT8_ARRAY as i16
-                            || tid == fory_core::types::TypeId::UINT8_ARRAY as i16
+                        if tid == fory_core::type_id::TypeId::INT8_ARRAY as i16
+                            || tid == fory_core::type_id::TypeId::UINT8_ARRAY as i16
                 ) && (inner_ty_str == "Vec<u8>"
                     || inner_ty_str == "Vec<i8>"
                     || inner_ty_str.starts_with("[u8;")
@@ -134,30 +134,30 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                     // Generate FieldType directly with the correct type ID based on meta.type_id
                     let type_id_ts = match (inner_ty_str.as_str(), meta.type_id) {
                         // i32: VARINT32 (default) or INT32 (fixed)
-                        ("i32", Some(tid)) if tid == fory_core::types::TypeId::INT32 as i16 => {
-                            quote! { fory_core::types::TypeId::INT32 as u32 }
+                        ("i32", Some(tid)) if tid == fory_core::type_id::TypeId::INT32 as i16 => {
+                            quote! { fory_core::type_id::TypeId::INT32 as u32 }
                         }
                         ("i32", _) => {
-                            quote! { fory_core::types::TypeId::VARINT32 as u32 }
+                            quote! { fory_core::type_id::TypeId::VARINT32 as u32 }
                         }
                         // u32: VAR_UINT32 (default) or UINT32 (fixed)
-                        ("u32", Some(tid)) if tid == fory_core::types::TypeId::INT32 as i16 => {
-                            quote! { fory_core::types::TypeId::UINT32 as u32 }
+                        ("u32", Some(tid)) if tid == fory_core::type_id::TypeId::INT32 as i16 => {
+                            quote! { fory_core::type_id::TypeId::UINT32 as u32 }
                         }
                         ("u32", _) => {
-                            quote! { fory_core::types::TypeId::VAR_UINT32 as u32 }
+                            quote! { fory_core::type_id::TypeId::VAR_UINT32 as u32 }
                         }
                         // u64: VAR_UINT64 (default), UINT64 (fixed), or TAGGED_UINT64 (tagged)
-                        ("u64", Some(tid)) if tid == fory_core::types::TypeId::INT32 as i16 => {
-                            quote! { fory_core::types::TypeId::UINT64 as u32 }
+                        ("u64", Some(tid)) if tid == fory_core::type_id::TypeId::INT32 as i16 => {
+                            quote! { fory_core::type_id::TypeId::UINT64 as u32 }
                         }
                         ("u64", Some(tid))
-                            if tid == fory_core::types::TypeId::TAGGED_UINT64 as i16 =>
+                            if tid == fory_core::type_id::TypeId::TAGGED_UINT64 as i16 =>
                         {
-                            quote! { fory_core::types::TypeId::TAGGED_UINT64 as u32 }
+                            quote! { fory_core::type_id::TypeId::TAGGED_UINT64 as u32 }
                         }
                         ("u64", _) => {
-                            quote! { fory_core::types::TypeId::VAR_UINT64 as u32 }
+                            quote! { fory_core::type_id::TypeId::VAR_UINT64 as u32 }
                         }
                         _ => unreachable!(),
                     };
@@ -177,11 +177,11 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                     }
                 } else if has_array_override {
                     let type_id_ts = match meta.type_id {
-                        Some(tid) if tid == fory_core::types::TypeId::INT8_ARRAY as i16 => {
-                            quote! { fory_core::types::TypeId::INT8_ARRAY as u32 }
+                        Some(tid) if tid == fory_core::type_id::TypeId::INT8_ARRAY as i16 => {
+                            quote! { fory_core::type_id::TypeId::INT8_ARRAY as u32 }
                         }
-                        Some(tid) if tid == fory_core::types::TypeId::UINT8_ARRAY as i16 => {
-                            quote! { fory_core::types::TypeId::UINT8_ARRAY as u32 }
+                        Some(tid) if tid == fory_core::type_id::TypeId::UINT8_ARRAY as i16 => {
+                            quote! { fory_core::type_id::TypeId::UINT8_ARRAY as u32 }
                         }
                         _ => unreachable!(),
                     };
@@ -218,12 +218,12 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
             StructField::VecBox(_) | StructField::VecRc(_) | StructField::VecArc(_) => {
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::LIST as u32,
+                        type_id: fory_core::type_id::TypeId::LIST as u32,
                         user_type_id: u32::MAX,
                         nullable: #nullable,
                         track_ref: #track_ref,
                         generics: vec![fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            type_id: fory_core::type_id::TypeId::UNKNOWN as u32,
                             user_type_id: u32::MAX,
                             nullable: false,
                             track_ref: false,
@@ -239,14 +239,14 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
                 let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::MAP as u32,
+                        type_id: fory_core::type_id::TypeId::MAP as u32,
                         user_type_id: u32::MAX,
                         nullable: #nullable,
                         track_ref: #track_ref,
                         generics: vec![
                             #key_generic_token,
                             fory_core::meta::FieldType {
-                                type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                                type_id: fory_core::type_id::TypeId::UNKNOWN as u32,
                                 user_type_id: u32::MAX,
                                 nullable: false,
                                 track_ref: false,
@@ -259,7 +259,7 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
             _ => {
                 quote! {
                     fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                        type_id: fory_core::type_id::TypeId::UNKNOWN as u32,
                         user_type_id: u32::MAX,
                         nullable: #nullable,
                         track_ref: #track_ref,

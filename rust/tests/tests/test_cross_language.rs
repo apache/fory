@@ -18,12 +18,14 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use fory_core::buffer::{Reader, Writer};
 use fory_core::error::Error;
-use fory_core::meta::murmurhash3_x64_128;
-use fory_core::resolver::context::{ReadContext, WriteContext};
+use fory_core::resolver::TypeResolver;
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::TypeResolver;
-use fory_core::{read_data, write_data, Fory};
+use fory_core::type_id::TypeId;
+use fory_core::util::murmurhash3_x64_128;
+use fory_core::{read_data, write_data, Decimal, Fory};
+use fory_core::{ReadContext, WriteContext};
 use fory_derive::ForyObject;
+use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
 
@@ -111,6 +113,38 @@ fn test_buffer() {
     writer.write_bytes(binary);
 
     fs::write(&data_file_path, writer.dump()).unwrap();
+}
+
+#[test]
+#[allow(deprecated)]
+fn test_naive_date_uses_var_i64_day_count() {
+    let fory = Fory::builder().xlang(true).track_ref(false).build();
+    let day = NaiveDate::from_ymd_opt(1969, 12, 31).unwrap();
+    let mut buf = Vec::new();
+    fory.serialize_to(&mut buf, &day).unwrap();
+
+    let mut reader = Reader::new(buf.as_slice());
+    assert_eq!(reader.read_u8().unwrap(), 2);
+    assert_eq!(reader.read_i8().unwrap(), -1);
+    assert_eq!(reader.read_u8().unwrap(), TypeId::DATE as u8);
+    assert_eq!(reader.read_var_i64().unwrap(), -1);
+    assert_eq!(reader.get_cursor(), buf.len());
+}
+
+#[test]
+#[allow(deprecated)]
+fn test_naive_date_uses_i32_day_count_in_native_mode() {
+    let fory = Fory::builder().xlang(false).track_ref(false).build();
+    let day = NaiveDate::from_ymd_opt(1969, 12, 31).unwrap();
+    let mut buf = Vec::new();
+    fory.serialize_to(&mut buf, &day).unwrap();
+
+    let mut reader = Reader::new(buf.as_slice());
+    assert_eq!(reader.read_u8().unwrap(), 0);
+    assert_eq!(reader.read_i8().unwrap(), -1);
+    assert_eq!(reader.read_u8().unwrap(), TypeId::DATE as u8);
+    assert_eq!(reader.read_i32().unwrap(), -1);
+    assert_eq!(reader.get_cursor(), buf.len());
 }
 
 #[test]
@@ -629,6 +663,47 @@ fn test_integer() {
     fory.serialize_to(&mut buf, &remote_f4).unwrap();
     fory.serialize_to(&mut buf, &remote_f5).unwrap();
     fory.serialize_to(&mut buf, &remote_f6).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}
+
+fn decimal_value(unscaled: &str, scale: i32) -> Decimal {
+    Decimal::new(
+        BigInt::parse_bytes(unscaled.as_bytes(), 10).expect("invalid decimal"),
+        scale,
+    )
+}
+
+#[test]
+#[ignore]
+fn test_decimal() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+    let fory = Fory::builder().compatible(true).xlang(true).build();
+    let values = vec![
+        decimal_value("0", 0),
+        decimal_value("0", 3),
+        decimal_value("1", 0),
+        decimal_value("-1", 0),
+        decimal_value("12345", 2),
+        decimal_value("9223372036854775807", 0),
+        decimal_value("-9223372036854775808", 0),
+        decimal_value("4611686018427387903", 0),
+        decimal_value("-4611686018427387904", 0),
+        decimal_value("9223372036854775808", 0),
+        decimal_value("-9223372036854775809", 0),
+        decimal_value("123456789012345678901234567890123456789", 37),
+        decimal_value("-123456789012345678901234567890123456789", -17),
+    ];
+    for expected in &values {
+        let actual: Decimal = fory.deserialize_from(&mut reader).unwrap();
+        assert_eq!(&actual, expected);
+    }
+
+    let mut buf = Vec::new();
+    for value in &values {
+        fory.serialize_to(&mut buf, value).unwrap();
+    }
     fs::write(&data_file_path, buf).unwrap();
 }
 

@@ -24,6 +24,7 @@
 #include "fory/serialization/collection_serializer.h"
 #include "fory/serialization/config.h"
 #include "fory/serialization/context.h"
+#include "fory/serialization/decimal_serializers.h"
 #include "fory/serialization/map_serializer.h"
 #include "fory/serialization/serializer.h"
 #include "fory/serialization/smart_ptr_serializers.h"

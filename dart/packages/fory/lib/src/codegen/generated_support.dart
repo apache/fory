@@ -623,6 +623,16 @@ LocalDate readGeneratedLocalDateValue(ReadContext context) {
 }
 
 @internal
+void writeGeneratedDecimalValue(WriteContext context, Decimal value) {
+  const DecimalSerializer().write(context, value);
+}
+
+@internal
+Decimal readGeneratedDecimalValue(ReadContext context) {
+  return const DecimalSerializer().read(context);
+}
+
+@internal
 int generatedDurationWireSeconds(Duration value) {
   return durationWireSeconds(value);
 }

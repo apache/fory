@@ -79,6 +79,12 @@ final birthday = LocalDate(1990, 12, 1);
 final timeout = const Duration(seconds: 30);
 ```
 
+The temporal wrappers expose conversion helpers:
+
+- `Timestamp.fromDateTime(...)` and `timestamp.toDateTime()`
+- `LocalDate.fromEpochDay(...)`, `date.toEpochDay()`
+- `LocalDate.fromDateTime(...)` and `date.toDateTime()`
+
 `Duration` support in Dart is exact to microseconds. Incoming xlang duration
 payloads that use sub-microsecond nanoseconds are rejected instead of being
 silently truncated.

@@ -68,8 +68,8 @@ fn gen_compatible_unsigned_read(
         quote! {
             // Read u32 based on remote type_id
             match _field.field_type.type_id {
-                fory_core::types::UINT32 => context.reader.read_u32()?,
-                fory_core::types::VAR_UINT32 => context.reader.read_var_u32()?,
+                fory_core::type_id::UINT32 => context.reader.read_u32()?,
+                fory_core::type_id::VAR_UINT32 => context.reader.read_var_u32()?,
                 _ => context.reader.read_var_u32()?, // Default to varint
             }
         }
@@ -78,9 +78,9 @@ fn gen_compatible_unsigned_read(
         quote! {
             // Read u64 based on remote type_id
             match _field.field_type.type_id {
-                fory_core::types::UINT64 => context.reader.read_u64()?,
-                fory_core::types::VAR_UINT64 => context.reader.read_var_u64()?,
-                fory_core::types::TAGGED_UINT64 => context.reader.read_tagged_u64()?,
+                fory_core::type_id::UINT64 => context.reader.read_u64()?,
+                fory_core::type_id::VAR_UINT64 => context.reader.read_var_u64()?,
+                fory_core::type_id::TAGGED_UINT64 => context.reader.read_tagged_u64()?,
                 _ => context.reader.read_var_u64()?, // Default to varint
             }
         }
@@ -188,7 +188,7 @@ pub(crate) fn declare_var(source_fields: &[SourceField<'_>]) -> Vec<TokenStream>
                         }
                     } else if extract_type_name(&field.ty) == "float16" {
                         quote! {
-                            let mut #var_name: fory_core::float16::float16 = fory_core::float16::float16::ZERO;
+                            let mut #var_name: fory_core::types::float16::float16 = fory_core::types::float16::float16::ZERO;
                         }
                     } else if extract_type_name(&field.ty) == "bool" {
                         quote! {
@@ -408,7 +408,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
                 // for struct-type fields in compatible mode, even for non-nullable fields.
                 quote! {
                     let read_type_info = if context.is_compatible() {
-                        fory_core::types::need_to_write_type_for_field(
+                        fory_core::type_id::need_to_write_type_for_field(
                             <#ty as fory_core::Serializer>::fory_static_type_id()
                         )
                     } else {
@@ -745,7 +745,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                                 fory_core::RefMode::None
                             };
                             // For ref-tracked struct types, Java writes type info after RefValue flag
-                            let read_type_info = fory_core::types::need_to_write_type_for_field(
+                            let read_type_info = fory_core::type_id::need_to_write_type_for_field(
                                 <#ty as fory_core::Serializer>::fory_static_type_id()
                             );
                             #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?);
@@ -808,7 +808,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                             fory_core::RefMode::None
                         };
                         // For ref-tracked struct types, Java writes type info after RefValue flag
-                        let read_type_info = fory_core::types::need_to_write_type_for_field(
+                        let read_type_info = fory_core::type_id::need_to_write_type_for_field(
                             <#ty as fory_core::Serializer>::fory_static_type_id()
                         );
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?);
@@ -828,7 +828,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                             fory_core::RefMode::None
                         };
                         // For ref-tracked struct types, Java writes type info after RefValue flag
-                        let read_type_info = fory_core::types::need_to_write_type_for_field(
+                        let read_type_info = fory_core::type_id::need_to_write_type_for_field(
                             <#ty as fory_core::Serializer>::fory_static_type_id()
                         );
                         #var_name = <#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?;

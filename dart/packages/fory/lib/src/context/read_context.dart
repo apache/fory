@@ -304,6 +304,8 @@ final class ReadContext {
         return null;
       case TypeIds.string:
         return StringSerializer.readPayload(this);
+      case TypeIds.decimal:
+        return DecimalSerializer.readPayload(this);
       case TypeIds.binary:
         return BinarySerializer.readPayload(this);
       case TypeIds.boolArray:

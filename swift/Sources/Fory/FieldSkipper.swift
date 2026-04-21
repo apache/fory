@@ -168,7 +168,9 @@ public extension ReadContext {
         case .timestamp:
             return try Date.foryRead(self, refMode: .none, readTypeInfo: false)
         case .date:
-            return try ForyDate.foryRead(self, refMode: .none, readTypeInfo: false)
+            return try LocalDate.foryRead(self, refMode: .none, readTypeInfo: false)
+        case .decimal:
+            return try Decimal.foryRead(self, refMode: .none, readTypeInfo: false)
         case .binary, .uint8Array:
             return try Data.foryRead(self, refMode: .none, readTypeInfo: false)
         case .boolArray:

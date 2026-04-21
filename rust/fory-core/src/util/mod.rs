@@ -18,7 +18,10 @@
 mod string_util;
 mod sync;
 
-pub use string_util::{to_camel_case, to_snake_case, to_utf8};
+pub use string_util::{
+    buffer_rw_string, compute_string_hash, get_latin1_length, is_latin, murmurhash3_x64_128,
+    to_camel_case, to_snake_case, to_utf8, StringFlag,
+};
 pub use sync::{Spinlock, SpinlockGuard};
 
 use chrono::NaiveDate;

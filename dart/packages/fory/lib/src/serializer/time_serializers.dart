@@ -144,12 +144,12 @@ final class LocalDateSerializer extends Serializer<LocalDate> {
 
   @override
   void write(WriteContext context, LocalDate value) {
-    context.buffer.writeInt32(value.toEpochDay());
+    context.buffer.writeVarInt64(value.toEpochDay());
   }
 
   @override
   LocalDate read(ReadContext context) {
-    return LocalDate.fromEpochDay(context.buffer.readInt32());
+    return LocalDate.fromEpochDay(context.buffer.readVarInt64());
   }
 }
 

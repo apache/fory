@@ -15,8 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::meta::{get_latin1_length, is_latin};
-use fory_core::util::to_utf8;
+use fory_core::util::{get_latin1_length, is_latin, to_utf8};
 
 #[test]
 fn test_to_utf8() {

@@ -20,7 +20,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::arch::x86_64::*;
 
 use fory_core::buffer::{Reader, Writer};
-use fory_core::meta::buffer_rw_string::{
+use fory_core::util::buffer_rw_string::{
     read_latin1_simd, read_latin1_standard, write_latin1_simd, write_latin1_standard,
     write_latin1_string,
 };

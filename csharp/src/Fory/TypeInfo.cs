@@ -317,6 +317,12 @@ public sealed class TypeInfo
             return true;
         }
 
+        if (type == typeof(ForyDecimal))
+        {
+            typeId = TypeId.Decimal;
+            return true;
+        }
+
         if (type == typeof(byte[]))
         {
             typeId = TypeId.Binary;

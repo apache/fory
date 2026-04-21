@@ -72,6 +72,8 @@ public static class FieldSkipper
                 return context.TypeResolver.GetSerializer<double>().Read(context, refMode, false);
             case (uint)TypeId.String:
                 return context.TypeResolver.GetSerializer<string>().Read(context, refMode, false);
+            case (uint)TypeId.Decimal:
+                return context.TypeResolver.GetSerializer<ForyDecimal>().Read(context, refMode, false);
             case (uint)TypeId.List:
                 {
                     if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)

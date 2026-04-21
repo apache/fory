@@ -16,6 +16,7 @@
 # under the License.
 
 import array
+import decimal
 import datetime
 import gc
 import io
@@ -36,6 +37,7 @@ import pyfory
 from pyfory.serialization import Buffer
 from pyfory import Fory, EnumSerializer
 from pyfory.serializer import (
+    DecimalSerializer,
     TimestampSerializer,
     DateSerializer,
     PyArraySerializer,
@@ -137,6 +139,10 @@ def test_basic_serializer(xlang):
     assert isinstance(typeinfo.serializer, DateSerializer)
     if xlang:
         assert typeinfo.type_id == TypeId.DATE
+    typeinfo = fory.type_resolver.get_type_info(decimal.Decimal)
+    assert isinstance(typeinfo.serializer, DecimalSerializer)
+    if xlang:
+        assert typeinfo.type_id == TypeId.DECIMAL
     assert ser_de(fory, True) is True
     assert ser_de(fory, False) is False
     assert ser_de(fory, -1) == -1
@@ -149,6 +155,8 @@ def test_basic_serializer(xlang):
     assert ser_de(fory, 1.0) == 1.0
     assert ser_de(fory, -1.0) == -1.0
     assert ser_de(fory, "str") == "str"
+    assert ser_de(fory, decimal.Decimal("1234567890.0123456789")) == decimal.Decimal("1234567890.0123456789")
+    assert ser_de(fory, decimal.Decimal("0.000")) == decimal.Decimal("0.000")
     assert ser_de(fory, b"") == b""
     now = datetime.datetime.now(datetime.timezone.utc)
     assert ser_de(fory, now) == now
@@ -162,6 +170,99 @@ def test_basic_serializer(xlang):
     assert ser_de(fory, dict2_) == dict2_
     set_ = {"a", 1, -1.0, True, now, day}
     assert ser_de(fory, set_) == set_
+
+
+@pytest.mark.parametrize("xlang", [True, False])
+def test_date_serializer_uses_xlang_varint64_and_native_int32(xlang):
+    fory = Fory(xlang=xlang, ref=False)
+    day = datetime.date(1969, 12, 31)
+    payload = fory.serialize(day)
+    buffer = Buffer(payload)
+    assert buffer.read_uint8() == 2
+    assert buffer.read_int8() == -1
+    assert buffer.read_uint8() == TypeId.DATE
+    if xlang:
+        assert buffer.read_varint64() == -1
+    else:
+        assert buffer.read_int32() == -1
+    assert buffer.get_reader_index() == len(payload)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_decimal_round_trip(xlang):
+    fory = Fory(xlang=xlang, ref=False)
+    values = [
+        decimal.Decimal("0"),
+        decimal.Decimal("0.000"),
+        decimal.Decimal("1"),
+        decimal.Decimal("-1"),
+        decimal.Decimal("123.45"),
+        decimal.Decimal("-123.45"),
+        decimal.Decimal("9223372036854775807"),
+        decimal.Decimal("-9223372036854775808"),
+        decimal.Decimal("4611686018427387903"),
+        decimal.Decimal("-4611686018427387904"),
+        decimal.Decimal("9223372036854775808"),
+        decimal.Decimal("-9223372036854775809"),
+        decimal.Decimal("123456789012345678901234567890123456789e-37"),
+        decimal.Decimal("-123456789012345678901234567890123456789e17"),
+    ]
+    for value in values:
+        assert ser_de(fory, value) == value
+
+
+def test_decimal_codec_canonical_round_trip():
+    fory = Fory(xlang=True, ref=False)
+    buffer = Buffer.allocate(256)
+    values = [
+        decimal.Decimal("0"),
+        decimal.Decimal("0.00"),
+        decimal.Decimal("1"),
+        decimal.Decimal("-1"),
+        decimal.Decimal("100e-2"),
+        decimal.Decimal("4611686018427387903"),
+        decimal.Decimal("-4611686018427387904"),
+        decimal.Decimal("9223372036854775808"),
+        decimal.Decimal("-9223372036854775809"),
+        decimal.Decimal("999999999999999999999999999999999999999999e-200"),
+    ]
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    for value in values:
+        buffer.set_reader_index(0)
+        buffer.set_writer_index(0)
+        serializer.write(buffer, value)
+        decoded = serializer.read(buffer)
+        assert decoded == value
+
+
+def test_decimal_codec_rejects_non_canonical_big_payloads():
+    fory = Fory(xlang=True, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+
+    zero_big_encoding = Buffer.allocate(32)
+    zero_big_encoding.write_varint32(0)
+    zero_big_encoding.write_var_uint64(1)
+    zero_big_encoding.set_reader_index(0)
+    with pytest.raises(ValueError):
+        serializer.read(zero_big_encoding)
+
+    trailing_zero_payload = Buffer.allocate(32)
+    trailing_zero_payload.write_varint32(0)
+    trailing_zero_payload.write_var_uint64((((2 << 1) | 0) << 1) | 1)
+    trailing_zero_payload.write_bytes(b"\x01\x00")
+    trailing_zero_payload.set_reader_index(0)
+    with pytest.raises(ValueError, match="trailing zero byte"):
+        serializer.read(trailing_zero_payload)
+
+
+def test_decimal_rejects_non_finite_values():
+    fory = Fory(xlang=True, ref=False)
+    serializer = DecimalSerializer(fory.type_resolver, decimal.Decimal)
+    buffer = Buffer.allocate(32)
+    with pytest.raises(ValueError, match="must be finite"):
+        serializer.write(buffer, decimal.Decimal("NaN"))
+    with pytest.raises(ValueError, match="must be finite"):
+        serializer.write(buffer, decimal.Decimal("Infinity"))
 
 
 @pytest.mark.parametrize("xlang", [True, False])

@@ -568,9 +568,41 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
   }
 
   case TypeId::DATE: {
-    // Date is stored as fixed 4-byte day count.
-    constexpr uint32_t k_bytes = static_cast<uint32_t>(sizeof(int32_t));
-    ctx.buffer().increase_reader_index(k_bytes, ctx.error());
+    // Date is stored as a signed varint64 day count.
+    ctx.read_var_int64(ctx.error());
+    return;
+  }
+
+  case TypeId::DECIMAL: {
+    // Decimal is stored as signed varint32 scale + varuint64 header and
+    // optional little-endian magnitude payload.
+    ctx.read_var_int32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    uint64_t header = ctx.read_var_uint64(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if ((header & 1U) == 0) {
+      return;
+    }
+    uint64_t length64 = header >> 2;
+    if (length64 == 0) {
+      ctx.set_error(Error::invalid_data("Invalid decimal magnitude length 0"));
+      return;
+    }
+    if (length64 > ctx.config().max_binary_size) {
+      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+      return;
+    }
+    if (length64 > std::numeric_limits<uint32_t>::max()) {
+      ctx.set_error(Error::invalid_data("Invalid decimal magnitude length " +
+                                        std::to_string(length64)));
+      return;
+    }
+    ctx.buffer().increase_reader_index(static_cast<uint32_t>(length64),
+                                       ctx.error());
     return;
   }
 

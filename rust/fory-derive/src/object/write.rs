@@ -25,7 +25,7 @@ use super::util::{
     StructField,
 };
 use crate::util::SourceField;
-use fory_core::types::TypeId;
+use fory_core::type_id::TypeId;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::Field;
@@ -36,71 +36,71 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
         match classify_trait_object_field(ty) {
             StructField::BoxDyn => {
                 quote! {
-                    fory_core::types::SIZE_OF_REF_AND_TYPE
+                    fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::RcDyn(trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::ArcDyn(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::VecRc(trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::VecArc(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::VecBox(_) => {
                 // Vec<Box<dyn Any>> uses standard Vec serialization
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::HashMapBox(_, _) => {
                 // HashMap<K, Box<dyn Any>> uses standard HashMap serialization
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::HashMapRc(key_ty, trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::HashMapArc(key_ty, trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::Forward => {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
             _ => {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::type_id::SIZE_OF_REF_AND_TYPE
                 }
             }
         }
@@ -321,7 +321,7 @@ fn gen_write_field_impl(
                 // for struct-type fields in compatible mode, even for non-nullable fields.
                 quote! {
                     let write_type_info = if context.is_compatible() {
-                        fory_core::types::need_to_write_type_for_field(
+                        fory_core::type_id::need_to_write_type_for_field(
                             <#ty as fory_core::Serializer>::fory_static_type_id()
                         )
                     } else {

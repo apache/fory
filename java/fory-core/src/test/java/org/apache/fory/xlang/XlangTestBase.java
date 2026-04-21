@@ -23,6 +23,8 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.hash.Hashing;
 import java.io.File;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -811,6 +813,23 @@ public abstract class XlangTestBase extends ForyTestBase {
     Integer f6;
   }
 
+  protected static List<BigDecimal> decimalValues() {
+    return Arrays.asList(
+        BigDecimal.ZERO,
+        new BigDecimal(BigInteger.ZERO, 3),
+        BigDecimal.ONE,
+        BigDecimal.ONE.negate(),
+        BigDecimal.valueOf(12345, 2),
+        new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE), 0),
+        new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE), 0),
+        new BigDecimal(BigInteger.valueOf(4611686018427387903L), 0),
+        new BigDecimal(BigInteger.valueOf(-4611686018427387904L), 0),
+        new BigDecimal(BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE), 0),
+        new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), 0),
+        new BigDecimal(new BigInteger("123456789012345678901234567890123456789"), 37),
+        new BigDecimal(new BigInteger("-123456789012345678901234567890123456789"), -17));
+  }
+
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testInteger(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_integer";
@@ -863,6 +882,28 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), 4);
     Assert.assertEquals(fory.deserialize(buffer2), 0);
     Assert.assertEquals(fory.deserialize(buffer2), 0);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testDecimal(boolean enableCodegen) throws java.io.IOException {
+    String caseName = "test_decimal";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCodegen(enableCodegen)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
+    List<BigDecimal> values = decimalValues();
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    for (BigDecimal value : values) {
+      fory.serialize(buffer, value);
+    }
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+    MemoryBuffer result = readBuffer(ctx.dataFile());
+    for (BigDecimal value : values) {
+      Assert.assertEquals(fory.deserialize(result), value);
+    }
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")

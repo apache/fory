@@ -39,11 +39,30 @@ void _writeFile(Uint8List bytes) {
   File(_dataFilePath()).writeAsBytesSync(bytes, flush: true);
 }
 
+Decimal _decimal(String unscaled, int scale) {
+  return Decimal(BigInt.parse(unscaled), scale);
+}
+
+List<Decimal> _decimalValues() {
+  return <Decimal>[
+    Decimal.zero(),
+    Decimal.zero(3),
+    Decimal.fromInt(1),
+    Decimal.fromInt(-1),
+    Decimal.fromInt(12345, scale: 2),
+    _decimal('9223372036854775807', 0),
+    _decimal('-9223372036854775808', 0),
+    _decimal('4611686018427387903', 0),
+    _decimal('-4611686018427387904', 0),
+    _decimal('9223372036854775808', 0),
+    _decimal('-9223372036854775809', 0),
+    _decimal('123456789012345678901234567890123456789', 37),
+    _decimal('-123456789012345678901234567890123456789', -17),
+  ];
+}
+
 Fory _newFory({bool compatible = false}) {
-  return Fory(
-    compatible: compatible,
-    checkStructVersion: !compatible,
-  );
+  return Fory(compatible: compatible, checkStructVersion: !compatible);
 }
 
 void _roundTripFory(Fory fory, {bool trackRef = false}) {
@@ -183,9 +202,7 @@ void _verifyVarBufferCase() {
 void _verifyMurmurCase() {
   final data = _readFile();
   final shortHash = murmurHash3X64_128(const <int>[1, 2, 8]);
-  final textHash = murmurHash3X64_128(
-    utf8.encode('01234567890123456789'),
-  );
+  final textHash = murmurHash3X64_128(utf8.encode('01234567890123456789'));
   if (data.length == 32) {
     final expected = BytesBuilder(copy: false)
       ..add(_hashBytes(shortHash.$1, shortHash.$2))
@@ -205,6 +222,24 @@ void _verifyMurmurCase() {
     return;
   }
   throw StateError('Unexpected MurmurHash3 payload size ${data.length}.');
+}
+
+void _verifyDecimalCase() {
+  final fory = _newFory(compatible: true);
+  final input = Buffer.wrap(_readFile());
+  final output = BytesBuilder(copy: false);
+  final expectedValues = _decimalValues();
+  for (var index = 0; index < expectedValues.length; index += 1) {
+    final actual = fory.deserializeFrom<Decimal>(input);
+    if (actual != expectedValues[index]) {
+      throw StateError('Unexpected decimal at index $index: $actual');
+    }
+    output.add(fory.serialize(actual));
+  }
+  if (input.readableBytes != 0) {
+    throw StateError('Unexpected trailing bytes after decimal payload.');
+  }
+  _writeFile(output.takeBytes());
 }
 
 Uint8List _hashBytes(int low, int high) {
@@ -274,10 +309,7 @@ void _runCollectionElementRefOverride() {
   final shared = container.listField.first;
   final output = RefOverrideContainer()
     ..listField = <RefOverrideElement>[shared, shared]
-    ..mapField = <String, RefOverrideElement>{
-      'k1': shared,
-      'k2': shared,
-    };
+    ..mapField = <String, RefOverrideElement>{'k1': shared, 'k2': shared};
   _writeFile(fory.serialize(output, trackRef: true));
 }
 
@@ -360,6 +392,9 @@ void _runCase(String caseName) {
       final fory = _newFory(compatible: true);
       registerXlangType(fory, Item1, id: 101);
       _roundTripFory(fory);
+      return;
+    case 'test_decimal':
+      _verifyDecimalCase();
       return;
     case 'test_color':
       final fory = _newFory(compatible: true);

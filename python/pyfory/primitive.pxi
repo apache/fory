@@ -237,10 +237,16 @@ cdef class DateSerializer(Serializer):
                 )
             )
         days = (value - _base_date).days
-        write_context.write_int32(days)
+        if self.type_resolver.xlang:
+            write_context.write_varint64(days)
+        else:
+            write_context.write_int32(days)
 
     cpdef inline read(self, ReadContext read_context):
-        days = read_context.read_int32()
+        if self.type_resolver.xlang:
+            days = read_context.read_varint64()
+        else:
+            days = read_context.read_int32()
         return datetime.date.fromordinal(_base_date_ordinal + days)
 
 

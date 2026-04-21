@@ -58,6 +58,7 @@ abstract final class TypeIds {
   static const int duration = 37;
   static const int timestamp = 38;
   static const int date = 39;
+  static const int decimal = 40;
   static const int binary = 41;
   static const int boolArray = 43;
   static const int int8Array = 44;
@@ -117,6 +118,7 @@ abstract final class TypeIds {
       typeId == binary ||
       typeId == duration ||
       typeId == timestamp ||
+      typeId == decimal ||
       typeId == date ||
       typeId == boolArray ||
       typeId == int8Array ||
@@ -141,6 +143,7 @@ abstract final class TypeIds {
         typeId == binary ||
         typeId == duration ||
         typeId == timestamp ||
+        typeId == decimal ||
         typeId == date) {
       return false;
     }

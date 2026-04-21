@@ -28,6 +28,7 @@ SCHEMAS = [
     IDL_DIR / "idl" / "addressbook.fdl",
     IDL_DIR / "idl" / "collection.fdl",
     IDL_DIR / "idl" / "optional_types.fdl",
+    IDL_DIR / "idl" / "basic.fdl",
     IDL_DIR / "idl" / "tree.fdl",
     IDL_DIR / "idl" / "graph.fdl",
     IDL_DIR / "idl" / "root.idl",
@@ -55,6 +56,7 @@ LANG_OUTPUTS = {
 
 GO_OUTPUT_OVERRIDES = {
     "addressbook.fdl": IDL_DIR / "go" / "addressbook" / "generated",
+    "basic.fdl": IDL_DIR / "go" / "basic" / "generated",
     "collection.fdl": IDL_DIR / "go" / "collection" / "generated",
     "monster.fbs": IDL_DIR / "go" / "monster" / "generated",
     "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs" / "generated",

@@ -15,12 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::ReadContext;
+use crate::context::WriteContext;
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::{RefFlag, RefMode};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{need_to_write_type_for_field, RefFlag, RefMode, PRIMITIVE_ARRAY_TYPES};
+use crate::type_id::{need_to_write_type_for_field, PRIMITIVE_ARRAY_TYPES};
 
 const TRACKING_REF: u8 = 0b1;
 

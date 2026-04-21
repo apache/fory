@@ -15,14 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use super::context::{ReadContext, WriteContext};
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::{
     MetaString, TypeMeta, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_ENCODER,
     TYPE_NAME_ENCODINGS,
 };
+use crate::resolver::RefMode;
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
-use crate::types::{get_ext_actual_type_id, is_enum_type_id, RefMode};
+use crate::type_id::{get_ext_actual_type_id, is_enum_type_id};
 use crate::TypeId;
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::{HashSet, LinkedList};
@@ -554,7 +555,7 @@ impl TypeResolver {
 
     #[inline(always)]
     pub fn get_type_info_by_id(&self, type_id: u32) -> Option<Rc<TypeInfo>> {
-        if crate::types::is_internal_type(type_id) {
+        if crate::type_id::is_internal_type(type_id) {
             let index = type_id as usize;
             if index < self.internal_type_info_by_id.len() {
                 return self.internal_type_info_by_id[index].clone();
@@ -731,7 +732,7 @@ impl TypeResolver {
         self.register_internal_serializer::<i128>(TypeId::INT128)?;
         self.register_internal_serializer::<f32>(TypeId::FLOAT32)?;
         self.register_internal_serializer::<f64>(TypeId::FLOAT64)?;
-        self.register_internal_serializer::<crate::float16::float16>(TypeId::FLOAT16)?;
+        self.register_internal_serializer::<crate::types::float16::float16>(TypeId::FLOAT16)?;
         self.register_internal_serializer::<u8>(TypeId::UINT8)?;
         self.register_internal_serializer::<u16>(TypeId::UINT16)?;
         self.register_internal_serializer::<u32>(TypeId::VAR_UINT32)?;
@@ -741,6 +742,7 @@ impl TypeResolver {
         self.register_internal_serializer::<String>(TypeId::STRING)?;
         self.register_internal_serializer::<NaiveDateTime>(TypeId::TIMESTAMP)?;
         self.register_internal_serializer::<NaiveDate>(TypeId::DATE)?;
+        self.register_internal_serializer::<crate::types::Decimal>(TypeId::DECIMAL)?;
 
         self.register_internal_serializer::<Vec<bool>>(TypeId::BOOL_ARRAY)?;
         self.register_internal_serializer::<Vec<i8>>(TypeId::INT8_ARRAY)?;
@@ -749,7 +751,9 @@ impl TypeResolver {
         self.register_internal_serializer::<Vec<i64>>(TypeId::INT64_ARRAY)?;
         self.register_internal_serializer::<Vec<f32>>(TypeId::FLOAT32_ARRAY)?;
         self.register_internal_serializer::<Vec<f64>>(TypeId::FLOAT64_ARRAY)?;
-        self.register_internal_serializer::<Vec<crate::float16::float16>>(TypeId::FLOAT16_ARRAY)?;
+        self.register_internal_serializer::<Vec<crate::types::float16::float16>>(
+            TypeId::FLOAT16_ARRAY,
+        )?;
         self.register_internal_serializer::<Vec<u8>>(TypeId::BINARY)?;
         self.register_internal_serializer::<Vec<u16>>(TypeId::UINT16_ARRAY)?;
         self.register_internal_serializer::<Vec<u32>>(TypeId::UINT32_ARRAY)?;
@@ -827,7 +831,7 @@ impl TypeResolver {
         }
         let actual_type_id =
             T::fory_actual_type_id(id, register_by_name, self.compatible, self.xlang);
-        let user_type_id = if register_by_name || crate::types::is_internal_type(actual_type_id) {
+        let user_type_id = if register_by_name || crate::type_id::is_internal_type(actual_type_id) {
             NO_USER_TYPE_ID
         } else {
             id
@@ -937,7 +941,7 @@ impl TypeResolver {
         // 1. Internal types (type_id < TypeId::BOUND) as they can be shared
         // 2. Types registered by name (they use shared type IDs like NAMED_STRUCT)
         if !register_by_name
-            && !crate::types::is_internal_type(actual_type_id)
+            && !crate::type_id::is_internal_type(actual_type_id)
             && self.user_type_info_by_id.contains_key(&user_type_id)
         {
             return Err(Error::type_error(format!(
@@ -963,7 +967,7 @@ impl TypeResolver {
         self.rust_type_id_by_index[index] = Some(rs_type_id);
 
         // Insert partial type info into id maps
-        if crate::types::is_internal_type(actual_type_id) {
+        if crate::type_id::is_internal_type(actual_type_id) {
             let index = actual_type_id as usize;
             if index >= self.internal_type_info_by_id.len() {
                 return Err(Error::not_allowed(format!(
@@ -1151,7 +1155,7 @@ impl TypeResolver {
 
         // Check if type_id conflicts with any already registered type
         // Skip check for internal types as they can be shared
-        if !crate::types::is_internal_type(actual_type_id)
+        if !crate::type_id::is_internal_type(actual_type_id)
             && user_type_id != NO_USER_TYPE_ID
             && self.user_type_info_by_id.contains_key(&user_type_id)
         {
@@ -1162,7 +1166,7 @@ impl TypeResolver {
         }
 
         // Insert partial type info into id maps
-        if crate::types::is_internal_type(actual_type_id) {
+        if crate::type_id::is_internal_type(actual_type_id) {
             let index = actual_type_id as usize;
             if index >= self.internal_type_info_by_id.len() {
                 return Err(Error::not_allowed(format!(
@@ -1253,7 +1257,7 @@ impl TypeResolver {
             // Iterate through all type infos uniformly
             for (type_rust_id, type_info) in type_infos.iter() {
                 // Insert into id maps
-                if crate::types::is_internal_type(type_info.type_id as u32) {
+                if crate::type_id::is_internal_type(type_info.type_id as u32) {
                     let index = type_info.type_id as usize;
                     if index < internal_type_info_by_id.len() {
                         internal_type_info_by_id[index] = Some(Rc::new(type_info.clone()));

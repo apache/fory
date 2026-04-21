@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::{RefFlag, RefMode};
+use crate::resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefFlag, RefMode, TypeId};
+use crate::type_id::TypeId;
 use std::rc::Rc;
 use std::sync::Arc;
 
