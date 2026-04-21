@@ -23,89 +23,89 @@ import 'package:fory/fory.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('BFloat16', () {
+  group('Bfloat16', () {
     group('scalar conversions', () {
       test('positive zero', () {
-        final bf = BFloat16.fromFloat32(0.0);
+        final bf = Bfloat16.fromFloat32(0.0);
         expect(bf.toBits(), equals(0x0000));
         expect(bf.toDouble(), equals(0.0));
       });
 
       test('negative zero', () {
-        final bf = BFloat16.fromFloat32(-0.0);
+        final bf = Bfloat16.fromFloat32(-0.0);
         expect(bf.toBits(), equals(0x8000));
         expect(bf.toDouble(), equals(-0.0));
         expect(bf.toDouble().isNegative, isTrue);
       });
 
       test('positive infinity', () {
-        final bf = BFloat16.fromFloat32(double.infinity);
+        final bf = Bfloat16.fromFloat32(double.infinity);
         expect(bf.toBits(), equals(0x7F80));
         expect(bf.toDouble(), equals(double.infinity));
       });
 
       test('negative infinity', () {
-        final bf = BFloat16.fromFloat32(double.negativeInfinity);
+        final bf = Bfloat16.fromFloat32(double.negativeInfinity);
         expect(bf.toBits(), equals(0xFF80));
         expect(bf.toDouble(), equals(double.negativeInfinity));
       });
 
       test('NaN', () {
-        final bf = BFloat16.fromFloat32(double.nan);
+        final bf = Bfloat16.fromFloat32(double.nan);
         expect(bf.toDouble().isNaN, isTrue);
       });
 
       test('one', () {
-        final bf = BFloat16.fromFloat32(1.0);
+        final bf = Bfloat16.fromFloat32(1.0);
         expect(bf.toBits(), equals(0x3F80));
         expect(bf.toDouble(), equals(1.0));
       });
 
       test('negative one', () {
-        final bf = BFloat16.fromFloat32(-1.0);
+        final bf = Bfloat16.fromFloat32(-1.0);
         expect(bf.toBits(), equals(0xBF80));
         expect(bf.toDouble(), equals(-1.0));
       });
 
       test('small value round-trip', () {
-        final bf = BFloat16.fromFloat32(0.5);
+        final bf = Bfloat16.fromFloat32(0.5);
         expect(bf.toDouble(), equals(0.5));
       });
 
       test('large value round-trip', () {
-        final bf = BFloat16.fromFloat32(256.0);
+        final bf = Bfloat16.fromFloat32(256.0);
         expect(bf.toDouble(), equals(256.0));
       });
 
       test('fromBits masks to 16 bits', () {
-        final bf = BFloat16.fromBits(0x13F80);
+        final bf = Bfloat16.fromBits(0x13F80);
         expect(bf.toBits(), equals(0x3F80));
       });
 
       test('num constructor', () {
-        final bf = BFloat16(1.5);
+        final bf = Bfloat16(1.5);
         expect(bf.toDouble(), equals(1.5));
       });
 
-      test('subnormal bfloat16', () {
+      test('subnormal Bfloat16', () {
         // Smallest positive subnormal: 0x0001
-        final bf = BFloat16.fromBits(0x0001);
+        final bf = Bfloat16.fromBits(0x0001);
         expect(bf.toDouble(), isNot(equals(0.0)));
         // Round-trip through fromFloat32
-        final bf2 = BFloat16.fromFloat32(bf.toDouble());
+        final bf2 = Bfloat16.fromFloat32(bf.toDouble());
         expect(bf2.toBits(), equals(bf.toBits()));
       });
 
-      test('max normal bfloat16', () {
-        // Largest finite bfloat16: 0x7F7F
-        final bf = BFloat16.fromBits(0x7F7F);
+      test('max normal Bfloat16', () {
+        // Largest finite Bfloat16: 0x7F7F
+        final bf = Bfloat16.fromBits(0x7F7F);
         expect(bf.toDouble().isFinite, isTrue);
         expect(bf.toDouble().isNaN, isFalse);
       });
 
-      test('min normal bfloat16', () {
+      test('min normal Bfloat16', () {
         // Smallest positive normal: 0x0080
-        final bf = BFloat16.fromBits(0x0080);
+        final bf = Bfloat16.fromBits(0x0080);
         expect(bf.toDouble(), greaterThan(0.0));
         expect(bf.toDouble().isFinite, isTrue);
       });
@@ -113,12 +113,12 @@ void main() {
 
     group('round-to-nearest ties-to-even', () {
       test('ties-to-even rounding', () {
-        // 1.0 in bfloat16 is 0x3F80, next is 0x3F81
+        // 1.0 in Bfloat16 is 0x3F80, next is 0x3F81
         // midpoint between them should round to even
-        final bf1 = BFloat16.fromBits(0x3F80);
-        final bf2 = BFloat16.fromBits(0x3F81);
+        final bf1 = Bfloat16.fromBits(0x3F80);
+        final bf2 = Bfloat16.fromBits(0x3F81);
         final mid = (bf1.toDouble() + bf2.toDouble()) / 2;
-        final bfMid = BFloat16.fromFloat32(mid);
+        final bfMid = Bfloat16.fromFloat32(mid);
         // Should round to even (the one with LSB = 0)
         expect(bfMid.toBits() & 1, equals(0));
       });
@@ -126,28 +126,28 @@ void main() {
 
     group('equality and comparison', () {
       test('equal values', () {
-        final a = BFloat16.fromBits(0x3F80);
-        final b = BFloat16.fromBits(0x3F80);
+        final a = Bfloat16.fromBits(0x3F80);
+        final b = Bfloat16.fromBits(0x3F80);
         expect(a, equals(b));
         expect(a.hashCode, equals(b.hashCode));
       });
 
       test('different values', () {
-        final a = BFloat16.fromFloat32(1.0);
-        final b = BFloat16.fromFloat32(2.0);
+        final a = Bfloat16.fromFloat32(1.0);
+        final b = Bfloat16.fromFloat32(2.0);
         expect(a, isNot(equals(b)));
       });
 
       test('compareTo', () {
-        final a = BFloat16.fromFloat32(1.0);
-        final b = BFloat16.fromFloat32(2.0);
+        final a = Bfloat16.fromFloat32(1.0);
+        final b = Bfloat16.fromFloat32(2.0);
         expect(a.compareTo(b), lessThan(0));
         expect(b.compareTo(a), greaterThan(0));
         expect(a.compareTo(a), equals(0));
       });
 
       test('toString', () {
-        final bf = BFloat16.fromFloat32(1.0);
+        final bf = Bfloat16.fromFloat32(1.0);
         expect(bf.toString(), equals('1.0'));
       });
     });
@@ -155,7 +155,7 @@ void main() {
     group('buffer read/write', () {
       test('round-trip through buffer', () {
         final buffer = Buffer(64);
-        final original = BFloat16.fromFloat32(3.14);
+        final original = Bfloat16.fromFloat32(3.14);
         buffer.writeBfloat16(original);
 
         final readBuffer = Buffer.wrap(buffer.toBytes());
@@ -168,11 +168,11 @@ void main() {
       test('multiple values through buffer', () {
         final buffer = Buffer(64);
         final values = [
-          BFloat16.fromFloat32(0.0),
-          BFloat16.fromFloat32(1.0),
-          BFloat16.fromFloat32(-1.0),
-          BFloat16.fromFloat32(double.infinity),
-          BFloat16.fromFloat32(double.nan),
+          Bfloat16.fromFloat32(0.0),
+          Bfloat16.fromFloat32(1.0),
+          Bfloat16.fromFloat32(-1.0),
+          Bfloat16.fromFloat32(double.infinity),
+          Bfloat16.fromFloat32(double.nan),
         ];
 
         for (final v in values) {
@@ -191,14 +191,14 @@ void main() {
       });
     });
 
-    group('bfloat16 array serialization', () {
+    group('Bfloat16 array serialization', () {
       test('packed Uint16List round-trip through buffer', () {
         final buffer = Buffer(128);
 
         final values = [1.0, 2.0, 0.5, -1.0, 0.0];
         final packed = Uint16List(values.length);
         for (int i = 0; i < values.length; i++) {
-          packed[i] = BFloat16.fromFloat32(values[i]).toBits();
+          packed[i] = Bfloat16.fromFloat32(values[i]).toBits();
         }
 
         // Write length + raw bytes
@@ -220,12 +220,12 @@ void main() {
         );
 
         for (int i = 0; i < values.length; i++) {
-          final bf = BFloat16.fromBits(result[i]);
+          final bf = Bfloat16.fromBits(result[i]);
           if (values[i] == 0.0) {
             expect(bf.toDouble(), equals(0.0));
           } else {
             expect(bf.toDouble(),
-                equals(BFloat16.fromFloat32(values[i]).toDouble()));
+                equals(Bfloat16.fromFloat32(values[i]).toDouble()));
           }
         }
       });
