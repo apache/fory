@@ -23,6 +23,7 @@ import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/meta/type_ids.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/serializer/collection_flags.dart';
 import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
@@ -277,26 +278,19 @@ final class ListSerializer extends Serializer<List> {
           elementFieldType!,
           declaredTypeInfo,
         );
-    final analysis = _analyzeListHeader(
+    final analysis = _analyzeElementsHeader(
       context,
       values,
       usesDeclaredType: usesDeclaredType,
     );
     final elementTrackRef = (elementFieldType?.ref ?? false) ||
         (elementFieldType == null && trackRef);
-    var header = 0;
-    if (elementTrackRef) {
-      header |= 0x01;
-    }
-    if (analysis.hasNull) {
-      header |= 0x02;
-    }
-    if (usesDeclaredType) {
-      header |= 0x04;
-    }
-    if (analysis.sameType) {
-      header |= 0x08;
-    }
+    final header = _buildCollectionHeader(
+      trackRef: elementTrackRef,
+      hasNull: analysis.hasNull,
+      usesDeclaredType: usesDeclaredType,
+      sameType: analysis.sameType,
+    );
     context.buffer.writeUint8(header);
     final sameTypeInfo =
         !usesDeclaredType && analysis.sameType ? analysis.sameTypeInfo : null;
@@ -309,129 +303,33 @@ final class ListSerializer extends Serializer<List> {
       );
     }
     if (declaredTypeInfo != null) {
-      final tracksDepth = tracksNestedPayloadDepth(declaredTypeInfo);
-      if (tracksDepth) {
-        context.increaseDepth();
-      }
-      for (final value in values) {
-        if (value == null) {
-          context.buffer.writeByte(RefWriter.nullFlag);
-          continue;
-        }
-        if (elementTrackRef) {
-          writeTypeInfoValue(
-            context,
-            declaredTypeInfo,
-            elementFieldType,
-            value as Object,
-            trackRef: true,
-          );
-        } else if (analysis.hasNull) {
-          context.buffer.writeByte(RefWriter.notNullValueFlag);
-          _writeDirectTypeInfoValue(
-            context,
-            declaredTypeInfo,
-            elementFieldType,
-            value as Object,
-          );
-        } else {
-          _writeDirectTypeInfoValue(
-            context,
-            declaredTypeInfo,
-            elementFieldType,
-            value as Object,
-          );
-        }
-      }
-      if (tracksDepth) {
-        context.decreaseDepth();
-      }
+      _writeSameTypeElements(
+        context,
+        values,
+        declaredTypeInfo,
+        elementFieldType,
+        elementTrackRef,
+        analysis.hasNull,
+      );
       return;
     }
     if (sameTypeInfo != null) {
-      final tracksDepth = tracksNestedPayloadDepth(sameTypeInfo);
-      if (tracksDepth) {
-        context.increaseDepth();
-      }
-      for (final value in values) {
-        if (value == null) {
-          context.buffer.writeByte(RefWriter.nullFlag);
-        } else if (elementTrackRef) {
-          writeTypeInfoValue(
-            context,
-            sameTypeInfo,
-            null,
-            value as Object,
-            trackRef: true,
-          );
-        } else if (analysis.hasNull) {
-          context.buffer.writeByte(RefWriter.notNullValueFlag);
-          _writeDirectTypeInfoValue(
-            context,
-            sameTypeInfo,
-            null,
-            value as Object,
-          );
-        } else {
-          _writeDirectTypeInfoValue(
-            context,
-            sameTypeInfo,
-            null,
-            value as Object,
-          );
-        }
-      }
-      if (tracksDepth) {
-        context.decreaseDepth();
-      }
+      _writeSameTypeElements(
+        context,
+        values,
+        sameTypeInfo,
+        usesDeclaredType ? elementFieldType : null,
+        elementTrackRef,
+        analysis.hasNull,
+      );
       return;
     }
-    for (final value in values) {
-      if (analysis.sameType && analysis.sameTypeInfo != null) {
-        if (value == null) {
-          context.buffer.writeByte(RefWriter.nullFlag);
-        } else if (elementTrackRef) {
-          final handled = context.refWriter.writeRefOrNull(
-            context.buffer,
-            value,
-            trackRef: analysis.sameTypeInfo!.supportsRef,
-          );
-          if (!handled) {
-            context.writeResolvedValue(
-              analysis.sameTypeInfo!,
-              value as Object,
-              null,
-            );
-          }
-        } else if (analysis.hasNull) {
-          context.buffer.writeByte(RefWriter.notNullValueFlag);
-          context.writeResolvedValue(
-            analysis.sameTypeInfo!,
-            value as Object,
-            null,
-          );
-        } else {
-          context.writeResolvedValue(
-            analysis.sameTypeInfo!,
-            value as Object,
-            null,
-          );
-        }
-        continue;
-      }
-      if (elementTrackRef) {
-        context.writeRef(value);
-      } else if (analysis.hasNull) {
-        if (value == null) {
-          context.buffer.writeByte(RefWriter.nullFlag);
-        } else {
-          context.buffer.writeByte(RefWriter.notNullValueFlag);
-          context.writeNonRef(value as Object);
-        }
-      } else {
-        context.writeNonRef(value as Object);
-      }
-    }
+    _writeDifferentTypeElements(
+      context,
+      values,
+      analysis,
+      elementTrackRef,
+    );
   }
 
   static List<Object?> readPayload(
@@ -527,6 +425,127 @@ Set<T> readTypedSetPayload<T>(
   return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
 }
 
+int _buildCollectionHeader({
+  required bool trackRef,
+  required bool hasNull,
+  required bool usesDeclaredType,
+  required bool sameType,
+}) {
+  var header = 0;
+  if (trackRef) {
+    header |= CollectionFlags.trackingRef;
+  }
+  if (hasNull) {
+    header |= CollectionFlags.hasNull;
+  }
+  if (usesDeclaredType) {
+    header |= CollectionFlags.isDeclaredElementType;
+  }
+  if (sameType) {
+    header |= CollectionFlags.isSameType;
+  }
+  return header;
+}
+
+void _writeSameTypeElements(
+  WriteContext context,
+  Iterable values,
+  TypeInfo typeInfo,
+  FieldType? fieldType,
+  bool trackRef,
+  bool hasNull,
+) {
+  final tracksDepth = tracksNestedPayloadDepth(typeInfo);
+  if (tracksDepth) {
+    context.increaseDepth();
+  }
+  for (final value in values) {
+    if (value == null) {
+      context.buffer.writeByte(RefWriter.nullFlag);
+    } else if (trackRef) {
+      writeTypeInfoValue(
+        context,
+        typeInfo,
+        fieldType,
+        value as Object,
+        trackRef: true,
+      );
+    } else if (hasNull) {
+      context.buffer.writeByte(RefWriter.notNullValueFlag);
+      _writeDirectTypeInfoValue(
+        context,
+        typeInfo,
+        fieldType,
+        value as Object,
+      );
+    } else {
+      _writeDirectTypeInfoValue(
+        context,
+        typeInfo,
+        fieldType,
+        value as Object,
+      );
+    }
+  }
+  if (tracksDepth) {
+    context.decreaseDepth();
+  }
+}
+
+void _writeDifferentTypeElements(
+  WriteContext context,
+  Iterable values,
+  _ElementsHeaderAnalysis analysis,
+  bool trackRef,
+) {
+  for (final value in values) {
+    if (analysis.sameType && analysis.sameTypeInfo != null) {
+      if (value == null) {
+        context.buffer.writeByte(RefWriter.nullFlag);
+      } else if (trackRef) {
+        final handled = context.refWriter.writeRefOrNull(
+          context.buffer,
+          value,
+          trackRef: analysis.sameTypeInfo!.supportsRef,
+        );
+        if (!handled) {
+          context.writeResolvedValue(
+            analysis.sameTypeInfo!,
+            value as Object,
+            null,
+          );
+        }
+      } else if (analysis.hasNull) {
+        context.buffer.writeByte(RefWriter.notNullValueFlag);
+        context.writeResolvedValue(
+          analysis.sameTypeInfo!,
+          value as Object,
+          null,
+        );
+      } else {
+        context.writeResolvedValue(
+          analysis.sameTypeInfo!,
+          value as Object,
+          null,
+        );
+      }
+      continue;
+    }
+    if (trackRef) {
+      context.writeRef(value);
+    } else if (analysis.hasNull) {
+      if (value == null) {
+        context.buffer.writeByte(RefWriter.nullFlag);
+      } else {
+        context.buffer.writeByte(RefWriter.notNullValueFlag);
+        context.writeNonRef(value as Object);
+      }
+    } else {
+      context.writeNonRef(value as Object);
+    }
+  }
+}
+
 final class _PreparedListRead {
   final int size;
   final bool trackRef;
@@ -572,10 +591,11 @@ _PreparedListRead _prepareListRead(
     );
   }
   final header = context.buffer.readUint8();
-  final trackRef = (header & 0x01) == 1;
-  final hasNull = (header & 0x02) != 0;
-  final usesDeclaredType = (header & 0x04) != 0;
-  final sameType = (header & 0x08) != 0;
+  final trackRef = (header & CollectionFlags.trackingRef) != 0;
+  final hasNull = (header & CollectionFlags.hasNull) != 0;
+  final usesDeclaredType =
+      (header & CollectionFlags.isDeclaredElementType) != 0;
+  final sameType = (header & CollectionFlags.isSameType) != 0;
   final declaredTypeInfo = usesDeclaredType && elementFieldType != null
       ? context.typeResolver.resolveFieldType(
           elementFieldType.withRootOverrides(nullable: hasNull, ref: trackRef),
@@ -604,58 +624,22 @@ Object? _readPreparedListItem(
   _PreparedListRead state,
 ) {
   if (state.declaredTypeInfo != null) {
-    if (state.hasNull || state.trackRef) {
-      final flag = context.refReader.tryPreserveRefId(context.buffer);
-      final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
-      if (flag == RefWriter.nullFlag) {
-        return null;
-      }
-      if (flag == RefWriter.refFlag) {
-        return context.refReader.getReadRef();
-      }
-      final value = readTypeInfoValue(
-        context,
-        state.declaredTypeInfo!,
-        state.elementFieldType,
-        hasPreservedRef: preservedRefId != null,
-      );
-      if (preservedRefId != null &&
-          state.declaredTypeInfo!.supportsRef &&
-          context.refReader.readRefAt(preservedRefId) == null) {
-        context.refReader.setReadRef(preservedRefId, value);
-      }
-      return value;
-    }
-    return readTypeInfoValue(
+    return _readSameTypeElement(
       context,
       state.declaredTypeInfo!,
       state.elementFieldType,
+      state.trackRef,
+      state.hasNull,
     );
   }
   if (state.sameTypeInfo != null) {
-    if (state.hasNull || state.trackRef) {
-      final flag = context.refReader.tryPreserveRefId(context.buffer);
-      final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
-      if (flag == RefWriter.nullFlag) {
-        return null;
-      }
-      if (flag == RefWriter.refFlag) {
-        return context.refReader.getReadRef();
-      }
-      final value = readTypeInfoValue(
-        context,
-        state.sameTypeInfo!,
-        null,
-        hasPreservedRef: preservedRefId != null,
-      );
-      if (preservedRefId != null &&
-          state.sameTypeInfo!.supportsRef &&
-          context.refReader.readRefAt(preservedRefId) == null) {
-        context.refReader.setReadRef(preservedRefId, value);
-      }
-      return value;
-    }
-    return readTypeInfoValue(context, state.sameTypeInfo!, null);
+    return _readSameTypeElement(
+      context,
+      state.sameTypeInfo!,
+      null,
+      state.trackRef,
+      state.hasNull,
+    );
   }
   if (state.usesDeclaredType && state.elementFieldType != null) {
     return readFieldTypeValue<Object?>(
@@ -689,10 +673,56 @@ Object? _readPreparedListItem(
     }
     return context.readResolvedValue(state.sameTypeInfo!, null);
   }
-  if (state.trackRef) {
+  return _readDifferentTypeElement(
+    context,
+    state.trackRef,
+    state.hasNull,
+  );
+}
+
+@pragma('vm:prefer-inline')
+Object? _readSameTypeElement(
+  ReadContext context,
+  TypeInfo typeInfo,
+  FieldType? fieldType,
+  bool trackRef,
+  bool hasNull,
+) {
+  if (hasNull || trackRef) {
+    final flag = context.refReader.tryPreserveRefId(context.buffer);
+    final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
+    if (flag == RefWriter.nullFlag) {
+      return null;
+    }
+    if (flag == RefWriter.refFlag) {
+      return context.refReader.getReadRef();
+    }
+    final value = readTypeInfoValue(
+      context,
+      typeInfo,
+      fieldType,
+      hasPreservedRef: preservedRefId != null,
+    );
+    if (preservedRefId != null &&
+        typeInfo.supportsRef &&
+        context.refReader.readRefAt(preservedRefId) == null) {
+      context.refReader.setReadRef(preservedRefId, value);
+    }
+    return value;
+  }
+  return readTypeInfoValue(context, typeInfo, fieldType);
+}
+
+@pragma('vm:prefer-inline')
+Object? _readDifferentTypeElement(
+  ReadContext context,
+  bool trackRef,
+  bool hasNull,
+) {
+  if (trackRef) {
     return context.readRef();
   }
-  if (state.hasNull) {
+  if (hasNull) {
     return context.readNullable();
   }
   return context.readNonRef();
@@ -720,7 +750,7 @@ void writeTypeInfoValue(
   }
 }
 
-_ListHeaderAnalysis _analyzeListHeader(
+_ElementsHeaderAnalysis _analyzeElementsHeader(
   WriteContext context,
   Iterable values, {
   required bool usesDeclaredType,
@@ -733,7 +763,7 @@ _ListHeaderAnalysis _analyzeListHeader(
         break;
       }
     }
-    return _ListHeaderAnalysis(
+    return _ElementsHeaderAnalysis(
       hasNull: hasNull,
       sameType: true,
       sameTypeInfo: null,
@@ -762,7 +792,7 @@ _ListHeaderAnalysis _analyzeListHeader(
       sameType = false;
     }
   }
-  return _ListHeaderAnalysis(
+  return _ElementsHeaderAnalysis(
     hasNull: hasNull,
     sameType: sameType,
     sameTypeInfo: sameTypeInfo,
@@ -770,13 +800,13 @@ _ListHeaderAnalysis _analyzeListHeader(
   );
 }
 
-final class _ListHeaderAnalysis {
+final class _ElementsHeaderAnalysis {
   final bool hasNull;
   final bool sameType;
   final TypeInfo? sameTypeInfo;
   final Object? firstNonNull;
 
-  const _ListHeaderAnalysis({
+  const _ElementsHeaderAnalysis({
     required this.hasNull,
     required this.sameType,
     required this.sameTypeInfo,
