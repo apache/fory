@@ -370,7 +370,7 @@ final class Buffer {
       return;
     }
     final signed = BigInt.from(value);
-    final zigZag = ((signed << 1) ^ BigInt.from(value >> 63)) & _mask64Big;
+    final zigZag = ((signed << 1) ^ (signed >> 63)) & _mask64Big;
     _writeVarUint64BigInt(zigZag);
   }
 
