@@ -835,6 +835,111 @@ pub(super) fn get_primitive_writer_method_with_encoding(
     get_primitive_writer_method(type_name)
 }
 
+pub(super) fn get_max_primitive_bytes(
+    type_name: &str,
+    meta: &super::field_meta::ForyFieldMeta,
+) -> usize {
+    use fory_core::types::TypeId;
+
+    if type_name == "i32" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 {
+                return 4;
+            }
+        }
+        return 5;
+    }
+
+    if type_name == "u32" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT32 as i16 {
+                return 4;
+            }
+        }
+        return 5;
+    }
+
+    if type_name == "u64" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT64 as i16 {
+                return 8;
+            } else if type_id == TypeId::TAGGED_UINT64 as i16 {
+                return 9;
+            }
+        }
+        return 9;
+    }
+
+    if type_name == "i64" {
+        return 9;
+    }
+
+    match type_name {
+        "bool" | "i8" | "u8" => 1,
+        "i16" | "u16" | "float16" => 2,
+        "f32" => 4,
+        "f64" => 8,
+        "i128" | "u128" => 16,
+        "isize" | "usize" => 9,
+        _ => 0,
+    }
+}
+
+pub(super) fn get_put_at_method_with_encoding(
+    type_name: &str,
+    meta: &super::field_meta::ForyFieldMeta,
+) -> &'static str {
+    use fory_core::types::TypeId;
+
+    if type_name == "i32" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 {
+                return "put_i32_at";
+            }
+        }
+        return "put_varint32_at";
+    }
+
+    if type_name == "u32" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT32 as i16 {
+                return "put_u32_at";
+            }
+        }
+        return "put_var_uint32_at";
+    }
+
+    if type_name == "u64" {
+        if let Some(type_id) = meta.type_id {
+            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT64 as i16 {
+                return "put_u64_at";
+            } else if type_id == TypeId::TAGGED_UINT64 as i16 {
+                return "put_tagged_u64_at";
+            }
+        }
+        return "put_var_uint64_at";
+    }
+
+    if type_name == "i64" {
+        return "put_varint64_at";
+    }
+
+    match type_name {
+        "bool" => "put_bool_at",
+        "i8" => "put_i8_at",
+        "u8" => "put_u8_at",
+        "i16" => "put_i16_at",
+        "u16" => "put_u16_at",
+        "f32" => "put_f32_at",
+        "f64" => "put_f64_at",
+        "float16" => "put_f16_at",
+        "i128" => "put_i128_at",
+        "u128" => "put_u128_at",
+        "usize" => "put_usize_at",
+        _ => panic!("unsupported primitive type for put_at: {type_name}"),
+    }
+}
+
 /// Get the reader method name for a primitive numeric type
 /// Panics if type_name is not a primitive type
 pub(super) fn get_primitive_reader_method(type_name: &str) -> &'static str {

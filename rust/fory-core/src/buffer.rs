@@ -502,6 +502,21 @@ impl<'a> Writer<'a> {
             self.write_u64(combined);
         }
     }
+
+    /// # Safety
+    #[inline(always)]
+    pub unsafe fn prepare_write(&mut self, max_bytes: usize) -> (*mut u8, usize) {
+        self.reserve(max_bytes);
+        let len = self.bf.len();
+        (self.bf.as_mut_ptr().add(len), len)
+    }
+
+    /// # Safety
+    #[inline(always)]
+    pub unsafe fn finish_write(&mut self, new_len: usize) {
+        debug_assert!(new_len <= self.bf.capacity());
+        self.bf.set_len(new_len);
+    }
 }
 
 #[derive(Default)]
