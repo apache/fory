@@ -24,8 +24,16 @@ import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
-import 'package:fory/src/serializer/map_flags.dart';
 import 'package:fory/src/serializer/serializer.dart';
+
+abstract final class MapFlags {
+  static const int trackingKeyRef = 0x01;
+  static const int keyHasNull = 0x02;
+  static const int keyDeclaredType = 0x04;
+  static const int trackingValueRef = 0x08;
+  static const int valueHasNull = 0x10;
+  static const int valueDeclaredType = 0x20;
+}
 
 final class MapSerializer extends Serializer<Map> {
   const MapSerializer();

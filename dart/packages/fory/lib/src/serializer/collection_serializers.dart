@@ -23,11 +23,17 @@ import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/meta/field_type.dart';
 import 'package:fory/src/meta/type_ids.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
-import 'package:fory/src/serializer/collection_flags.dart';
 import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_support.dart';
+
+abstract final class CollectionFlags {
+  static const int trackingRef = 0x01;
+  static const int hasNull = 0x02;
+  static const int isDeclaredElementType = 0x04;
+  static const int isSameType = 0x08;
+}
 
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
