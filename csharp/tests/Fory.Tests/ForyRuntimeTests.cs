@@ -116,6 +116,31 @@ public sealed class TwoStringFieldListHolder
 }
 
 [ForyObject]
+public sealed class OneStringFieldMapHolder
+{
+    public Dictionary<string, OneStringField?> Items { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class TwoStringFieldMapHolder
+{
+    public Dictionary<string, TwoStringField?> Items { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class UnsignedFields
+{
+    public byte U8 { get; set; }
+    public ushort U16 { get; set; }
+    public uint U32 { get; set; }
+    public ulong U64 { get; set; }
+    public byte? U8Nullable { get; set; }
+    public ushort? U16Nullable { get; set; }
+    public uint? U32Nullable { get; set; }
+    public ulong? U64Nullable { get; set; }
+}
+
+[ForyObject]
 public sealed class StructWithEnum
 {
     public string Name { get; set; } = string.Empty;
@@ -160,6 +185,13 @@ public sealed class CollectionContainerHolder
     public ImmutableHashSet<int> ImmutableHashSetField { get; set; } = ImmutableHashSet<int>.Empty;
     public Queue<int> QueueField { get; set; } = new();
     public Stack<int> StackField { get; set; } = new();
+}
+
+[ForyObject]
+public sealed class NestedTypedContainers
+{
+    public List<List<string>> NestedLists { get; set; } = [];
+    public Dictionary<string, List<Address?>> NestedMap { get; set; } = [];
 }
 
 public sealed class ForyRuntimeTests
@@ -517,6 +549,40 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void GeneratedSerializerSupportsNestedTypedContainers()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
+        fory.Register<Address>(452);
+        fory.Register<NestedTypedContainers>(453);
+
+        Address shared = new() { Street = "Main", Zip = 94107 };
+        NestedTypedContainers source = new()
+        {
+            NestedLists =
+            [
+                ["a", "b"],
+                ["c"],
+            ],
+            NestedMap = new Dictionary<string, List<Address?>>
+            {
+                ["first"] = [shared, null],
+                ["second"] = [shared],
+            },
+        };
+
+        NestedTypedContainers decoded = fory.Deserialize<NestedTypedContainers>(fory.Serialize(source));
+        Assert.Equal(source.NestedLists.Count, decoded.NestedLists.Count);
+        Assert.Equal(source.NestedLists[0], decoded.NestedLists[0]);
+        Assert.Equal(source.NestedLists[1], decoded.NestedLists[1]);
+
+        Assert.Equal(2, decoded.NestedMap["first"].Count);
+        Assert.Single(decoded.NestedMap["second"]);
+        Assert.NotNull(decoded.NestedMap["first"][0]);
+        Assert.Same(decoded.NestedMap["first"][0], decoded.NestedMap["second"][0]);
+        Assert.Null(decoded.NestedMap["first"][1]);
+    }
+
+    [Fact]
     public void StreamDeserializeConsumesSingleFrame()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
@@ -747,6 +813,66 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void TaggedUnsignedFieldUsesCompactBoundary()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<EncodedNumbers>(301);
+
+        EncodedNumbers compact = new()
+        {
+            U32Fixed = 0x11223344u,
+            U64Tagged = (ulong)int.MaxValue,
+        };
+        EncodedNumbers wide = new()
+        {
+            U32Fixed = 0x11223344u,
+            U64Tagged = (ulong)int.MaxValue + 1UL,
+        };
+
+        byte[] compactPayload = fory.Serialize(compact);
+        byte[] widePayload = fory.Serialize(wide);
+
+        Assert.Equal(5, widePayload.Length - compactPayload.Length);
+        Assert.Equal(compact.U64Tagged, fory.Deserialize<EncodedNumbers>(compactPayload).U64Tagged);
+        Assert.Equal(wide.U64Tagged, fory.Deserialize<EncodedNumbers>(widePayload).U64Tagged);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnsignedFieldsRoundTrip(bool compatible)
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Compatible(compatible).Build();
+        fory.Register<UnsignedFields>(302);
+
+        UnsignedFields highValues = new()
+        {
+            U8 = byte.MaxValue,
+            U16 = ushort.MaxValue,
+            U32 = uint.MaxValue,
+            U64 = ulong.MaxValue,
+            U8Nullable = 128,
+            U16Nullable = 40_000,
+            U32Nullable = 4_000_000_000u,
+            U64Nullable = ulong.MaxValue - 7,
+        };
+        AssertUnsignedEqual(highValues, fory.Deserialize<UnsignedFields>(fory.Serialize(highValues)));
+
+        UnsignedFields nullablesMissing = new()
+        {
+            U8 = 0,
+            U16 = 1,
+            U32 = 2,
+            U64 = 3,
+            U8Nullable = null,
+            U16Nullable = null,
+            U32Nullable = null,
+            U64Nullable = null,
+        };
+        AssertUnsignedEqual(nullablesMissing, fory.Deserialize<UnsignedFields>(fory.Serialize(nullablesMissing)));
+    }
+
+    [Fact]
     public void CompatibleSchemaEvolutionRoundTrip()
     {
         ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
@@ -846,6 +972,50 @@ public sealed class ForyRuntimeTests
         Assert.Equal("hello", firstRound.F1);
         Assert.Null(roundTripped.Items[1]);
         OneStringField thirdRound = Assert.IsType<OneStringField>(roundTripped.Items[2]);
+        Assert.Equal("world", thirdRound.F1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompatibleSchemaEvolutionRoundTripForMapValues(bool trackRef)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        writer.Register<OneStringField>(200);
+        writer.Register<OneStringFieldMapHolder>(203);
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        reader.Register<TwoStringField>(200);
+        reader.Register<TwoStringFieldMapHolder>(203);
+
+        OneStringFieldMapHolder source = new()
+        {
+            Items = new Dictionary<string, OneStringField?>
+            {
+                ["first"] = new OneStringField { F1 = "hello" },
+                ["second"] = null,
+                ["third"] = new OneStringField { F1 = "world" },
+            },
+        };
+
+        TwoStringFieldMapHolder evolved = reader.Deserialize<TwoStringFieldMapHolder>(writer.Serialize(source));
+        Assert.Equal(3, evolved.Items.Count);
+        TwoStringField first = Assert.IsType<TwoStringField>(evolved.Items["first"]);
+        Assert.Equal("hello", first.F1);
+        Assert.Equal(string.Empty, first.F2);
+        Assert.Null(evolved.Items["second"]);
+        TwoStringField third = Assert.IsType<TwoStringField>(evolved.Items["third"]);
+        Assert.Equal("world", third.F1);
+        Assert.Equal(string.Empty, third.F2);
+
+        first.F2 = "extra-first";
+        third.F2 = "extra-third";
+        OneStringFieldMapHolder roundTripped = writer.Deserialize<OneStringFieldMapHolder>(reader.Serialize(evolved));
+        Assert.Equal(3, roundTripped.Items.Count);
+        OneStringField firstRound = Assert.IsType<OneStringField>(roundTripped.Items["first"]);
+        Assert.Equal("hello", firstRound.F1);
+        Assert.Null(roundTripped.Items["second"]);
+        OneStringField thirdRound = Assert.IsType<OneStringField>(roundTripped.Items["third"]);
         Assert.Equal("world", thirdRound.F1);
     }
 
@@ -1044,6 +1214,57 @@ public sealed class ForyRuntimeTests
         List<object?> nested = Assert.IsType<List<object?>>(decoded.AnyMap[99]);
         Assert.Equal("n", nested[0]);
         Assert.Equal(1, nested[1]);
+    }
+
+    [Fact]
+    public void GeneratedSerializerPreservesSharedDynamicReferences()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
+        fory.Register<DynamicAnyHolder>(401);
+
+        List<object?> shared = ["n", 1];
+        DynamicAnyHolder source = new()
+        {
+            AnyValue = shared,
+            AnySet = [shared],
+            AnyMap = new Dictionary<object, object?>
+            {
+                ["first"] = shared,
+                ["second"] = shared,
+            },
+        };
+
+        DynamicAnyHolder decoded = fory.Deserialize<DynamicAnyHolder>(fory.Serialize(source));
+        List<object?> anyValue = Assert.IsType<List<object?>>(decoded.AnyValue);
+        List<object?> setItem = Assert.Single(decoded.AnySet.OfType<List<object?>>());
+        List<object?> first = Assert.IsType<List<object?>>(decoded.AnyMap["first"]);
+        List<object?> second = Assert.IsType<List<object?>>(decoded.AnyMap["second"]);
+
+        Assert.Same(anyValue, setItem);
+        Assert.Same(anyValue, first);
+        Assert.Same(anyValue, second);
+    }
+
+    [Fact]
+    public void CollectionRefTrackingPreservesSharedValues()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().TrackRef(true).Build();
+        fory.Register<Address>(402);
+
+        Address shared = new() { Street = "Main", Zip = 94107 };
+
+        List<Address?> list = [shared, shared, null];
+        List<Address?> decodedList = fory.Deserialize<List<Address?>>(fory.Serialize(list));
+        Assert.Same(decodedList[0], decodedList[1]);
+        Assert.Null(decodedList[2]);
+
+        Dictionary<string, Address> map = new()
+        {
+            ["left"] = shared,
+            ["right"] = shared,
+        };
+        Dictionary<string, Address> decodedMap = fory.Deserialize<Dictionary<string, Address>>(fory.Serialize(map));
+        Assert.Same(decodedMap["left"], decodedMap["right"]);
     }
 
     [Fact]
@@ -1311,5 +1532,17 @@ public sealed class ForyRuntimeTests
         string decoded = StringSerializer.ReadString(readContext);
         Assert.Equal(0, readContext.Reader.Remaining);
         return (encoding, decoded);
+    }
+
+    private static void AssertUnsignedEqual(UnsignedFields expected, UnsignedFields actual)
+    {
+        Assert.Equal(expected.U8, actual.U8);
+        Assert.Equal(expected.U16, actual.U16);
+        Assert.Equal(expected.U32, actual.U32);
+        Assert.Equal(expected.U64, actual.U64);
+        Assert.Equal(expected.U8Nullable, actual.U8Nullable);
+        Assert.Equal(expected.U16Nullable, actual.U16Nullable);
+        Assert.Equal(expected.U32Nullable, actual.U32Nullable);
+        Assert.Equal(expected.U64Nullable, actual.U64Nullable);
     }
 }

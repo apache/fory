@@ -252,6 +252,66 @@ func extendedWireTypesRoundTrip() throws {
 }
 
 @Test
+func floatingSpecialsRoundTrip() throws {
+    let fory = Fory()
+
+    let floatValues: [Float] = [
+        0.0,
+        -0.0,
+        .infinity,
+        -.infinity,
+        .leastNonzeroMagnitude,
+        .greatestFiniteMagnitude,
+        Float(bitPattern: 0x7FC0_1234)
+    ]
+    for value in floatValues {
+        let decoded: Float = try fory.deserialize(try fory.serialize(value))
+        #expect(decoded.bitPattern == value.bitPattern)
+    }
+
+    let doubleValues: [Double] = [
+        0.0,
+        -0.0,
+        .infinity,
+        -.infinity,
+        .leastNonzeroMagnitude,
+        .greatestFiniteMagnitude,
+        Double(bitPattern: 0x7FF8_0000_0000_1234)
+    ]
+    for value in doubleValues {
+        let decoded: Double = try fory.deserialize(try fory.serialize(value))
+        #expect(decoded.bitPattern == value.bitPattern)
+    }
+
+    let float16Values: [Float16] = [
+        .init(bitPattern: 0x0000),
+        .init(bitPattern: 0x8000),
+        .init(bitPattern: 0x7C00),
+        .init(bitPattern: 0xFC00),
+        .init(bitPattern: 0x0001),
+        .init(bitPattern: 0x7BFF),
+        .init(bitPattern: 0x7E11)
+    ]
+    for value in float16Values {
+        let decoded: Float16 = try fory.deserialize(try fory.serialize(value))
+        #expect(decoded.bitPattern == value.bitPattern)
+    }
+
+    let bfloat16Values: [BFloat16] = [
+        .init(rawValue: 0x0000),
+        .init(rawValue: 0x8000),
+        .init(rawValue: 0x7F80),
+        .init(rawValue: 0xFF80),
+        .init(rawValue: 0x0001),
+        .init(rawValue: 0x7FC1)
+    ]
+    for value in bfloat16Values {
+        let decoded: BFloat16 = try fory.deserialize(try fory.serialize(value))
+        #expect(decoded.rawValue == value.rawValue)
+    }
+}
+
+@Test
 func namedInitializerBuildsConfig() {
     let defaultConfig = Fory()
     #expect(defaultConfig.config.xlang == true)
@@ -519,6 +579,59 @@ func registrationIsRejectedAfterFirstTopLevelUse() throws {
 }
 
 @Test
+func serializeToAppendsRoots() throws {
+    let fory = Fory()
+    let first = Int32(7)
+    let second = "swift-buffer"
+    let third: String? = nil
+
+    let firstData = try fory.serialize(first)
+    let secondData = try fory.serialize(second)
+    let thirdData = try fory.serialize(third)
+
+    var stream = Data()
+    try fory.serialize(first, to: &stream)
+    try fory.serialize(second, to: &stream)
+    try fory.serialize(third, to: &stream)
+
+    var expected = Data()
+    expected.append(firstData)
+    expected.append(secondData)
+    expected.append(thirdData)
+    #expect(stream == expected)
+
+    let buffer = ByteBuffer(data: stream)
+    let decodedFirst: Int32 = try fory.deserialize(from: buffer)
+    #expect(decodedFirst == first)
+    #expect(buffer.getCursor() == firstData.count)
+
+    let decodedSecond: String = try fory.deserialize(from: buffer)
+    #expect(decodedSecond == second)
+    #expect(buffer.getCursor() == firstData.count + secondData.count)
+
+    let decodedThird: String? = try fory.deserialize(from: buffer)
+    #expect(decodedThird == nil)
+    #expect(buffer.remaining == 0)
+}
+
+@Test
+func rootBufferHonorsCursor() throws {
+    let fory = Fory()
+    let prefix: [UInt8] = [0xAA, 0xBB, 0xCC]
+    let payload = try fory.serialize("offset")
+
+    let buffer = ByteBuffer()
+    buffer.writeBytes(prefix)
+    buffer.writeBytes(Array(payload))
+    buffer.setCursor(prefix.count)
+
+    let decoded: String = try fory.deserialize(from: buffer)
+    #expect(decoded == "offset")
+    #expect(buffer.getCursor() == buffer.count)
+    #expect(Array(buffer.storage.prefix(prefix.count)) == prefix)
+}
+
+@Test
 func topLevelAnyObjectRoundTrip() throws {
     let fory = Fory(config: .init(xlang: true, trackRef: true))
     fory.register(Node.self, id: 210)
@@ -594,6 +707,31 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
     #expect(serializerDecoded.items[1] as? Address == Address(street: "Nested", zip: 10002))
     #expect(serializerDecoded.map["age"] as? Int64 == 19)
     #expect(serializerDecoded.map["address"] as? Address == Address(street: "Mapped", zip: 10003))
+}
+
+@Test
+func dynamicAnySerializerTracksRefs() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(Node.self, id: 226)
+    fory.register(AnySerializerHolder.self, id: 227)
+
+    let shared = Node(value: 88)
+    shared.next = shared
+    let value = AnySerializerHolder(
+        value: shared,
+        items: [shared],
+        map: ["shared": shared]
+    )
+
+    let decoded: AnySerializerHolder = try fory.deserialize(try fory.serialize(value))
+    let root = decoded.value as? Node
+    let item = decoded.items.first as? Node
+    let mapped = decoded.map["shared"] as? Node
+
+    #expect(root != nil)
+    #expect(root === item)
+    #expect(item === mapped)
+    #expect(root?.next === root)
 }
 
 @Test

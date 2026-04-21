@@ -144,6 +144,48 @@ private func encodedTypeDefHasUserTypeFields(_ fields: [TypeMeta.FieldInfo]) -> 
     fields.contains { fieldNeedsTypeInfo($0.fieldType) }
 }
 
+@inline(__always)
+private func readRegisteredValue<T: Serializer>(_ context: ReadContext, as type: T.Type) throws -> T {
+    try T.foryRead(
+        context,
+        refMode: T.isRefType ? .tracking : .none,
+        readTypeInfo: false
+    )
+}
+
+@inline(__always)
+private func readCompatibleRegisteredValue<T: Serializer>(
+    _ context: ReadContext,
+    as type: T.Type,
+    remoteTypeInfo: TypeInfo
+) throws -> T {
+    guard T.isRefType else {
+        return try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+    }
+
+    let rawFlag = try context.buffer.readInt8()
+    guard let flag = RefFlag(rawValue: rawFlag) else {
+        throw ForyError.refError("invalid ref flag \(rawFlag)")
+    }
+
+    switch flag {
+    case .null:
+        return T.foryDefault()
+    case .ref:
+        let refID = try context.buffer.readVarUInt32()
+        return try context.refReader.readRef(refID, as: T.self)
+    case .refValue:
+        let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
+        let value = try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+        if let reservedRefID, let object = value as AnyObject? {
+            context.refReader.storeRef(object, at: reservedRefID)
+        }
+        return value
+    case .notNullValue:
+        return try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+    }
+}
+
 public final class TypeInfo: @unchecked Sendable {
     static let uncached = TypeInfo(typeID: .unknown)
 
@@ -411,10 +453,10 @@ final class TypeResolver {
             typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
             fields: T.foryFieldsInfo(trackRef: trackRef),
             reader: { context in
-                try T.foryRead(context, refMode: .none, readTypeInfo: false)
+                try readRegisteredValue(context, as: T.self)
             },
             compatibleReader: { context, remoteTypeInfo in
-                try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+                try readCompatibleRegisteredValue(context, as: T.self, remoteTypeInfo: remoteTypeInfo)
             }
         )
 
@@ -462,10 +504,10 @@ final class TypeResolver {
             typeName: typeNameMeta,
             fields: T.foryFieldsInfo(trackRef: trackRef),
             reader: { context in
-                try T.foryRead(context, refMode: .none, readTypeInfo: false)
+                try readRegisteredValue(context, as: T.self)
             },
             compatibleReader: { context, remoteTypeInfo in
-                try T.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+                try readCompatibleRegisteredValue(context, as: T.self, remoteTypeInfo: remoteTypeInfo)
             }
         )
 

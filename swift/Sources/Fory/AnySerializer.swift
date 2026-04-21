@@ -215,13 +215,7 @@ struct SerializableAny: Serializer {
                 context.buffer.writeInt8(RefFlag.null.rawValue)
                 return
             }
-            if refMode == .tracking, anyValueIsRefType(value), let object = value as AnyObject? {
-                if context.refWriter.tryWriteRef(buffer: context.buffer, object: object) {
-                    return
-                }
-            } else {
-                context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
-            }
+            context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
         }
 
         if writeTypeInfo {
@@ -273,7 +267,11 @@ struct SerializableAny: Serializer {
                 let remoteTypeInfo = try requireDynamicTypeInfo()
                 let value = try foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
                 if let reservedRefID {
-                    context.refReader.storeRef(value, at: reservedRefID)
+                    if let object = value.value as AnyObject? {
+                        context.refReader.storeRef(object, at: reservedRefID)
+                    } else {
+                        context.refReader.storeRef(value, at: reservedRefID)
+                    }
                 }
                 return value
             case .notNullValue:
@@ -294,13 +292,6 @@ private func unwrapOptionalAny(_ value: Any) -> Any? {
         return nil
     }
     return child
-}
-
-private func anyValueIsRefType(_ value: Any) -> Bool {
-    guard let serializer = value as? any Serializer else {
-        return false
-    }
-    return type(of: serializer).isRefType
 }
 
 private func toAnyHashableKey(_ value: Any) throws -> AnyHashable {
@@ -339,7 +330,16 @@ private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: B
     defer { context.leaveDynamicAnyDepth() }
 
     if let serializer = value as? any Serializer {
-        try serializer.foryWriteData(context, hasGenerics: hasGenerics)
+        if type(of: serializer).isRefType {
+            try serializer.foryWrite(
+                context,
+                refMode: .tracking,
+                writeTypeInfo: false,
+                hasGenerics: hasGenerics
+            )
+        } else {
+            try serializer.foryWriteData(context, hasGenerics: hasGenerics)
+        }
         return
     }
     if let list = value as? [Any] {

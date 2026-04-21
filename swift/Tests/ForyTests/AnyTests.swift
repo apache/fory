@@ -42,6 +42,19 @@ private final class AnyObjectDynamicNode {
 }
 
 @ForyObject
+private final class AnyObjectDynamicGraphNode {
+    var value: Int32 = 0
+    var next: AnyObjectDynamicGraphNode?
+
+    required init() {}
+
+    init(value: Int32, next: AnyObjectDynamicGraphNode? = nil) {
+        self.value = value
+        self.next = next
+    }
+}
+
+@ForyObject
 private struct AnyHashableMapHolder {
     var map: [AnyHashable: Any] = [:]
     var optionalMap: [AnyHashable: Any]?
@@ -407,6 +420,39 @@ func topLevelAnyHomogeneousListAndMapRoundTrip() throws {
     #expect(map?.count == 2)
     #expect(map?["k1"] as? String == "v1")
     #expect(map?["k2"] as? String == "v2")
+}
+
+@Test
+func dynamicAnyListTracksRefs() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(AnyObjectDynamicGraphNode.self, id: 503)
+
+    let shared = AnyObjectDynamicGraphNode(value: 17)
+    let payload = try fory.serialize([shared, shared] as [Any])
+    let decoded: Any = try fory.deserialize(payload)
+    let list = decoded as? [Any]
+    let first = list?.first as? AnyObjectDynamicGraphNode
+    let second = list?.dropFirst().first as? AnyObjectDynamicGraphNode
+
+    #expect(list?.count == 2)
+    #expect(first != nil)
+    #expect(first === second)
+}
+
+@Test
+func dynamicAnyObjectTracksCycle() throws {
+    let fory = Fory(config: .init(xlang: true, trackRef: true))
+    fory.register(AnyObjectDynamicGraphNode.self, id: 504)
+
+    let node = AnyObjectDynamicGraphNode(value: 21)
+    node.next = node
+
+    let decoded: AnyObject = try fory.deserialize(try fory.serialize(node as AnyObject))
+    let graphNode = decoded as? AnyObjectDynamicGraphNode
+
+    #expect(graphNode != nil)
+    #expect(graphNode?.value == 21)
+    #expect(graphNode?.next === graphNode)
 }
 
 @Test

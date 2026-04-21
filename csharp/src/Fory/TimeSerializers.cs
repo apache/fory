@@ -60,15 +60,16 @@ internal static class TimeCodec
     {
         long seconds = value.Ticks / TimeSpan.TicksPerSecond;
         int nanos = checked((int)((value.Ticks % TimeSpan.TicksPerSecond) * 100));
-        context.Writer.WriteInt64(seconds);
+        context.Writer.WriteVarInt64(seconds);
         context.Writer.WriteInt32(nanos);
     }
 
     public static TimeSpan ReadDuration(ReadContext context)
     {
-        long seconds = context.Reader.ReadInt64();
+        long seconds = context.Reader.ReadVarInt64();
         int nanos = context.Reader.ReadInt32();
-        return TimeSpan.FromSeconds(seconds) + TimeSpan.FromTicks(nanos / 100);
+        long ticks = checked(seconds * TimeSpan.TicksPerSecond);
+        return TimeSpan.FromTicks(checked(ticks + (nanos / 100)));
     }
 
     private static (long Seconds, uint Nanos) ToTimestampParts(DateTimeOffset value)
