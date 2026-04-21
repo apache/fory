@@ -263,12 +263,7 @@ void main() {
       }
     });
 
-    // Regression: Dart Web's `int >> 63` truncates to 32 bits, turning positive
-    // values >= 2^31 into -1 and corrupting the zig-zag sign bit. The fix uses
-    // `BigInt >> 63` in the web fallback path.
-    test(
-      'varint64 round-trips positive values >= 2^31 (web zig-zag regression)',
-      () {
+    test('varint64 round-trips positive values >= 2^31 (web zig-zag regression)', () {
         const cases = <int>[
           2147483648, // 2^31 — first value that triggers 32-bit sign confusion
           3000000000,
