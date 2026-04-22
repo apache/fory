@@ -999,6 +999,10 @@ jobs:
         run: |
           cd dart/packages/fory-test
           dart test
+      - name: Run tests (Chrome)
+        run: |
+          cd dart/packages/fory
+          dart test -p chrome
       - name: Run code analysis
         run: |
           cd dart/packages/fory-test
