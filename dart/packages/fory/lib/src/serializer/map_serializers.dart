@@ -26,6 +26,15 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
+abstract final class MapFlags {
+  static const int trackingKeyRef = 0x01;
+  static const int keyHasNull = 0x02;
+  static const int keyDeclaredType = 0x04;
+  static const int trackingValueRef = 0x08;
+  static const int valueHasNull = 0x10;
+  static const int valueDeclaredType = 0x20;
+}
+
 final class MapSerializer extends Serializer<Map> {
   const MapSerializer();
 
@@ -272,8 +281,8 @@ Map<K, V> readTypedMapPayload<K, V>(
   }
   while (remaining > 0) {
     final header = context.buffer.readUint8();
-    final keyHasNull = (header & 0x02) != 0;
-    final valueHasNull = (header & 0x10) != 0;
+    final keyHasNull = (header & MapFlags.keyHasNull) != 0;
+    final valueHasNull = (header & MapFlags.valueHasNull) != 0;
     if (keyHasNull || valueHasNull) {
       result[convertKey(
         _readNullChunkKey(
@@ -293,10 +302,10 @@ Map<K, V> readTypedMapPayload<K, V>(
       remaining -= 1;
       continue;
     }
-    final keyTrackRef = (header & 0x01) != 0;
-    final valueTrackRef = (header & 0x08) != 0;
-    final keyDeclared = (header & 0x04) != 0;
-    final valueDeclared = (header & 0x20) != 0;
+    final keyTrackRef = (header & MapFlags.trackingKeyRef) != 0;
+    final valueTrackRef = (header & MapFlags.trackingValueRef) != 0;
+    final keyDeclared = (header & MapFlags.keyDeclaredType) != 0;
+    final valueDeclared = (header & MapFlags.valueDeclaredType) != 0;
     final chunkSize = context.buffer.readUint8();
     final keyTypeInfo = keyDeclared ? null : context.readTypeMetaValue();
     final valueTypeInfo = valueDeclared ? null : context.readTypeMetaValue();
@@ -364,20 +373,20 @@ void _writeNullChunk(
 }) {
   var header = 0;
   if (key == null) {
-    header |= 0x02;
+    header |= MapFlags.keyHasNull;
   } else if (keyDeclared) {
-    header |= 0x04;
+    header |= MapFlags.keyDeclaredType;
   }
   if (keyTrackRef) {
-    header |= 0x01;
+    header |= MapFlags.trackingKeyRef;
   }
   if (value == null) {
-    header |= 0x10;
+    header |= MapFlags.valueHasNull;
   } else if (valueDeclared) {
-    header |= 0x20;
+    header |= MapFlags.valueDeclaredType;
   }
   if (valueTrackRef) {
-    header |= 0x08;
+    header |= MapFlags.trackingValueRef;
   }
   context.buffer.writeUint8(header);
   if (key != null) {
@@ -445,12 +454,12 @@ Object? _readNullChunkKey(
   FieldType? keyFieldType,
   TypeInfo? declaredKeyTypeInfo,
 ) {
-  final keyHasNull = (header & 0x02) != 0;
+  final keyHasNull = (header & MapFlags.keyHasNull) != 0;
   if (keyHasNull) {
     return null;
   }
-  final trackRef = (header & 0x01) != 0;
-  final declared = (header & 0x04) != 0;
+  final trackRef = (header & MapFlags.trackingKeyRef) != 0;
+  final declared = (header & MapFlags.keyDeclaredType) != 0;
   if (declared && keyFieldType != null) {
     return _readDeclaredMapValue(
       context,
@@ -468,12 +477,12 @@ Object? _readNullChunkValue(
   FieldType? valueFieldType,
   TypeInfo? declaredValueTypeInfo,
 ) {
-  final valueHasNull = (header & 0x10) != 0;
+  final valueHasNull = (header & MapFlags.valueHasNull) != 0;
   if (valueHasNull) {
     return null;
   }
-  final trackRef = (header & 0x08) != 0;
-  final declared = (header & 0x20) != 0;
+  final trackRef = (header & MapFlags.trackingValueRef) != 0;
+  final declared = (header & MapFlags.valueDeclaredType) != 0;
   if (declared && valueFieldType != null) {
     return _readDeclaredMapValue(
       context,
@@ -545,16 +554,16 @@ int _mapChunkHeader({
 }) {
   var header = 0;
   if (keyTrackRef) {
-    header |= 0x01;
+    header |= MapFlags.trackingKeyRef;
   }
   if (keyDeclared) {
-    header |= 0x04;
+    header |= MapFlags.keyDeclaredType;
   }
   if (valueTrackRef) {
-    header |= 0x08;
+    header |= MapFlags.trackingValueRef;
   }
   if (valueDeclared) {
-    header |= 0x20;
+    header |= MapFlags.valueDeclaredType;
   }
   return header;
 }

@@ -105,6 +105,8 @@ final class WriteContext {
   set structWriteSlots(StructWriteSlots? value) {
     _structWriteSlots = value;
   }
+  
+  int get depth => _depth;
 
   /// Records entry into one more nested write frame.
   void increaseDepth() {

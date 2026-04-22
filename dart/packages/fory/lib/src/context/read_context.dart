@@ -124,6 +124,8 @@ final class ReadContext {
     }
     return value;
   }
+  
+  int get depth => _depth;
 
   /// Records entry into one more nested read frame.
   void increaseDepth() {
