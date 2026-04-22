@@ -101,7 +101,9 @@ final class Uint16 implements Comparable<Uint16> {
 
   Uint16 operator <<(int shift) => Uint16(value << shift);
 
-  Uint16 operator >>(int shift) => Uint16(value >> shift);
+  Uint16 operator >>(int shift) => Uint16(value >>> shift);
+
+  Uint16 operator >>>(int shift) => Uint16(value >>> shift);
 
   bool operator <(Object other) => switch (other) {
         int otherValue => value < otherValue,

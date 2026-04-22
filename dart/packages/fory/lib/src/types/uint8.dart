@@ -101,7 +101,9 @@ final class Uint8 implements Comparable<Uint8> {
 
   Uint8 operator <<(int shift) => Uint8(value << shift);
 
-  Uint8 operator >>(int shift) => Uint8(value >> shift);
+  Uint8 operator >>(int shift) => Uint8(value >>> shift);
+
+  Uint8 operator >>>(int shift) => Uint8(value >>> shift);
 
   bool operator <(Object other) => switch (other) {
         int otherValue => value < otherValue,

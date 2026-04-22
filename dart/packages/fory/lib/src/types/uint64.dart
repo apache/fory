@@ -103,7 +103,9 @@ final class Uint64 implements Comparable<Uint64> {
 
   Uint64 operator <<(int shift) => Uint64(value << shift);
 
-  Uint64 operator >>(int shift) => Uint64(value >> shift);
+  Uint64 operator >>(int shift) => Uint64(value >>> shift);
+
+  Uint64 operator >>>(int shift) => Uint64(value >>> shift);
 
   bool operator <(Object other) => switch (other) {
         int otherValue => value < otherValue,

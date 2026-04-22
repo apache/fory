@@ -101,7 +101,9 @@ final class Uint32 implements Comparable<Uint32> {
 
   Uint32 operator <<(int shift) => Uint32(value << shift);
 
-  Uint32 operator >>(int shift) => Uint32(value >> shift);
+  Uint32 operator >>(int shift) => Uint32(value >>> shift);
+
+  Uint32 operator >>>(int shift) => Uint32(value >>> shift);
 
   bool operator <(Object other) => switch (other) {
         int otherValue => value < otherValue,
