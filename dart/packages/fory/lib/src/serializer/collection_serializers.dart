@@ -475,6 +475,54 @@ Set<T> readTypedSetPayload<T>(
   return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
 }
 
+void writeTypedListPayload<T>(
+  WriteContext context,
+  List<T> values,
+  FieldType elementFieldType,
+) {
+  final size = values.length;
+  if (size > context.config.maxCollectionSize) {
+    throw StateError(
+      'Collection size $size exceeds ${context.config.maxCollectionSize}.',
+    );
+  }
+  context.buffer.writeVarUint32(size);
+  if (size == 0) return;
+  final declaredTypeInfo = context.typeResolver.resolveFieldType(elementFieldType);
+  final usesDeclaredType = usesDeclaredTypeInfo(
+    context.config.compatible,
+    elementFieldType,
+    declaredTypeInfo,
+  );
+  context.buffer.writeUint8(
+    _buildCollectionHeader(
+      trackRef: elementFieldType.ref,
+      hasNull: false,
+      usesDeclaredType: usesDeclaredType,
+      sameType: true,
+    ),
+  );
+  if (!usesDeclaredType) {
+    context.writeTypeMetaValue(declaredTypeInfo, values.first as Object);
+  }
+  _writeSameTypeElements(
+    context,
+    values,
+    declaredTypeInfo,
+    usesDeclaredType ? elementFieldType : null,
+    elementFieldType.ref,
+    false,
+  );
+}
+
+void writeTypedSetPayload<T>(
+  WriteContext context,
+  Set<T> values,
+  FieldType elementFieldType,
+) {
+  writeTypedListPayload<T>(context, values.toList(growable: false), elementFieldType);
+}
+
 int _buildCollectionHeader({
   required bool trackRef,
   required bool hasNull,

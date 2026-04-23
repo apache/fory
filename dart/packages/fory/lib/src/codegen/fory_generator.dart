@@ -542,6 +542,10 @@ final class ForyGenerator extends Generator {
         output.writeln(
           '      ${_directGeneratedWriteStatement(field, 'value.${field.name}')};',
         );
+      } else if (_usesDirectGeneratedTypedContainerWriteFastPath(field)) {
+        output.writeln(
+          '      ${_directGeneratedTypedContainerWriteStatement(field, index, 'value.${field.name}')};',
+        );
       } else {
         final fieldValue = _generatedFieldInfoWriteValueExpression(
           field,
@@ -1148,6 +1152,44 @@ GeneratedFieldType(
     return field.fieldType.typeId == TypeIds.list ||
         field.fieldType.typeId == TypeIds.set ||
         field.fieldType.typeId == TypeIds.map;
+  }
+
+  bool _usesDirectGeneratedTypedContainerWriteFastPath(
+    _GeneratedFieldSpec field,
+  ) {
+    if (field.fieldType.nullable ||
+        field.fieldType.ref ||
+        field.fieldType.dynamic == true) {
+      return false;
+    }
+    final typeId = field.fieldType.typeId;
+    if (typeId != TypeIds.list && typeId != TypeIds.set) {
+      return false;
+    }
+    final elementFieldType = field.fieldType.arguments.single;
+    if (elementFieldType.ref || elementFieldType.dynamic == true) {
+      return false;
+    }
+    final elementType = (field.type as InterfaceType).typeArguments.single;
+    return !_isNullable(elementType);
+  }
+
+  String _directGeneratedTypedContainerWriteStatement(
+    _GeneratedFieldSpec field,
+    int fieldIndex,
+    String valueExpression,
+  ) {
+    if (_isList(field.type)) {
+      final elementType = (field.type as InterfaceType).typeArguments.single;
+      return 'writeGeneratedDirectListValue<${_typeCodeString(elementType)}>(context, fields[$fieldIndex], $valueExpression)';
+    }
+    if (_isSet(field.type)) {
+      final elementType = (field.type as InterfaceType).typeArguments.single;
+      return 'writeGeneratedDirectSetValue<${_typeCodeString(elementType)}>(context, fields[$fieldIndex], $valueExpression)';
+    }
+    throw StateError(
+      'Unsupported generated typed container write fast path for ${field.name}.',
+    );
   }
 
   List<_DirectGeneratedWriteReservationRun>

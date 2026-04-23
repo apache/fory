@@ -459,6 +459,48 @@ Object readGeneratedStructDirectValue(
 }
 
 @internal
+void writeGeneratedDirectListValue<T>(
+  WriteContext context,
+  GeneratedStructFieldInfo field,
+  List<T> value,
+) {
+  final fieldType = field.fieldType;
+  if (fieldType.typeId != TypeIds.list ||
+      fieldType.nullable ||
+      fieldType.ref ||
+      fieldType.isDynamic) {
+    throw StateError('Field ${field.name} is not a direct list path.');
+  }
+  final elementFieldType = fieldType.arguments.single;
+  if (elementFieldType.ref || elementFieldType.isDynamic) {
+    throw StateError(
+        'Field ${field.name} element type is not a direct list path.');
+  }
+  writeTypedListPayload<T>(context, value, elementFieldType);
+}
+
+@internal
+void writeGeneratedDirectSetValue<T>(
+  WriteContext context,
+  GeneratedStructFieldInfo field,
+  Set<T> value,
+) {
+  final fieldType = field.fieldType;
+  if (fieldType.typeId != TypeIds.set ||
+      fieldType.nullable ||
+      fieldType.ref ||
+      fieldType.isDynamic) {
+    throw StateError('Field ${field.name} is not a direct set path.');
+  }
+  final elementFieldType = fieldType.arguments.single;
+  if (elementFieldType.ref || elementFieldType.isDynamic) {
+    throw StateError(
+        'Field ${field.name} element type is not a direct set path.');
+  }
+  writeTypedSetPayload<T>(context, value, elementFieldType);
+}
+
+@internal
 @pragma('vm:prefer-inline')
 List<T> readGeneratedDirectListValue<T>(
   ReadContext context,
