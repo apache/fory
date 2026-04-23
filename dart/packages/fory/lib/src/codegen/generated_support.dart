@@ -22,7 +22,8 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import 'package:fory/fory.dart';
-import 'package:fory/src/buffer.dart';
+export 'package:fory/src/codegen/generated_cursor.dart';
+
 import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/meta/field_info.dart' as meta;
 import 'package:fory/src/meta/field_type.dart' as meta_types;
@@ -37,368 +38,10 @@ import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 
-final BigInt _generatedCursorMask64Big = (BigInt.one << 64) - BigInt.one;
-final BigInt _generatedCursorSevenBitMaskBig = BigInt.from(0x7f);
-final BigInt _generatedCursorByteMaskBig = BigInt.from(0xff);
-const bool _generatedCursorUseBigIntVarint64 =
-    bool.fromEnvironment('dart.library.js_interop') ||
-        bool.fromEnvironment('dart.library.js_util');
-
-@internal
-final class GeneratedWriteCursor {
-  final Buffer _buffer;
-  final Uint8List _bytes;
-  final ByteData _view;
-  int _offset;
-
-  GeneratedWriteCursor._(
-    this._buffer,
-    this._bytes,
-    this._view,
-    this._offset,
-  );
-
-  factory GeneratedWriteCursor.reserve(Buffer buffer, int maxBytes) {
-    final start = bufferReserveBytes(buffer, maxBytes);
-    return GeneratedWriteCursor._(
-      buffer,
-      bufferBytes(buffer),
-      bufferByteData(buffer),
-      start,
-    );
-  }
-
-  void finish() {
-    bufferSetWriterIndex(_buffer, _offset);
-  }
-
-  void writeBool(bool value) {
-    _bytes[_offset] = value ? 1 : 0;
-    _offset += 1;
-  }
-
-  void writeByte(int value) {
-    _view.setInt8(_offset, value);
-    _offset += 1;
-  }
-
-  void writeUint8(int value) {
-    _view.setUint8(_offset, value);
-    _offset += 1;
-  }
-
-  void writeInt16(int value) {
-    _view.setInt16(_offset, value, Endian.little);
-    _offset += 2;
-  }
-
-  void writeUint16(int value) {
-    _view.setUint16(_offset, value, Endian.little);
-    _offset += 2;
-  }
-
-  void writeInt32(int value) {
-    _view.setInt32(_offset, value, Endian.little);
-    _offset += 4;
-  }
-
-  void writeUint32(int value) {
-    _view.setUint32(_offset, value, Endian.little);
-    _offset += 4;
-  }
-
-  void writeInt64(int value) {
-    _view.setInt64(_offset, value, Endian.little);
-    _offset += 8;
-  }
-
-  void writeUint64(int value) {
-    _view.setUint64(_offset, value, Endian.little);
-    _offset += 8;
-  }
-
-  void writeFloat16(Float16 value) {
-    writeUint16(value.toBits());
-  }
-
-  void writeBfloat16(Bfloat16 value) {
-    writeUint16(value.toBits());
-  }
-
-  void writeFloat32(double value) {
-    _view.setFloat32(_offset, value, Endian.little);
-    _offset += 4;
-  }
-
-  void writeFloat64(double value) {
-    _view.setFloat64(_offset, value, Endian.little);
-    _offset += 8;
-  }
-
-  void writeVarUint32(int value) {
-    var remaining = value;
-    while (remaining >= 0x80) {
-      _bytes[_offset] = (remaining & 0x7f) | 0x80;
-      _offset += 1;
-      remaining >>>= 7;
-    }
-    _bytes[_offset] = remaining;
-    _offset += 1;
-  }
-
-  void writeVarInt32(int value) {
-    writeVarUint32((value << 1) ^ (value >> 31));
-  }
-
-  void writeVarUint64(int value) {
-    if (!_generatedCursorUseBigIntVarint64) {
-      var remaining = value;
-      for (var index = 0; index < 8; index += 1) {
-        final chunk = remaining & 0x7f;
-        remaining = remaining >>> 7;
-        if (remaining == 0) {
-          _bytes[_offset] = chunk;
-          _offset += 1;
-          return;
-        }
-        _bytes[_offset] = chunk | 0x80;
-        _offset += 1;
-      }
-      _bytes[_offset] = remaining & 0xff;
-      _offset += 1;
-      return;
-    }
-    _writeVarUint64BigInt(BigInt.from(value) & _generatedCursorMask64Big);
-  }
-
-  void writeVarInt64(int value) {
-    if (!_generatedCursorUseBigIntVarint64) {
-      writeVarUint64((value << 1) ^ (value >> 63));
-      return;
-    }
-    final signed = BigInt.from(value);
-    final zigZag =
-        ((signed << 1) ^ BigInt.from(value >> 63)) & _generatedCursorMask64Big;
-    _writeVarUint64BigInt(zigZag);
-  }
-
-  void writeTaggedInt64(int value) {
-    if (value >= -0x40000000 && value <= 0x3fffffff) {
-      writeInt32(value << 1);
-      return;
-    }
-    writeUint8(0x01);
-    writeInt64(value);
-  }
-
-  void writeTaggedUint64(int value) {
-    if (value >= 0 && value <= 0x7fffffff) {
-      writeInt32(value << 1);
-      return;
-    }
-    writeUint8(0x01);
-    writeUint64(value);
-  }
-
-  void _writeVarUint64BigInt(BigInt value) {
-    var remaining = value & _generatedCursorMask64Big;
-    for (var index = 0; index < 8; index += 1) {
-      final chunk = (remaining & _generatedCursorSevenBitMaskBig).toInt();
-      remaining >>= 7;
-      if (remaining == BigInt.zero) {
-        _bytes[_offset] = chunk;
-        _offset += 1;
-        return;
-      }
-      _bytes[_offset] = chunk | 0x80;
-      _offset += 1;
-    }
-    _bytes[_offset] = (remaining & _generatedCursorByteMaskBig).toInt();
-    _offset += 1;
-  }
-}
-
-@internal
-final class GeneratedReadCursor {
-  final Buffer _buffer;
-  final ByteData _view;
-  int _offset;
-
-  GeneratedReadCursor._(
-    this._buffer,
-    this._view,
-    this._offset,
-  );
-
-  factory GeneratedReadCursor.start(Buffer buffer) {
-    return GeneratedReadCursor._(
-      buffer,
-      bufferByteData(buffer),
-      bufferReaderIndex(buffer),
-    );
-  }
-
-  void finish() {
-    bufferSetReaderIndex(_buffer, _offset);
-  }
-
-  bool readBool() => readUint8() != 0;
-
-  int readByte() {
-    final value = _view.getInt8(_offset);
-    _offset += 1;
-    return value;
-  }
-
-  int readUint8() {
-    final value = _view.getUint8(_offset);
-    _offset += 1;
-    return value;
-  }
-
-  int readInt16() {
-    final value = _view.getInt16(_offset, Endian.little);
-    _offset += 2;
-    return value;
-  }
-
-  int readUint16() {
-    final value = _view.getUint16(_offset, Endian.little);
-    _offset += 2;
-    return value;
-  }
-
-  int readInt32() {
-    final value = _view.getInt32(_offset, Endian.little);
-    _offset += 4;
-    return value;
-  }
-
-  int readUint32() {
-    final value = _view.getUint32(_offset, Endian.little);
-    _offset += 4;
-    return value;
-  }
-
-  int readInt64() {
-    final value = _view.getInt64(_offset, Endian.little);
-    _offset += 8;
-    return value;
-  }
-
-  int readUint64() {
-    final value = _view.getUint64(_offset, Endian.little);
-    _offset += 8;
-    return value;
-  }
-
-  Float16 readFloat16() => Float16.fromBits(readUint16());
-
-  Bfloat16 readBfloat16() => Bfloat16.fromBits(readUint16());
-
-  double readFloat32() {
-    final value = _view.getFloat32(_offset, Endian.little);
-    _offset += 4;
-    return value;
-  }
-
-  double readFloat64() {
-    final value = _view.getFloat64(_offset, Endian.little);
-    _offset += 8;
-    return value;
-  }
-
-  int readVarUint32() {
-    var shift = 0;
-    var result = 0;
-    while (true) {
-      final byte = readUint8();
-      result |= (byte & 0x7f) << shift;
-      if ((byte & 0x80) == 0) {
-        return result;
-      }
-      shift += 7;
-    }
-  }
-
-  int readVarInt32() {
-    final value = readVarUint32();
-    return (value >>> 1) ^ -(value & 1);
-  }
-
-  int readVarUint64() {
-    if (!_generatedCursorUseBigIntVarint64) {
-      var shift = 0;
-      var result = 0;
-      while (shift < 56) {
-        final byte = readUint8();
-        result |= (byte & 0x7f) << shift;
-        if ((byte & 0x80) == 0) {
-          return result;
-        }
-        shift += 7;
-      }
-      return result | (readUint8() << 56);
-    }
-    return _readVarUint64BigInt().toInt();
-  }
-
-  int readVarInt64() {
-    if (!_generatedCursorUseBigIntVarint64) {
-      final encoded = readVarUint64();
-      return (encoded >>> 1) ^ -(encoded & 1);
-    }
-    final encoded = _readVarUint64BigInt();
-    final magnitude = (encoded >> 1).toInt();
-    if ((encoded & BigInt.one) == BigInt.zero) {
-      return magnitude;
-    }
-    return -magnitude - 1;
-  }
-
-  int readTaggedInt64() {
-    final readIndex = _offset;
-    final first = _view.getInt32(readIndex, Endian.little);
-    if ((first & 1) == 0) {
-      _offset = readIndex + 4;
-      return first >> 1;
-    }
-    final value = _view.getInt64(readIndex + 1, Endian.little);
-    _offset = readIndex + 9;
-    return value;
-  }
-
-  int readTaggedUint64() {
-    final readIndex = _offset;
-    final first = _view.getUint32(readIndex, Endian.little);
-    if ((first & 1) == 0) {
-      _offset = readIndex + 4;
-      return first >>> 1;
-    }
-    final value = _view.getUint64(readIndex + 1, Endian.little);
-    _offset = readIndex + 9;
-    return value;
-  }
-
-  BigInt _readVarUint64BigInt() {
-    var shift = 0;
-    var result = BigInt.zero;
-    while (shift < 56) {
-      final byte = readUint8();
-      result |= BigInt.from(byte & 0x7f) << shift;
-      if ((byte & 0x80) == 0) {
-        return result;
-      }
-      shift += 7;
-    }
-    return result |
-        ((BigInt.from(readUint8()) & _generatedCursorByteMaskBig) << 56);
-  }
-}
-
 @internal
 final class GeneratedFieldType {
   final Type type;
+  final String? declaredTypeName;
   final int typeId;
   final bool nullable;
   final bool ref;
@@ -407,6 +50,7 @@ final class GeneratedFieldType {
 
   const GeneratedFieldType({
     required this.type,
+    this.declaredTypeName,
     required this.typeId,
     required this.nullable,
     required this.ref,
@@ -417,6 +61,7 @@ final class GeneratedFieldType {
   meta_types.FieldType toFieldType() {
     return meta_types.FieldType(
       type: type,
+      declaredTypeName: declaredTypeName,
       typeId: typeId,
       nullable: nullable,
       ref: ref,
@@ -633,7 +278,7 @@ Decimal readGeneratedDecimalValue(ReadContext context) {
 }
 
 @internal
-int generatedDurationWireSeconds(Duration value) {
+Int64 generatedDurationWireSeconds(Duration value) {
   return durationWireSeconds(value);
 }
 
@@ -643,7 +288,7 @@ int generatedDurationWireNanoseconds(Duration value) {
 }
 
 @internal
-Duration readGeneratedDurationFromWire(int seconds, int nanoseconds) {
+Duration readGeneratedDurationFromWire(Int64 seconds, int nanoseconds) {
   return durationFromWire(seconds, nanoseconds);
 }
 
@@ -663,7 +308,7 @@ int generatedTimestampWireNanoseconds(Timestamp value) {
 }
 
 @internal
-int generatedDateTimeWireSeconds(DateTime value) {
+Int64 generatedDateTimeWireSeconds(DateTime value) {
   return dateTimeWireSeconds(value);
 }
 
@@ -673,12 +318,12 @@ int generatedDateTimeWireNanoseconds(DateTime value) {
 }
 
 @internal
-Timestamp readGeneratedTimestampFromWire(int seconds, int nanoseconds) {
+Timestamp readGeneratedTimestampFromWire(Int64 seconds, int nanoseconds) {
   return timestampFromWire(seconds, nanoseconds);
 }
 
 @internal
-DateTime readGeneratedDateTimeFromWire(int seconds, int nanoseconds) {
+DateTime readGeneratedDateTimeFromWire(Int64 seconds, int nanoseconds) {
   return dateTimeFromWire(seconds, nanoseconds);
 }
 
@@ -753,6 +398,7 @@ void writeGeneratedStructFieldInfoValue(
 }
 
 @internal
+@pragma('vm:prefer-inline')
 Object? readGeneratedStructFieldInfoValue(
   ReadContext context,
   GeneratedStructFieldInfo field, [
@@ -773,15 +419,14 @@ Object? readGeneratedStructFieldInfoValue(
     if (fieldUsesDeclaredType(context.typeResolver, field)) {
       return context.readResolvedValue(resolved, fieldType);
     }
-    final actualResolved = context.readTypeMetaValue(
-      resolved.isNamed ? resolved : null,
-    );
+    final actualResolved = context.readTypeMetaValue(resolved);
     return context.readResolvedValue(actualResolved, fieldType);
   }
   return readFieldValue(context, field, fallback);
 }
 
 @internal
+@pragma('vm:prefer-inline')
 Object? readGeneratedStructDeclaredValue(
   ReadContext context,
   GeneratedStructFieldInfo field,
@@ -790,13 +435,12 @@ Object? readGeneratedStructDeclaredValue(
   if (fieldUsesDeclaredType(context.typeResolver, field)) {
     return context.readResolvedValue(resolved, field.fieldType);
   }
-  final actualResolved = context.readTypeMetaValue(
-    resolved.isNamed ? resolved : null,
-  );
+  final actualResolved = context.readTypeMetaValue(resolved);
   return context.readResolvedValue(actualResolved, field.fieldType);
 }
 
 @internal
+@pragma('vm:prefer-inline')
 Object readGeneratedStructDirectValue(
   ReadContext context,
   GeneratedStructFieldInfo field,
@@ -806,7 +450,7 @@ Object readGeneratedStructDirectValue(
   if (fieldUsesDeclaredType(context.typeResolver, field)) {
     resolved = declared;
   } else {
-    resolved = context.readTypeMetaValue(declared.isNamed ? declared : null);
+    resolved = context.readTypeMetaValue(declared);
   }
   context.increaseDepth();
   final value = resolved.structSerializer!.readValue(context, resolved);
@@ -815,6 +459,49 @@ Object readGeneratedStructDirectValue(
 }
 
 @internal
+void writeGeneratedDirectListValue<T>(
+  WriteContext context,
+  GeneratedStructFieldInfo field,
+  List<T> value,
+) {
+  final fieldType = field.fieldType;
+  if (fieldType.typeId != TypeIds.list ||
+      fieldType.nullable ||
+      fieldType.ref ||
+      fieldType.isDynamic) {
+    throw StateError('Field ${field.name} is not a direct list path.');
+  }
+  final elementFieldType = fieldType.arguments.single;
+  if (elementFieldType.ref || elementFieldType.isDynamic) {
+    throw StateError(
+        'Field ${field.name} element type is not a direct list path.');
+  }
+  writeTypedListPayload<T>(context, value, elementFieldType);
+}
+
+@internal
+void writeGeneratedDirectSetValue<T>(
+  WriteContext context,
+  GeneratedStructFieldInfo field,
+  Set<T> value,
+) {
+  final fieldType = field.fieldType;
+  if (fieldType.typeId != TypeIds.set ||
+      fieldType.nullable ||
+      fieldType.ref ||
+      fieldType.isDynamic) {
+    throw StateError('Field ${field.name} is not a direct set path.');
+  }
+  final elementFieldType = fieldType.arguments.single;
+  if (elementFieldType.ref || elementFieldType.isDynamic) {
+    throw StateError(
+        'Field ${field.name} element type is not a direct set path.');
+  }
+  writeTypedSetPayload<T>(context, value, elementFieldType);
+}
+
+@internal
+@pragma('vm:prefer-inline')
 List<T> readGeneratedDirectListValue<T>(
   ReadContext context,
   GeneratedStructFieldInfo field,
@@ -835,6 +522,7 @@ List<T> readGeneratedDirectListValue<T>(
 }
 
 @internal
+@pragma('vm:prefer-inline')
 Set<T> readGeneratedDirectSetValue<T>(
   ReadContext context,
   GeneratedStructFieldInfo field,
@@ -855,6 +543,7 @@ Set<T> readGeneratedDirectSetValue<T>(
 }
 
 @internal
+@pragma('vm:prefer-inline')
 Map<K, V> readGeneratedDirectMapValue<K, V>(
   ReadContext context,
   GeneratedStructFieldInfo field,

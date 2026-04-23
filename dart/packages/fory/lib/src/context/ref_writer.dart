@@ -19,7 +19,7 @@
 
 import 'dart:collection';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 
 final class RefWriter {
   static const int nullFlag = -3;

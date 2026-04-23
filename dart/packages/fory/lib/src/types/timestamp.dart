@@ -17,16 +17,18 @@
  * under the License.
  */
 
+import 'package:fory/src/types/int64.dart';
+
 /// Timestamp with second and nanosecond precision in UTC.
 final class Timestamp implements Comparable<Timestamp> {
   /// Whole seconds since the Unix epoch.
-  final int seconds;
+  final Int64 seconds;
 
   /// Nanoseconds within the second.
   final int nanoseconds;
 
   /// Creates a timestamp from epoch seconds and nanoseconds.
-  const Timestamp(this.seconds, this.nanoseconds);
+  Timestamp(this.seconds, this.nanoseconds);
 
   /// Converts a [DateTime] to UTC timestamp components.
   factory Timestamp.fromDateTime(DateTime value) {
@@ -38,12 +40,14 @@ final class Timestamp implements Comparable<Timestamp> {
       micros += Duration.microsecondsPerSecond;
       seconds -= 1;
     }
-    return Timestamp(seconds, micros * 1000);
+    return Timestamp(Int64(seconds), micros * 1000);
   }
 
   /// Converts this timestamp to a UTC [DateTime].
   DateTime toDateTime() => DateTime.fromMicrosecondsSinceEpoch(
-        seconds * Duration.microsecondsPerSecond + nanoseconds ~/ 1000,
+        (seconds.toBigInt() * BigInt.from(Duration.microsecondsPerSecond) +
+                BigInt.from(nanoseconds ~/ 1000))
+            .toInt(),
         isUtc: true,
       );
 

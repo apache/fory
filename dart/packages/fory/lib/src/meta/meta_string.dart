@@ -20,6 +20,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/util/hash_util.dart';
 
 const int metaStringUtf8Encoding = 0;
@@ -54,7 +55,7 @@ const List<int> _fieldNameCompactEncodings = <int>[
 final class EncodedMetaString {
   final Uint8List bytes;
   final int encoding;
-  final int hash;
+  final Int64 hash;
   final int firstWord0;
   final int firstWord1;
   final int secondWord0;

@@ -20,6 +20,7 @@
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/serializer/serializer.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/local_date.dart';
 import 'package:fory/src/types/timestamp.dart';
 
@@ -60,12 +61,12 @@ void _validateDateTimeNanoseconds(int nanoseconds) {
   }
 }
 
-int durationWireSeconds(Duration value) {
+Int64 durationWireSeconds(Duration value) {
   final exact = _exactDurationWire[value];
   if (exact != null && exact.microseconds == value.inMicroseconds) {
-    return exact.seconds;
+    return Int64(exact.seconds);
   }
-  return value.inMicroseconds ~/ Duration.microsecondsPerSecond;
+  return Int64(value.inMicroseconds ~/ Duration.microsecondsPerSecond);
 }
 
 int durationWireNanoseconds(Duration value) {
@@ -76,19 +77,21 @@ int durationWireNanoseconds(Duration value) {
   return value.inMicroseconds.remainder(Duration.microsecondsPerSecond) * 1000;
 }
 
-Duration durationFromWire(int seconds, int nanoseconds) {
+Duration durationFromWire(Int64 seconds, int nanoseconds) {
   _validateDurationNanoseconds(nanoseconds);
   if ((seconds > 0 && nanoseconds < 0) || (seconds < 0 && nanoseconds > 0)) {
     throw StateError(
       'Duration wire value has inconsistent signs: seconds=$seconds, nanoseconds=$nanoseconds.',
     );
   }
-  final totalNanoseconds = seconds * _nanosecondsPerSecond + nanoseconds;
-  final microseconds = totalNanoseconds ~/ 1000;
+  final totalNanoseconds =
+      seconds.toBigInt() * BigInt.from(_nanosecondsPerSecond) +
+          BigInt.from(nanoseconds);
+  final microseconds = (totalNanoseconds ~/ BigInt.from(1000)).toInt();
   final value = Duration(microseconds: microseconds);
   if (nanoseconds.remainder(1000) != 0) {
     _exactDurationWire[value] = _ExactDurationWire(
-      seconds,
+      seconds.toInt(),
       nanoseconds,
       microseconds,
     );
@@ -101,7 +104,7 @@ int timestampWireNanoseconds(Timestamp value) {
   return value.nanoseconds;
 }
 
-int dateTimeWireSeconds(DateTime value) {
+Int64 dateTimeWireSeconds(DateTime value) {
   final utcValue = value.toUtc();
   final microseconds = utcValue.microsecondsSinceEpoch;
   var seconds = microseconds ~/ Duration.microsecondsPerSecond;
@@ -110,7 +113,7 @@ int dateTimeWireSeconds(DateTime value) {
     micros += Duration.microsecondsPerSecond;
     seconds -= 1;
   }
-  return seconds;
+  return Int64(seconds);
 }
 
 int dateTimeWireNanoseconds(DateTime value) {
@@ -123,15 +126,18 @@ int dateTimeWireNanoseconds(DateTime value) {
   return micros * 1000;
 }
 
-Timestamp timestampFromWire(int seconds, int nanoseconds) {
+Timestamp timestampFromWire(Int64 seconds, int nanoseconds) {
   _validateTimestampNanoseconds(nanoseconds);
   return Timestamp(seconds, nanoseconds);
 }
 
-DateTime dateTimeFromWire(int seconds, int nanoseconds) {
+DateTime dateTimeFromWire(Int64 seconds, int nanoseconds) {
   _validateDateTimeNanoseconds(nanoseconds);
+  final microseconds =
+      seconds.toBigInt() * BigInt.from(Duration.microsecondsPerSecond) +
+          BigInt.from(nanoseconds ~/ 1000);
   return DateTime.fromMicrosecondsSinceEpoch(
-    seconds * Duration.microsecondsPerSecond + nanoseconds ~/ 1000,
+    microseconds.toInt(),
     isUtc: true,
   );
 }

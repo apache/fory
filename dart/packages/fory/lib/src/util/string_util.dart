@@ -20,7 +20,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 
 const int stringLatin1Encoding = 0;
 const int stringUtf16Encoding = 1;

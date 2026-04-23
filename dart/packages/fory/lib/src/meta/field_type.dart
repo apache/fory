@@ -21,6 +21,7 @@ import 'package:fory/src/meta/type_ids.dart';
 
 final class FieldType {
   final Type type;
+  final String? declaredTypeName;
   final int typeId;
   final bool nullable;
   final bool ref;
@@ -29,6 +30,7 @@ final class FieldType {
 
   const FieldType({
     required this.type,
+    this.declaredTypeName,
     required this.typeId,
     required this.nullable,
     required this.ref,
@@ -51,6 +53,7 @@ final class FieldType {
     }
     return FieldType(
       type: type,
+      declaredTypeName: declaredTypeName,
       typeId: typeId,
       nullable: nullable,
       ref: ref,

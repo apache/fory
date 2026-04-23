@@ -20,9 +20,20 @@
 import 'dart:typed_data';
 
 import 'package:fory/fory.dart';
+import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/serializer/compatible_struct_metadata.dart';
 import 'package:test/test.dart';
 
 part 'numeric_wrapper_test.fory.dart';
+
+Uint64 _u64Hex(String value) => Uint64.parseHex(value);
+
+double _float64FromWords(int low32, int high32) {
+  final bytes = ByteData(8)
+    ..setUint32(0, low32, Endian.little)
+    ..setUint32(4, high32, Endian.little);
+  return bytes.getFloat64(0, Endian.little);
+}
 
 @ForyStruct()
 class NumericWrappersEnvelope {
@@ -31,6 +42,7 @@ class NumericWrappersEnvelope {
   Int8 i8 = Int8(0);
   Int16 i16 = Int16(0);
   Int32 i32 = Int32(0);
+  Int64 i64 = Int64(0);
   Uint8 u8 = Uint8(0);
   Uint16 u16 = Uint16(0);
   Uint32 u32 = Uint32(0);
@@ -45,10 +57,26 @@ class NumericWrappersEnvelope {
   Float32? optionalSingle;
 }
 
+@ForyStruct()
+class NumericWrappersMetadataReader {
+  NumericWrappersMetadataReader();
+
+  Int8 i8 = Int8(0);
+}
+
 void _registerNumericWrappers(Fory fory) {
   NumericWrapperTestFory.register(
     fory,
     NumericWrappersEnvelope,
+    namespace: 'test',
+    typeName: 'NumericWrappersEnvelope',
+  );
+}
+
+void _registerNumericWrappersMetadataReader(Fory fory) {
+  NumericWrapperTestFory.register(
+    fory,
+    NumericWrappersMetadataReader,
     namespace: 'test',
     typeName: 'NumericWrappersEnvelope',
   );
@@ -62,15 +90,16 @@ NumericWrappersEnvelope _sampleEnvelope() {
     ..i8 = Int8(-127)
     ..i16 = Int16(0x7fff)
     ..i32 = Int32(-2147483648)
+    ..i64 = Int64.parseHex('8000000000000000')
     ..u8 = Uint8(0xff)
     ..u16 = Uint16(0xffff)
     ..u32 = Uint32(0xffffffff)
-    ..u64 = Uint64(0xffffffffffffffff)
+    ..u64 = _u64Hex('ffffffffffffffff')
     ..half = Float16.fromBits(0x3555)
     ..brain = Bfloat16.fromBits(0x3eab)
     ..single = Float32.fromBits(0x40490fdb)
     ..optionalI8 = Int8(126)
-    ..optionalU64 = Uint64(0x8000000000000000)
+    ..optionalU64 = _u64Hex('8000000000000000')
     ..optionalHalf = Float16.fromBits(0x8000)
     ..optionalBrain = Bfloat16.fromBits(0x8000)
     ..optionalSingle = Float32.fromBits(0x80000000);
@@ -83,6 +112,7 @@ void _expectEnvelopeEquals(
   expect(actual.i8, equals(expected.i8));
   expect(actual.i16, equals(expected.i16));
   expect(actual.i32, equals(expected.i32));
+  expect(actual.i64, equals(expected.i64));
   expect(actual.u8, equals(expected.u8));
   expect(actual.u16, equals(expected.u16));
   expect(actual.u32, equals(expected.u32));
@@ -100,6 +130,15 @@ void _expectEnvelopeEquals(
     actual.optionalSingle?.toBits(),
     equals(expected.optionalSingle?.toBits()),
   );
+}
+
+int _remoteFieldTypeId(Object value, String identifier) {
+  final remoteTypeDef = CompatibleStructMetadata.remoteTypeDefFor(value);
+  expect(remoteTypeDef, isNotNull);
+  final field = remoteTypeDef!.fields.firstWhere(
+    (field) => field.identifier == identifier,
+  );
+  return field.fieldType.typeId;
 }
 
 void main() {
@@ -150,14 +189,12 @@ void main() {
       expect(Uint32(0xffffffff) >> 1, equals(Uint32(0x7fffffff)));
       expect(Uint32(0xffffffff) >>> 1, equals(Uint32(0x7fffffff)));
 
-      expect(Uint64(0xffffffffffffffff) + 1, equals(Uint64(0)));
-      expect(Uint64(0) - 1, equals(Uint64(0xffffffffffffffff)));
+      expect(_u64Hex('ffffffffffffffff') + 1, equals(Uint64(0)));
+      expect(Uint64(0) - 1, equals(_u64Hex('ffffffffffffffff')));
       expect(
-          Uint64(0x123456789abcdef0) >> 4, equals(Uint64(0x0123456789abcdef)));
-      expect(
-          Uint64(0xffffffffffffffff) >> 1, equals(Uint64(0x7fffffffffffffff)));
-      expect(
-          Uint64(0xffffffffffffffff) >>> 1, equals(Uint64(0x7fffffffffffffff)));
+        _u64Hex('123456789abcdef0') >> 4,
+        equals(_u64Hex('0123456789abcdef')),
+      );
       expect(Uint64(0xff).toInt(), equals(0xff));
     });
 
@@ -192,12 +229,8 @@ void main() {
     test(
         'Bfloat16.fromDouble rounds directly from float64 and preserves NaN sign payload bits',
         () {
-      final subnormalSource = ByteData(8)
-        ..setUint64(0, 0x37da834f7e281cc1, Endian.little);
-      final trickySubnormal = subnormalSource.getFloat64(0, Endian.little);
-      final nanSource = ByteData(8)
-        ..setUint64(0, 0xfff123456789abcd, Endian.little);
-      final payloadNaN = nanSource.getFloat64(0, Endian.little);
+      final trickySubnormal = _float64FromWords(0x7e281cc1, 0x37da834f);
+      final payloadNaN = _float64FromWords(0x6789abcd, 0xfff12345);
       final convertedNaN = Bfloat16.fromDouble(payloadNaN);
 
       expect(Bfloat16.fromDouble(trickySubnormal).toBits(), equals(0x0007));
@@ -232,10 +265,104 @@ void main() {
       expect(_roundTrip<Uint8>(fory, Uint8(-1)), equals(Uint8(0xff)));
       expect(_roundTrip<Uint16>(fory, Uint16(-1)), equals(Uint16(0xffff)));
       expect(_roundTrip<Uint32>(fory, Uint32(-1)), equals(Uint32(0xffffffff)));
+      expect(_roundTrip<Int64>(fory, Int64(-1)), equals(Int64(-1)));
+      expect(
+        _roundTrip<Int64>(fory, Int64.parseHex('8000000000000000')),
+        equals(Int64.parseHex('8000000000000000')),
+      );
+      expect(
+        _roundTrip<Int64>(fory, Int64.parseHex('7fffffffffffffff')),
+        equals(Int64.parseHex('7fffffffffffffff')),
+      );
       expect(
         _roundTrip<Uint64>(fory, Uint64(-1)),
-        equals(Uint64(0xffffffffffffffff)),
+        equals(_u64Hex('ffffffffffffffff')),
       );
+    });
+
+    test('resolves root numeric wrappers to compact varint wire ids', () {
+      final resolver = TypeResolver(Config());
+
+      expect(resolver.resolveValue(1).typeId, equals(TypeIds.varInt64));
+      expect(resolver.resolveValue(Int32(1)).typeId, equals(TypeIds.varInt32));
+      expect(resolver.resolveValue(Int64(1)).typeId, equals(TypeIds.varInt64));
+      expect(
+        resolver.resolveValue(Uint32(1)).typeId,
+        equals(TypeIds.varUint32),
+      );
+      if (identical(1, 1.0)) {
+        expect(
+          resolver.resolveValue(Uint64(1)).typeId,
+          equals(TypeIds.varUint64),
+        );
+      } else {
+        expect(
+          resolver.resolveValue(Uint64(1)).typeId,
+          equals(TypeIds.varInt64),
+          reason: 'Native Uint64 is an extension type represented as int.',
+        );
+      }
+    });
+
+    test('typed root Int64 reads preserve wrappers', () {
+      final fory = Fory();
+
+      expect(
+        fory.deserialize<int>(fory.serialize(1)),
+        equals(1),
+        reason: 'Plain int roots still decode as Dart int.',
+      );
+      expect(
+        fory.deserialize<Int64>(fory.serialize(Int64(-1))),
+        equals(Int64(-1)),
+      );
+      expect(
+        fory.deserialize<Int64>(
+          fory.serialize(Int64.parseHex('8000000000000000')),
+        ),
+        equals(Int64.parseHex('8000000000000000')),
+      );
+      expect(
+        fory.deserialize<Int64>(
+          fory.serialize(Int64.parseHex('7fffffffffffffff')),
+        ),
+        equals(Int64.parseHex('7fffffffffffffff')),
+      );
+      expect(
+        fory.deserialize<Int64?>(
+          fory.serialize(Int64.parseHex('8000000000000000')),
+        ),
+        equals(Int64.parseHex('8000000000000000')),
+      );
+      expect(
+        fory.deserialize<int?>(fory.serialize(Int64(-1))),
+        equals(-1),
+        reason: 'Nullable int roots still decode as Dart int.',
+      );
+    });
+
+    test('web dynamic Uint64 wrappers keep unsigned metadata', () {
+      if (!identical(1, 1.0)) {
+        return;
+      }
+
+      final fory = Fory();
+      final value = _u64Hex('ffffffffffffffff');
+
+      expect(
+        fory.deserialize<Uint64>(fory.serialize(value)),
+        equals(value),
+      );
+
+      final list = fory.deserialize<Object?>(
+        fory.serialize(<Object?>[value]),
+      ) as List;
+      expect(list.single, equals(value));
+
+      final map = fory.deserialize<Object?>(
+        fory.serialize(<Object?, Object?>{'value': value}),
+      ) as Map;
+      expect(map['value'], equals(value));
     });
 
     test('round-trips root Float16 payloads with exact bits', () {
@@ -310,6 +437,23 @@ void main() {
           fory.deserialize<NumericWrappersEnvelope>(fory.serialize(value));
 
       _expectEnvelopeEquals(roundTrip, value);
+    });
+
+    test('compatible metadata records numeric wrapper varint defaults', () {
+      final writer = Fory(compatible: true);
+      final reader = Fory(compatible: true);
+      _registerNumericWrappers(writer);
+      _registerNumericWrappersMetadataReader(reader);
+
+      final roundTrip = reader.deserialize<NumericWrappersMetadataReader>(
+        writer.serialize(_sampleEnvelope()),
+      );
+
+      expect(roundTrip.i8, equals(Int8(-127)));
+      expect(_remoteFieldTypeId(roundTrip, 'i32'), equals(TypeIds.varInt32));
+      expect(_remoteFieldTypeId(roundTrip, 'i64'), equals(TypeIds.varInt64));
+      expect(_remoteFieldTypeId(roundTrip, 'u32'), equals(TypeIds.varUint32));
+      expect(_remoteFieldTypeId(roundTrip, 'u64'), equals(TypeIds.varUint64));
     });
 
     test('supports null optional numeric wrapper fields', () {

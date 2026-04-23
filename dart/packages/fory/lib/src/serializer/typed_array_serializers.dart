@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'dart:typed_data';
+import 'dart:typed_data' as td;
 
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/write_context.dart';
@@ -25,13 +25,19 @@ import 'package:fory/src/meta/type_ids.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
+import 'package:fory/src/types/int64.dart';
+import 'package:fory/src/types/uint64.dart';
 
 void writeTypedArrayBytes(
   WriteContext context,
   Object values,
 ) {
   final bytes = switch (values) {
-    TypedData typed => typed.buffer.asUint8List(
+    Int64List typed => typed.buffer.asUint8List(
+        typed.offsetInBytes,
+        typed.lengthInBytes,
+      ),
+    Uint64List typed => typed.buffer.asUint8List(
         typed.offsetInBytes,
         typed.lengthInBytes,
       ),
@@ -40,6 +46,10 @@ void writeTypedArrayBytes(
         typed.lengthInBytes,
       ),
     Bfloat16List typed => typed.buffer.asUint8List(
+        typed.offsetInBytes,
+        typed.lengthInBytes,
+      ),
+    td.TypedData typed => typed.buffer.asUint8List(
         typed.offsetInBytes,
         typed.lengthInBytes,
       ),
@@ -56,7 +66,7 @@ void writeTypedArrayBytes(
 T readTypedArrayBytes<T>(
   ReadContext context,
   int elementSize,
-  T Function(Uint8List bytes) viewBuilder,
+  T Function(td.Uint8List bytes) viewBuilder,
 ) {
   final byteSize = context.buffer.readVarUint32();
   if (byteSize % elementSize != 0) {
@@ -66,7 +76,7 @@ T readTypedArrayBytes<T>(
   }
   var bytes = context.buffer.readBytes(byteSize);
   if (bytes.offsetInBytes % elementSize != 0) {
-    bytes = Uint8List.fromList(bytes);
+    bytes = td.Uint8List.fromList(bytes);
   }
   return viewBuilder(bytes);
 }
@@ -99,7 +109,7 @@ final class BoolArraySerializer extends Serializer<List<bool>> {
 final class TypedArraySerializer<T> extends Serializer<T> {
   final int typeId;
   final int elementSize;
-  final T Function(Uint8List bytes) viewBuilder;
+  final T Function(td.Uint8List bytes) viewBuilder;
 
   const TypedArraySerializer(
     this.typeId,
@@ -113,7 +123,7 @@ final class TypedArraySerializer<T> extends Serializer<T> {
   @override
   void write(WriteContext context, T value) {
     if (typeId == TypeIds.int8Array) {
-      final bytes = value as Int8List;
+      final bytes = value as td.Int8List;
       context.buffer.writeVarUint32(bytes.length);
       context.buffer.writeBytes(bytes);
       return;
@@ -125,27 +135,27 @@ final class TypedArraySerializer<T> extends Serializer<T> {
   T read(ReadContext context) {
     if (typeId == TypeIds.int8Array) {
       final size = context.buffer.readVarUint32();
-      return Int8List.fromList(context.buffer.readBytes(size)) as T;
+      return td.Int8List.fromList(context.buffer.readBytes(size)) as T;
     }
     return readTypedArrayBytes(context, elementSize, viewBuilder);
   }
 }
 
 const BoolArraySerializer boolArraySerializer = BoolArraySerializer();
-const TypedArraySerializer<Int8List> int8ArraySerializer =
-    TypedArraySerializer<Int8List>(
+const TypedArraySerializer<td.Int8List> int8ArraySerializer =
+    TypedArraySerializer<td.Int8List>(
   TypeIds.int8Array,
   1,
-  Int8List.fromList,
+  td.Int8List.fromList,
 );
-const TypedArraySerializer<Int16List> int16ArraySerializer =
-    TypedArraySerializer<Int16List>(
+const TypedArraySerializer<td.Int16List> int16ArraySerializer =
+    TypedArraySerializer<td.Int16List>(
   TypeIds.int16Array,
   2,
   _asInt16List,
 );
-const TypedArraySerializer<Int32List> int32ArraySerializer =
-    TypedArraySerializer<Int32List>(
+const TypedArraySerializer<td.Int32List> int32ArraySerializer =
+    TypedArraySerializer<td.Int32List>(
   TypeIds.int32Array,
   4,
   _asInt32List,
@@ -156,14 +166,14 @@ const TypedArraySerializer<Int64List> int64ArraySerializer =
   8,
   _asInt64List,
 );
-const TypedArraySerializer<Uint16List> uint16ArraySerializer =
-    TypedArraySerializer<Uint16List>(
+const TypedArraySerializer<td.Uint16List> uint16ArraySerializer =
+    TypedArraySerializer<td.Uint16List>(
   TypeIds.uint16Array,
   2,
   _asUint16List,
 );
-const TypedArraySerializer<Uint32List> uint32ArraySerializer =
-    TypedArraySerializer<Uint32List>(
+const TypedArraySerializer<td.Uint32List> uint32ArraySerializer =
+    TypedArraySerializer<td.Uint32List>(
   TypeIds.uint32Array,
   4,
   _asUint32List,
@@ -186,64 +196,63 @@ const TypedArraySerializer<Bfloat16List> bfloat16ArraySerializer =
   2,
   _asBfloat16List,
 );
-const TypedArraySerializer<Float32List> float32ArraySerializer =
-    TypedArraySerializer<Float32List>(
+const TypedArraySerializer<td.Float32List> float32ArraySerializer =
+    TypedArraySerializer<td.Float32List>(
   TypeIds.float32Array,
   4,
   _asFloat32List,
 );
-const TypedArraySerializer<Float64List> float64ArraySerializer =
-    TypedArraySerializer<Float64List>(
+const TypedArraySerializer<td.Float64List> float64ArraySerializer =
+    TypedArraySerializer<td.Float64List>(
   TypeIds.float64Array,
   8,
   _asFloat64List,
 );
 
-Int16List _asInt16List(Uint8List bytes) => bytes.buffer.asInt16List(
+td.Int16List _asInt16List(td.Uint8List bytes) => bytes.buffer.asInt16List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 2,
     );
 
-Int32List _asInt32List(Uint8List bytes) => bytes.buffer.asInt32List(
+td.Int32List _asInt32List(td.Uint8List bytes) => bytes.buffer.asInt32List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 4,
     );
 
-Int64List _asInt64List(Uint8List bytes) => bytes.buffer.asInt64List(
-      bytes.offsetInBytes,
-      bytes.lengthInBytes ~/ 8,
-    );
+Int64List _asInt64List(td.Uint8List bytes) =>
+    Int64List.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 8);
 
-Uint16List _asUint16List(Uint8List bytes) => bytes.buffer.asUint16List(
+td.Uint16List _asUint16List(td.Uint8List bytes) => bytes.buffer.asUint16List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 2,
     );
 
-Float16List _asFloat16List(Uint8List bytes) => Float16List.view(
+Float16List _asFloat16List(td.Uint8List bytes) => Float16List.view(
     bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes ~/ 2);
 
-Bfloat16List _asBfloat16List(Uint8List bytes) => Bfloat16List.view(
+Bfloat16List _asBfloat16List(td.Uint8List bytes) => Bfloat16List.view(
       bytes.buffer,
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 2,
     );
 
-Uint32List _asUint32List(Uint8List bytes) => bytes.buffer.asUint32List(
+td.Uint32List _asUint32List(td.Uint8List bytes) => bytes.buffer.asUint32List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 4,
     );
 
-Uint64List _asUint64List(Uint8List bytes) => bytes.buffer.asUint64List(
+Uint64List _asUint64List(td.Uint8List bytes) => Uint64List.view(
+      bytes.buffer,
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 8,
     );
 
-Float32List _asFloat32List(Uint8List bytes) => bytes.buffer.asFloat32List(
+td.Float32List _asFloat32List(td.Uint8List bytes) => bytes.buffer.asFloat32List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 4,
     );
 
-Float64List _asFloat64List(Uint8List bytes) => bytes.buffer.asFloat64List(
+td.Float64List _asFloat64List(td.Uint8List bytes) => bytes.buffer.asFloat64List(
       bytes.offsetInBytes,
       bytes.lengthInBytes ~/ 8,
     );

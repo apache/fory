@@ -9,6 +9,11 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Use `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debugging failing Rust tests.
 - Add `-- --nocapture` when you need test output during debugging.
 - Do not set `FORY_PANIC_ON_ERROR=1` when running the full Rust test suite, because some tests assert on error contents.
+- Avoid cosmetic filesystem or module churn when logical module names and call sites are already stable.
+- Operation contexts such as `ReadContext` and `WriteContext` should sit beside the runtime facade and aggregate resolver, buffer, and config state; they are not resolver-owned submodules.
+- Runtime carriers belong in `types/`, and schema or type-hash helpers belong with metadata hashing rather than generic wire/type-id modules.
+- If breakage is explicitly acceptable during a Rust module refactor, rewire macros, tests, and sibling crates directly to the new boundaries instead of adding compatibility re-exports.
+- For panic-safety in hot paths, preserve TLS context reuse. Add scoped guards or owned fallbacks rather than per-call context allocation, and reset reused contexts at entry and successful exit.
 
 ## Key Paths
 

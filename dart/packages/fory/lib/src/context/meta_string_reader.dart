@@ -19,9 +19,10 @@
 
 import 'dart:typed_data';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/types/int64.dart';
 
 typedef _MetaStringWords =
     ({int length, int word0, int word1, int word2, int word3});
@@ -30,8 +31,8 @@ typedef _MetaStringWords =
 final class MetaStringReader {
   final TypeResolver _typeResolver;
   final List<EncodedMetaString> _dynamicReadMetaStrings = <EncodedMetaString>[];
-  final Map<int, EncodedMetaString> _bigMetaStrings =
-      <int, EncodedMetaString>{};
+  final Map<Int64, EncodedMetaString> _bigMetaStrings =
+      <Int64, EncodedMetaString>{};
   final Map<int, List<EncodedMetaString>> _smallMetaStrings =
       <int, List<EncodedMetaString>>{};
 
@@ -79,7 +80,7 @@ final class MetaStringReader {
     }
     final encoded = _typeResolver.internEncodedMetaString(
       buffer.copyBytes(length),
-      encoding: hash & 0xff,
+      encoding: (hash & 0xff).toInt(),
     );
     _bigMetaStrings[hash] = encoded;
     return encoded;

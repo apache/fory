@@ -19,11 +19,12 @@
 
 import 'dart:collection';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/meta/type_ids.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
+import 'package:fory/src/types/int64.dart';
 
 /// Wire-level type metadata for one value.
 final class WireTypeMeta {
@@ -52,18 +53,20 @@ final class WireTypeMeta {
 }
 
 final class TypeHeader {
-  final int value;
+  final Int64 value;
 
   const TypeHeader(this.value);
 
+  @pragma('vm:prefer-inline')
   int readMetaSize(Buffer buffer) {
-    final lowBits = value & 0xff;
+    final lowBits = value.low32 & 0xff;
     if (lowBits == 0xff) {
       return 0xff + buffer.readVarUint32Small14();
     }
     return lowBits;
   }
 
+  @pragma('vm:prefer-inline')
   void skipRemaining(Buffer buffer) {
     buffer.skip(readMetaSize(buffer));
   }
@@ -72,10 +75,12 @@ final class TypeHeader {
 final class ParsedTypeMetaCache {
   static const int maxEntries = 8192;
 
-  final LinkedHashMap<int, TypeInfo> _entries = LinkedHashMap<int, TypeInfo>();
-  int? _lastHeader;
+  final LinkedHashMap<Int64, TypeInfo> _entries =
+      LinkedHashMap<Int64, TypeInfo>();
+  Int64? _lastHeader;
   TypeInfo? _lastResolved;
 
+  @pragma('vm:prefer-inline')
   TypeInfo? lookup(TypeHeader header) {
     if (_lastHeader == header.value) {
       return _lastResolved;
@@ -88,6 +93,7 @@ final class ParsedTypeMetaCache {
     return resolved;
   }
 
+  @pragma('vm:prefer-inline')
   void remember(TypeHeader header, TypeInfo resolved) {
     if (!_entries.containsKey(header.value) && _entries.length >= maxEntries) {
       _entries.remove(_entries.keys.first);

@@ -23,7 +23,7 @@ final class Person {
   Person(this.name, this.age);
 
   final String name;
-  final int age;
+  final Int64 age;
 }
 
 final class PersonSerializer extends Serializer<Person> {
@@ -52,7 +52,7 @@ void main() {
     typeName: 'Person',
   );
 
-  final person = Person('Ada', 36);
+  final person = Person('Ada', Int64(36));
   final bytes = fory.serialize(person);
   final roundTrip = fory.deserialize<Person>(bytes);
   print(roundTrip.name);

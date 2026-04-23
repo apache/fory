@@ -28,6 +28,7 @@ import 'package:fory/src/serializer/serialization_field_info.dart';
 import 'package:fory/src/types/float32.dart';
 import 'package:fory/src/types/int16.dart';
 import 'package:fory/src/types/int32.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/int8.dart';
 import 'package:fory/src/types/uint16.dart';
 import 'package:fory/src/types/uint32.dart';
@@ -64,6 +65,12 @@ Object convertPrimitiveFieldValue(Object value, FieldType fieldType) {
       case TypeIds.int32:
       case TypeIds.varInt32:
         return (value as Int32).value;
+      case TypeIds.int64:
+      case TypeIds.varInt64:
+      case TypeIds.taggedInt64:
+        return _declares64BitWrapper(fieldType)
+            ? value
+            : (value as Int64).toInt();
       case TypeIds.uint8:
         return (value as Uint8).value;
       case TypeIds.uint16:
@@ -74,13 +81,78 @@ Object convertPrimitiveFieldValue(Object value, FieldType fieldType) {
       case TypeIds.uint64:
       case TypeIds.varUint64:
       case TypeIds.taggedUint64:
-        return (value as Uint64).value;
+        return _declares64BitWrapper(fieldType)
+            ? value
+            : (value as Uint64).toInt();
       default:
         return value;
     }
   }
   if (fieldType.type == double && fieldType.typeId == TypeIds.float32) {
     return (value as Float32).value;
+  }
+  return value;
+}
+
+bool _declares64BitWrapper(FieldType fieldType) {
+  final declaredTypeName = fieldType.declaredTypeName;
+  if (declaredTypeName == null) {
+    return false;
+  }
+  return declaredTypeName == 'Int64' ||
+      declaredTypeName.endsWith('.Int64') ||
+      declaredTypeName == 'Uint64' ||
+      declaredTypeName.endsWith('.Uint64');
+}
+
+Object convertResolvedPrimitiveValue(
+  Object value,
+  TypeInfo resolved, [
+  FieldType? fieldType,
+]) {
+  if (fieldType != null &&
+      _declares64BitWrapper(fieldType) &&
+      (resolved.typeId == TypeIds.int64 ||
+          resolved.typeId == TypeIds.varInt64 ||
+          resolved.typeId == TypeIds.taggedInt64 ||
+          resolved.typeId == TypeIds.uint64 ||
+          resolved.typeId == TypeIds.varUint64 ||
+          resolved.typeId == TypeIds.taggedUint64)) {
+    return value;
+  }
+  if (resolved.type == int) {
+    switch (resolved.typeId) {
+      case TypeIds.int8:
+        return (value as Int8).value;
+      case TypeIds.int16:
+        return (value as Int16).value;
+      case TypeIds.int32:
+      case TypeIds.varInt32:
+        return (value as Int32).value;
+      case TypeIds.int64:
+      case TypeIds.varInt64:
+      case TypeIds.taggedInt64:
+        return (value as Int64).toInt();
+      case TypeIds.uint8:
+        return (value as Uint8).value;
+      case TypeIds.uint16:
+        return (value as Uint16).value;
+      case TypeIds.uint32:
+      case TypeIds.varUint32:
+        return (value as Uint32).value;
+      case TypeIds.uint64:
+      case TypeIds.varUint64:
+      case TypeIds.taggedUint64:
+        return (value as Uint64).toInt();
+      default:
+        break;
+    }
+  }
+  if (resolved.type == double && resolved.typeId == TypeIds.float32) {
+    return (value as Float32).value;
+  }
+  if (fieldType != null) {
+    return convertPrimitiveFieldValue(value, fieldType);
   }
   return value;
 }
@@ -284,6 +356,7 @@ FieldInfo mergeCompatibleWriteField(
     }
     return FieldType(
       type: local.type,
+      declaredTypeName: local.declaredTypeName,
       typeId: remote.typeId,
       nullable: remote.nullable,
       ref: remote.ref,
@@ -319,6 +392,7 @@ FieldInfo mergeCompatibleReadField(
     }
     return FieldType(
       type: local.type,
+      declaredTypeName: local.declaredTypeName,
       typeId: remote.typeId,
       nullable: remote.nullable,
       ref: remote.ref,

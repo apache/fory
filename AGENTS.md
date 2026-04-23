@@ -22,6 +22,21 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/languages/scala.md`
 - For protocol or xlang changes, load the relevant language files plus `.agents/docs-and-formatting.md` and `.agents/testing/integration-tests.md`.
 
+## Agent Operating Rules
+
+- Preserve architecture. Do not introduce new layers, parallel flows, or public APIs unless explicitly requested; prefer local repair in the existing owner over shared-infra expansion, and stop if a fix conflicts with an ADR, spec, or invariant.
+- Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
+- Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
+- Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
+- Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
+- Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while manual serializer registration stays explicit.
+- Use semantic naming only. Name things after protocol or domain concepts, not history, runtime origin, or workaround style; avoid vague names such as `Internal`, `java_style_*`, `Runtime`, `Session`, `Plan`, or `Binding` when they do not name the real concept.
+- Keep one implementation path. Do not keep parallel helpers, serializers, harnesses, wrappers, or registration flows for the same concept; extend the existing owner path instead of inventing another one.
+- Follow current scope exactly. The latest explicit user instruction overrides earlier plans, and when scope narrows, remove leaked out-of-scope edits immediately.
+- Verification is required. Match validation to the real ownership path: compile, tests, xlang, native-image, non-VM compile, benchmarks, and remote CI as applicable; reasoning alone is never enough.
+- Finish the whole surface. A feature or behavior change is incomplete until code, tests, docs, exports, examples, and build wiring agree, unless the user explicitly defers part of that surface.
+- Keep task boundaries strict. Review tasks do not edit code, analysis-only tasks do not silently turn into implementation, and active-branch fixes must land in the active branch/workspace.
+
 ## Repo-Wide Hard Rules
 
 - Do not preserve legacy, dead, or useless code, tests, or docs unless the user explicitly requests it.
@@ -39,6 +54,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Tests must exercise the actual code you wrote or changed. Do not write tests that pass by exercising a pre-existing code path that produces similar-looking results. Before writing a test, identify the exact new code path (annotation, codegen output, new API) and verify the test would fail if that code path were removed. When the change involves codegen or annotations, the test must use those annotations on real structs, run through the codegen pipeline, and verify the generated output drives the expected runtime behavior.
 - When reading code, skip files not tracked by git by default unless you generated them yourself or the task explicitly requires them.
 - Maintain cross-language consistency while respecting language-specific idioms.
+- Keep one active ownership path per concept. Do not leave duplicate serializers, resolvers, helpers, or registration paths for the same type family unless the split is deliberate and documented.
+- Name new or touched APIs, helpers, and tests after protocol concepts, data-model semantics, or user-visible behavior; avoid names based on runtime origin, bug history, storage details, or temporary workarounds.
+- For public cross-runtime or protocol features, update runtime support, compiler/codegen wiring, public exports, docs, specs/type mappings, integration fixtures, and tests together unless the user explicitly defers part of that scope.
 - Do not introduce checked exceptions in new code or new APIs.
 - Do not use `ThreadLocal` or other ambient runtime-context patterns in Java runtime code. `WriteContext`, `ReadContext`, and `CopyContext` state must stay explicit, generated serializers must not retain context fields, and `Fory` must stay a root-operation facade rather than accumulating serializer/runtime convenience state.
 - When a serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`. Keep reflection for dynamic or general construction paths only.
@@ -60,6 +78,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 ## Shared Engineering Expectations
 
 - Favor zero-copy techniques, JIT or codegen opportunities, and cache-friendly memory access patterns in performance-critical paths.
+- Keep hot paths allocation-minimal. Avoid per-call or per-element object allocation, boxing, wrapper round-trips, callbacks, iterator carriers, or holder objects unless there is a measured reason and no lower-allocation design preserves the same behavior.
+- Keep hot-path control flow direct and predictable. Hoist repeated buffer/cache/state lookups into locals for multi-step operations, keep cold rebuild or restoration logic on slow branches, and avoid tiny forwarding helpers that only obscure the owner.
+- In unified native/xlang hot paths, branch only where the wire format or protocol behavior actually differs. Do not add mode booleans or mode-specific helper parameters for equivalent behavior.
 - Public APIs must be well-documented and easy to understand.
 - Implement comprehensive error handling with meaningful messages.
 - Use strong typing and generics appropriately.
@@ -83,6 +104,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Use `integration_tests/` for cross-language compatibility validation when behavior crosses runtimes.
 - If xlang behavior or type mapping changes, run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`.
 - If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
+- For performance regressions or optimizations, profile or otherwise measure the current branch and a fresh `apache/main` baseline before changing code; optimize the measured hotspot, not guessed code.
+- Do not change protocol behavior, benchmark payloads, or public APIs solely to manufacture performance wins.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.
 - For performance-optimization rounds, append the hypothesis, change, benchmark command, before/after numbers, and keep/revert decision to `tasks/perf_optimization_rounds.md`.
 - For refactors on performance-sensitive code, validate not only tests but also that no implementation-strategy drift was introduced relative to `apache/main` unless the user explicitly asked for that change.

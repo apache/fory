@@ -10,6 +10,12 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
 - Use `ENABLE_FORY_CYTHON_SERIALIZATION=0` first when debugging protocol behavior.
 - Python mode is the pure-Python xlang implementation and is mainly for debugging and testing.
 - Cython mode is the default high-performance implementation.
+- Cython mode owns the hot runtime path. Do not duplicate core runtime types between Python and Cython, tunnel Python facade methods into hidden Cython internals, or keep dead shims unless the user explicitly needs a compatibility module path.
+- Use explicit Cython fields and methods for fixed hot-path shapes. Avoid `__getattr__`, generic `object` fields, public bridge internals, or `Fory` backreferences where ownership can stay explicit.
+- Keep Python and Cython context/ref-tracking branch conditions and stack mutations semantically aligned unless a documented intentional difference exists.
+- Public value constructors should accept normal Python values. Raw-bit, raw-buffer, and memoryview entry points should be explicit low-level APIs, and packed carriers should expose the buffer protocol from the actual storage owner when appropriate.
+- When debugging runtime or benchmark behavior, install the local package into the exact interpreter under test instead of relying on mixed `PYTHONPATH` state.
+- For wheel or extension pipeline changes, derive extension-module paths from current build targets, packaging config, or wheel payload discovery rather than historical module names.
 - Keep new Python test names compact and behavior-focused; avoid sentence-length names that restate setup details already obvious from the test body.
 - `ENABLE_FORY_DEBUG_OUTPUT=1` enables detailed struct serialization and deserialization logs.
 

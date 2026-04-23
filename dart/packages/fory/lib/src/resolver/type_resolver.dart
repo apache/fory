@@ -20,7 +20,7 @@
 import 'dart:collection';
 import 'dart:typed_data';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
@@ -48,6 +48,7 @@ import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/float32.dart';
 import 'package:fory/src/types/int16.dart';
 import 'package:fory/src/types/int32.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/int8.dart';
 import 'package:fory/src/types/local_date.dart';
 import 'package:fory/src/types/timestamp.dart';
@@ -323,6 +324,13 @@ final class TypeResolver {
     if (value is Int32) {
       return _builtin(Int32, TypeIds.varInt32);
     }
+    // Native Int64 is represented as `int`; web still needs this branch to
+    // keep explicit wrapper values on the Int64 API while using varint64 wire
+    // format by default, the same as plain Dart int.
+    // ignore: unnecessary_type_check
+    if (value is Int64 && value is! int) {
+      return _builtin(Int64, TypeIds.varInt64);
+    }
     if (value is int) {
       return _builtin(int, TypeIds.varInt64);
     }
@@ -333,10 +341,10 @@ final class TypeResolver {
       return _builtin(Uint16, TypeIds.uint16);
     }
     if (value is Uint32) {
-      return _builtin(Uint32, TypeIds.uint32);
+      return _builtin(Uint32, TypeIds.varUint32);
     }
     if (value is Uint64) {
-      return _builtin(Uint64, TypeIds.uint64);
+      return _builtin(Uint64, TypeIds.varUint64);
     }
     if (value is Float16) {
       return _builtin(Float16, TypeIds.float16);
@@ -467,7 +475,7 @@ final class TypeResolver {
       case TypeIds.bfloat16Array:
       case TypeIds.float32Array:
       case TypeIds.float64Array:
-        return _builtin(fieldType.type, fieldType.typeId);
+        return _builtin(_builtinTypeForFieldType(fieldType), fieldType.typeId);
       default:
         return _registeredByType[fieldType.type];
     }
@@ -622,6 +630,7 @@ final class TypeResolver {
     );
   }
 
+  @pragma('vm:prefer-inline')
   TypeInfo readTypeMeta(
     Buffer buffer, {
     TypeInfo? expectedNamedType,
@@ -646,6 +655,7 @@ final class TypeResolver {
       readTypeDef: () => _readTypeDef(
         buffer,
         sharedTypes: sharedTypes,
+        expectedType: expectedNamedType,
       ),
       readPackageMetaString: ([expected]) =>
           metaStringReader.readMetaString(buffer, expected),
@@ -847,9 +857,11 @@ final class TypeResolver {
     return fieldType.ref ? TypeIds.unknown : fieldType.typeId;
   }
 
+  @pragma('vm:prefer-inline')
   WireTypeMeta _readTypeDef(
     Buffer buffer, {
     required List<TypeInfo> sharedTypes,
+    TypeInfo? expectedType,
   }) {
     final marker = buffer.readVarUint32Small14();
     final isRef = (marker & 1) == 1;
@@ -858,6 +870,12 @@ final class TypeResolver {
       return wireTypeMetaForResolved(sharedTypes[index]);
     }
     final header = TypeHeader(buffer.readInt64());
+    final expectedTypeDef = expectedType?.typeDef;
+    if (expectedTypeDef != null && expectedTypeDef.header == header.value) {
+      header.skipRemaining(buffer);
+      sharedTypes.add(expectedType!);
+      return wireTypeMetaForResolved(expectedType);
+    }
     final cached = _parsedTypeMetaCache.lookup(header);
     if (cached != null) {
       header.skipRemaining(buffer);
@@ -988,6 +1006,7 @@ final class TypeResolver {
     }
     return FieldType(
       type: Object,
+      declaredTypeName: null,
       typeId: typeId,
       nullable: nullable,
       ref: ref,
@@ -1019,11 +1038,11 @@ final class TypeResolver {
       case TypeIds.varInt32:
         return _builtin(Int32, TypeIds.varInt32);
       case TypeIds.int64:
-        return _builtin(int, TypeIds.int64);
+        return _builtin(Int64, TypeIds.int64);
       case TypeIds.varInt64:
         return _builtin(int, TypeIds.varInt64);
       case TypeIds.taggedInt64:
-        return _builtin(int, TypeIds.taggedInt64);
+        return _builtin(Int64, TypeIds.taggedInt64);
       case TypeIds.uint8:
         return _builtin(Uint8, TypeIds.uint8);
       case TypeIds.uint16:
@@ -1095,6 +1114,14 @@ final class TypeResolver {
       default:
         throw StateError('Unsupported builtin wire type id $wireTypeId.');
     }
+  }
+
+  TypeInfo resolveExpectedRootWireType<T>(TypeInfo resolved) {
+    if ((_isType<T, Int64>() || _isType<T, Int64?>()) &&
+        resolved.typeId == TypeIds.varInt64) {
+      return _builtin(Int64, TypeIds.varInt64);
+    }
+    return resolved;
   }
 
   TypeInfo _builtin(Type type, int typeId) {
@@ -1238,8 +1265,11 @@ final class TypeResolver {
     if (type == Int32) {
       return TypeIds.varInt32;
     }
-    if (type == int) {
+    if (type == Int64) {
       return TypeIds.varInt64;
+    }
+    if (type == Int64List) {
+      return TypeIds.int64Array;
     }
     if (type == Uint8) {
       return TypeIds.uint8;
@@ -1248,10 +1278,10 @@ final class TypeResolver {
       return TypeIds.uint16;
     }
     if (type == Uint32) {
-      return TypeIds.uint32;
+      return TypeIds.varUint32;
     }
     if (type == Uint64) {
-      return TypeIds.uint64;
+      return TypeIds.varUint64;
     }
     if (type == Uint64List) {
       return TypeIds.uint64Array;
@@ -1422,6 +1452,43 @@ final class TypeResolver {
     return true;
   }
 
+  Type _builtinTypeForFieldType(FieldType fieldType) {
+    switch (fieldType.typeId) {
+      case TypeIds.int64:
+      case TypeIds.varInt64:
+      case TypeIds.taggedInt64:
+      case TypeIds.uint64:
+      case TypeIds.varUint64:
+      case TypeIds.taggedUint64:
+      case TypeIds.int64Array:
+      case TypeIds.uint64Array:
+        break;
+      default:
+        return fieldType.type;
+    }
+    final declaredTypeName = fieldType.declaredTypeName;
+    if (declaredTypeName != null) {
+      if (_matchesDeclaredTypeName(declaredTypeName, 'Int64')) {
+        return Int64;
+      }
+      if (_matchesDeclaredTypeName(declaredTypeName, 'Uint64')) {
+        return Uint64;
+      }
+      if (_matchesDeclaredTypeName(declaredTypeName, 'Int64List')) {
+        return Int64List;
+      }
+      if (_matchesDeclaredTypeName(declaredTypeName, 'Uint64List')) {
+        return Uint64List;
+      }
+    }
+    return fieldType.type;
+  }
+
+  bool _matchesDeclaredTypeName(String declaredTypeName, String typeName) {
+    return declaredTypeName == typeName ||
+        declaredTypeName.endsWith('.$typeName');
+  }
+
   bool _matchesNamedWireType(TypeInfo resolved, int wireTypeId) {
     if (!resolved.isNamed) {
       return false;
@@ -1440,6 +1507,8 @@ final class TypeResolver {
     }
   }
 }
+
+bool _isType<T, U>() => T == U;
 
 final class _BuiltinKey {
   final Type type;

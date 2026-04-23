@@ -962,10 +962,13 @@ Map<String, Node> byName = <String, Node>{};
 
 ### Registration
 
-Each schema includes a registration helper that handles all types in the file and transitively registers imported types:
+Each generated Dart library includes a registration helper named after the input
+file, such as `AddressbookFory` for `addressbook.dart`. The helper handles all
+generated types in that file and transitively registers imported generated
+types:
 
 ```dart
-abstract final class ForyRegistration {
+abstract final class AddressbookFory {
   static void register(
     Fory fory,
     Type type, {
@@ -990,8 +993,8 @@ import 'generated/addressbook/addressbook.dart';
 
 void main() {
   final fory = Fory();
-  ForyRegistration.register(fory, Person, id: 100);
-  ForyRegistration.register(fory, Dog, id: 104);
+  AddressbookFory.register(fory, Person, id: 100);
+  AddressbookFory.register(fory, Dog, id: 104);
   // ...
 
   final person = Person()

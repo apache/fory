@@ -30,7 +30,7 @@ export 'src/annotation/fory_struct.dart';
 export 'src/annotation/fory_union.dart';
 export 'src/annotation/type_spec.dart';
 export 'src/annotation/numeric_types.dart';
-export 'src/buffer.dart'
+export 'src/memory/buffer.dart'
     hide
         bufferByteData,
         bufferBytes,
@@ -55,6 +55,7 @@ export 'src/types/float16.dart';
 export 'src/types/float32.dart';
 export 'src/types/int16.dart';
 export 'src/types/int32.dart';
+export 'src/types/int64.dart';
 export 'src/types/int8.dart';
 export 'src/types/local_date.dart';
 export 'src/types/timestamp.dart';

@@ -22,6 +22,58 @@ import 'dart:convert';
 import 'package:fory/fory.dart';
 import 'package:test/test.dart';
 
+part 'collection_serializer_test.fory.dart';
+
+final Int64 _int64Min = Int64.parseHex('8000000000000000');
+final Int64 _int64Max = Int64.parseHex('7fffffffffffffff');
+final Uint64 _uint64HighBit = Uint64.parseHex('8000000000000000');
+final Uint64 _uint64Max = Uint64.parseHex('ffffffffffffffff');
+
+@ForyStruct()
+class NumericContainerEnvelope {
+  NumericContainerEnvelope();
+
+  List<Int64> int64s = <Int64>[];
+  List<Uint64> uint64s = <Uint64>[];
+  Map<String, Int64> int64ByName = <String, Int64>{};
+  Map<String, Uint64> uint64ByName = <String, Uint64>{};
+}
+
+void _registerNumericContainerEnvelope(Fory fory) {
+  CollectionSerializerTestFory.register(
+    fory,
+    NumericContainerEnvelope,
+    namespace: 'test',
+    typeName: 'NumericContainerEnvelope',
+  );
+}
+
+NumericContainerEnvelope _numericContainerEnvelope() {
+  return NumericContainerEnvelope()
+    ..int64s = <Int64>[Int64(-1), Int64(0), _int64Min, _int64Max]
+    ..uint64s = <Uint64>[Uint64(0), Uint64(1), _uint64HighBit, _uint64Max]
+    ..int64ByName = <String, Int64>{
+      'negative': Int64(-1),
+      'min': _int64Min,
+      'max': _int64Max,
+    }
+    ..uint64ByName = <String, Uint64>{
+      'zero': Uint64(0),
+      'highBit': _uint64HighBit,
+      'max': _uint64Max,
+    };
+}
+
+void _expectNumericContainerEqual(
+  NumericContainerEnvelope actual,
+  NumericContainerEnvelope expected,
+) {
+  expect(actual.int64s, equals(expected.int64s));
+  expect(actual.uint64s, equals(expected.uint64s));
+  expect(actual.int64ByName, equals(expected.int64ByName));
+  expect(actual.uint64ByName, equals(expected.uint64ByName));
+}
+
 void main() {
   group('collection serializer', () {
     test('round-trips empty root containers', () {
@@ -259,6 +311,19 @@ void main() {
         final roundTrip = fory.deserializeFrom<Object?>(buffer);
         expect(_describeValue(roundTrip), equals(_describeValue(value)));
         expect(buffer.readableBytes, equals(0));
+      }
+    });
+
+    test('round-trips generated Int64 and Uint64 list/map fields', () {
+      for (final compatible in <bool>[false, true]) {
+        final fory = Fory(compatible: compatible);
+        _registerNumericContainerEnvelope(fory);
+
+        final value = _numericContainerEnvelope();
+        final roundTrip = fory.deserialize<NumericContainerEnvelope>(
+          fory.serialize(value),
+        );
+        _expectNumericContainerEqual(roundTrip, value);
       }
     });
 

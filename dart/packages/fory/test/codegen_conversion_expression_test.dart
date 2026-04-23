@@ -15,6 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+@TestOn('vm')
+library;
+
 import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 import 'package:fory/fory.dart';

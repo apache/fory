@@ -13,6 +13,8 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
 - Wrap error checks with `FORY_PREDICT_FALSE` for branch prediction.
 - Continue on trivial errors; return early only for critical errors such as buffer overflow.
 - Put private methods last in class definitions, immediately before private fields.
+- Do not redesign alias-based or low-level public type shapes to add convenience methods unless the user explicitly asks for that API change.
+- For cross-language feature ports, match protocol behavior but use idiomatic C++ ownership and layering instead of mirroring Java structure literally.
 
 ## Key Paths
 

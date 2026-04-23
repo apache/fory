@@ -110,7 +110,10 @@ class Sample {
 
 Available annotations: `@Int32Type`, `@Int64Type`, `@Uint8Type`, `@Uint16Type`, `@Uint32Type`, `@Uint64Type`.
 
-Alternatively, use the explicit wrapper types (`Int32`, `UInt32`, etc.) described in [Supported Types](supported-types.md).
+Alternatively, use explicit wrapper types such as `Int32`, `Int64`, `Uint32`,
+and `Uint64` as described in [Supported Types](supported-types.md). Wrappers use
+compact varint encodings by default; use annotations or generated field
+metadata when a fixed-width or tagged encoding is required.
 
 ## Aligning Fields Across Languages
 

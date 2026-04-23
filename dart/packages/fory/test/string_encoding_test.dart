@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/util/string_util.dart';
 import 'package:test/test.dart';
 

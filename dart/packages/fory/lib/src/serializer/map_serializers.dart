@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/context/ref_writer.dart';
 import 'package:fory/src/context/write_context.dart';

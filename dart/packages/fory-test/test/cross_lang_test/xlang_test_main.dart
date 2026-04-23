@@ -244,8 +244,8 @@ void _verifyDecimalCase() {
 
 Uint8List _hashBytes(int low, int high) {
   final buffer = Buffer();
-  buffer.writeInt64(low);
-  buffer.writeInt64(high);
+  buffer.writeInt64(Int64(low));
+  buffer.writeInt64(Int64(high));
   return buffer.toBytes();
 }
 

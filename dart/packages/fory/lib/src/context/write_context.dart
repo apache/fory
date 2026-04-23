@@ -23,7 +23,7 @@ import 'dart:collection';
 
 import 'package:meta/meta.dart';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_writer.dart';
 import 'package:fory/src/context/ref_writer.dart';
@@ -40,8 +40,10 @@ import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/local_date.dart';
 import 'package:fory/src/types/timestamp.dart';
+import 'package:fory/src/types/uint64.dart';
 
 /// Write-side serializer context.
 ///
@@ -105,7 +107,7 @@ final class WriteContext {
   set structWriteSlots(StructWriteSlots? value) {
     _structWriteSlots = value;
   }
-  
+
   int get depth => _depth;
 
   /// Records entry into one more nested write frame.
@@ -137,7 +139,7 @@ final class WriteContext {
   void writeInt32(int value) => _buffer.writeInt32(value);
 
   /// Writes a signed little-endian 64-bit integer.
-  void writeInt64(int value) => _buffer.writeInt64(value);
+  void writeInt64(Int64 value) => _buffer.writeInt64(value);
 
   /// Writes a half-precision floating-point value.
   void writeFloat16(Float16 value) => _buffer.writeFloat16(value);
@@ -158,16 +160,16 @@ final class WriteContext {
   void writeVarUint32(int value) => _buffer.writeVarUint32(value);
 
   /// Writes a zig-zag encoded signed 64-bit varint.
-  void writeVarInt64(int value) => _buffer.writeVarInt64(value);
+  void writeVarInt64(Int64 value) => _buffer.writeVarInt64(value);
 
   /// Writes a tagged signed 64-bit integer.
-  void writeTaggedInt64(int value) => _buffer.writeTaggedInt64(value);
+  void writeTaggedInt64(Int64 value) => _buffer.writeTaggedInt64(value);
 
   /// Writes an unsigned 64-bit varint.
-  void writeVarUint64(int value) => _buffer.writeVarUint64(value);
+  void writeVarUint64(Uint64 value) => _buffer.writeVarUint64(value);
 
   /// Writes a tagged unsigned 64-bit integer.
-  void writeTaggedUint64(int value) => _buffer.writeTaggedUint64(value);
+  void writeTaggedUint64(Uint64 value) => _buffer.writeTaggedUint64(value);
 
   /// Writes a non-null string payload without adding type metadata.
   void writeString(String value) => StringSerializer.writePayload(this, value);

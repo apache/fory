@@ -132,3 +132,5 @@ test.md
 benchmarks/dart/profile_output
 **/*.fory.dart
 **/pubspec.lock
+
+**/tmp/*

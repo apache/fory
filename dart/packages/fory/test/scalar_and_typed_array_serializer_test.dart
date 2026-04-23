@@ -24,6 +24,14 @@ import 'package:test/test.dart';
 
 part 'scalar_and_typed_array_serializer_test.fory.dart';
 
+Timestamp _timestamp(int seconds, int nanoseconds) =>
+    Timestamp(Int64(seconds), nanoseconds);
+
+final Int64 _int64Min = Int64.parseHex('8000000000000000');
+final Int64 _int64Max = Int64.parseHex('7fffffffffffffff');
+final Uint64 _uint64HighBit = Uint64.parseHex('8000000000000000');
+final Uint64 _uint64Max = Uint64.parseHex('ffffffffffffffff');
+
 @ForyStruct()
 class ScalarAndArrayEnvelope {
   ScalarAndArrayEnvelope();
@@ -45,7 +53,7 @@ class ScalarAndArrayEnvelope {
   Bfloat16 brain = Bfloat16(0);
   Float32 single = Float32(0);
   LocalDate date = const LocalDate(1970, 1, 1);
-  Timestamp timestamp = const Timestamp(0, 0);
+  Timestamp timestamp = _timestamp(0, 0);
 }
 
 void _registerScalarTypes(Fory fory) {
@@ -67,10 +75,13 @@ ScalarAndArrayEnvelope _sampleEnvelope() {
     ..int8s = Int8List.fromList(<int>[-128, -1, 0, 127])
     ..int16s = Int16List.fromList(<int>[-32768, -1, 0, 32767])
     ..int32s = Int32List.fromList(<int>[-1, 0, 1, 123456789])
-    ..int64s = Int64List.fromList(<int>[-1, 0, 1, 1 << 40])
+    ..int64s =
+        Int64List.fromList(<Object>[-1, 0, 1, 1 << 40, _int64Min, _int64Max])
     ..uint16s = Uint16List.fromList(<int>[0, 1, 65535])
     ..uint32s = Uint32List.fromList(<int>[0, 1, 0x7fffffff])
-    ..uint64s = Uint64List.fromList(<int>[0, 1, 1 << 40])
+    ..uint64s = Uint64List.fromList(
+      <Object>[0, 1, 1 << 40, _uint64HighBit, _uint64Max],
+    )
     ..float16s = Float16List.fromList(<Float16>[
       Float16.fromBits(0x8000),
       Float16.fromBits(0x3555),
@@ -87,8 +98,8 @@ ScalarAndArrayEnvelope _sampleEnvelope() {
     ..half = const Float16.fromBits(0x8000)
     ..brain = const Bfloat16.fromBits(0x7fc0)
     ..single = Float32(3.5)
-    ..date = LocalDate.fromEpochDay(-1)
-    ..timestamp = const Timestamp(-123, 456789123);
+    ..date = LocalDate.fromEpochDay(Int64(-1))
+    ..timestamp = _timestamp(-123, 456789123);
 }
 
 void _expectUint8ListEquals(Uint8List actual, Uint8List expected) {
@@ -197,7 +208,7 @@ void main() {
 
       final beforeEpoch = _roundTripRoot<LocalDate>(
         fory,
-        LocalDate.fromEpochDay(-1),
+        LocalDate.fromEpochDay(Int64(-1)),
       );
       final leapDay = _roundTripRoot<LocalDate>(
         fory,
@@ -205,18 +216,18 @@ void main() {
       );
       final negativeTimestamp = _roundTripRoot<DateTime>(
         fory,
-        const Timestamp(-123, 456789000),
+        _timestamp(-123, 456789000),
       );
       final fromDateTime = _roundTripRoot<DateTime>(
         fory,
         Timestamp.fromDateTime(DateTime.utc(2024, 1, 2, 3, 4, 5, 6, 700)),
       );
 
-      expect(beforeEpoch, equals(LocalDate.fromEpochDay(-1)));
+      expect(beforeEpoch, equals(LocalDate.fromEpochDay(Int64(-1))));
       expect(leapDay, equals(const LocalDate(2024, 2, 29)));
       expect(
         negativeTimestamp,
-        equals(const Timestamp(-123, 456789000).toDateTime()),
+        equals(_timestamp(-123, 456789000).toDateTime()),
       );
       expect(
         fromDateTime,
@@ -255,9 +266,23 @@ void main() {
       _expectInt64ListEquals(
         _roundTripRoot<Int64List>(
           fory,
-          Int64List.fromList(<int>[-1, 0, 1, 1 << 40]),
+          Int64List.fromList(<Object>[
+            -1,
+            0,
+            1,
+            1 << 40,
+            _int64Min,
+            _int64Max,
+          ]),
         ),
-        Int64List.fromList(<int>[-1, 0, 1, 1 << 40]),
+        Int64List.fromList(<Object>[
+          -1,
+          0,
+          1,
+          1 << 40,
+          _int64Min,
+          _int64Max,
+        ]),
       );
       _expectUint16ListEquals(
         _roundTripRoot<Uint16List>(
@@ -276,9 +301,21 @@ void main() {
       _expectUint64ListEquals(
         _roundTripRoot<Uint64List>(
           fory,
-          Uint64List.fromList(<int>[0, 1, 1 << 40]),
+          Uint64List.fromList(<Object>[
+            0,
+            1,
+            1 << 40,
+            _uint64HighBit,
+            _uint64Max,
+          ]),
         ),
-        Uint64List.fromList(<int>[0, 1, 1 << 40]),
+        Uint64List.fromList(<Object>[
+          0,
+          1,
+          1 << 40,
+          _uint64HighBit,
+          _uint64Max,
+        ]),
       );
       _expectFloat16ListEquals(
         _roundTripRoot<Float16List>(

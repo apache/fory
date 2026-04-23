@@ -17,6 +17,8 @@
  * under the License.
  */
 
+import 'package:fory/src/types/int64.dart';
+
 /// Calendar date without time-of-day or time-zone information.
 final class LocalDate implements Comparable<LocalDate> {
   /// Year component.
@@ -32,9 +34,9 @@ final class LocalDate implements Comparable<LocalDate> {
   const LocalDate(this.year, this.month, this.day);
 
   /// Creates a date from the xlang epoch-day representation.
-  factory LocalDate.fromEpochDay(int epochDay) {
+  factory LocalDate.fromEpochDay(Int64 epochDay) {
     final instant = DateTime.fromMillisecondsSinceEpoch(
-      epochDay * Duration.millisecondsPerDay,
+      epochDay.toInt() * Duration.millisecondsPerDay,
       isUtc: true,
     );
     return LocalDate(instant.year, instant.month, instant.day);
@@ -47,9 +49,10 @@ final class LocalDate implements Comparable<LocalDate> {
   }
 
   /// Converts this date to xlang epoch-day form.
-  int toEpochDay() =>
-      DateTime.utc(year, month, day).millisecondsSinceEpoch ~/
-      Duration.millisecondsPerDay;
+  Int64 toEpochDay() => Int64(
+        DateTime.utc(year, month, day).millisecondsSinceEpoch ~/
+            Duration.millisecondsPerDay,
+      );
 
   /// Converts this date to a UTC [DateTime] at midnight.
   DateTime toDateTime() => DateTime.utc(year, month, day);

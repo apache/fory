@@ -19,7 +19,7 @@
 
 import 'package:meta/meta.dart';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/ref_reader.dart';
@@ -32,12 +32,15 @@ import 'package:fory/src/serializer/map_serializers.dart';
 import 'package:fory/src/serializer/primitive_serializers.dart';
 import 'package:fory/src/serializer/scalar_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
+import 'package:fory/src/serializer/serializer_support.dart';
 import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/types/bfloat16.dart';
 import 'package:fory/src/types/float16.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/timestamp.dart';
+import 'package:fory/src/types/uint64.dart';
 
 /// Read-side serializer context.
 ///
@@ -96,12 +99,14 @@ final class ReadContext {
   }
 
   @internal
+  @pragma('vm:prefer-inline')
   TypeInfo readTypeMetaValue([
     TypeInfo? expectedNamedType,
   ]) =>
       _readTypeMeta(expectedNamedType);
 
   @internal
+  @pragma('vm:prefer-inline')
   Object? readSerializerPayload(
       Serializer<Object?> serializer, TypeInfo resolved,
       {required bool hasCurrentPreservedRef}) {
@@ -124,10 +129,11 @@ final class ReadContext {
     }
     return value;
   }
-  
+
   int get depth => _depth;
 
   /// Records entry into one more nested read frame.
+  @pragma('vm:prefer-inline')
   void increaseDepth() {
     _depth += 1;
     if (_depth > config.maxDepth) {
@@ -136,6 +142,7 @@ final class ReadContext {
   }
 
   /// Records exit from a nested read frame.
+  @pragma('vm:prefer-inline')
   void decreaseDepth() {
     _depth -= 1;
   }
@@ -156,7 +163,7 @@ final class ReadContext {
   int readInt32() => _buffer.readInt32();
 
   /// Reads a signed little-endian 64-bit integer.
-  int readInt64() => _buffer.readInt64();
+  Int64 readInt64() => _buffer.readInt64();
 
   /// Reads a half-precision floating-point value.
   Float16 readFloat16() => _buffer.readFloat16();
@@ -177,23 +184,25 @@ final class ReadContext {
   int readVarUint32() => _buffer.readVarUint32();
 
   /// Reads a zig-zag encoded signed 64-bit varint.
-  int readVarInt64() => _buffer.readVarInt64();
+  Int64 readVarInt64() => _buffer.readVarInt64();
 
   /// Reads a tagged signed 64-bit integer.
-  int readTaggedInt64() => _buffer.readTaggedInt64();
+  Int64 readTaggedInt64() => _buffer.readTaggedInt64();
 
   /// Reads an unsigned 64-bit varint.
-  int readVarUint64() => _buffer.readVarUint64();
+  Uint64 readVarUint64() => _buffer.readVarUint64();
 
   /// Reads a tagged unsigned 64-bit integer.
-  int readTaggedUint64() => _buffer.readTaggedUint64();
+  Uint64 readTaggedUint64() => _buffer.readTaggedUint64();
 
   /// Binds [value] to the most recently preserved Ref slot.
+  @pragma('vm:prefer-inline')
   void reference(Object? value) {
     _refReader.reference(value);
   }
 
   /// Reads a non-null string payload without ref/null handling.
+  @pragma('vm:prefer-inline')
   String readString() => StringSerializer.readPayload(this);
 
   /// Reads a ref-or-null header and resolves back-references immediately.
@@ -219,6 +228,17 @@ final class ReadContext {
 
   /// Reads a nullable value using Ref semantics and wire type metadata.
   Object? readRef() {
+    return _readRefWithResolved((resolved) => resolved);
+  }
+
+  /// Reads a root value using Ref semantics and expected root type [T].
+  Object? readRefAs<T>() {
+    return _readRefWithResolved(
+      (resolved) => _typeResolver.resolveExpectedRootWireType<T>(resolved),
+    );
+  }
+
+  Object? _readRefWithResolved(TypeInfo Function(TypeInfo) resolveRootType) {
     final flag = _refReader.tryPreserveRefId(_buffer);
     final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
     if (flag == RefWriter.nullFlag) {
@@ -227,7 +247,7 @@ final class ReadContext {
     if (flag == RefWriter.refFlag) {
       return _refReader.getReadRef();
     }
-    final resolved = _readTypeMeta();
+    final resolved = resolveRootType(_readTypeMeta());
     final rootPreservedRefId = preservedRefId == null &&
             flag == RefWriter.notNullValueFlag &&
             _depth == 0 &&
@@ -274,6 +294,7 @@ final class ReadContext {
       PrimitiveSerializer.readPayload(this, typeId);
 
   @internal
+  @pragma('vm:prefer-inline')
   Object? readResolvedValue(TypeInfo resolved, FieldType? declaredFieldType,
       {bool hasPreservedRef = false}) {
     if (!_tracksDepth(resolved)) {
@@ -299,7 +320,11 @@ final class ReadContext {
     required bool hasPreservedRef,
   }) {
     if (TypeIds.isPrimitive(resolved.typeId)) {
-      return PrimitiveSerializer.readPayload(this, resolved.typeId);
+      return convertResolvedPrimitiveValue(
+        PrimitiveSerializer.readPayload(this, resolved.typeId),
+        resolved,
+        declaredFieldType,
+      );
     }
     switch (resolved.typeId) {
       case TypeIds.none:
@@ -387,6 +412,7 @@ final class ReadContext {
     }
   }
 
+  @pragma('vm:prefer-inline')
   TypeInfo _readTypeMeta([
     TypeInfo? expectedNamedType,
   ]) {
@@ -398,6 +424,7 @@ final class ReadContext {
     );
   }
 
+  @pragma('vm:prefer-inline')
   bool _tracksDepth(TypeInfo resolved) {
     if (TypeIds.isContainer(resolved.typeId)) {
       return true;

@@ -8,6 +8,7 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - Changes under `csharp/` must pass formatting and tests.
 - Fory C# requires .NET SDK `8.0+` and C# `12+`.
 - Use `dotnet format` to keep C# code style consistent.
+- When extending C# tests from Java references, prioritize xlang spec behavior and the public C# contract before adding complex Java-specific parity cases.
 
 ## Commands
 

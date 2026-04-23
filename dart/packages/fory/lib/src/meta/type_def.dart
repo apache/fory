@@ -20,11 +20,12 @@
 import 'dart:typed_data';
 
 import 'package:fory/src/meta/field_info.dart';
+import 'package:fory/src/types/int64.dart';
 
 final class TypeDef {
   final bool evolving;
   final List<FieldInfo> fields;
-  final int header;
+  final Int64 header;
   final Uint8List encoded;
 
   const TypeDef({

@@ -20,6 +20,10 @@
 import 'dart:collection';
 import 'dart:typed_data';
 
+const int _bfloat16ImplicitMantissaBit = 0x0010000000000000;
+const int _bfloat16RoundIncrement = 0x0000100000000000;
+const int _bfloat16MantissaDivisor = 0x0000200000000000;
+
 /// Brain floating-point wrapper used by the xlang type system.
 ///
 /// [Bfloat16] stores an IEEE 754 bfloat16 payload exactly. Constructing from a
@@ -37,16 +41,17 @@ final class Bfloat16 implements Comparable<Bfloat16> {
   /// Converts [value] to the closest representable bfloat16 value.
   factory Bfloat16.fromDouble(double value) {
     final data = ByteData(8)..setFloat64(0, value, Endian.little);
-    final bits = data.getUint64(0, Endian.little);
-    final sign = (bits >> 63) & 0x1;
-    final exponent = (bits >> 52) & 0x7ff;
-    final mantissa = bits & 0x000fffffffffffff;
+    final low32 = data.getUint32(0, Endian.little);
+    final high32 = data.getUint32(4, Endian.little);
+    final sign = (high32 >>> 31) & 0x1;
+    final exponent = (high32 >>> 20) & 0x7ff;
+    final mantissa = ((high32 & 0x000fffff) * 0x100000000) + low32;
 
     if (exponent == 0x7ff) {
       if (mantissa == 0) {
         return Bfloat16.fromBits((sign << 15) | 0x7f80);
       }
-      var payload = (mantissa >> 45) & 0x7f;
+      var payload = (mantissa ~/ _bfloat16MantissaDivisor) & 0x7f;
       if (payload == 0) {
         payload = 0x40;
       } else {
@@ -63,14 +68,15 @@ final class Bfloat16 implements Comparable<Bfloat16> {
       if (adjustedExponent < -7) {
         return Bfloat16.fromBits(sign << 15);
       }
-      final shifted = (mantissa | (1 << 52)) >> (46 - adjustedExponent);
-      final rounded = (shifted + 1) >> 1;
+      final shifted = (mantissa + _bfloat16ImplicitMantissaBit) ~/
+          _pow2Int(46 - adjustedExponent);
+      final rounded = (shifted + 1) ~/ 2;
       return Bfloat16.fromBits((sign << 15) | rounded);
     }
 
-    var roundedMantissa = mantissa + 0x0000100000000000;
+    var roundedMantissa = mantissa + _bfloat16RoundIncrement;
     var roundedExponent = adjustedExponent;
-    if ((roundedMantissa & 0x0010000000000000) != 0) {
+    if (roundedMantissa >= _bfloat16ImplicitMantissaBit) {
       roundedMantissa = 0;
       roundedExponent += 1;
       if (roundedExponent >= 0xff) {
@@ -78,7 +84,9 @@ final class Bfloat16 implements Comparable<Bfloat16> {
       }
     }
     return Bfloat16.fromBits(
-      (sign << 15) | (roundedExponent << 7) | (roundedMantissa >> 45),
+      (sign << 15) |
+          (roundedExponent << 7) |
+          (roundedMantissa ~/ _bfloat16MantissaDivisor),
     );
   }
 
@@ -191,6 +199,14 @@ final class Bfloat16 implements Comparable<Bfloat16> {
   /// Returns the expanded Dart [double] string form of this value.
   @override
   String toString() => value.toString();
+}
+
+int _pow2Int(int exponent) {
+  var result = 1;
+  for (var index = 0; index < exponent; index += 1) {
+    result *= 2;
+  }
+  return result;
 }
 
 /// Fixed-length contiguous storage for [Bfloat16] values.

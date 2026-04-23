@@ -37,20 +37,36 @@ The following Dart types serialize directly without any special handling:
 
 ## Integer Wrappers
 
-Dart `int` is 64-bit at runtime. If the peer language expects a 32-bit integer (Java `int`, Go `int32`, C# `int`) and you send a Dart `int`, the deserialization may fail or silently truncate.
+Dart VM/native `int` can represent signed 64-bit values, while Dart web `int`
+is limited to JavaScript-safe integer precision. If the peer language expects a
+32-bit integer (Java `int`, Go `int32`, C# `int`) and you send a Dart `int`,
+the deserialization may fail or silently truncate. For browser and Flutter web
+precision rules, see [Web Platform Support](web-platform-support.md).
 
-Use an integer wrapper class to pin the exact wire width:
+Use an integer wrapper or field annotation to select the wire type explicitly:
 
 ```dart
 final Int8 tiny = Int8(-1);        // 8-bit signed
 final Int16 shortValue = Int16(7); // 16-bit signed
-final Int32 age = Int32(36);       // 32-bit signed — matches Java int, C# int, Go int32
-final UInt8 flags = UInt8(255);    // 8-bit unsigned
-final UInt16 port = UInt16(65535); // 16-bit unsigned
-final UInt32 count = UInt32(4000000000); // 32-bit unsigned
+final Int32 age = Int32(36);       // 32-bit signed, varint by default
+final Int64 seq = Int64(0);        // signed 64-bit, varint by default
+final Uint8 flags = Uint8(255);    // 8-bit unsigned
+final Uint16 port = Uint16(65535); // 16-bit unsigned
+final Uint32 count = Uint32(4000000000); // 32-bit unsigned, varint by default
+final Uint64 offset = Uint64(0);   // unsigned 64-bit, varint by default
 ```
 
-Each wrapper clamps the stored value to the target bit width.
+Each wrapper clamps or normalizes the stored value to the target bit width.
+Root `Int32`, `Int64`, `Uint32`, and `Uint64` values use compact varint wire
+types by default. Use `@Int64Type`, `@Uint32Type`, `@Uint64Type`, or generated
+field metadata when a fixed-width or tagged encoding is required.
+
+On Dart VM, `Int64` and `Uint64` are extension types over `int`. Once a value is
+passed through an `Object`-typed dynamic/root boundary, the VM cannot recover
+whether it was originally a plain `int`, `Int64`, or `Uint64`. Use generated
+field metadata or explicit `Buffer` APIs when native VM payloads must preserve
+unsigned 64-bit identity across dynamic boundaries. Dart web uses wrapper
+classes, so web root `Uint64` values keep `varuint64` metadata.
 
 ## Floating-Point Wrappers
 
@@ -82,7 +98,7 @@ final timeout = const Duration(seconds: 30);
 The temporal wrappers expose conversion helpers:
 
 - `Timestamp.fromDateTime(...)` and `timestamp.toDateTime()`
-- `LocalDate.fromEpochDay(...)`, `date.toEpochDay()`
+- `LocalDate.fromEpochDay(Int64(...))`, `date.toEpochDay()` returns `Int64`
 - `LocalDate.fromDateTime(...)` and `date.toDateTime()`
 
 `Duration` support in Dart is exact to microseconds. Incoming xlang duration

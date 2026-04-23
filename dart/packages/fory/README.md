@@ -9,12 +9,13 @@ cases.
 ## Features
 
 - Cross-language serialization with the Fory xlang format
+- Dart VM/AOT, Flutter, and web platform support
 - Generated serializers for annotated structs and enums
 - Compatible mode for schema evolution
 - Optional reference tracking for shared and circular object graphs
 - Manual serializers for external types, custom payloads, and unions
-- Explicit xlang value wrappers such as `Int32`, `Uint32`, `Float16`,
-  `Bfloat16`, `Float32`, `LocalDate`, and `Timestamp`, plus `Duration`
+- Explicit xlang value class such as `Int32`, `Int64`, `Uint32`, `Uint64`,
+  `Float16`, `Bfloat16`, `Float32`, `LocalDate`, and `Timestamp`, plus `Duration`
   support
 
 ## Getting Started
@@ -193,13 +194,13 @@ final class PersonSerializer extends Serializer<Person> {
   void write(WriteContext context, Person value) {
     final buffer = context.buffer;
     buffer.writeUtf8(value.name);
-    buffer.writeInt64(value.age);
+    buffer.writeInt64FromInt(value.age);
   }
 
   @override
   Person read(ReadContext context) {
     final buffer = context.buffer;
-    return Person(buffer.readUtf8(), buffer.readInt64());
+    return Person(buffer.readUtf8(), buffer.readInt64AsInt());
   }
 }
 
@@ -222,9 +223,9 @@ void main() {
 
 Dart has no native fixed-width 8/16/32-bit integer, unsigned 64-bit integer,
 or single-precision float types. Fory Dart provides thin wrapper types
-(`Int8`, `Int16`, `Int32`, `Uint8`, `Uint16`, `Uint32`, `Uint64`, `Float16`,
-`Bfloat16`, `Float32`) imported from `package:fory/fory.dart` to represent
-these xlang wire types. For 16-bit floating-point arrays, Dart exposes
+(`Int8`, `Int16`, `Int32`, `Int64`, `Uint8`, `Uint16`, `Uint32`, `Uint64`,
+`Float16`, `Bfloat16`, `Float32`) imported from `package:fory/fory.dart` to
+represent these xlang wire types. For 16-bit floating-point arrays, Dart exposes
 `Float16List` and `Bfloat16List` as contiguous fixed-length buffers.
 
 | Fory xlang type | Dart type                 |
@@ -233,7 +234,7 @@ these xlang wire types. For 16-bit floating-point arrays, Dart exposes
 | int8            | `fory.Int8` (wrapper)     |
 | int16           | `fory.Int16` (wrapper)    |
 | int32           | `fory.Int32` (wrapper)    |
-| int64           | `int`                     |
+| int64           | `int` or `fory.Int64`     |
 | uint8           | `fory.Uint8` (wrapper)    |
 | uint16          | `fory.Uint16` (wrapper)   |
 | uint32          | `fory.Uint32` (wrapper)   |
@@ -257,6 +258,9 @@ these xlang wire types. For 16-bit floating-point arrays, Dart exposes
 | int16_array     | `Int16List`               |
 | int32_array     | `Int32List`               |
 | int64_array     | `Int64List`               |
+| uint16_array    | `Uint16List`              |
+| uint32_array    | `Uint32List`              |
+| uint64_array    | `Uint64List`              |
 | float16_array   | `Float16List`             |
 | bfloat16_array  | `Bfloat16List`            |
 | float32_array   | `Float32List`             |
@@ -276,8 +280,8 @@ The main exported API includes:
   annotations
 - `Int32Type`, `Int64Type`, `Uint32Type`, `Uint64Type` — numeric encoding
   overrides
-- Numeric wrappers: `Int8`, `Int16`, `Int32`, `Uint8`, `Uint16`, `Uint32`,
-  `Uint64`, `Float16`, `Bfloat16`, `Float32`
+- Numeric wrappers: `Int8`, `Int16`, `Int32`, `Int64`, `Uint8`, `Uint16`,
+  `Uint32`, `Uint64`, `Float16`, `Bfloat16`, `Float32`
 - Temporal types: `LocalDate`, `Timestamp`, `Duration`
 
 ## Cross-Language Notes

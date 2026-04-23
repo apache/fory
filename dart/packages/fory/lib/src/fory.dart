@@ -19,7 +19,7 @@
 
 import 'dart:typed_data';
 
-import 'package:fory/src/buffer.dart';
+import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/config.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/meta_string_writer.dart';
@@ -124,6 +124,11 @@ final class Fory {
   /// Deserializes a value from [buffer] and checks that it is assignable to
   /// [T].
   ///
+  /// The wire metadata normally determines the decoded value type. Supplying
+  /// [T] also preserves typed root `Int64` values for varint64 payloads so
+  /// callers can distinguish them from plain `int` roots where the platform
+  /// representation supports that distinction.
+  ///
   /// Only xlang payloads are supported. This method consumes bytes from the
   /// current reader position of [buffer].
   T deserializeFrom<T>(Buffer buffer) {
@@ -143,7 +148,7 @@ final class Fory {
           'Only xlang payloads are supported by the Dart runtime.',
         );
       }
-      final value = _readContext.readRef();
+      final value = _readContext.readRefAs<T>();
       if (value is T) {
         return value;
       }

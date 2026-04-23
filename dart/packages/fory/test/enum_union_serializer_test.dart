@@ -95,7 +95,7 @@ final class TestUnion {
 
   factory TestUnion.ofString(String value) => TestUnion._(0, value);
 
-  factory TestUnion.ofInt(int value) => TestUnion._(1, value);
+  factory TestUnion.ofInt(Int64 value) => TestUnion._(1, value);
 
   factory TestUnion.ofLeaf(UnionLeaf value) => TestUnion._(2, value);
 
@@ -122,8 +122,11 @@ final class TestUnionSerializer extends UnionSerializer<TestUnion> {
     if (index == 0 && value is String) {
       return TestUnion.ofString(value);
     }
-    if (index == 1 && value is int) {
+    if (index == 1 && value is Int64) {
       return TestUnion.ofInt(value);
+    }
+    if (index == 1 && value is int) {
+      return TestUnion.ofInt(Int64(value));
     }
     if (index == 2 && value is UnionLeaf) {
       return TestUnion.ofLeaf(value);
@@ -230,7 +233,7 @@ void main() {
 
       final cases = <TestUnion>[
         TestUnion.ofString('alpha'),
-        TestUnion.ofInt(1234),
+        TestUnion.ofInt(Int64(1234)),
         TestUnion.ofLeaf(UnionLeaf()..label = 'leaf'),
       ];
 

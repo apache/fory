@@ -48,13 +48,13 @@ final class PersonSerializer extends Serializer<Person> {
   void write(WriteContext context, Person value) {
     final buffer = context.buffer;
     buffer.writeUtf8(value.name);
-    buffer.writeInt64(value.age);
+    buffer.writeInt64FromInt(value.age);
   }
 
   @override
   Person read(ReadContext context) {
     final buffer = context.buffer;
-    return Person(buffer.readUtf8(), buffer.readInt64());
+    return Person(buffer.readUtf8(), buffer.readInt64AsInt());
   }
 }
 ```

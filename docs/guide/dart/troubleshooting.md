@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 10
+sidebar_position: 11
 id: dart_troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -78,6 +78,48 @@ Checklist:
 4. `Timestamp` / `LocalDate` instead of raw `DateTime` for date/time fields.
 5. `compatible: true` on **both** sides if using schema evolution.
 
+## Int64 or Uint64 values fail on web
+
+On Dart VM builds, Dart `int` can represent signed 64-bit values. On Dart web
+builds, Dart `int` values are backed by JavaScript numbers and are only precise
+inside the JS-safe integer range:
+
+```text
+-9007199254740991 <= value <= 9007199254740991
+```
+
+If a generated serializer writes an `int64` field declared as Dart `int`,
+web builds reject values outside that range instead of silently writing
+corrupted bytes. To exchange full signed 64-bit values on web, declare the
+field as Fory's `Int64` wrapper:
+
+```dart
+@ForyStruct()
+class LedgerEntry {
+  LedgerEntry();
+
+  Int64 sequence = Int64(0); // full signed 64-bit range on VM and web
+}
+```
+
+For unsigned 64-bit values, prefer `Uint64` rather than Dart `int`. Dart `int`
+cannot represent the full `uint64` range on either VM or web:
+
+```dart
+@ForyStruct()
+class FileBlock {
+  FileBlock();
+
+  Uint64 offset = Uint64(0); // full unsigned 64-bit range
+}
+```
+
+`@Int64Type` changes the wire encoding for a Dart `int` field, but it does not
+remove the web integer precision limit. Use `Int64` for full-range signed
+values and `Uint64` for full-range unsigned values. See
+[Web Platform Support](web-platform-support.md) for the full browser support
+matrix and migration guidance.
+
 ## Running Tests Locally
 
 Main Dart package:
@@ -101,3 +143,4 @@ dart test
 - [Cross-Language](cross-language.md)
 - [Code Generation](code-generation.md)
 - [Custom Serializers](custom-serializers.md)
+- [Web Platform Support](web-platform-support.md)

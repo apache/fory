@@ -108,6 +108,7 @@ final class StructSerializer extends Serializer<Object?> {
     internal.structWriteSlots = previousCompatibleFields;
   }
 
+  @pragma('vm:prefer-inline')
   Object readValue(
     ReadContext context,
     TypeInfo resolved, {

@@ -26,11 +26,15 @@ import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/float32.dart';
 import 'package:fory/src/types/int16.dart';
 import 'package:fory/src/types/int32.dart';
+import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/int8.dart';
 import 'package:fory/src/types/uint16.dart';
 import 'package:fory/src/types/uint32.dart';
 import 'package:fory/src/types/uint64.dart';
 import 'package:fory/src/types/uint8.dart';
+
+const int _jsSafeUint64IntMax = 9007199254740991;
+const bool _isWeb = bool.fromEnvironment('dart.library.js_interop');
 
 final class PrimitiveSerializer<T> extends Serializer<T> {
   final int typeId;
@@ -77,13 +81,25 @@ final class PrimitiveSerializer<T> extends Serializer<T> {
         buffer.writeVarInt32(value is Int32 ? value.value : value as int);
         return;
       case TypeIds.int64:
-        buffer.writeInt64(value as int);
+        if (value is Int64) {
+          buffer.writeInt64(value);
+        } else {
+          buffer.writeInt64FromInt(value as int);
+        }
         return;
       case TypeIds.varInt64:
-        buffer.writeVarInt64(value as int);
+        if (value is Int64) {
+          buffer.writeVarInt64(value);
+        } else {
+          buffer.writeVarInt64FromInt(value as int);
+        }
         return;
       case TypeIds.taggedInt64:
-        buffer.writeTaggedInt64(value as int);
+        if (value is Int64) {
+          buffer.writeTaggedInt64(value);
+        } else {
+          buffer.writeTaggedInt64FromInt(value as int);
+        }
         return;
       case TypeIds.uint8:
         buffer.writeUint8(value is Uint8 ? value.value : value as int);
@@ -98,13 +114,13 @@ final class PrimitiveSerializer<T> extends Serializer<T> {
         buffer.writeVarUint32(value is Uint32 ? value.value : value as int);
         return;
       case TypeIds.uint64:
-        buffer.writeUint64(value is Uint64 ? value.value : value as int);
+        buffer.writeUint64(_uint64Value(value));
         return;
       case TypeIds.varUint64:
-        buffer.writeVarUint64(value is Uint64 ? value.value : value as int);
+        buffer.writeVarUint64(_uint64Value(value));
         return;
       case TypeIds.taggedUint64:
-        buffer.writeTaggedUint64(value is Uint64 ? value.value : value as int);
+        buffer.writeTaggedUint64(_uint64Value(value));
         return;
       case TypeIds.float16:
         buffer.writeFloat16(value as Float16);
@@ -154,11 +170,11 @@ final class PrimitiveSerializer<T> extends Serializer<T> {
       case TypeIds.varUint32:
         return Uint32(buffer.readVarUint32());
       case TypeIds.uint64:
-        return Uint64(buffer.readUint64());
+        return buffer.readUint64();
       case TypeIds.varUint64:
-        return Uint64(buffer.readVarUint64());
+        return buffer.readVarUint64();
       case TypeIds.taggedUint64:
-        return Uint64(buffer.readTaggedUint64());
+        return buffer.readTaggedUint64();
       case TypeIds.float16:
         return buffer.readFloat16();
       case TypeIds.bfloat16:
@@ -171,6 +187,21 @@ final class PrimitiveSerializer<T> extends Serializer<T> {
         throw StateError('Unsupported primitive type id $typeId.');
     }
   }
+}
+
+Uint64 _uint64Value(Object value) {
+  if (value is Uint64) {
+    return value;
+  }
+  final intValue = value as int;
+  if (_isWeb && (intValue < 0 || intValue > _jsSafeUint64IntMax)) {
+    throw StateError(
+      'Dart int value $intValue is outside the JS-safe unsigned uint64 '
+      'int field range [0, $_jsSafeUint64IntMax]. Use Uint64 for full '
+      'unsigned 64-bit values on web.',
+    );
+  }
+  return Uint64(intValue);
 }
 
 const PrimitiveSerializer<bool> boolSerializer = PrimitiveSerializer<bool>(
@@ -194,15 +225,17 @@ const PrimitiveSerializer<Int32> varInt32Serializer =
   TypeIds.varInt32,
   supportsRef: false,
 );
-const PrimitiveSerializer<int> int64Serializer = PrimitiveSerializer<int>(
+const PrimitiveSerializer<Int64> int64Serializer = PrimitiveSerializer<Int64>(
   TypeIds.int64,
   supportsRef: false,
 );
-const PrimitiveSerializer<int> varInt64Serializer = PrimitiveSerializer<int>(
+const PrimitiveSerializer<Int64> varInt64Serializer =
+    PrimitiveSerializer<Int64>(
   TypeIds.varInt64,
   supportsRef: false,
 );
-const PrimitiveSerializer<int> taggedInt64Serializer = PrimitiveSerializer<int>(
+const PrimitiveSerializer<Int64> taggedInt64Serializer =
+    PrimitiveSerializer<Int64>(
   TypeIds.taggedInt64,
   supportsRef: false,
 );

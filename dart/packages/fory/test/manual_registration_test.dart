@@ -24,7 +24,7 @@ final class ManualValue {
   ManualValue(this.name, this.score);
 
   final String name;
-  final int score;
+  final Int64 score;
 }
 
 final class ManualValueSerializer extends Serializer<ManualValue> {
@@ -121,11 +121,11 @@ void main() {
       typeName: 'ManualValue',
     );
 
-    final value = ManualValue('alpha', 99);
+    final value = ManualValue('alpha', Int64(99));
     final bytes = fory.serialize(value);
     final roundTrip = fory.deserialize<ManualValue>(bytes);
     expect(roundTrip.name, equals('alpha'));
-    expect(roundTrip.score, equals(99));
+    expect(roundTrip.score, equals(Int64(99)));
   });
 
   test('writeNonRef does not seed later back-references', () {

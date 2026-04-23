@@ -24,6 +24,7 @@ Apache Fory™ Dart lets you serialize Dart objects to bytes and deserialize the
 ## Why Fory Dart?
 
 - **Cross-language**: serialize in Dart, deserialize in Java, Go, C#, and more without writing any glue code
+- **Platform support**: use the same generated-serializer API on Dart VM/AOT, Flutter, and web
 - **Fast**: generated serializer code replaces reflection at runtime
 - **Schema evolution**: add or remove fields without breaking existing messages
 - **Circular references**: optional reference tracking handles shared or recursive object graphs
@@ -114,25 +115,26 @@ dart run build_runner build --delete-conflicting-outputs
 - `fory.deserialize<T>(bytes)` — returns a `T`
 - `@ForyStruct()` — marks a class for code generation
 - `@ForyField(...)` — per-field options (skip, ID, nullability, references)
-- Integer wrappers: `Int8`, `Int16`, `Int32`, `Uint8`, `Uint16`, `Uint32`, `Uint64`
+- Integer wrappers: `Int8`, `Int16`, `Int32`, `Int64`, `Uint8`, `Uint16`, `Uint32`, `Uint64`
 - Float wrappers: `Float16`, `Bfloat16`, `Float32`
 - 16-bit float arrays: `Float16List`, `Bfloat16List`
 - Time types: `LocalDate`, `Timestamp`, `Duration`
 
 ## Documentation
 
-| Topic                                         | Description                                                     |
-| --------------------------------------------- | --------------------------------------------------------------- |
-| [Configuration](configuration.md)             | Runtime options, compatible mode, and safety limits             |
-| [Basic Serialization](basic-serialization.md) | `serialize`, `deserialize`, generated registration, root graphs |
-| [Code Generation](code-generation.md)         | `@ForyStruct`, build runner, and generated namespaces           |
-| [Type Registration](type-registration.md)     | ID-based vs name-based registration and registration rules      |
-| [Custom Serializers](custom-serializers.md)   | Manual `Serializer<T>` implementations and unions               |
-| [Field Configuration](field-configuration.md) | `@ForyField`, field IDs, nullability, references, polymorphism  |
-| [Supported Types](supported-types.md)         | Built-in xlang values, wrappers, collections, and structs       |
-| [Schema Evolution](schema-evolution.md)       | Compatible structs and evolving schemas                         |
-| [Cross-Language](cross-language.md)           | Interoperability rules and field alignment                      |
-| [Troubleshooting](troubleshooting.md)         | Common errors, diagnostics, and validation steps                |
+| Topic                                           | Description                                                     |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| [Configuration](configuration.md)               | Runtime options, compatible mode, and safety limits             |
+| [Basic Serialization](basic-serialization.md)   | `serialize`, `deserialize`, generated registration, root graphs |
+| [Code Generation](code-generation.md)           | `@ForyStruct`, build runner, and generated namespaces           |
+| [Type Registration](type-registration.md)       | ID-based vs name-based registration and registration rules      |
+| [Custom Serializers](custom-serializers.md)     | Manual `Serializer<T>` implementations and unions               |
+| [Field Configuration](field-configuration.md)   | `@ForyField`, field IDs, nullability, references, polymorphism  |
+| [Supported Types](supported-types.md)           | Built-in xlang values, wrappers, collections, and structs       |
+| [Schema Evolution](schema-evolution.md)         | Compatible structs and evolving schemas                         |
+| [Cross-Language](cross-language.md)             | Interoperability rules and field alignment                      |
+| [Web Platform Support](web-platform-support.md) | Dart VM/AOT, Flutter, and web support, limits, and validation   |
+| [Troubleshooting](troubleshooting.md)           | Common errors, diagnostics, and validation steps                |
 
 ## Related Resources
 

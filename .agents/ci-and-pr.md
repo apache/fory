@@ -28,6 +28,14 @@ Typical flow:
 1. Run `gh pr checks <PR_NUMBER> --repo apache/fory`.
 2. Inspect the failed job with `gh run view ... --log-failed`.
 3. Reproduce the failure locally, fix the root cause, and rerun the relevant checks.
+4. Monitor the latest PR head SHA until all required workflows have settled; local targeted validation and remote all-green confirmation are separate requirements.
+
+## Scope And Worktrees
+
+- Keep review tasks and fix tasks separate. For review-only requests, report findings without editing files, committing, pushing, fixing tests, or updating docs unless the user explicitly starts a fix task.
+- Current-branch fixes should happen in the current workspace. Use extra worktrees for read-only baselines or isolated PR reviews unless the user asks for a separate implementation worktree.
+- Before pushing PR work, verify `git remote -v`, the current branch, and the PR head repository/branch; do not infer push targets from contributor names.
+- Do not stage or commit task scratch files such as `tasks/task-*.md`, `tasks/lessons.md`, or synthesis/plan notes unless the user explicitly asks to version them.
 
 ## Common CI Failures
 
@@ -35,6 +43,14 @@ Typical flow:
 - Markdown lint failures: run `prettier --write <file>`.
 - C++ build failures: check missing dependencies, includes, and architecture-specific Bazel flags.
 - Test failures: reproduce locally with the smallest command set that proves the fix.
+- Java harnesses that capture child stdout/stderr must drain those streams concurrently or redirect them before waiting, otherwise chatty peer tests can deadlock.
+
+## Workflow Changes
+
+- In ASF GitHub Actions, verify new `uses:` entries against approved Apache infrastructure action patterns; replace unapproved actions with approved actions plus shell or Python logic when needed.
+- Do not add workflow dependencies on new repository variables or secrets when GitHub Actions context, constants, or checked-in configuration can provide stable non-secret values. Coordinate required repo config before landing if no safe default exists.
+- If a setup action fails because of a runtime deprecation, verify the current official major and upgrade to the compatible major rather than adding temporary runner flags.
+- Reusable release automation belongs under `ci/` unless the user explicitly requests a language-local script.
 
 ## PR Expectations
 
