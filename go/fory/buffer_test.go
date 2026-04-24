@@ -81,3 +81,33 @@ func checkVarintWrite(t *testing.T, buf *ByteBuffer, value int32) {
 	require.Equal(t, buf.ReaderIndex(), buf.WriterIndex())
 	require.Equal(t, value, varInt)
 }
+
+// TestUnsafePutVarUint32PhysicalWriteWidth verifies that UnsafePutVarUint32 performs
+// an 8-byte physical write for 5-byte varints and that Reserve(8) (as required by
+// buffer.go:661) keeps those 8 bytes within the backing array.
+func TestUnsafePutVarUint32PhysicalWriteWidth(t *testing.T) {
+	const sentinelByte = byte(0xAB)
+	const totalCap = 16
+	backing := make([]byte, totalCap, totalCap)
+
+	// Fill [8, totalCap) with sentinels; [0, 8) is the reserved window.
+	for i := 8; i < totalCap; i++ {
+		backing[i] = sentinelByte
+	}
+
+	// Expose 8 bytes of len, matching Reserve(8) contract.
+	buf := NewByteBuffer(backing[:8])
+
+	// Reserve(8) should return immediately as len(data) is already 8.
+	buf.Reserve(8)
+
+	// Encode value >= 2^28 (5 varint bytes) which triggers 8-byte bulk write.
+	written := buf.UnsafePutVarUint32(0, 1<<28)
+	require.Equal(t, 5, written, "expected 5 logical bytes written")
+
+	// Verify bytes [8, totalCap) remain untouched by the 8-byte bulk write.
+	for i := 8; i < totalCap; i++ {
+		require.Equal(t, sentinelByte, backing[i],
+			"byte at index %d is outside the 8-byte reserved window and must not be written", i)
+	}
+}

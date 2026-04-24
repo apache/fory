@@ -339,7 +339,8 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	// - Reserve max size once, track offset locally, update writerIndex once at end
 	// ==========================================================================
 	if s.fieldGroup.MaxVarintSize > 0 {
-		buf.Reserve(s.fieldGroup.MaxVarintSize)
+		// +8 padding for UnsafePutVarUint32 bulk write (8 bytes physically written for 5-byte varints)
+		buf.Reserve(s.fieldGroup.MaxVarintSize + 8)
 		offset := buf.WriterIndex()
 
 		for _, field := range s.fieldGroup.PrimitiveVarintFields {
@@ -1530,7 +1531,8 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Note: For tagged int64/uint64, we can't use unsafe reads because they need bounds checking
 	if len(s.fieldGroup.PrimitiveVarintFields) > 0 {
 		err := ctx.Err()
-		if buf.remaining() >= s.fieldGroup.MaxVarintSize {
+		// +8 padding for readVarUint32Fast bulk load (8 bytes physically read regardless of varint length)
+		if buf.remaining() >= s.fieldGroup.MaxVarintSize+8 {
 			for _, field := range s.fieldGroup.PrimitiveVarintFields {
 				fieldPtr := unsafe.Add(ptr, field.Offset)
 				optInfo := optionalInfo{}
