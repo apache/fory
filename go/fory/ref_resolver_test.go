@@ -189,7 +189,7 @@ func TestRefTrackingLargeCount(t *testing.T) {
 func TestRefResolverOOBPanic(t *testing.T) {
 	resolver := newRefResolver(true)
 	buffer := NewByteBuffer(nil)
-	
+
 	// Craft a buffer with RefFlag (-2) followed by a huge RefID (9999)
 	buffer.WriteInt8(RefFlag)
 	buffer.WriteVarUint32(9999)
@@ -207,7 +207,7 @@ func TestRefResolverOOBPanic(t *testing.T) {
 func TestRefResolverBoundaryRegression(t *testing.T) {
 	resolver := newRefResolver(true)
 	val := reflect.ValueOf("test")
-	
+
 	// Fill the resolver with 2 objects
 	id0, _ := resolver.PreserveRefId()
 	resolver.SetReadObject(id0, val)

@@ -18,16 +18,16 @@
 package fory
 
 import (
-	"testing"
 	"github.com/stretchr/testify/require"
+	"testing"
 )
 
-// TestMetaStringResolverNegativeIndexPanic reproduces the CRITICAL security bug 
+// TestMetaStringResolverNegativeIndexPanic reproduces the CRITICAL security bug
 // in MetaStringResolver where a header of 1 triggers a -1 index panic.
 func TestMetaStringResolverNegativeIndexPanic(t *testing.T) {
 	resolver := NewMetaStringResolver()
 	buffer := NewByteBuffer(nil)
-	
+
 	// header = 1 means (header & 1 != 0) is true (it's a reference)
 	// and length = header >> 1 = 0.
 	// index = length - 1 = -1.
@@ -48,16 +48,16 @@ func TestMetaStringResolverNegativeIndexPanic(t *testing.T) {
 // dynamic index (resulting in index 0) still resolves correctly.
 func TestMetaStringResolverBoundaryRegression(t *testing.T) {
 	resolver := NewMetaStringResolver()
-	
+
 	// Add a string to the cache so len is 1
 	m := NewMetaStringBytes([]byte("test"), 123)
 	resolver.dynamicIDToEnumString = append(resolver.dynamicIDToEnumString, m)
 
 	// Craft a header that points to index 0
-	// header = (index + 1) << 1 | 1 
+	// header = (index + 1) << 1 | 1
 	// For index 0: (0 + 1) << 1 | 1 = 3
 	buffer := NewByteBuffer(nil)
-	buffer.WriteVarUint32Small7(3) 
+	buffer.WriteVarUint32Small7(3)
 	buffer.SetReaderIndex(0)
 
 	var ctxErr Error
