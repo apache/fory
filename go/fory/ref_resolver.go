@@ -277,6 +277,9 @@ func (r *RefResolver) GetReadObject(refId int32) reflect.Value {
 	if refId < 0 {
 		return r.readObject
 	}
+	if int(refId) >= len(r.readObjects) {
+		return reflect.Value{}
+	}
 	return r.readObjects[refId]
 }
 

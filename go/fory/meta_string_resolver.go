@@ -124,7 +124,7 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 	length := int16(header >> 1)
 	if header&1 != 0 {
 		index := int(length) - 1
-		if index >= len(r.dynamicIDToEnumString) {
+		if index < 0 || index >= len(r.dynamicIDToEnumString) {
 			return nil, fmt.Errorf("invalid dynamic index: %d", index)
 		}
 		return r.dynamicIDToEnumString[index], nil
