@@ -84,7 +84,7 @@ func checkVarintWrite(t *testing.T, buf *ByteBuffer, value int32) {
 
 // TestUnsafePutVarUint32PhysicalWriteWidth verifies that UnsafePutVarUint32 performs
 // an 8-byte physical write for 5-byte varints and that Reserve(8) (as required by
-// buffer.go:661) keeps those 8 bytes within the backing array.
+// the contract) keeps those 8 bytes within the backing array.
 func TestUnsafePutVarUint32PhysicalWriteWidth(t *testing.T) {
 	const sentinelByte = byte(0xAB)
 	const totalCap = 16

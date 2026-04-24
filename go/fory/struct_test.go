@@ -617,3 +617,29 @@ func TestFloat16StructField(t *testing.T) {
 	// Specific value check
 	require.Equal(t, float32(1.5), res.F16.Float32())
 }
+
+// TestVarintFastPathTightBuffer exercises the varint fast-path with a single uint32 field.
+// Serializing a value requiring 5 varint bytes exercises the 8-byte bulk write.
+// Deserializing from a tight buffer (len==cap) exercises the read guard, ensuring
+// the 8-byte bulk load does not read past the end of the backing array.
+func TestVarintFastPathTightBuffer(t *testing.T) {
+	type SingleVarintStruct struct {
+		// compress=true forces the varint fast path.
+		Value uint32 `fory:"compress=true"`
+	}
+
+	f := New(WithXlang(false))
+	require.NoError(t, f.RegisterStruct(SingleVarintStruct{}, 7001))
+
+	// 1<<28 requires 5 varint bytes, forcing the 8-byte bulk write path.
+	obj := SingleVarintStruct{Value: 1 << 28}
+
+	data, err := f.Serialize(&obj)
+	require.NoError(t, err)
+
+	// Deserialize from a tight buffer where len == cap. This ensures the read guard
+	// properly handles bulk loads that would otherwise overrun the slice.
+	var out SingleVarintStruct
+	require.NoError(t, f.Deserialize(data, &out))
+	require.Equal(t, obj.Value, out.Value)
+}
