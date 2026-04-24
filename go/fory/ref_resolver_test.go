@@ -183,3 +183,38 @@ func TestRefTrackingLargeCount(t *testing.T) {
 		})
 	}
 }
+
+// TestRefResolverOOBPanic reproduces the CRITICAL security bug in RefResolver
+// where a huge refId in the buffer triggers an OOB panic.
+func TestRefResolverOOBPanic(t *testing.T) {
+	resolver := newRefResolver(true)
+	buffer := NewByteBuffer(nil)
+	
+	// Craft a buffer with RefFlag (-2) followed by a huge RefID (9999)
+	buffer.WriteInt8(RefFlag)
+	buffer.WriteVarUint32(9999)
+	buffer.SetReaderIndex(0)
+
+	var ctxErr Error
+	// This should NOT panic. The fix handles the invalid index gracefully.
+	require.NotPanics(t, func() {
+		resolver.ReadRefOrNull(buffer, &ctxErr)
+	}, "RefResolver.GetReadObject should not panic on OOB index")
+}
+
+// TestRefResolverBoundaryRegression verifies that valid boundary indices
+// (0 and len-1) still resolve correctly after the security fix.
+func TestRefResolverBoundaryRegression(t *testing.T) {
+	resolver := newRefResolver(true)
+	val := reflect.ValueOf("test")
+	
+	// Fill the resolver with 2 objects
+	id0, _ := resolver.PreserveRefId()
+	resolver.SetReadObject(id0, val)
+	id1, _ := resolver.PreserveRefId()
+	resolver.SetReadObject(id1, val)
+
+	// Verify boundary indices still work
+	require.Equal(t, val.String(), resolver.GetReadObject(0).String(), "Should resolve index 0")
+	require.Equal(t, val.String(), resolver.GetReadObject(1).String(), "Should resolve index len-1")
+}
