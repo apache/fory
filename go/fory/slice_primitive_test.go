@@ -451,3 +451,18 @@ func TestUint64Slice(t *testing.T) {
 		assert.Nil(t, result)
 	})
 }
+
+func TestReadInt32Slice_OOM_Bug(t *testing.T) {
+	// We claim a size of 40,000 bytes, but provide no actual data.
+	buf := NewByteBuffer(nil)
+	buf.WriteLength(40000)
+
+	// Reset reader index so we can read what we just wrote
+	buf.SetReaderIndex(0)
+
+	err := &Error{}
+	result := ReadInt32Slice(buf, err)
+
+	assert.True(t, err.HasError(), "Expected an error due to out of bounds buffer")
+	assert.Equal(t, 0, len(result), "Expected an empty slice due to missing data")
+}
