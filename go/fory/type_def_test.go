@@ -301,3 +301,45 @@ func TestTypeDefNullableFields(t *testing.T) {
 		}
 	})
 }
+
+// TestTypeDefFieldCountOOMPanic verifies that decodeTypeDef rejects a crafted payload
+// whose fieldCount (2 billion) far exceeds the hard cap and available buffer bytes,
+// returning an error instead of performing the unbounded make([]FieldDef, fieldCount)
+// allocation that would OOM-crash the process.
+func TestTypeDefFieldCountOOMPanic(t *testing.T) {
+	fory := NewFory()
+	header := int64(HAS_FIELDS_META_FLAG | 8)
+
+	// metaHeaderByte value of 31 triggers the extended VarUint32 field-count path.
+	buffer := NewByteBuffer(make([]byte, 0, 8))
+	buffer.WriteByte(31)
+	buffer.WriteVarUint32(2000000000)
+	buffer.WriteUint8(0)
+	buffer.WriteVarUint32(0)
+	buffer.SetReaderIndex(0)
+
+	_, err := decodeTypeDef(fory, buffer, header)
+	if err == nil {
+		t.Fatal("expected error for oversized fieldCount, got nil")
+	}
+}
+
+// TestTypeDefNestedRecursionStackOverflowPanic verifies that readFieldTypeWithFlags
+// rejects a crafted payload with 20 million nested LIST types, returning an error
+// at depth 64 instead of recursing until a goroutine stack overflow crashes the process.
+func TestTypeDefNestedRecursionStackOverflowPanic(t *testing.T) {
+	depth := 20000000
+	buffer := NewByteBuffer(make([]byte, 0, depth*2))
+	for i := 0; i < depth; i++ {
+		buffer.WriteVarUint32Small7(uint32(LIST) << 2)
+	}
+	buffer.WriteVarUint32Small7(uint32(INT32) << 2)
+	buffer.SetReaderIndex(0)
+
+	bufErr := &Error{}
+	_, err := readFieldTypeWithFlags(buffer, 0, bufErr)
+	if err == nil {
+		t.Fatal("expected error for excessive nesting depth, got nil")
+	}
+}
+

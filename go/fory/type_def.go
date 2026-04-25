@@ -726,25 +726,28 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 
 // readFieldType reads field type info from the buffer according to the TypeId
 // This is called for top-level field types where flags are NOT embedded in the type ID
-func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
+func readFieldType(buffer *ByteBuffer, depth int, err *Error) (FieldType, error) {
+	if depth > 64 {
+		return nil, fmt.Errorf("schema type definition exceeds maximum nesting depth")
+	}
 	typeId := buffer.ReadUint8(err)
 	internalTypeId := TypeId(typeId)
 
 	switch internalTypeId {
 	case LIST, SET:
 		// For nested types, flags ARE embedded in the type ID
-		elementType, etErr := readFieldTypeWithFlags(buffer, err)
+		elementType, etErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if etErr != nil {
 			return nil, fmt.Errorf("failed to read element type: %w", etErr)
 		}
 		return NewCollectionFieldType(TypeId(typeId), elementType), nil
 	case MAP:
 		// For nested types, flags ARE embedded in the type ID
-		keyType, ktErr := readFieldTypeWithFlags(buffer, err)
+		keyType, ktErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if ktErr != nil {
 			return nil, fmt.Errorf("failed to read key type: %w", ktErr)
 		}
-		valueType, vtErr := readFieldTypeWithFlags(buffer, err)
+		valueType, vtErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if vtErr != nil {
 			return nil, fmt.Errorf("failed to read value type: %w", vtErr)
 		}
@@ -759,7 +762,10 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 
 // readFieldTypeWithFlags reads field type info where flags are embedded in the type ID
 // Format: (typeId << 2) | (nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0)
-func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
+func readFieldTypeWithFlags(buffer *ByteBuffer, depth int, err *Error) (FieldType, error) {
+	if depth > 64 {
+		return nil, fmt.Errorf("schema type definition exceeds maximum nesting depth")
+	}
 	rawValue := buffer.ReadVarUint32Small7(err)
 	// Extract flags (lower 2 bits)
 	// trackingRef := (rawValue & 0b1) != 0  // Not used currently
@@ -769,17 +775,17 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 
 	switch internalTypeId {
 	case LIST, SET:
-		elementType, etErr := readFieldTypeWithFlags(buffer, err)
+		elementType, etErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if etErr != nil {
 			return nil, fmt.Errorf("failed to read element type: %w", etErr)
 		}
 		return NewCollectionFieldType(TypeId(typeId), elementType), nil
 	case MAP:
-		keyType, ktErr := readFieldTypeWithFlags(buffer, err)
+		keyType, ktErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if ktErr != nil {
 			return nil, fmt.Errorf("failed to read key type: %w", ktErr)
 		}
-		valueType, vtErr := readFieldTypeWithFlags(buffer, err)
+		valueType, vtErr := readFieldTypeWithFlags(buffer, depth+1, err)
 		if vtErr != nil {
 			return nil, fmt.Errorf("failed to read value type: %w", vtErr)
 		}
@@ -1485,6 +1491,9 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	if fieldCount == SmallNumFieldsThreshold {
 		fieldCount += int(metaBuffer.ReadVarUint32(&metaErr))
 	}
+	if fieldCount > 10000 || fieldCount > metaBuffer.remaining() {
+		return nil, fmt.Errorf("field count exceeds maximum allowed limit or available buffer size")
+	}
 	registeredByName := (metaHeaderByte & REGISTER_BY_NAME_FLAG) != 0
 
 	// ReadData name or type ID according to the registerByName flag
@@ -1700,7 +1709,7 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 		}
 
 		// Read field type
-		ft, err := readFieldType(buffer, &bufErr)
+		ft, err := readFieldType(buffer, 0, &bufErr)
 		if err != nil {
 			return FieldDef{}, err
 		}
@@ -1725,7 +1734,7 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 	}
 
 	// Read field type
-	ft, err := readFieldType(buffer, &bufErr)
+	ft, err := readFieldType(buffer, 0, &bufErr)
 	if err != nil {
 		return FieldDef{}, err
 	}
