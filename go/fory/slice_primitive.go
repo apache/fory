@@ -695,7 +695,7 @@ func ReadByteSlice(buf *ByteBuffer, err *Error) []byte {
 	if size == 0 {
 		return make([]byte, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -720,7 +720,7 @@ func ReadBoolSlice(buf *ByteBuffer, err *Error) []bool {
 	if size == 0 {
 		return make([]bool, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -745,7 +745,7 @@ func ReadInt8Slice(buf *ByteBuffer, err *Error) []int8 {
 	if size == 0 {
 		return make([]int8, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -777,7 +777,7 @@ func ReadInt16Slice(buf *ByteBuffer, err *Error) []int16 {
 	if length == 0 {
 		return make([]int16, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -815,7 +815,7 @@ func ReadInt32Slice(buf *ByteBuffer, err *Error) []int32 {
 	if length == 0 {
 		return make([]int32, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -853,7 +853,7 @@ func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
 	if length == 0 {
 		return make([]int64, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -891,7 +891,7 @@ func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
 	if length == 0 {
 		return make([]uint16, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -929,7 +929,7 @@ func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
 	if length == 0 {
 		return make([]uint32, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -967,7 +967,7 @@ func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
 	if length == 0 {
 		return make([]uint64, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -1005,7 +1005,7 @@ func ReadFloat32Slice(buf *ByteBuffer, err *Error) []float32 {
 	if length == 0 {
 		return make([]float32, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -1043,7 +1043,7 @@ func ReadFloat64Slice(buf *ByteBuffer, err *Error) []float64 {
 	if length == 0 {
 		return make([]float64, 0)
 	}
-	if size > buf.writerIndex-buf.readerIndex {
+	if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 		*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 		return nil
 	}
@@ -1181,7 +1181,7 @@ func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
 		if length == 0 {
 			return make([]int, 0)
 		}
-		if size > buf.writerIndex-buf.readerIndex {
+		if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 			*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 			return nil
 		}
@@ -1200,7 +1200,7 @@ func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
 		if length == 0 {
 			return make([]int, 0)
 		}
-		if size > buf.writerIndex-buf.readerIndex {
+		if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 			*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 			return nil
 		}
@@ -1254,7 +1254,7 @@ func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 		if length == 0 {
 			return make([]uint, 0)
 		}
-		if size > buf.writerIndex-buf.readerIndex {
+		if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 			*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 			return nil
 		}
@@ -1273,7 +1273,7 @@ func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 		if length == 0 {
 			return make([]uint, 0)
 		}
-		if size > buf.writerIndex-buf.readerIndex {
+		if buf.reader == nil && size > buf.writerIndex-buf.readerIndex {
 			*err = BufferOutOfBoundError(buf.readerIndex, size, buf.writerIndex)
 			return nil
 		}
