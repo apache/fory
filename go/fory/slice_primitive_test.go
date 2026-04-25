@@ -466,3 +466,14 @@ func TestReadInt32Slice_OOM_Bug(t *testing.T) {
 	assert.True(t, err.HasError(), "Expected an error due to out of bounds buffer")
 	assert.Equal(t, 0, len(result), "Expected an empty slice due to missing data")
 }
+
+func TestReadBoolSliceWrappedBuffer(t *testing.T) {
+	payload := NewByteBuffer(nil)
+	WriteBoolSlice(payload, []bool{true, false})
+
+	err := &Error{}
+	result := ReadBoolSlice(NewByteBuffer(payload.Bytes()), err)
+
+	assert.False(t, err.HasError(), "Expected wrapped buffer reads to use the serialized payload")
+	assert.Equal(t, []bool{true, false}, result)
+}
