@@ -71,6 +71,9 @@ func readString(buf *ByteBuffer, err *Error) string {
 // Specific encoding read methods
 func readLatin1(buf *ByteBuffer, size int, err *Error) string {
 	data := buf.ReadBinary(size, err)
+	if err.HasError() {
+		return ""
+	}
 	// Latin1 bytes need to be converted to UTF-8
 	// Each Latin1 byte is a single Unicode code point (0-255)
 	runes := make([]rune, size)

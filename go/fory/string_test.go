@@ -89,3 +89,15 @@ func TestReadUTF16LE_SurrogatePair(t *testing.T) {
 	require.False(t, err.HasError())
 	require.Equal(t, "🎉", result)
 }
+
+func TestReadLatin1_OOM_Bug(t *testing.T) {
+	// We claim a massive size of 10,000 bytes, but provide an empty buffer.
+	buf := NewByteBuffer(nil)
+
+	err := &Error{}
+	// readLatin1 doesn't read the length itself, it takes it as an argument
+	result := readLatin1(buf, 10000, err)
+
+	require.True(t, err.HasError(), "Expected an error due to out of bounds buffer")
+	require.Equal(t, "", result, "Expected an empty string due to missing data")
+}
