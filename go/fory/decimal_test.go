@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"bytes"
 	"math/big"
 	"testing"
 
@@ -130,4 +131,27 @@ func TestDecimalRejectsNonCanonicalBigPayload(t *testing.T) {
 	err = Deserialize(f, data, &decoded)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "trailing zero byte")
+}
+
+func TestDecimalOOM(t *testing.T) {
+	maliciousLength := uint64(2000000000)
+
+	buffer := NewByteBuffer(nil)
+	buffer.WriteByte_(XLangFlag)
+	buffer.WriteInt8(NotNullValueFlag)
+	buffer.WriteUint8(uint8(DECIMAL))
+	buffer.WriteVarint32(0)
+
+	meta := (maliciousLength << 1) | 0
+	header := (meta << 1) | 1
+	buffer.WriteVarUint64(header)
+
+	data := buffer.Bytes()
+
+	f := New(WithXlang(true), WithMaxBinarySize(1024*1024))
+
+	var decoded Decimal
+	err := f.DeserializeFromReader(bytes.NewReader(data), &decoded)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "max binary size exceeded")
 }
