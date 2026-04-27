@@ -914,7 +914,9 @@ class JavaGenerator(BaseGenerator):
         if isinstance(field.field_type, MapType):
             return "Types.MAP"
         if isinstance(field.field_type, NamedType):
-            type_def = self.resolve_named_type(field.field_type.name, parent_stack)
+            type_def = self.resolve_named_type(
+                field.field_type.display_name or field.field_type.name, parent_stack
+            )
             if isinstance(type_def, Enum):
                 if type_def.type_id is None:
                     return "Types.NAMED_ENUM"
@@ -1153,11 +1155,12 @@ class JavaGenerator(BaseGenerator):
 
         elif isinstance(field_type, NamedType):
             named_type = self.schema.get_type(field_type.name)
+            local_name = field_type.display_name or field_type.name
             if named_type is not None and self.is_imported_type(named_type):
                 java_package = self._java_package_for_type(named_type)
                 if java_package:
-                    return f"{java_package}.{field_type.name}"
-            return field_type.name
+                    return f"{java_package}.{local_name}"
+            return local_name
 
         elif isinstance(field_type, ListType):
             # Use specialized primitive lists when available, otherwise primitive arrays.

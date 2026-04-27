@@ -17,10 +17,12 @@
 
 """Tests for Proto service parsing."""
 
+import pytest
+
+from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.proto.lexer import Lexer
 from fory_compiler.frontend.proto.parser import Parser
 from fory_compiler.frontend.proto.translator import ProtoTranslator
-from fory_compiler.ir.validator import SchemaValidator
 
 
 def parse_and_translate(source):
@@ -59,8 +61,10 @@ def test_service_parsing():
 
     m1 = service.methods[0]
     assert m1.name == "SayHello"
-    assert m1.request_type.name == "Request"
-    assert m1.response_type.name == "Response"
+    assert m1.request_type.name == "demo.Request"
+    assert m1.request_type.display_name == "Request"
+    assert m1.response_type.name == "demo.Response"
+    assert m1.response_type.display_name == "Response"
     assert not m1.client_streaming
     assert not m1.server_streaming
 
@@ -134,12 +138,8 @@ def test_service_unknown_request_type_fails_validation():
         rpc SayHello (UnknownRequest) returns (Response);
     }
     """
-    schema = parse_and_translate(source)
-    validator = SchemaValidator(schema)
-    assert not validator.validate()
-    assert any(
-        "Unknown type 'UnknownRequest'" in err.message for err in validator.errors
-    )
+    with pytest.raises(FrontendError, match="Unknown type 'UnknownRequest'"):
+        parse_and_translate(source)
 
 
 def test_service_unknown_response_type_fails_validation():
@@ -153,7 +153,5 @@ def test_service_unknown_response_type_fails_validation():
         rpc SayHello (Request) returns (UnknownReply);
     }
     """
-    schema = parse_and_translate(source)
-    validator = SchemaValidator(schema)
-    assert not validator.validate()
-    assert any("Unknown type 'UnknownReply'" in err.message for err in validator.errors)
+    with pytest.raises(FrontendError, match="Unknown type 'UnknownReply'"):
+        parse_and_translate(source)

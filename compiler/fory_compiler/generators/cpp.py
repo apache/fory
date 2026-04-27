@@ -504,7 +504,7 @@ class CppGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             return
         if isinstance(field_type, NamedType):
-            type_name = field_type.name
+            type_name = field_type.display_name or field_type.name
             if self.is_nested_type_reference(type_name, parent_stack):
                 return
             top_level = type_name.split(".")[0]
@@ -599,7 +599,9 @@ class CppGenerator(BaseGenerator):
     ) -> bool:
         if not isinstance(field_type, NamedType):
             return False
-        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        resolved = self.resolve_named_type(
+            field_type.display_name or field_type.name, parent_stack
+        )
         return isinstance(resolved, Message)
 
     def is_weak_ref(self, options: dict) -> bool:
@@ -621,7 +623,9 @@ class CppGenerator(BaseGenerator):
     ) -> bool:
         if not isinstance(field_type, NamedType):
             return False
-        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        resolved = self.resolve_named_type(
+            field_type.display_name or field_type.name, parent_stack
+        )
         return isinstance(resolved, Union)
 
     def is_enum_type(
@@ -629,7 +633,9 @@ class CppGenerator(BaseGenerator):
     ) -> bool:
         if not isinstance(field_type, NamedType):
             return False
-        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        resolved = self.resolve_named_type(
+            field_type.display_name or field_type.name, parent_stack
+        )
         return isinstance(resolved, Enum)
 
     def get_field_member_name(self, field: Field) -> str:
@@ -1475,7 +1481,8 @@ class CppGenerator(BaseGenerator):
             return base_type
 
         if isinstance(field_type, NamedType):
-            type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            local_name = field_type.display_name or field_type.name
+            type_name = self.resolve_nested_type_name(local_name, parent_stack)
             named_type = self.schema.get_type(field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 namespace = self._namespace_for_type(named_type)
@@ -1653,7 +1660,8 @@ class CppGenerator(BaseGenerator):
             return base_type
 
         elif isinstance(field_type, NamedType):
-            type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            local_name = field_type.display_name or field_type.name
+            type_name = self.resolve_nested_type_name(local_name, parent_stack)
             named_type = self.schema.get_type(field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 ns = self._namespace_for_type(named_type)
