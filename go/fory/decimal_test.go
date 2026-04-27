@@ -149,7 +149,7 @@ func TestDecimalOOM(t *testing.T) {
 	data := buffer.Bytes()
 
 	f := New(WithXlang(true), WithMaxBinarySize(1024*1024))
-	
+
 	var decoded Decimal
 	err := f.DeserializeFromReader(bytes.NewReader(data), &decoded)
 	require.Error(t, err)
