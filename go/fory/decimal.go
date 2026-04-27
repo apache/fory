@@ -134,7 +134,11 @@ func readDecimalParts(ctx *ReadContext) (int32, *big.Int) {
 
 	meta := header >> 1
 	length := meta >> 1
-	if length == 0 || length > uint64(ctx.maxBinarySize) {
+	if length == 0 {
+		ctx.SetError(DeserializationErrorf("invalid decimal magnitude length %d", length))
+		return 0, nil
+	}
+	if length > uint64(ctx.maxBinarySize) {
 		ctx.SetError(MaxBinarySizeExceededError(int(length), ctx.maxBinarySize))
 		return 0, nil
 	}
