@@ -1491,7 +1491,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	if fieldCount == SmallNumFieldsThreshold {
 		fieldCount += int(metaBuffer.ReadVarUint32(&metaErr))
 	}
-	if fieldCount > fory.config.MaxTypeDefFields || fieldCount > metaBuffer.remaining() {
+	if fieldCount > fory.config.MaxTypeFields || fieldCount > metaBuffer.remaining() {
 		return nil, fmt.Errorf("field count exceeds maximum allowed limit or available buffer size")
 	}
 	registeredByName := (metaHeaderByte & REGISTER_BY_NAME_FLAG) != 0
@@ -1688,9 +1688,9 @@ field def layout as following:
 */
 func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, error) {
 	var bufErr Error
-	maxDepth := defaultConfig().MaxTypeDefDepth
+	maxDepth := defaultConfig().MaxDepth
 	if typeResolver != nil && typeResolver.fory != nil {
-		maxDepth = typeResolver.fory.config.MaxTypeDefDepth
+		maxDepth = typeResolver.fory.config.MaxDepth
 	}
 
 	// ReadData field header

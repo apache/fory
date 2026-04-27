@@ -337,7 +337,7 @@ func TestTypeDefNestedRecursionStackOverflowPanic(t *testing.T) {
 	buffer.SetReaderIndex(0)
 
 	bufErr := &Error{}
-	_, err := readFieldTypeWithFlags(buffer, 0, defaultConfig().MaxTypeDefDepth, bufErr)
+	_, err := readFieldTypeWithFlags(buffer, 0, defaultConfig().MaxDepth, bufErr)
 	if err == nil {
 		t.Fatal("expected error for excessive nesting depth, got nil")
 	}
