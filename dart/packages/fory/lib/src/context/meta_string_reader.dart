@@ -54,7 +54,11 @@ final class MetaStringReader {
     final header = buffer.readVarUint32Small7();
     final length = header >>> 1;
     if ((header & 1) == 1) {
-      return _dynamicReadMetaStrings[length - 1];
+      final index = length - 1;
+      if (index < 0 || index >= _dynamicReadMetaStrings.length) {
+        throw StateError('Meta string ref index $index is out of range.');
+      }
+      return _dynamicReadMetaStrings[index];
     }
     final encoded = length > metaStringSmallThreshold
         ? _readBigMetaString(buffer, length, expected)

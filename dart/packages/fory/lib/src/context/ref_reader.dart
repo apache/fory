@@ -26,12 +26,19 @@ final class RefReader {
   Object? _resolved;
   int? _resolvedId;
 
+  Object? _readRefAt(int id) {
+    if (id < 0 || id >= _refs.length) {
+      throw StateError('Read ref id $id is out of range.');
+    }
+    return _refs[id];
+  }
+
   int readRefOrNull(Buffer buffer) {
     final flag = buffer.readByte();
     if (flag == RefWriter.refFlag) {
       final id = buffer.readVarUint32();
       _resolvedId = id;
-      _resolved = _refs[id];
+      _resolved = _readRefAt(id);
       return flag;
     }
     _resolvedId = null;
@@ -68,9 +75,9 @@ final class RefReader {
 
   int? get readRefId => _resolvedId;
 
-  Object? getReadRef([int? id]) => id == null ? _resolved : _refs[id];
+  Object? getReadRef([int? id]) => id == null ? _resolved : _readRefAt(id);
 
-  Object? readRefAt(int id) => _refs[id];
+  Object? readRefAt(int id) => _readRefAt(id);
 
   void reference(Object? value) {
     if (_preservedIds.isEmpty) {
@@ -86,6 +93,9 @@ final class RefReader {
   }
 
   void setReadRef(int id, Object? value) {
+    if (id < 0 || id >= _refs.length) {
+      throw StateError('Read ref id $id is out of range.');
+    }
     _refs[id] = value;
   }
 
