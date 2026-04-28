@@ -71,6 +71,13 @@ BinaryArray f4Array = binaryRow.getArray(3);              // Access f4 list
 BinaryRow bar10 = f4Array.getStruct(10);                  // Access 11th Bar
 long value = bar10.getArray(1).getInt64(5);               // Access 6th element of bar.f2
 
+// Name-based access without repeated schema lookups
+Schema schema = encoder.schema();
+Schema.Int32Field f1 = schema.int32Field("f1");
+Schema.ArrayField f4 = schema.arrayField("f4");
+int f1Value = f1.get(binaryRow);
+ArrayData f4ByName = f4.get(binaryRow);
+
 // Partial deserialization - only deserialize what you need
 RowEncoder<Bar> barEncoder = Encoders.bean(Bar.class);
 Bar bar1 = barEncoder.fromRow(f4Array.getStruct(10));     // Deserialize 11th Bar only
@@ -79,6 +86,12 @@ Bar bar2 = barEncoder.fromRow(f4Array.getStruct(20));     // Deserialize 21st Ba
 // Full deserialization when needed
 Foo newFoo = encoder.fromRow(binaryRow);
 ```
+
+Cache the returned `Schema.*Field` handles in user code and reuse them for all rows with the same
+schema. Calling `schema.int32Field("f1")` creates a typed handle by resolving the field name to an
+ordinal, accepting Java lower-camel field names for bean-derived schemas, validating the expected
+row-format type, and storing the resolved ordinal. Later calls such as `f1.get(binaryRow)` go
+straight to the ordinal row getter without another schema map lookup or typed handle construction.
 
 ## Key Benefits
 

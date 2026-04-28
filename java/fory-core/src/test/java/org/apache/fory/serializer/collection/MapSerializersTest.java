@@ -26,6 +26,10 @@ import static org.apache.fory.collection.Collections.ofHashMap;
 import static org.testng.Assert.assertEquals;
 
 import com.google.common.collect.ImmutableMap;
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.io.Serializable;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -830,6 +834,63 @@ public class MapSerializersTest extends ForyTestBase {
     public Object put(String key, Object value) {
       return data.add(new MapEntry<>(key, value));
     }
+  }
+
+  public static class ExternalizableStringMap extends AbstractMap<String, String>
+      implements Externalizable {
+    private transient Map<String, String> data = new LinkedHashMap<>();
+
+    public ExternalizableStringMap() {}
+
+    @Override
+    public Set<Map.Entry<String, String>> entrySet() {
+      return data.entrySet();
+    }
+
+    @Override
+    public String put(String key, String value) {
+      return data.put(key, value);
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+      out.writeInt(size());
+      for (Map.Entry<String, String> entry : entrySet()) {
+        out.writeObject(entry.getKey());
+        out.writeObject(entry.getValue());
+      }
+    }
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+      data = new LinkedHashMap<>();
+      int size = in.readInt();
+      for (int i = 0; i < size; i++) {
+        put((String) in.readObject(), (String) in.readObject());
+      }
+    }
+  }
+
+  public static class ExternalizableMapHolder {
+    public Map<String, String> data = new ExternalizableStringMap();
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testExternalizableMapCompatibleMode(boolean enableCodegen) {
+    Fory fory =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .build();
+    ExternalizableMapHolder holder = new ExternalizableMapHolder();
+    holder.data.put("k", "v");
+
+    ExternalizableMapHolder deserialized = serDe(fory, holder);
+    Assert.assertEquals(deserialized.data.getClass(), ExternalizableStringMap.class);
+    Assert.assertEquals(deserialized.data, holder.data);
+    Assert.assertEquals(deserialized.data.get("k"), "v");
   }
 
   @Test(dataProvider = "enableCodegen")
