@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.io.Externalizable;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
@@ -60,6 +61,7 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.ExternalizableSerializer;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -949,7 +951,9 @@ public class CollectionSerializers {
       Class<? extends Serializer> serializerType =
           ClassResolver.useReplaceResolveSerializer(cls)
               ? ReplaceResolveSerializer.class
-              : config.getDefaultJDKStreamSerializerType();
+              : Externalizable.class.isAssignableFrom(cls)
+                  ? ExternalizableSerializer.class
+                  : config.getDefaultJDKStreamSerializerType();
       serializer = Serializers.newSerializer(typeResolver, cls, serializerType);
     }
 

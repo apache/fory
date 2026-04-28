@@ -1350,7 +1350,9 @@ public class ClassResolver extends TypeResolver {
         if (serializerClass != null) {
           return serializerClass;
         }
-        if (requireJavaSerialization(cls) || useReplaceResolveSerializer(cls)) {
+        if (Externalizable.class.isAssignableFrom(cls)
+            || requireJavaSerialization(cls)
+            || useReplaceResolveSerializer(cls)) {
           return CollectionSerializers.JDKCompatibleCollectionSerializer.class;
         }
         if (!isCrossLanguage()) {
@@ -1364,7 +1366,9 @@ public class ClassResolver extends TypeResolver {
         if (serializerClass != null) {
           return serializerClass;
         }
-        if (requireJavaSerialization(cls) || useReplaceResolveSerializer(cls)) {
+        if (Externalizable.class.isAssignableFrom(cls)
+            || requireJavaSerialization(cls)
+            || useReplaceResolveSerializer(cls)) {
           return MapSerializers.JDKCompatibleMapSerializer.class;
         }
         if (!isCrossLanguage()) {
