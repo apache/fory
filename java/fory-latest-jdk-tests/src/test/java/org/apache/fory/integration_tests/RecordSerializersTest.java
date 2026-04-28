@@ -22,13 +22,17 @@ package org.apache.fory.integration_tests;
 import static org.apache.fory.collection.Collections.ofArrayList;
 import static org.apache.fory.collection.Collections.ofHashMap;
 
+import java.io.Serializable;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
+import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.test.bean.Struct;
@@ -41,6 +45,11 @@ import org.testng.annotations.Test;
 public class RecordSerializersTest {
 
   public record Foo(int f1, String f2, List<String> f3, char f4) {}
+
+  public record NumberCompressedPayload(Long longValue, String stringValue) {}
+
+  public record BoxedPrimitiveRecord(String lensId, Long from, Long to, Integer type)
+      implements Serializable {}
 
   @Test
   public void testIsRecord() {
@@ -78,6 +87,56 @@ public class RecordSerializersTest {
     Fory fory = Fory.builder().requireClassRegistration(false).withCodegen(codegen).build();
     Foo foo = new Foo(10, "abc", new ArrayList<>(Arrays.asList("a", "b")), 'x');
     Assert.assertEquals(fory.deserialize(fory.serialize(foo)), foo);
+  }
+
+  @Test
+  public void testNumberCompressedBoxedLongRecordRoundTripAcrossPools() {
+    ThreadSafeFory writer = newNumberCompressedPool();
+    ThreadSafeFory reader = newNumberCompressedPool();
+
+    NumberCompressedPayload payload =
+        new NumberCompressedPayload(123_456_789L, "longer string with multibyte: \u00ff\u00fe");
+
+    byte[] bytes = writer.serialize(payload);
+    Assert.assertEquals(reader.deserialize(bytes), payload);
+  }
+
+  @Test
+  public void testCompatibleCodegenBoxedPrimitiveRecordRoundTrip() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withClassVersionCheck(true)
+            .withCodegen(true)
+            .build();
+    BoxedPrimitiveRecord record =
+        new BoxedPrimitiveRecord(
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:11111111-2222-3333-4444-555555555555",
+            123456789012345L,
+            98765432109876L,
+            146);
+    Assert.assertEquals(fory.deserialize(fory.serialize(record)), record);
+  }
+
+  private static ThreadSafeFory newNumberCompressedPool() {
+    return newNumberCompressedBuilder().buildThreadSafeForyPool(4);
+  }
+
+  private static ForyBuilder newNumberCompressedBuilder() {
+    return Fory.builder()
+        .withLanguage(Language.JAVA)
+        .withCodegen(true)
+        .withAsyncCompilation(false)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(true)
+        .withDeserializeUnknownClass(true)
+        .withRefTracking(true)
+        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withStringCompressed(true)
+        .withNumberCompressed(true)
+        .withRefCopy(true);
   }
 
   @Test(dataProvider = "codegen")

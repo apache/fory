@@ -56,6 +56,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.fory.memory.Platform;
@@ -430,7 +431,8 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Float.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.format("%fF", f)));
+            return new ExprCode(
+                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fF", f)));
           }
         } else if (javaType == Double.class) {
           Double d = (Double) value;
@@ -443,7 +445,8 @@ public interface Expression {
             return new ExprCode(
                 FalseLiteral, new LiteralValue(javaType, "Double.NEGATIVE_INFINITY"));
           } else {
-            return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.format("%fD", d)));
+            return new ExprCode(
+                FalseLiteral, new LiteralValue(javaType, String.format(Locale.ROOT, "%fD", d)));
           }
         } else if (javaType == Byte.class) {
           return new ExprCode(

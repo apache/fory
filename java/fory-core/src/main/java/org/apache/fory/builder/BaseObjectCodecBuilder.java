@@ -1856,17 +1856,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     } else {
       if (typeRef.isPrimitive() && !nullable) {
         // Only skip null check if BOTH: local type is primitive AND sender didn't write null flag
-        Expression value = deserializeForNotNull(buffer, typeRef, null);
+        Expression value = deserializeForNotNullForField(buffer, descriptor, null);
         // Should put value expr ahead to avoid generated code in wrong scope.
         return new ListExpression(value, callback.apply(value));
       }
-      // Pass local field type so readNullable can use default value for primitives when null
-      Class<?> localFieldType = typeRef.isPrimitive() ? typeRef.getRawType() : null;
       return readNullableField(
           buffer,
           descriptor,
           callback,
-          () -> deserializeForNotNull(buffer, typeRef, null),
+          () -> deserializeForNotNullForField(buffer, descriptor, null),
           nullable);
     }
   }
