@@ -686,8 +686,13 @@ public class ClassResolver extends TypeResolver {
 
   @Override
   protected int buildUnregisteredTypeId(Class<?> cls, Serializer<?> serializer) {
-    if (serializer == null && !cls.isEnum() && useReplaceResolveSerializer(cls)) {
-      return Types.NAMED_EXT;
+    if (!cls.isEnum()) {
+      if (serializer instanceof ReplaceResolveSerializer) {
+        return REPLACE_STUB_ID;
+      }
+      if (serializer == null && useReplaceResolveSerializer(cls)) {
+        return Types.NAMED_EXT;
+      }
     }
     return super.buildUnregisteredTypeId(cls, serializer);
   }
@@ -1215,7 +1220,11 @@ public class ClassResolver extends TypeResolver {
       } else {
         typeInfo = typeInfo.copy(typeId);
       }
-      updateTypeInfo(type, typeInfo);
+      if (typeId == REPLACE_STUB_ID) {
+        classInfoMap.put(type, typeInfo);
+      } else {
+        updateTypeInfo(type, typeInfo);
+      }
       // Add to compositeNameBytes2TypeInfo for unregistered classes so that
       // readTypeInfo can find the TypeInfo by name bytes during deserialization.
       // This is important for dynamically created classes that can't be loaded by name.
