@@ -163,10 +163,10 @@ To disable reference tracking for C++ entirely, set
 #### Rust: Field Attributes
 
 ```rust
-use fory::ForyObject;
+use fory::ForyStruct;
 use std::rc::Rc;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Document {
     title: String,
 

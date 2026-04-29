@@ -18,6 +18,7 @@
 import dataclasses
 import importlib
 import inspect
+import types
 
 import typing
 from typing import TypeVar
@@ -337,17 +338,35 @@ def qualified_class_name(cls):
         return cls.__module__ + "#" + cls.__qualname__
 
 
-def load_class(classname: str):
+def load_class(classname: str, policy=None):
     mod_name, cls_name = classname.rsplit("#", 1)
-    try:
-        mod = importlib.import_module(mod_name)
-    except ImportError as ex:
-        raise Exception(f"Can't import module {mod_name}") from ex
+    if policy is not None:
+        result = policy.validate_module(mod_name)
+        if result is not None:
+            if isinstance(result, str):
+                mod_name = result
+                mod = None
+            else:
+                assert isinstance(result, types.ModuleType), f"validate_module must return module, str, or None, got {type(result)}"
+                mod = result
+        else:
+            mod = None
+    else:
+        mod = None
+    if mod is None:
+        try:
+            mod = importlib.import_module(mod_name)
+        except ImportError as ex:
+            raise Exception(f"Can't import module {mod_name}") from ex
     try:
         classes = cls_name.split(".")
         cls = getattr(mod, classes.pop(0))
         while classes:
             cls = getattr(cls, classes.pop(0))
+        if policy is not None:
+            result = policy.validate_class(cls, is_local=False)
+            if result is not None:
+                cls = result
         return cls
     except AttributeError as ex:
         raise Exception(f"Can't import class {cls_name} from module {mod_name}") from ex

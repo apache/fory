@@ -16,10 +16,10 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::any::Any;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 #[fory(debug)]
 struct Container {
     value: i32,

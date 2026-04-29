@@ -19,12 +19,12 @@ use std::collections::HashMap;
 
 use fory_core::fory::Fory;
 use fory_core::TypeId;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
 // Test 1: Simple struct with one primitive field, non-compatible mode
 #[test]
 fn test_one_field_primitive_non_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Data {
         value: i32,
     }
@@ -40,7 +40,7 @@ fn test_one_field_primitive_non_compatible() {
 // Test 2: Simple struct with one String field, non-compatible mode
 #[test]
 fn test_one_field_string_non_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Data {
         name: String,
     }
@@ -58,12 +58,12 @@ fn test_one_field_string_non_compatible() {
 // Test 3: Compatible mode - serialize with one field, deserialize with different type
 #[test]
 fn test_compatible_field_type_change() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Data1 {
         value: i32,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Data2 {
         value: Option<i32>,
     }
@@ -81,12 +81,12 @@ fn test_compatible_field_type_change() {
 
 #[test]
 fn test_struct_evolving_override() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Evolving {
         id: i32,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[fory(evolving = false)]
     struct Fixed {
         id: i32,
@@ -121,13 +121,13 @@ fn test_struct_evolving_override() {
 // Test 4: Compatible mode - serialize with field, deserialize with empty struct
 #[test]
 fn test_compatible_to_empty_struct() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct DataWithField {
         value: i32,
         name: String,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct EmptyData {}
 
     let mut fory1 = Fory::builder().compatible(true).build();
@@ -147,10 +147,10 @@ fn test_compatible_to_empty_struct() {
 // Test 5: Compatible mode - empty struct to struct with fields (fields get defaults)
 #[test]
 fn test_compatible_from_empty_struct() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct EmptyData {}
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct DataWithField {
         value: i32,
         name: String,
@@ -170,13 +170,13 @@ fn test_compatible_from_empty_struct() {
 
 #[test]
 fn test_compatible_vec_to_empty_struct() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct DataWithField {
         value: Vec<i32>,
         name: String,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct EmptyData {}
 
     let mut fory1 = Fory::builder().compatible(true).build();
@@ -195,13 +195,13 @@ fn test_compatible_vec_to_empty_struct() {
 
 #[test]
 fn test_compatible_map_to_empty_struct() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct DataWithField {
         value: HashMap<String, i32>,
         name: String,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct EmptyData {}
 
     let mut fory1 = Fory::builder().compatible(true).build();
@@ -222,7 +222,7 @@ fn test_compatible_map_to_empty_struct() {
 fn test_struct_with_float16_fields() {
     use fory_core::types::float16::float16;
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Float16Data {
         scalar: float16,
         vec_field: Vec<float16>,
@@ -264,7 +264,7 @@ fn test_struct_with_float16_fields() {
 fn test_struct_with_bfloat16_fields() {
     use fory_core::types::bfloat16::bfloat16;
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct BFloat16Data {
         scalar: bfloat16,
         vec_field: Vec<bfloat16>,

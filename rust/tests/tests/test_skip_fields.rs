@@ -16,9 +16,9 @@
 // under the License.
 
 use fory_core::{Fory, Reader};
-use fory_derive::ForyObject;
+use fory_derive::{ForyEnum, ForyStruct};
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct TestSkipFields {
     serialized_field: i32,
     #[fory(skip)]
@@ -26,12 +26,12 @@ struct TestSkipFields {
     another_serialized: f64,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct NestedStruct {
     value: i32,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct TestNestedSkip {
     normal_field: i32,
     nested: NestedStruct,
@@ -39,7 +39,7 @@ struct TestNestedSkip {
     skipped_nested: NestedStruct,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct MultipleSkipFields {
     field1: i32,
     #[fory(skip)]
@@ -50,7 +50,7 @@ struct MultipleSkipFields {
     field3: f32,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct AllFieldsSkipped {
     #[fory(skip)]
     skipped1: String,
@@ -60,7 +60,7 @@ struct AllFieldsSkipped {
     skipped3: f64,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct ComplexNestedSkip {
     normal_field: i32,
     #[fory(skip)]
@@ -70,7 +70,7 @@ struct ComplexNestedSkip {
     skipped_nested: TestSkipFields,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyEnum, Debug, PartialEq)]
 enum TestEnumSkip {
     Pending,
     // #[default]
@@ -232,7 +232,7 @@ fn test_skip_serialization_size() {
         skipped_field: "this is a long string that should be skipped".to_string(),
         another_serialized: 2.142,
     };
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct TestNoSkip {
         serialized_field: i32,
         skipped_field: String,
@@ -260,7 +260,7 @@ fn test_skip_serialization_size() {
 
 #[test]
 fn test_skip_with_different_types() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct MultiTypeSkip {
         field1: i32,
         #[fory(skip)]
@@ -303,7 +303,7 @@ fn test_skip_with_different_types() {
 fn test_trait_object_serialization() {
     use fory_core::Serializer;
     use fory_core::{register_trait_type, Fory};
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
     use std::collections::HashMap;
     use std::rc::Rc;
     use std::sync::Arc;
@@ -313,7 +313,7 @@ fn test_trait_object_serialization() {
         fn name(&self) -> &str;
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Dog {
         name: String,
         breed: String,
@@ -328,7 +328,7 @@ fn test_trait_object_serialization() {
         }
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Cat {
         name: String,
         color: String,
@@ -345,12 +345,12 @@ fn test_trait_object_serialization() {
 
     register_trait_type!(Animal, Dog, Cat);
 
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct Zoo {
         star_animal: Box<dyn Animal>,
     }
 
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct ZooWithSkip {
         regular_animal: Box<dyn Animal>,
         #[fory(skip)]
@@ -384,7 +384,7 @@ fn test_trait_object_serialization() {
     assert_eq!(decoded_skip.skipped_animal.name(), "".to_string());
     assert_eq!(decoded_skip.skipped_animal.speak(), "Woof!".to_string());
 
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct ComplexSkipExample {
         #[fory(skip)]
         boxed_dyn: Box<dyn Animal>,

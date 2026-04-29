@@ -15,16 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::util::{
-    detect_collection_with_trait_object, is_arc_dyn_trait, is_box_dyn_trait, is_rc_dyn_trait,
-    CollectionTraitInfo,
-};
-use fory_core::type_id::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
+use super::field_meta::IntEncoding;
+use fory_core::type_id::TypeId;
 use fory_core::util::to_snake_case;
-use proc_macro2::{Ident, TokenStream};
-use quote::{format_ident, quote, ToTokens};
+use proc_macro2::TokenStream;
+use quote::{quote, ToTokens};
 use std::cell::RefCell;
-use std::fmt;
 use syn::{Field, GenericArgument, Index, PathArguments, Type};
 
 /// Get field name for a field, handling both named and tuple struct fields.
@@ -69,24 +65,14 @@ thread_local! {
 struct MacroContext {
     struct_name: String,
     debug_enabled: bool,
-    /// Type parameter names extracted from the struct/enum generics (e.g., "C", "T", "E")
-    type_params: std::collections::HashSet<String>,
 }
 
-/// Set the macro context with struct name, debug flag, and type parameters.
-///
-/// `type_params` should contain the names of all type parameters from the struct/enum
-/// generics (e.g., for `struct Vote<C: RaftTypeConfig>`, pass `{"C"}`).
-pub(super) fn set_struct_context(
-    name: &str,
-    debug_enabled: bool,
-    type_params: std::collections::HashSet<String>,
-) {
+/// Set the macro context with struct name and debug flag.
+pub(super) fn set_struct_context(name: &str, debug_enabled: bool) {
     MACRO_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = Some(MacroContext {
             struct_name: name.to_string(),
             debug_enabled,
-            type_params,
         });
     });
 }
@@ -108,79 +94,6 @@ pub(super) fn is_debug_enabled() -> bool {
             .map(|c| c.debug_enabled)
             .unwrap_or(false)
     })
-}
-
-/// Check if a type name is a type parameter of the current struct/enum.
-pub(super) fn is_type_parameter(name: &str) -> bool {
-    MACRO_CONTEXT.with(|ctx| {
-        ctx.borrow()
-            .as_ref()
-            .map(|c| c.type_params.contains(name))
-            .unwrap_or(false)
-    })
-}
-
-pub(super) fn contains_trait_object(ty: &Type) -> bool {
-    match ty {
-        Type::TraitObject(_) => true,
-        Type::Path(type_path) => {
-            if is_box_dyn_trait(ty).is_some()
-                || is_rc_dyn_trait(ty).is_some()
-                || is_arc_dyn_trait(ty).is_some()
-            {
-                return true;
-            }
-
-            if let Some(seg) = type_path.path.segments.last() {
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    return args.args.iter().any(|arg| {
-                        if let GenericArgument::Type(inner_ty) = arg {
-                            contains_trait_object(inner_ty)
-                        } else {
-                            false
-                        }
-                    });
-                }
-            }
-            false
-        }
-        _ => false,
-    }
-}
-
-pub(super) struct WrapperTypes {
-    pub wrapper_ty: Ident,
-    pub trait_ident: Ident,
-}
-
-pub(super) fn create_wrapper_types_rc(trait_name: &str) -> WrapperTypes {
-    WrapperTypes {
-        wrapper_ty: format_ident!("{}Rc", trait_name),
-        trait_ident: format_ident!("{}", trait_name),
-    }
-}
-
-pub(super) fn create_wrapper_types_arc(trait_name: &str) -> WrapperTypes {
-    WrapperTypes {
-        wrapper_ty: format_ident!("{}Arc", trait_name),
-        trait_ident: format_ident!("{}", trait_name),
-    }
-}
-
-#[allow(dead_code)]
-pub(super) enum StructField {
-    BoxDyn,
-    RcDyn(String),
-    ArcDyn(String),
-    VecBox(String),
-    VecRc(String),
-    VecArc(String),
-    HashMapBox(Box<Type>, String),
-    HashMapRc(Box<Type>, String),
-    HashMapArc(Box<Type>, String),
-    ContainsTraitObject,
-    Forward,
-    None,
 }
 
 fn is_forward_field(ty: &Type) -> bool {
@@ -258,435 +171,6 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
     }
 }
 
-pub(super) fn classify_trait_object_field(ty: &Type) -> StructField {
-    // Check collections FIRST - they should be handled as collections, not forward refs
-    // This is important because is_forward_field would match Vec<Box<dyn Any>> as forward
-    if let Some(collection_info) = detect_collection_with_trait_object(ty) {
-        return match collection_info {
-            CollectionTraitInfo::VecBox(t) => StructField::VecBox(t),
-            CollectionTraitInfo::VecRc(t) => StructField::VecRc(t),
-            CollectionTraitInfo::VecArc(t) => StructField::VecArc(t),
-            CollectionTraitInfo::HashMapBox(k, t) => StructField::HashMapBox(k, t),
-            CollectionTraitInfo::HashMapRc(k, t) => StructField::HashMapRc(k, t),
-            CollectionTraitInfo::HashMapArc(k, t) => StructField::HashMapArc(k, t),
-        };
-    }
-    if is_forward_field(ty) {
-        return StructField::Forward;
-    }
-    if let Some((_, _)) = is_box_dyn_trait(ty) {
-        return StructField::BoxDyn;
-    }
-    if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
-        return StructField::RcDyn(trait_name);
-    }
-    if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
-        return StructField::ArcDyn(trait_name);
-    }
-    if contains_trait_object(ty) {
-        return StructField::ContainsTraitObject;
-    }
-    StructField::None
-}
-
-#[derive(Debug)]
-pub(super) struct TypeNode {
-    /// Simple type name, used for type matching (e.g., "LeaderId", "Vec")
-    pub name: String,
-    /// Full type path string, used for code generation (e.g., "C::LeaderId")
-    pub full_path: String,
-    pub generics: Vec<TypeNode>,
-    /// For arrays, store the original type string "[T; N]" to preserve length info
-    pub original_type_str: Option<String>,
-}
-
-pub(super) fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
-    if node.name != "Vec" {
-        return None;
-    }
-    let child = node.generics.first()?;
-    for (ty_name, type_id, _) in PRIMITIVE_ARRAY_TYPE_MAP {
-        if child.name == *ty_name {
-            return Some(quote! { #type_id });
-        }
-    }
-    None
-}
-
-pub(super) fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream> {
-    if node.name != "Vec" {
-        return None;
-    }
-    let child = node.generics.first()?;
-    if child.name != "Option" {
-        return None;
-    }
-    let grandchild = child.generics.first()?;
-    for (ty_name, _, _) in PRIMITIVE_ARRAY_TYPE_MAP {
-        if grandchild.name == *ty_name {
-            return Some(quote! {
-                compile_error!("Vec<Option<primitive>> is not allowed!");
-            });
-        }
-    }
-
-    None
-}
-
-impl fmt::Display for TypeNode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.name == "Tuple" {
-            // Format as Rust tuple syntax: (T1, T2, T3)
-            write!(
-                f,
-                "({})",
-                self.generics
-                    .iter()
-                    .map(|g| g.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        } else if self.name == "Array" {
-            // For arrays, use the original type string if available (e.g., "[f32; 4]")
-            if let Some(ref original) = self.original_type_str {
-                write!(f, "{}", original)
-            } else {
-                // Fallback - shouldn't happen if properly constructed
-                write!(f, "Array")
-            }
-        } else if self.generics.is_empty() {
-            // Use full_path to preserve associated type paths like C::LeaderId
-            write!(f, "{}", self.full_path)
-        } else {
-            // Use full_path for the base type, recursively format generics
-            write!(
-                f,
-                "{}<{}>",
-                self.full_path,
-                self.generics
-                    .iter()
-                    .map(|g| g.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            )
-        }
-    }
-}
-
-pub(super) fn extract_type_name(ty: &Type) -> String {
-    if let Type::Path(type_path) = ty {
-        type_path.path.segments.last().unwrap().ident.to_string()
-    } else if matches!(ty, Type::TraitObject(_)) {
-        "TraitObject".to_string()
-    } else if matches!(ty, Type::Tuple(_)) {
-        "Tuple".to_string()
-    } else if matches!(ty, Type::Array(_)) {
-        "Array".to_string()
-    } else {
-        quote!(#ty).to_string()
-    }
-}
-
-/// Extracts the full type path string, preserving associated types like `C::LeaderId`
-pub(super) fn extract_full_type_path(ty: &Type) -> String {
-    if let Type::Path(type_path) = ty {
-        // Build the full path from all segments without generic arguments
-        type_path
-            .path
-            .segments
-            .iter()
-            .map(|seg| seg.ident.to_string())
-            .collect::<Vec<_>>()
-            .join("::")
-    } else if matches!(ty, Type::TraitObject(_)) {
-        "TraitObject".to_string()
-    } else if matches!(ty, Type::Tuple(_)) {
-        "Tuple".to_string()
-    } else if matches!(ty, Type::Array(_)) {
-        "Array".to_string()
-    } else {
-        quote!(#ty).to_string()
-    }
-}
-
-#[allow(dead_code)]
-pub(super) fn is_option(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "Option" {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
-    // Handle trait objects specially - they can't be parsed as normal types
-    if matches!(ty, Type::TraitObject(_)) {
-        return TypeNode {
-            name: "TraitObject".to_string(),
-            full_path: "TraitObject".to_string(),
-            generics: vec![],
-            original_type_str: None,
-        };
-    }
-
-    // Handle tuples - make child generics empty
-    if let Type::Tuple(_tuple) = ty {
-        return TypeNode {
-            name: "Tuple".to_string(),
-            full_path: "Tuple".to_string(),
-            generics: vec![],
-            original_type_str: None,
-        };
-    }
-
-    // Handle arrays - extract element type and preserve original type string
-    if let Type::Array(array) = ty {
-        let elem_node = parse_generic_tree(&array.elem);
-        // Preserve the original type string including the length (e.g., "[f32; 4]")
-        let original_type_str = quote!(#ty).to_string().replace(' ', "");
-        return TypeNode {
-            name: "Array".to_string(),
-            full_path: "Array".to_string(),
-            generics: vec![elem_node],
-            original_type_str: Some(original_type_str),
-        };
-    }
-
-    let name = extract_type_name(ty);
-    let full_path = extract_full_type_path(ty);
-
-    let generics = if let Type::Path(type_path) = ty {
-        if let PathArguments::AngleBracketed(args) =
-            &type_path.path.segments.last().unwrap().arguments
-        {
-            args.args
-                .iter()
-                .filter_map(|arg| {
-                    if let GenericArgument::Type(ty) = arg {
-                        Some(parse_generic_tree(ty))
-                    } else {
-                        None
-                    }
-                })
-                .collect()
-        } else {
-            vec![]
-        }
-    } else {
-        vec![]
-    };
-    TypeNode {
-        name,
-        full_path,
-        generics,
-        original_type_str: None,
-    }
-}
-
-pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
-    // Special handling for type parameters (e.g., C, T, E)
-    // Type parameters should use UNKNOWN type ID since they are not concrete types.
-    // This prevents `C::LeaderId` generating code like `<C as Serializer>::fory_get_type_id()` which
-    // would require the type parameter to implement Serializer.
-    if is_type_parameter(&node.name) {
-        return quote! {
-            fory_core::meta::FieldType::new(
-                fory_core::type_id::TypeId::UNKNOWN as u32,
-                true,
-                vec![]
-            )
-        };
-    }
-
-    // Special handling for tuples: always use FieldType { LIST, nullable: true, generics: vec![UNKNOWN] }
-    if node.name == "Tuple" {
-        return quote! {
-            fory_core::meta::FieldType::new(
-                fory_core::type_id::TypeId::LIST as u32,
-                true,
-                vec![fory_core::meta::FieldType::new(
-                    fory_core::type_id::TypeId::UNKNOWN as u32,
-                    true,
-                    vec![]
-                )]
-            )
-        };
-    }
-
-    // Special handling for arrays: treat them as lists with element type generic
-    if node.name == "Array" {
-        if let Some(elem_node) = node.generics.first() {
-            let elem_token = generic_tree_to_tokens(elem_node);
-            // Check if element is primitive to determine the correct type ID
-            let is_primitive_elem = PRIMITIVE_TYPE_NAMES.contains(&elem_node.name.as_str());
-            if is_primitive_elem {
-                // For primitive arrays, use primitive array type ID
-                let type_id_token = match elem_node.name.as_str() {
-                    "bool" => quote! { fory_core::type_id::TypeId::BOOL_ARRAY as u32 },
-                    "i8" => quote! { fory_core::type_id::TypeId::INT8_ARRAY as u32 },
-                    "i16" => quote! { fory_core::type_id::TypeId::INT16_ARRAY as u32 },
-                    "i32" => quote! { fory_core::type_id::TypeId::INT32_ARRAY as u32 },
-                    "i64" => quote! { fory_core::type_id::TypeId::INT64_ARRAY as u32 },
-                    "i128" => quote! { fory_core::type_id::TypeId::INT128_ARRAY as u32 },
-                    "float16" | "Float16" => {
-                        quote! { fory_core::type_id::TypeId::FLOAT16_ARRAY as u32 }
-                    }
-                    "bfloat16" | "BFloat16" => {
-                        quote! { fory_core::type_id::TypeId::BFLOAT16_ARRAY as u32 }
-                    }
-                    "f32" => quote! { fory_core::type_id::TypeId::FLOAT32_ARRAY as u32 },
-                    "f64" => quote! { fory_core::type_id::TypeId::FLOAT64_ARRAY as u32 },
-                    "u8" => quote! { fory_core::type_id::TypeId::BINARY as u32 },
-                    "u16" => quote! { fory_core::type_id::TypeId::UINT16_ARRAY as u32 },
-                    "u32" => quote! { fory_core::type_id::TypeId::UINT32_ARRAY as u32 },
-                    "u64" => quote! { fory_core::type_id::TypeId::UINT64_ARRAY as u32 },
-                    "u128" => quote! { fory_core::type_id::TypeId::U128_ARRAY as u32 },
-                    _ => quote! { fory_core::type_id::TypeId::LIST as u32 },
-                };
-                return quote! {
-                    fory_core::meta::FieldType::new(
-                        #type_id_token,
-                        false,
-                        vec![]
-                    )
-                };
-            } else {
-                // For non-primitive arrays, use LIST type ID with element type as generic
-                return quote! {
-                    fory_core::meta::FieldType::new(
-                        fory_core::type_id::TypeId::LIST as u32,
-                        false,
-                        vec![#elem_token]
-                    )
-                };
-            }
-        } else {
-            // Array without element type info - shouldn't happen
-            return quote! { compile_error!("Array missing element type"); };
-        }
-    }
-
-    // If Option, unwrap it before generating children
-    let (nullable, base_node) = if node.name == "Option" {
-        if let Some(inner) = node.generics.first() {
-            if inner.name == "Option" {
-                return quote! { compile_error!("Nested adjacent Option is not allowed!"); };
-            }
-            // Special handling for Option<Tuple>
-            if inner.name == "Tuple" {
-                return quote! {
-                    fory_core::meta::FieldType::new(
-                        fory_core::type_id::TypeId::LIST as u32,
-                        true,
-                        vec![fory_core::meta::FieldType::new(
-                            fory_core::type_id::TypeId::UNKNOWN as u32,
-                            true,
-                            vec![]
-                        )]
-                    )
-                };
-            }
-            // Unwrap Option and propagate parsing
-            (true, inner)
-        } else {
-            return quote! { compile_error!("Missing Option inner type"); };
-        }
-    } else {
-        (!PRIMITIVE_TYPE_NAMES.contains(&node.name.as_str()), node)
-    };
-
-    // If Rc or Arc, unwrap to inner type - these are reference wrappers
-    // that don't add type info to the field type (handled by track_ref flag)
-    let base_node = if base_node.name == "Rc" || base_node.name == "Arc" {
-        if let Some(inner) = base_node.generics.first() {
-            inner
-        } else {
-            base_node
-        }
-    } else {
-        base_node
-    };
-
-    // `Vec<Option<primitive>>` rule stays as is
-    if let Some(ts) = try_vec_of_option_primitive(base_node) {
-        return ts;
-    }
-
-    // Try primitive Vec type
-    let primitive_vec = try_primitive_vec_type(base_node);
-
-    // Recursively generate children token streams
-    let children_tokens: Vec<TokenStream> = if primitive_vec.is_none() {
-        base_node
-            .generics
-            .iter()
-            .map(generic_tree_to_tokens)
-            .collect()
-    } else {
-        vec![]
-    };
-
-    // Build the syn::Type from the DISPLAY of base_node, not the original node if Option
-    let ty: syn::Type = syn::parse_str(&base_node.to_string()).unwrap();
-
-    // Get type ID
-    let get_type_id = if let Some(ts) = primitive_vec {
-        ts
-    } else {
-        quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)? as u32
-        }
-    };
-
-    quote! {
-        {
-            let mut type_id = #get_type_id;
-            let mut user_type_id = u32::MAX;
-            let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
-            // For tuples and sets, if no generic info is available, add UNKNOWN element
-            // This handles type aliases to tuples where we can't detect the tuple at macro time
-            if (type_id == fory_core::type_id::TypeId::LIST as u32
-                || type_id == fory_core::type_id::TypeId::SET as u32)
-                && generics.is_empty() {
-                generics.push(fory_core::meta::FieldType::new(
-                    fory_core::type_id::TypeId::UNKNOWN as u32,
-                    true,
-                    vec![]
-                ));
-            }
-            let is_custom = !fory_core::type_id::is_internal_type(type_id);
-            if is_custom {
-                let type_info = <#ty as fory_core::serializer::Serializer>::fory_get_type_info(type_resolver)?;
-                type_id = type_info.get_type_id() as u32;
-                user_type_id = type_info.get_user_type_id();
-                if type_id == fory_core::type_id::TypeId::TYPED_UNION as u32
-                    || type_id == fory_core::type_id::TypeId::NAMED_UNION as u32 {
-                    type_id = fory_core::type_id::TypeId::UNION as u32;
-                    user_type_id = u32::MAX;
-                }
-                if type_resolver.is_xlang() && generics.len() > 0 {
-                    return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));
-                } else {
-                    generics = vec![];
-                }
-            } else if type_id == fory_core::type_id::TypeId::TYPED_UNION as u32
-                || type_id == fory_core::type_id::TypeId::NAMED_UNION as u32 {
-                type_id = fory_core::type_id::TypeId::UNION as u32;
-            }
-            fory_core::meta::FieldType {
-                type_id,
-                user_type_id,
-                nullable: #nullable,
-                track_ref: false,
-                generics,
-            }
-        }
-    }
-}
-
 type FieldGroup = Vec<(String, String, u32)>;
 type FieldGroups = (
     FieldGroup,
@@ -730,225 +214,6 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "i128" => TypeId::INT128 as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
-}
-
-pub(super) fn is_primitive_type(ty: &str) -> bool {
-    PRIMITIVE_TYPE_NAMES.contains(&ty)
-}
-
-/// Mapping of primitive type names to their writer and reader method names
-/// Order: (type_name, writer_method, reader_method)
-static PRIMITIVE_IO_METHODS: &[(&str, &str, &str)] = &[
-    ("bool", "write_bool", "read_bool"),
-    ("i8", "write_i8", "read_i8"),
-    ("i16", "write_i16", "read_i16"),
-    ("i32", "write_var_i32", "read_var_i32"),
-    ("i64", "write_var_i64", "read_var_i64"),
-    ("f32", "write_f32", "read_f32"),
-    ("f64", "write_f64", "read_f64"),
-    ("u8", "write_u8", "read_u8"),
-    ("u16", "write_u16", "read_u16"),
-    ("u32", "write_u32", "read_u32"),
-    ("u64", "write_u64", "read_u64"),
-    ("usize", "write_usize", "read_usize"),
-    ("u128", "write_u128", "read_u128"),
-];
-
-/// Check if a type is a direct primitive type (numeric or String, not wrapped in Option, Vec, etc.)
-pub(super) fn is_direct_primitive_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            // Check if it's a simple type path without generics
-            if matches!(seg.arguments, PathArguments::None) {
-                let type_name = seg.ident.to_string();
-                // Check for String type
-                if type_name == "String" {
-                    return true;
-                }
-                // Check for numeric primitive types
-                return PRIMITIVE_IO_METHODS
-                    .iter()
-                    .any(|(name, _, _)| *name == type_name.as_str());
-            }
-        }
-    }
-    false
-}
-
-/// Get the writer method name for a primitive numeric type
-/// Panics if type_name is not a primitive type
-pub(super) fn get_primitive_writer_method(type_name: &str) -> &'static str {
-    PRIMITIVE_IO_METHODS
-        .iter()
-        .find(|(name, _, _)| *name == type_name)
-        .map(|(_, writer, _)| *writer)
-        .unwrap_or_else(|| panic!("type_name '{}' must be a primitive type", type_name))
-}
-
-/// Get the writer method name for a primitive numeric type, considering encoding attributes.
-///
-/// For i32 fields:
-/// - type_id=VARINT32 (default): write_var_i32
-/// - type_id=INT32: write_i32 (fixed 4-byte)
-///
-/// For u32 fields:
-/// - type_id=VARINT32/VAR_UINT32 (default): write_var_u32
-/// - type_id=INT32/UINT32: write_u32 (fixed 4-byte)
-///
-/// For u64 fields:
-/// - type_id=VARINT32/VAR_UINT64 (default): write_var_u64
-/// - type_id=INT32/UINT64: write_u64 (fixed 8-byte)
-/// - type_id=TAGGED_UINT64: write_tagged_u64
-pub(super) fn get_primitive_writer_method_with_encoding(
-    type_name: &str,
-    meta: &super::field_meta::ForyFieldMeta,
-) -> &'static str {
-    use fory_core::type_id::TypeId;
-
-    // Handle i32 with type_id
-    if type_name == "i32" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 {
-                return "write_i32"; // Fixed 4-byte encoding
-            }
-        }
-        return "write_var_i32"; // Variable-length (default)
-    }
-
-    // Handle u32 with type_id
-    if type_name == "u32" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT32 as i16 {
-                return "write_u32"; // Fixed 4-byte encoding
-            }
-        }
-        return "write_var_u32"; // Variable-length (default)
-    }
-
-    // Handle u64 with type_id
-    if type_name == "u64" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT64 as i16 {
-                return "write_u64"; // Fixed 8-byte encoding
-            } else if type_id == TypeId::TAGGED_UINT64 as i16 {
-                return "write_tagged_u64"; // Tagged variable-length
-            }
-        }
-        return "write_var_u64"; // Variable-length (default)
-    }
-
-    // For other types, use the default method from PRIMITIVE_IO_METHODS
-    get_primitive_writer_method(type_name)
-}
-
-/// Get the reader method name for a primitive numeric type
-/// Panics if type_name is not a primitive type
-pub(super) fn get_primitive_reader_method(type_name: &str) -> &'static str {
-    PRIMITIVE_IO_METHODS
-        .iter()
-        .find(|(name, _, _)| *name == type_name)
-        .map(|(_, _, reader)| *reader)
-        .unwrap_or_else(|| panic!("type_name '{}' must be a primitive type", type_name))
-}
-
-/// Get the reader method name for a primitive numeric type, considering encoding attributes.
-///
-/// For i32 fields:
-/// - type_id=VARINT32 (default): read_var_i32
-/// - type_id=INT32: read_i32 (fixed 4-byte)
-///
-/// For u32 fields:
-/// - type_id=VARINT32/VAR_UINT32 (default): read_var_u32
-/// - type_id=INT32/UINT32: read_u32 (fixed 4-byte)
-///
-/// For u64 fields:
-/// - type_id=VARINT32/VAR_UINT64 (default): read_var_u64
-/// - type_id=INT32/UINT64: read_u64 (fixed 8-byte)
-/// - type_id=TAGGED_UINT64: read_tagged_u64
-pub(super) fn get_primitive_reader_method_with_encoding(
-    type_name: &str,
-    meta: &super::field_meta::ForyFieldMeta,
-) -> &'static str {
-    use fory_core::type_id::TypeId;
-
-    // Handle i32 with type_id
-    if type_name == "i32" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 {
-                return "read_i32"; // Fixed 4-byte encoding
-            }
-        }
-        return "read_var_i32"; // Variable-length (default)
-    }
-
-    // Handle u32 with type_id
-    if type_name == "u32" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT32 as i16 {
-                return "read_u32"; // Fixed 4-byte encoding
-            }
-        }
-        return "read_var_u32"; // Variable-length (default)
-    }
-
-    // Handle u64 with type_id
-    if type_name == "u64" {
-        if let Some(type_id) = meta.type_id {
-            if type_id == TypeId::INT32 as i16 || type_id == TypeId::UINT64 as i16 {
-                return "read_u64"; // Fixed 8-byte encoding
-            } else if type_id == TypeId::TAGGED_UINT64 as i16 {
-                return "read_tagged_u64"; // Tagged variable-length
-            }
-        }
-        return "read_var_u64"; // Variable-length (default)
-    }
-
-    // For other types, use the default method from PRIMITIVE_IO_METHODS
-    get_primitive_reader_method(type_name)
-}
-
-/// Check if a type is `Option<i32>`, `Option<u32>`, or `Option<u64>` that needs encoding-aware handling
-/// based on the field metadata (type_id attribute).
-pub(super) fn is_option_encoding_primitive(
-    ty: &Type,
-    meta: &super::field_meta::ForyFieldMeta,
-) -> bool {
-    if let Some(inner_name) = get_option_inner_primitive_name(ty) {
-        // For i32/u32/u64, check if type_id is set
-        if (inner_name == "i32" || inner_name == "u32" || inner_name == "u64")
-            && meta.type_id.is_some()
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// Get the inner primitive name if the type is `Option<primitive>`
-/// Returns Some("u32"), Some("u64"), etc. for `Option<u32>`, `Option<u64>`, etc.
-pub(super) fn get_option_inner_primitive_name(ty: &Type) -> Option<&'static str> {
-    use syn::PathArguments;
-    if let Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            if seg.ident == "Option" {
-                if let PathArguments::AngleBracketed(args) = &seg.arguments {
-                    if let Some(syn::GenericArgument::Type(Type::Path(inner_path))) =
-                        args.args.first()
-                    {
-                        if let Some(inner_seg) = inner_path.path.segments.last() {
-                            let inner_name = inner_seg.ident.to_string();
-                            // Return static string for known primitives
-                            return PRIMITIVE_IO_METHODS
-                                .iter()
-                                .find(|(name, _, _)| *name == inner_name.as_str())
-                                .map(|(name, _, _)| *name);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
 }
 
 pub(crate) fn get_type_id_by_type_ast(ty: &Type) -> u32 {
@@ -1032,15 +297,11 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
     }
 
     // Check collection types
-    if ty.starts_with("Vec<")
-        || ty.starts_with("VecDeque<")
-        || ty.starts_with("LinkedList<")
-        || ty.starts_with("BinaryHeap<")
-    {
+    if ty.starts_with("Vec<") || ty.starts_with("VecDeque<") || ty.starts_with("LinkedList<") {
         return TypeId::LIST as u32;
     }
 
-    if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
+    if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") || ty.starts_with("BinaryHeap<") {
         return TypeId::SET as u32;
     }
 
@@ -1311,12 +572,6 @@ pub(crate) fn get_filtered_fields_iter<'a>(
     fields.iter().filter(|field| !is_skip_field(field)).copied()
 }
 
-pub(super) fn get_filtered_source_fields_iter<'a>(
-    source_fields: &'a [crate::util::SourceField<'a>],
-) -> impl Iterator<Item = &'a crate::util::SourceField<'a>> {
-    source_fields.iter().filter(|sf| !is_skip_field(sf.field))
-}
-
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     let filterd_fields: Vec<&Field> = get_filtered_fields_iter(fields).collect();
     let sorted_names = get_sorted_field_names(&filterd_fields);
@@ -1342,61 +597,23 @@ struct FieldFingerprintInfo {
     is_option_type: bool,
 }
 
-/// Adjusts type ID based on encoding attributes for i32/u32/u64 fields.
-///
-/// The type_id in meta represents the desired encoding:
-/// - VARINT32: variable-length for i32/u32
-/// - INT32: fixed 4-byte for i32, u32
-/// - TAGGED_UINT64: tagged variable-length for u64
+/// Adjusts integer type IDs based on semantic `encoding` attributes.
 fn adjust_type_id_for_encoding(base_type_id: u32, meta: &super::field_meta::ForyFieldMeta) -> u32 {
-    // If no explicit type_id is set, use the base type_id
-    let Some(explicit_type_id) = meta.type_id else {
-        return base_type_id;
-    };
-
-    if explicit_type_id == TypeId::UNION as i16 {
-        return TypeId::UNION as u32;
+    match meta.encoding.unwrap_or(IntEncoding::Varint) {
+        IntEncoding::Varint => base_type_id,
+        IntEncoding::Fixed => match base_type_id {
+            id if id == TypeId::VARINT32 as u32 => TypeId::INT32 as u32,
+            id if id == TypeId::VARINT64 as u32 => TypeId::INT64 as u32,
+            id if id == TypeId::VAR_UINT32 as u32 => TypeId::UINT32 as u32,
+            id if id == TypeId::VAR_UINT64 as u32 => TypeId::UINT64 as u32,
+            _ => base_type_id,
+        },
+        IntEncoding::Tagged => match base_type_id {
+            id if id == TypeId::VARINT64 as u32 => TypeId::TAGGED_INT64 as u32,
+            id if id == TypeId::VAR_UINT64 as u32 => TypeId::TAGGED_UINT64 as u32,
+            _ => base_type_id,
+        },
     }
-
-    if explicit_type_id == TypeId::INT8_ARRAY as i16
-        || explicit_type_id == TypeId::UINT8_ARRAY as i16
-    {
-        let explicit = explicit_type_id as u32;
-        if base_type_id == TypeId::BINARY as u32
-            || base_type_id == TypeId::INT8_ARRAY as u32
-            || base_type_id == TypeId::UINT8_ARRAY as u32
-        {
-            return explicit;
-        }
-    }
-
-    // Handle i32 fields
-    if base_type_id == TypeId::VARINT32 as u32 {
-        if explicit_type_id == TypeId::INT32 as i16 {
-            return TypeId::INT32 as u32; // Fixed 4-byte encoding
-        }
-        return base_type_id; // VARINT32 (default)
-    }
-
-    // Handle u32 fields
-    if base_type_id == TypeId::VAR_UINT32 as u32 {
-        if explicit_type_id == TypeId::INT32 as i16 {
-            return TypeId::UINT32 as u32; // Fixed 4-byte encoding
-        }
-        return base_type_id; // VAR_UINT32 (default)
-    }
-
-    // Handle u64 fields
-    if base_type_id == TypeId::VAR_UINT64 as u32 {
-        if explicit_type_id == TypeId::INT32 as i16 {
-            return TypeId::UINT64 as u32; // Fixed 8-byte encoding
-        } else if explicit_type_id == TypeId::TAGGED_UINT64 as i16 {
-            return TypeId::TAGGED_UINT64 as u32; // Tagged variable-length
-        }
-        return base_type_id; // VAR_UINT64 (default)
-    }
-
-    base_type_id
 }
 
 /// Computes struct fingerprint string at compile time (during proc-macro execution).
@@ -1507,76 +724,6 @@ pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
             VERSION_HASH
         }
     }
-}
-
-/// Represents the determined RefMode for a field
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FieldRefMode {
-    None,
-    NullOnly,
-    Tracking,
-}
-
-impl ToTokens for FieldRefMode {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let ts = match self {
-            FieldRefMode::None => quote! { fory_core::RefMode::None },
-            FieldRefMode::NullOnly => quote! { fory_core::RefMode::NullOnly },
-            FieldRefMode::Tracking => quote! { fory_core::RefMode::Tracking },
-        };
-        tokens.extend(ts);
-    }
-}
-
-/// Determine the RefMode for a field based on field meta attributes and type.
-/// This respects `#[fory(ref=false)]` and `#[fory(nullable)]` attributes.
-pub(crate) fn determine_field_ref_mode(field: &syn::Field) -> FieldRefMode {
-    use super::field_meta::{classify_field_type, parse_field_meta};
-
-    let meta = parse_field_meta(field).unwrap_or_default();
-    let type_class = classify_field_type(&field.ty);
-    let nullable = meta.effective_nullable(type_class);
-    let track_ref = meta.effective_ref(type_class);
-
-    if track_ref {
-        FieldRefMode::Tracking
-    } else if nullable {
-        FieldRefMode::NullOnly
-    } else {
-        FieldRefMode::None
-    }
-}
-
-/// Determine whether to skip writing type info for a struct field based on its type.
-///
-/// According to xlang_serialization_spec.md:
-/// - Primitive fields: skip type info
-/// - Nullable primitive fields (`Option<primitive>`): skip type info
-/// - Internal type fields (String, Date, arrays): skip type info
-/// - List/Set/Map fields: skip type info
-/// - Struct fields: WRITE type info
-/// - Ext fields: WRITE type info
-/// - Enum fields: skip type info (enum is dynamic)
-///
-/// Returns true if type info should be skipped, false if it should be written.
-pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
-    let type_id = get_type_id_by_type_ast(ty);
-    if [
-        TypeId::STRUCT as u32,
-        TypeId::COMPATIBLE_STRUCT as u32,
-        TypeId::NAMED_STRUCT as u32,
-        TypeId::NAMED_COMPATIBLE_STRUCT as u32,
-        TypeId::EXT as u32,
-        TypeId::NAMED_EXT as u32,
-        TypeId::UNKNOWN as u32,
-    ]
-    .contains(&type_id)
-    {
-        // Struct and Ext types need type info
-        return false;
-    }
-    // Primitive, nullable primitive, internal types, List/Set/Map skip type info
-    true
 }
 
 pub(crate) fn is_skip_field(field: &syn::Field) -> bool {

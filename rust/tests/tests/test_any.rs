@@ -16,8 +16,9 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::any::Any;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::vec;
@@ -137,9 +138,9 @@ fn test_arc_dyn_any_shared_reference() {
 
 #[test]
 fn test_any_registered_by_name() {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, PartialEq, Debug)]
+    #[derive(ForyStruct, PartialEq, Debug)]
     struct Person {
         name: String,
         age: i32,
@@ -165,9 +166,9 @@ fn test_any_registered_by_name() {
 
 #[test]
 fn test_mixed_any_types() {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, PartialEq, Debug)]
+    #[derive(ForyStruct, PartialEq, Debug)]
     struct Item {
         id: i32,
         value: String,
@@ -201,10 +202,50 @@ fn test_mixed_any_types() {
     assert_eq!(deserialized[3].downcast_ref::<f64>().unwrap(), &3.15f64);
 }
 
-#[derive(ForyObject, PartialEq, Debug)]
+#[derive(ForyStruct, PartialEq, Debug)]
 struct Container {
     id: i32,
     items: Vec<String>,
+}
+
+#[derive(ForyStruct)]
+struct AnyMapVarKey {
+    #[fory(id = 0)]
+    values: HashMap<u32, Rc<dyn Any>>,
+}
+
+#[derive(ForyStruct)]
+struct AnyMapFixedKey {
+    #[fory(id = 0, map(key(encoding = fixed)))]
+    values: HashMap<u32, Rc<dyn Any>>,
+}
+
+#[test]
+fn test_hashmap_fixed_key_rc_any_field_compatible() {
+    let mut writer = Fory::builder().compatible(true).build();
+    writer.register::<AnyMapFixedKey>(700).unwrap();
+
+    let mut reader = Fory::builder().compatible(true).build();
+    reader.register::<AnyMapVarKey>(700).unwrap();
+
+    let original = AnyMapFixedKey {
+        values: HashMap::from([
+            (1, Rc::new(42_i32) as Rc<dyn Any>),
+            (2, Rc::new("answer".to_string()) as Rc<dyn Any>),
+        ]),
+    };
+
+    let bytes = writer.serialize(&original).unwrap();
+    let decoded: AnyMapVarKey = reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(
+        decoded.values.get(&1).unwrap().downcast_ref::<i32>(),
+        Some(&42)
+    );
+    assert_eq!(
+        decoded.values.get(&2).unwrap().downcast_ref::<String>(),
+        Some(&"answer".to_string())
+    );
 }
 
 #[test]
@@ -271,12 +312,12 @@ fn test_rc_by_name() {
 
 // Tests for GitHub issue: multiple Vec<Struct> types wrapped in Box<dyn Any>
 // This reproduces the non-deterministic deserialization failures
-#[derive(ForyObject, Debug, Clone, PartialEq)]
+#[derive(ForyStruct, Debug, Clone, PartialEq)]
 struct StructA {
     a: i32,
 }
 
-#[derive(ForyObject, Debug, Clone, PartialEq)]
+#[derive(ForyStruct, Debug, Clone, PartialEq)]
 struct StructB {
     i: i32,
 }

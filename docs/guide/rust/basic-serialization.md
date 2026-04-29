@@ -23,7 +23,7 @@ This page covers basic object graph serialization and supported types.
 
 ## Object Graph Serialization
 
-Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyObject)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
 
 **Key capabilities:**
 
@@ -35,10 +35,10 @@ Apache Fory™ provides automatic serialization of complex object graphs, preser
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::ForyStruct;
 use std::collections::HashMap;
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Person {
     name: String,
     age: i32,
@@ -47,7 +47,7 @@ struct Person {
     metadata: HashMap<String, String>,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Address {
     street: String,
     city: String,
@@ -128,7 +128,7 @@ assert_eq!(person, decoded);
 
 | Macro                   | Description                |
 | ----------------------- | -------------------------- |
-| `#[derive(ForyObject)]` | Object graph serialization |
+| `#[derive(ForyStruct)]` | Object graph serialization |
 | `#[derive(ForyRow)]`    | Row-based serialization    |
 
 ## Serialization APIs

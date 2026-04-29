@@ -27,17 +27,17 @@ Enable schema evolution with `compatible(true)`:
 
 ```rust
 use fory::Fory;
-use fory::ForyObject;
+use fory::ForyStruct;
 use std::collections::HashMap;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct PersonV1 {
     name: String,
     age: i32,
     address: String,
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct PersonV2 {
     name: String,
     age: i32,
@@ -74,9 +74,9 @@ assert_eq!(person_v2.phone, None);
 If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Use `#[fory(evolving = false)]`:
 
 ```rust
-use fory::ForyObject;
+use fory::ForyStruct;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 #[fory(evolving = false)]
 struct StableMessage {
     id: i32,
@@ -108,9 +108,9 @@ Apache Fory™ supports three types of enum variants with full schema evolution 
 - **Named**: Struct-like variants (`Event::Click { x: i32, y: i32 }`)
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
-#[derive(Default, ForyObject, Debug, PartialEq)]
+#[derive(Default, ForyStruct, Debug, PartialEq)]
 enum Value {
     #[default]
     Null,
@@ -136,17 +136,17 @@ Compatible mode enables robust schema evolution with variant type encoding (2 bi
 - `0b0` = Unit, `0b1` = Unnamed, `0b10` = Named
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
 // Old version
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 enum OldEvent {
     Click { x: i32, y: i32 },
     Scroll { delta: f64 },
 }
 
 // New version - added field and variant
-#[derive(Default, ForyObject)]
+#[derive(Default, ForyStruct)]
 enum NewEvent {
     #[default]
     Unknown,

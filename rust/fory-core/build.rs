@@ -15,33 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::data::register_fory_types;
-use crate::serializers::{BenchmarkSerializer, BoxError};
-use fory::{Fory, ForyDefault, Serializer as ForyValueSerializer};
+fn main() {
+    println!("cargo:rerun-if-env-changed=ENABLE_FORY_DEBUG_OUTPUT");
 
-#[derive(Default)]
-pub struct ForySerializer {
-    fory: Fory,
-}
-
-impl ForySerializer {
-    pub fn new() -> Self {
-        let mut fory = Fory::builder().xlang(true).compatible(true).build();
-        register_fory_types(&mut fory).expect("register benchmark types");
-
-        Self { fory }
-    }
-}
-
-impl<T> BenchmarkSerializer<T> for ForySerializer
-where
-    T: ForyValueSerializer + ForyDefault,
-{
-    fn serialize(&self, data: &T) -> Result<Vec<u8>, BoxError> {
-        Ok(self.fory.serialize(data)?)
-    }
-
-    fn deserialize(&self, data: &[u8]) -> Result<T, BoxError> {
-        Ok(self.fory.deserialize(data)?)
+    if matches!(
+        std::env::var("ENABLE_FORY_DEBUG_OUTPUT").as_deref(),
+        Ok("1") | Ok("true") | Ok("TRUE") | Ok("yes") | Ok("on")
+    ) {
+        println!("cargo:rustc-cfg=fory_debug_output");
     }
 }

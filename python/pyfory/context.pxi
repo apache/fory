@@ -329,6 +329,8 @@ cdef class MetaStringReader:
         if header & 0b1:
             if length <= 0:
                 raise ValueError("Invalid dynamic metastring id 0")
+            if length > <int32_t> self._c_dynamic_id_to_encoded_meta_string_vec.size():
+                raise ValueError(f"Invalid dynamic metastring id {length}")
             return <object> self._c_dynamic_id_to_encoded_meta_string_vec[length - 1]
         if length <= SMALL_STRING_THRESHOLD:
             if length == 0:
@@ -868,11 +870,13 @@ cdef class ReadContext:
         return obj
 
     cpdef read_buffer_object(self):
-        cdef int32_t size
+        cdef uint32_t size
         cdef int32_t reader_index
         cdef Buffer buf
         if not self.peer_out_of_band_enabled:
             size = self.read_var_uint32()
+            if size > <uint32_t>self.max_binary_size:
+                raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
             if self.buffer.has_input_stream():
                 return self.buffer.read_bytes(size)
             reader_index = self.buffer.get_reader_index()
@@ -883,6 +887,8 @@ cdef class ReadContext:
             assert self.buffers is not None
             return next(self.buffers)
         size = self.read_var_uint32()
+        if size > <uint32_t>self.max_binary_size:
+            raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
         if self.buffer.has_input_stream():
             return self.buffer.read_bytes(size)
         reader_index = self.buffer.get_reader_index()

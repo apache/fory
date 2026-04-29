@@ -26,6 +26,7 @@ use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::{RefReader, RefWriter};
 use crate::resolver::{TypeInfo, TypeResolver};
+use crate::serializer::StructSerializer;
 use crate::type_id as types;
 use crate::TypeId;
 use std::rc::Rc;
@@ -220,6 +221,47 @@ impl<'a> WriteContext<'a> {
     pub fn write_type_meta(&mut self, type_id: std::any::TypeId) -> Result<(), Error> {
         self.meta_resolver
             .write_type_meta(&mut self.writer, type_id, &self.type_resolver)
+    }
+
+    /// Write generated struct type info without Rust TypeId hash lookups.
+    #[inline(always)]
+    pub fn write_struct_type_info<T: StructSerializer>(&mut self) -> Result<(), Error> {
+        let rust_type_id = std::any::TypeId::of::<T>();
+        let type_index = T::fory_type_index();
+        let type_id = self.type_resolver.get_type_id_by_index(type_index)?;
+        match type_id {
+            TypeId::STRUCT | TypeId::ENUM | TypeId::EXT | TypeId::TYPED_UNION => {
+                self.writer.write_u8(type_id as u8);
+                let user_type_id = self
+                    .type_resolver
+                    .get_user_type_id_by_index(&rust_type_id, type_index)?;
+                self.writer.write_var_u32(user_type_id);
+            }
+            TypeId::COMPATIBLE_STRUCT | TypeId::NAMED_COMPATIBLE_STRUCT => {
+                self.writer.write_u8(type_id as u8);
+                self.meta_resolver.write_type_meta_fast(
+                    &mut self.writer,
+                    rust_type_id,
+                    type_index,
+                    &self.type_resolver,
+                )?;
+            }
+            TypeId::NAMED_ENUM | TypeId::NAMED_EXT | TypeId::NAMED_STRUCT | TypeId::NAMED_UNION
+                if self.is_share_meta() =>
+            {
+                self.writer.write_u8(type_id as u8);
+                self.meta_resolver.write_type_meta_fast(
+                    &mut self.writer,
+                    rust_type_id,
+                    type_index,
+                    &self.type_resolver,
+                )?;
+            }
+            _ => {
+                self.write_any_type_info(type_id as u32, rust_type_id)?;
+            }
+        }
+        Ok(())
     }
 
     pub fn write_any_type_info(

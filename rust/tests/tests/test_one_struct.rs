@@ -16,14 +16,14 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::HashMap;
 
 #[test]
 fn test_simple() {
     // a single test for cargo expand and analysis: `cargo expand --test test_one_struct 2>&1 > expanded.rs`
     // &["f7", "last", "f2", "f5", "f3", "f6", "f1"]
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     #[fory(debug)]
     struct Animal1 {
         f1: HashMap<i8, Vec<i8>>,
@@ -36,7 +36,7 @@ fn test_simple() {
     }
 
     // &["f7", "f5", "last", "f4", "f3", "f6", "f1"]
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct Animal2 {
         f1: HashMap<i8, Vec<i8>>,
         f3: Vec<i8>,

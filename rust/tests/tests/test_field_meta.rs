@@ -17,13 +17,18 @@
 
 //! Tests for field-level `#[fory(...)]` attributes
 
-use fory_core::Fory;
-use fory_derive::ForyObject;
+use fory_core::meta::FieldType;
+use fory_core::resolver::TypeResolver;
+use fory_core::type_id::TypeId;
+use fory_core::{Config, Fory, Serializer, StructSerializer, WriteContext};
+use fory_derive::ForyStruct;
+use std::any::Any;
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet, LinkedList, VecDeque};
 use std::rc::Rc;
 use std::sync::Arc;
 
 /// Test struct with skip attribute
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithSkip {
     name: String,
     #[fory(skip)]
@@ -51,7 +56,7 @@ fn test_skip_field() {
 }
 
 /// Test struct with nullable attribute on Option fields
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithNullable {
     name: String,
     #[fory(nullable)]
@@ -86,12 +91,12 @@ fn test_nullable_attribute() {
 }
 
 /// Test struct with explicit ref tracking disabled
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct InnerData {
     value: i32,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithRefTracking {
     #[fory(ref = false)]
     data: Rc<InnerData>,
@@ -112,7 +117,7 @@ fn test_ref_tracking_disabled() {
 }
 
 /// Test struct with explicit nullable = false
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithExplicitNotNull {
     #[fory(nullable = false)]
     required_option: Option<String>,
@@ -132,7 +137,7 @@ fn test_explicit_not_nullable() {
 }
 
 /// Test struct with Arc and ref tracking
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithArc {
     data: Arc<InnerData>,
 }
@@ -152,7 +157,7 @@ fn test_arc_default_ref_tracking() {
 }
 
 /// Test struct with multiple attributes combined
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithCombinedAttrs {
     name: String,
     #[fory(skip)]
@@ -181,7 +186,7 @@ fn test_combined_attributes() {
 }
 
 /// Test struct with primitive types (should be non-nullable by default)
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithPrimitives {
     count: i32,
     value: f64,
@@ -204,8 +209,332 @@ fn test_primitive_defaults() {
     assert_eq!(original, deserialized);
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedVarEncoding {
+    #[fory(id = 0)]
+    values: Vec<Option<i32>>,
+    #[fory(id = 1)]
+    data: HashMap<Option<i32>, Option<i32>>,
+    #[fory(id = 2)]
+    maybe_values: Option<Vec<Option<i32>>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedFixedEncoding {
+    #[fory(id = 0, list(element(encoding = fixed)))]
+    values: Vec<Option<i32>>,
+    #[fory(id = 1, map(key(encoding = fixed), value(encoding = fixed)))]
+    data: HashMap<Option<i32>, Option<i32>>,
+    #[fory(id = 2, nullable, list(element(nullable = true, encoding = fixed)))]
+    maybe_values: Option<Vec<Option<i32>>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct PrimitiveVecDefaultWire {
+    values: Vec<i32>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct PrimitiveVecAnnotatedWire {
+    #[fory(list(element(encoding = fixed)))]
+    values: Vec<i32>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedListItem {
+    value: i32,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NonPrimitiveVecDefaultWire {
+    values: Vec<NestedListItem>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct HashSetDefaultWire {
+    values: HashSet<String>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NullableHashSetDefaultWire {
+    values: Option<HashSet<String>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct VecDequeDefaultWire {
+    values: VecDeque<String>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NullableVecDequeDefaultWire {
+    values: Option<VecDeque<String>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct LinkedListDefaultWire {
+    values: LinkedList<Option<String>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BTreeSetDefaultWire {
+    values: BTreeSet<String>,
+}
+
+#[derive(ForyStruct, Debug)]
+struct BinaryHeapDefaultWire {
+    values: BinaryHeap<String>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BTreeMapDefaultWire {
+    values: BTreeMap<String, Vec<String>>,
+}
+
+#[derive(ForyStruct, Debug)]
+struct AnyContainerDefaultWire {
+    values: Vec<Box<dyn Any>>,
+    data: HashMap<String, Box<dyn Any>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NonPrimitiveArrayDefaultWire {
+    values: [String; 2],
+}
+
+fn only_field_type<T: StructSerializer>(type_resolver: &TypeResolver) -> FieldType {
+    let fields = T::fory_fields_info(type_resolver).unwrap();
+    assert_eq!(fields.len(), 1);
+    fields.into_iter().next().unwrap().field_type
+}
+
+fn write_struct_data<T: Serializer>(value: &T) -> Vec<u8> {
+    let mut context = WriteContext::new(TypeResolver::default(), Config::default());
+    T::fory_write_data(value, &mut context).unwrap();
+    context.writer.dump()
+}
+
+#[test]
+fn unannotated_primitive_vec_field_keeps_primitive_array_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<PrimitiveVecDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::INT32_ARRAY as u32);
+    assert!(field_type.generics.is_empty());
+}
+
+#[test]
+fn annotated_primitive_vec_field_uses_list_element_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<PrimitiveVecAnnotatedWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::INT32 as u32);
+}
+
+#[test]
+fn unannotated_non_primitive_vec_field_keeps_declared_element_type_meta() {
+    let mut type_resolver = TypeResolver::default();
+    type_resolver.register_by_id::<NestedListItem>(401).unwrap();
+    type_resolver
+        .register_by_id::<NonPrimitiveVecDefaultWire>(402)
+        .unwrap();
+
+    let field_type = only_field_type::<NonPrimitiveVecDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRUCT as u32);
+}
+
+#[test]
+fn unannotated_hash_set_field_keeps_declared_element_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<HashSetDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::SET as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+}
+
+#[test]
+fn nullable_hash_set_field_keeps_outer_nullable_and_element_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<NullableHashSetDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::SET as u32);
+    assert!(field_type.nullable);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+}
+
+#[test]
+fn serializer_backed_list_like_fields_keep_declared_element_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<VecDequeDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+
+    let field_type = only_field_type::<NullableVecDequeDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert!(field_type.nullable);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+
+    let field_type = only_field_type::<LinkedListDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert!(field_type.generics[0].nullable);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+}
+
+#[test]
+fn serializer_backed_set_and_map_fields_keep_declared_generic_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<BTreeSetDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::SET as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+
+    let field_type = only_field_type::<BinaryHeapDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::SET as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+
+    let field_type = only_field_type::<BTreeMapDefaultWire>(&type_resolver);
+    assert_eq!(field_type.type_id, TypeId::MAP as u32);
+    assert_eq!(field_type.generics.len(), 2);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+    assert_eq!(field_type.generics[1].type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics[1].generics.len(), 1);
+    assert_eq!(
+        field_type.generics[1].generics[0].type_id,
+        TypeId::STRING as u32
+    );
+}
+
+#[test]
+fn any_container_fields_keep_dynamic_generic_type_meta() {
+    let type_resolver = TypeResolver::default();
+    let fields = AnyContainerDefaultWire::fory_fields_info(&type_resolver).unwrap();
+    assert_eq!(fields.len(), 2);
+
+    let list_field = fields
+        .iter()
+        .find(|field| field.field_name == "values")
+        .unwrap();
+    assert_eq!(list_field.field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(list_field.field_type.generics.len(), 1);
+    assert_eq!(
+        list_field.field_type.generics[0].type_id,
+        TypeId::UNKNOWN as u32
+    );
+
+    let map_field = fields
+        .iter()
+        .find(|field| field.field_name == "data")
+        .unwrap();
+    assert_eq!(map_field.field_type.type_id, TypeId::MAP as u32);
+    assert_eq!(map_field.field_type.generics.len(), 2);
+    assert_eq!(
+        map_field.field_type.generics[0].type_id,
+        TypeId::STRING as u32
+    );
+    assert_eq!(
+        map_field.field_type.generics[1].type_id,
+        TypeId::UNKNOWN as u32
+    );
+}
+
+#[test]
+fn non_primitive_array_field_keeps_declared_element_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<NonPrimitiveArrayDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::STRING as u32);
+}
+
+#[test]
+fn serializer_backed_container_fields_write_declared_generic_payloads() {
+    let list_bytes = write_struct_data(&VecDequeDefaultWire {
+        values: VecDeque::from(["a".to_string(), "b".to_string()]),
+    });
+    assert_eq!(list_bytes[0], 2);
+    assert_eq!(list_bytes[1], 0b1100);
+
+    let nullable_list_bytes = write_struct_data(&NullableVecDequeDefaultWire {
+        values: Some(VecDeque::from(["a".to_string(), "b".to_string()])),
+    });
+    assert_eq!(
+        nullable_list_bytes[0],
+        fory_core::resolver::RefFlag::NotNullValue as i8 as u8
+    );
+    assert_eq!(nullable_list_bytes[1], 2);
+    assert_eq!(nullable_list_bytes[2], 0b1100);
+
+    let heap_bytes = write_struct_data(&BinaryHeapDefaultWire {
+        values: BinaryHeap::from(vec!["a".to_string(), "b".to_string()]),
+    });
+    assert_eq!(heap_bytes[0], 2);
+    assert_eq!(heap_bytes[1], 0b1100);
+
+    let map_bytes = write_struct_data(&BTreeMapDefaultWire {
+        values: BTreeMap::from([("k".to_string(), vec!["v1".to_string(), "v2".to_string()])]),
+    });
+    assert_eq!(map_bytes[0], 1);
+    assert_eq!(map_bytes[1], 0b100100);
+    assert_eq!(map_bytes[2], 1);
+}
+
+#[test]
+fn test_nested_codec_annotations_roundtrip() {
+    let mut fory = Fory::default();
+    fory.register::<NestedFixedEncoding>(10).unwrap();
+
+    let original = NestedFixedEncoding {
+        values: vec![Some(1), None, Some(-300)],
+        data: HashMap::from([(Some(1), Some(-1)), (None, Some(2)), (Some(3), None)]),
+        maybe_values: Some(vec![Some(10), None, Some(-20)]),
+    };
+
+    let bytes = fory.serialize(&original).unwrap();
+    let deserialized: NestedFixedEncoding = fory.deserialize(&bytes).unwrap();
+    assert_eq!(original, deserialized);
+}
+
+#[test]
+fn test_compatible_nested_integer_encoding_mismatch() {
+    let mut writer = Fory::builder().compatible(true).build();
+    writer.register::<NestedVarEncoding>(11).unwrap();
+
+    let mut reader = Fory::builder().compatible(true).build();
+    reader.register::<NestedFixedEncoding>(11).unwrap();
+
+    let original = NestedVarEncoding {
+        values: vec![Some(1), None, Some(-300)],
+        data: HashMap::from([(Some(1), Some(-1)), (None, Some(2)), (Some(3), None)]),
+        maybe_values: Some(vec![Some(10), None, Some(-20)]),
+    };
+
+    let bytes = writer.serialize(&original).unwrap();
+    let deserialized: NestedFixedEncoding = reader.deserialize(&bytes).unwrap();
+    assert_eq!(original.values, deserialized.values);
+    assert_eq!(original.data, deserialized.data);
+    assert_eq!(original.maybe_values, deserialized.maybe_values);
+}
+
 /// Test struct with field IDs for compact encoding
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithFieldIds {
     #[fory(id = 0)]
     name: String,
@@ -232,7 +561,7 @@ fn test_field_id_attribute() {
 }
 
 /// Test struct with mixed field IDs and non-ID fields
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithMixedIds {
     #[fory(id = 0)]
     id_field: i32,
@@ -258,7 +587,7 @@ fn test_mixed_field_ids() {
 }
 
 /// Test field ID with skip and nullable combined
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithCombinedFieldAttrs {
     #[fory(id = 0)]
     name: String,
@@ -296,10 +625,10 @@ fn test_field_id_with_other_attrs() {
 // ============================================================================
 
 mod compatible_v1 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version 1 of a user struct - original version
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct UserV1 {
         #[fory(id = 0)]
         pub name: String,
@@ -309,10 +638,10 @@ mod compatible_v1 {
 }
 
 mod compatible_v2 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version 2 of a user struct - added email field
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct UserV2 {
         #[fory(id = 0)]
         pub name: String,
@@ -375,10 +704,10 @@ fn test_compatible_mode_v2_to_v1() {
 }
 
 mod compatible_reorder_v1 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version with specific field order
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct DataV1 {
         #[fory(id = 0)]
         pub field_a: String,
@@ -390,10 +719,10 @@ mod compatible_reorder_v1 {
 }
 
 mod compatible_reorder_v2 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version with reordered fields (same IDs, different order in struct)
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct DataV2 {
         #[fory(id = 2)]
         pub field_c: f64,
@@ -435,10 +764,10 @@ fn test_compatible_mode_field_reorder() {
 }
 
 mod compatible_remove_field_v1 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version with 3 fields
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct ConfigV1 {
         #[fory(id = 0)]
         pub name: String,
@@ -450,10 +779,10 @@ mod compatible_remove_field_v1 {
 }
 
 mod compatible_remove_field_v2 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Version with extra_field removed (simulates field removal)
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct ConfigV2 {
         #[fory(id = 0)]
         pub name: String,
@@ -493,7 +822,7 @@ fn test_compatible_mode_field_removed() {
 }
 
 /// Test skip attribute in non-compatible mode (simpler case)
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithSkipAndId {
     #[fory(id = 0)]
     name: String,
@@ -545,10 +874,10 @@ fn test_compatible_mode_roundtrip() {
 // ============================================================================
 
 mod payload_with_field_ids {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Struct using field IDs for compact encoding
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct CompactUser {
         #[fory(id = 0)]
         pub username: String,
@@ -564,10 +893,10 @@ mod payload_with_field_ids {
 }
 
 mod payload_without_field_ids {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     /// Struct using field names (no field IDs)
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct VerboseUser {
         pub username: String,
         pub email_address: String,

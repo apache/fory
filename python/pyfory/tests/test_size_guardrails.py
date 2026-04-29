@@ -31,6 +31,11 @@ import pytest
 import pyfory
 from pyfory import Fory
 from pyfory.serialization import Buffer
+from pyfory.types import TypeId
+
+
+class ObjectPayload:
+    pass
 
 
 def roundtrip(data, limit, xlang=False, ref=False):
@@ -111,6 +116,49 @@ class TestCollectionSizeLimit:
         with pytest.raises(ValueError, match="exceeds the configured limit"):
             reader.deserialize(writer.serialize(Container(items=list(range(10)))))
 
+    def test_object_field_count_exceeds_limit(self):
+        obj = ObjectPayload()
+        obj.value = 1
+        writer = Fory(ref=True, strict=False)
+        reader = Fory(ref=True, strict=False, max_collection_size=0)
+        writer.register(ObjectPayload)
+        reader.register(ObjectPayload)
+
+        with pytest.raises(ValueError, match="object field size 1 exceeds"):
+            reader.deserialize(writer.serialize(obj))
+
+    def test_local_class_base_count_exceeds_limit(self):
+        def make_local_class():
+            class LocalPayload:
+                pass
+
+            return LocalPayload
+
+        writer = Fory(ref=True, strict=False)
+        reader = Fory(ref=True, strict=False, max_collection_size=0)
+
+        with pytest.raises(ValueError, match="local class base size 1 exceeds"):
+            reader.deserialize(writer.serialize(make_local_class()))
+
+    def test_local_function_defaults_exceed_limit(self):
+        def local_function(value=1):
+            return value
+
+        writer = Fory(ref=True, strict=False)
+        reader = Fory(ref=True, strict=False, max_collection_size=0)
+
+        with pytest.raises(ValueError, match="function default size 1 exceeds"):
+            reader.deserialize(writer.serialize(local_function))
+
+    def test_object_ndarray_length_exceeds_limit(self):
+        np = pytest.importorskip("numpy")
+        arr = np.array([object(), object()], dtype=object)
+        writer = Fory(ref=True, strict=False)
+        reader = Fory(ref=True, strict=False, max_collection_size=1)
+
+        with pytest.raises(ValueError, match="ndarray object size 2 exceeds"):
+            reader.deserialize(writer.serialize(arr))
+
 
 class TestBinarySizeLimit:
     """Binary reads are guarded by max_binary_size on the Buffer."""
@@ -127,6 +175,13 @@ class TestBinarySizeLimit:
         with pytest.raises(ValueError, match="exceeds the configured limit"):
             roundtrip_binary(b"x" * 200, max_binary_size=100, xlang=xlang)
 
+    @pytest.mark.parametrize("xlang", [False, True])
+    def test_string_exceeds_limit_fails(self, xlang):
+        writer = Fory(xlang=xlang)
+        reader = Fory(xlang=xlang, max_binary_size=1)
+        with pytest.raises(ValueError, match="String size 2 exceeds"):
+            reader.deserialize(writer.serialize("xx"))
+
     def test_from_stream_respects_limit(self):
         import io
 
@@ -134,3 +189,15 @@ class TestBinarySizeLimit:
         buf = Buffer.from_stream(io.BytesIO(payload), max_binary_size=100)
         with pytest.raises(ValueError, match="exceeds the configured limit"):
             Fory(max_binary_size=100).deserialize(buf)
+
+    def test_in_band_buffer_object_respects_limit(self):
+        payload = b"x" * 200
+        data = Fory(ref=True).serialize(payload, buffer_callback=lambda _buffer: True)
+
+        with pytest.raises(ValueError, match="exceeds the configured limit"):
+            Fory(ref=True, max_binary_size=100).deserialize(data, buffers=[])
+
+    def test_malformed_metastring_ref_raises_value_error(self):
+        payload = bytes([2, 255, TypeId.NAMED_STRUCT, 3])
+        with pytest.raises(ValueError, match="Invalid dynamic metastring id"):
+            Fory(xlang=True, strict=False).deserialize(payload)

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-For types that don't support `#[derive(ForyObject)]`, implement the `Serializer` trait manually.
+For types that don't support `#[derive(ForyStruct)]`, implement the `Serializer` trait manually.
 
 ## When to Use Custom Serializers
 
@@ -74,7 +74,7 @@ impl ForyDefault for CustomType {
 > **Note**: When implementing `ForyDefault` manually, ensure your type also implements `Default` if you use `Self::default()`.
 > Alternatively, you can construct a default instance directly in `fory_default()`.
 >
-> **Tip**: If your type supports `#[derive(ForyObject)]`, you can use `#[fory(generate_default)]` to automatically generate both `ForyDefault` and `Default` implementations.
+> **Tip**: If your type supports `#[derive(ForyStruct)]`, you can use `#[fory(generate_default)]` to automatically generate both `ForyDefault` and `Default` implementations.
 
 ## Registering Custom Serializers
 
@@ -149,5 +149,5 @@ let string = context.reader.read_utf8_string(len);
 ## Related Topics
 
 - [Type Registration](type-registration.md) - Registering serializers
-- [Basic Serialization](basic-serialization.md) - Using ForyObject derive
+- [Basic Serialization](basic-serialization.md) - Using ForyStruct derive
 - [Schema Evolution](schema-evolution.md) - Compatible mode

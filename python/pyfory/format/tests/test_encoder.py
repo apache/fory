@@ -18,6 +18,8 @@
 import timeit
 import pickle
 
+import pytest
+
 import pyfory
 from pyfory.format import (
     schema,
@@ -100,6 +102,16 @@ def test_encode():
     assert foo.f4 == new_foo.f4
     assert foo.f5 == new_foo.f5
     assert foo.f6 == new_foo.f6
+
+
+def test_row_and_array_reject_one_past_end_index():
+    encoder = pyfory.create_row_encoder(foo_schema())
+    row = encoder.to_row(create_foo())
+    with pytest.raises(IndexError):
+        row[row.num_fields]
+    array_data = row.get_array_data(2)
+    with pytest.raises(IndexError):
+        array_data[array_data.num_elements]
 
 
 def test_encoder():

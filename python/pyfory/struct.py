@@ -28,6 +28,7 @@ import typing
 from typing import List, Dict
 
 from pyfory.lib.mmh3 import hash_buffer
+from pyfory.policy import DEFAULT_POLICY
 from pyfory.types import (
     TypeId,
     int8,
@@ -422,6 +423,7 @@ class DataClassSerializer(Serializer):
 
         self._field_name_interned = {name: sys.intern(name) for name in self._field_names}
         self._current_class_field_names = set(self._get_field_names(self.type_))
+        self._has_missing_fields = any(field_name not in self._current_class_field_names for field_name in self._field_names)
         self._default_values_factory = (
             build_default_values_factory(self.type_resolver, self._type_hints, dataclasses.fields(self.type_))
             if dataclasses.is_dataclass(self.type_)
@@ -544,7 +546,7 @@ class DataClassSerializer(Serializer):
         write_context.try_flush()
 
     def read(self, read_context):
-        if not self.type_resolver.strict:
+        if read_context.policy is not DEFAULT_POLICY:
             read_context.policy.authorize_instantiation(self.type_)
         if not self.type_resolver.compatible:
             hash_ = read_context.read_int32()
@@ -555,20 +557,35 @@ class DataClassSerializer(Serializer):
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         obj_dict = obj.__dict__ if not self._has_slots else None
-        for index, field_name in enumerate(self._field_names):
-            serializer = self._serializers[index]
-            is_nullable = self._nullable_fields.get(field_name, False)
-            is_dynamic = self._dynamic_fields.get(field_name, False)
-            is_tracking_ref = self._ref_fields.get(field_name, False)
-            is_basic = self._basic_field_flags[index]
-            field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
-            if field_name not in self._current_class_field_names:
-                continue
-            interned_name = self._field_name_interned[field_name]
-            if obj_dict is not None:
-                obj_dict[interned_name] = field_value
-            else:
-                setattr(obj, interned_name, field_value)
+        if self._has_missing_fields:
+            for index, field_name in enumerate(self._field_names):
+                serializer = self._serializers[index]
+                is_nullable = self._nullable_fields.get(field_name, False)
+                is_dynamic = self._dynamic_fields.get(field_name, False)
+                is_tracking_ref = self._ref_fields.get(field_name, False)
+                is_basic = self._basic_field_flags[index]
+                if field_name not in self._current_class_field_names:
+                    self._read_missing_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                    continue
+                field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                interned_name = self._field_name_interned[field_name]
+                if obj_dict is not None:
+                    obj_dict[interned_name] = field_value
+                else:
+                    setattr(obj, interned_name, field_value)
+        else:
+            for index, field_name in enumerate(self._field_names):
+                serializer = self._serializers[index]
+                is_nullable = self._nullable_fields.get(field_name, False)
+                is_dynamic = self._dynamic_fields.get(field_name, False)
+                is_tracking_ref = self._ref_fields.get(field_name, False)
+                is_basic = self._basic_field_flags[index]
+                field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                interned_name = self._field_name_interned[field_name]
+                if obj_dict is not None:
+                    obj_dict[interned_name] = field_value
+                else:
+                    setattr(obj, interned_name, field_value)
 
         if self._missing_field_defaults:
             for field_name, default_factory in self._missing_field_defaults:
@@ -579,6 +596,14 @@ class DataClassSerializer(Serializer):
                     setattr(obj, field_name, value)
         read_context.shrink_input_buffer()
         return obj
+
+    def _read_missing_field_value(self, read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref):
+        previous = self.type_resolver._allow_unregistered_typedef
+        self.type_resolver._allow_unregistered_typedef = True
+        try:
+            return self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+        finally:
+            self.type_resolver._allow_unregistered_typedef = previous
 
 
 class DataClassStubSerializer(DataClassSerializer):

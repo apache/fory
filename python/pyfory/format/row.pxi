@@ -169,7 +169,7 @@ cdef class ArrayData(Getter):
         return MapData.wrap(v, map_type)
 
     def __getitem__(self, i):
-        if i > self.num_elements or i < 0:
+        if i >= self.num_elements or i < 0:
             raise IndexError("length is {}, but index is {}"
                              .format(self.num_elements, i))
         return self.get(i)
@@ -350,7 +350,7 @@ cdef class RowData(Getter):
         if not isinstance(i, int):
             assert type(i) is str
             i = self.schema_.names.index(i)
-        if i > self.num_fields or i < 0:
+        if i >= self.num_fields or i < 0:
             raise IndexError("num_fields is {}, but index is {}"
                              .format(self.num_fields, i))
         return self.get(i)

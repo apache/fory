@@ -149,6 +149,20 @@ def test_empty_buffer():
         assert writable_buffer.get_int32(0) == 10
 
 
+def test_to_bytes_rejects_out_of_bounds_range():
+    buffer = Buffer(b"abc")
+    assert buffer.to_bytes(1) == b"bc"
+    assert buffer.to_bytes(1, 2) == b"bc"
+    with pytest.raises(ValueError, match="offset 99 out of bound"):
+        buffer.to_bytes(99, 1)
+    with pytest.raises(ValueError, match="out of bound"):
+        buffer.to_bytes(2, 2)
+
+
+def test_readline_without_newline_does_not_read_out_of_bounds():
+    assert Buffer(b"abc").readline() == b"abc"
+
+
 def test_write_varint32():
     buf = Buffer.allocate(32)
     for i in range(1):

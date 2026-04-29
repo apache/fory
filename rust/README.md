@@ -40,9 +40,9 @@ fory = "0.16"
 
 ```rust
 use fory::{Fory, Error, Reader};
-use fory::ForyObject;
+use fory::{ForyEnum, ForyStruct, ForyUnion};
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct User {
     name: String,
     age: i32,
@@ -80,7 +80,7 @@ fn main() -> Result<(), Error> {
 
 ### 1. Object Graph Serialization
 
-Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyObject)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
 
 **Key capabilities:**
 
@@ -92,10 +92,10 @@ Apache Fory™ provides automatic serialization of complex object graphs, preser
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::{ForyEnum, ForyStruct, ForyUnion};
 use std::collections::HashMap;
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Person {
     name: String,
     age: i32,
@@ -104,7 +104,7 @@ struct Person {
     metadata: HashMap<String, String>,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Address {
     street: String,
     city: String,
@@ -184,12 +184,12 @@ To serialize circular references like parent-child relationships or doubly-linke
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::{ForyEnum, ForyStruct, ForyUnion};
 use fory::RcWeak;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Node {
     value: i32,
     parent: RcWeak<RefCell<Node>>,
@@ -250,14 +250,14 @@ Apache Fory™ supports polymorphic serialization through trait objects, enablin
 ```rust
 use fory::{Fory, register_trait_type};
 use fory::Serializer;
-use fory::ForyObject;
+use fory::{ForyEnum, ForyStruct, ForyUnion};
 
 trait Animal: Serializer {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
 }
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Dog { name: String, breed: String }
 
 impl Animal for Dog {
@@ -265,7 +265,7 @@ impl Animal for Dog {
     fn name(&self) -> &str { &self.name }
 }
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Cat { name: String, color: String }
 
 impl Animal for Cat {
@@ -276,7 +276,7 @@ impl Animal for Cat {
 // Register trait implementations
 register_trait_type!(Animal, Dog, Cat);
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Zoo {
     star_animal: Box<dyn Animal>,
 }
@@ -320,17 +320,17 @@ Apache Fory™ supports schema evolution in **Compatible mode**, allowing serial
 
 ```rust
 use fory::Fory;
-use fory::ForyObject;
+use fory::{ForyEnum, ForyStruct, ForyUnion};
 use std::collections::HashMap;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct PersonV1 {
     name: String,
     age: i32,
     address: String,
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct PersonV2 {
     name: String,
     age: i32,
@@ -380,9 +380,9 @@ Apache Fory™ supports three types of enum variants with full schema evolution 
 - Automatic type mismatch handling
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyEnum, ForyStruct, ForyUnion};
 
-#[derive(Default, ForyObject, Debug, PartialEq)]
+#[derive(Default, ForyStruct, Debug, PartialEq)]
 enum Value {
     #[default]
     Null,
@@ -449,7 +449,7 @@ assert_eq!(data, decoded);
 
 ### 7. Custom Serializers
 
-For types that don't support `#[derive(ForyObject)]`, implement the `Serializer` trait manually. This is useful for:
+For types that don't support `#[derive(ForyStruct)]`, implement the `Serializer` trait manually. This is useful for:
 
 - External types from other crates
 - Types with special serialization requirements

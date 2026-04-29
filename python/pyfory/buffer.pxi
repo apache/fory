@@ -593,7 +593,7 @@ cdef class Buffer:
         cdef uint32_t target_index = start_index
         cdef uint8_t sep = 10  # '\n'
         cdef int32_t buffer_size = self.c_buffer.size()
-        while arr[target_index] != sep and target_index < buffer_size:
+        while target_index < <uint32_t>buffer_size and arr[target_index] != sep:
             target_index += <int32_t>1
         cdef bytes data = arr[start_index:target_index]
         self.c_buffer.reader_index(target_index)
@@ -707,7 +707,12 @@ cdef class Buffer:
 
     cpdef inline str read_string(self):
         cdef uint64_t header = self.read_var_uint64()
-        cdef uint32_t size = header >> 2
+        cdef uint64_t size64 = header >> 2
+        if size64 > <uint64_t>self.max_binary_size:
+            raise ValueError(f"String size {size64} exceeds the configured limit of {self.max_binary_size}")
+        if size64 > <uint64_t>2147483647:
+            raise ValueError(f"String size {size64} exceeds the maximum supported size")
+        cdef uint32_t size = <uint32_t>size64
         cdef uint32_t encoding = header & <uint32_t>0b11
         if size == 0:
             return ""
@@ -744,11 +749,15 @@ cdef class Buffer:
         return self.c_buffer.size()
 
     def to_bytes(self, int32_t offset=0, int32_t length=0) -> bytes:
-        if length != 0:
-            assert 0 < length <= self.c_buffer.size(),\
-                f"length {length} size {self.c_buffer.size()}"
-        else:
-            length = self.c_buffer.size()
+        cdef int32_t size_ = self.c_buffer.size()
+        if offset < 0 or offset > size_:
+            raise ValueError(f"offset {offset} out of bound {0, size_}")
+        if length < 0:
+            raise ValueError(f"length {length} must be non-negative")
+        if length == 0:
+            length = size_ - offset
+        elif length > size_ - offset:
+            raise ValueError(f"Address range {(offset, offset + length)} out of bound {(0, size_)}")
         cdef:
             uint8_t* data = self.c_buffer.data() + offset
         return data[:length]

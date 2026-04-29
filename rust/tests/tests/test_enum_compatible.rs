@@ -18,13 +18,13 @@
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_enum
 
 use fory_core::Fory;
-use fory_derive::ForyObject;
+use fory_derive::{ForyStruct, ForyUnion};
 
 /// Test schema evolution for unnamed enum variants in compatible mode
 #[test]
 fn test_unnamed_enum_variant_compatible() {
     // Original enum with 2 fields in variant
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum EventV1 {
         #[fory(default)]
         Unknown,
@@ -32,7 +32,7 @@ fn test_unnamed_enum_variant_compatible() {
     }
 
     // Evolved enum with 3 fields in variant (added f64)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum EventV2 {
         #[fory(default)]
         Unknown,
@@ -72,7 +72,7 @@ fn test_unnamed_enum_variant_compatible() {
     }
 
     // Test 3: Unknown variant falls back to default
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum EventV3 {
         #[fory(default)]
         Unknown,
@@ -95,7 +95,7 @@ fn test_unnamed_enum_variant_compatible() {
 #[test]
 fn test_named_enum_variant_compatible() {
     // Original enum with 2 fields
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum CommandV1 {
         #[fory(default)]
         Noop,
@@ -106,7 +106,7 @@ fn test_named_enum_variant_compatible() {
     }
 
     // Evolved enum with 3 fields - added 'env' field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum CommandV2 {
         #[fory(default)]
         Noop,
@@ -161,7 +161,7 @@ fn test_named_enum_variant_compatible() {
 #[test]
 fn test_named_enum_field_evolution() {
     // Version 1: Original schema with basic fields
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum ConfigV1 {
         #[fory(default)]
         Empty,
@@ -172,7 +172,7 @@ fn test_named_enum_field_evolution() {
     }
 
     // Version 2: Add simple field and complex field (Vec)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum ConfigV2 {
         #[fory(default)]
         Empty,
@@ -185,7 +185,7 @@ fn test_named_enum_field_evolution() {
     }
 
     // Version 3: Change field type and remove field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum ConfigV3 {
         #[fory(default)]
         Empty,
@@ -276,7 +276,7 @@ fn test_named_enum_field_evolution() {
 #[test]
 fn test_named_enum_variant_add_remove() {
     // Version 1: Two variants
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum TaskV1 {
         #[fory(default)]
         Idle,
@@ -287,7 +287,7 @@ fn test_named_enum_variant_add_remove() {
     }
 
     // Version 2: Add new named variant with complex fields
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum TaskV2 {
         #[fory(default)]
         Idle,
@@ -303,7 +303,7 @@ fn test_named_enum_variant_add_remove() {
     }
 
     // Version 3: Remove Running, add Failed variant
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum TaskV3 {
         #[fory(default)]
         Idle,
@@ -422,7 +422,7 @@ fn test_named_enum_variant_add_remove() {
 #[test]
 fn test_enum_variant_type_change() {
     // Version 1: Different variant types
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV1 {
         #[fory(default)]
         Unknown,
@@ -434,7 +434,7 @@ fn test_enum_variant_type_change() {
     }
 
     // Version 2: Change variant types
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV2 {
         #[fory(default)]
         Unknown,
@@ -449,7 +449,7 @@ fn test_enum_variant_type_change() {
     }
 
     // Version 3: More type changes
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV3 {
         #[fory(default)]
         Unknown,
@@ -533,7 +533,7 @@ fn test_enum_variant_type_change() {
 #[test]
 fn test_struct_with_enum_field_evolution() {
     // Version 1: Struct with enum field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV1 {
         #[fory(default)]
         Init,
@@ -542,7 +542,7 @@ fn test_struct_with_enum_field_evolution() {
         },
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct MessageV1 {
         timestamp: i64,
         state: StateV1,
@@ -550,7 +550,7 @@ fn test_struct_with_enum_field_evolution() {
     }
 
     // Version 2: Enum evolved with new fields and variant
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV2 {
         #[fory(default)]
         Init,
@@ -564,7 +564,7 @@ fn test_struct_with_enum_field_evolution() {
         }, // New variant
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct MessageV2 {
         timestamp: i64,
         state: StateV2,
@@ -573,7 +573,7 @@ fn test_struct_with_enum_field_evolution() {
     }
 
     // Version 3: Enum variant type changed
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV3 {
         #[fory(default)]
         Init,
@@ -584,7 +584,7 @@ fn test_struct_with_enum_field_evolution() {
         },
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct MessageV3 {
         timestamp: i64,
         state: StateV3,

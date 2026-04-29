@@ -22,24 +22,22 @@
 //!
 //! ## Available Macros
 //!
-//! ### `#[derive(ForyObject)]`
+//! ### `#[derive(ForyStruct)]`, `#[derive(ForyEnum)]`, `#[derive(ForyUnion)]`
 //!
-//! Generates object serialization code for structs and enums. This macro
-//! implements the `Serializer` trait, enabling full object graph serialization
-//! with reference handling.
+//! Generates `Serializer` implementations for structs, pure enums, and tagged
+//! unions with payload variants.
 //!
 //! **Supported Types:**
-//! - Structs with named fields
-//! - Structs with unnamed fields (tuple structs)
-//! - Unit structs
-//! - Enums with variants
+//! - `ForyStruct`: named, tuple, and unit structs
+//! - `ForyEnum`: pure unit enums
+//! - `ForyUnion`: enums with payload variants
 //!
 //! **Example:**
 //! ```rust
-//! use fory_derive::ForyObject;
+//! use fory_derive::{ForyEnum, ForyStruct};
 //! use std::collections::HashMap;
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
 //!     age: i32,
@@ -48,13 +46,13 @@
 //!     metadata: HashMap<String, String>,
 //! }
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct Address {
 //!     street: String,
 //!     city: String,
 //! }
 //!
-//! #[derive(ForyObject, Debug, PartialEq, Default)]
+//! #[derive(ForyEnum, Debug, PartialEq, Default)]
 //! enum Status {
 //!     #[default]
 //!     Active,
@@ -90,7 +88,7 @@
 //!
 //! ## Generated Code
 //!
-//! ### For `#[derive(ForyObject)]`
+//! ### For `#[derive(ForyStruct)]`, `#[derive(ForyEnum)]`, and `#[derive(ForyUnion)]`
 //!
 //! The macro generates:
 //! - `Serializer` trait implementation
@@ -116,7 +114,7 @@
 //! - **`#[fory(skip)]`**: Marks an individual field (or enum variant) to be ignored by the
 //!   generated serializer, retaining compatibility with previous releases.
 //! - **`#[fory(generate_default)]`**: Enables the macro to generate `Default` implementation.
-//!   By default, `ForyObject` does NOT generate `impl Default` to avoid conflicts with existing
+//!   By default, `ForyStruct` does NOT generate `impl Default` to avoid conflicts with existing
 //!   `Default` implementations. Use this attribute when you want the macro to generate both
 //!   `ForyDefault` and `Default` for you.
 //!
@@ -148,9 +146,9 @@
 //!
 //! ```rust
 //! use fory_core::{fory::Fory, error::Error};
-//! use fory_derive::ForyObject;
+//! use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct MyData {
 //!     value: i32,
 //!     text: String,
@@ -182,42 +180,79 @@
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, spanned::Spanned, Attribute, DeriveInput, LitBool};
+use syn::{parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, LitBool};
 
 mod fory_row;
 mod object;
 mod util;
 
-/// Derive macro for object serialization.
-///
-/// This macro generates code to implement the `Serializer` trait for the
-/// annotated type, enabling full object graph serialization with reference
-/// handling and cross-language compatibility.
-///
-/// # Example
-///
-/// ```rust
-/// use fory_derive::ForyObject;
-///
-/// #[derive(ForyObject, Debug, PartialEq)]
-/// struct Person {
-///     name: String,
-///     age: i32,
-///     address: Address,
-/// }
-///
-/// #[derive(ForyObject, Debug, PartialEq)]
-/// struct Address {
-///     street: String,
-///     city: String,
-/// }
-/// ```
-#[proc_macro_derive(ForyObject, attributes(fory))]
-pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
+/// Derive macro for struct serialization.
+#[proc_macro_derive(ForyStruct, attributes(fory))]
+pub fn proc_macro_derive_fory_struct(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    if !matches!(input.data, Data::Struct(_)) {
+        return syn::Error::new(
+            input.ident.span(),
+            "ForyStruct can only be derived for structs; use ForyEnum for pure enums or ForyUnion for data-carrying enums",
+        )
+        .into_compile_error()
+        .into();
+    }
+    derive_serializer(input)
+}
 
-    // Check if this is being applied to a trait (which is not possible with derive macros)
-    // Derive macros can only be applied to structs, enums, and unions
+/// Derive macro for pure enum serialization.
+#[proc_macro_derive(ForyEnum, attributes(fory))]
+pub fn proc_macro_derive_fory_enum(input: proc_macro::TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let Data::Enum(data_enum) = &input.data else {
+        return syn::Error::new(input.ident.span(), "ForyEnum can only be derived for enums")
+            .into_compile_error()
+            .into();
+    };
+    if data_enum
+        .variants
+        .iter()
+        .any(|variant| !matches!(variant.fields, Fields::Unit))
+    {
+        return syn::Error::new(
+            input.ident.span(),
+            "ForyEnum is only for pure unit enums; use ForyUnion for enum variants with payloads",
+        )
+        .into_compile_error()
+        .into();
+    }
+    derive_serializer(input)
+}
+
+/// Derive macro for tagged union serialization.
+#[proc_macro_derive(ForyUnion, attributes(fory))]
+pub fn proc_macro_derive_fory_union(input: proc_macro::TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let Data::Enum(data_enum) = &input.data else {
+        return syn::Error::new(
+            input.ident.span(),
+            "ForyUnion can only be derived for enums",
+        )
+        .into_compile_error()
+        .into();
+    };
+    if data_enum
+        .variants
+        .iter()
+        .all(|variant| matches!(variant.fields, Fields::Unit))
+    {
+        return syn::Error::new(
+            input.ident.span(),
+            "ForyUnion requires at least one payload variant; use ForyEnum for pure unit enums",
+        )
+        .into_compile_error()
+        .into();
+    }
+    derive_serializer(input)
+}
+
+fn derive_serializer(input: DeriveInput) -> TokenStream {
     let attrs = match parse_fory_attrs(&input.attrs) {
         Ok(attrs) => attrs,
         Err(err) => return err.into_compile_error().into(),

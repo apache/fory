@@ -336,7 +336,7 @@ Rust output is one module file per schema, for example:
 Unions map to Rust enums with `#[fory(id = ...)]` case attributes:
 
 ```rust
-#[derive(ForyObject, Debug, Clone, PartialEq)]
+#[derive(ForyUnion, Debug, Clone, PartialEq)]
 pub enum Animal {
     #[fory(id = 1)]
     Dog(Dog),
@@ -349,7 +349,7 @@ Nested types generate nested modules:
 
 ```rust
 pub mod person {
-    #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+    #[derive(ForyEnum, Debug, Clone, PartialEq, Default)]
     #[repr(i32)]
     pub enum PhoneType {
         #[default]
@@ -358,7 +358,7 @@ pub mod person {
         Work = 2,
     }
 
-    #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+    #[derive(ForyStruct, Debug, Clone, PartialEq, Default)]
     pub struct PhoneNumber {
         #[fory(id = 1)]
         pub number: String,
@@ -368,16 +368,16 @@ pub mod person {
 }
 ```
 
-Messages derive `ForyObject` and include `to_bytes`/`from_bytes` helpers:
+Messages derive `ForyStruct` and include `to_bytes`/`from_bytes` helpers:
 
 ```rust
-#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+#[derive(ForyStruct, Debug, Clone, PartialEq, Default)]
 pub struct Person {
     #[fory(id = 1)]
     pub name: String,
     #[fory(id = 7)]
     pub phones: Vec<person::PhoneNumber>,
-    #[fory(id = 8, type_id = "union")]
+    #[fory(id = 8)]
     pub pet: Animal,
 }
 ```

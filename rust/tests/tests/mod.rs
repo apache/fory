@@ -18,5 +18,6 @@
 mod compatible;
 mod test_any;
 mod test_collection;
+mod test_field_meta;
 mod test_max_dyn_depth;
 mod test_tuple;

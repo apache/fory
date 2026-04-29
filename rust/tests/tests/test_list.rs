@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::{LinkedList, VecDeque};
 
 #[test]
@@ -107,7 +107,7 @@ fn test_linkedlist_bool() {
     assert_eq!(list, obj);
 }
 
-#[derive(ForyObject, PartialEq, Debug)]
+#[derive(ForyStruct, PartialEq, Debug)]
 struct CollectionStruct {
     vec_field: Vec<i32>,
     deque_field: VecDeque<String>,

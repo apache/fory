@@ -38,7 +38,7 @@ from fory_compiler.ir.types import PrimitiveKind
 
 
 class RustGenerator(BaseGenerator):
-    """Generates Rust structs with ForyObject derive macro."""
+    """Generates Rust types with Fory derive macros."""
 
     language_name = "rust"
     file_extension = ".rs"
@@ -200,7 +200,7 @@ class RustGenerator(BaseGenerator):
         uses: Set[str] = set()
 
         # Collect uses (including from nested types)
-        uses.add("use fory::{Fory, ForyObject}")
+        uses.add("use fory::{Fory, ForyEnum, ForyStruct, ForyUnion}")
         uses.add("use std::sync::OnceLock")
 
         for message in self.schema.messages:
@@ -337,7 +337,7 @@ class RustGenerator(BaseGenerator):
         type_name = enum.name
 
         # Derive macros
-        lines.append("#[derive(ForyObject, Debug, Clone, PartialEq, Default)]")
+        lines.append("#[derive(ForyEnum, Debug, Clone, PartialEq, Default)]")
         lines.append("#[repr(i32)]")
 
         lines.append(f"pub enum {type_name} {{")
@@ -369,7 +369,7 @@ class RustGenerator(BaseGenerator):
         comment = self.format_type_id_comment(union, "//")
         if comment:
             lines.append(comment)
-        derives = ["ForyObject", "Debug"]
+        derives = ["ForyUnion", "Debug"]
         if not has_any:
             derives.extend(["Clone", "PartialEq"])
         lines.append(f"#[derive({', '.join(derives)})]")
@@ -421,7 +421,7 @@ class RustGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
         needs_safe_debug = self.message_needs_safe_debug(message)
-        derives = ["ForyObject"]
+        derives = ["ForyStruct"]
         if not needs_safe_debug:
             derives.append("Debug")
         if not self.message_has_any(message):
@@ -600,14 +600,13 @@ class RustGenerator(BaseGenerator):
             attrs.append("nullable = true")
         if field.ref:
             attrs.append("ref = true")
-        encoding = self.get_encoding_attr(field.field_type)
-        if encoding:
-            attrs.append(encoding)
-        array_attr = self.get_array_attr(field)
-        if array_attr:
-            attrs.append(array_attr)
-        if self.is_union_type(field.field_type, parent_stack):
-            attrs.append('type_id = "union"')
+        nested_attr = self.get_nested_field_attr(field.field_type)
+        if nested_attr:
+            attrs.append(nested_attr)
+        else:
+            encoding = self.get_encoding_attr(field.field_type)
+            if encoding:
+                attrs.append(encoding)
         if attrs:
             lines.append(f"#[fory({', '.join(attrs)})]")
 
@@ -647,25 +646,42 @@ class RustGenerator(BaseGenerator):
             PrimitiveKind.UINT32,
             PrimitiveKind.UINT64,
         ):
-            return 'encoding = "fixed"'
+            return "encoding = fixed"
         if kind in (PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64):
-            return 'encoding = "tagged"'
+            return "encoding = tagged"
         return None
 
-    def get_array_attr(self, field: Field) -> Optional[str]:
-        """Return type_id attribute for int8/uint8 arrays."""
-        if not isinstance(field.field_type, ListType):
+    def get_nested_field_attr(self, field_type: FieldType) -> Optional[str]:
+        """Return nested list/map field configuration."""
+        if isinstance(field_type, ListType):
+            element_attrs = self.get_nested_value_attrs(field_type.element_type)
+            if element_attrs:
+                return f"list(element({', '.join(element_attrs)}))"
             return None
-        if field.element_optional or field.element_ref:
-            return None
-        element_type = field.field_type.element_type
-        if not isinstance(element_type, PrimitiveType):
-            return None
-        if element_type.kind == PrimitiveKind.INT8:
-            return 'type_id = "int8_array"'
-        if element_type.kind == PrimitiveKind.UINT8:
-            return 'type_id = "uint8_array"'
+        if isinstance(field_type, MapType):
+            key_attrs = self.get_nested_value_attrs(field_type.key_type)
+            value_attrs = self.get_nested_value_attrs(field_type.value_type)
+            parts = []
+            if key_attrs:
+                parts.append(f"key({', '.join(key_attrs)})")
+            if value_attrs or field_type.value_optional:
+                if field_type.value_optional:
+                    value_attrs = ["nullable = true", *value_attrs]
+                parts.append(f"value({', '.join(value_attrs)})")
+            if parts:
+                return f"map({', '.join(parts)})"
         return None
+
+    def get_nested_value_attrs(self, field_type: FieldType) -> List[str]:
+        attrs: List[str] = []
+        if isinstance(field_type, PrimitiveType):
+            encoding = self.get_encoding_attr(field_type)
+            if encoding:
+                attrs.append(encoding)
+        nested = self.get_nested_field_attr(field_type)
+        if nested:
+            attrs.append(nested)
+        return attrs
 
     def is_union_type(
         self, field_type: FieldType, parent_stack: Optional[List[Message]]

@@ -317,9 +317,9 @@ For detailed Python usage including type hints, compatibility modes, and advance
 Rust native mode provides compile-time code generation via derive macros for high-performance serialization without runtime overhead.
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Person {
     name: String,
     age: i32,
@@ -564,9 +564,9 @@ public class XlangExample {
 **Rust**
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Person {
     name: String,
     age: i32,

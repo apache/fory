@@ -33,6 +33,6 @@ pub const EPOCH: NaiveDate = match NaiveDate::from_ymd_opt(1970, 1, 1) {
     Some(epoch) => epoch,
 };
 
-/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set at compile time.
-/// Set ENABLE_FORY_DEBUG_OUTPUT=1 at compile time to enable debug output.
-pub const ENABLE_FORY_DEBUG_OUTPUT: bool = option_env!("ENABLE_FORY_DEBUG_OUTPUT").is_some();
+/// Set `ENABLE_FORY_DEBUG_OUTPUT=1` at compile time to enable debug output.
+#[allow(unexpected_cfgs)]
+pub const ENABLE_FORY_DEBUG_OUTPUT: bool = cfg!(fory_debug_output);

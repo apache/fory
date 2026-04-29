@@ -137,10 +137,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
 
     #[inline(always)]
     fn fory_get_type_info(type_resolver: &TypeResolver) -> Result<Rc<TypeInfo>, Error> {
-        match type_resolver.get_type_info(&std::any::TypeId::of::<T>()) {
-            Ok(info) => Ok(info),
-            Err(e) => Err(Error::enhance_type_error::<T>(e)),
-        }
+        T::fory_get_type_info(type_resolver)
     }
 
     #[inline(always)]

@@ -16,11 +16,11 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Simple {
     value: i32,
 }
@@ -36,7 +36,7 @@ fn test_rc_refcell_simple() {
     assert_eq!(deserialized.borrow().value, 42);
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Parent {
     value: i32,
     child: Option<Rc<RefCell<Simple>>>,

@@ -26,11 +26,11 @@
 use fory_core::fory::Fory;
 use fory_core::serializer::Serializer;
 use fory_core::type_id::TypeId;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::marker::PhantomData;
 
 /// Test struct containing PhantomData with concrete type
-#[derive(Debug, PartialEq, ForyObject)]
+#[derive(Debug, PartialEq, ForyStruct)]
 struct StructWithPhantom {
     name: String,
     _marker: PhantomData<i32>,
@@ -53,7 +53,7 @@ fn test_struct_with_phantom_data() {
 }
 
 /// Test struct containing multiple PhantomData fields with different types
-#[derive(Debug, PartialEq, ForyObject)]
+#[derive(Debug, PartialEq, ForyStruct)]
 struct StructWithMultiplePhantom {
     name: String,
     _phantom1: PhantomData<String>,
@@ -78,13 +78,13 @@ fn test_struct_with_multiple_phantom_data() {
 }
 
 /// Test nested struct with PhantomData
-#[derive(Debug, PartialEq, ForyObject)]
+#[derive(Debug, PartialEq, ForyStruct)]
 struct InnerWithPhantom {
     value: i32,
     _marker: PhantomData<String>,
 }
 
-#[derive(Debug, PartialEq, ForyObject)]
+#[derive(Debug, PartialEq, ForyStruct)]
 struct OuterWithPhantom {
     inner: InnerWithPhantom,
     name: String,

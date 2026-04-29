@@ -137,9 +137,9 @@ fory.register_type(Person, typename="example.Person")
 ### Rust
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Person {
     // Non-nullable by default
     name: String,

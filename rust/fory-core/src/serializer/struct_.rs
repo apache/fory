@@ -48,6 +48,11 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 }
 
 #[inline(always)]
+pub fn write_type_info_fast<T: StructSerializer>(context: &mut WriteContext) -> Result<(), Error> {
+    context.write_struct_type_info::<T>()
+}
+
+#[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     context.read_any_type_info()?;
     Ok(())

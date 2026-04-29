@@ -64,17 +64,17 @@ macro_rules! downcast_and_serialize {
 ///
 /// ```rust,ignore
 /// use fory_core::{fory::Fory, register_trait_type, serializer::Serializer};
-/// use fory_derive::ForyObject;
+/// use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 ///
 /// trait Animal: Serializer {
 ///     fn speak(&self) -> String;
 ///     fn name(&self) -> &str;
 /// }
 ///
-/// #[derive(ForyObject, Debug)]
+/// #[derive(ForyStruct, Debug)]
 /// struct Dog { name: String }
 ///
-/// #[derive(ForyObject, Debug)]
+/// #[derive(ForyStruct, Debug)]
 /// struct Cat { name: String }
 ///
 /// impl Animal for Dog {
@@ -110,6 +110,7 @@ macro_rules! register_trait_type {
                 Box::new(<register_trait_type!(@first_type $($impl_type),+) as $crate::serializer::ForyDefault>::fory_default())
             }
         }
+        $crate::generate_box_trait_codec!($trait_name);
 
         // 2. Auto-generate Rc wrapper type and conversions
         $crate::generate_smart_pointer_wrapper!(
@@ -122,6 +123,7 @@ macro_rules! register_trait_type {
             store_rc_ref,
             $($impl_type),+
         );
+        $crate::generate_smart_pointer_codec!(std::rc::Rc, Rc, $trait_name);
 
         // 3. Auto-generate Arc wrapper type and conversions
         $crate::generate_smart_pointer_wrapper!(
@@ -134,6 +136,7 @@ macro_rules! register_trait_type {
             store_arc_ref,
             $($impl_type),+
         );
+        $crate::generate_smart_pointer_codec!(std::sync::Arc, Arc, $trait_name);
 
         // 4. Serializer implementation for Box<dyn Trait> (existing functionality)
         impl fory_core::Serializer for Box<dyn $trait_name> {
@@ -334,6 +337,363 @@ macro_rules! generate_smart_pointer_wrapper {
                 $store_ref,
                 $($impl_type),+
             );
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! generate_smart_pointer_codec {
+    ($ptr_path:path, $ptr_name:ident, $trait_name:ident) => {
+        $crate::paste::paste! {
+            pub(crate) struct [<$trait_name $ptr_name Codec>]<const NULLABLE: bool, const TRACK_REF: bool>;
+
+            impl<const NULLABLE: bool, const TRACK_REF: bool>
+                fory_core::serializer::codec::Codec<$ptr_path<dyn $trait_name>>
+                for [<$trait_name $ptr_name Codec>]<NULLABLE, TRACK_REF>
+            {
+                #[inline(always)]
+                fn field_type(
+                    _type_resolver: &fory_core::resolver::TypeResolver,
+                ) -> Result<fory_core::meta::FieldType, fory_core::Error> {
+                    Ok(fory_core::meta::FieldType::new_with_ref(
+                        fory_core::type_id::TypeId::UNKNOWN as u32,
+                        NULLABLE,
+                        TRACK_REF,
+                        Vec::new(),
+                    ))
+                }
+
+                #[inline(always)]
+                fn reserved_space() -> usize {
+                    <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_reserved_space()
+                        + fory_core::type_id::SIZE_OF_REF_AND_TYPE
+                }
+
+                #[inline(always)]
+                fn write_field(
+                    value: &$ptr_path<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                ) -> Result<(), fory_core::Error> {
+                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
+                    <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_write(
+                        &wrapper,
+                        context,
+                        if TRACK_REF {
+                            fory_core::RefMode::Tracking
+                        } else if NULLABLE {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        },
+                        true,
+                        false,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_field(
+                    context: &mut fory_core::ReadContext,
+                ) -> Result<$ptr_path<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(
+                        context,
+                        if TRACK_REF {
+                            fory_core::RefMode::Tracking
+                        } else if NULLABLE {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        },
+                        true,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_data(
+                    value: &$ptr_path<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                ) -> Result<(), fory_core::Error> {
+                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
+                    <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_write_data(
+                        &wrapper,
+                        context,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_data(
+                    context: &mut fory_core::ReadContext,
+                ) -> Result<$ptr_path<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(context, fory_core::RefMode::None, true)
+                }
+
+                #[inline(always)]
+                fn read_field_with_type(
+                    context: &mut fory_core::ReadContext,
+                    remote_field_type: &fory_core::meta::FieldType,
+                ) -> Result<$ptr_path<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(
+                        context,
+                        fory_core::serializer::codec::field_ref_mode(remote_field_type),
+                        true,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_with_mode(
+                    value: &$ptr_path<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                    ref_mode: fory_core::RefMode,
+                    write_type_info: bool,
+                    has_generics: bool,
+                ) -> Result<(), fory_core::Error> {
+                    let wrapper = [<$trait_name $ptr_name>]::from(value.clone());
+                    <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_write(
+                        &wrapper,
+                        context,
+                        ref_mode,
+                        write_type_info,
+                        has_generics,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_with_mode(
+                    context: &mut fory_core::ReadContext,
+                    ref_mode: fory_core::RefMode,
+                    read_type_info: bool,
+                ) -> Result<$ptr_path<dyn $trait_name>, fory_core::Error> {
+                    let wrapper = <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_read(
+                        context,
+                        ref_mode,
+                        read_type_info,
+                    )?;
+                    Ok($ptr_path::<dyn $trait_name>::from(wrapper))
+                }
+
+                #[inline(always)]
+                fn read_with_type_info(
+                    context: &mut fory_core::ReadContext,
+                    ref_mode: fory_core::RefMode,
+                    type_info: std::rc::Rc<fory_core::TypeInfo>,
+                ) -> Result<$ptr_path<dyn $trait_name>, fory_core::Error> {
+                    let wrapper =
+                        <[<$trait_name $ptr_name>] as fory_core::Serializer>::fory_read_with_type_info(
+                            context,
+                            ref_mode,
+                            type_info,
+                        )?;
+                    Ok($ptr_path::<dyn $trait_name>::from(wrapper))
+                }
+
+                #[inline(always)]
+                fn default_value() -> $ptr_path<dyn $trait_name> {
+                    $ptr_path::<dyn $trait_name>::from(
+                        <[<$trait_name $ptr_name>] as fory_core::ForyDefault>::fory_default(),
+                    )
+                }
+
+                #[inline(always)]
+                fn write_type_info(_context: &mut fory_core::WriteContext) -> Result<(), fory_core::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn read_type_info(_context: &mut fory_core::ReadContext) -> Result<(), fory_core::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn static_type_id() -> fory_core::TypeId {
+                    fory_core::TypeId::UNKNOWN
+                }
+
+                #[inline(always)]
+                fn is_polymorphic() -> bool {
+                    true
+                }
+
+                #[inline(always)]
+                fn is_shared_ref() -> bool {
+                    true
+                }
+
+                #[inline(always)]
+                fn concrete_type_id(value: &$ptr_path<dyn $trait_name>) -> std::any::TypeId {
+                    <dyn $trait_name as fory_core::Serializer>::as_any(&**value).type_id()
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! generate_box_trait_codec {
+    ($trait_name:ident) => {
+        $crate::paste::paste! {
+            pub(crate) struct [<$trait_name BoxCodec>]<const NULLABLE: bool, const TRACK_REF: bool>;
+
+            impl<const NULLABLE: bool, const TRACK_REF: bool>
+                fory_core::serializer::codec::Codec<Box<dyn $trait_name>>
+                for [<$trait_name BoxCodec>]<NULLABLE, TRACK_REF>
+            {
+                #[inline(always)]
+                fn field_type(
+                    _type_resolver: &fory_core::resolver::TypeResolver,
+                ) -> Result<fory_core::meta::FieldType, fory_core::Error> {
+                    Ok(fory_core::meta::FieldType::new_with_ref(
+                        fory_core::type_id::TypeId::UNKNOWN as u32,
+                        NULLABLE,
+                        TRACK_REF,
+                        Vec::new(),
+                    ))
+                }
+
+                #[inline(always)]
+                fn reserved_space() -> usize {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_reserved_space()
+                        + fory_core::type_id::SIZE_OF_REF_AND_TYPE
+                }
+
+                #[inline(always)]
+                fn write_field(
+                    value: &Box<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                ) -> Result<(), fory_core::Error> {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_write(
+                        value,
+                        context,
+                        if TRACK_REF {
+                            fory_core::RefMode::Tracking
+                        } else if NULLABLE {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        },
+                        true,
+                        false,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_field(
+                    context: &mut fory_core::ReadContext,
+                ) -> Result<Box<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(
+                        context,
+                        if TRACK_REF {
+                            fory_core::RefMode::Tracking
+                        } else if NULLABLE {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        },
+                        true,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_data(
+                    value: &Box<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                ) -> Result<(), fory_core::Error> {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_write_data(
+                        value,
+                        context,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_data(
+                    context: &mut fory_core::ReadContext,
+                ) -> Result<Box<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(context, fory_core::RefMode::None, true)
+                }
+
+                #[inline(always)]
+                fn read_field_with_type(
+                    context: &mut fory_core::ReadContext,
+                    remote_field_type: &fory_core::meta::FieldType,
+                ) -> Result<Box<dyn $trait_name>, fory_core::Error> {
+                    Self::read_with_mode(
+                        context,
+                        fory_core::serializer::codec::field_ref_mode(remote_field_type),
+                        true,
+                    )
+                }
+
+                #[inline(always)]
+                fn write_with_mode(
+                    value: &Box<dyn $trait_name>,
+                    context: &mut fory_core::WriteContext,
+                    ref_mode: fory_core::RefMode,
+                    write_type_info: bool,
+                    has_generics: bool,
+                ) -> Result<(), fory_core::Error> {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_write(
+                        value,
+                        context,
+                        ref_mode,
+                        write_type_info,
+                        has_generics,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_with_mode(
+                    context: &mut fory_core::ReadContext,
+                    ref_mode: fory_core::RefMode,
+                    read_type_info: bool,
+                ) -> Result<Box<dyn $trait_name>, fory_core::Error> {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_read(
+                        context,
+                        ref_mode,
+                        read_type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn read_with_type_info(
+                    context: &mut fory_core::ReadContext,
+                    ref_mode: fory_core::RefMode,
+                    type_info: std::rc::Rc<fory_core::TypeInfo>,
+                ) -> Result<Box<dyn $trait_name>, fory_core::Error> {
+                    <Box<dyn $trait_name> as fory_core::Serializer>::fory_read_with_type_info(
+                        context,
+                        ref_mode,
+                        type_info,
+                    )
+                }
+
+                #[inline(always)]
+                fn default_value() -> Box<dyn $trait_name> {
+                    <Box<dyn $trait_name> as fory_core::ForyDefault>::fory_default()
+                }
+
+                #[inline(always)]
+                fn write_type_info(_context: &mut fory_core::WriteContext) -> Result<(), fory_core::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn read_type_info(_context: &mut fory_core::ReadContext) -> Result<(), fory_core::Error> {
+                    Ok(())
+                }
+
+                #[inline(always)]
+                fn static_type_id() -> fory_core::TypeId {
+                    fory_core::TypeId::UNKNOWN
+                }
+
+                #[inline(always)]
+                fn is_polymorphic() -> bool {
+                    true
+                }
+
+                #[inline(always)]
+                fn concrete_type_id(value: &Box<dyn $trait_name>) -> std::any::TypeId {
+                    <dyn $trait_name as fory_core::Serializer>::as_any(&**value).type_id()
+                }
+            }
         }
     };
 }

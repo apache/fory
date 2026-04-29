@@ -18,12 +18,12 @@
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_enum
 
 use fory_core::Fory;
-use fory_derive::ForyObject;
+use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use std::collections::HashMap;
 
 #[test]
 fn basic() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum Token {
         Plus,
         Number(i64),
@@ -65,12 +65,12 @@ fn basic() {
 
 #[test]
 fn named_enum() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum Token1 {
         Assign { target: String, value: i32 },
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyUnion, Debug, PartialEq)]
     enum Token2 {
         Assign { value: i32, target: String },
     }
@@ -107,7 +107,7 @@ fn struct_with_enum_field() {
     use fory_core::type_id::TypeId;
 
     // Define a simple enum
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyEnum, Debug, PartialEq, Clone)]
     enum Color {
         Red,
         Green,
@@ -115,7 +115,7 @@ fn struct_with_enum_field() {
     }
 
     // Define a struct with enum field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructWithEnum {
         name: String,
         color: Color,
@@ -156,7 +156,7 @@ fn union_compatible_enum_xlang_format() {
     use fory_core::type_id::TypeId;
 
     // Define a Union-compatible enum (each variant has exactly one field)
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyUnion, Debug, PartialEq, Clone)]
     enum StringOrLong {
         Text(String),
         Number(i64),
@@ -170,7 +170,7 @@ fn union_compatible_enum_xlang_format() {
     );
 
     // Struct containing the Union-compatible enum
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructWithUnion {
         union_field: StringOrLong,
     }
@@ -197,19 +197,48 @@ fn union_compatible_enum_xlang_format() {
     assert_eq!(obj2, result2);
 }
 
+#[test]
+fn union_payload_nested_codec_annotations_roundtrip() {
+    #[derive(ForyUnion, Debug, PartialEq)]
+    enum Payload {
+        #[fory(default)]
+        Empty,
+        Values(#[fory(list(element(nullable = true, encoding = fixed)))] Vec<Option<i32>>),
+        Data {
+            #[fory(map(key(encoding = fixed), value(nullable = true, encoding = fixed)))]
+            data: HashMap<Option<i32>, Option<i32>>,
+        },
+    }
+
+    let mut fory = Fory::builder().xlang(false).compatible(true).build();
+    fory.register::<Payload>(320).unwrap();
+
+    let values = Payload::Values(vec![Some(1), None, Some(-300)]);
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Payload = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded, values);
+
+    let data = Payload::Data {
+        data: HashMap::from([(Some(1), Some(-1)), (Some(2), None), (None, Some(3))]),
+    };
+    let bytes = fory.serialize(&data).unwrap();
+    let decoded: Payload = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded, data);
+}
+
 /// Test explicit #[fory(nullable)] attribute on enum field
 #[test]
 fn struct_with_enum_field_explicit_nullable() {
     use fory_core::serializer::Serializer;
     use fory_core::type_id::TypeId;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyEnum, Debug, PartialEq, Clone)]
     enum Status {
         Active,
         Inactive,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructWithExplicitNullable {
         name: String,
         #[fory(id = 0, nullable = true)]

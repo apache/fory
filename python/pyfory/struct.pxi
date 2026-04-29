@@ -41,6 +41,7 @@ cdef class DataClassSerializer(Serializer):
     cdef public dict _type_hints
     cdef public bint _has_slots
     cdef public bint _fields_from_typedef
+    cdef public bint _has_missing_fields
     cdef public list _field_names
     cdef public list _serializers
     cdef public dict _nullable_fields
@@ -235,6 +236,7 @@ cdef class DataClassSerializer(Serializer):
         cdef FieldRuntimeInfo runtime_info
 
         self._field_runtime_infos.clear()
+        self._has_missing_fields = False
         current_fields = set(self._get_field_names(self.type_))
         self._field_runtime_infos.reserve(len(self._field_names))
 
@@ -249,6 +251,8 @@ cdef class DataClassSerializer(Serializer):
             runtime_info.track_ref = 1 if is_tracking_ref else 0
             runtime_info.is_dynamic = 1 if is_dynamic else 0
             runtime_info.field_exists = 1 if field_name in current_fields else 0
+            if runtime_info.field_exists == 0:
+                self._has_missing_fields = True
             runtime_info.field_name = <PyObject *>self._field_name_interned[i]
             runtime_info.serializer = <PyObject *>serializer
             self._field_runtime_infos.push_back(runtime_info)
@@ -349,7 +353,7 @@ cdef class DataClassSerializer(Serializer):
         cdef object obj
         cdef int32_t read_hash
 
-        if not read_context.strict:
+        if read_context.policy is not DEFAULT_POLICY:
             read_context.policy.authorize_instantiation(self.type_)
 
         if not read_context.compatible:
@@ -384,11 +388,20 @@ cdef class DataClassSerializer(Serializer):
         cdef object field_name
         cdef FieldRuntimeInfo *field_info
 
+        if not self._has_missing_fields:
+            for i in range(field_count):
+                field_info = &self._field_runtime_infos[i]
+                field_value = self._read_field_value(read_context, field_info)
+                field_name = <object>field_info.field_name
+                obj_dict[field_name] = field_value
+            return
+
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
-            field_value = self._read_field_value(read_context, field_info)
             if field_info.field_exists == 0:
+                self._read_missing_field_value(read_context, field_info)
                 continue
+            field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
             obj_dict[field_name] = field_value
 
@@ -399,13 +412,31 @@ cdef class DataClassSerializer(Serializer):
         cdef object field_name
         cdef FieldRuntimeInfo *field_info
 
+        if not self._has_missing_fields:
+            for i in range(field_count):
+                field_info = &self._field_runtime_infos[i]
+                field_value = self._read_field_value(read_context, field_info)
+                field_name = <object>field_info.field_name
+                PyObject_SetAttr(obj, field_name, field_value)
+            return
+
         for i in range(field_count):
             field_info = &self._field_runtime_infos[i]
-            field_value = self._read_field_value(read_context, field_info)
             if field_info.field_exists == 0:
+                self._read_missing_field_value(read_context, field_info)
                 continue
+            field_value = self._read_field_value(read_context, field_info)
             field_name = <object>field_info.field_name
             PyObject_SetAttr(obj, field_name, field_value)
+
+    cdef inline object _read_missing_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
+        cdef object resolver = self.type_resolver.resolver
+        cdef object previous = resolver._allow_unregistered_typedef
+        resolver._allow_unregistered_typedef = True
+        try:
+            return self._read_field_value(read_context, field_info)
+        finally:
+            resolver._allow_unregistered_typedef = previous
 
     cdef inline object _read_field_value(self, ReadContext read_context, FieldRuntimeInfo *field_info):
         cdef uint8_t type_id = field_info.basic_type_id

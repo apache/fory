@@ -103,7 +103,7 @@ pub trait ForyDefault: Sized {
 ///
 /// `Serializer` is the primary trait that enables types to be serialized and deserialized
 /// using Fory's high-performance cross-language protocol. All types that can be serialized
-/// with Fory must implement this trait, either manually or via the `#[derive(ForyObject)]` macro.
+/// with Fory must implement this trait, either manually or via the `#[derive(ForyStruct)]` macro.
 ///
 /// # Architecture Overview
 ///
@@ -173,10 +173,10 @@ pub trait ForyDefault: Sized {
 ///
 /// # Derive Macro
 ///
-/// For struct types, you can use the `#[derive(ForyObject)]` macro instead of implementing manually:
+/// For struct types, you can use the `#[derive(ForyStruct)]` macro instead of implementing manually:
 ///
 /// ```rust,ignore
-/// #[derive(ForyObject)]
+/// #[derive(ForyStruct)]
 /// struct Point {
 ///     x: f64,
 ///     y: f64,
@@ -1246,7 +1246,7 @@ pub trait Serializer: 'static {
 ///
 /// **User types with custom serialization should NOT implement this trait.** This trait is:
 ///
-/// - **Only for derive-based types**: Automatically implemented by `#[derive(ForyObject)]`
+/// - **Only for derive-based types**: Automatically implemented by `#[derive(ForyStruct)]`
 /// - **Internal infrastructure**: Used by Fory's struct/enum deserialization engine
 /// - **Not for manual implementation**: Unless you're extending Fory's core functionality
 ///
@@ -1264,10 +1264,10 @@ pub trait Serializer: 'static {
 ///
 /// # Automatic Implementation
 ///
-/// The `#[derive(ForyObject)]` macro automatically implements this trait for structs and enums:
+/// The `#[derive(ForyStruct)]` macro automatically implements this trait for structs and enums:
 ///
 /// ```rust,ignore
-/// #[derive(ForyObject)]
+/// #[derive(ForyStruct)]
 /// struct Point {
 ///     x: f64,
 ///     y: f64,
@@ -1288,7 +1288,7 @@ pub trait Serializer: 'static {
 /// # Implementation Notes
 ///
 /// - **Do not implement manually** for user types with custom serialization (EXT types)
-/// - **Only via derive macro**: `#[derive(ForyObject)]` is the only supported way
+/// - **Only via derive macro**: `#[derive(ForyStruct)]` is the only supported way
 /// - **Internal use only**: Methods are called by Fory's serialization engine
 /// - **Schema evolution**: Enables adding/removing fields without breaking compatibility
 ///
@@ -1314,7 +1314,7 @@ pub trait StructSerializer: Serializer + 'static {
     ///
     /// # Implementation Notes
     ///
-    /// - Implemented automatically by `#[derive(ForyObject)]` macro
+    /// - Implemented automatically by `#[derive(ForyStruct)]` macro
     /// - Default returns empty vector (no fields)
     /// - **Do not implement** for user types with custom serialization (EXT types)
     #[allow(unused_variables)]
@@ -1339,7 +1339,7 @@ pub trait StructSerializer: Serializer + 'static {
     ///
     /// # Implementation Notes
     ///
-    /// - Implemented automatically by `#[derive(ForyObject)]` macro
+    /// - Implemented automatically by `#[derive(ForyStruct)]` macro
     /// - Used for efficient type resolution
     /// - **Do not implement** for user types with custom serialization (EXT types)
     fn fory_type_index() -> u32 {
@@ -1389,7 +1389,7 @@ pub trait StructSerializer: Serializer + 'static {
     ///
     /// # Implementation Notes
     ///
-    /// - Implemented automatically by `#[derive(ForyObject)]` macro
+    /// - Implemented automatically by `#[derive(ForyStruct)]` macro
     /// - Used for field ordering and compatibility
     /// - Field order affects wire format
     /// - **Do not implement** for user types with custom serialization (EXT types)
@@ -1426,7 +1426,7 @@ pub trait StructSerializer: Serializer + 'static {
     ///
     /// # Implementation Notes
     ///
-    /// - Implemented automatically by `#[derive(ForyObject)]` macro
+    /// - Implemented automatically by `#[derive(ForyStruct)]` macro
     /// - Enables forward and backward compatibility
     /// - Uses field names for matching when possible
     /// - Falls back to field order for unnamed fields

@@ -96,23 +96,36 @@ static FIELD_NAME_ENCODINGS: &[Encoding] = &[
     Encoding::LowerUpperDigitSpecial,
 ];
 
-#[derive(Debug, Eq, Clone)]
+#[derive(Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
     pub user_type_id: u32,
     pub nullable: bool,
     pub track_ref: bool,
     pub generics: Vec<FieldType>,
+    compatible_fingerprint: u64,
 }
 
 impl FieldType {
     pub fn new(type_id: u32, nullable: bool, generics: Vec<FieldType>) -> Self {
-        FieldType {
+        Self::new_with_user_type_id(type_id, NO_USER_TYPE_ID, nullable, false, generics)
+    }
+
+    pub(crate) fn new_with_user_type_id(
+        type_id: u32,
+        user_type_id: u32,
+        nullable: bool,
+        track_ref: bool,
+        generics: Vec<FieldType>,
+    ) -> Self {
+        let compatible_fingerprint = compute_field_type_fingerprint(type_id, &generics);
+        Self {
             type_id,
-            user_type_id: NO_USER_TYPE_ID,
+            user_type_id,
             nullable,
-            track_ref: false,
+            track_ref,
             generics,
+            compatible_fingerprint,
         }
     }
 
@@ -122,13 +135,12 @@ impl FieldType {
         track_ref: bool,
         generics: Vec<FieldType>,
     ) -> Self {
-        FieldType {
-            type_id,
-            user_type_id: NO_USER_TYPE_ID,
-            nullable,
-            track_ref,
-            generics,
-        }
+        Self::new_with_user_type_id(type_id, NO_USER_TYPE_ID, nullable, track_ref, generics)
+    }
+
+    #[inline(always)]
+    pub(crate) fn compatible_fingerprint(&self) -> u64 {
+        self.compatible_fingerprint
     }
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
@@ -203,32 +215,28 @@ impl FieldType {
         Ok(match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None)?;
-                Self {
+                Self::new_with_user_type_id(
                     type_id,
                     user_type_id,
-                    nullable: _nullable,
-                    track_ref: _ref_tracking,
-                    generics: vec![generic],
-                }
+                    _nullable,
+                    _ref_tracking,
+                    vec![generic],
+                )
             }
             x if x == TypeId::MAP as u32 => {
                 let key_generic = Self::from_bytes(reader, true, None)?;
                 let val_generic = Self::from_bytes(reader, true, None)?;
-                Self {
+                Self::new_with_user_type_id(
                     type_id,
                     user_type_id,
-                    nullable: _nullable,
-                    track_ref: _ref_tracking,
-                    generics: vec![key_generic, val_generic],
-                }
+                    _nullable,
+                    _ref_tracking,
+                    vec![key_generic, val_generic],
+                )
             }
-            _ => Self {
-                type_id,
-                user_type_id,
-                nullable: _nullable,
-                track_ref: _ref_tracking,
-                generics: vec![],
-            },
+            _ => {
+                Self::new_with_user_type_id(type_id, user_type_id, _nullable, _ref_tracking, vec![])
+            }
         })
     }
 }
@@ -395,6 +403,69 @@ fn fnv1a_hash_u8(hash: u64, value: u8) -> u64 {
 #[inline(always)]
 fn fnv1a_hash_u32(hash: u64, value: u32) -> u64 {
     fnv1a_hash_bytes(hash, &value.to_le_bytes())
+}
+
+#[inline(always)]
+fn fnv1a_hash_u64(hash: u64, value: u64) -> u64 {
+    fnv1a_hash_bytes(hash, &value.to_le_bytes())
+}
+
+#[inline(always)]
+fn compatible_fingerprint_type_id(type_id: u32) -> u32 {
+    match type_id {
+        _ if type_id == STRUCT
+            || type_id == COMPATIBLE_STRUCT
+            || type_id == NAMED_STRUCT
+            || type_id == NAMED_COMPATIBLE_STRUCT
+            || type_id == UNKNOWN =>
+        {
+            STRUCT
+        }
+        _ if type_id == ENUM || type_id == NAMED_ENUM => ENUM,
+        _ if type_id == EXT || type_id == NAMED_EXT => EXT,
+        _ if type_id == BINARY || type_id == INT8_ARRAY || type_id == UINT8_ARRAY => BINARY,
+        _ if type_id == TypeId::INT32 as u32 || type_id == TypeId::VARINT32 as u32 => {
+            TypeId::VARINT32 as u32
+        }
+        _ if type_id == TypeId::INT64 as u32
+            || type_id == TypeId::VARINT64 as u32
+            || type_id == TypeId::TAGGED_INT64 as u32 =>
+        {
+            TypeId::VARINT64 as u32
+        }
+        _ if type_id == TypeId::UINT32 as u32 || type_id == TypeId::VAR_UINT32 as u32 => {
+            TypeId::VAR_UINT32 as u32
+        }
+        _ if type_id == TypeId::UINT64 as u32
+            || type_id == TypeId::VAR_UINT64 as u32
+            || type_id == TypeId::TAGGED_UINT64 as u32 =>
+        {
+            TypeId::VAR_UINT64 as u32
+        }
+        _ => type_id,
+    }
+}
+
+#[inline(always)]
+fn compute_field_type_fingerprint(type_id: u32, generics: &[FieldType]) -> u64 {
+    let mut hash = fnv1a_hash_u32(FNV_OFFSET_BASIS, compatible_fingerprint_type_id(type_id));
+    hash = fnv1a_hash_u32(hash, generics.len() as u32);
+    for generic in generics {
+        hash = fnv1a_hash_u64(hash, generic.compatible_fingerprint());
+    }
+    hash
+}
+
+impl std::fmt::Debug for FieldType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FieldType")
+            .field("type_id", &self.type_id)
+            .field("user_type_id", &self.user_type_id)
+            .field("nullable", &self.nullable)
+            .field("track_ref", &self.track_ref)
+            .field("generics", &self.generics)
+            .finish()
+    }
 }
 
 #[inline(always)]
@@ -951,25 +1022,15 @@ impl TypeMeta {
                     if field.field_name.is_empty() {
                         field.field_name = local_info.field_name.clone();
                     }
-                    // Use FieldType comparison which normalizes type IDs for cross-language
-                    // schema evolution (e.g., UNKNOWN=0 matches STRUCT variants)
-                    if field.field_type != local_info.field_type {
-                        if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
-                            eprintln!(
-                                "[fory-debug] field type mismatch: name={}, remote_type={:?}, local_type={:?}",
-                                field.field_name, field.field_type, local_info.field_type
-                            );
-                        }
-                        field.field_id = -1; // Type mismatch, skip
-                    } else {
-                        // Assign SORTED INDEX for matching in generated code
-                        field.field_id = sorted_index as i16;
-                        if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
-                            eprintln!(
-                                "[fory-debug]   matched field: name={}, assigned_field_id={}",
-                                field.field_name, field.field_id
-                            );
-                        }
+                    // Assign SORTED INDEX for generated code. The generated field
+                    // codec inspects the remote FieldType and either consumes it or
+                    // asks the caller to skip the remote payload.
+                    field.field_id = sorted_index as i16;
+                    if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
+                        eprintln!(
+                            "[fory-debug]   matched field: name={}, assigned_field_id={}, remote_type={:?}, local_type={:?}",
+                            field.field_name, field.field_id, field.field_type, local_info.field_type
+                        );
                     }
                 }
                 None => {

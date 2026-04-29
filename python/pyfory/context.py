@@ -141,6 +141,8 @@ class MetaStringReader:
         if (header & 0b1) != 0:
             if length <= 0:
                 raise ValueError("Invalid dynamic metastring id 0")
+            if length > len(self._dynamic_id_to_encoded_meta_strings):
+                raise ValueError(f"Invalid dynamic metastring id {length}")
             return self._dynamic_id_to_encoded_meta_strings[length - 1]
         if length <= SMALL_STRING_THRESHOLD:
             encoded_meta_string = self._read_small_meta_string(buffer, length)
@@ -622,6 +624,8 @@ class ReadContext:
     def read_buffer_object(self):
         if not self.peer_out_of_band_enabled:
             size = self.buffer.read_var_uint32()
+            if size > self.max_binary_size:
+                raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
             if self.buffer.has_input_stream():
                 return self.buffer.read_bytes(size)
             reader_index = self.buffer.get_reader_index()
@@ -633,6 +637,8 @@ class ReadContext:
             assert self.buffers is not None
             return next(self.buffers)
         size = self.buffer.read_var_uint32()
+        if size > self.max_binary_size:
+            raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
         if self.buffer.has_input_stream():
             return self.buffer.read_bytes(size)
         reader_index = self.buffer.get_reader_index()

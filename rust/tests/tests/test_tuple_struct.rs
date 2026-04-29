@@ -15,29 +15,29 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Tests for tuple struct serialization with #[derive(ForyObject)]
+//! Tests for tuple struct serialization with #[derive(ForyStruct)]
 //!
 //! Tuple structs are structs with unnamed fields, like:
 //! - `struct Point(f64, f64);`
 //! - `struct Wrapper(String);`
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 // Basic Tuple Structs
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Point(f64, f64);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Wrapper(String);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Triple(i32, i64, u32);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Single(i32);
 
 #[test]
@@ -86,13 +86,13 @@ fn test_triple_tuple_struct() {
 
 // Tuple Structs with Complex Types
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct WithVec(Vec<i32>, String);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct WithOption(Option<i32>, Option<String>);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct WithMap(HashMap<String, i32>);
 
 #[test]
@@ -148,10 +148,10 @@ fn test_tuple_struct_with_map() {
 
 // Nested Tuple Structs
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Inner(i32, String);
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Outer(Inner, Vec<Inner>);
 
 #[test]
@@ -172,7 +172,7 @@ fn test_nested_tuple_structs() {
 
 // Tuple Struct with Rc (shared reference)
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct WithRc(Rc<String>, Rc<i32>);
 
 #[test]
@@ -189,7 +189,7 @@ fn test_tuple_struct_with_rc() {
 
 // Mixed: Tuple Struct inside Named Struct
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct NamedWithTupleStruct {
     id: i32,
     point: Point,
@@ -216,7 +216,7 @@ fn test_named_struct_with_tuple_struct_fields() {
 
 // Tuple Struct with Tuple field
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct TupleStructWithTuple(i32, (String, f64));
 
 #[test]
@@ -257,7 +257,7 @@ fn test_tuple_struct_xlang_mode() {
 
 // Edge cases
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct EmptyVecTuple(Vec<i32>);
 
 #[test]
@@ -271,7 +271,7 @@ fn test_tuple_struct_with_empty_vec() {
     assert_eq!(result, data);
 }
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct LargeTupleStruct(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, String);
 
 #[test]
@@ -303,25 +303,25 @@ fn test_large_tuple_struct() {
 
 // Simulate remote version with fewer fields
 mod remote_v1 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct Point(pub f64, pub f64);
 }
 
 // Simulate local version with more fields (added field 2)
 mod local_v2 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct Point(pub f64, pub f64, pub f64);
 }
 
 // Simulate remote version with more fields
 mod remote_v3 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct Point(pub f64, pub f64, pub f64, pub f64);
 }
 
@@ -364,28 +364,28 @@ fn test_tuple_struct_schema_evolution_remove_field() {
 
 // Test with mixed types to verify sorting doesn't break schema evolution
 mod remote_mixed_v1 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct MixedPoint(pub f64, pub f64);
 }
 
 mod local_mixed_v2 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct MixedPoint(pub f64, pub f64, pub i64);
 }
 
 mod local_mixed_v3 {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
     // Adding u8 (which has smaller size than f64)
-    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    #[derive(ForyStruct, Debug, PartialEq, Clone)]
     pub struct MixedPoint(pub f64, pub f64, pub u8);
 }
 
-/// Test that adding i64 (compress=true) doesn't break schema evolution
+/// Test that adding an i64 field doesn't break schema evolution
 #[test]
 fn test_tuple_struct_schema_evolution_add_i64() {
     let mut fory_writer = Fory::builder().compatible(true).build();

@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::{Fory, Serializer};
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::{BTreeSet, BinaryHeap, HashSet};
 
 #[test]
@@ -56,7 +56,7 @@ fn test_binaryheap_roundtrip() {
     assert_eq!(deserialized_concrete.peek(), Some(&20));
 }
 
-#[derive(ForyObject, Debug, Clone, PartialEq)]
+#[derive(ForyStruct, Debug, Clone, PartialEq)]
 struct SetContainer {
     btree_set: BTreeSet<String>,
     hash_set: HashSet<String>,
@@ -96,7 +96,7 @@ fn test_set_container() {
     assert!(deserialized.hash_set.contains("three"));
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct HeapContainer {
     binary_heap: BinaryHeap<i32>,
 }

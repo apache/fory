@@ -18,6 +18,8 @@
 import dataclasses
 from typing import Dict, List
 
+import pytest
+
 import pyfory
 from pyfory import Fory
 
@@ -108,6 +110,14 @@ class TestMetaShareMode:
         obj = SimpleDataClass(name="test", age=25, active=True)
         deserialized = fory.deserialize(fory.serialize(obj))
         assert deserialized == obj
+
+    def test_strict_reader_rejects_unknown_typedef(self):
+        writer = Fory(xlang=True, compatible=True, strict=False)
+        writer.register_type(SimpleDataClass)
+        reader = Fory(xlang=True, compatible=True, strict=True)
+
+        with pytest.raises(ValueError, match="not registered in strict mode"):
+            reader.deserialize(writer.serialize(SimpleDataClass(name="test", age=25, active=True)))
 
     def test_multiple_objects_same_type(self):
         fory = Fory(xlang=True, compatible=True)

@@ -33,14 +33,14 @@ Apache Fory™ supports polymorphic serialization through trait objects, enablin
 ```rust
 use fory::{Fory, register_trait_type};
 use fory::Serializer;
-use fory::ForyObject;
+use fory::ForyStruct;
 
 trait Animal: Serializer {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
 }
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Dog { name: String, breed: String }
 
 impl Animal for Dog {
@@ -48,7 +48,7 @@ impl Animal for Dog {
     fn name(&self) -> &str { &self.name }
 }
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Cat { name: String, color: String }
 
 impl Animal for Cat {
@@ -59,7 +59,7 @@ impl Animal for Cat {
 // Register trait implementations
 register_trait_type!(Animal, Dog, Cat);
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Zoo {
     star_animal: Box<dyn Animal>,
 }
@@ -146,7 +146,7 @@ use std::sync::Arc;
 use std::rc::Rc;
 use std::collections::HashMap;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct AnimalShelter {
     animals_rc: Vec<Rc<dyn Animal>>,
     animals_arc: Vec<Arc<dyn Animal>>,

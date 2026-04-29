@@ -360,9 +360,9 @@ impl ForyBuilder {
 ///
 /// ```rust, ignore
 /// use fory::Fory;
-/// use fory::ForyObject;
+/// use fory::{ForyEnum, ForyStruct, ForyUnion};
 ///
-/// #[derive(ForyObject)]
+/// #[derive(ForyStruct)]
 /// struct User {
 ///     name: String,
 ///     age: u32,
@@ -519,9 +519,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory::Fory;
-    /// use fory::ForyObject;
+    /// use fory::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct Point { x: i32, y: i32 }
     ///
     /// let fory = Fory::default();
@@ -573,9 +573,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory_core::Fory;
-    /// use fory_derive::ForyObject;
+    /// use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct Point {
     ///     x: i32,
     ///     y: i32,
@@ -593,9 +593,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory_core::Fory;
-    /// use fory_derive::ForyObject;
+    /// use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject, PartialEq, Debug)]
+    /// #[derive(ForyStruct, PartialEq, Debug)]
     /// struct Point {
     ///     x: i32,
     ///     y: i32,
@@ -634,9 +634,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory_core::Fory;
-    /// use fory_derive::ForyObject;
+    /// use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct Point {
     ///     x: i32,
     ///     y: i32,
@@ -774,9 +774,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory::Fory;
-    /// use fory::ForyObject;
+    /// use fory::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct User { name: String, age: u32 }
     ///
     /// let mut fory = Fory::default();
@@ -823,9 +823,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory::Fory;
-    /// use fory::ForyObject;
+    /// use fory::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct User { name: String, age: u32 }
     ///
     /// let mut fory = Fory::default();
@@ -872,9 +872,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory::Fory;
-    /// use fory::ForyObject;
+    /// use fory::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct User { name: String, age: u32 }
     ///
     /// let mut fory = Fory::default();
@@ -1028,9 +1028,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory::Fory;
-    /// use fory::ForyObject;
+    /// use fory::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct Point { x: i32, y: i32 }
     ///
     /// let fory = Fory::default();
@@ -1081,9 +1081,9 @@ impl Fory {
     ///
     /// ```rust, ignore
     /// use fory_core::{Fory, Reader};
-    /// use fory_derive::ForyObject;
+    /// use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
     ///
-    /// #[derive(ForyObject)]
+    /// #[derive(ForyStruct)]
     /// struct Point { x: i32, y: i32 }
     ///
     /// let fory = Fory::default();

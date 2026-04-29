@@ -36,9 +36,9 @@ Apache Fory™ provides the `#[fory(...)]` attribute macro to specify optional f
 The `#[fory(...)]` attribute is placed on individual struct fields:
 
 ```rust
-use fory::ForyObject;
+use fory::ForyStruct;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Person {
     #[fory(id = 0)]
     name: String,
@@ -60,7 +60,7 @@ Multiple options are separated by commas.
 Assigns a numeric ID to a field to minimize struct field meta size overhead:
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct User {
     #[fory(id = 0)]
     id: i64,
@@ -91,7 +91,7 @@ struct User {
 Excludes a field from serialization:
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct User {
     #[fory(id = 0)]
     id: i64,
@@ -113,7 +113,7 @@ Controls whether null flags are written for fields:
 ```rust
 use fory::{Fory, RcWeak};
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Record {
     // RcWeak is nullable by default, override to non-nullable
     #[fory(id = 0, nullable = false)]
@@ -143,7 +143,7 @@ Controls per-field reference tracking for shared ownership types:
 use std::rc::Rc;
 use std::sync::Arc;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Container {
     // Enable reference tracking (default for Rc/Arc)
     #[fory(id = 0, ref = true)]
@@ -174,18 +174,18 @@ struct Container {
 Controls how integer fields are encoded:
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Metrics {
     // Variable-length encoding (smaller for small values)
-    #[fory(id = 0, encoding = "varint")]
+    #[fory(id = 0, encoding = varint)]
     count: i64,
 
     // Fixed-length encoding (consistent size)
-    #[fory(id = 1, encoding = "fixed")]
+    #[fory(id = 1, encoding = fixed)]
     timestamp: i64,
 
     // Tagged encoding (includes type tag, u64 only)
-    #[fory(id = 2, encoding = "tagged")]
+    #[fory(id = 2, encoding = tagged)]
     value: u64,
 }
 ```
@@ -203,28 +203,26 @@ struct Metrics {
 - `fixed`: Best for values that use full range (e.g., timestamps, hashes)
 - `tagged`: When type information needs to be preserved (u64 only)
 
-### Compress (`compress`)
+### Nested Collection Configuration
 
-A convenience shorthand for controlling integer encoding:
+Use `list(element(...))` and `map(key(...), value(...))` when an override belongs
+to a nested element instead of the outer field:
 
 ```rust
-#[derive(ForyObject)]
-struct Data {
-    // compress = true -> varint encoding (default)
-    #[fory(id = 0, compress)]
-    small_value: i32,
+use std::collections::HashMap;
 
-    // compress = false -> fixed encoding
-    #[fory(id = 1, compress = false)]
-    fixed_value: u32,
+#[derive(ForyStruct)]
+struct Data {
+    #[fory(list(element(encoding = fixed)))]
+    fixed_values: Vec<i32>,
+
+    #[fory(map(key(encoding = fixed), value(nullable = true, encoding = tagged)))]
+    values_by_id: HashMap<Option<i32>, Option<u64>>,
 }
 ```
 
-**Notes**:
-
-- `compress` or `compress = true` is equivalent to `encoding = "varint"`
-- `compress = false` is equivalent to `encoding = "fixed"`
-- If both `compress` and `encoding` are specified, they must not conflict
+`compress` has been removed. Use `encoding = varint` or `encoding = fixed`
+directly.
 
 ## Type Classification
 
@@ -245,10 +243,10 @@ Fory classifies field types to determine default behavior:
 ## Complete Example
 
 ```rust
-use fory::ForyObject;
+use fory::ForyStruct;
 use std::rc::Rc;
 
-#[derive(ForyObject, Default)]
+#[derive(ForyStruct, Default)]
 struct Document {
     // Required fields with tag IDs
     #[fory(id = 0)]
@@ -270,11 +268,11 @@ struct Document {
     related: Option<Rc<Document>>,
 
     // Counter with varint encoding (small values)
-    #[fory(id = 5, encoding = "varint")]
+    #[fory(id = 5, encoding = varint)]
     view_count: u64,
 
     // Timestamp with fixed encoding (full range values)
-    #[fory(id = 6, encoding = "fixed")]
+    #[fory(id = 6, encoding = fixed)]
     created_at: i64,
 
     // Skip sensitive field
@@ -307,7 +305,7 @@ Invalid configurations are caught at compile time:
 
 ```rust
 // Error: duplicate field IDs
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Bad {
     #[fory(id = 0)]
     field1: String,
@@ -317,16 +315,16 @@ struct Bad {
 }
 
 // Error: invalid id value
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Bad2 {
     #[fory(id = -2)]  // Compile error: id must be >= -1
     field: String,
 }
 
-// Error: conflicting encoding attributes
-#[derive(ForyObject)]
+// Error: removed shorthand
+#[derive(ForyStruct)]
 struct Bad3 {
-    #[fory(compress = true, encoding = "fixed")]  // Compile error: conflict
+    #[fory(compress = false)]  // Compile error: use encoding = fixed
     field: i32,
 }
 ```
@@ -336,18 +334,18 @@ struct Bad3 {
 When serializing data to be read by other languages (Java, C++, Go, Python), use field configuration to match encoding expectations:
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct CrossLangData {
     // Matches Java Integer with varint
-    #[fory(id = 0, encoding = "varint")]
+    #[fory(id = 0, encoding = varint)]
     int_var: i32,
 
     // Matches Java Integer with fixed
-    #[fory(id = 1, encoding = "fixed")]
+    #[fory(id = 1, encoding = fixed)]
     int_fixed: i32,
 
     // Matches Java Long with tagged encoding
-    #[fory(id = 2, encoding = "tagged")]
+    #[fory(id = 2, encoding = tagged)]
     long_tagged: u64,
 
     // Nullable pointer matches Java nullable reference
@@ -362,7 +360,7 @@ Compatible mode supports schema evolution. It is recommended to configure field 
 
 ```rust
 // Version 1
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct DataV1 {
     #[fory(id = 0)]
     id: i64,
@@ -372,7 +370,7 @@ struct DataV1 {
 }
 
 // Version 2: Added new field
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct DataV2 {
     #[fory(id = 0)]
     id: i64,
@@ -390,7 +388,7 @@ Data serialized with V1 can be deserialized with V2 (new field will be `None`).
 Alternatively, field IDs can be omitted (field names will be used in metadata with larger overhead):
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Data {
     id: i64,
     name: String,
@@ -411,7 +409,7 @@ You **need to configure fields** when:
 
 ```rust
 // Xlang mode: explicit configuration required
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct User {
     #[fory(id = 0)]
     name: String,                    // Non-nullable by default
@@ -444,14 +442,15 @@ struct User {
 
 ## Options Reference
 
-| Option     | Syntax                             | Description                          | Valid For                  |
-| ---------- | ---------------------------------- | ------------------------------------ | -------------------------- |
-| `id`       | `id = N`                           | Field tag ID to reduce metadata size | All fields                 |
-| `skip`     | `skip`                             | Exclude field from serialization     | All fields                 |
-| `nullable` | `nullable` or `nullable = bool`    | Control null flag writing            | All fields                 |
-| `ref`      | `ref` or `ref = bool`              | Control reference tracking           | `Rc`, `Arc`, weak types    |
-| `encoding` | `encoding = "varint/fixed/tagged"` | Integer encoding method              | `i32`, `u32`, `i64`, `u64` |
-| `compress` | `compress` or `compress = bool`    | Shorthand for varint/fixed           | `i32`, `u32`               |
+| Option     | Syntax                           | Description                          | Valid For                  |
+| ---------- | -------------------------------- | ------------------------------------ | -------------------------- |
+| `id`       | `id = N`                         | Field tag ID to reduce metadata size | All fields                 |
+| `skip`     | `skip`                           | Exclude field from serialization     | All fields                 |
+| `nullable` | `nullable` or `nullable = bool`  | Control null flag writing            | All fields                 |
+| `ref`      | `ref` or `ref = bool`            | Control reference tracking           | `Rc`, `Arc`, weak types    |
+| `encoding` | `encoding = varint/fixed/tagged` | Integer encoding method              | `i32`, `u32`, `i64`, `u64` |
+| `list`     | `list(element(...))`             | Element field configuration          | `Vec<T>`                   |
+| `map`      | `map(key(...), value(...))`      | Key/value field configuration        | `HashMap<K, V>`            |
 
 ## Related Topics
 

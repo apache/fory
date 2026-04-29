@@ -110,6 +110,19 @@ mod tests {
         assert_eq!(value, decoded);
     }
 
+    fn assert_serialized_size<T>(expected_fory: usize, expected_protobuf: usize)
+    where
+        T: BenchmarkCase,
+        ForySerializer: BenchmarkSerializer<T>,
+        ProtobufSerializer: BenchmarkSerializer<T>,
+    {
+        let value = T::create();
+        let fory_bytes = ForySerializer::new().serialize(&value).unwrap();
+        let protobuf_bytes = ProtobufSerializer::new().serialize(&value).unwrap();
+        assert_eq!(fory_bytes.len(), expected_fory);
+        assert_eq!(protobuf_bytes.len(), expected_protobuf);
+    }
+
     #[test]
     fn benchmark_cases_round_trip() {
         assert_round_trip::<NumericStruct>();
@@ -118,5 +131,15 @@ mod tests {
         assert_round_trip::<StructList>();
         assert_round_trip::<SampleList>();
         assert_round_trip::<MediaContentList>();
+    }
+
+    #[test]
+    fn benchmark_serialized_sizes_match_baseline() {
+        assert_serialized_size::<NumericStruct>(58, 61);
+        assert_serialized_size::<Sample>(446, 375);
+        assert_serialized_size::<MediaContent>(365, 301);
+        assert_serialized_size::<StructList>(184, 315);
+        assert_serialized_size::<SampleList>(1980, 1890);
+        assert_serialized_size::<MediaContentList>(1535, 1520);
     }
 }

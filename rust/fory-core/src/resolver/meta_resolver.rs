@@ -30,9 +30,12 @@ use std::rc::Rc;
 #[derive(Default)]
 pub struct MetaWriterResolver {
     type_id_index_map: HashMap<std::any::TypeId, usize>,
+    type_index_index_map: Vec<usize>,
+    next_index: usize,
 }
 
 const MAX_PARSED_NUM_TYPE_DEFS: usize = 8192;
+const NO_WRITTEN_TYPE_INDEX: usize = usize::MAX;
 
 #[allow(dead_code)]
 impl MetaWriterResolver {
@@ -52,7 +55,8 @@ impl MetaWriterResolver {
             }
             None => {
                 // New type: index << 1, LSB=0, followed by TypeMeta bytes inline
-                let index = self.type_id_index_map.len();
+                let index = self.next_index;
+                self.next_index += 1;
                 writer.write_var_u32((index as u32) << 1);
                 self.type_id_index_map.insert(type_id, index);
                 // Write TypeMeta bytes inline
@@ -63,9 +67,41 @@ impl MetaWriterResolver {
         Ok(())
     }
 
+    /// Write type meta by generated struct type index, avoiding Rust TypeId hash lookup.
+    #[inline(always)]
+    pub fn write_type_meta_fast(
+        &mut self,
+        writer: &mut Writer,
+        type_id: std::any::TypeId,
+        type_index: u32,
+        type_resolver: &TypeResolver,
+    ) -> Result<(), Error> {
+        let type_index = type_index as usize;
+        if let Some(&index) = self.type_index_index_map.get(type_index) {
+            if index != NO_WRITTEN_TYPE_INDEX {
+                writer.write_var_u32(((index as u32) << 1) | 1);
+                return Ok(());
+            }
+        }
+
+        let index = self.next_index;
+        self.next_index += 1;
+        writer.write_var_u32((index as u32) << 1);
+        if type_index >= self.type_index_index_map.len() {
+            self.type_index_index_map
+                .resize(type_index + 1, NO_WRITTEN_TYPE_INDEX);
+        }
+        self.type_index_index_map[type_index] = index;
+        let type_meta = type_resolver.get_type_meta_by_index_ref(&type_id, type_index as u32)?;
+        writer.write_bytes(type_meta.get_bytes());
+        Ok(())
+    }
+
     #[inline(always)]
     pub fn reset(&mut self) {
         self.type_id_index_map.clear();
+        self.type_index_index_map.clear();
+        self.next_index = 0;
     }
 }
 

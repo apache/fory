@@ -21,17 +21,17 @@
 
 use fory_core::error::Error;
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
 /// helper struct used across multiple tests.
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Point {
     x: i32,
     y: i32,
 }
 
 /// A second type used for late-registration attempts.
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Color {
     r: u8,
     g: u8,

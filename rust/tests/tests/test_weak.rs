@@ -17,7 +17,7 @@
 
 use fory_core::fory::Fory;
 use fory_core::{ArcWeak, RcWeak};
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -125,9 +125,9 @@ fn test_arc_weak_in_vec_circular_reference() {
 
 #[test]
 fn test_rc_weak_field_in_struct() {
-    use fory_derive::ForyObject;
+    use fory_derive::ForyStruct;
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct SimpleNode {
         value: i32,
         weak_ref: RcWeak<i32>,
@@ -148,7 +148,7 @@ fn test_rc_weak_field_in_struct() {
     assert_eq!(deserialized.value, 1);
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Node {
     value: i32,
     // Weak ref to parent Rc<RefCell<Node>>
@@ -211,7 +211,7 @@ fn test_node_circular_reference_with_parent_children() {
 
 #[test]
 fn test_arc_mutex_circular_reference() {
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct Node {
         val: i32,
         parent: ArcWeak<Mutex<Node>>,

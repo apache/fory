@@ -54,9 +54,9 @@ fory = "0.13"
 
 ```rust
 use fory::{Fory, Error, Reader};
-use fory::ForyObject;
+use fory::ForyStruct;
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct User {
     name: String,
     age: i32,
@@ -96,11 +96,11 @@ Apache Fory™ Rust is fully thread-safe: `Fory` implements both `Send` and `Syn
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::ForyStruct;
 use std::sync::Arc;
 use std::thread;
 
-#[derive(ForyObject, Clone, Copy, Debug, PartialEq)]
+#[derive(ForyStruct, Clone, Copy, Debug, PartialEq)]
 struct Item {
     value: i32,
 }
@@ -152,7 +152,7 @@ fory-core/             # Core serialization engine
 
 fory-derive/           # Procedural macros
 ├── src/
-│   ├── object/       # ForyObject macro
+│   ├── object/       # ForyStruct macro
 │   └── fory_row.rs  # ForyRow macro
 ```
 

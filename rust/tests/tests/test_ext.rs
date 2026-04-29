@@ -20,12 +20,12 @@ use fory_core::fory::Fory;
 use fory_core::resolver::TypeResolver;
 use fory_core::serializer::{ForyDefault, Serializer};
 use fory_core::{ReadContext, WriteContext};
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
 #[test]
 #[allow(dead_code)]
 fn test_duplicate_impl() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Item1 {
         f1: i32,
     }

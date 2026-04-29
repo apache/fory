@@ -18,13 +18,13 @@
 //! Tests for Rc and Arc serialization support in Fory
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
 /// A simple struct for testing nested Rc/Arc serialization
-#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+#[derive(ForyStruct, Debug, Clone, PartialEq, Default)]
 struct NestedData {
     value: String,
 }

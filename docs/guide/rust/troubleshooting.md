@@ -68,10 +68,10 @@ Reset the variable afterwards to avoid aborting user-facing code paths.
 
 ### Struct Field Tracing
 
-Add the `#[fory(debug)]` attribute alongside `#[derive(ForyObject)]` to emit hook invocations:
+Add the `#[fory(debug)]` attribute alongside `#[derive(ForyStruct)]` to emit hook invocations:
 
 ```rust
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 #[fory(debug)]
 struct MyStruct {
     field1: i32,

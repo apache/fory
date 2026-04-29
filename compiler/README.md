@@ -364,12 +364,12 @@ type Cat struct {
 
 Generates structs with:
 
-- `#[derive(ForyObject)]` macro
+- `#[derive(ForyStruct)]`, `#[derive(ForyEnum)]`, and `#[derive(ForyUnion)]` macros
 - `#[fory(...)]` field attributes
 - a registration helper for namespace-based registration
 
 ```rust
-#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+#[derive(ForyStruct, Debug, Clone, PartialEq, Default)]
 pub struct Cat {
     pub friend: Arc<Dog>,
     #[fory(nullable = true)]

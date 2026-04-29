@@ -41,19 +41,8 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
 
-    // Extract type parameter names from generics (e.g., "C", "T", "E")
-    let type_params: std::collections::HashSet<String> = ast
-        .generics
-        .params
-        .iter()
-        .filter_map(|p| match p {
-            syn::GenericParam::Type(tp) => Some(tp.ident.to_string()),
-            _ => None, // Ignore lifetime and const parameters
-        })
-        .collect();
-
     use crate::object::util::{clear_struct_context, set_struct_context};
-    set_struct_context(&name.to_string(), attrs.debug_enabled, type_params);
+    set_struct_context(&name.to_string(), attrs.debug_enabled);
 
     // Check if ForyDefault is already derived/implemented
     let has_existing_default = has_existing_default(ast, "ForyDefault");
@@ -123,7 +112,6 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let source_fields = source_fields(&s.fields);
-            let fields = extract_fields(&source_fields);
             (
                 write::gen_write(),
                 write::gen_write_data(&source_fields),
@@ -132,7 +120,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 read::gen_read_with_type_info(),
                 read::gen_read_data(&source_fields),
                 read::gen_read_type_info(),
-                write::gen_reserved_space(&fields),
+                write::gen_reserved_space(&source_fields),
                 quote! { fory_core::TypeId::STRUCT },
             )
         }
@@ -284,43 +272,11 @@ fn generate_default_impl(
                 .map(|sf| sf.is_tuple_struct)
                 .unwrap_or(false);
 
-            use super::util::{
-                classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
-                StructField,
-            };
-
             // Generate field initializations with original index for sorting
             let mut indexed: Vec<_> = source_fields
                 .iter()
                 .map(|sf| {
-                    let ty = &sf.field.ty;
-                    let value = match classify_trait_object_field(ty) {
-                        StructField::RcDyn(trait_name) => {
-                            let types = create_wrapper_types_rc(&trait_name);
-                            let wrapper_ty = types.wrapper_ty;
-                            let trait_ident = types.trait_ident;
-                            quote! {
-                                {
-                                    let wrapper = #wrapper_ty::default();
-                                    std::rc::Rc::<dyn #trait_ident>::from(wrapper)
-                                }
-                            }
-                        }
-                        StructField::ArcDyn(trait_name) => {
-                            let types = create_wrapper_types_arc(&trait_name);
-                            let wrapper_ty = types.wrapper_ty;
-                            let trait_ident = types.trait_ident;
-                            quote! {
-                                {
-                                    let wrapper = #wrapper_ty::default();
-                                    std::sync::Arc::<dyn #trait_ident>::from(wrapper)
-                                }
-                            }
-                        }
-                        _ => {
-                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
-                        }
-                    };
+                    let value = super::field_codec::default_expr_for_type(&sf.field.ty);
                     (sf.original_index, sf.field_init(value))
                 })
                 .collect();

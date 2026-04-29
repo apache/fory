@@ -73,16 +73,16 @@
 //!
 //! ```rust,ignore
 //! use fory_core::{Fory, register_trait_type, Serializer};
-//! use fory_derive::ForyObject;
+//! use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 //!
 //! trait Animal: Serializer {
 //!     fn speak(&self) -> String;
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Dog { name: String }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Cat { name: String }
 //!
 //! impl Animal for Dog {
@@ -95,7 +95,7 @@
 //!
 //! register_trait_type!(Animal, Dog, Cat);
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Zoo {
 //!     star_animal: Box<dyn Animal>,
 //! }
@@ -122,11 +122,11 @@
 //!
 //! ```rust,ignore
 //! # use fory_core::Serializer;
-//! # use fory_derive::ForyObject;
+//! # use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 //! # use std::rc::Rc;
 //! # use std::sync::Arc;
 //! # trait Animal: Serializer { fn speak(&self) -> String; }
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Shelter {
 //!     animals_rc: Vec<Rc<dyn Animal>>,
 //!     animals_arc: Vec<Arc<dyn Animal>>,

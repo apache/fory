@@ -110,9 +110,9 @@ assert_eq!(prefs.values().get(0), "en");
 | Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
 
-## ForyRow vs ForyObject
+## ForyRow vs ForyStruct
 
-| Feature         | `#[derive(ForyRow)]`  | `#[derive(ForyObject)]`    |
+| Feature         | `#[derive(ForyRow)]`  | `#[derive(ForyStruct)]`    |
 | --------------- | --------------------- | -------------------------- |
 | Deserialization | Zero-copy, lazy       | Full object reconstruction |
 | Field access    | Direct from binary    | Normal struct access       |

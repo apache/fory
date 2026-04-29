@@ -19,7 +19,7 @@
 
 use fory_core::fory::Fory;
 use fory_core::{ForyDefault, Serializer};
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
 /// A trait that defines associated types, similar to OpenRaft's RaftTypeConfig
 pub trait TypeConfig: Sized + Send + Sync + 'static {
@@ -54,7 +54,7 @@ impl TypeConfig for TestConfig {
 
 /// A struct with fields using associated types
 /// The where clause ensures all associated types implement required traits
-#[derive(ForyObject, Debug, Clone, PartialEq)]
+#[derive(ForyStruct, Debug, Clone, PartialEq)]
 pub struct LeaderId<C>
 where
     C: TypeConfig,

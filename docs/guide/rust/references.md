@@ -90,12 +90,12 @@ To serialize circular references like parent-child relationships or doubly-linke
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::ForyStruct;
 use fory::RcWeak;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct Node {
     value: i32,
     parent: RcWeak<RefCell<Node>>,
@@ -143,11 +143,11 @@ for child in &decoded.borrow().children {
 
 ```rust
 use fory::{Fory, Error};
-use fory::ForyObject;
+use fory::ForyStruct;
 use fory::ArcWeak;
 use std::sync::{Arc, Mutex};
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Node {
     val: i32,
     parent: ArcWeak<Mutex<Node>>,

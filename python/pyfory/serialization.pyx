@@ -40,7 +40,7 @@ from pyfory._fory import (
     NO_USER_TYPE_ID,
     NOT_NULL_INT64_FLAG,
 )
-from pyfory.meta.typedef_decoder import decode_typedef, skip_typedef
+from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.meta.metastring import MetaStringDecoder
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG

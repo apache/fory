@@ -66,9 +66,9 @@ fory.register_by_namespace::<User>("com.example", "User");
 
 ```rust
 use fory::Fory;
-use fory::ForyObject;
+use fory::ForyStruct;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Person {
     name: String,
     age: i32,

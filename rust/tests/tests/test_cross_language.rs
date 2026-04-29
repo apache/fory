@@ -24,7 +24,7 @@ use fory_core::type_id::TypeId;
 use fory_core::util::murmurhash3_x64_128;
 use fory_core::{read_data, write_data, BFloat16, Decimal, Float16, Fory};
 use fory_core::{ReadContext, WriteContext};
-use fory_derive::ForyObject;
+use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
@@ -34,10 +34,10 @@ fn get_data_file() -> String {
     std::env::var("DATA_FILE").expect("DATA_FILE not set")
 }
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyStruct, Debug, PartialEq, Default)]
 struct Empty {}
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyEnum, Debug, PartialEq, Default)]
 enum Color {
     #[default]
     Green,
@@ -46,14 +46,14 @@ enum Color {
     White,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Item {
     // Use String (not Option<String>) to match Java's non-nullable String field
     // xlang mode defaults to nullable=false for non-Optional types
     name: String,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct SimpleStruct {
     // field_order != sorted_order
@@ -70,12 +70,12 @@ struct SimpleStruct {
     last: i32,
 }
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyStruct, Debug, PartialEq, Default)]
 struct EvolvingOverrideStruct {
     f1: String,
 }
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyStruct, Debug, PartialEq, Default)]
 #[fory(evolving = false)]
 struct FixedOverrideStruct {
     f1: String,
@@ -607,7 +607,7 @@ fn test_integer() {
     // - Java int fields -> Rust i32 (no ref flag)
     // - Java Integer fields (with nullable=false) -> Rust i32 (no ref flag)
     // All fields use i32 because Java xlang mode defaults to nullable=false for all non-primitives
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[fory(debug)]
     struct Item2 {
         f1: i32,
@@ -707,7 +707,7 @@ fn test_decimal() {
     fs::write(&data_file_path, buf).unwrap();
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct MyStruct {
     id: i32,
 }
@@ -742,7 +742,7 @@ impl ForyDefault for MyExt {
         Self::default()
     }
 }
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct MyWrapper {
     color: Color,
@@ -839,7 +839,7 @@ fn test_consistent_named() {
     fs::write(&data_file_path, buf).unwrap();
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct VersionCheckStruct {
     f1: i32,
@@ -847,12 +847,12 @@ struct VersionCheckStruct {
     f3: f64,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithList {
     items: Vec<Option<String>>,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithMap {
     data: HashMap<Option<String>, Option<String>>,
 }
@@ -861,24 +861,24 @@ struct StructWithMap {
 // Schema Evolution Test Types
 // ============================================================================
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct EmptyStructEvolution {}
 
 // Java f1 has @ForyField(id = -1, nullable = true), so it's nullable
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct OneStringFieldStruct {
     #[fory(nullable = true)]
     f1: Option<String>,
 }
 
 // Both f1 and f2 are non-nullable in Java xlang mode
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct TwoStringFieldStruct {
     f1: String,
     f2: String,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct ReducedPrecisionFloatStruct {
     float16_value: Float16,
     bfloat16_value: BFloat16,
@@ -887,7 +887,7 @@ struct ReducedPrecisionFloatStruct {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(ForyObject, Debug, PartialEq, Default, Clone)]
+#[derive(ForyEnum, Debug, PartialEq, Default, Clone)]
 enum TestEnum {
     #[default]
     VALUE_A,
@@ -895,13 +895,13 @@ enum TestEnum {
     VALUE_C,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct OneEnumFieldStruct {
     f1: TestEnum,
 }
 
 // Both f1 and f2 are non-nullable in Java xlang mode
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct TwoEnumFieldStruct {
     f1: TestEnum,
     f2: TestEnum,
@@ -1066,25 +1066,25 @@ fn test_struct_with_map() {
 
 use std::any::Any;
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Dog {
     age: i32,
     // Match Java's @ForyField(nullable = true) annotation
     name: Option<String>,
 }
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Cat {
     age: i32,
     lives: i32,
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct AnimalListHolder {
     animals: Vec<Box<dyn Any>>,
 }
 
-#[derive(ForyObject, Debug)]
+#[derive(ForyStruct, Debug)]
 struct AnimalMapHolder {
     animal_map: HashMap<String, Box<dyn Any>>,
 }
@@ -1444,7 +1444,7 @@ fn test_enum_schema_evolution_compatible_reverse() {
 /// - Base non-nullable fields: byte, short, int, long, float, double, bool, string, list, set, map
 /// - Nullable fields (first half - boxed numeric types): Integer, Long, Float
 /// - Nullable fields (second half - @ForyField): Double, Boolean, String, List, Set, Map
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct NullableComprehensiveSchemaConsistent {
     // Base non-nullable primitive fields
@@ -1491,7 +1491,7 @@ struct NullableComprehensiveSchemaConsistent {
 /// - Group 2: Non-nullable in Rust, Nullable in Java (@ForyField(nullable=true))
 ///
 /// This tests that compatible mode properly handles schema differences across languages.
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct NullableComprehensiveCompatible {
     // Group 1: Nullable in Rust, Non-nullable in Java
@@ -1771,7 +1771,7 @@ fn test_nullable_field_compatible_null() {
 
 /// Rust enum that matches Java Union2<String, Long>
 /// Each variant has exactly one field to be Union-compatible
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyUnion, Debug, PartialEq)]
 enum StringOrLong {
     Str(String),
     Long(i64),
@@ -1784,7 +1784,7 @@ impl Default for StringOrLong {
 }
 
 /// Struct containing a Union field, matches Java StructWithUnion2
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithUnion2 {
     union: StringOrLong,
 }
@@ -1831,7 +1831,7 @@ use std::rc::Rc;
 
 /// Inner struct for reference tracking test (SCHEMA_CONSISTENT mode)
 /// Matches Java RefInnerSchemaConsistent with type ID 501
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct RefInnerSchemaConsistent {
     id: i32,
     name: String,
@@ -1841,7 +1841,7 @@ struct RefInnerSchemaConsistent {
 /// Contains two fields that both point to the same inner object.
 /// Matches Java RefOuterSchemaConsistent with type ID 502
 /// Uses Option<Rc<T>> for nullable reference-tracked fields - Rc enables reference tracking
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct RefOuterSchemaConsistent {
     inner1: Option<Rc<RefInnerSchemaConsistent>>,
@@ -1850,7 +1850,7 @@ struct RefOuterSchemaConsistent {
 
 /// Inner struct for reference tracking test (COMPATIBLE mode)
 /// Matches Java RefInnerCompatible with type ID 503
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 #[fory(debug)]
 struct RefInnerCompatible {
     id: i32,
@@ -1861,7 +1861,7 @@ struct RefInnerCompatible {
 /// Contains two fields that both point to the same inner object.
 /// Matches Java RefOuterCompatible with type ID 504
 /// Uses Option<Rc<T>> for nullable reference-tracked fields - Rc enables reference tracking
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct RefOuterCompatible {
     inner1: Option<Rc<RefInnerCompatible>>,
@@ -1870,7 +1870,7 @@ struct RefOuterCompatible {
 
 /// Element struct for collection element ref override test
 /// Matches Java RefOverrideElement with type ID 701
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct RefOverrideElement {
     id: i32,
     name: String,
@@ -1878,7 +1878,7 @@ struct RefOverrideElement {
 
 /// Container struct for collection element ref override test
 /// Matches Java RefOverrideContainer with type ID 702
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct RefOverrideContainer {
     list_field: Vec<Rc<RefOverrideElement>>,
     map_field: HashMap<String, Rc<RefOverrideElement>>,
@@ -2025,7 +2025,7 @@ fn test_collection_element_ref_override() {
 /// This is the proper Rust pattern for circular references - RcWeak supports callbacks that
 /// resolve when the strong Rc becomes available.
 /// Matches Java CircularRefStruct with type ID 601 (schema consistent) or 602 (compatible)
-#[derive(ForyObject, Debug, Clone)]
+#[derive(ForyStruct, Debug, Clone)]
 struct CircularRefStruct {
     name: String,
     #[fory(ref = true, nullable = true)]
@@ -2131,19 +2131,19 @@ fn test_circular_ref_compatible() {
 /// Note: Rust supports u8, u16, u32, u64 natively. Different encodings (fixed, var, tagged)
 /// are handled via field attributes.
 /// Matches Java's UnsignedSchemaConsistent (type id 501)
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct UnsignedSchemaConsistent {
     // Primitive unsigned fields (non-nullable, use Field suffix to avoid reserved keywords)
     u8_field: u8,       // UINT8 - fixed 8-bit
     u16_field: u16,     // UINT16 - fixed 16-bit
     u32_var_field: u32, // VAR_UINT32 - variable-length (default)
-    #[fory(compress = false)]
+    #[fory(encoding = fixed)]
     u32_fixed_field: u32, // UINT32 - fixed 4-byte
     u64_var_field: u64, // VAR_UINT64 - variable-length (default)
-    #[fory(encoding = "fixed")]
+    #[fory(encoding = fixed)]
     u64_fixed_field: u64, // UINT64 - fixed 8-byte
-    #[fory(encoding = "tagged")]
+    #[fory(encoding = tagged)]
     u64_tagged_field: u64, // TAGGED_UINT64
 
     // Nullable unsigned fields (using Option)
@@ -2153,13 +2153,13 @@ struct UnsignedSchemaConsistent {
     u16_nullable_field: Option<u16>,
     #[fory(nullable = true)]
     u32_var_nullable_field: Option<u32>,
-    #[fory(nullable = true, compress = false)]
+    #[fory(nullable = true, encoding = fixed)]
     u32_fixed_nullable_field: Option<u32>,
     #[fory(nullable = true)]
     u64_var_nullable_field: Option<u64>,
-    #[fory(nullable = true, encoding = "fixed")]
+    #[fory(nullable = true, encoding = fixed)]
     u64_fixed_nullable_field: Option<u64>,
-    #[fory(nullable = true, encoding = "tagged")]
+    #[fory(nullable = true, encoding = tagged)]
     u64_tagged_nullable_field: Option<u64>,
 }
 
@@ -2167,7 +2167,7 @@ struct UnsignedSchemaConsistent {
 /// Group 1: Option types (nullable in Rust, non-nullable in Java)
 /// Group 2: Non-Option types with Field2 suffix (non-nullable in Rust, nullable in Java)
 /// Matches Java's UnsignedSchemaCompatible (type id 502)
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 #[fory(debug)]
 struct UnsignedSchemaCompatible {
     // Group 1: Nullable in Rust (Option), non-nullable in Java
@@ -2177,25 +2177,25 @@ struct UnsignedSchemaCompatible {
     u16_field1: Option<u16>,
     #[fory(nullable = true)]
     u32_var_field1: Option<u32>,
-    #[fory(nullable = true, compress = false)]
+    #[fory(nullable = true, encoding = fixed)]
     u32_fixed_field1: Option<u32>,
     #[fory(nullable = true)]
     u64_var_field1: Option<u64>,
-    #[fory(nullable = true, encoding = "fixed")]
+    #[fory(nullable = true, encoding = fixed)]
     u64_fixed_field1: Option<u64>,
-    #[fory(nullable = true, encoding = "tagged")]
+    #[fory(nullable = true, encoding = tagged)]
     u64_tagged_field1: Option<u64>,
 
     // Group 2: Non-nullable in Rust, nullable in Java
     u8_field2: u8,
     u16_field2: u16,
     u32_var_field2: u32,
-    #[fory(compress = false)]
+    #[fory(encoding = fixed)]
     u32_fixed_field2: u32,
     u64_var_field2: u64,
-    #[fory(encoding = "fixed")]
+    #[fory(encoding = fixed)]
     u64_fixed_field2: u64,
-    #[fory(encoding = "tagged")]
+    #[fory(encoding = tagged)]
     u64_tagged_field2: u64,
 }
 

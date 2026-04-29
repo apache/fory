@@ -19,7 +19,7 @@ use fory_core::fory::Fory;
 use fory_core::register_trait_type;
 use fory_core::serializer::Serializer;
 use fory_core::{unwrap_rc, wrap_rc, wrap_vec_rc};
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ trait Animal: Serializer + Send + Sync {
     fn set_name(&mut self, name: String);
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Dog {
     name: String,
     breed: String,
@@ -54,7 +54,7 @@ impl Animal for Dog {
     }
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Cat {
     name: String,
     color: String,
@@ -307,11 +307,23 @@ fn test_empty_wrapper_collections() {
     assert_eq!(deserialized.len(), 0);
 }
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct AnimalShelter {
     animals_rc: Vec<Rc<dyn Animal>>,
     animals_arc: Vec<Arc<dyn Animal>>,
     animal_registry: HashMap<String, Arc<dyn Animal>>,
+}
+
+#[derive(ForyStruct)]
+struct AnimalByCodeVarKey {
+    #[fory(id = 0)]
+    animals: HashMap<u32, Rc<dyn Animal>>,
+}
+
+#[derive(ForyStruct)]
+struct AnimalByCodeFixedKey {
+    #[fory(id = 0, map(key(encoding = fixed)))]
+    animals: HashMap<u32, Rc<dyn Animal>>,
 }
 
 #[test]
@@ -409,6 +421,46 @@ fn test_collections_of_wrappers() {
             .speak(),
         "Meow!"
     );
+}
+
+#[test]
+fn test_hashmap_fixed_key_rc_trait_object_field_compatible() {
+    let mut writer = fory_compatible();
+    writer.register::<Dog>(8101).unwrap();
+    writer.register::<Cat>(8102).unwrap();
+    writer.register::<AnimalByCodeFixedKey>(8111).unwrap();
+
+    let mut reader = fory_compatible();
+    reader.register::<Dog>(8101).unwrap();
+    reader.register::<Cat>(8102).unwrap();
+    reader.register::<AnimalByCodeVarKey>(8111).unwrap();
+
+    let animals = AnimalByCodeFixedKey {
+        animals: HashMap::from([
+            (
+                10,
+                Rc::new(Dog {
+                    name: "Rex".to_string(),
+                    breed: "Collie".to_string(),
+                }) as Rc<dyn Animal>,
+            ),
+            (
+                20,
+                Rc::new(Cat {
+                    name: "Misty".to_string(),
+                    color: "Gray".to_string(),
+                }) as Rc<dyn Animal>,
+            ),
+        ]),
+    };
+
+    let serialized = writer.serialize(&animals).unwrap();
+    let decoded: AnimalByCodeVarKey = reader.deserialize(&serialized).unwrap();
+
+    assert_eq!(decoded.animals.get(&10).unwrap().name(), "Rex");
+    assert_eq!(decoded.animals.get(&10).unwrap().speak(), "Woof!");
+    assert_eq!(decoded.animals.get(&20).unwrap().name(), "Misty");
+    assert_eq!(decoded.animals.get(&20).unwrap().speak(), "Meow!");
 }
 
 #[test]

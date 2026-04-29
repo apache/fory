@@ -18,7 +18,7 @@
 use fory_core::fory::Fory;
 use fory_core::register_trait_type;
 use fory_core::serializer::Serializer;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::{HashMap, HashSet};
 
 fn fory_compatible() -> Fory {
@@ -141,13 +141,13 @@ fn test_hashmap_string_to_trait_objects() {
     assert_eq!(deserialized.len(), 3);
 }
 
-#[derive(ForyObject, Debug, PartialEq, Clone)]
+#[derive(ForyStruct, Debug, PartialEq, Clone)]
 struct Person {
     name: String,
     age: i32,
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Company {
     name: String,
     employees: Vec<Person>,
@@ -238,7 +238,7 @@ trait Animal: Serializer {
     fn name(&self) -> &str;
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Dog {
     name: String,
     breed: String,
@@ -254,7 +254,7 @@ impl Animal for Dog {
     }
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Cat {
     name: String,
     color: String,
@@ -272,7 +272,7 @@ impl Animal for Cat {
 
 register_trait_type!(Animal, Dog, Cat);
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Zoo {
     star_animal: Box<dyn Animal>,
 }
@@ -329,7 +329,7 @@ impl Pet for Cat {
 
 register_trait_type!(Pet, Dog, Cat);
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct PetOwner {
     pets: Vec<Box<dyn Pet>>,
     animals: Vec<Box<dyn Animal>>,

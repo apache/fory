@@ -18,7 +18,7 @@
 mod test_helpers;
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use test_helpers::{test_arc_any, test_box_any, test_rc_any, test_roundtrip};
 
 #[test]
@@ -59,7 +59,7 @@ fn test_unsigned_arrays_when_xlang() {
 #[test]
 fn test_binary_when_xlang() {
     let mut fory = Fory::builder().xlang(true).build();
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct UnsignedData {
         binary: Vec<u8>,
     }
@@ -116,7 +116,7 @@ fn test_binary_max_size_guardrail_for_vec_u32() {
 
 #[test]
 fn test_unsigned_struct_non_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct UnsignedData {
         a: u8,
         b: u16,
@@ -157,7 +157,7 @@ fn test_unsigned_struct_non_compatible() {
 
 #[test]
 fn test_unsigned_struct_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct UnsignedData {
         a: u8,
         b: u16,
@@ -198,13 +198,13 @@ fn test_unsigned_struct_compatible() {
 
 #[test]
 fn test_unsigned_struct_compatible_add_field() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct UnsignedDataV1 {
         a: u8,
         b: u16,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct UnsignedDataV2 {
         a: u8,
         b: u16,
@@ -226,14 +226,14 @@ fn test_unsigned_struct_compatible_add_field() {
 
 #[test]
 fn test_unsigned_struct_compatible_remove_field() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct UnsignedDataV1 {
         a: u8,
         b: u16,
         c: u32,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct UnsignedDataV2 {
         a: u8,
         b: u16,
@@ -287,7 +287,7 @@ fn test_unsigned_edge_cases() {
 
 #[test]
 fn test_unsigned_with_option_non_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct OptionalUnsigned {
         opt_u8: Option<u8>,
         opt_u16: Option<u16>,
@@ -331,7 +331,7 @@ fn test_unsigned_with_option_non_compatible() {
 
 #[test]
 fn test_unsigned_with_option_compatible() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct OptionalUnsigned {
         opt_u8: Option<u8>,
         opt_u16: Option<u16>,
@@ -375,14 +375,14 @@ fn test_unsigned_with_option_compatible() {
 
 #[test]
 fn test_unsigned_mixed_fields_compatible() {
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct MixedDataV1 {
         required_u8: u8,
         optional_u16: Option<u16>,
         vec_u32: Vec<u32>,
     }
 
-    #[derive(ForyObject, Debug)]
+    #[derive(ForyStruct, Debug)]
     struct MixedDataV2 {
         required_u8: u8,
         optional_u16: Option<u16>,

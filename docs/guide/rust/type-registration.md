@@ -27,9 +27,9 @@ Register types with a numeric ID for fast, compact serialization:
 
 ```rust
 use fory::Fory;
-use fory::ForyObject;
+use fory::ForyStruct;
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct User {
     name: String,
     age: i32,

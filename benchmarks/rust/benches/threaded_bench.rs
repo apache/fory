@@ -17,12 +17,12 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 use fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::hint::black_box;
 use std::sync::Arc;
 use std::thread;
 
-#[derive(Debug, ForyObject)]
+#[derive(Debug, ForyStruct)]
 pub struct UserSessionMetrics {
     #[fory(id = 0)]
     pub request_count: u64,

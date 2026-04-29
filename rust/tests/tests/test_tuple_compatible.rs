@@ -24,7 +24,7 @@
 //! - Schema evolution scenarios
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -484,7 +484,7 @@ fn test_tuple_xlang_compatible_mode() {
 /// Helper: Test struct with missing tuple field
 fn run_struct_missing_tuple_field(xlang: bool) {
     // V1: Struct with tuple field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         name: String,
@@ -493,7 +493,7 @@ fn run_struct_missing_tuple_field(xlang: bool) {
     }
 
     // V2: Struct with missing tuple field (coordinates removed)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV2 {
         id: i32,
         name: String,
@@ -537,14 +537,14 @@ fn run_struct_missing_tuple_field(xlang: bool) {
 /// Helper: Test struct with added tuple field
 fn run_struct_added_tuple_field(xlang: bool) {
     // V1: Struct without extra tuple field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         name: String,
     }
 
     // V2: Struct with added tuple field
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV2 {
         id: i32,
         name: String,
@@ -587,14 +587,14 @@ fn run_struct_added_tuple_field(xlang: bool) {
 /// Helper: Test struct with tuple field element increase
 fn run_struct_tuple_element_increase(xlang: bool) {
     // V1: Struct with 2-element tuple
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         coordinates: (f64, f64),
     }
 
     // V2: Struct with 4-element tuple (increased from 2)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV2 {
         id: i32,
         coordinates: (f64, f64, f64, f64),
@@ -634,14 +634,14 @@ fn run_struct_tuple_element_increase(xlang: bool) {
 /// Helper: Test struct with tuple field element decrease
 fn run_struct_tuple_element_decrease(xlang: bool) {
     // V1: Struct with 5-element tuple
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         data: (i32, String, f64, bool, Vec<i32>),
     }
 
     // V2: Struct with 2-element tuple (decreased from 5)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV2 {
         id: i32,
         data: (i32, String),
@@ -683,14 +683,14 @@ fn run_struct_tuple_element_decrease(xlang: bool) {
 /// Helper: Test struct with complex nested tuple evolution
 fn run_struct_nested_tuple_evolution(xlang: bool) {
     // V1: Struct with simple nested tuple
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         nested: ((i32, String), (f64, bool)),
     }
 
     // V2: Struct with evolved nested tuple (more elements)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[allow(clippy::type_complexity)]
     struct StructV2 {
         id: i32,
@@ -739,7 +739,7 @@ fn run_struct_nested_tuple_evolution(xlang: bool) {
 /// Helper: Test struct with multiple tuple fields evolution
 fn run_struct_multiple_tuple_fields_evolution(xlang: bool) {
     // V1: Struct with two tuple fields
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV1 {
         id: i32,
         coords: (f64, f64),
@@ -747,7 +747,7 @@ fn run_struct_multiple_tuple_fields_evolution(xlang: bool) {
     }
 
     // V2: Struct with modified tuple fields (coords expanded, tags reduced)
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct StructV2 {
         id: i32,
         coords: (f64, f64, f64), // 3D coordinates (expanded from 2D)
@@ -890,7 +890,7 @@ fn test_struct_complex_evolution_scenario_xlang() {
 /// - Mix of simple, nested, and collection-based tuples
 fn run_struct_complex_evolution_scenario(xlang: bool) {
     // V1: Original schema with multiple tuple fields
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct DataRecordV1 {
         id: i32,
         name: String,
@@ -905,7 +905,7 @@ fn run_struct_complex_evolution_scenario(xlang: bool) {
     }
 
     // V2: Evolved schema with complex changes
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[allow(clippy::type_complexity)]
     struct DataRecordV2 {
         id: i32,
@@ -1022,13 +1022,13 @@ type AttributeTuple = ((Option<bool>,), (Vec<String>, HashMap<String, i32>));
 
 #[test]
 fn test_tuple_alias() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[allow(clippy::type_complexity)]
     struct DataRecordV1 {
         attrs: ((Option<bool>,), (Vec<String>,)),
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     #[allow(clippy::type_complexity)]
     struct DataRecordV2 {
         attrs: AttributeTuple,

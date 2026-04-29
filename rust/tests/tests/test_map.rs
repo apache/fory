@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::{BTreeMap, HashMap};
 
 #[test]
@@ -41,7 +41,7 @@ fn test_btreemap_string() {
     assert_eq!(map, obj);
 }
 
-#[derive(ForyObject, PartialEq, Debug)]
+#[derive(ForyStruct, PartialEq, Debug)]
 struct MapContainer {
     hash_map: HashMap<String, String>,
     btree_map: BTreeMap<String, i32>,

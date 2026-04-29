@@ -25,7 +25,7 @@ use fory_core::serializer::struct_::{
 };
 use fory_core::{ReadContext, WriteContext};
 
-#[derive(fory_derive::ForyObject)]
+#[derive(fory_derive::ForyStruct)]
 #[fory(debug)]
 struct DebugSample {
     a: i32,

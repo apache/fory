@@ -18,17 +18,17 @@
 use fory_core::buffer::Reader;
 use fory_core::error::Error;
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
 #[test]
 fn test_nested_struct_register_order() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Data1 {
         value: i32,
         data2: Data2,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Data2 {
         value: i32,
     }
@@ -49,7 +49,7 @@ fn test_nested_struct_register_order() {
 
 #[test]
 fn test_serialize_to_appends_bytes() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Point {
         x: i32,
         y: i32,
@@ -77,13 +77,13 @@ fn test_serialize_to_appends_bytes() {
 
 #[test]
 fn test_serialize_to_detailed() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Point {
         x: i32,
         y: i32,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Line {
         start: Point,
         end: Point,
@@ -201,7 +201,7 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 
 macro_rules! impl_value {
     ($record:ident, $value:ident, { $($field:ident : $ty:ty = $expr:expr),* $(,)? }) => {
-        #[derive(ForyObject)]
+        #[derive(ForyStruct)]
         pub struct $value {
             $(pub $field: $ty,)*
         }
@@ -257,12 +257,12 @@ fn test_in_macro() {
 
 #[test]
 fn test_unregistered_type_error_message() {
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct Inner {
         v: i32,
     }
 
-    #[derive(ForyObject)]
+    #[derive(ForyStruct)]
     struct Outer {
         v: i32,
         inner: Inner,

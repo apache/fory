@@ -36,6 +36,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Verification is required. Match validation to the real ownership path: compile, tests, xlang, native-image, non-VM compile, benchmarks, and remote CI as applicable; reasoning alone is never enough.
 - Finish the whole surface. A feature or behavior change is incomplete until code, tests, docs, exports, examples, and build wiring agree, unless the user explicitly defers part of that surface.
 - Keep task boundaries strict. Review tasks do not edit code, analysis-only tasks do not silently turn into implementation, and active-branch fixes must land in the active branch/workspace.
+- For non-trivial multi-step tasks, write the plan and progress into the canonical durable task file (use a matched skill/workflow file if it provides one, otherwise use a file under `tasks/`) and read that file after compaction before continuing.
 
 ## Repo-Wide Hard Rules
 
@@ -137,7 +138,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Commit And PR Expectations
 
-- After each finished task, create a git commit automatically for the task's tracked code and documentation changes, excluding `tasks/task-*.md`, `tasks/lessons.md`, and unrelated user changes.
+- After each finished task, create a git commit automatically for the task's tracked code and documentation changes, excluding `tasks/task-*.md`, `tasks/*-plan.md`, `tasks/*-state.md`, `tasks/lessons.md`, and unrelated user changes.
 - PR titles must follow Conventional Commits; `.github/workflows/pr-lint.yml` enforces this.
 - Performance changes should use the `perf` type and include benchmark data.
 - See `.agents/ci-and-pr.md` for GitHub CLI triage commands and commit message examples.

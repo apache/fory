@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::rc::Rc;
 
 const PI_F64: f64 = std::f64::consts::PI;
@@ -260,7 +260,7 @@ fn test_tuple_xlang_mode() {
 
 // Helper method for struct with simple tuple fields
 fn run_struct_with_simple_tuple_fields(xlang: bool) {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct SimpleTupleStruct {
         id: i32,
         coordinates: (f64, f64),
@@ -287,7 +287,7 @@ fn run_struct_with_simple_tuple_fields(xlang: bool) {
 
 // Helper method for struct with complex tuple fields
 fn run_struct_with_complex_tuple_fields(xlang: bool) {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct ComplexTupleStruct {
         name: String,
         // Heterogeneous tuple
@@ -366,7 +366,7 @@ fn test_tuple_with_multiple_units() {
     assert_eq!(result, value);
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct StructWithUnit {
     name: String,
     unit: (),

@@ -359,17 +359,17 @@ console.log(result);
 
 ```rust
 use chrono::{NaiveDate, NaiveDateTime};
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 use std::collections::HashMap;
 
 #[test]
 fn complex_struct() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Person {
         c1: Vec<u8>,  // binary
         c2: Vec<i16>, // primitive array

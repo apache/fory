@@ -18,9 +18,9 @@
 use std::collections::{HashMap, HashSet};
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 
-#[derive(ForyObject, PartialEq, Eq, Hash, Debug)]
+#[derive(ForyStruct, PartialEq, Eq, Hash, Debug)]
 #[fory(debug)]
 struct Item {
     id: i32,

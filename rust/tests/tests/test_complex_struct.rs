@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::ForyObject;
+use fory_derive::{ForyEnum, ForyStruct};
 // use std::any::Any;
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use std::collections::HashMap;
@@ -24,12 +24,12 @@ use std::collections::HashMap;
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_complex_struct
 // #[test]
 // fn any() {
-//     #[derive(ForyObject, Debug)]
+//     #[derive(ForyStruct, Debug)]
 //     struct Animal {
 //         f3: String,
 //     }
 //
-//     #[derive(ForyObject, Debug)]
+//     #[derive(ForyStruct, Debug)]
 //     struct Person {
 //         f1: Box<dyn Any>,
 //     }
@@ -50,7 +50,7 @@ use std::collections::HashMap;
 
 #[test]
 fn enum_without_payload() {
-    #[derive(ForyObject, Debug, PartialEq, Default)]
+    #[derive(ForyEnum, Debug, PartialEq, Default)]
     enum Color {
         #[default]
         Green,
@@ -67,12 +67,12 @@ fn enum_without_payload() {
 
 #[test]
 fn complex_struct() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Person {
         // c1: Vec<u8>,  // binary
         c2: Vec<i16>, // primitive array
@@ -124,12 +124,12 @@ fn complex_struct() {
 
 #[test]
 fn encode_to_obin() {
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(ForyObject, Debug, PartialEq)]
+    #[derive(ForyStruct, Debug, PartialEq)]
     struct Person {
         f1: String,
         f2: HashMap<String, i8>,

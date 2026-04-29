@@ -34,6 +34,14 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         write_collection_data(self, context, false)
     }
 
+    fn fory_write_data_generic(
+        &self,
+        context: &mut WriteContext,
+        has_generics: bool,
+    ) -> Result<(), Error> {
+        write_collection_data(self, context, has_generics)
+    }
+
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         write_collection_type_info(context, TypeId::SET as u32)
     }

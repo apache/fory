@@ -37,13 +37,10 @@ pub fn skip_field_value(
     skip_value(context, field_type, read_ref_flag, true, &None)
 }
 
-const UNKNOWN_FIELD_TYPE: FieldType = FieldType {
-    type_id: types::UNKNOWN,
-    user_type_id: u32::MAX,
-    nullable: true,
-    track_ref: false,
-    generics: vec![],
-};
+#[inline(always)]
+fn unknown_field_type() -> FieldType {
+    FieldType::new(types::UNKNOWN, true, Vec::new())
+}
 
 pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<(), Error> {
     // Handle ref flag first if needed
@@ -79,52 +76,26 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     // This is critical for polymorphic collections where elements are struct types.
     let (field_type, type_info_opt) = match internal_id {
         types::LIST | types::SET => (
-            FieldType {
-                type_id,
-                user_type_id: u32::MAX,
-                nullable: true,
-                track_ref: false,
-                generics: vec![UNKNOWN_FIELD_TYPE],
-            },
+            FieldType::new(type_id, true, vec![unknown_field_type()]),
             None,
         ),
         types::MAP => (
-            FieldType {
+            FieldType::new(
                 type_id,
-                user_type_id: u32::MAX,
-                nullable: true,
-                track_ref: false,
-                generics: vec![UNKNOWN_FIELD_TYPE, UNKNOWN_FIELD_TYPE],
-            },
+                true,
+                vec![unknown_field_type(), unknown_field_type()],
+            ),
             None,
         ),
         types::COMPATIBLE_STRUCT | types::NAMED_COMPATIBLE_STRUCT => {
             // For compatible struct types, read type meta inline using streaming protocol
             let type_info = context.read_type_meta()?;
-            (
-                FieldType {
-                    type_id,
-                    user_type_id: u32::MAX,
-                    nullable: true,
-                    track_ref: false,
-                    generics: vec![],
-                },
-                Some(type_info),
-            )
+            (FieldType::new(type_id, true, Vec::new()), Some(type_info))
         }
         types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
             if context.is_share_meta() {
                 let type_info = context.read_type_meta()?;
-                (
-                    FieldType {
-                        type_id,
-                        user_type_id: u32::MAX,
-                        nullable: true,
-                        track_ref: false,
-                        generics: vec![],
-                    },
-                    Some(type_info),
-                )
+                (FieldType::new(type_id, true, Vec::new()), Some(type_info))
             } else {
                 let namespace = context.read_meta_string()?.to_owned();
                 let type_name = context.read_meta_string()?.to_owned();
@@ -134,16 +105,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                     .get_type_resolver()
                     .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
                     .ok_or_else(|| crate::Error::type_error("Name harness not found"))?;
-                (
-                    FieldType {
-                        type_id,
-                        user_type_id: u32::MAX,
-                        nullable: true,
-                        track_ref: false,
-                        generics: vec![],
-                    },
-                    Some(type_info),
-                )
+                (FieldType::new(type_id, true, Vec::new()), Some(type_info))
             }
         }
         _ => {
@@ -155,13 +117,13 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 None
             };
             (
-                FieldType {
+                FieldType::new_with_user_type_id(
                     type_id,
-                    user_type_id: _user_type_id.unwrap_or(u32::MAX),
-                    nullable: true,
-                    track_ref: false,
-                    generics: vec![],
-                },
+                    _user_type_id.unwrap_or(u32::MAX),
+                    true,
+                    false,
+                    Vec::new(),
+                ),
                 type_info,
             )
         }
@@ -188,13 +150,13 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     let (type_info, elem_field_type);
     let elem_type = if is_same_type && !is_declared {
         let type_info_rc = context.read_any_type_info()?;
-        elem_field_type = FieldType {
-            type_id: type_info_rc.get_type_id() as u32,
-            user_type_id: type_info_rc.get_user_type_id(),
-            nullable: has_null,
-            track_ref: false,
-            generics: vec![],
-        };
+        elem_field_type = FieldType::new_with_user_type_id(
+            type_info_rc.get_type_id() as u32,
+            type_info_rc.get_user_type_id(),
+            has_null,
+            false,
+            Vec::new(),
+        );
         type_info = Some(type_info_rc);
         &elem_field_type
     } else {
@@ -237,13 +199,13 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let (value_type_info, value_field_type);
             let value_type = if !value_declared {
                 let type_info = context.read_any_type_info()?;
-                value_field_type = FieldType {
-                    type_id: type_info.get_type_id() as u32,
-                    user_type_id: type_info.get_user_type_id(),
-                    nullable: true,
-                    track_ref: false,
-                    generics: vec![],
-                };
+                value_field_type = FieldType::new_with_user_type_id(
+                    type_info.get_type_id() as u32,
+                    type_info.get_user_type_id(),
+                    true,
+                    false,
+                    Vec::new(),
+                );
                 value_type_info = Some(type_info);
                 &value_field_type
             } else {
@@ -262,13 +224,13 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
             let (key_type_info, key_field_type);
             let key_type = if !key_declared {
                 let type_info = context.read_any_type_info()?;
-                key_field_type = FieldType {
-                    type_id: type_info.get_type_id() as u32,
-                    user_type_id: type_info.get_user_type_id(),
-                    nullable: true,
-                    track_ref: false,
-                    generics: vec![],
-                };
+                key_field_type = FieldType::new_with_user_type_id(
+                    type_info.get_type_id() as u32,
+                    type_info.get_user_type_id(),
+                    true,
+                    false,
+                    Vec::new(),
+                );
                 key_type_info = Some(type_info);
                 &key_field_type
             } else {
@@ -290,13 +252,13 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         let (key_type_info, key_field_type);
         let key_type = if !key_declared {
             let type_info = context.read_any_type_info()?;
-            key_field_type = FieldType {
-                type_id: type_info.get_type_id() as u32,
-                user_type_id: type_info.get_user_type_id(),
-                nullable: true,
-                track_ref: false,
-                generics: vec![],
-            };
+            key_field_type = FieldType::new_with_user_type_id(
+                type_info.get_type_id() as u32,
+                type_info.get_user_type_id(),
+                true,
+                false,
+                Vec::new(),
+            );
             key_type_info = Some(type_info);
             &key_field_type
         } else {
@@ -308,13 +270,13 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         let (value_type_info, value_field_type);
         let value_type = if !value_declared {
             let type_info = context.read_any_type_info()?;
-            value_field_type = FieldType {
-                type_id: type_info.get_type_id() as u32,
-                user_type_id: type_info.get_user_type_id(),
-                nullable: true,
-                track_ref: false,
-                generics: vec![],
-            };
+            value_field_type = FieldType::new_with_user_type_id(
+                type_info.get_type_id() as u32,
+                type_info.get_user_type_id(),
+                true,
+                false,
+                Vec::new(),
+            );
             value_type_info = Some(type_info);
             &value_field_type
         } else {
@@ -802,13 +764,7 @@ pub fn skip_enum_variant(
         0b1 => {
             // Unnamed variant, skip tuple data (which is serialized as a collection)
             // Tuple uses collection format but doesn't write type info, so skip directly
-            let field_type = FieldType {
-                type_id: types::LIST,
-                user_type_id: u32::MAX,
-                nullable: false,
-                track_ref: false,
-                generics: vec![UNKNOWN_FIELD_TYPE],
-            };
+            let field_type = FieldType::new(types::LIST, false, vec![unknown_field_type()]);
             skip_collection(context, &field_type)
         }
         0b10 => {

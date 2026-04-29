@@ -29,13 +29,7 @@ fn test_meta_hash() {
         vec![FieldInfo {
             field_id: 43,
             field_name: "f1".to_string(),
-            field_type: FieldType {
-                type_id: TypeId::BOOL as u32,
-                user_type_id: u32::MAX,
-                nullable: true,
-                track_ref: false,
-                generics: vec![],
-            },
+            field_type: FieldType::new(TypeId::BOOL as u32, true, vec![]),
         }],
     )
     .unwrap();

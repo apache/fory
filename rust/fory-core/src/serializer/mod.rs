@@ -20,6 +20,8 @@ mod arc;
 mod array;
 mod bool;
 mod box_;
+#[doc(hidden)]
+pub mod codec;
 pub mod collection;
 mod datetime;
 pub mod enum_;

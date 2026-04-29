@@ -165,9 +165,9 @@ fory.RegisterNamedStruct(Person{}, "example.Person")
 **Rust:**
 
 ```rust
-use fory::{Fory, ForyObject};
+use fory::{Fory, ForyStruct};
 
-#[derive(ForyObject)]
+#[derive(ForyStruct)]
 struct Person {
     name: String,
     age: i32,

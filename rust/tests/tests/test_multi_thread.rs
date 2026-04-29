@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::Fory;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::collections::HashSet;
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -56,7 +56,7 @@ fn test_simple_multi_thread() {
 
 #[test]
 fn test_struct_multi_thread() {
-    #[derive(ForyObject, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+    #[derive(ForyStruct, Debug, PartialEq, Eq, Hash, Clone, Copy)]
     struct Item1 {
         f1: i32,
     }
@@ -107,7 +107,7 @@ fn test_multiple_threads_shared_fory() {
     const ROUNDS: usize = 200;
     const ITERATIONS_PER_THREAD: usize = 256;
 
-    #[derive(Debug, ForyObject)]
+    #[derive(Debug, ForyStruct)]
     struct UserSessionMetrics {
         #[fory(id = 0)]
         request_count: u64,

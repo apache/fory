@@ -57,9 +57,9 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error, Reader};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct User {
 //!     name: String,
 //!     age: i32,
@@ -105,7 +105,7 @@
 //! not just flat data structures. Apache Fory™ handles arbitrary nesting depth,
 //! collections, and optional fields without manual mapping code.
 //!
-//! **Technical approach:** The `#[derive(ForyObject)]` macro generates efficient
+//! **Technical approach:** The `#[derive(ForyStruct)]` macro generates efficient
 //! serialization code at compile time using procedural macros. This eliminates runtime
 //! reflection overhead while maintaining type safety.
 //!
@@ -119,10 +119,10 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::collections::HashMap;
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
 //!     age: i32,
@@ -131,7 +131,7 @@
 //!     metadata: HashMap<String, String>,
 //! }
 //!
-//! #[derive(ForyObject, Debug, PartialEq)]
+//! #[derive(ForyStruct, Debug, PartialEq)]
 //! struct Address {
 //!     street: String,
 //!     city: String,
@@ -239,11 +239,11 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error, RcWeak};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::rc::Rc;
 //! use std::cell::RefCell;
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Node {
 //!     value: i32,
 //!     parent: RcWeak<RefCell<Node>>,
@@ -282,10 +282,10 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error, ArcWeak};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::sync::{Arc, Mutex};
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Node {
 //!     val: i32,
 //!     parent: ArcWeak<Mutex<Node>>,
@@ -343,14 +343,14 @@
 //!
 //! ```rust
 //! use fory::{Fory, register_trait_type, Serializer, Error};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
 //! trait Animal: Serializer {
 //!     fn speak(&self) -> String;
 //!     fn name(&self) -> &str;
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Dog { name: String, breed: String }
 //!
 //! impl Animal for Dog {
@@ -358,7 +358,7 @@
 //!     fn name(&self) -> &str { &self.name }
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Cat { name: String, color: String }
 //!
 //! impl Animal for Cat {
@@ -368,7 +368,7 @@
 //!
 //! register_trait_type!(Animal, Dog, Cat);
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Zoo {
 //!     star_animal: Box<dyn Animal>,
 //! }
@@ -414,9 +414,9 @@
 //! use fory::Error;
 //! use std::rc::Rc;
 //! use std::any::Any;
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Dog { name: String }
 //!
 //! # fn main() -> Result<(), Error> {
@@ -443,9 +443,9 @@
 //! use fory::Error;
 //! use std::sync::Arc;
 //! use std::any::Any;
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Cat { name: String }
 //!
 //! # fn main() -> Result<(), Error> {
@@ -472,7 +472,7 @@
 //!
 //! ```rust
 //! use fory::{Fory, register_trait_type, Serializer, Error};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::sync::Arc;
 //! use std::rc::Rc;
 //!
@@ -480,13 +480,13 @@
 //!     fn name(&self) -> &str;
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Dog { name: String }
 //! impl Animal for Dog {
 //!     fn name(&self) -> &str { &self.name }
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Cat { name: String }
 //! impl Animal for Cat {
 //!     fn name(&self) -> &str { &self.name }
@@ -494,7 +494,7 @@
 //!
 //! register_trait_type!(Animal, Dog, Cat);
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct AnimalShelter {
 //!     animals_rc: Vec<Rc<dyn Animal>>,
 //!     animals_arc: Vec<Arc<dyn Animal>>,
@@ -538,7 +538,7 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error, register_trait_type, Serializer};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::sync::Arc;
 //! use std::rc::Rc;
 //!
@@ -546,7 +546,7 @@
 //!     fn name(&self) -> &str;
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct Dog { name: String }
 //! impl Animal for Dog {
 //!     fn name(&self) -> &str { &self.name }
@@ -611,17 +611,17 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //! use std::collections::HashMap;
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct PersonV1 {
 //!     name: String,
 //!     age: i32,
 //!     address: String,
 //! }
 //!
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyStruct, Debug)]
 //! struct PersonV2 {
 //!     name: String,
 //!     age: i32,
@@ -681,9 +681,9 @@
 //! ```rust
 //! use fory::Fory;
 //! use fory::Error;
-//! use fory::ForyObject;
+//! use fory::ForyUnion;
 //!
-//! #[derive(Default, ForyObject, Debug, PartialEq)]
+//! #[derive(Default, ForyUnion, Debug, PartialEq)]
 //! enum Value {
 //!     #[default]
 //!     Null,
@@ -712,16 +712,16 @@
 //! ```rust
 //! use fory::Fory;
 //! use fory::Error;
-//! use fory::ForyObject;
+//! use fory::ForyUnion;
 //!
 //! // Old version with 2 fields
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyUnion, Debug)]
 //! enum OldEvent {
 //!     Click { x: i32, y: i32 },
 //! }
 //!
 //! // New version with 3 fields - added timestamp
-//! #[derive(ForyObject, Debug)]
+//! #[derive(ForyUnion, Debug)]
 //! enum NewEvent {
 //!     Click { x: i32, y: i32, timestamp: u64 },
 //! }
@@ -800,7 +800,7 @@
 //! ### 7. Custom Serializers
 //!
 //! **What it does:** Allows manual implementation of the `Serializer` trait for types
-//! that don't support `#[derive(ForyObject)]`.
+//! that don't support `#[derive(ForyStruct)]`.
 //!
 //! **When to use:**
 //!
@@ -986,9 +986,9 @@
 //!
 //! ### Custom Types
 //!
-//! - Structs with `#[derive(ForyObject)]` - Object graph serialization
+//! - Structs with `#[derive(ForyStruct)]` - Object graph serialization
 //! - Structs with `#[derive(ForyRow)]` - Row-based serialization
-//! - C-style enums with `#[derive(ForyObject)]` - Enum support
+//! - C-style enums with `#[derive(ForyStruct)]` - Enum support
 //! - Manual `Serializer` implementation - Custom serialization logic
 //!
 //! ### Trait Objects
@@ -1049,13 +1049,13 @@
 //!
 //! ```rust
 //! use fory::Fory;
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
 //! let mut fory = Fory::builder()
 //!     .compatible(true)
 //!     .xlang(true).build();
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct MyStruct {
 //!     field1: i32,
 //!     field2: String,
@@ -1100,9 +1100,9 @@
 //!
 //! ```rust
 //! use fory::{Fory, Error};
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject)]
+//! #[derive(ForyStruct)]
 //! struct Data {
 //!     value: i32,
 //! }
@@ -1127,9 +1127,9 @@
 //! use std::sync::Arc;
 //! use std::thread;
 //! use fory::Fory;
-//! use fory::ForyObject;
+//! use fory::{ForyEnum, ForyStruct, ForyUnion};
 //!
-//! #[derive(ForyObject, Clone, Copy, Debug)]
+//! #[derive(ForyStruct, Clone, Copy, Debug)]
 //! struct Item {
 //!     value: i32,
 //! }
@@ -1180,7 +1180,7 @@
 //!   `RUST_BACKTRACE=1` while running tests or binaries to panic exactly where an error is
 //!   constructed. Unset the variable afterwards so production paths keep returning `Result`.
 //! - **Struct field tracing**: Add the `#[fory(debug)]` attribute (or `#[fory(debug = true)]`)
-//!   next to `#[derive(ForyObject)]` when you need per-field instrumentation. Once compiled with
+//!   next to `#[derive(ForyStruct)]` when you need per-field instrumentation. Once compiled with
 //!   debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`,
 //!   `set_before_read_field_func`, or
 //!   `set_after_read_field_func` from `fory_core::serializer::struct_` to install custom
@@ -1205,4 +1205,4 @@ pub use fory_core::{
     ArcWeak, ForyDefault, RcWeak, ReadContext, Reader, RefFlag, RefMode, Serializer, TypeId,
     TypeResolver, WriteContext, Writer,
 };
-pub use fory_derive::{ForyObject, ForyRow};
+pub use fory_derive::{ForyEnum, ForyRow, ForyStruct, ForyUnion};

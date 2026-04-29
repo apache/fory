@@ -18,7 +18,7 @@
 use fory_core::fory::Fory;
 use fory_core::register_trait_type;
 use fory_core::serializer::Serializer;
-use fory_derive::ForyObject;
+use fory_derive::ForyStruct;
 use std::rc::Rc;
 
 #[test]
@@ -120,7 +120,7 @@ fn test_array_large() {
     assert_eq!(arr, obj);
 }
 
-#[derive(ForyObject, PartialEq, Debug)]
+#[derive(ForyStruct, PartialEq, Debug)]
 struct Point {
     x: i32,
     y: i32,
@@ -141,7 +141,7 @@ fn test_array_struct() {
     assert_eq!(arr, obj);
 }
 
-#[derive(ForyObject, PartialEq, Debug)]
+#[derive(ForyStruct, PartialEq, Debug)]
 struct ArrayStruct {
     int_array: [i32; 5],
     float_array: [f64; 3],
@@ -222,7 +222,7 @@ trait Shape: Serializer {
     fn name(&self) -> &str;
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Circle {
     radius: f64,
 }
@@ -236,7 +236,7 @@ impl Shape for Circle {
     }
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyStruct, Debug, PartialEq)]
 struct Rectangle {
     width: f64,
     height: f64,
@@ -286,7 +286,7 @@ fn test_array_box_trait_objects() {
 
 #[test]
 fn test_vec_of_arrays() {
-    // Test from GitHub issue: Vec<[f32;4]> should work with ForyObject
+    // Test from GitHub issue: Vec<[f32;4]> should work with ForyStruct
     let fory = Fory::default();
 
     // Test Vec of primitive arrays
@@ -308,7 +308,7 @@ fn test_vec_of_arrays() {
 #[test]
 fn test_struct_with_vec_of_arrays() {
     // Test from GitHub issue: struct with Vec<[f32;4]> field should work
-    #[derive(ForyObject, PartialEq, Debug)]
+    #[derive(ForyStruct, PartialEq, Debug)]
     struct PointCloud {
         index: i32,
         points: Vec<[f32; 4]>,
