@@ -686,8 +686,12 @@ public class ClassResolver extends TypeResolver {
 
   @Override
   protected int buildUnregisteredTypeId(Class<?> cls, Serializer<?> serializer) {
-    if (serializer == null && !cls.isEnum() && useReplaceResolveSerializer(cls)) {
-      return Types.NAMED_EXT;
+    if (!cls.isEnum()
+        && (serializer instanceof ReplaceResolveSerializer || useReplaceResolveSerializer(cls))) {
+      // Use REPLACE_STUB_ID so writeTypeInfo writes a compact 1-byte internal ID
+      // instead of the class name. This prevents ClassNotFoundException when the
+      // writeReplace class (e.g. a Hibernate proxy) doesn't exist on the remote JVM.
+      return REPLACE_STUB_ID;
     }
     return super.buildUnregisteredTypeId(cls, serializer);
   }
@@ -1215,7 +1219,14 @@ public class ClassResolver extends TypeResolver {
       } else {
         typeInfo = typeInfo.copy(typeId);
       }
-      updateTypeInfo(type, typeInfo);
+      if (typeId == REPLACE_STUB_ID) {
+        // For writeReplace classes, only update classInfoMap so getTypeInfo(proxyClass)
+        // returns this TypeInfo. Do NOT call updateTypeInfo which would overwrite
+        // the pre-registered typeIdToTypeInfo[REPLACE_STUB_ID] entry.
+        classInfoMap.put(type, typeInfo);
+      } else {
+        updateTypeInfo(type, typeInfo);
+      }
       // Add to compositeNameBytes2TypeInfo for unregistered classes so that
       // readTypeInfo can find the TypeInfo by name bytes during deserialization.
       // This is important for dynamically created classes that can't be loaded by name.
