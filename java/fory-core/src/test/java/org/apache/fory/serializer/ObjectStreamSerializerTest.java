@@ -47,9 +47,7 @@ import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.LongMap;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.memory.MemoryBuffer;
@@ -345,7 +343,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   public void testJDKCompatibleCircularReference(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
@@ -523,7 +521,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
 
   @DataProvider
   public static Object[][] compatibleModeProvider() {
-    return new Object[][] {{CompatibleMode.COMPATIBLE}, {CompatibleMode.SCHEMA_CONSISTENT}};
+    return new Object[][] {{true}, {false}};
   }
 
   // ==================== Layer Count Evolution Tests ====================
@@ -773,13 +771,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testPutFieldsWithDefaultReadObject(CompatibleMode compatible) {
+  public void testPutFieldsWithDefaultReadObject(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         PutFieldsWriter.class,
@@ -797,13 +795,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testDefaultWriteObjectWithGetFields(CompatibleMode compatible) {
+  public void testDefaultWriteObjectWithGetFields(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         DefaultWriteGetFieldsReader.class,
@@ -861,13 +859,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testSerialPersistentFieldsInconsistentWithReader(CompatibleMode compatible) {
+  public void testSerialPersistentFieldsInconsistentWithReader(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         SerialFieldsWriter.class,
@@ -920,13 +918,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testMixedSerialization(CompatibleMode compatible) {
+  public void testMixedSerialization(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         MixedSerializationClass.class,
@@ -1011,13 +1009,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testHierarchyMixedSerialization(CompatibleMode compatible) {
+  public void testHierarchyMixedSerialization(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         HierarchyChildDefault.class,
@@ -1037,14 +1035,14 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   // ==================== Cross-Fory Instance Schema Tests ====================
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testCrossForyInstanceSerialization(CompatibleMode compatible) {
+  public void testCrossForyInstanceSerialization(boolean compatible) {
     // Writer Fory instance
     Fory writerFory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     writerFory.registerSerializer(
         MixedSerializationClass.class,
@@ -1053,10 +1051,10 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     // Reader Fory instance (separate instance)
     Fory readerFory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     readerFory.registerSerializer(
         MixedSerializationClass.class,
@@ -1073,14 +1071,14 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testObjectStreamSharedRegistryCanonicalizesTypeDef(CompatibleMode compatible)
+  public void testObjectStreamSharedRegistryCanonicalizesTypeDef(boolean compatible)
       throws Exception {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .withMetaShare(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
@@ -1200,13 +1198,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testDefaultValues(CompatibleMode compatible) {
+  public void testDefaultValues(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         DefaultValueClass.class,
@@ -1272,13 +1270,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testNestedObjectSerialization(CompatibleMode compatible) {
+  public void testNestedObjectSerialization(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         NestedClass.class, new ObjectStreamSerializer(fory.getTypeResolver(), NestedClass.class));
@@ -1339,13 +1337,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testCircularReferenceInCustomSerialization(CompatibleMode compatible) {
+  public void testCircularReferenceInCustomSerialization(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         CircularRefClass.class,
@@ -1428,13 +1426,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testAllPrimitiveTypes(CompatibleMode compatible) {
+  public void testAllPrimitiveTypes(boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
-            .withCompatibleMode(compatible)
+            .withCompatible(compatible)
             .build();
     fory.registerSerializer(
         AllPrimitivesClass.class,

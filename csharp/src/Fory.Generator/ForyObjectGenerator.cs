@@ -46,10 +46,10 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    private static readonly DiagnosticDescriptor UnsupportedEncoding = new(
+    private static readonly DiagnosticDescriptor UnsupportedSchemaType = new(
         id: "FORY003",
-        title: "Unsupported Field encoding",
-        messageFormat: "Member '{0}' uses unsupported [Field] encoding for type '{1}'",
+        title: "Unsupported Fory field schema type",
+        messageFormat: "Member '{0}' uses unsupported [ForyField] schema descriptor for type '{1}'",
         category: "Fory",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -168,6 +168,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("        return nullable ? global::Apache.Fory.RefMode.NullOnly : global::Apache.Fory.RefMode.None;");
         sb.AppendLine("    }");
         sb.AppendLine();
+        foreach (MemberModel member in model.SortedMembers)
+        {
+            if (member.FieldCodec is not null)
+            {
+                EmitFieldCodecMethods(sb, member);
+            }
+        }
+
         sb.AppendLine("    private static bool __ForyCanReadCompatiblePrimitive(global::Apache.Fory.TypeId typeId)");
         sb.AppendLine("    {");
         sb.AppendLine("        return typeId switch");
@@ -625,6 +633,596 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine("}");
     }
 
+    private static void EmitFieldCodecMethods(StringBuilder sb, MemberModel member)
+    {
+        FieldCodecModel codec = member.FieldCodec!;
+        string memberId = Sanitize(member.Name);
+        sb.AppendLine(
+            $"    private static void __ForyWrite{memberId}Field(global::Apache.Fory.WriteContext context, {member.TypeName} value, global::Apache.Fory.RefMode refMode)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (refMode == global::Apache.Fory.RefMode.NullOnly)");
+        sb.AppendLine("        {");
+        if (member.IsNullableValueType)
+        {
+            sb.AppendLine("            if (!value.HasValue)");
+        }
+        else
+        {
+            sb.AppendLine("            if (value is null)");
+        }
+
+        sb.AppendLine("            {");
+        sb.AppendLine("                context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.Null);");
+        sb.AppendLine("                return;");
+        sb.AppendLine("            }");
+        sb.AppendLine();
+        sb.AppendLine("            context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.NotNullValue);");
+        sb.AppendLine("        }");
+        string writeValueExpr = member.IsNullableValueType ? "value.Value" : member.IsNullable ? "value!" : "value";
+        int id = 0;
+        EmitWritePayload(sb, codec, writeValueExpr, 2, ref id);
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        sb.AppendLine(
+            $"    private static {member.TypeName} __ForyRead{memberId}Field(global::Apache.Fory.ReadContext context, global::Apache.Fory.RefMode refMode)");
+        sb.AppendLine("    {");
+        sb.AppendLine("        if (refMode == global::Apache.Fory.RefMode.NullOnly)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            sbyte refFlag = context.Reader.ReadInt8();");
+        sb.AppendLine("            if (refFlag == (sbyte)global::Apache.Fory.RefFlag.Null)");
+        sb.AppendLine("            {");
+        sb.AppendLine($"                return ({member.TypeName})default!;");
+        sb.AppendLine("            }");
+        sb.AppendLine();
+        sb.AppendLine("            if (refFlag != (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
+        sb.AppendLine("            {");
+        sb.AppendLine("                throw new global::Apache.Fory.InvalidDataException($\"invalid nullOnly ref flag {refFlag}\");");
+        sb.AppendLine("            }");
+        sb.AppendLine("        }");
+        string resultVar = $"__{memberId}Value";
+        id = 0;
+        EmitReadPayload(sb, codec, resultVar, 2, ref id);
+        sb.AppendLine($"        return {resultVar};");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+
+    private static void EmitWritePayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string valueExpr,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        switch (codec.Kind)
+        {
+            case FieldCodecKind.Scalar:
+                if (!TryBuildDirectPayloadWrite(codec.TypeId, valueExpr, out string? writeCode))
+                {
+                    sb.AppendLine($"{indent}context.TypeResolver.GetSerializer<{codec.TypeName}>().WriteData(context, {valueExpr}, false);");
+                    return;
+                }
+
+                sb.AppendLine($"{indent}{writeCode}");
+                return;
+            case FieldCodecKind.PackedArray:
+                EmitWritePackedArrayPayload(sb, codec, valueExpr, indentLevel, ref id);
+                return;
+            case FieldCodecKind.List:
+                EmitWriteCollectionPayload(sb, codec, valueExpr, indentLevel, ref id, isSet: false);
+                return;
+            case FieldCodecKind.Set:
+                EmitWriteCollectionPayload(sb, codec, valueExpr, indentLevel, ref id, isSet: true);
+                return;
+            case FieldCodecKind.Map:
+                EmitWriteMapPayload(sb, codec, valueExpr, indentLevel, ref id);
+                return;
+        }
+    }
+
+    private static void EmitWritePackedArrayPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string valueExpr,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        string valuesVar = $"__foryPacked{id++}";
+        sb.AppendLine($"{indent}{codec.TypeName} {valuesVar} = {valueExpr} ?? [];");
+        string countExpr = codec.CarrierKind == CarrierKind.Array ? $"{valuesVar}.Length" : $"{valuesVar}.Count";
+        int width = PackedArrayElementWidth(codec.TypeId);
+        string lengthExpr = width == 1 ? countExpr : $"checked({countExpr} * {width})";
+        sb.AppendLine($"{indent}context.Writer.WriteVarUInt32((uint){lengthExpr});");
+        string packedIndexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{indent}for (int {packedIndexVar} = 0; {packedIndexVar} < {countExpr}; {packedIndexVar}++)");
+        sb.AppendLine($"{indent}{{");
+        string itemExpr = $"{valuesVar}[{packedIndexVar}]";
+        uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
+        if (!TryBuildDirectPayloadWrite(elementTypeId, itemExpr, out string? writeCode))
+        {
+            throw new InvalidOperationException($"unsupported packed array type id {codec.TypeId}");
+        }
+
+        sb.AppendLine($"{indent}    {writeCode}");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitWriteCollectionPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string valueExpr,
+        int indentLevel,
+        ref int id,
+        bool isSet)
+    {
+        string indent = new(' ', indentLevel * 4);
+        FieldCodecModel element = codec.Generics[0];
+        string valuesVar = $"__foryCollection{id++}";
+        sb.AppendLine($"{indent}{codec.TypeName} {valuesVar} = {valueExpr} ?? [];");
+        string countExpr = codec.CarrierKind == CarrierKind.Array ? $"{valuesVar}.Length" : $"{valuesVar}.Count";
+        sb.AppendLine($"{indent}int __foryCount{id} = {countExpr};");
+        string countVar = $"__foryCount{id++}";
+        sb.AppendLine($"{indent}context.Writer.WriteVarUInt32((uint){countVar});");
+        sb.AppendLine($"{indent}if ({countVar} != 0)");
+        sb.AppendLine($"{indent}{{");
+        string innerIndent = indent + "    ";
+        string hasNullVar = $"__foryHasNull{id++}";
+        if (element.Nullable)
+        {
+            sb.AppendLine($"{innerIndent}bool {hasNullVar} = false;");
+            if (isSet)
+            {
+                sb.AppendLine($"{innerIndent}foreach ({element.TypeName} __foryItem in {valuesVar})");
+                sb.AppendLine($"{innerIndent}{{");
+                sb.AppendLine($"{innerIndent}    if (__foryItem is null)");
+                sb.AppendLine($"{innerIndent}    {{");
+                sb.AppendLine($"{innerIndent}        {hasNullVar} = true;");
+                sb.AppendLine($"{innerIndent}        break;");
+                sb.AppendLine($"{innerIndent}    }}");
+                sb.AppendLine($"{innerIndent}}}");
+            }
+            else
+            {
+                string scanIndexVar = $"__foryIndex{id++}";
+                sb.AppendLine($"{innerIndent}for (int {scanIndexVar} = 0; {scanIndexVar} < {countVar}; {scanIndexVar}++)");
+                sb.AppendLine($"{innerIndent}{{");
+                string itemExpr = $"{valuesVar}[{scanIndexVar}]";
+                sb.AppendLine($"{innerIndent}    if ({itemExpr} is null)");
+                sb.AppendLine($"{innerIndent}    {{");
+                sb.AppendLine($"{innerIndent}        {hasNullVar} = true;");
+                sb.AppendLine($"{innerIndent}        break;");
+                sb.AppendLine($"{innerIndent}    }}");
+                sb.AppendLine($"{innerIndent}}}");
+            }
+        }
+        else
+        {
+            sb.AppendLine($"{innerIndent}bool {hasNullVar} = false;");
+        }
+
+        string collectionHeaderVar = $"__foryHeader{id++}";
+        sb.AppendLine($"{innerIndent}byte {collectionHeaderVar} = 0b0000_1000 | 0b0000_0100;");
+        sb.AppendLine($"{innerIndent}if ({hasNullVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        sb.AppendLine($"{innerIndent}    {collectionHeaderVar} |= 0b0000_0010;");
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}context.Writer.WriteUInt8({collectionHeaderVar});");
+        if (isSet)
+        {
+            sb.AppendLine($"{innerIndent}foreach ({element.TypeName} __foryItem in {valuesVar})");
+            sb.AppendLine($"{innerIndent}{{");
+            EmitWriteNullableElementPayload(sb, element, "__foryItem", indentLevel + 2, ref id, hasNullVar);
+            sb.AppendLine($"{innerIndent}}}");
+        }
+        else
+        {
+            string writeIndexVar = $"__foryIndex{id++}";
+            sb.AppendLine($"{innerIndent}for (int {writeIndexVar} = 0; {writeIndexVar} < {countVar}; {writeIndexVar}++)");
+            sb.AppendLine($"{innerIndent}{{");
+            sb.AppendLine($"{innerIndent}    {element.TypeName} __foryItem = {valuesVar}[{writeIndexVar}];");
+            EmitWriteNullableElementPayload(sb, element, "__foryItem", indentLevel + 2, ref id, hasNullVar);
+            sb.AppendLine($"{innerIndent}}}");
+        }
+
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitWriteNullableElementPayload(
+        StringBuilder sb,
+        FieldCodecModel element,
+        string itemExpr,
+        int indentLevel,
+        ref int id,
+        string hasNullVar)
+    {
+        string indent = new(' ', indentLevel * 4);
+        if (!element.Nullable)
+        {
+            EmitWritePayload(sb, element, itemExpr, indentLevel, ref id);
+            return;
+        }
+
+        sb.AppendLine($"{indent}if ({hasNullVar})");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    if ({itemExpr} is null)");
+        sb.AppendLine($"{indent}    {{");
+        sb.AppendLine($"{indent}        context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.Null);");
+        sb.AppendLine($"{indent}        continue;");
+        sb.AppendLine($"{indent}    }}");
+        sb.AppendLine();
+        sb.AppendLine($"{indent}    context.Writer.WriteInt8((sbyte)global::Apache.Fory.RefFlag.NotNullValue);");
+        string nonNullExpr = element.NullableValueType ? $"{itemExpr}.GetValueOrDefault()" : $"{itemExpr}!";
+        EmitWritePayload(sb, element, nonNullExpr, indentLevel + 1, ref id);
+        sb.AppendLine($"{indent}}}");
+        sb.AppendLine($"{indent}else");
+        sb.AppendLine($"{indent}{{");
+        EmitWritePayload(sb, element, element.NullableValueType ? $"{itemExpr}.GetValueOrDefault()" : $"{itemExpr}!", indentLevel + 1, ref id);
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitWriteMapPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string valueExpr,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        FieldCodecModel key = codec.Generics[0];
+        FieldCodecModel value = codec.Generics[1];
+        string mapVar = $"__foryMap{id++}";
+        sb.AppendLine($"{indent}{codec.TypeName} {mapVar} = {valueExpr} ?? [];");
+        sb.AppendLine($"{indent}context.Writer.WriteVarUInt32((uint){mapVar}.Count);");
+        sb.AppendLine($"{indent}foreach (global::System.Collections.Generic.KeyValuePair<{key.TypeName}, {value.TypeName}> __foryEntry in {mapVar})");
+        sb.AppendLine($"{indent}{{");
+        string innerIndent = indent + "    ";
+        string keyNullVar = $"__foryKeyNull{id++}";
+        string valueNullVar = $"__foryValueNull{id++}";
+        if (key.Nullable)
+        {
+            sb.AppendLine($"{innerIndent}bool {keyNullVar} = __foryEntry.Key is null;");
+        }
+        else
+        {
+            sb.AppendLine($"{innerIndent}bool {keyNullVar} = false;");
+        }
+
+        if (value.Nullable)
+        {
+            sb.AppendLine($"{innerIndent}bool {valueNullVar} = __foryEntry.Value is null;");
+        }
+        else
+        {
+            sb.AppendLine($"{innerIndent}bool {valueNullVar} = false;");
+        }
+
+        string mapHeaderVar = $"__foryHeader{id++}";
+        sb.AppendLine($"{innerIndent}byte {mapHeaderVar} = 0;");
+        sb.AppendLine($"{innerIndent}if ({keyNullVar}) {mapHeaderVar} |= 0b0000_0010; else {mapHeaderVar} |= 0b0000_0100;");
+        sb.AppendLine($"{innerIndent}if ({valueNullVar}) {mapHeaderVar} |= 0b0001_0000; else {mapHeaderVar} |= 0b0010_0000;");
+        sb.AppendLine($"{innerIndent}context.Writer.WriteUInt8({mapHeaderVar});");
+        sb.AppendLine($"{innerIndent}if (!{keyNullVar} && !{valueNullVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        sb.AppendLine($"{innerIndent}    context.Writer.WriteUInt8(1);");
+        EmitWritePayload(sb, key, key.NullableValueType ? "__foryEntry.Key.GetValueOrDefault()" : "__foryEntry.Key!", indentLevel + 2, ref id);
+        EmitWritePayload(sb, value, value.NullableValueType ? "__foryEntry.Value.GetValueOrDefault()" : "__foryEntry.Value!", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}    continue;");
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}if (!{keyNullVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitWritePayload(sb, key, key.NullableValueType ? "__foryEntry.Key.GetValueOrDefault()" : "__foryEntry.Key!", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}if (!{valueNullVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitWritePayload(sb, value, value.NullableValueType ? "__foryEntry.Value.GetValueOrDefault()" : "__foryEntry.Value!", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitReadPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string targetVar,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        switch (codec.Kind)
+        {
+            case FieldCodecKind.Scalar:
+                if (TryBuildDirectPayloadRead(codec.TypeId, out string? readExpr))
+                {
+                    sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = {readExpr};");
+                }
+                else
+                {
+                    sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = context.TypeResolver.GetSerializer<{codec.TypeName}>().ReadData(context);");
+                }
+
+                return;
+            case FieldCodecKind.PackedArray:
+                EmitReadPackedArrayPayload(sb, codec, targetVar, indentLevel, ref id);
+                return;
+            case FieldCodecKind.List:
+                EmitReadCollectionPayload(sb, codec, targetVar, indentLevel, ref id, isSet: false);
+                return;
+            case FieldCodecKind.Set:
+                EmitReadCollectionPayload(sb, codec, targetVar, indentLevel, ref id, isSet: true);
+                return;
+            case FieldCodecKind.Map:
+                EmitReadMapPayload(sb, codec, targetVar, indentLevel, ref id);
+                return;
+        }
+    }
+
+    private static void EmitReadPackedArrayPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string targetVar,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        int width = PackedArrayElementWidth(codec.TypeId);
+        uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
+        string payloadSizeVar = $"__foryPayloadSize{id++}";
+        string countVar = $"__foryPackedCount{id++}";
+        sb.AppendLine($"{indent}int {payloadSizeVar} = checked((int)context.Reader.ReadVarUInt32());");
+        if (width > 1)
+        {
+            int mask = width - 1;
+            sb.AppendLine($"{indent}if (({payloadSizeVar} & {mask}) != 0)");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    throw new global::Apache.Fory.InvalidDataException(\"packed array payload size mismatch\");");
+            sb.AppendLine($"{indent}}}");
+        }
+
+        sb.AppendLine($"{indent}int {countVar} = {payloadSizeVar}{(width == 1 ? string.Empty : $" / {width}")};");
+        if (codec.CarrierKind == CarrierKind.Array)
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{countVar}];");
+        }
+        else
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({countVar});");
+        }
+
+        string packedIndexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{indent}for (int {packedIndexVar} = 0; {packedIndexVar} < {countVar}; {packedIndexVar}++)");
+        sb.AppendLine($"{indent}{{");
+        if (!TryBuildDirectPayloadRead(elementTypeId, out string? readExpr))
+        {
+            throw new InvalidOperationException($"unsupported packed array type id {codec.TypeId}");
+        }
+
+        if (codec.CarrierKind == CarrierKind.Array)
+        {
+            sb.AppendLine($"{indent}    {targetVar}[{packedIndexVar}] = {readExpr};");
+        }
+        else
+        {
+            sb.AppendLine($"{indent}    {targetVar}.Add({readExpr});");
+        }
+
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitReadCollectionPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string targetVar,
+        int indentLevel,
+        ref int id,
+        bool isSet)
+    {
+        string indent = new(' ', indentLevel * 4);
+        FieldCodecModel element = codec.Generics[0];
+        string lengthVar = $"__foryLength{id++}";
+        string headerVar = $"__foryHeader{id++}";
+        string hasNullVar = $"__foryHasNull{id++}";
+        sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
+        if (isSet)
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new();");
+        }
+        else if (codec.CarrierKind == CarrierKind.Array)
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
+        }
+        else
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
+        }
+
+        sb.AppendLine($"{indent}if ({lengthVar} != 0)");
+        sb.AppendLine($"{indent}{{");
+        string innerIndent = indent + "    ";
+        sb.AppendLine($"{innerIndent}byte {headerVar} = context.Reader.ReadUInt8();");
+        sb.AppendLine($"{innerIndent}bool {hasNullVar} = ({headerVar} & 0b0000_0010) != 0;");
+        string collectionIndexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{innerIndent}for (int {collectionIndexVar} = 0; {collectionIndexVar} < {lengthVar}; {collectionIndexVar}++)");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitReadNullableElementPayload(sb, element, "__foryItem", indentLevel + 2, ref id, hasNullVar);
+        if (codec.CarrierKind == CarrierKind.Array)
+        {
+            sb.AppendLine($"{innerIndent}    {targetVar}[{collectionIndexVar}] = __foryItem;");
+        }
+        else
+        {
+            sb.AppendLine($"{innerIndent}    {targetVar}.Add(__foryItem);");
+        }
+
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitReadNullableElementPayload(
+        StringBuilder sb,
+        FieldCodecModel element,
+        string targetVar,
+        int indentLevel,
+        ref int id,
+        string hasNullVar)
+    {
+        string indent = new(' ', indentLevel * 4);
+        sb.AppendLine($"{indent}{element.TypeName} {targetVar};");
+        if (element.Nullable)
+        {
+            sb.AppendLine($"{indent}if ({hasNullVar})");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    sbyte __foryRefFlag = context.Reader.ReadInt8();");
+            sb.AppendLine($"{indent}    if (__foryRefFlag == (sbyte)global::Apache.Fory.RefFlag.Null)");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        {targetVar} = ({element.TypeName})default!;");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine($"{indent}    else if (__foryRefFlag == (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
+            sb.AppendLine($"{indent}    {{");
+            string nullableNonNullVar = $"__foryNonNull{id++}";
+            EmitReadPayload(sb, NonNullableCodec(element), nullableNonNullVar, indentLevel + 2, ref id);
+            sb.AppendLine($"{indent}        {targetVar} = {nullableNonNullVar};");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine($"{indent}    else");
+            sb.AppendLine($"{indent}    {{");
+            sb.AppendLine($"{indent}        throw new global::Apache.Fory.InvalidDataException($\"invalid collection null flag {{__foryRefFlag}}\");");
+            sb.AppendLine($"{indent}    }}");
+            sb.AppendLine($"{indent}}}");
+            sb.AppendLine($"{indent}else");
+            sb.AppendLine($"{indent}{{");
+            string nonNullVar = $"__foryNonNull{id++}";
+            EmitReadPayload(sb, NonNullableCodec(element), nonNullVar, indentLevel + 1, ref id);
+            sb.AppendLine($"{indent}    {targetVar} = {nonNullVar};");
+            sb.AppendLine($"{indent}}}");
+            return;
+        }
+
+        string directNonNullVar = $"__foryNonNull{id++}";
+        EmitReadPayload(sb, element, directNonNullVar, indentLevel, ref id);
+        sb.AppendLine($"{indent}{targetVar} = {directNonNullVar};");
+    }
+
+    private static void EmitReadMapPayload(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string targetVar,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        FieldCodecModel key = codec.Generics[0];
+        FieldCodecModel value = codec.Generics[1];
+        string totalVar = $"__foryTotal{id++}";
+        sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({totalVar});");
+        sb.AppendLine($"{indent}int __foryRead = 0;");
+        sb.AppendLine($"{indent}while (__foryRead < {totalVar})");
+        sb.AppendLine($"{indent}{{");
+        string innerIndent = indent + "    ";
+        sb.AppendLine($"{innerIndent}byte __foryHeader = context.Reader.ReadUInt8();");
+        sb.AppendLine($"{innerIndent}bool __foryKeyNull = (__foryHeader & 0b0000_0010) != 0;");
+        sb.AppendLine($"{innerIndent}bool __foryValueNull = (__foryHeader & 0b0001_0000) != 0;");
+        sb.AppendLine($"{innerIndent}if (__foryKeyNull || __foryValueNull)");
+        sb.AppendLine($"{innerIndent}{{");
+        sb.AppendLine($"{innerIndent}    {key.TypeName} __foryKey = ({key.TypeName})default!;");
+        sb.AppendLine($"{innerIndent}    {value.TypeName} __foryValue = ({value.TypeName})default!;");
+        sb.AppendLine($"{innerIndent}    if (!__foryKeyNull)");
+        sb.AppendLine($"{innerIndent}    {{");
+        EmitReadPayload(sb, NonNullableCodec(key), "__foryReadKey", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}        __foryKey = __foryReadKey;");
+        sb.AppendLine($"{innerIndent}    }}");
+        sb.AppendLine($"{innerIndent}    if (!__foryValueNull)");
+        sb.AppendLine($"{innerIndent}    {{");
+        EmitReadPayload(sb, NonNullableCodec(value), "__foryReadValue", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}        __foryValue = __foryReadValue;");
+        sb.AppendLine($"{innerIndent}    }}");
+        if (codec.CarrierKind == CarrierKind.NullableKeyDictionary)
+        {
+            sb.AppendLine($"{innerIndent}    {targetVar}[__foryKey] = __foryValue;");
+        }
+        else
+        {
+            sb.AppendLine($"{innerIndent}    if (!__foryKeyNull)");
+            sb.AppendLine($"{innerIndent}    {{");
+            sb.AppendLine($"{innerIndent}        {targetVar}[__foryKey] = __foryValue;");
+            sb.AppendLine($"{innerIndent}    }}");
+        }
+
+        sb.AppendLine($"{innerIndent}    __foryRead++;");
+        sb.AppendLine($"{innerIndent}    continue;");
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}int __foryChunkSize = context.Reader.ReadUInt8();");
+        string mapIndexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{innerIndent}for (int {mapIndexVar} = 0; {mapIndexVar} < __foryChunkSize; {mapIndexVar}++)");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitReadPayload(sb, NonNullableCodec(key), "__foryKey", indentLevel + 2, ref id);
+        EmitReadPayload(sb, NonNullableCodec(value), "__foryValue", indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}    {targetVar}[__foryKey] = __foryValue;");
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}__foryRead += __foryChunkSize;");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static FieldCodecModel NonNullableCodec(FieldCodecModel codec)
+    {
+        if (!codec.Nullable)
+        {
+            return codec;
+        }
+
+        return new FieldCodecModel(
+            codec.Kind,
+            codec.TypeId,
+            codec.NullableValueType && codec.TypeName.EndsWith("?", StringComparison.Ordinal)
+                ? codec.TypeName.Substring(0, codec.TypeName.Length - 1)
+                : codec.TypeName,
+            false,
+            false,
+            codec.CarrierKind,
+            codec.Generics);
+    }
+
+    private static string ElementTypeName(string arrayTypeName)
+    {
+        return arrayTypeName.EndsWith("[]", StringComparison.Ordinal)
+            ? arrayTypeName.Substring(0, arrayTypeName.Length - 2)
+            : "object";
+    }
+
+    private static int PackedArrayElementWidth(uint typeId)
+    {
+        return typeId switch
+        {
+            41 or 43 or 44 => 1,
+            45 or 49 or 53 or 54 => 2,
+            46 or 50 or 55 => 4,
+            47 or 51 or 56 => 8,
+            _ => throw new InvalidOperationException($"unsupported packed array type id {typeId}"),
+        };
+    }
+
+    private static uint PackedArrayElementTypeId(uint typeId)
+    {
+        return typeId switch
+        {
+            41 => 9,
+            43 => 1,
+            44 => 2,
+            45 => 3,
+            46 => 4,
+            47 => 6,
+            49 => 10,
+            50 => 11,
+            51 => 13,
+            53 => 17,
+            54 => 18,
+            55 => 19,
+            56 => 20,
+            _ => throw new InvalidOperationException($"unsupported packed array type id {typeId}"),
+        };
+    }
+
     private static void EmitWriteMember(StringBuilder sb, MemberModel member, bool compatibleMode)
     {
         string refModeExpr = BuildWriteRefModeExpression(member);
@@ -644,6 +1242,13 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 break;
             default:
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
+        }
+
+        if (member.FieldCodec is not null)
+        {
+            sb.AppendLine(
+                $"            __ForyWrite{Sanitize(member.Name)}Field(context, {memberAccess}, {refModeExpr});");
+            return;
         }
 
         if (member.UseDictionaryTypeInfoCache)
@@ -752,6 +1357,13 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 break;
             default:
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
+        }
+
+        if (member.FieldCodec is not null)
+        {
+            sb.AppendLine(
+                $"{indent}{assignmentTarget} = __ForyRead{Sanitize(member.Name)}Field(context, {refModeExpr});");
+            return;
         }
 
         if (allowDirectRead && !member.IsNullable && TryBuildDirectFieldRead(member, out string? directReadExpr))
@@ -1219,14 +1831,20 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         MemberDeclKind memberDeclKind)
     {
         (bool isOptional, ITypeSymbol unwrappedType) = UnwrapNullable(memberType);
-        FieldEncoding fieldEncoding = FieldEncoding.None;
         short? fieldId = null;
+        SchemaTypeModel? schemaType = null;
         foreach (AttributeData attribute in memberSymbol.GetAttributes())
         {
             string? attrName = attribute.AttributeClass?.ToDisplayString();
-            if (!string.Equals(attrName, "Apache.Fory.FieldAttribute", StringComparison.Ordinal))
+            if (!string.Equals(attrName, "Apache.Fory.ForyFieldAttribute", StringComparison.Ordinal))
             {
                 continue;
+            }
+
+            if (attribute.ConstructorArguments.Length == 1 &&
+                TryGetNonNegativeShort(attribute.ConstructorArguments[0], out short ctorFieldId))
+            {
+                fieldId = ctorFieldId;
             }
 
             foreach (KeyValuePair<string, TypedConstant> namedArg in attribute.NamedArguments)
@@ -1241,20 +1859,20 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                     continue;
                 }
 
-                if (!string.Equals(namedArg.Key, "Encoding", StringComparison.Ordinal))
+                if (!string.Equals(namedArg.Key, "Type", StringComparison.Ordinal))
                 {
                     continue;
                 }
 
-                if (namedArg.Value.Value is int encoding)
+                if (namedArg.Value.Value is ITypeSymbol schemaSymbol)
                 {
-                    fieldEncoding = (FieldEncoding)encoding;
+                    schemaType = TryParseSchemaType(schemaSymbol);
                 }
             }
         }
 
         DynamicAnyKind dynamicAnyKind = ResolveDynamicAnyKind(unwrappedType);
-        TypeResolution resolution = ResolveTypeResolution(unwrappedType, fieldEncoding);
+        TypeResolution resolution = ResolveTypeResolution(unwrappedType, schemaType);
         if (!resolution.Supported)
         {
             return null;
@@ -1288,7 +1906,9 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             memberType,
             isOptional,
             dynamicAnyKind,
-            resolution.Classification.TypeId);
+            resolution.Classification.TypeId,
+            schemaType);
+        FieldCodecModel? fieldCodec = BuildFieldCodecModel(memberType, typeMeta, schemaType, classification);
 
         return new MemberModel(
             name,
@@ -1307,28 +1927,31 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             !unwrappedType.IsValueType && classification.TypeId != 21,
             FieldNeedsTypeInfo(classification, dynamicAnyKind, unwrappedType),
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
-            typeMeta);
+            typeMeta,
+            fieldCodec);
     }
 
     private static TypeMetaFieldTypeModel BuildTypeMetaFieldTypeModel(
         ITypeSymbol memberType,
         bool nullable,
         DynamicAnyKind dynamicAnyKind,
-        uint explicitTypeId)
+        uint explicitTypeId,
+        SchemaTypeModel? schemaType = null)
     {
         (bool _, ITypeSymbol unwrapped) = UnwrapNullable(memberType);
+
+        if (schemaType is not null)
+        {
+            return BuildSchemaTypeMetaFieldTypeModel(memberType, nullable, schemaType);
+        }
 
         if (TryGetListElementType(unwrapped, out ITypeSymbol? listElementType))
         {
             bool elementNullable = GenericNullable(listElementType!);
             if (!elementNullable &&
                 TryResolvePackedArrayTypeIdForElement(listElementType!) is uint packedArrayTypeId &&
-                explicitTypeId == packedArrayTypeId)
+                (explicitTypeId == packedArrayTypeId || explicitTypeId == 22))
             {
-                // Align compatible TypeMeta with C++ vector arithmetic handling:
-                // when the wire type is already classified as a packed array (e.g. int[]),
-                // use the specialized array TypeId directly instead of LIST<elem>.
-                // This keeps schema/type-meta bytes consistent across languages.
                 return new TypeMetaFieldTypeModel(
                     packedArrayTypeId.ToString(),
                     nullable,
@@ -1426,6 +2049,227 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             nullable,
             !classification.IsBuiltIn && unwrapped.TypeKind != TypeKind.Enum,
             ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+    }
+
+    private static TypeMetaFieldTypeModel BuildSchemaTypeMetaFieldTypeModel(
+        ITypeSymbol carrierType,
+        bool nullable,
+        SchemaTypeModel schemaType)
+    {
+        (bool _, ITypeSymbol unwrapped) = UnwrapNullable(carrierType);
+        switch (schemaType.Kind)
+        {
+            case SchemaTypeKind.List:
+                if (!TryGetListElementType(unwrapped, out ITypeSymbol? listElementType))
+                {
+                    return new TypeMetaFieldTypeModel(
+                        schemaType.TypeId.ToString(),
+                        nullable,
+                        false,
+                        ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+                }
+
+                bool elementNullable = GenericNullable(listElementType!);
+                return new TypeMetaFieldTypeModel(
+                    "(uint)global::Apache.Fory.TypeId.List",
+                    nullable,
+                    false,
+                    ImmutableArray.Create(
+                        BuildSchemaTypeMetaFieldTypeModel(
+                            listElementType!,
+                            elementNullable,
+                            schemaType.Generics[0])));
+            case SchemaTypeKind.Set:
+                if (!TryGetSetElementType(unwrapped, out ITypeSymbol? setElementType))
+                {
+                    return new TypeMetaFieldTypeModel(
+                        schemaType.TypeId.ToString(),
+                        nullable,
+                        false,
+                        ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+                }
+
+                bool setElementNullable = GenericNullable(setElementType!);
+                return new TypeMetaFieldTypeModel(
+                    "(uint)global::Apache.Fory.TypeId.Set",
+                    nullable,
+                    false,
+                    ImmutableArray.Create(
+                        BuildSchemaTypeMetaFieldTypeModel(
+                            setElementType!,
+                            setElementNullable,
+                            schemaType.Generics[0])));
+            case SchemaTypeKind.Map:
+                if (!TryGetMapTypeArguments(unwrapped, out ITypeSymbol? keyType, out ITypeSymbol? valueType))
+                {
+                    return new TypeMetaFieldTypeModel(
+                        schemaType.TypeId.ToString(),
+                        nullable,
+                        false,
+                        ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+                }
+
+                bool keyNullable = GenericNullable(keyType!);
+                bool valueNullable = GenericNullable(valueType!);
+                return new TypeMetaFieldTypeModel(
+                    "(uint)global::Apache.Fory.TypeId.Map",
+                    nullable,
+                    false,
+                    ImmutableArray.Create(
+                        BuildSchemaTypeMetaFieldTypeModel(keyType!, keyNullable, schemaType.Generics[0]),
+                        BuildSchemaTypeMetaFieldTypeModel(valueType!, valueNullable, schemaType.Generics[1])));
+            default:
+                return new TypeMetaFieldTypeModel(
+                    schemaType.TypeId.ToString(),
+                    nullable,
+                    false,
+                    ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+        }
+    }
+
+    private static FieldCodecModel? BuildFieldCodecModel(
+        ITypeSymbol carrierType,
+        TypeMetaFieldTypeModel typeMeta,
+        SchemaTypeModel? schemaType,
+        TypeClassification classification)
+    {
+        (bool nullable, ITypeSymbol unwrapped) = UnwrapNullable(carrierType);
+        bool nullableValueType = carrierType is INamedTypeSymbol nts &&
+                                 nts.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+
+        if (schemaType is not null)
+        {
+            FieldCodecModel codec = BuildFieldCodecFromSchema(carrierType, nullable, nullableValueType, schemaType);
+            return codec.Kind == FieldCodecKind.Scalar ? null : codec;
+        }
+
+        _ = typeMeta;
+        _ = classification;
+        return null;
+    }
+
+    private static FieldCodecModel BuildFieldCodecFromSchema(
+        ITypeSymbol carrierType,
+        bool nullable,
+        bool nullableValueType,
+        SchemaTypeModel schemaType)
+    {
+        (bool _, ITypeSymbol unwrapped) = UnwrapNullable(carrierType);
+        switch (schemaType.Kind)
+        {
+            case SchemaTypeKind.List:
+                {
+                    ITypeSymbol elementType = TryGetListElementType(unwrapped, out ITypeSymbol? listElementType)
+                        ? listElementType!
+                        : carrierType;
+                    FieldCodecModel element = BuildFieldCodecFromSchema(
+                        elementType,
+                        GenericNullable(elementType),
+                        elementType is INamedTypeSymbol elementNamed &&
+                        elementNamed.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+                        schemaType.Generics[0]);
+                    return new FieldCodecModel(
+                        FieldCodecKind.List,
+                        schemaType.TypeId,
+                        carrierType.ToDisplayString(FullNameFormat),
+                        nullable,
+                        nullableValueType,
+                        GetCarrierKind(unwrapped),
+                        ImmutableArray.Create(element));
+                }
+            case SchemaTypeKind.Set:
+                {
+                    ITypeSymbol elementType = TryGetSetElementType(unwrapped, out ITypeSymbol? setElementType)
+                        ? setElementType!
+                        : carrierType;
+                    FieldCodecModel element = BuildFieldCodecFromSchema(
+                        elementType,
+                        GenericNullable(elementType),
+                        elementType is INamedTypeSymbol elementNamed &&
+                        elementNamed.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+                        schemaType.Generics[0]);
+                    return new FieldCodecModel(
+                        FieldCodecKind.Set,
+                        schemaType.TypeId,
+                        carrierType.ToDisplayString(FullNameFormat),
+                        nullable,
+                        nullableValueType,
+                        GetCarrierKind(unwrapped),
+                        ImmutableArray.Create(element));
+                }
+            case SchemaTypeKind.Map:
+                {
+                    ITypeSymbol keyType = carrierType;
+                    ITypeSymbol valueType = carrierType;
+                    if (TryGetMapTypeArguments(unwrapped, out ITypeSymbol? parsedKeyType, out ITypeSymbol? parsedValueType))
+                    {
+                        keyType = parsedKeyType!;
+                        valueType = parsedValueType!;
+                    }
+
+                    FieldCodecModel key = BuildFieldCodecFromSchema(
+                        keyType,
+                        GenericNullable(keyType),
+                        keyType is INamedTypeSymbol keyNamed &&
+                        keyNamed.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+                        schemaType.Generics[0]);
+                    FieldCodecModel value = BuildFieldCodecFromSchema(
+                        valueType,
+                        GenericNullable(valueType),
+                        valueType is INamedTypeSymbol valueNamed &&
+                        valueNamed.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T,
+                        schemaType.Generics[1]);
+                    return new FieldCodecModel(
+                        FieldCodecKind.Map,
+                        schemaType.TypeId,
+                        carrierType.ToDisplayString(FullNameFormat),
+                        nullable,
+                        nullableValueType,
+                        GetCarrierKind(unwrapped),
+                        ImmutableArray.Create(key, value));
+                }
+            case SchemaTypeKind.PackedArray:
+                return new FieldCodecModel(
+                    FieldCodecKind.PackedArray,
+                    schemaType.TypeId,
+                    carrierType.ToDisplayString(FullNameFormat),
+                    nullable,
+                    nullableValueType,
+                    GetCarrierKind(unwrapped),
+                    ImmutableArray<FieldCodecModel>.Empty);
+            default:
+                return new FieldCodecModel(
+                    FieldCodecKind.Scalar,
+                    schemaType.TypeId,
+                    carrierType.ToDisplayString(FullNameFormat),
+                    nullable,
+                    nullableValueType,
+                    GetCarrierKind(unwrapped),
+                    ImmutableArray<FieldCodecModel>.Empty);
+        }
+    }
+
+    private static CarrierKind GetCarrierKind(ITypeSymbol unwrappedType)
+    {
+        if (unwrappedType is IArrayTypeSymbol)
+        {
+            return CarrierKind.Array;
+        }
+
+        if (unwrappedType is not INamedTypeSymbol named)
+        {
+            return CarrierKind.Value;
+        }
+
+        string genericName = named.ConstructedFrom.ToDisplayString();
+        return genericName switch
+        {
+            "System.Collections.Generic.List<T>" => CarrierKind.List,
+            "System.Collections.Generic.HashSet<T>" => CarrierKind.HashSet,
+            "System.Collections.Generic.Dictionary<TKey, TValue>" => CarrierKind.Dictionary,
+            "Apache.Fory.NullableKeyDictionary<TKey, TValue>" => CarrierKind.NullableKeyDictionary,
+            _ => CarrierKind.Value,
+        };
     }
 
     private static bool TryGetNonNegativeShort(TypedConstant value, out short fieldId)
@@ -1569,74 +2413,227 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         return false;
     }
 
-    private static TypeResolution ResolveTypeResolution(ITypeSymbol type, FieldEncoding encoding)
+    private static SchemaTypeModel? TryParseSchemaType(ITypeSymbol symbol)
+    {
+        if (symbol is not INamedTypeSymbol named)
+        {
+            return null;
+        }
+
+        string fullName = named.ConstructedFrom.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        fullName = fullName.StartsWith("global::", StringComparison.Ordinal)
+            ? fullName.Substring("global::".Length)
+            : fullName;
+
+        if (fullName == "Apache.Fory.Schema.Types.List<TElement>")
+        {
+            if (named.TypeArguments.Length != 1 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel element)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(22, SchemaTypeKind.List, ImmutableArray.Create(element));
+        }
+
+        if (fullName == "Apache.Fory.Schema.Types.Set<TElement>")
+        {
+            if (named.TypeArguments.Length != 1 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel element)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(23, SchemaTypeKind.Set, ImmutableArray.Create(element));
+        }
+
+        if (fullName == "Apache.Fory.Schema.Types.Map<TKey, TValue>")
+        {
+            if (named.TypeArguments.Length != 2 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel key ||
+                TryParseSchemaType(named.TypeArguments[1]) is not SchemaTypeModel value)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(24, SchemaTypeKind.Map, ImmutableArray.Create(key, value));
+        }
+
+        return TryResolveSchemaTypeId(fullName, out uint typeId, out SchemaTypeKind kind)
+            ? new SchemaTypeModel(typeId, kind, ImmutableArray<SchemaTypeModel>.Empty)
+            : null;
+    }
+
+    private static bool TryResolveSchemaTypeId(string fullName, out uint typeId, out SchemaTypeKind kind)
+    {
+        kind = SchemaTypeKind.Scalar;
+        switch (fullName)
+        {
+            case "Apache.Fory.Schema.Types.Bool":
+                typeId = 1;
+                return true;
+            case "Apache.Fory.Schema.Types.Int8":
+                typeId = 2;
+                return true;
+            case "Apache.Fory.Schema.Types.Int16":
+                typeId = 3;
+                return true;
+            case "Apache.Fory.Schema.Types.Int32":
+                typeId = 4;
+                return true;
+            case "Apache.Fory.Schema.Types.VarInt32":
+                typeId = 5;
+                return true;
+            case "Apache.Fory.Schema.Types.Int64":
+                typeId = 6;
+                return true;
+            case "Apache.Fory.Schema.Types.VarInt64":
+                typeId = 7;
+                return true;
+            case "Apache.Fory.Schema.Types.TaggedInt64":
+                typeId = 8;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt8":
+                typeId = 9;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt16":
+                typeId = 10;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt32":
+                typeId = 11;
+                return true;
+            case "Apache.Fory.Schema.Types.VarUInt32":
+                typeId = 12;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt64":
+                typeId = 13;
+                return true;
+            case "Apache.Fory.Schema.Types.VarUInt64":
+                typeId = 14;
+                return true;
+            case "Apache.Fory.Schema.Types.TaggedUInt64":
+                typeId = 15;
+                return true;
+            case "Apache.Fory.Schema.Types.Float16":
+                typeId = 17;
+                return true;
+            case "Apache.Fory.Schema.Types.BFloat16":
+                typeId = 18;
+                return true;
+            case "Apache.Fory.Schema.Types.Float32":
+                typeId = 19;
+                return true;
+            case "Apache.Fory.Schema.Types.Float64":
+                typeId = 20;
+                return true;
+            case "Apache.Fory.Schema.Types.String":
+                typeId = 21;
+                return true;
+            case "Apache.Fory.Schema.Types.Binary":
+                typeId = 41;
+                return true;
+            case "Apache.Fory.Schema.Types.Duration":
+                typeId = 37;
+                return true;
+            case "Apache.Fory.Schema.Types.Timestamp":
+                typeId = 38;
+                return true;
+            case "Apache.Fory.Schema.Types.Date":
+                typeId = 39;
+                return true;
+            case "Apache.Fory.Schema.Types.Decimal":
+                typeId = 42;
+                return true;
+            case "Apache.Fory.Schema.Types.BoolArray":
+                typeId = 43;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Int8Array":
+                typeId = 44;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Int16Array":
+                typeId = 45;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Int32Array":
+                typeId = 46;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Int64Array":
+                typeId = 47;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt8Array":
+                typeId = 41;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt16Array":
+                typeId = 49;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt32Array":
+                typeId = 50;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.UInt64Array":
+                typeId = 51;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Float16Array":
+                typeId = 53;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.BFloat16Array":
+                typeId = 54;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Float32Array":
+                typeId = 55;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            case "Apache.Fory.Schema.Types.Float64Array":
+                typeId = 56;
+                kind = SchemaTypeKind.PackedArray;
+                return true;
+            default:
+                typeId = 0;
+                return false;
+        }
+    }
+
+    private static TypeResolution ResolveTypeResolution(ITypeSymbol type, SchemaTypeModel? schemaType)
     {
         TypeClassification baseType = ClassifyType(type);
-        if (encoding == FieldEncoding.None)
+        if (schemaType is null)
         {
             return new TypeResolution(true, baseType);
         }
 
-        bool isInt32 = type.SpecialType == SpecialType.System_Int32;
-        bool isUInt32 = type.SpecialType == SpecialType.System_UInt32;
-        bool isInt64 = type.SpecialType == SpecialType.System_Int64;
-        bool isUInt64 = type.SpecialType == SpecialType.System_UInt64;
-
-        if (isInt32)
+        bool isPrimitive = schemaType.Kind == SchemaTypeKind.Scalar;
+        bool isCollection = schemaType.Kind == SchemaTypeKind.List ||
+                            schemaType.Kind == SchemaTypeKind.Set ||
+                            schemaType.Kind == SchemaTypeKind.PackedArray;
+        bool isMap = schemaType.Kind == SchemaTypeKind.Map;
+        bool isCompressedNumeric = schemaType.TypeId is 5 or 7 or 8 or 12 or 14 or 15;
+        int primitiveSize = schemaType.TypeId switch
         {
-            return encoding switch
-            {
-                FieldEncoding.Varint => new TypeResolution(true, baseType),
-                FieldEncoding.Fixed => new TypeResolution(
-                    true,
-                    new TypeClassification(4, true, true, false, false, false, 4)),
-                _ => new TypeResolution(false, baseType),
-            };
-        }
-
-        if (isUInt32)
-        {
-            return encoding switch
-            {
-                FieldEncoding.Varint => new TypeResolution(true, baseType),
-                FieldEncoding.Fixed => new TypeResolution(
-                    true,
-                    new TypeClassification(11, true, true, false, false, false, 4)),
-                _ => new TypeResolution(false, baseType),
-            };
-        }
-
-        if (isInt64)
-        {
-            return encoding switch
-            {
-                FieldEncoding.Varint => new TypeResolution(true, baseType),
-                FieldEncoding.Fixed => new TypeResolution(
-                    true,
-                    new TypeClassification(6, true, true, false, false, false, 8)),
-                FieldEncoding.Tagged => new TypeResolution(
-                    true,
-                    new TypeClassification(8, true, true, false, false, true, 8)),
-                _ => new TypeResolution(false, baseType),
-            };
-        }
-
-        if (isUInt64)
-        {
-            return encoding switch
-            {
-                FieldEncoding.Varint => new TypeResolution(true, baseType),
-                FieldEncoding.Fixed => new TypeResolution(
-                    true,
-                    new TypeClassification(13, true, true, false, false, false, 8)),
-                FieldEncoding.Tagged => new TypeResolution(
-                    true,
-                    new TypeClassification(15, true, true, false, false, true, 8)),
-                _ => new TypeResolution(false, baseType),
-            };
-        }
-
-        return new TypeResolution(false, baseType);
+            1 or 2 or 9 => 1,
+            3 or 10 or 17 or 18 => 2,
+            4 or 5 or 11 or 12 or 19 => 4,
+            6 or 7 or 8 or 13 or 14 or 15 or 20 => 8,
+            _ => 0,
+        };
+        return new TypeResolution(
+            true,
+            new TypeClassification(
+                schemaType.TypeId,
+                isPrimitive,
+                true,
+                isCollection,
+                isMap,
+                isCompressedNumeric,
+                primitiveSize));
     }
 
     private static TypeClassification ClassifyType(ITypeSymbol type)
@@ -1743,6 +2740,13 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         if (TryGetListElementType(type, out _))
         {
+            if (GetCarrierKind(type) == CarrierKind.List &&
+                TryGetListElementType(type, out ITypeSymbol? elementType) &&
+                TryResolvePackedArrayTypeIdForElement(elementType!) is uint packedArrayTypeId)
+            {
+                return new TypeClassification(packedArrayTypeId, false, true, true, false, false, 0);
+            }
+
             return new TypeClassification(22, false, true, true, false, false, 0);
         }
 
@@ -2053,6 +3057,52 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public ImmutableArray<TypeMetaFieldTypeModel> Generics { get; }
     }
 
+    private sealed class SchemaTypeModel
+    {
+        public SchemaTypeModel(
+            uint typeId,
+            SchemaTypeKind kind,
+            ImmutableArray<SchemaTypeModel> generics)
+        {
+            TypeId = typeId;
+            Kind = kind;
+            Generics = generics;
+        }
+
+        public uint TypeId { get; }
+        public SchemaTypeKind Kind { get; }
+        public ImmutableArray<SchemaTypeModel> Generics { get; }
+    }
+
+    private sealed class FieldCodecModel
+    {
+        public FieldCodecModel(
+            FieldCodecKind kind,
+            uint typeId,
+            string typeName,
+            bool nullable,
+            bool nullableValueType,
+            CarrierKind carrierKind,
+            ImmutableArray<FieldCodecModel> generics)
+        {
+            Kind = kind;
+            TypeId = typeId;
+            TypeName = typeName;
+            Nullable = nullable;
+            NullableValueType = nullableValueType;
+            CarrierKind = carrierKind;
+            Generics = generics;
+        }
+
+        public FieldCodecKind Kind { get; }
+        public uint TypeId { get; }
+        public string TypeName { get; }
+        public bool Nullable { get; }
+        public bool NullableValueType { get; }
+        public CarrierKind CarrierKind { get; }
+        public ImmutableArray<FieldCodecModel> Generics { get; }
+    }
+
     private sealed class TypeModel
     {
         public TypeModel(
@@ -2094,7 +3144,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             bool isRefType,
             bool needsFieldTypeInfo,
             DynamicAnyKind dynamicAnyKind,
-            TypeMetaFieldTypeModel typeMeta)
+            TypeMetaFieldTypeModel typeMeta,
+            FieldCodecModel? fieldCodec)
         {
             Name = name;
             FieldIdentifier = fieldIdentifier;
@@ -2112,6 +3163,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             NeedsFieldTypeInfo = needsFieldTypeInfo;
             DynamicAnyKind = dynamicAnyKind;
             TypeMeta = typeMeta;
+            FieldCodec = fieldCodec;
         }
 
         public string Name { get; }
@@ -2130,6 +3182,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public bool NeedsFieldTypeInfo { get; }
         public DynamicAnyKind DynamicAnyKind { get; }
         public TypeMetaFieldTypeModel TypeMeta { get; }
+        public FieldCodecModel? FieldCodec { get; }
     }
 
     private enum MemberDeclKind
@@ -2152,11 +3205,31 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         AnyValue,
     }
 
-    private enum FieldEncoding
+    private enum SchemaTypeKind
     {
-        None = -1,
-        Varint = 0,
-        Fixed = 1,
-        Tagged = 2,
+        Scalar,
+        PackedArray,
+        List,
+        Set,
+        Map,
+    }
+
+    private enum FieldCodecKind
+    {
+        Scalar,
+        PackedArray,
+        List,
+        Set,
+        Map,
+    }
+
+    private enum CarrierKind
+    {
+        Value,
+        Array,
+        List,
+        HashSet,
+        Dictionary,
+        NullableKeyDictionary,
     }
 }

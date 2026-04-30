@@ -1237,8 +1237,11 @@ message Order {
 Use the `list<...>` type for list fields. `repeated` is accepted as an alias. See [Field Modifiers](#field-modifiers) for
 modifier combinations and language mapping.
 
-Nested collection types are not supported. Use a message wrapper if you need
-`list<list<...>>`, `list<map<...>>`, or `map<..., list<...>>`.
+Nested collection support is target-capability based. The C++ generator accepts
+nested collection specs such as `list<list<...>>`, `list<map<...>>`, and
+`map<..., list<...>>`; targets that have not implemented nested field specs
+continue to reject them. Use a message wrapper when you need portable schemas
+across all targets.
 
 #### Map
 

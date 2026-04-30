@@ -30,7 +30,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
 public class ForyFieldTest extends ForyTestBase {
@@ -49,7 +48,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testSimpleValueObject() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     Point point = new Point(3.14, 2.71);
     byte[] bytes = fory.serialize(point);
     Point deserialized = (Point) fory.deserialize(bytes);
@@ -80,7 +79,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testEntityWithOptionalFields() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     User user = new User(123L, "john_doe", "john@example.com", null, System.currentTimeMillis());
     byte[] bytes = fory.serialize(user);
     User deserialized = (User) fory.deserialize(bytes);
@@ -92,7 +91,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testEntityWithAllNullOptionalFields() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     User user = new User(456L, "jane_doe", null, null, System.currentTimeMillis());
     byte[] bytes = fory.serialize(user);
     User deserialized = (User) fory.deserialize(bytes);
@@ -132,7 +131,7 @@ public class ForyFieldTest extends ForyTestBase {
   public void testSharedObjectReferences() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -172,7 +171,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testNullableDefaults() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     DefaultNullableTest obj = new DefaultNullableTest("value1", null);
     byte[] bytes = fory.serialize(obj);
     DefaultNullableTest deserialized = (DefaultNullableTest) fory.deserialize(bytes);
@@ -196,7 +195,7 @@ public class ForyFieldTest extends ForyTestBase {
   public void testRefDefaults() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -223,7 +222,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testMixedAnnotatedAndRegularFields() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     MixedFieldsTest obj = new MixedFieldsTest("annotated", "regular", null);
     byte[] bytes = fory.serialize(obj);
     MixedFieldsTest deserialized = (MixedFieldsTest) fory.deserialize(bytes);
@@ -252,7 +251,7 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testPrimitiveFields() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     PrimitiveFieldsTest obj = new PrimitiveFieldsTest(42, 123456789L, true, 99);
     byte[] bytes = fory.serialize(obj);
     PrimitiveFieldsTest deserialized = (PrimitiveFieldsTest) fory.deserialize(bytes);

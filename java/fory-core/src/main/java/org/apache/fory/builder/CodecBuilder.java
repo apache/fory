@@ -421,7 +421,7 @@ public abstract class CodecBuilder {
     // Use Field in case the class has duplicate field name as `fieldName`.
     Expression fieldOffsetExpr = getFieldOffset(beanClass, descriptor);
     if (descriptor.getTypeRef().isPrimitive()) {
-      Preconditions.checkArgument(value.type().equals(fieldType));
+      Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
       String funcName = "put" + StringUtils.capitalize(getRawType(fieldType).toString());
       return new StaticInvoke(Platform.class, funcName, bean, fieldOffsetExpr, value);
     } else {

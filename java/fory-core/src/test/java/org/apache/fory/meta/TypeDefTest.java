@@ -35,7 +35,6 @@ import java.util.TreeSet;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ForyField;
-import org.apache.fory.config.Language;
 import org.apache.fory.data.AllUnsignedFields;
 import org.apache.fory.data.UnsignedArrayFields;
 import org.apache.fory.data.UnsignedScalarFields;
@@ -514,7 +513,7 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testTypeDefSerializationBasic() {
-    Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    Fory fory = builder().withXlang(true).withMetaShare(true).build();
     fory.register(TestFieldsOrderClass1.class, "demo.Class1");
     TypeDef typeDef =
         TypeDef.buildTypeDef(fory.getTypeResolver(), TestFieldsOrderClass1.class, true);
@@ -527,7 +526,7 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testTypeDefInheritanceDuplicatedFields() {
-    Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    Fory fory = builder().withXlang(true).withMetaShare(true).build();
     fory.register(TestFieldsOrderClass2.class, "demo.Class2");
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), TestFieldsOrderClass2.class);
     assertEquals(typeDef.getClassName(), TestFieldsOrderClass2.class.getName());
@@ -544,7 +543,7 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testUnsignedScalarFieldsTypeIds() {
-    Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    Fory fory = builder().withXlang(true).withMetaShare(true).build();
     fory.register(UnsignedScalarFields.class, "test.UnsignedScalarFields");
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), UnsignedScalarFields.class);
 
@@ -571,7 +570,7 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testUnsignedArrayFieldsTypeIds() {
-    Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    Fory fory = builder().withXlang(true).withMetaShare(true).build();
     fory.register(UnsignedArrayFields.class, "test.UnsignedArrayFields");
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), UnsignedArrayFields.class);
 
@@ -595,7 +594,7 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testAllUnsignedFieldsTypeIds() {
-    Fory fory = builder().withLanguage(Language.XLANG).withMetaShare(true).build();
+    Fory fory = builder().withXlang(true).withMetaShare(true).build();
     fory.register(AllUnsignedFields.class, "test.AllUnsignedFields");
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), AllUnsignedFields.class);
 

@@ -27,8 +27,6 @@ import java.util.List;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.test.bean.BeanA;
@@ -77,7 +75,7 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testEmptySubClassSerializer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo2.class);
     TypeDef typeDef1 =
         TypeDef.readTypeDef(
@@ -132,15 +130,11 @@ public class NativeTypeDefEncoderTest {
         Fory.builder()
             .withMetaShare(true)
             .withScopedMetaShare(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     Fory fory1 =
-        Fory.builder()
-            .withMetaShare(true)
-            .withScopedMetaShare(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+        Fory.builder().withMetaShare(true).withScopedMetaShare(true).withCompatible(true).build();
     fory1.register(BaseAbstractClass.class);
     fory1.register(ChildClass.class);
     for (Fory fory : new Fory[] {fory0, fory1}) {

@@ -25,14 +25,13 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
 public class OptionalSerializersTest extends ForyTestBase {
 
   @Test
   void testOptionals() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     serDeCheckSerializerAndEqual(fory, Optional.empty(), "Optional");
     serDeCheckSerializerAndEqual(fory, Optional.of("abc"), "Optional");
     serDeCheckSerializerAndEqual(fory, OptionalInt.empty(), "Optional");

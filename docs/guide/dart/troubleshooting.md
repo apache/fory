@@ -25,7 +25,7 @@ This page covers common Dart runtime issues and fixes.
 
 The writer is sending a native-mode (non-xlang) payload. Make sure every service uses the xlang-compatible path:
 
-- **Java**: add `.withLanguage(Language.XLANG)` to the Fory builder.
+- **Java**: add `.withXlang(true)` to the Fory builder.
 - **Go**: use `WithXlang(true)` in the Fory options.
 - **Other runtimes**: check their respective guides for enabling cross-language mode.
 

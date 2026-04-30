@@ -23,26 +23,15 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.apache.fory.config.Int64Encoding;
 
 /**
- * Annotation to mark a field as an unsigned 64-bit integer array.
- *
- * <p>When applied to a field of type {@code long[]}, this annotation indicates that the array
- * should be serialized as an unsigned 64-bit integer array (UINT64_ARRAY, type_id=47) with element
- * values in the range [0, 18446744073709551615].
- *
- * <p>This is useful for compatibility with languages that have native unsigned integer array types
- * (e.g., Rust's Vec&lt;u64&gt;, Go's []uint64, C++'s std::vector&lt;uint64_t&gt;).
- *
- * <p>Example usage:
- *
- * <pre>{@code
- * public class MyStruct {
- *   {@literal @}Uint64ArrayType
- *   long[] timestamps;  // Will be serialized as unsigned 64-bit array
- * }
- * }</pre>
+ * Annotation to mark a {@code long}/{@link Long} field or nested type-use position as an unsigned
+ * 64-bit integer.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint64ArrayType {}
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+public @interface UInt64Type {
+  /** The encoding strategy to use for this uint64 value. */
+  Int64Encoding encoding() default Int64Encoding.VARINT;
+}

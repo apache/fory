@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.testng.Assert
 import org.testng.annotations.Test
 
@@ -34,7 +33,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedByteValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Byte? = 42
@@ -44,7 +43,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedIntValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Int? = 42
@@ -54,7 +53,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedShortValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Short? = 42
@@ -64,7 +63,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedLongValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Long? = 42L
@@ -74,7 +73,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedFloatValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Float? = .42f
@@ -84,7 +83,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedDoubleValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Double? = .42
@@ -94,7 +93,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedBooleanValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Boolean? = true
@@ -104,7 +103,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedCharValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: Char? = 'a'
@@ -114,7 +113,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedUByteValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: UByte? = 42u
@@ -124,7 +123,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedUShortValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: UShort? = 42u
@@ -134,7 +133,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedUIntValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: UInt? = 42u
@@ -144,7 +143,7 @@ class NullablePrimitiveSerializerTests {
   @Test
   fun testSerializeBoxedULongValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: ULong? = 42u

@@ -43,7 +43,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
@@ -65,7 +64,7 @@ public class UnmodifiableSerializersTest extends ForyTestBase {
   @SuppressWarnings("unchecked")
   @Test
   public void testWrite() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     Object[] values =
         new Object[] {

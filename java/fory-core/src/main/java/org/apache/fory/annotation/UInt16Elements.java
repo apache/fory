@@ -38,11 +38,11 @@ import java.lang.annotation.Target;
  *
  * <pre>{@code
  * public class MyStruct {
- *   {@literal @}Uint16ArrayType
+ *   {@literal @}UInt16Elements
  *   short[] ports;  // Will be serialized as unsigned 16-bit array
  * }
  * }</pre>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint16ArrayType {}
+public @interface UInt16Elements {}

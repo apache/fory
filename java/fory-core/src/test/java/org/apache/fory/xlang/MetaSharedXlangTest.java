@@ -22,8 +22,6 @@ package org.apache.fory.xlang;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.xlang.PyCrossLanguageTest.Bar;
 import org.apache.fory.xlang.PyCrossLanguageTest.Foo;
@@ -33,12 +31,7 @@ public class MetaSharedXlangTest extends ForyTestBase {
 
   @Test
   public void testMetaSharedBasic() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCodegen(false).withCompatible(true).build();
     fory.register(Foo.class, "example.foo");
     fory.register(Bar.class, "example.bar");
     serDeCheck(fory, Bar.create());
@@ -47,12 +40,7 @@ public class MetaSharedXlangTest extends ForyTestBase {
 
   @Test
   public void testMetaSharedComplex1() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCodegen(false).withCompatible(true).build();
     fory.register(BeanB.class, "example.b");
     serDeCheck(fory, BeanB.createBeanB(2));
   }
@@ -64,12 +52,7 @@ public class MetaSharedXlangTest extends ForyTestBase {
 
   @Test
   public void testMDArrayField() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCodegen(false).withCompatible(true).build();
     fory.register(MDArrayFieldStruct.class, "example.a");
     MDArrayFieldStruct s = new MDArrayFieldStruct();
     s.arr = new int[][] {{1, 2}, {3, 4}};

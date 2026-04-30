@@ -119,7 +119,6 @@ Common options for Scala:
 
 ```scala
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 val fory = Fory.builder()
@@ -127,7 +126,7 @@ val fory = Fory.builder()
   // Enable reference tracking for circular references
   .withRefTracking(true)
   // Enable schema evolution support
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   // Enable async compilation for better startup performance
   .withAsyncCompilation(true)
   .build()

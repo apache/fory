@@ -21,9 +21,7 @@ package org.apache.fory.serializer;
 
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
@@ -37,10 +35,7 @@ public class RegisterTest extends ForyTestBase {
     A a = new A();
     a.setB(new B());
     ForyBuilder builder =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(enableCodegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE);
+        Fory.builder().withXlang(false).withCodegen(enableCodegen).withCompatible(true);
 
     Fory fory1 = builder.build();
     fory1.register(A.class, (short) 1000);
@@ -75,12 +70,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testRegisterThenRegisterSerializer() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCompatible(true).withCodegen(false).build();
 
     fory.register(MyExt.class, 103);
 
@@ -98,12 +88,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testRegisterSerializerThenRegister() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCompatible(true).withCodegen(false).build();
     fory.register(MyExt.class, "test.pkg", "MyExt");
     fory.registerSerializer(MyExt.class, MyExtSerializer.class);
 
@@ -119,12 +104,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testMultipleRegisterSerializer() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
+    Fory fory = Fory.builder().withXlang(true).withCompatible(true).withCodegen(false).build();
 
     fory.register(MyExt.class, 104);
 
@@ -145,7 +125,7 @@ public class RegisterTest extends ForyTestBase {
   public void testRegisterExtSerializerWithSharedGeneratedCodec() {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)

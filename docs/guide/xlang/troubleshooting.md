@@ -180,7 +180,7 @@ StackOverflowError or RecursionError
 ```java
 // Java
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .withRefTracking(true)
     .build();
 ```
@@ -290,7 +290,7 @@ python deserializer.py data.bin
 
 1. **Not registering types**: Always register custom types before use
 2. **Inconsistent type names/IDs**: Use the same names/IDs across all languages
-3. **Forgetting xlang mode**: Use `Language.XLANG` in Java
+3. **Forgetting xlang mode**: Use `.withXlang(true)` in Java
 4. **Wrong type annotations**: Use `pyfory.Int32Type` etc. in Python
 5. **Ignoring reference tracking**: Enable for circular/shared references
 

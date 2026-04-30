@@ -25,7 +25,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.logging.Logger;
@@ -66,7 +65,7 @@ public class SerializationBenchmark {
   private void testEncoder() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -99,7 +98,7 @@ public class SerializationBenchmark {
   private void testFory(Object obj) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

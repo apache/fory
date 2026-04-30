@@ -254,6 +254,18 @@ public class SwiftXlangTest extends XlangTestBase {
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testNestedAnnotatedContainerSchemaConsistent(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNestedAnnotatedContainerSchemaConsistent(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testNestedAnnotatedContainerCompatible(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNestedAnnotatedContainerCompatible(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
     super.testCollectionElementRefOverride(enableCodegen);
   }

@@ -34,14 +34,13 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.testng.Assert
 
 class BuiltinClassSerializerTests {
   @Test
   fun testSerializePair() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value = Pair(1, "one")
@@ -51,7 +50,7 @@ class BuiltinClassSerializerTests {
   @Test
   fun testSerializeTriple() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value = Triple(1, "one", null)
@@ -63,7 +62,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeResult() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -82,7 +81,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeRanges() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -126,7 +125,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeRandom() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -149,7 +148,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeDuration() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -204,7 +203,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeUuid() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -219,7 +218,7 @@ class BuiltinClassSerializerTests {
   fun testSerializeRegex() {
     val fory: Fory =
       Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .withRefTracking(true)
         .build()
@@ -246,10 +245,10 @@ class BuiltinClassSerializerTests {
         BigDecimal(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE), 0),
         BigDecimal(BigInteger("123456789012345678901234567890123456789"), 37),
       )
-    for (language in listOf(Language.JAVA, Language.XLANG)) {
+    for (xlang in listOf(false, true)) {
       val fory =
         Fory.builder()
-          .withLanguage(language)
+          .withXlang(xlang)
           .requireClassRegistration(true)
           .withRefTracking(true)
           .build()

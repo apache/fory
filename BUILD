@@ -51,7 +51,7 @@ pyx_library(
         "//cpp/fory/util:fory_util",
         "//cpp/fory/type:fory_type",
         "//python/pyfory/cpp:_pyfory",
-        "@abseil-cpp//absl/container:flat_hash_map",
+        "//cpp/fory/thirdparty:flat_hash_map",
     ],
 )
 

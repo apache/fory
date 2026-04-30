@@ -23,7 +23,6 @@ import static org.testng.Assert.assertEquals;
 
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.resolver.TypeResolver;
@@ -37,7 +36,7 @@ public class CodecUtilsTest {
   public void loadOrGenObjectCodecClass() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

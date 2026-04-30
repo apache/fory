@@ -22,7 +22,6 @@ package org.apache.fory.graalvm;
 import java.util.List;
 import java.util.Objects;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.util.Preconditions;
 
 /**
@@ -41,7 +40,7 @@ public class CompatibleDependentSerializerExample {
         Fory.builder()
             .withName(CompatibleDependentSerializerExample.class.getName())
             .requireClassRegistration(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     fory.register(Payload.class);
     fory.register(LongPayload.class);

@@ -25,6 +25,7 @@
 #include "fory/serialization/serializer.h"
 #include "fory/serialization/serializer_traits.h"
 #include "fory/serialization/skip.h"
+#include "fory/serialization/struct_serializer.h"
 #include "fory/type/type.h"
 #include "fory/util/error.h"
 
@@ -175,6 +176,78 @@ template <typename T>
 using union_unwrap_optional_inner_t =
     typename union_unwrap_optional_inner<T>::type;
 
+template <typename UnionT, size_t Index> struct UnionCaseSpecProvider {
+  static inline constexpr FieldNodeSpec spec =
+      UnionInfo<UnionT>::template Meta<Index>::value.spec_;
+};
+
+template <typename SpecProvider, int8_t NodeIndex = 0>
+constexpr FieldNodeKind union_node_kind() {
+  constexpr auto spec = SpecProvider::spec;
+  return NodeIndex >= 0 ? spec.kind_[NodeIndex] : FieldNodeKind::Default;
+}
+
+template <typename SpecProvider, int8_t NodeIndex = 0>
+constexpr Encoding union_node_encoding() {
+  constexpr auto spec = SpecProvider::spec;
+  return NodeIndex >= 0 ? spec.encoding_[NodeIndex] : Encoding::Default;
+}
+
+template <typename SpecProvider, int8_t NodeIndex = 0>
+constexpr bool union_node_has_override() {
+  constexpr auto spec = SpecProvider::spec;
+  return NodeIndex >= 0 &&
+         (spec.kind_[NodeIndex] != FieldNodeKind::Default ||
+          spec.encoding_[NodeIndex] != Encoding::Default ||
+          spec.scalar_[NodeIndex] != FieldScalarKind::Inferred);
+}
+
+template <typename SpecProvider, int8_t NodeIndex = 0>
+constexpr FieldScalarKind union_node_scalar() {
+  constexpr auto spec = SpecProvider::spec;
+  return NodeIndex >= 0 ? spec.scalar_[NodeIndex] : FieldScalarKind::Inferred;
+}
+
+template <typename SpecProvider, int8_t NodeIndex, int ChildSlot>
+constexpr int8_t union_node_child() {
+  constexpr auto spec = SpecProvider::spec;
+  if constexpr (ChildSlot == 0) {
+    return NodeIndex >= 0 ? spec.child0_[NodeIndex] : -1;
+  } else {
+    return NodeIndex >= 0 ? spec.child1_[NodeIndex] : -1;
+  }
+}
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+constexpr bool union_vector_primitive_array_spec() {
+  if constexpr (!is_vector_v<ValueType>) {
+    return false;
+  } else {
+    using Element = element_type_t<ValueType>;
+    if constexpr (!std::is_same_v<decay_t<Element>, int8_t> &&
+                  !std::is_same_v<decay_t<Element>, uint8_t>) {
+      return false;
+    } else {
+      constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
+      constexpr int8_t child = union_node_child<SpecProvider, NodeIndex, 0>();
+      if constexpr (kind != FieldNodeKind::List || child < 0) {
+        return false;
+      } else if constexpr (union_node_kind<SpecProvider, child>() !=
+                               FieldNodeKind::Scalar ||
+                           union_node_encoding<SpecProvider, child>() !=
+                               Encoding::Default) {
+        return false;
+      } else if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
+        return union_node_scalar<SpecProvider, child>() ==
+               FieldScalarKind::Int8;
+      } else {
+        return union_node_scalar<SpecProvider, child>() ==
+               FieldScalarKind::UInt8;
+      }
+    }
+  }
+}
+
 template <typename T>
 constexpr uint32_t resolve_union_type_id(const ::fory::FieldMeta &meta) {
   if (meta.type_id_override_ >= 0) {
@@ -218,6 +291,21 @@ constexpr uint32_t resolve_union_type_id(const ::fory::FieldMeta &meta) {
   return static_cast<uint32_t>(Serializer<Inner>::type_id);
 }
 
+template <typename T, typename SpecProvider>
+constexpr uint32_t
+resolve_union_type_id_for_spec(const ::fory::FieldMeta &meta) {
+  using Inner = union_unwrap_optional_inner_t<T>;
+  if constexpr (union_vector_primitive_array_spec<Inner, SpecProvider, 0>()) {
+    using Element = element_type_t<Inner>;
+    if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
+      return static_cast<uint32_t>(TypeId::INT8_ARRAY);
+    } else {
+      return static_cast<uint32_t>(TypeId::UINT8_ARRAY);
+    }
+  }
+  return resolve_union_type_id<T>(meta);
+}
+
 template <typename T>
 constexpr bool needs_manual_encoding(const ::fory::FieldMeta &meta) {
   if (meta.type_id_override_ >= 0 ||
@@ -227,6 +315,362 @@ constexpr bool needs_manual_encoding(const ::fory::FieldMeta &meta) {
   using Inner = union_unwrap_optional_inner_t<T>;
   return static_cast<uint32_t>(Serializer<Inner>::type_id) !=
          resolve_union_type_id<T>(meta);
+}
+
+template <typename FieldType, typename SpecProvider, int8_t NodeIndex>
+FORY_ALWAYS_INLINE void write_union_configured_scalar(const FieldType &value,
+                                                      WriteContext &ctx) {
+  constexpr Encoding enc = union_node_encoding<SpecProvider, NodeIndex>();
+  if constexpr (is_configurable_int_v<FieldType>) {
+    if constexpr (std::is_same_v<FieldType, uint32_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        ctx.write_var_uint32(value);
+      } else {
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        ctx.write_var_uint64(value);
+      } else if constexpr (enc == Encoding::Tagged) {
+        ctx.write_tagged_uint64(value);
+      } else {
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                         std::is_same_v<FieldType, int>) {
+      if constexpr (enc == Encoding::Fixed) {
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
+      } else {
+        ctx.write_var_int32(static_cast<int32_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                         std::is_same_v<FieldType, long long>) {
+      if constexpr (enc == Encoding::Fixed) {
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
+      } else if constexpr (enc == Encoding::Tagged) {
+        ctx.write_tagged_int64(static_cast<int64_t>(value));
+      } else {
+        ctx.write_var_int64(static_cast<int64_t>(value));
+      }
+    } else {
+      Serializer<FieldType>::write_data(value, ctx);
+    }
+  } else {
+    Serializer<FieldType>::write_data(value, ctx);
+  }
+}
+
+template <typename FieldType, typename SpecProvider, int8_t NodeIndex>
+FORY_ALWAYS_INLINE FieldType read_union_configured_scalar(ReadContext &ctx) {
+  if constexpr (is_configurable_int_v<FieldType>) {
+    constexpr Encoding enc = union_node_encoding<SpecProvider, NodeIndex>();
+    if constexpr (std::is_same_v<FieldType, uint32_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        return static_cast<FieldType>(ctx.read_var_uint32(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_int32(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        return static_cast<FieldType>(ctx.read_var_uint64(ctx.error()));
+      } else if constexpr (enc == Encoding::Tagged) {
+        return static_cast<FieldType>(ctx.read_tagged_uint64(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_uint64(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                         std::is_same_v<FieldType, int>) {
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<FieldType>(ctx.read_int32(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_var_int32(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                         std::is_same_v<FieldType, long long>) {
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<FieldType>(ctx.read_int64(ctx.error()));
+      } else if constexpr (enc == Encoding::Tagged) {
+        return static_cast<FieldType>(ctx.read_tagged_int64(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_var_int64(ctx.error()));
+    } else {
+      return Serializer<FieldType>::read_data(ctx);
+    }
+  } else {
+    return Serializer<FieldType>::read_data(ctx);
+  }
+}
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+void write_union_configured_value(const ValueType &value, WriteContext &ctx,
+                                  RefMode ref_mode, bool write_type,
+                                  bool has_generics);
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+ValueType read_union_configured_value(ReadContext &ctx, RefMode ref_mode,
+                                      bool read_type);
+
+template <typename Container, typename SpecProvider, int8_t ElemNode>
+void write_union_configured_list_data(const Container &coll,
+                                      WriteContext &ctx) {
+  using Elem = element_type_t<Container>;
+  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
+  if (coll.empty()) {
+    return;
+  }
+  ctx.write_uint8(COLL_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE);
+  for (const auto &elem : coll) {
+    if constexpr (ElemNode >= 0) {
+      write_union_configured_value<Elem, SpecProvider, ElemNode>(
+          elem, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Elem>::write_data(elem, ctx);
+    }
+  }
+}
+
+template <typename Container, typename SpecProvider, int8_t ElemNode>
+Container read_union_configured_list_data(ReadContext &ctx) {
+  using Elem = element_type_t<Container>;
+  uint32_t length = ctx.read_var_uint32(ctx.error());
+  Container result;
+  if constexpr (has_reserve_v<Container>) {
+    result.reserve(length);
+  }
+  if (FORY_PREDICT_FALSE(ctx.has_error()) || length == 0) {
+    return result;
+  }
+  uint8_t bitmap = ctx.read_uint8(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return result;
+  }
+  const bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
+  const bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
+  if (is_same_type && !is_decl_type) {
+    (void)ctx.read_any_type_info(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+  }
+  for (uint32_t i = 0; i < length; ++i) {
+    if constexpr (ElemNode >= 0) {
+      auto elem = read_union_configured_value<Elem, SpecProvider, ElemNode>(
+          ctx, RefMode::None, false);
+      collection_insert(result, std::move(elem));
+    } else {
+      auto elem = Serializer<Elem>::read_data(ctx);
+      collection_insert(result, std::move(elem));
+    }
+  }
+  return result;
+}
+
+template <typename MapType, typename SpecProvider, int8_t KeyNode,
+          int8_t ValueNode>
+void write_union_configured_map_data(const MapType &map, WriteContext &ctx) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  ctx.write_var_uint32(static_cast<uint32_t>(map.size()));
+  if (map.empty()) {
+    return;
+  }
+  size_t header_offset = 0;
+  uint8_t pair_counter = 0;
+  bool need_write_header = true;
+  for (const auto &[key, value] : map) {
+    if (need_write_header) {
+      ctx.enter_flush_barrier();
+      header_offset = ctx.buffer().writer_index();
+      ctx.write_uint16(0);
+      ctx.buffer().unsafe_put_byte(
+          header_offset, static_cast<uint8_t>(DECL_KEY_TYPE | DECL_VALUE_TYPE));
+      need_write_header = false;
+    }
+    if constexpr (KeyNode >= 0) {
+      write_union_configured_value<Key, SpecProvider, KeyNode>(
+          key, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Key>::write_data(key, ctx);
+    }
+    if constexpr (ValueNode >= 0) {
+      write_union_configured_value<Value, SpecProvider, ValueNode>(
+          value, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Value>::write_data(value, ctx);
+    }
+    ++pair_counter;
+    if (pair_counter == MAX_CHUNK_SIZE) {
+      write_chunk_size(ctx, header_offset, pair_counter);
+      ctx.exit_flush_barrier();
+      ctx.try_flush();
+      pair_counter = 0;
+      need_write_header = true;
+    }
+  }
+  if (pair_counter > 0) {
+    write_chunk_size(ctx, header_offset, pair_counter);
+    ctx.exit_flush_barrier();
+    ctx.try_flush();
+  }
+}
+
+template <typename MapType, typename SpecProvider, int8_t KeyNode,
+          int8_t ValueNode>
+MapType read_union_configured_map_data(ReadContext &ctx) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  uint32_t length = ctx.read_var_uint32(ctx.error());
+  MapType result;
+  MapReserver<MapType>::reserve(result, length);
+  uint32_t read_count = 0;
+  while (read_count < length && !ctx.has_error()) {
+    uint8_t header = ctx.read_uint8(ctx.error());
+    uint8_t chunk_size = ctx.read_uint8(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+    const bool key_decl = (header & DECL_KEY_TYPE) != 0;
+    const bool value_decl = (header & DECL_VALUE_TYPE) != 0;
+    if (!key_decl) {
+      (void)ctx.read_any_type_info(ctx.error());
+    }
+    if (!value_decl) {
+      (void)ctx.read_any_type_info(ctx.error());
+    }
+    for (uint8_t i = 0; i < chunk_size && read_count < length; ++i) {
+      Key key = [&]() {
+        if constexpr (KeyNode >= 0) {
+          return read_union_configured_value<Key, SpecProvider, KeyNode>(
+              ctx, RefMode::None, false);
+        } else {
+          return Serializer<Key>::read_data(ctx);
+        }
+      }();
+      Value value = [&]() {
+        if constexpr (ValueNode >= 0) {
+          return read_union_configured_value<Value, SpecProvider, ValueNode>(
+              ctx, RefMode::None, false);
+        } else {
+          return Serializer<Value>::read_data(ctx);
+        }
+      }();
+      result.emplace(std::move(key), std::move(value));
+      ++read_count;
+    }
+  }
+  return result;
+}
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+void write_union_configured_value(const ValueType &value, WriteContext &ctx,
+                                  RefMode ref_mode, bool write_type,
+                                  bool has_generics) {
+  constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
+  constexpr FieldScalarKind scalar_kind =
+      union_node_scalar<SpecProvider, NodeIndex>();
+  static_assert(configured_scalar_kind_matches<ValueType, scalar_kind>(),
+                "fory::T typed scalar spec does not match the C++ union case "
+                "type");
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    if (!value.has_value()) {
+      if (ref_mode != RefMode::None) {
+        ctx.write_int8(NULL_FLAG);
+      }
+      return;
+    }
+    write_not_null_ref_flag(ctx, ref_mode);
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? union_node_child<SpecProvider, NodeIndex, 0>()
+            : NodeIndex;
+    write_union_configured_value<Inner, SpecProvider, child>(
+        *value, ctx, RefMode::None, false, has_generics);
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       (kind == FieldNodeKind::List ||
+                        kind == FieldNodeKind::Set)) {
+    if constexpr (union_vector_primitive_array_spec<ValueType, SpecProvider,
+                                                    NodeIndex>()) {
+      Serializer<ValueType>::write(value, ctx, ref_mode, false, has_generics);
+    } else {
+      write_not_null_ref_flag(ctx, ref_mode);
+      constexpr int8_t child = union_node_child<SpecProvider, NodeIndex, 0>();
+      write_union_configured_list_data<ValueType, SpecProvider, child>(value,
+                                                                       ctx);
+    }
+  } else if constexpr (is_map_like_v<ValueType> && kind == FieldNodeKind::Map) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    constexpr int8_t key_child = union_node_child<SpecProvider, NodeIndex, 0>();
+    constexpr int8_t value_child =
+        union_node_child<SpecProvider, NodeIndex, 1>();
+    write_union_configured_map_data<ValueType, SpecProvider, key_child,
+                                    value_child>(value, ctx);
+  } else if constexpr (kind == FieldNodeKind::Scalar ||
+                       union_node_encoding<SpecProvider, NodeIndex>() !=
+                           Encoding::Default) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    write_union_configured_scalar<ValueType, SpecProvider, NodeIndex>(value,
+                                                                      ctx);
+  } else {
+    Serializer<ValueType>::write(value, ctx, ref_mode, write_type,
+                                 has_generics);
+  }
+}
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+ValueType read_union_configured_value(ReadContext &ctx, RefMode ref_mode,
+                                      bool read_type) {
+  constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
+  constexpr FieldScalarKind scalar_kind =
+      union_node_scalar<SpecProvider, NodeIndex>();
+  static_assert(configured_scalar_kind_matches<ValueType, scalar_kind>(),
+                "fory::T typed scalar spec does not match the C++ union case "
+                "type");
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return std::nullopt;
+    }
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? union_node_child<SpecProvider, NodeIndex, 0>()
+            : NodeIndex;
+    Inner inner = read_union_configured_value<Inner, SpecProvider, child>(
+        ctx, RefMode::None, false);
+    return ValueType{std::move(inner)};
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       (kind == FieldNodeKind::List ||
+                        kind == FieldNodeKind::Set)) {
+    if constexpr (union_vector_primitive_array_spec<ValueType, SpecProvider,
+                                                    NodeIndex>()) {
+      return Serializer<ValueType>::read(ctx, ref_mode, false);
+    } else {
+      if (!read_null_only_flag(ctx, ref_mode)) {
+        return ValueType{};
+      }
+      constexpr int8_t child = union_node_child<SpecProvider, NodeIndex, 0>();
+      return read_union_configured_list_data<ValueType, SpecProvider, child>(
+          ctx);
+    }
+  } else if constexpr (is_map_like_v<ValueType> && kind == FieldNodeKind::Map) {
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return ValueType{};
+    }
+    constexpr int8_t key_child = union_node_child<SpecProvider, NodeIndex, 0>();
+    constexpr int8_t value_child =
+        union_node_child<SpecProvider, NodeIndex, 1>();
+    return read_union_configured_map_data<ValueType, SpecProvider, key_child,
+                                          value_child>(ctx);
+  } else if constexpr (kind == FieldNodeKind::Scalar ||
+                       union_node_encoding<SpecProvider, NodeIndex>() !=
+                           Encoding::Default) {
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return ValueType{};
+    }
+    return read_union_configured_scalar<ValueType, SpecProvider, NodeIndex>(
+        ctx);
+  } else {
+    return Serializer<ValueType>::read(ctx, ref_mode, read_type);
+  }
 }
 
 template <typename T>
@@ -410,6 +854,12 @@ inline bool dispatch_union_case(uint32_t case_id, F &&fn) {
   return false;
 }
 
+template <typename Factory> struct UnionFactoryArg;
+
+template <typename R, typename Arg> struct UnionFactoryArg<R (*)(Arg)> {
+  using type = Arg;
+};
+
 } // namespace detail
 
 // ============================================================================//
@@ -476,9 +926,13 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       using CaseT = typename detail::UnionInfo<T>::template CaseT<index>;
       constexpr ::fory::FieldMeta meta =
           detail::UnionInfo<T>::template Meta<index>::value;
+      using SpecProvider = detail::UnionCaseSpecProvider<T, index>;
       constexpr uint32_t field_type_id =
-          detail::resolve_union_type_id<CaseT>(meta);
-      const bool manual = detail::needs_manual_encoding<CaseT>(meta);
+          detail::resolve_union_type_id_for_spec<CaseT, SpecProvider>(meta);
+      constexpr bool configured =
+          detail::union_node_has_override<SpecProvider, 0>();
+      const bool manual =
+          configured || detail::needs_manual_encoding<CaseT>(meta);
       constexpr bool nullable =
           meta.nullable_ || is_nullable_v<detail::decay_t<CaseT>>;
       const RefMode value_ref_mode =
@@ -493,7 +947,12 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
               return;
             }
             ctx.write_uint8(static_cast<uint8_t>(field_type_id));
-            detail::write_union_value_data(value, ctx, field_type_id);
+            if constexpr (detail::union_node_has_override<SpecProvider, 0>()) {
+              detail::write_union_configured_value<CaseT, SpecProvider, 0>(
+                  value, ctx, RefMode::None, false, true);
+            } else {
+              detail::write_union_value_data(value, ctx, field_type_id);
+            }
             return;
           }
           Serializer<CaseT>::write(value, ctx, value_ref_mode, true);
@@ -557,9 +1016,13 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
       using CaseT = typename detail::UnionInfo<T>::template CaseT<index>;
       constexpr ::fory::FieldMeta meta =
           detail::UnionInfo<T>::template Meta<index>::value;
+      using SpecProvider = detail::UnionCaseSpecProvider<T, index>;
       constexpr uint32_t field_type_id =
-          detail::resolve_union_type_id<CaseT>(meta);
-      const bool manual = detail::needs_manual_encoding<CaseT>(meta);
+          detail::resolve_union_type_id_for_spec<CaseT, SpecProvider>(meta);
+      constexpr bool configured =
+          detail::union_node_has_override<SpecProvider, 0>();
+      const bool manual =
+          configured || detail::needs_manual_encoding<CaseT>(meta);
       constexpr bool nullable =
           meta.nullable_ || is_nullable_v<detail::decay_t<CaseT>>;
       const RefMode value_ref_mode =
@@ -587,7 +1050,14 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
           result = default_value();
           return;
         }
-        CaseT value = detail::read_union_value_data<CaseT>(ctx, field_type_id);
+        CaseT value = [&]() {
+          if constexpr (detail::union_node_has_override<SpecProvider, 0>()) {
+            return detail::read_union_configured_value<CaseT, SpecProvider, 0>(
+                ctx, RefMode::None, false);
+          } else {
+            return detail::read_union_value_data<CaseT>(ctx, field_type_id);
+          }
+        }();
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           result = default_value();
           return;
@@ -633,7 +1103,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
         return default_value();
       }
       FieldType field_type;
-      field_type.type_id = type_info->type_id;
+      field_type.set_type_id(type_info->type_id);
       field_type.nullable = false;
       skip_field_value(ctx, field_type, RefMode::None);
       ctx.set_error(Error::invalid_data("Unknown union case id"));
@@ -659,14 +1129,35 @@ private:
 // Union registration macros for generated code
 // ============================================================================//
 
-#define FORY_UNION_CASE_TYPE(tuple) FORY_UNION_CASE_TYPE_IMPL tuple
-#define FORY_UNION_CASE_TYPE_IMPL(type, name, meta) type
+#define FORY_UNION_TUPLE_SIZE(tuple) FORY_UNION_TUPLE_SIZE_IMPL tuple
+#define FORY_UNION_TUPLE_SIZE_IMPL(...)                                        \
+  FORY_UNION_TUPLE_SIZE_SELECT(__VA_ARGS__, 3, 2, 1, 0)
+#define FORY_UNION_TUPLE_SIZE_SELECT(_1, _2, _3, N, ...) N
 
-#define FORY_UNION_CASE_NAME(tuple) FORY_UNION_CASE_NAME_IMPL tuple
-#define FORY_UNION_CASE_NAME_IMPL(type, name, meta) name
+#define FORY_UNION_CASE_NAME(tuple)                                            \
+  FORY_PP_CONCAT(FORY_UNION_CASE_NAME_, FORY_UNION_TUPLE_SIZE(tuple))(tuple)
+#define FORY_UNION_CASE_NAME_2(tuple) FORY_UNION_CASE_NAME_2_IMPL tuple
+#define FORY_UNION_CASE_NAME_2_IMPL(name, meta) name
+#define FORY_UNION_CASE_NAME_3(tuple) FORY_UNION_CASE_NAME_3_IMPL tuple
+#define FORY_UNION_CASE_NAME_3_IMPL(name, type, meta) name
 
-#define FORY_UNION_CASE_META(tuple) FORY_UNION_CASE_META_IMPL tuple
-#define FORY_UNION_CASE_META_IMPL(type, name, meta) meta
+#define FORY_UNION_CASE_TYPE(Type, tuple)                                      \
+  FORY_PP_CONCAT(FORY_UNION_CASE_TYPE_, FORY_UNION_TUPLE_SIZE(tuple))          \
+  (Type, tuple)
+#define FORY_UNION_CASE_TYPE_2(Type, tuple)                                    \
+  FORY_UNION_CASE_TYPE_2_IMPL(Type, tuple)
+#define FORY_UNION_CASE_TYPE_2_IMPL(Type, tuple)                               \
+  typename ::fory::serialization::detail::UnionFactoryArg<                     \
+      decltype(&Type::FORY_UNION_CASE_NAME(tuple))>::type
+#define FORY_UNION_CASE_TYPE_3(Type, tuple) FORY_UNION_CASE_TYPE_3_IMPL tuple
+#define FORY_UNION_CASE_TYPE_3_IMPL(name, type, meta) type
+
+#define FORY_UNION_CASE_META(tuple)                                            \
+  FORY_PP_CONCAT(FORY_UNION_CASE_META_, FORY_UNION_TUPLE_SIZE(tuple))(tuple)
+#define FORY_UNION_CASE_META_2(tuple) FORY_UNION_CASE_META_2_IMPL tuple
+#define FORY_UNION_CASE_META_2_IMPL(name, meta) meta
+#define FORY_UNION_CASE_META_3(tuple) FORY_UNION_CASE_META_3_IMPL tuple
+#define FORY_UNION_CASE_META_3_IMPL(name, type, meta) meta
 
 #define FORY_UNION_PP_FOREACH_2(M, A, ...)                                     \
   FORY_PP_INVOKE(FORY_PP_CONCAT(FORY_UNION_PP_FOREACH_2_IMPL_,                 \
@@ -808,13 +1299,18 @@ private:
 #define FORY_UNION_CASE_ID(Type, tuple)                                        \
   static_cast<uint32_t>(FORY_UNION_CASE_META(tuple).id_)
 
+#define FORY_UNION_CASE_REQUIRE_ID(Type, tuple)                                \
+  static_assert(FORY_UNION_CASE_META(tuple).has_id_,                           \
+                "FORY_UNION cases must use fory::F(id)");
+
 #define FORY_UNION_CASE_ID_ENTRY(Type, tuple) FORY_UNION_CASE_ID(Type, tuple),
 
-#define FORY_UNION_CASE_TYPE_VALUE(Type, tuple) FORY_UNION_CASE_TYPE(tuple)
+#define FORY_UNION_CASE_TYPE_VALUE(Type, tuple)                                \
+  FORY_UNION_CASE_TYPE(Type, tuple)
 #define FORY_UNION_CASE_META_VALUE(Type, tuple) FORY_UNION_CASE_META(tuple)
 #define FORY_UNION_CASE_ID_VALUE(Type, tuple) FORY_UNION_CASE_ID(Type, tuple)
 #define FORY_UNION_CASE_FACTORY_VALUE(Type, tuple)                             \
-  static_cast<Type (*)(FORY_UNION_CASE_TYPE(tuple))>(                          \
+  static_cast<Type (*)(FORY_UNION_CASE_TYPE(Type, tuple))>(                    \
       &Type::FORY_UNION_CASE_NAME(tuple))
 
 #define FORY_UNION_IDS_DESCRIPTOR_NAME(line)                                   \
@@ -838,6 +1334,8 @@ private:
   static_assert(true)
 
 #define FORY_UNION_CASE(Type, CaseId, CaseType, Factory, MetaExpr)             \
+  static_assert((MetaExpr).has_id_,                                            \
+                "FORY_UNION_CASE metadata must use fory::F(id)");              \
   struct FORY_UNION_CASE_DESCRIPTOR_NAME(__LINE__) {                           \
     using CaseT = CaseType;                                                    \
     static constexpr ::fory::FieldMeta meta = MetaExpr;                        \
@@ -855,6 +1353,7 @@ private:
                 "FORY_UNION supports up to 16 cases; use "                     \
                 "FORY_UNION_IDS/FORY_UNION_CASE "                              \
                 "for larger unions");                                          \
+  FORY_UNION_PP_FOREACH_2(FORY_UNION_CASE_REQUIRE_ID, Type, __VA_ARGS__)       \
   struct FORY_UNION_DESCRIPTOR_NAME(__LINE__) {                                \
     using UnionType = Type;                                                    \
     static constexpr size_t case_count = FORY_PP_NARG(__VA_ARGS__);            \

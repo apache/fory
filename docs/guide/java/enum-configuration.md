@@ -38,7 +38,7 @@ of numeric tag.
 
 ```java
 Fory fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .serializeEnumByName(true)
     .build();
 ```

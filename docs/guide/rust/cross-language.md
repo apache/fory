@@ -101,7 +101,7 @@ public class Person {
 }
 
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .withRefTracking(true)
     .build();
 

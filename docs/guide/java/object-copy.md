@@ -53,12 +53,11 @@ handled correctly:
 
 ```java
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 
 public class Example {
   public static void main(String[] args) {
     Fory fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefCopy(true)
       .build();
 
@@ -81,7 +80,6 @@ graph, and circular references can be copied correctly.
 
 ```java
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 
 public class Example {
   static final class Address {
@@ -95,7 +93,7 @@ public class Example {
 
   public static void main(String[] args) {
     Fory fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefCopy(true)
       .build();
 
@@ -119,7 +117,6 @@ cyclic references. This can be faster, but repeated references are copied into d
 
 ```java
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 
 public class Example {
   static final class Address {
@@ -133,7 +130,7 @@ public class Example {
 
   public static void main(String[] args) {
     Fory fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefCopy(false)
       .build();
 
@@ -213,12 +210,11 @@ For general multi-threaded usage:
 ```java
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.Language;
 
 public class Example {
   public static void main(String[] args) {
     ThreadSafeFory fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefCopy(true)
       .buildThreadSafeFory();
 

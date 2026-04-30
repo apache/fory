@@ -27,8 +27,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -41,8 +39,7 @@ import org.testng.annotations.Test;
 
 /**
  * Tests for compatible mode serialization using meta-shared approach. These tests verify
- * forward/backward compatibility when using {@link CompatibleMode#COMPATIBLE} with scoped meta
- * share.
+ * forward/backward compatibility when using compatible mode with scoped meta share.
  */
 public class CompatibleSerializerTest extends ForyTestBase {
 
@@ -50,9 +47,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWrite() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     serDeCheck(fory, Foo.create());
@@ -64,9 +61,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testCopy() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     copyCheck(fory, Foo.create());
@@ -78,9 +75,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteCompatibleBasic() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     Object foo = Foo.create();
@@ -92,9 +89,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
       TestUtils.unsafeCopy(foo, newFoo);
       Fory newFory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withRefTracking(true)
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withCompatible(true)
               .requireClassRegistration(false)
               .withClassLoader(fooClass.getClassLoader())
               .build();
@@ -128,9 +125,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteNestedCollection() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     CollectionFields collectionFields = UnmodifiableSerializersTest.createCollectionFields();
@@ -147,9 +144,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteNestedMap() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     MapFields mapFields = UnmodifiableSerializersTest.createMapFields();
@@ -164,9 +161,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteCompatibleContainer(boolean enableCodegen) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .withCodegen(enableCodegen)
             .build();
@@ -176,9 +173,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
     TestUtils.unsafeCopy(beanA, newBeanA);
     Fory newFory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .withClassLoader(cls.getClassLoader())
             .build();
@@ -198,9 +195,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteCompatibleCollection() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     CollectionFields collectionFields = UnmodifiableSerializersTest.createCollectionFields();
@@ -217,9 +214,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
     TestUtils.unsafeCopy(collectionFields, newObj);
     Fory newFory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .withClassLoader(cls.getClassLoader())
             .build();
@@ -249,9 +246,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testWriteCompatibleMap() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     MapFields mapFields = UnmodifiableSerializersTest.createMapFields();
@@ -266,9 +263,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
     TestUtils.unsafeCopy(mapFields, newObj);
     Fory newFory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .withClassLoader(cls.getClassLoader())
             .build();
@@ -305,9 +302,9 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testCompressInt(boolean compressNumber) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withNumberCompressed(compressNumber)
             .requireClassRegistration(false)
             .build();
@@ -324,7 +321,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
     Fory fory =
         builder()
             .withNumberCompressed(compressNumber)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withClassLoader(structClass.getClassLoader())
             .build();
     serDeCheck(fory, Struct.createPOJO(structClass));
@@ -334,8 +331,8 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testSerializeDeserializeApis() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     BeanA beanA = BeanA.createBeanA(2);

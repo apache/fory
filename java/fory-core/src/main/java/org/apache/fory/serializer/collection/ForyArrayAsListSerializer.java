@@ -39,7 +39,7 @@ public final class ForyArrayAsListSerializer
 
   public Collection newCollection(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int numElements = buffer.readVarUint32Small7();
+    int numElements = buffer.readVarUInt32Small7();
     setNumElements(numElements);
     return new ArrayAsList(numElements);
   }

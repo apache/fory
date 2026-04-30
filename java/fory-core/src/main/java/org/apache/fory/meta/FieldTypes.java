@@ -28,6 +28,7 @@ import static org.apache.fory.type.TypeUtils.isOptionalType;
 import static org.apache.fory.type.TypeUtils.mapOf;
 
 import java.io.Serializable;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.Objects;
@@ -42,10 +43,10 @@ import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -57,6 +58,7 @@ import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
@@ -84,7 +86,7 @@ public class FieldTypes {
   /** Build field type from generics, nested generics will be extracted too. */
   static FieldType buildFieldType(TypeResolver resolver, Field field) {
     Preconditions.checkNotNull(field);
-    GenericType genericType = resolver.buildGenericType(field.getGenericType());
+    GenericType genericType = resolver.buildGenericType(TypeRef.of(field.getAnnotatedType()));
     return buildFieldType(resolver, field, genericType);
   }
 
@@ -97,7 +99,15 @@ public class FieldTypes {
     // Get type ID for both xlang and native mode
     // This supports unsigned types and field-configurable compression in both modes
     int typeId;
-    if (TypeUtils.unwrap(rawType).isPrimitive()) {
+    Annotation typeAnnotation = field == null ? null : Descriptor.getAnnotation(field);
+    int primitiveListElementTypeId =
+        TypeAnnotationUtils.getPrimitiveListElementTypeId(typeAnnotation, rawType);
+    TypeExtMeta typeExtMeta = genericType.getTypeRef().getTypeExtMeta();
+    if (typeExtMeta != null && typeExtMeta.typeId() != Types.UNKNOWN) {
+      typeId = typeExtMeta.typeId();
+    } else if (primitiveListElementTypeId != Types.UNKNOWN) {
+      typeId = TypeAnnotationUtils.getPrimitiveListTypeId(typeAnnotation, rawType);
+    } else if (TypeUtils.unwrap(rawType).isPrimitive()) {
       if (field != null) {
         typeId = Types.getDescriptorTypeId(resolver, field);
       } else {
@@ -105,7 +115,7 @@ public class FieldTypes {
       }
     } else if (rawType.isArray() && rawType.getComponentType().isPrimitive() && field != null) {
       // For primitive arrays with type annotations, use getDescriptorTypeId to parse annotation
-      // This allows @Uint8ArrayType etc. to override the default INT8_ARRAY type
+      // This allows @UInt8Elements etc. to override the default INT8_ARRAY type
       typeId = Types.getDescriptorTypeId(resolver, field);
     } else {
       TypeInfo info =
@@ -143,7 +153,10 @@ public class FieldTypes {
     }
     // For xlang: ref tracking is false by default (no shared ownership like Rust's Rc/Arc)
     // For native: use the type's default tracking behavior
-    boolean trackingRef = !isXlang && genericType.trackingRef(resolver);
+    boolean trackingRef =
+        isXlang
+            ? typeExtMeta != null && typeExtMeta.trackingRef()
+            : genericType.trackingRef(resolver);
     // For xlang: nullable is false by default for top-level fields.
     // Nested element types are nullable by default to align with cross-language collection
     // semantics.
@@ -175,6 +188,15 @@ public class FieldTypes {
 
     if (Types.isPrimitiveArray(typeId)) {
       return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
+    }
+
+    if (primitiveListElementTypeId != Types.UNKNOWN
+        && TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(typeAnnotation, rawType)) {
+      return new CollectionFieldType(
+          Types.LIST,
+          nullable,
+          trackingRef,
+          new RegisteredFieldType(true, false, primitiveListElementTypeId, -1));
     }
 
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())) {
@@ -219,7 +241,7 @@ public class FieldTypes {
         if (isXlang) {
           if (elemType.isPrimitive()) {
             // For xlang mode, use the typeId we already computed above
-            // which respects @Uint8ArrayType etc. annotations
+            // which respects @UInt8Elements etc. annotations
             return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
           }
           return new CollectionFieldType(
@@ -334,28 +356,28 @@ public class FieldTypes {
       byte kindHeader = (byte) ((typeKind() << 2) | (writeHeader ? header : 0));
       if (this instanceof RegisteredFieldType) {
         int typeId = ((RegisteredFieldType) this).getTypeId();
-        buffer.writeUint8(kindHeader);
-        buffer.writeUint8(typeId);
+        buffer.writeUInt8(kindHeader);
+        buffer.writeUInt8(typeId);
       } else if (this instanceof EnumFieldType) {
-        buffer.writeUint8(kindHeader);
+        buffer.writeUInt8(kindHeader);
       } else if (this instanceof ArrayFieldType) {
         ArrayFieldType arrayFieldType = (ArrayFieldType) this;
-        buffer.writeUint8(kindHeader);
-        buffer.writeVarUint32Small7(arrayFieldType.getDimensions());
+        buffer.writeUInt8(kindHeader);
+        buffer.writeVarUInt32Small7(arrayFieldType.getDimensions());
         (arrayFieldType).getComponentType().write(buffer);
       } else if (this instanceof CollectionFieldType) {
-        buffer.writeUint8(kindHeader);
+        buffer.writeUInt8(kindHeader);
         // TODO remove it when new collection deserialization jit finished.
         ((CollectionFieldType) this).getElementType().write(buffer);
       } else if (this instanceof MapFieldType) {
-        buffer.writeUint8(kindHeader);
+        buffer.writeUInt8(kindHeader);
         // TODO remove it when new map deserialization jit finished.
         MapFieldType mapFieldType = (MapFieldType) this;
         mapFieldType.getKeyType().write(buffer);
         mapFieldType.getValueType().write(buffer);
       } else {
         Preconditions.checkArgument(this instanceof ObjectFieldType);
-        buffer.writeUint8(kindHeader);
+        buffer.writeUInt8(kindHeader);
       }
     }
 
@@ -368,7 +390,7 @@ public class FieldTypes {
       // - bit 0: trackingRef
       // - bit 1: nullable
       // - bits 2+: type kind
-      int header = buffer.readUint8();
+      int header = buffer.readUInt8();
       boolean trackingRef = (header & 0b1) != 0;
       boolean nullable = (header & 0b10) != 0;
       int kind = header >>> 2;
@@ -390,12 +412,12 @@ public class FieldTypes {
       } else if (kind == 2) {
         return new CollectionFieldType(-1, nullable, trackingRef, read(buffer, resolver));
       } else if (kind == 3) {
-        int dims = buffer.readVarUint32Small7();
+        int dims = buffer.readVarUInt32Small7();
         return new ArrayFieldType(-1, nullable, trackingRef, read(buffer, resolver), dims);
       } else if (kind == 4) {
         return new EnumFieldType(nullable, -1, -1);
       } else if (kind == 5) {
-        int actualTypeId = buffer.readUint8();
+        int actualTypeId = buffer.readUInt8();
         return new RegisteredFieldType(nullable, trackingRef, actualTypeId, -1);
       } else {
         throw new IllegalStateException("Unexpected field type kind: " + kind);
@@ -411,9 +433,9 @@ public class FieldTypes {
         if (trackingRef) {
           typeId |= 0b1;
         }
-        buffer.writeVarUint32Small7(typeId);
+        buffer.writeVarUInt32Small7(typeId);
       } else {
-        buffer.writeUint8(this.typeId);
+        buffer.writeUInt8(this.typeId);
       }
       // Use the original typeId for the switch (not the one with flags)
       switch (this.typeId) {
@@ -433,7 +455,7 @@ public class FieldTypes {
     }
 
     public static FieldType readCrossLanguage(MemoryBuffer buffer, XtypeResolver resolver) {
-      int typeId = buffer.readVarUint32Small7();
+      int typeId = buffer.readVarUInt32Small7();
       boolean trackingRef = (typeId & 0b1) != 0;
       boolean nullable = (typeId & 0b10) != 0;
       typeId = typeId >>> 2;
@@ -664,19 +686,19 @@ public class FieldTypes {
       case Types.INT8_ARRAY:
         return Int8List.class;
       case Types.UINT8_ARRAY:
-        return Uint8List.class;
+        return UInt8List.class;
       case Types.INT16_ARRAY:
         return Int16List.class;
       case Types.UINT16_ARRAY:
-        return Uint16List.class;
+        return UInt16List.class;
       case Types.INT32_ARRAY:
         return Int32List.class;
       case Types.UINT32_ARRAY:
-        return Uint32List.class;
+        return UInt32List.class;
       case Types.INT64_ARRAY:
         return Int64List.class;
       case Types.UINT64_ARRAY:
-        return Uint64List.class;
+        return UInt64List.class;
       case Types.FLOAT32_ARRAY:
         return Float32List.class;
       case Types.FLOAT16_ARRAY:

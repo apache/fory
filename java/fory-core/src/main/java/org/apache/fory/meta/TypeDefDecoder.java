@@ -57,7 +57,7 @@ class TypeDefDecoder {
     byte header = buffer.readByte();
     int numFields = header & SMALL_NUM_FIELDS_THRESHOLD;
     if (numFields == SMALL_NUM_FIELDS_THRESHOLD) {
-      numFields += buffer.readVarUint32Small7();
+      numFields += buffer.readVarUInt32Small7();
     }
     ClassSpec classSpec;
     if ((header & REGISTER_BY_NAME_FLAG) != 0) {
@@ -73,8 +73,8 @@ class TypeDefDecoder {
         classSpec = new ClassSpec(userTypeInfo.getType());
       }
     } else {
-      int typeId = buffer.readUint8();
-      int userTypeId = buffer.readVarUint32();
+      int typeId = buffer.readUInt8();
+      int userTypeId = buffer.readVarUInt32();
       TypeInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
       if (userTypeInfo == null) {
         classSpec = new ClassSpec(UnknownClass.UnknownStruct.class, typeId, userTypeId);
@@ -114,12 +114,12 @@ class TypeDefDecoder {
       boolean useTagID = encodingFlags == 3;
       int fieldNameSize = (header >>> 2) & 0b1111;
       if (fieldNameSize == FIELD_NAME_SIZE_THRESHOLD) {
-        fieldNameSize += buffer.readVarUint32Small7();
+        fieldNameSize += buffer.readVarUInt32Small7();
       }
       fieldNameSize += 1;
       boolean nullable = (header & 0b10) != 0;
       boolean trackingRef = (header & 0b1) != 0;
-      int typeId = buffer.readUint8();
+      int typeId = buffer.readUInt8();
       FieldType fieldType =
           FieldTypes.FieldType.readCrossLanguage(buffer, resolver, typeId, nullable, trackingRef);
 

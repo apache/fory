@@ -52,11 +52,11 @@ public class UShortSerializer(
   config: Config,
 ) : ImmutableSerializer<UShort>(config, UShort::class.java, false, true), Shareable {
   override fun write(writeContext: WriteContext, value: UShort) {
-    writeContext.buffer.writeVarUint32(value.toInt())
+    writeContext.buffer.writeVarUInt32(value.toInt())
   }
 
   override fun read(readContext: ReadContext): UShort {
-    return readContext.buffer.readVarUint32().toUShort()
+    return readContext.buffer.readVarUInt32().toUShort()
   }
 }
 
@@ -70,11 +70,11 @@ public class UIntSerializer(
 ) : ImmutableSerializer<UInt>(config, UInt::class.java, false, true), Shareable {
 
   override fun write(writeContext: WriteContext, value: UInt) {
-    writeContext.buffer.writeVarUint32(value.toInt())
+    writeContext.buffer.writeVarUInt32(value.toInt())
   }
 
   override fun read(readContext: ReadContext): UInt {
-    return readContext.buffer.readVarUint32().toUInt()
+    return readContext.buffer.readVarUInt32().toUInt()
   }
 }
 
@@ -87,10 +87,10 @@ public class ULongSerializer(
   config: Config,
 ) : ImmutableSerializer<ULong>(config, ULong::class.java, false, true), Shareable {
   override fun write(writeContext: WriteContext, value: ULong) {
-    writeContext.buffer.writeVarUint64(value.toLong())
+    writeContext.buffer.writeVarUInt64(value.toLong())
   }
 
   override fun read(readContext: ReadContext): ULong {
-    return readContext.buffer.readVarUint64().toULong()
+    return readContext.buffer.readVarUInt64().toULong()
   }
 }

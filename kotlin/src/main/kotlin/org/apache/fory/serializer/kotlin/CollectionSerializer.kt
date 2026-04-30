@@ -51,13 +51,13 @@ public class KotlinArrayDequeSerializer<E>(
     value: ArrayDeque<E>,
   ): Collection<E> {
     val adapter = IterableAdapter<E>(value)
-    writeContext.buffer.writeVarUint32Small7(adapter.size)
+    writeContext.buffer.writeVarUInt32Small7(adapter.size)
     return adapter
   }
 
   override fun newCollection(readContext: ReadContext): Collection<E> {
     val buffer = readContext.buffer
-    val numElements = buffer.readVarUint32Small7()
+    val numElements = buffer.readVarUInt32Small7()
     setNumElements(numElements)
     return ArrayDequeBuilder<E>(ArrayDeque<E>(numElements))
   }

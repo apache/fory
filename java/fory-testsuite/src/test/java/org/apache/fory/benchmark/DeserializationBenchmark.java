@@ -31,7 +31,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
@@ -69,7 +68,7 @@ public class DeserializationBenchmark {
   private void testEncoder() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -103,7 +102,7 @@ public class DeserializationBenchmark {
   private void testFory(Object obj) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

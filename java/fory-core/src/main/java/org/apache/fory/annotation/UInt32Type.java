@@ -23,26 +23,15 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.apache.fory.config.Int32Encoding;
 
 /**
- * Annotation to mark a field as an unsigned 16-bit integer.
- *
- * <p>When applied to a field of type {@code short}, {@code int}, or {@code char}, this annotation
- * indicates that the value should be serialized as an unsigned 16-bit integer (UINT16, type_id=10)
- * with a valid range of [0, 65535].
- *
- * <p>This is useful for compatibility with languages that have native unsigned integer types (e.g.,
- * Rust's u16, Go's uint16, C++'s uint16_t).
- *
- * <p>Example usage:
- *
- * <pre>{@code
- * public class MyStruct {
- *   {@literal @}Uint16Type
- *   int port;  // Will be serialized as unsigned 16-bit [0, 65535]
- * }
- * }</pre>
+ * Annotation to mark a {@code long}/{@link Long} field or nested type-use position as an unsigned
+ * 32-bit integer.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint16Type {}
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+public @interface UInt32Type {
+  /** The encoding strategy to use for this uint32 value. */
+  Int32Encoding encoding() default Int32Encoding.VARINT;
+}

@@ -22,113 +22,109 @@ package org.apache.fory.type.unsigned;
 import java.io.Serializable;
 
 /**
- * Unsigned 8-bit integer backed by a byte.
+ * Unsigned 16-bit integer backed by a short.
  *
- * <p>All arithmetic, bitwise, and shift operations wrap modulo {@code 2^8}. Use the unsigned
- * conversion helpers such as {@link #toInt()} and {@link #toLong()} when interacting with APIs that
- * expect unsigned magnitudes.
+ * <p>Arithmetic, bitwise, and shift operations wrap modulo {@code 2^16}. Use {@link #toInt()} or
+ * {@link #toLong()} to obtain an unsigned magnitude for interoperability with APIs that treat the
+ * value as unsigned.
  */
-public final class Uint8 extends Number implements Comparable<Uint8>, Serializable {
-  public static final int SIZE_BITS = 8;
-  public static final int SIZE_BYTES = 1;
+public final class UInt16 implements Comparable<UInt16>, Serializable {
+  public static final int SIZE_BITS = 16;
+  public static final int SIZE_BYTES = 2;
 
-  private static final int MASK = 0xFF;
+  private static final int MASK = 0xFFFF;
 
-  public static final Uint8 MIN_VALUE = new Uint8((byte) 0);
-  public static final Uint8 MAX_VALUE = new Uint8((byte) -1);
+  public static final UInt16 MIN_VALUE = new UInt16((short) 0);
+  public static final UInt16 MAX_VALUE = new UInt16((short) -1);
 
-  private final byte data;
+  private final short data;
 
-  public Uint8(byte data) {
+  public UInt16(short data) {
     this.data = data;
   }
 
-  public static Uint8 valueOf(byte value) {
-    return new Uint8(value);
+  public static UInt16 valueOf(short value) {
+    return new UInt16(value);
   }
 
-  public static Uint8 valueOf(int value) {
-    return new Uint8((byte) value);
+  public static UInt16 valueOf(int value) {
+    return new UInt16((short) value);
   }
 
-  public static Uint8 add(byte a, byte b) {
-    return new Uint8((byte) (a + b));
+  public static UInt16 add(short a, short b) {
+    return new UInt16((short) (a + b));
   }
 
   /** Adds {@code other} with wrapping semantics. */
-  public Uint8 add(Uint8 other) {
+  public UInt16 add(UInt16 other) {
     return add(data, other.data);
   }
 
-  public static Uint8 subtract(byte a, byte b) {
-    return new Uint8((byte) (a - b));
+  public static UInt16 subtract(short a, short b) {
+    return new UInt16((short) (a - b));
   }
 
   /** Subtracts {@code other} with wrapping semantics. */
-  public Uint8 subtract(Uint8 other) {
+  public UInt16 subtract(UInt16 other) {
     return subtract(data, other.data);
   }
 
-  public static Uint8 multiply(byte a, byte b) {
-    return new Uint8((byte) (a * b));
+  public static UInt16 multiply(short a, short b) {
+    return new UInt16((short) (a * b));
   }
 
   /** Multiplies by {@code other} with wrapping semantics. */
-  public Uint8 multiply(Uint8 other) {
+  public UInt16 multiply(UInt16 other) {
     return multiply(data, other.data);
   }
 
-  public static Uint8 divide(byte a, byte b) {
-    int divisor = b & 0xFF;
-    return new Uint8((byte) ((a & 0xFF) / divisor));
+  public static UInt16 divide(short a, short b) {
+    int divisor = b & 0xFFFF;
+    return new UInt16((short) ((a & 0xFFFF) / divisor));
   }
 
   /** Divides by {@code other} treating both operands as unsigned. */
-  public Uint8 divide(Uint8 other) {
+  public UInt16 divide(UInt16 other) {
     return divide(data, other.data);
   }
 
-  public static Uint8 remainder(byte a, byte b) {
-    int divisor = b & 0xFF;
-    return new Uint8((byte) ((a & 0xFF) % divisor));
+  public static UInt16 remainder(short a, short b) {
+    int divisor = b & 0xFFFF;
+    return new UInt16((short) ((a & 0xFFFF) % divisor));
   }
 
   /** Computes the remainder of the unsigned division by {@code other}. */
-  public Uint8 remainder(Uint8 other) {
+  public UInt16 remainder(UInt16 other) {
     return remainder(data, other.data);
   }
 
-  public static Uint8 min(byte a, byte b) {
-    return compare(a, b) <= 0 ? new Uint8(a) : new Uint8(b);
+  public static UInt16 min(short a, short b) {
+    return compare(a, b) <= 0 ? new UInt16(a) : new UInt16(b);
   }
 
-  public static Uint8 max(byte a, byte b) {
-    return compare(a, b) >= 0 ? new Uint8(a) : new Uint8(b);
+  public static UInt16 max(short a, short b) {
+    return compare(a, b) >= 0 ? new UInt16(a) : new UInt16(b);
   }
 
-  /** Parses an unsigned decimal string into a {@link Uint8}. */
-  public static Uint8 parse(String value) {
+  /** Parses an unsigned decimal string into a {@link UInt16}. */
+  public static UInt16 parse(String value) {
     return parse(value, 10);
   }
 
-  /** Parses an unsigned string in {@code radix} into a {@link Uint8}. */
-  public static Uint8 parse(String value, int radix) {
+  /** Parses an unsigned string in {@code radix} into a {@link UInt16}. */
+  public static UInt16 parse(String value, int radix) {
     int parsed = Integer.parseUnsignedInt(value, radix);
     if ((parsed & ~MASK) != 0) {
-      throw new NumberFormatException("Value out of range for Uint8: " + value);
+      throw new NumberFormatException("Value out of range for UInt16: " + value);
     }
-    return new Uint8((byte) parsed);
-  }
-
-  public byte toByte() {
-    return data;
+    return new UInt16((short) parsed);
   }
 
   public short toShort() {
-    return (short) (data & 0xFF);
+    return data;
   }
 
-  public static int toInt(byte value) {
+  public static int toInt(short value) {
     return value & MASK;
   }
 
@@ -136,7 +132,7 @@ public final class Uint8 extends Number implements Comparable<Uint8>, Serializab
     return data & MASK;
   }
 
-  public static long toLong(byte value) {
+  public static long toLong(short value) {
     return toInt(value);
   }
 
@@ -144,15 +140,15 @@ public final class Uint8 extends Number implements Comparable<Uint8>, Serializab
     return toInt();
   }
 
-  public static int compare(byte a, byte b) {
+  public static int compare(short a, short b) {
     return Integer.compare(a & MASK, b & MASK);
   }
 
-  public static String toString(byte value) {
+  public static String toString(short value) {
     return Integer.toString(value & MASK);
   }
 
-  public static String toString(byte value, int radix) {
+  public static String toString(short value, int radix) {
     return Integer.toString(value & MASK, radix);
   }
 
@@ -178,74 +174,68 @@ public final class Uint8 extends Number implements Comparable<Uint8>, Serializab
 
   /** Returns {@code true} if the value equals {@link #MAX_VALUE}. */
   public boolean isMaxValue() {
-    return data == (byte) -1;
+    return data == (short) -1;
   }
 
   /** Bitwise AND with {@code other}. */
-  public Uint8 and(Uint8 other) {
-    return new Uint8((byte) ((data & MASK) & (other.data & MASK)));
+  public UInt16 and(UInt16 other) {
+    return new UInt16((short) ((data & MASK) & (other.data & MASK)));
   }
 
   /** Bitwise OR with {@code other}. */
-  public Uint8 or(Uint8 other) {
-    return new Uint8((byte) ((data & MASK) | (other.data & MASK)));
+  public UInt16 or(UInt16 other) {
+    return new UInt16((short) ((data & MASK) | (other.data & MASK)));
   }
 
   /** Bitwise XOR with {@code other}. */
-  public Uint8 xor(Uint8 other) {
-    return new Uint8((byte) ((data & MASK) ^ (other.data & MASK)));
+  public UInt16 xor(UInt16 other) {
+    return new UInt16((short) ((data & MASK) ^ (other.data & MASK)));
   }
 
   /** Bitwise NOT. */
-  public Uint8 not() {
-    return new Uint8((byte) (~toInt()));
+  public UInt16 not() {
+    return new UInt16((short) (~toInt()));
   }
 
   /** Logical left shift; bits shifted out are discarded. */
-  public Uint8 shiftLeft(int bits) {
+  public UInt16 shiftLeft(int bits) {
     int shift = bits & 0x1F;
-    return new Uint8((byte) ((toInt() << shift) & MASK));
+    return new UInt16((short) ((toInt() << shift) & MASK));
   }
 
   /** Logical right shift; zeros are shifted in from the left. */
-  public Uint8 shiftRight(int bits) {
+  public UInt16 shiftRight(int bits) {
     int shift = bits & 0x1F;
-    return new Uint8((byte) (toInt() >>> shift));
+    return new UInt16((short) (toInt() >>> shift));
   }
 
   @Override
-  public int compareTo(Uint8 other) {
+  public int compareTo(UInt16 other) {
     return compare(data, other.data);
   }
 
-  @Override
   public int intValue() {
     return toInt();
   }
 
-  @Override
   public long longValue() {
     return toLong();
   }
 
-  @Override
   public float floatValue() {
     return toInt();
   }
 
-  @Override
   public double doubleValue() {
     return toInt();
   }
 
-  @Override
   public byte byteValue() {
-    return data;
+    return (byte) data;
   }
 
-  @Override
   public short shortValue() {
-    return (short) (data & 0xFF);
+    return data;
   }
 
   @Override
@@ -253,10 +243,10 @@ public final class Uint8 extends Number implements Comparable<Uint8>, Serializab
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof Uint8)) {
+    if (!(obj instanceof UInt16)) {
       return false;
     }
-    return data == ((Uint8) obj).data;
+    return data == ((UInt16) obj).data;
   }
 
   @Override

@@ -23,7 +23,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInput;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
@@ -32,7 +32,7 @@ import org.apache.fory.util.Preconditions;
 /** ObjectInput based on {@link MemoryBuffer}. */
 public class MemoryBufferObjectInput extends InputStream implements ObjectInput {
   private final boolean compressInt;
-  private final LongEncoding longEncoding;
+  private final Int64Encoding longEncoding;
   private MemoryBuffer buffer;
   private ReadContext readContext;
 

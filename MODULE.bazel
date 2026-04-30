@@ -17,7 +17,7 @@
 
 module(
     name = "fory",
-    version = "0.14.0",
+    version = "0.18.0",
 )
 
 # Platforms (needed for platform-specific build configurations)
@@ -48,9 +48,6 @@ bazel_dep(name = "cython", version = "3.1.3")
 
 # Google Test
 bazel_dep(name = "googletest", version = "1.15.2")
-
-# Abseil C++
-bazel_dep(name = "abseil-cpp", version = "20240722.0")
 
 # Hedron's Compile Commands Extractor for Bazel
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)

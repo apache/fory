@@ -74,7 +74,7 @@ public class ProtobufSerializer extends Serializer<Message> implements Shareable
   public void write(WriteContext writeContext, Message value) {
     MemoryBuffer buffer = writeContext.getBuffer();
     int size = value.getSerializedSize();
-    buffer.writeVarUint32(size);
+    buffer.writeVarUInt32(size);
     buffer.grow(size);
     byte[] heapMemory = buffer.getHeapMemory();
     try {
@@ -101,7 +101,7 @@ public class ProtobufSerializer extends Serializer<Message> implements Shareable
   @Override
   public Message read(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int size = buffer.readVarUint32Small14();
+    int size = buffer.readVarUInt32Small14();
     buffer.checkReadableBytes(size);
     byte[] heapMemory = buffer.getHeapMemory();
     try {

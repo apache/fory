@@ -51,10 +51,10 @@ import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.Generics;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
+import org.apache.fory.type.unsigned.UInt16;
+import org.apache.fory.type.unsigned.UInt32;
+import org.apache.fory.type.unsigned.UInt64;
+import org.apache.fory.type.unsigned.UInt8;
 import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
@@ -249,25 +249,31 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeBoolean(Platform.getBoolean(targetObject, fieldOffset));
         return false;
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         buffer.writeByte(Platform.getByte(targetObject, fieldOffset));
+        return false;
+      case DispatchId.UINT8:
+        buffer.writeByte(Platform.getInt(targetObject, fieldOffset));
         return false;
       case DispatchId.CHAR:
         buffer.writeChar(Platform.getChar(targetObject, fieldOffset));
         return false;
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         buffer.writeInt16(Platform.getShort(targetObject, fieldOffset));
         return false;
+      case DispatchId.UINT16:
+        buffer.writeInt16((short) Platform.getInt(targetObject, fieldOffset));
+        return false;
       case DispatchId.INT32:
-      case DispatchId.UINT32:
         buffer.writeInt32(Platform.getInt(targetObject, fieldOffset));
+        return false;
+      case DispatchId.UINT32:
+        buffer.writeInt32((int) Platform.getLong(targetObject, fieldOffset));
         return false;
       case DispatchId.VARINT32:
         buffer.writeVarInt32(Platform.getInt(targetObject, fieldOffset));
         return false;
       case DispatchId.VAR_UINT32:
-        buffer.writeVarUint32(Platform.getInt(targetObject, fieldOffset));
+        buffer.writeVarUInt32((int) Platform.getLong(targetObject, fieldOffset));
         return false;
       case DispatchId.FLOAT32:
         buffer.writeFloat32(Platform.getFloat(targetObject, fieldOffset));
@@ -283,10 +289,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeTaggedInt64(Platform.getLong(targetObject, fieldOffset));
         return false;
       case DispatchId.VAR_UINT64:
-        buffer.writeVarUint64(Platform.getLong(targetObject, fieldOffset));
+        buffer.writeVarUInt64(Platform.getLong(targetObject, fieldOffset));
         return false;
       case DispatchId.TAGGED_UINT64:
-        buffer.writeTaggedUint64(Platform.getLong(targetObject, fieldOffset));
+        buffer.writeTaggedUInt64(Platform.getLong(targetObject, fieldOffset));
         return false;
       case DispatchId.FLOAT64:
         buffer.writeFloat64(Platform.getDouble(targetObject, fieldOffset));
@@ -320,7 +326,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeByte((Byte) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.UINT8:
-        buffer.writeByte((Byte) fieldAccessor.get(targetObject));
+        buffer.writeByte((Integer) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.CHAR:
         buffer.writeChar((Character) fieldAccessor.get(targetObject));
@@ -329,19 +335,19 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeInt16((Short) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.UINT16:
-        buffer.writeInt16((Short) fieldAccessor.get(targetObject));
+        buffer.writeInt16(((Integer) fieldAccessor.get(targetObject)).shortValue());
         return false;
       case DispatchId.INT32:
         buffer.writeInt32((Integer) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.UINT32:
-        buffer.writeInt32((Integer) fieldAccessor.get(targetObject));
+        buffer.writeInt32(((Long) fieldAccessor.get(targetObject)).intValue());
         return false;
       case DispatchId.VARINT32:
         buffer.writeVarInt32((Integer) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.VAR_UINT32:
-        buffer.writeVarUint32((Integer) fieldAccessor.get(targetObject));
+        buffer.writeVarUInt32(((Long) fieldAccessor.get(targetObject)).intValue());
         return false;
       case DispatchId.FLOAT32:
         buffer.writeFloat32((Float) fieldAccessor.get(targetObject));
@@ -359,10 +365,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeTaggedInt64((Long) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.VAR_UINT64:
-        buffer.writeVarUint64((Long) fieldAccessor.get(targetObject));
+        buffer.writeVarUInt64((Long) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.TAGGED_UINT64:
-        buffer.writeTaggedUint64((Long) fieldAccessor.get(targetObject));
+        buffer.writeTaggedUInt64((Long) fieldAccessor.get(targetObject));
         return false;
       case DispatchId.FLOAT64:
         buffer.writeFloat64((Double) fieldAccessor.get(targetObject));
@@ -399,10 +405,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeByte((Byte) fieldValue);
         return;
       case DispatchId.UINT8:
-        buffer.writeByte((Byte) fieldValue);
+        buffer.writeByte((Integer) fieldValue);
         return;
       case DispatchId.EXT_UINT8:
-        buffer.writeByte(((Uint8) fieldValue).byteValue());
+        buffer.writeByte(((UInt8) fieldValue).byteValue());
         return;
       case DispatchId.CHAR:
         buffer.writeChar((Character) fieldValue);
@@ -411,28 +417,28 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeInt16((Short) fieldValue);
         return;
       case DispatchId.UINT16:
-        buffer.writeInt16((Short) fieldValue);
+        buffer.writeInt16(((Integer) fieldValue).shortValue());
         return;
       case DispatchId.EXT_UINT16:
-        buffer.writeInt16(((Uint16) fieldValue).shortValue());
+        buffer.writeInt16(((UInt16) fieldValue).shortValue());
         return;
       case DispatchId.INT32:
         buffer.writeInt32((Integer) fieldValue);
         return;
       case DispatchId.UINT32:
-        buffer.writeInt32((Integer) fieldValue);
+        buffer.writeInt32(((Long) fieldValue).intValue());
         return;
       case DispatchId.EXT_UINT32:
-        buffer.writeInt32(((Uint32) fieldValue).intValue());
+        buffer.writeInt32(((UInt32) fieldValue).intValue());
         return;
       case DispatchId.VARINT32:
         buffer.writeVarInt32((Integer) fieldValue);
         return;
       case DispatchId.VAR_UINT32:
-        buffer.writeVarUint32((Integer) fieldValue);
+        buffer.writeVarUInt32(((Long) fieldValue).intValue());
         return;
       case DispatchId.EXT_VAR_UINT32:
-        buffer.writeVarUint32(((Uint32) fieldValue).intValue());
+        buffer.writeVarUInt32(((UInt32) fieldValue).intValue());
         return;
       case DispatchId.INT64:
         buffer.writeInt64((Long) fieldValue);
@@ -441,7 +447,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeInt64((Long) fieldValue);
         return;
       case DispatchId.EXT_UINT64:
-        buffer.writeInt64(((Uint64) fieldValue).longValue());
+        buffer.writeInt64(((UInt64) fieldValue).longValue());
         return;
       case DispatchId.VARINT64:
         buffer.writeVarInt64((Long) fieldValue);
@@ -450,13 +456,13 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         buffer.writeTaggedInt64((Long) fieldValue);
         return;
       case DispatchId.VAR_UINT64:
-        buffer.writeVarUint64((Long) fieldValue);
+        buffer.writeVarUInt64((Long) fieldValue);
         return;
       case DispatchId.EXT_VAR_UINT64:
-        buffer.writeVarUint64(((Uint64) fieldValue).longValue());
+        buffer.writeVarUInt64(((UInt64) fieldValue).longValue());
         return;
       case DispatchId.TAGGED_UINT64:
-        buffer.writeTaggedUint64((Long) fieldValue);
+        buffer.writeTaggedUInt64((Long) fieldValue);
         return;
       case DispatchId.FLOAT32:
         buffer.writeFloat32((Float) fieldValue);
@@ -496,7 +502,11 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
     generics.pushGenericType(fieldInfo.genericType, writeContext.getDepth());
-    if (writeContext.isCrossLanguage() && fieldInfo.useDeclaredTypeInfo) {
+    if (fieldInfo.containerSerializerOverride != null) {
+      writeContext.increaseDepth();
+      ((Serializer) fieldInfo.containerSerializerOverride).write(writeContext, fieldValue);
+      writeContext.decreaseDepth();
+    } else if (writeContext.isCrossLanguage() && fieldInfo.useDeclaredTypeInfo) {
       TypeInfo typeInfo =
           typeResolver.getTypeInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
       writeContext.writeData(typeInfo, fieldValue);
@@ -562,6 +572,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
 
   private static Object readContainerFieldValueNoRef(
       ReadContext readContext, SerializationFieldInfo fieldInfo) {
+    if (fieldInfo.containerSerializerOverride != null) {
+      return readContext.readNonRef(fieldInfo.containerSerializerOverride);
+    }
     if (readContext.getConfig().isXlang()) {
       return readContext.readNonRef(fieldInfo.containerTypeInfo);
     }
@@ -577,7 +590,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     int nextReadRefId = refReader.tryPreserveRefId(buffer);
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       Object value;
-      if (readContext.getConfig().isXlang()) {
+      if (fieldInfo.containerSerializerOverride != null) {
+        value = readContext.readNonRef(fieldInfo.containerSerializerOverride);
+      } else if (readContext.getConfig().isXlang()) {
         value = readContext.readNonRef(fieldInfo.containerTypeInfo);
       } else {
         value = readContext.readData(typeResolver.readTypeInfo(readContext));
@@ -685,45 +700,45 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.INT8:
         return buffer.readByte();
       case DispatchId.UINT8:
-        return buffer.readByte();
+        return buffer.readByte() & 0xFF;
       case DispatchId.EXT_UINT8:
-        return Uint8.valueOf(buffer.readByte());
+        return UInt8.valueOf(buffer.readByte());
       case DispatchId.CHAR:
         return buffer.readChar();
       case DispatchId.INT16:
         return buffer.readInt16();
       case DispatchId.UINT16:
-        return buffer.readInt16();
+        return buffer.readInt16() & 0xFFFF;
       case DispatchId.EXT_UINT16:
-        return Uint16.valueOf(buffer.readInt16());
+        return UInt16.valueOf(buffer.readInt16());
       case DispatchId.INT32:
         return buffer.readInt32();
       case DispatchId.UINT32:
-        return buffer.readInt32();
+        return Integer.toUnsignedLong(buffer.readInt32());
       case DispatchId.EXT_UINT32:
-        return Uint32.valueOf(buffer.readInt32());
+        return UInt32.valueOf(buffer.readInt32());
       case DispatchId.VARINT32:
         return buffer.readVarInt32();
       case DispatchId.VAR_UINT32:
-        return buffer.readVarUint32();
+        return Integer.toUnsignedLong(buffer.readVarUInt32());
       case DispatchId.EXT_VAR_UINT32:
-        return Uint32.valueOf(buffer.readVarUint32());
+        return UInt32.valueOf(buffer.readVarUInt32());
       case DispatchId.INT64:
         return buffer.readInt64();
       case DispatchId.UINT64:
         return buffer.readInt64();
       case DispatchId.EXT_UINT64:
-        return Uint64.valueOf(buffer.readInt64());
+        return UInt64.valueOf(buffer.readInt64());
       case DispatchId.VARINT64:
         return buffer.readVarInt64();
       case DispatchId.TAGGED_INT64:
         return buffer.readTaggedInt64();
       case DispatchId.VAR_UINT64:
-        return buffer.readVarUint64();
+        return buffer.readVarUInt64();
       case DispatchId.EXT_VAR_UINT64:
-        return Uint64.valueOf(buffer.readVarUint64());
+        return UInt64.valueOf(buffer.readVarUInt64());
       case DispatchId.TAGGED_UINT64:
-        return buffer.readTaggedUint64();
+        return buffer.readTaggedUInt64();
       case DispatchId.FLOAT32:
         return buffer.readFloat32();
       case DispatchId.FLOAT64:
@@ -757,25 +772,31 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.set(targetObject, buffer.readBoolean());
         return;
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         fieldAccessor.set(targetObject, buffer.readByte());
+        return;
+      case DispatchId.UINT8:
+        fieldAccessor.set(targetObject, buffer.readByte() & 0xFF);
         return;
       case DispatchId.CHAR:
         fieldAccessor.set(targetObject, buffer.readChar());
         return;
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         fieldAccessor.set(targetObject, buffer.readInt16());
         return;
+      case DispatchId.UINT16:
+        fieldAccessor.set(targetObject, buffer.readInt16() & 0xFFFF);
+        return;
       case DispatchId.INT32:
-      case DispatchId.UINT32:
         fieldAccessor.set(targetObject, buffer.readInt32());
+        return;
+      case DispatchId.UINT32:
+        fieldAccessor.set(targetObject, Integer.toUnsignedLong(buffer.readInt32()));
         return;
       case DispatchId.VARINT32:
         fieldAccessor.set(targetObject, buffer.readVarInt32());
         return;
       case DispatchId.VAR_UINT32:
-        fieldAccessor.set(targetObject, buffer.readVarUint32());
+        fieldAccessor.set(targetObject, Integer.toUnsignedLong(buffer.readVarUInt32()));
         return;
       case DispatchId.FLOAT32:
         fieldAccessor.set(targetObject, buffer.readFloat32());
@@ -791,10 +812,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.set(targetObject, buffer.readTaggedInt64());
         return;
       case DispatchId.VAR_UINT64:
-        fieldAccessor.set(targetObject, buffer.readVarUint64());
+        fieldAccessor.set(targetObject, buffer.readVarUInt64());
         return;
       case DispatchId.TAGGED_UINT64:
-        fieldAccessor.set(targetObject, buffer.readTaggedUint64());
+        fieldAccessor.set(targetObject, buffer.readTaggedUInt64());
         return;
       case DispatchId.FLOAT64:
         fieldAccessor.set(targetObject, buffer.readFloat64());
@@ -819,25 +840,31 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         Platform.putBoolean(targetObject, fieldOffset, buffer.readBoolean());
         return;
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         Platform.putByte(targetObject, fieldOffset, buffer.readByte());
+        return;
+      case DispatchId.UINT8:
+        Platform.putInt(targetObject, fieldOffset, buffer.readByte() & 0xFF);
         return;
       case DispatchId.CHAR:
         Platform.putChar(targetObject, fieldOffset, buffer.readChar());
         return;
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         Platform.putShort(targetObject, fieldOffset, buffer.readInt16());
         return;
+      case DispatchId.UINT16:
+        Platform.putInt(targetObject, fieldOffset, buffer.readInt16() & 0xFFFF);
+        return;
       case DispatchId.INT32:
-      case DispatchId.UINT32:
         Platform.putInt(targetObject, fieldOffset, buffer.readInt32());
+        return;
+      case DispatchId.UINT32:
+        Platform.putLong(targetObject, fieldOffset, Integer.toUnsignedLong(buffer.readInt32()));
         return;
       case DispatchId.VARINT32:
         Platform.putInt(targetObject, fieldOffset, buffer.readVarInt32());
         return;
       case DispatchId.VAR_UINT32:
-        Platform.putInt(targetObject, fieldOffset, buffer.readVarUint32());
+        Platform.putLong(targetObject, fieldOffset, Integer.toUnsignedLong(buffer.readVarUInt32()));
         return;
       case DispatchId.FLOAT32:
         Platform.putFloat(targetObject, fieldOffset, buffer.readFloat32());
@@ -853,10 +880,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         Platform.putLong(targetObject, fieldOffset, buffer.readTaggedInt64());
         return;
       case DispatchId.VAR_UINT64:
-        Platform.putLong(targetObject, fieldOffset, buffer.readVarUint64());
+        Platform.putLong(targetObject, fieldOffset, buffer.readVarUInt64());
         return;
       case DispatchId.TAGGED_UINT64:
-        Platform.putLong(targetObject, fieldOffset, buffer.readTaggedUint64());
+        Platform.putLong(targetObject, fieldOffset, buffer.readTaggedUInt64());
         return;
       case DispatchId.FLOAT64:
         Platform.putDouble(targetObject, fieldOffset, buffer.readFloat64());
@@ -887,10 +914,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, buffer.readByte());
         return;
       case DispatchId.UINT8:
-        fieldAccessor.putObject(targetObject, buffer.readByte());
+        fieldAccessor.putObject(targetObject, buffer.readByte() & 0xFF);
         return;
       case DispatchId.EXT_UINT8:
-        fieldAccessor.putObject(targetObject, Uint8.valueOf(buffer.readByte()));
+        fieldAccessor.putObject(targetObject, UInt8.valueOf(buffer.readByte()));
         return;
       case DispatchId.CHAR:
         fieldAccessor.putObject(targetObject, buffer.readChar());
@@ -899,28 +926,28 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, buffer.readInt16());
         return;
       case DispatchId.UINT16:
-        fieldAccessor.putObject(targetObject, buffer.readInt16());
+        fieldAccessor.putObject(targetObject, buffer.readInt16() & 0xFFFF);
         return;
       case DispatchId.EXT_UINT16:
-        fieldAccessor.putObject(targetObject, Uint16.valueOf(buffer.readInt16()));
+        fieldAccessor.putObject(targetObject, UInt16.valueOf(buffer.readInt16()));
         return;
       case DispatchId.INT32:
         fieldAccessor.putObject(targetObject, buffer.readInt32());
         return;
       case DispatchId.UINT32:
-        fieldAccessor.putObject(targetObject, buffer.readInt32());
+        fieldAccessor.putObject(targetObject, Integer.toUnsignedLong(buffer.readInt32()));
         return;
       case DispatchId.EXT_UINT32:
-        fieldAccessor.putObject(targetObject, Uint32.valueOf(buffer.readInt32()));
+        fieldAccessor.putObject(targetObject, UInt32.valueOf(buffer.readInt32()));
         return;
       case DispatchId.VARINT32:
         fieldAccessor.putObject(targetObject, buffer.readVarInt32());
         return;
       case DispatchId.VAR_UINT32:
-        fieldAccessor.putObject(targetObject, buffer.readVarUint32());
+        fieldAccessor.putObject(targetObject, Integer.toUnsignedLong(buffer.readVarUInt32()));
         return;
       case DispatchId.EXT_VAR_UINT32:
-        fieldAccessor.putObject(targetObject, Uint32.valueOf(buffer.readVarUint32()));
+        fieldAccessor.putObject(targetObject, UInt32.valueOf(buffer.readVarUInt32()));
         return;
       case DispatchId.INT64:
         fieldAccessor.putObject(targetObject, buffer.readInt64());
@@ -929,7 +956,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, buffer.readInt64());
         return;
       case DispatchId.EXT_UINT64:
-        fieldAccessor.putObject(targetObject, Uint64.valueOf(buffer.readInt64()));
+        fieldAccessor.putObject(targetObject, UInt64.valueOf(buffer.readInt64()));
         return;
       case DispatchId.VARINT64:
         fieldAccessor.putObject(targetObject, buffer.readVarInt64());
@@ -938,13 +965,13 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldAccessor.putObject(targetObject, buffer.readTaggedInt64());
         return;
       case DispatchId.VAR_UINT64:
-        fieldAccessor.putObject(targetObject, buffer.readVarUint64());
+        fieldAccessor.putObject(targetObject, buffer.readVarUInt64());
         return;
       case DispatchId.EXT_VAR_UINT64:
-        fieldAccessor.putObject(targetObject, Uint64.valueOf(buffer.readVarUint64()));
+        fieldAccessor.putObject(targetObject, UInt64.valueOf(buffer.readVarUInt64()));
         return;
       case DispatchId.TAGGED_UINT64:
-        fieldAccessor.putObject(targetObject, buffer.readTaggedUint64());
+        fieldAccessor.putObject(targetObject, buffer.readTaggedUInt64());
         return;
       case DispatchId.FLOAT32:
         fieldAccessor.putObject(targetObject, buffer.readFloat32());
@@ -1055,21 +1082,27 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         Platform.putBoolean(newObj, fieldOffset, Platform.getBoolean(originObj, fieldOffset));
         break;
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         Platform.putByte(newObj, fieldOffset, Platform.getByte(originObj, fieldOffset));
+        break;
+      case DispatchId.UINT8:
+        Platform.putInt(newObj, fieldOffset, Platform.getInt(originObj, fieldOffset));
         break;
       case DispatchId.CHAR:
         Platform.putChar(newObj, fieldOffset, Platform.getChar(originObj, fieldOffset));
         break;
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         Platform.putShort(newObj, fieldOffset, Platform.getShort(originObj, fieldOffset));
+        break;
+      case DispatchId.UINT16:
+        Platform.putInt(newObj, fieldOffset, Platform.getInt(originObj, fieldOffset));
         break;
       case DispatchId.INT32:
       case DispatchId.VARINT32:
+        Platform.putInt(newObj, fieldOffset, Platform.getInt(originObj, fieldOffset));
+        break;
       case DispatchId.UINT32:
       case DispatchId.VAR_UINT32:
-        Platform.putInt(newObj, fieldOffset, Platform.getInt(originObj, fieldOffset));
+        Platform.putLong(newObj, fieldOffset, Platform.getLong(originObj, fieldOffset));
         break;
       case DispatchId.INT64:
       case DispatchId.VARINT64:
@@ -1135,18 +1168,21 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.BOOL:
         return Platform.getBoolean(targetObject, fieldOffset);
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         return Platform.getByte(targetObject, fieldOffset);
+      case DispatchId.UINT8:
+        return Platform.getInt(targetObject, fieldOffset);
       case DispatchId.CHAR:
         return Platform.getChar(targetObject, fieldOffset);
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         return Platform.getShort(targetObject, fieldOffset);
+      case DispatchId.UINT16:
+        return Platform.getInt(targetObject, fieldOffset);
       case DispatchId.INT32:
       case DispatchId.VARINT32:
+        return Platform.getInt(targetObject, fieldOffset);
       case DispatchId.UINT32:
       case DispatchId.VAR_UINT32:
-        return Platform.getInt(targetObject, fieldOffset);
+        return Platform.getLong(targetObject, fieldOffset);
       case DispatchId.FLOAT32:
         return Platform.getFloat(targetObject, fieldOffset);
       case DispatchId.INT64:

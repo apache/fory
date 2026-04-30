@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import zio.Chunk
@@ -44,7 +43,7 @@ class CompatibleSingleObjectSerializerTest extends AnyWordSpec with Matchers {
       .withScalaOptimizationEnabled(true)
       .requireClassRegistration(false)
       .withRefTracking(true)
-      .withCompatibleMode(CompatibleMode.COMPATIBLE)
+      .withCompatible(true)
       .suppressClassRegistrationWarnings(false)
       .build()
   }

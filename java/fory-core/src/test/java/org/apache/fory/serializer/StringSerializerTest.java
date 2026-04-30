@@ -33,7 +33,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
@@ -97,7 +96,7 @@ public class StringSerializerTest extends ForyTestBase {
       if (STRING_VALUE_FIELD_IS_BYTES) {
         return readJDK11String(buffer);
       } else if (STRING_VALUE_FIELD_IS_CHARS) {
-        return StringSerializer.newCharsStringZeroCopy(buffer.readChars(buffer.readVarUint32()));
+        return StringSerializer.newCharsStringZeroCopy(buffer.readChars(buffer.readVarUInt32()));
       }
       return null;
     } catch (Exception e) {
@@ -177,7 +176,7 @@ public class StringSerializerTest extends ForyTestBase {
         Fory.builder()
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(b)
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .build();
     Simple a =
@@ -192,7 +191,7 @@ public class StringSerializerTest extends ForyTestBase {
         Fory.builder()
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(false)
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .build();
     // estimated 41 bytes, header needs 2 byte.
@@ -275,8 +274,7 @@ public class StringSerializerTest extends ForyTestBase {
 
     public DataProducer(BlockingQueue<Tuple2<String, byte[]>> dataQueue) {
       this.dataQueue = dataQueue;
-      this.fory =
-          Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+      this.fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     }
 
     public void run() {
@@ -307,8 +305,7 @@ public class StringSerializerTest extends ForyTestBase {
     public DataConsumer(
         BlockingQueue<Tuple2<String, byte[]>> dataQueue,
         ConcurrentLinkedQueue<Tuple2<String, String>> results) {
-      this.fory =
-          Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+      this.fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
       this.dataQueue = dataQueue;
       this.results = results;
     }
@@ -371,10 +368,10 @@ public class StringSerializerTest extends ForyTestBase {
       byte[] bytes = "abc你好".getBytes(StandardCharsets.UTF_8);
       byte UTF8 = 2;
       if (writeNumUtf16BytesForUtf8Encoding) {
-        buffer.writeVarUint64(((long) "abc你好".length() << 1) << 2 | UTF8);
+        buffer.writeVarUInt64(((long) "abc你好".length() << 1) << 2 | UTF8);
         buffer.writeInt32(bytes.length);
       } else {
-        buffer.writeVarUint64((((long) bytes.length) << 2 | UTF8));
+        buffer.writeVarUInt64((((long) bytes.length) << 2 | UTF8));
       }
       buffer.writeBytes(bytes);
       assertEquals(readSerializer(fory, serializer, buffer), "abc你好");
@@ -391,7 +388,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -429,7 +426,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -468,7 +465,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -508,7 +505,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -544,7 +541,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -586,7 +583,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -623,7 +620,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -658,7 +655,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -689,7 +686,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 
@@ -725,7 +722,7 @@ public class StringSerializerTest extends ForyTestBase {
       // readBytesUTF8ForXlang will be invoked only in java9+
       return;
     }
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
 
     // Direct test with raw UTF-8 bytes - bypasses full serialization
     // This tests the method directly with known UTF-8 byte sequences
@@ -807,7 +804,7 @@ public class StringSerializerTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withStringCompressed(true)
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .build();
 

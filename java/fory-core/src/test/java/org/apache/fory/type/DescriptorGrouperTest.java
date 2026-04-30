@@ -37,7 +37,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
@@ -166,7 +165,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testXlangPrimitiveComparatorUsesAscendingTypeIdTieBreaker() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    Fory fory = Fory.builder().withXlang(true).build();
     List<Descriptor> descriptors = new ArrayList<>();
     descriptors.add(
         createDescriptor(TypeRef.of(Short.class), "shortValue", -1, "TestClass", false));

@@ -30,8 +30,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
@@ -277,28 +275,16 @@ public class GoXlangTest extends XlangTestBase {
     // Go-specific override: Go writes null for nil pointers (nullable=true by default)
     String caseName = "test_enum_schema_evolution_compatible";
     // Fory for TwoEnumFieldStruct
-    Fory fory2 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory2 = Fory.builder().withXlang(true).withCompatible(true).build();
     fory2.register(TestEnum.class, 210);
     fory2.register(TwoEnumFieldStruct.class, 211);
 
     // Fory for EmptyStruct and OneEnumFieldStruct with same type ID
-    Fory foryEmpty =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory foryEmpty = Fory.builder().withXlang(true).withCompatible(true).build();
     foryEmpty.register(TestEnum.class, 210);
     foryEmpty.register(EmptyStruct.class, 211);
 
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(true).withCompatible(true).build();
     fory1.register(TestEnum.class, 210);
     fory1.register(OneEnumFieldStruct.class, 211);
 
@@ -370,8 +356,8 @@ public class GoXlangTest extends XlangTestBase {
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();

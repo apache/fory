@@ -57,8 +57,6 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.collection.MapEntry;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.CollectionSerializersTest.TestEnum;
@@ -109,7 +107,7 @@ public class MapSerializersTest extends ForyTestBase {
       boolean trackingRef, boolean codeGen, boolean compatible) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(trackingRef)
             .requireClassRegistration(false)
             .withCodegen(codeGen)
@@ -240,7 +238,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testBasicMap(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -272,7 +270,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testBasicMapNested(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -294,7 +292,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testMapGenerics(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -315,7 +313,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testSortedMap(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -354,7 +352,7 @@ public class MapSerializersTest extends ForyTestBase {
     boolean referenceTracking = true;
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -400,7 +398,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testTreeMapConstructorMatrix(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -430,7 +428,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testConcurrentSkipListMapConstructorMatrix(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -478,7 +476,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testSortedMapSubclassWithoutComparatorCtor(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -495,7 +493,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testSortedMapSubclassWithComparatorCtor(boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -513,7 +511,7 @@ public class MapSerializersTest extends ForyTestBase {
       boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -534,7 +532,7 @@ public class MapSerializersTest extends ForyTestBase {
       boolean referenceTrackingConfig) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -720,7 +718,7 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test
   public void testNoArgConstructor() {
-    Fory fory = builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
     Map<String, Integer> map = newInnerMap();
     Assert.assertEquals(jdkDeserialize(jdkSerialize(map)), map);
     serDeCheck(fory, map);
@@ -734,7 +732,7 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test
   public void testMapNoJIT() {
-    Fory fory = builder().withLanguage(Language.JAVA).withCodegen(false).build();
+    Fory fory = builder().withXlang(false).withCodegen(false).build();
     serDeCheck(fory, new HashMap<>(ImmutableMap.of("a", 1, "b", 2)));
     serDeCheck(fory, new HashMap<>(ImmutableMap.of("a", "v1", "b", "v2")));
     serDeCheck(fory, new HashMap<>(ImmutableMap.of(1, 2, 3, 4)));
@@ -879,8 +877,8 @@ public class MapSerializersTest extends ForyTestBase {
   public void testExternalizableMapCompatibleMode(boolean enableCodegen) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .requireClassRegistration(false)
             .build();
@@ -897,7 +895,7 @@ public class MapSerializersTest extends ForyTestBase {
   public void testDefaultMapSerializer(boolean enableCodegen) {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withCodegen(enableCodegen)
             .requireClassRegistration(false)
             .build();
@@ -941,8 +939,8 @@ public class MapSerializersTest extends ForyTestBase {
   public void testDefaultMapSerializerAsyncCompilation() {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withCodegen(true)
             .withAsyncCompilation(true)
             .requireClassRegistration(false)
@@ -972,17 +970,9 @@ public class MapSerializersTest extends ForyTestBase {
   @Test
   public void testGenericMapBound() {
     Fory fory1 =
-        builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .withCodegen(false)
-            .build();
+        builder().withXlang(false).requireClassRegistration(false).withCodegen(false).build();
     Fory fory2 =
-        builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .withCodegen(false)
-            .build();
+        builder().withXlang(false).requireClassRegistration(false).withCodegen(false).build();
     ArrayList<Integer> list = new ArrayList<>(of(1, 2));
     roundCheck(
         fory1,
@@ -1019,14 +1009,14 @@ public class MapSerializersTest extends ForyTestBase {
   public void testMapElementRefOverrideReadRespectsHeader(boolean enableCodegen) {
     Fory foryNoRef =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
             .requireClassRegistration(true)
             .build();
     Fory foryRef =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
             .requireClassRegistration(true)
@@ -1484,7 +1474,7 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "enableCodegen")
   public void testNestedStringLongListMap(boolean enableCodegen) {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).withCodegen(enableCodegen).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(enableCodegen).build();
     fory.register(NestedStringLongListMap.class);
     NestedStringLongListMap pojo = new NestedStringLongListMap();
     pojo.stringInt64ListMap = new HashMap<>();
@@ -1522,7 +1512,7 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test
   public void testChunkArrayGeneric() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     State original = new State(ofHashMap("foo", new String[] {"bar"}));
     State state = serDe(fory, original);
     Assert.assertEquals(state.map.get("foo"), new String[] {"bar"});
@@ -1550,8 +1540,7 @@ public class MapSerializersTest extends ForyTestBase {
     Fory fory =
         builder()
             .withCodegen(true)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withCompatible(compatible)
             .requireClassRegistration(false)
             .build();
 

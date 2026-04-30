@@ -45,6 +45,17 @@ SERIALIZER_LABELS = {
     "protobuf": "protobuf",
     "msgpack": "msgpack",
 }
+DATATYPE_ORDER = [
+    "struct",
+    "sample",
+    "mediacontent",
+    "structlist",
+    "samplelist",
+    "mediacontentlist",
+]
+DATATYPE_ORDER_INDEX = {
+    datatype: index for index, datatype in enumerate(DATATYPE_ORDER)
+}
 
 # === Parse arguments ===
 parser = argparse.ArgumentParser(
@@ -133,6 +144,16 @@ def format_datatype_table_label(datatype):
     if datatype == "mediacontent":
         return "MediaContent"
     return datatype.capitalize()
+
+
+def ordered_datatypes(datatypes):
+    return sorted(
+        datatypes,
+        key=lambda datatype: (
+            DATATYPE_ORDER_INDEX.get(datatype, len(DATATYPE_ORDER)),
+            datatype,
+        ),
+    )
 
 
 # === Read and parse benchmark JSON ===
@@ -243,7 +264,7 @@ def plot_datatype(ax, datatype, operation):
 
 # === Create plots ===
 plot_images = []
-datatypes = sorted(data.keys())
+datatypes = ordered_datatypes(data.keys())
 operations = ["serialize", "deserialize"]
 
 for datatype in datatypes:
@@ -343,7 +364,12 @@ for k, v in system_info.items():
 md_report.append("\n## Benchmark Plots\n")
 md_report.append("\nAll class-level plots below show throughput (ops/sec).\n")
 plot_images_sorted = sorted(
-    plot_images, key=lambda item: (0 if item[0] == "throughput" else 1, item[0])
+    plot_images,
+    key=lambda item: (
+        0 if item[0] == "throughput" else 1,
+        DATATYPE_ORDER_INDEX.get(item[0], len(DATATYPE_ORDER)),
+        item[0],
+    ),
 )
 for datatype, img in plot_images_sorted:
     img_filename = os.path.basename(img)

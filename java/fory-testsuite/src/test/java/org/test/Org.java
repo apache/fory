@@ -22,8 +22,6 @@ package org.test;
 import java.io.Serializable;
 import java.util.List;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -49,12 +47,12 @@ public class Org implements Serializable {
   public void testOrgPackage() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             // Allow to deserialize objects unknown types,more flexible but less secure.
             .requireClassRegistration(false)
             .withDeserializeUnknownClass(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withRefTracking(true)
             .build();
 

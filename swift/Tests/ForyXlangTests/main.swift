@@ -84,6 +84,18 @@ private struct StructWithMap {
 }
 
 @ForyStruct
+private struct NestedAnnotatedContainerSchemaConsistent {
+    @MapField(key: .uint32(encoding: .fixed), value: .list(element: .uint64(encoding: .tagged)))
+    var values: [UInt32?: [UInt64?]?] = [:]
+}
+
+@ForyStruct
+private struct NestedAnnotatedContainerCompatible {
+    @MapField(key: .uint32(encoding: .fixed), value: .list(element: .uint64(encoding: .tagged)))
+    var values: [UInt32?: [UInt64?]?] = [:]
+}
+
+@ForyStruct
 private struct VersionCheckStruct {
     var f1: Int32 = 0
     var f2: String?
@@ -757,6 +769,18 @@ private func handleStructWithMap(_ bytes: [UInt8]) throws -> [UInt8] {
     }
 }
 
+private func handleNestedAnnotatedContainerSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
+    let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: false))
+    fory.register(NestedAnnotatedContainerSchemaConsistent.self, id: 801)
+    return try roundTripSingle(bytes, fory: fory, as: NestedAnnotatedContainerSchemaConsistent.self)
+}
+
+private func handleNestedAnnotatedContainerCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
+    let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
+    fory.register(NestedAnnotatedContainerCompatible.self, id: 802)
+    return try roundTripSingle(bytes, fory: fory, as: NestedAnnotatedContainerCompatible.self)
+}
+
 private func handleSkipIDCustom(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     fory.register(PeerColor.self, id: 101)
@@ -1025,6 +1049,10 @@ private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] 
         return try handleStructWithList(bytes)
     case "test_struct_with_map":
         return try handleStructWithMap(bytes)
+    case "test_nested_annotated_container_schema_consistent":
+        return try handleNestedAnnotatedContainerSchemaConsistent(bytes)
+    case "test_nested_annotated_container_compatible":
+        return try handleNestedAnnotatedContainerCompatible(bytes)
     case "test_skip_id_custom":
         return try handleSkipIDCustom(bytes)
     case "test_skip_name_custom":

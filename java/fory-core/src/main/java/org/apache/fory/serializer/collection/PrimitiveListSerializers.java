@@ -29,11 +29,11 @@ import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
@@ -71,7 +71,7 @@ public class PrimitiveListSerializers {
     @Override
     public void write(WriteContext writeContext, BoolList value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       boolean[] array = value.getArray();
       for (int i = 0; i < value.size(); i++) {
         buffer.writeBoolean(array[i]);
@@ -81,7 +81,7 @@ public class PrimitiveListSerializers {
     @Override
     public BoolList read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       BoolList list = new BoolList(size);
       for (int i = 0; i < size; i++) {
         list.add(buffer.readBoolean());
@@ -103,14 +103,14 @@ public class PrimitiveListSerializers {
     @Override
     public void write(WriteContext writeContext, Int8List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       buffer.writeBytes(value.copyArray());
     }
 
     @Override
     public Int8List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       byte[] array = new byte[size];
       buffer.readBytes(array);
       return new Int8List(array);
@@ -132,7 +132,7 @@ public class PrimitiveListSerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 2;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       short[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
@@ -146,7 +146,7 @@ public class PrimitiveListSerializers {
     @Override
     public Int16List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 2;
       short[] array = new short[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -179,7 +179,7 @@ public class PrimitiveListSerializers {
       }
       int size = value.size();
       int byteSize = size * 4;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       int[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.INT_ARRAY_OFFSET, byteSize);
@@ -196,7 +196,7 @@ public class PrimitiveListSerializers {
       if (config.compressIntArray()) {
         return readInt32Compressed(buffer);
       }
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 4;
       int[] array = new int[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -210,7 +210,7 @@ public class PrimitiveListSerializers {
     }
 
     private void writeInt32Compressed(MemoryBuffer buffer, Int32List value) {
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       int[] array = value.getArray();
       for (int i = 0; i < value.size(); i++) {
         buffer.writeVarInt32(array[i]);
@@ -218,7 +218,7 @@ public class PrimitiveListSerializers {
     }
 
     private Int32List readInt32Compressed(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       Int32List list = new Int32List(size);
       for (int i = 0; i < size; i++) {
         list.add(buffer.readVarInt32());
@@ -237,7 +237,8 @@ public class PrimitiveListSerializers {
 
     public Int64ListSerializer(TypeResolver typeResolver) {
       super(typeResolver, Int64List.class);
-      compressLongArray = config.compressLongArray() && config.longEncoding() != LongEncoding.FIXED;
+      compressLongArray =
+          config.compressLongArray() && config.longEncoding() != Int64Encoding.FIXED;
     }
 
     @Override
@@ -249,7 +250,7 @@ public class PrimitiveListSerializers {
       }
       int size = value.size();
       int byteSize = size * 8;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       long[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.LONG_ARRAY_OFFSET, byteSize);
@@ -266,7 +267,7 @@ public class PrimitiveListSerializers {
       if (compressLongArray) {
         return readInt64Compressed(buffer, config.longEncoding());
       }
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 8;
       long[] array = new long[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -280,11 +281,11 @@ public class PrimitiveListSerializers {
     }
 
     private void writeInt64Compressed(
-        MemoryBuffer buffer, Int64List value, LongEncoding longEncoding) {
+        MemoryBuffer buffer, Int64List value, Int64Encoding longEncoding) {
       int size = value.size();
-      buffer.writeVarUint32Small7(size);
+      buffer.writeVarUInt32Small7(size);
       long[] array = value.getArray();
-      if (longEncoding == LongEncoding.TAGGED) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < size; i++) {
           buffer.writeTaggedInt64(array[i]);
         }
@@ -295,10 +296,10 @@ public class PrimitiveListSerializers {
       }
     }
 
-    private Int64List readInt64Compressed(MemoryBuffer buffer, LongEncoding longEncoding) {
-      int size = buffer.readVarUint32Small7();
+    private Int64List readInt64Compressed(MemoryBuffer buffer, Int64Encoding longEncoding) {
+      int size = buffer.readVarUInt32Small7();
       Int64List list = new Int64List(size);
-      if (longEncoding == LongEncoding.TAGGED) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < size; i++) {
           list.add(buffer.readTaggedInt64());
         }
@@ -316,44 +317,44 @@ public class PrimitiveListSerializers {
     }
   }
 
-  public static final class Uint8ListSerializer extends PrimitiveListSerializer<Uint8List> {
-    public Uint8ListSerializer(TypeResolver typeResolver) {
-      super(typeResolver, Uint8List.class);
+  public static final class UInt8ListSerializer extends PrimitiveListSerializer<UInt8List> {
+    public UInt8ListSerializer(TypeResolver typeResolver) {
+      super(typeResolver, UInt8List.class);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint8List value) {
+    public void write(WriteContext writeContext, UInt8List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       buffer.writeBytes(value.copyArray());
     }
 
     @Override
-    public Uint8List read(ReadContext readContext) {
+    public UInt8List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       byte[] array = new byte[size];
       buffer.readBytes(array);
-      return new Uint8List(array);
+      return new UInt8List(array);
     }
 
     @Override
-    public Uint8List copy(CopyContext copyContext, Uint8List value) {
-      return new Uint8List(value.copyArray());
+    public UInt8List copy(CopyContext copyContext, UInt8List value) {
+      return new UInt8List(value.copyArray());
     }
   }
 
-  public static final class Uint16ListSerializer extends PrimitiveListSerializer<Uint16List> {
-    public Uint16ListSerializer(TypeResolver typeResolver) {
-      super(typeResolver, Uint16List.class);
+  public static final class UInt16ListSerializer extends PrimitiveListSerializer<UInt16List> {
+    public UInt16ListSerializer(TypeResolver typeResolver) {
+      super(typeResolver, UInt16List.class);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint16List value) {
+    public void write(WriteContext writeContext, UInt16List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 2;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       short[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
@@ -365,9 +366,9 @@ public class PrimitiveListSerializers {
     }
 
     @Override
-    public Uint16List read(ReadContext readContext) {
+    public UInt16List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 2;
       short[] array = new short[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -377,30 +378,30 @@ public class PrimitiveListSerializers {
           array[i] = buffer.readInt16();
         }
       }
-      return new Uint16List(array);
+      return new UInt16List(array);
     }
 
     @Override
-    public Uint16List copy(CopyContext copyContext, Uint16List value) {
-      return new Uint16List(value.copyArray());
+    public UInt16List copy(CopyContext copyContext, UInt16List value) {
+      return new UInt16List(value.copyArray());
     }
   }
 
-  public static final class Uint32ListSerializer extends PrimitiveListSerializer<Uint32List> {
-    public Uint32ListSerializer(TypeResolver typeResolver) {
-      super(typeResolver, Uint32List.class);
+  public static final class UInt32ListSerializer extends PrimitiveListSerializer<UInt32List> {
+    public UInt32ListSerializer(TypeResolver typeResolver) {
+      super(typeResolver, UInt32List.class);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint32List value) {
+    public void write(WriteContext writeContext, UInt32List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
       if (config.compressIntArray()) {
-        writeUint32Compressed(buffer, value);
+        writeUInt32Compressed(buffer, value);
         return;
       }
       int size = value.size();
       int byteSize = size * 4;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       int[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.INT_ARRAY_OFFSET, byteSize);
@@ -412,12 +413,12 @@ public class PrimitiveListSerializers {
     }
 
     @Override
-    public Uint32List read(ReadContext readContext) {
+    public UInt32List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       if (config.compressIntArray()) {
-        return readUint32Compressed(buffer);
+        return readUInt32Compressed(buffer);
       }
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 4;
       int[] array = new int[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -427,20 +428,20 @@ public class PrimitiveListSerializers {
           array[i] = buffer.readInt32();
         }
       }
-      return new Uint32List(array);
+      return new UInt32List(array);
     }
 
-    private void writeUint32Compressed(MemoryBuffer buffer, Uint32List value) {
-      buffer.writeVarUint32Small7(value.size());
+    private void writeUInt32Compressed(MemoryBuffer buffer, UInt32List value) {
+      buffer.writeVarUInt32Small7(value.size());
       int[] array = value.getArray();
       for (int i = 0; i < value.size(); i++) {
         buffer.writeVarInt32(array[i]);
       }
     }
 
-    private Uint32List readUint32Compressed(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
-      Uint32List list = new Uint32List(size);
+    private UInt32List readUInt32Compressed(MemoryBuffer buffer) {
+      int size = buffer.readVarUInt32Small7();
+      UInt32List list = new UInt32List(size);
       for (int i = 0; i < size; i++) {
         list.add(buffer.readVarInt32());
       }
@@ -448,29 +449,30 @@ public class PrimitiveListSerializers {
     }
 
     @Override
-    public Uint32List copy(CopyContext copyContext, Uint32List value) {
-      return new Uint32List(value.copyArray());
+    public UInt32List copy(CopyContext copyContext, UInt32List value) {
+      return new UInt32List(value.copyArray());
     }
   }
 
-  public static final class Uint64ListSerializer extends PrimitiveListSerializer<Uint64List> {
+  public static final class UInt64ListSerializer extends PrimitiveListSerializer<UInt64List> {
     private final boolean compressLongArray;
 
-    public Uint64ListSerializer(TypeResolver typeResolver) {
-      super(typeResolver, Uint64List.class);
-      compressLongArray = config.compressLongArray() && config.longEncoding() != LongEncoding.FIXED;
+    public UInt64ListSerializer(TypeResolver typeResolver) {
+      super(typeResolver, UInt64List.class);
+      compressLongArray =
+          config.compressLongArray() && config.longEncoding() != Int64Encoding.FIXED;
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint64List value) {
+    public void write(WriteContext writeContext, UInt64List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
       if (compressLongArray) {
-        writeUint64Compressed(buffer, value, config.longEncoding());
+        writeUInt64Compressed(buffer, value, config.longEncoding());
         return;
       }
       int size = value.size();
       int byteSize = size * 8;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       long[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.LONG_ARRAY_OFFSET, byteSize);
@@ -482,12 +484,12 @@ public class PrimitiveListSerializers {
     }
 
     @Override
-    public Uint64List read(ReadContext readContext) {
+    public UInt64List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       if (compressLongArray) {
-        return readUint64Compressed(buffer, config.longEncoding());
+        return readUInt64Compressed(buffer, config.longEncoding());
       }
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 8;
       long[] array = new long[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -497,15 +499,15 @@ public class PrimitiveListSerializers {
           array[i] = buffer.readInt64();
         }
       }
-      return new Uint64List(array);
+      return new UInt64List(array);
     }
 
-    private void writeUint64Compressed(
-        MemoryBuffer buffer, Uint64List value, LongEncoding longEncoding) {
+    private void writeUInt64Compressed(
+        MemoryBuffer buffer, UInt64List value, Int64Encoding longEncoding) {
       int size = value.size();
-      buffer.writeVarUint32Small7(size);
+      buffer.writeVarUInt32Small7(size);
       long[] array = value.getArray();
-      if (longEncoding == LongEncoding.TAGGED) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < size; i++) {
           buffer.writeTaggedInt64(array[i]);
         }
@@ -516,10 +518,10 @@ public class PrimitiveListSerializers {
       }
     }
 
-    private Uint64List readUint64Compressed(MemoryBuffer buffer, LongEncoding longEncoding) {
-      int size = buffer.readVarUint32Small7();
-      Uint64List list = new Uint64List(size);
-      if (longEncoding == LongEncoding.TAGGED) {
+    private UInt64List readUInt64Compressed(MemoryBuffer buffer, Int64Encoding longEncoding) {
+      int size = buffer.readVarUInt32Small7();
+      UInt64List list = new UInt64List(size);
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < size; i++) {
           list.add(buffer.readTaggedInt64());
         }
@@ -532,8 +534,8 @@ public class PrimitiveListSerializers {
     }
 
     @Override
-    public Uint64List copy(CopyContext copyContext, Uint64List value) {
-      return new Uint64List(value.copyArray());
+    public UInt64List copy(CopyContext copyContext, UInt64List value) {
+      return new UInt64List(value.copyArray());
     }
   }
 
@@ -547,7 +549,7 @@ public class PrimitiveListSerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 4;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       float[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.FLOAT_ARRAY_OFFSET, byteSize);
@@ -561,7 +563,7 @@ public class PrimitiveListSerializers {
     @Override
     public Float32List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 4;
       float[] array = new float[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -590,7 +592,7 @@ public class PrimitiveListSerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 8;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       double[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.DOUBLE_ARRAY_OFFSET, byteSize);
@@ -604,7 +606,7 @@ public class PrimitiveListSerializers {
     @Override
     public Float64List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 8;
       double[] array = new double[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -633,7 +635,7 @@ public class PrimitiveListSerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 2;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       short[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
@@ -647,7 +649,7 @@ public class PrimitiveListSerializers {
     @Override
     public Float16List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 2;
       short[] array = new short[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -676,7 +678,7 @@ public class PrimitiveListSerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       int size = value.size();
       int byteSize = size * 2;
-      buffer.writeVarUint32Small7(byteSize);
+      buffer.writeVarUInt32Small7(byteSize);
       short[] array = value.getArray();
       if (Platform.IS_LITTLE_ENDIAN) {
         buffer.writePrimitiveArray(array, Platform.SHORT_ARRAY_OFFSET, byteSize);
@@ -690,7 +692,7 @@ public class PrimitiveListSerializers {
     @Override
     public BFloat16List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int byteSize = buffer.readVarUint32Small7();
+      int byteSize = buffer.readVarUInt32Small7();
       int size = byteSize / 2;
       short[] array = new short[size];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -715,10 +717,10 @@ public class PrimitiveListSerializers {
     resolver.registerInternalSerializer(Int16List.class, new Int16ListSerializer(resolver));
     resolver.registerInternalSerializer(Int32List.class, new Int32ListSerializer(resolver));
     resolver.registerInternalSerializer(Int64List.class, new Int64ListSerializer(resolver));
-    resolver.registerInternalSerializer(Uint8List.class, new Uint8ListSerializer(resolver));
-    resolver.registerInternalSerializer(Uint16List.class, new Uint16ListSerializer(resolver));
-    resolver.registerInternalSerializer(Uint32List.class, new Uint32ListSerializer(resolver));
-    resolver.registerInternalSerializer(Uint64List.class, new Uint64ListSerializer(resolver));
+    resolver.registerInternalSerializer(UInt8List.class, new UInt8ListSerializer(resolver));
+    resolver.registerInternalSerializer(UInt16List.class, new UInt16ListSerializer(resolver));
+    resolver.registerInternalSerializer(UInt32List.class, new UInt32ListSerializer(resolver));
+    resolver.registerInternalSerializer(UInt64List.class, new UInt64ListSerializer(resolver));
     resolver.registerInternalSerializer(Float32List.class, new Float32ListSerializer(resolver));
     resolver.registerInternalSerializer(Float64List.class, new Float64ListSerializer(resolver));
     resolver.registerInternalSerializer(Float16List.class, new Float16ListSerializer(resolver));

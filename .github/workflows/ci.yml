@@ -42,6 +42,105 @@ on:
     types: ["opened", "reopened", "synchronize"]
 
 jobs:
+  changes:
+    name: Detect Changed Paths
+    runs-on: ubuntu-latest
+    outputs:
+      cpp: ${{ steps.filter.outputs.cpp }}
+      cpp_code: ${{ steps.filter.outputs.cpp_code }}
+      java_code: ${{ steps.filter.outputs.java_code }}
+      python: ${{ steps.filter.outputs.python }}
+      graalvm: ${{ steps.filter.outputs.graalvm }}
+      rust: ${{ steps.filter.outputs.rust }}
+      swift: ${{ steps.filter.outputs.swift }}
+      javascript: ${{ steps.filter.outputs.javascript }}
+      kotlin: ${{ steps.filter.outputs.kotlin }}
+      scala: ${{ steps.filter.outputs.scala }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "cpp=true" >> "$GITHUB_OUTPUT"
+            echo "cpp_code=true" >> "$GITHUB_OUTPUT"
+            echo "java_code=true" >> "$GITHUB_OUTPUT"
+            echo "python=true" >> "$GITHUB_OUTPUT"
+            echo "graalvm=true" >> "$GITHUB_OUTPUT"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+            echo "javascript=true" >> "$GITHUB_OUTPUT"
+            echo "kotlin=true" >> "$GITHUB_OUTPUT"
+            echo "scala=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git fetch --no-tags --depth=1 origin "$BASE_REF:refs/remotes/origin/$BASE_REF"
+          changed_files="$(git diff --name-only "origin/$BASE_REF" HEAD)"
+
+          if grep -Eq '^(cpp/|examples/cpp/|benchmarks/cpp/|integration_tests/idl_tests/cpp/|bazel/|BUILD$|WORKSPACE$|MODULE\.bazel$|\.bazelrc$)' <<< "$changed_files"; then
+            echo "cpp=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cpp=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(cpp/)' <<< "$changed_files"; then
+            echo "cpp_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cpp_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(java/)' <<< "$changed_files"; then
+            echo "java_code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "java_code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(python/)' <<< "$changed_files"; then
+            echo "python=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "python=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
+            echo "graalvm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "graalvm=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(rust/)' <<< "$changed_files"; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(swift/)' <<< "$changed_files"; then
+            echo "swift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "swift=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(javascript/)' <<< "$changed_files"; then
+            echo "javascript=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "javascript=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(java/|kotlin/)' <<< "$changed_files"; then
+            echo "kotlin=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "kotlin=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(java/|scala/)' <<< "$changed_files"; then
+            echo "scala=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scala=false" >> "$GITHUB_OUTPUT"
+          fi
+
   compiler:
     name: Compiler CI
     runs-on: ubuntu-latest
@@ -61,12 +160,13 @@ jobs:
 
   java:
     name: Java CI
+    needs: changes
     runs-on: ubuntu-latest
     env:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ["8", "11", "17", "21", "25"]
+        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25"]' || '["8"]') }}
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
@@ -85,7 +185,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.8
-          cache: 'pip'
+          cache: "pip"
       - name: Run CI with Maven
         run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
       - name: Upload Test Report
@@ -99,6 +199,8 @@ jobs:
 
   openj9:
     name: Openj9 Java CI
+    needs: changes
+    if: needs.changes.outputs.java_code == 'true'
     runs-on: ubuntu-latest
     env:
       MY_VAR: "PATH"
@@ -124,12 +226,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.8
-          cache: 'pip'
+          cache: "pip"
       - name: Run CI with Maven
         run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
 
   java21_windows:
     name: Windows Java 21 CI
+    needs: changes
+    if: needs.changes.outputs.java_code == 'true'
     runs-on: windows-2022
     env:
       MY_VAR: "PATH"
@@ -238,6 +342,8 @@ jobs:
 
   swift:
     name: Swift CI
+    needs: changes
+    if: needs.changes.outputs.swift == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -258,10 +364,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.11
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -297,6 +399,28 @@ jobs:
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.SwiftXlangTest
+
+  swift_idl:
+    name: Swift IDL Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Generate Swift IDL test code
         run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
       - name: Cache Swift IDL package build artifacts
@@ -318,6 +442,10 @@ jobs:
         run: |
           cd integration_tests/idl_tests/swift/idl_package
           swift test --disable-automatic-resolution --skip-build
+      - name: Install Java artifacts for IDL tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
       - name: Run Java IDL tests against Swift peer
         env:
           IDL_PEER_LANG: "swift"
@@ -325,6 +453,8 @@ jobs:
 
   graalvm:
     name: GraalVM CI
+    needs: changes
+    if: needs.changes.outputs.graalvm == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -354,6 +484,8 @@ jobs:
 
   kotlin:
     name: Kotlin CI
+    needs: changes
+    if: needs.changes.outputs.kotlin == 'true'
     runs-on: ubuntu-latest
     env:
       MY_VAR: "PATH"
@@ -385,6 +517,8 @@ jobs:
 
   scala:
     name: Scala CI
+    needs: changes
+    if: needs.changes.outputs.scala == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -434,6 +568,8 @@ jobs:
 
   javascript:
     name: JavaScript CI
+    needs: changes
+    if: needs.changes.outputs.javascript == 'true'
     strategy:
       matrix:
         node-version: [18, 24]
@@ -508,9 +644,11 @@ jobs:
 
   rust:
     name: Rust CI
+    needs: changes
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14, macos-latest]  # macos-14: arm64
+        # macos-14 is the arm64 runner; keep it for Rust code changes only.
+        os: ${{ fromJSON(needs.changes.outputs.rust == 'true' && '["ubuntu-latest","macos-14","macos-latest"]' || '["ubuntu-latest","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -579,7 +717,7 @@ jobs:
     name: C++ CI
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-2022]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -587,12 +725,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-          cache: 'pip'
+          cache: "pip"
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -630,8 +768,57 @@ jobs:
             bazel-out/*/testlogs/**/*.xml
           if-no-files-found: ignore
 
+  cpp_windows:
+    name: C++ CI (windows-2022)
+    needs: changes
+    if: needs.changes.outputs.cpp == 'true'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        with:
+          bazelisk-cache: true
+          bazelisk-version: "1.x"
+      - name: Cache Bazel repository cache
+        uses: actions/cache@v4
+        with:
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
+          path: |
+            C:\users\runneradmin\.bazel\external
+            C:\users\runneradmin\_bazel_runneradmin\*/external
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          # setup-bazel uses ~/.bazel on GitHub-hosted runners.
+          path: |
+            C:\users\runneradmin\.bazel
+            C:\users\runneradmin\_bazel_runneradmin
+          key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
+      - name: Run C++ CI with Bazel
+        run: python ./ci/run_ci.py cpp
+      - name: Upload Bazel Test Logs
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bazel-test-logs-windows-2022
+          path: |
+            bazel-out/*/testlogs/**/*.log
+            bazel-out/*/testlogs/**/*.xml
+          if-no-files-found: ignore
+
   cpp_sanitizers:
     name: C++ Sanitizer (${{ matrix.sanitizer }})
+    needs: changes
+    if: needs.changes.outputs.cpp_code == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -642,12 +829,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-          cache: 'pip'
+          cache: "pip"
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -710,7 +897,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-          cache: 'pip'
+          cache: "pip"
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -727,7 +914,7 @@ jobs:
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Run CPP Xlang Test
         env:
           FORY_CPP_JAVA_CI: "1"
@@ -747,7 +934,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-          cache: 'pip'
+          cache: "pip"
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -760,11 +947,22 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache C++ IDL CMake build
+        id: cpp-idl-cmake-cache
+        uses: actions/cache@v4
+        with:
+          path: integration_tests/idl_tests/cpp/build
+          key: cpp-idl-cmake-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('integration_tests/idl_tests/cpp/**', 'integration_tests/idl_tests/*.fdl', 'integration_tests/idl_tests/generate_idl.py', 'compiler/**', 'cpp/**') }}
+          restore-keys: |
+            cpp-idl-cmake-${{ runner.os }}-${{ runner.arch }}-
+          save-always: true
       - name: Install Java artifacts for IDL tests
         run: |
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
       - name: Run C++ IDL Tests
+        env:
+          FORY_CPP_IDL_SKIP_BUILD: ${{ steps.cpp-idl-cmake-cache.outputs.cache-hit == 'true' && '1' || '' }}
         run: ./integration_tests/idl_tests/run_cpp_tests.sh
 
   cpp_examples:
@@ -775,12 +973,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Build and run C++ hello_world example (CMake)
         run: |
           cd examples/cpp/hello_world
@@ -800,31 +998,25 @@ jobs:
 
   python:
     name: Python CI
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.cpp == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ['3.8', '3.12', '3.13']
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-2022]
-        # windows-2022 runners don't have Python 3.8 preinstalled, and pinned 3.13.3
-        # forces a download/reinstall; use cached 3.11/3.12/3.13 on Windows instead.
-        exclude:
-          - os: windows-2022
-            python-version: '3.8'
-        include:
-          - os: windows-2022
-            python-version: '3.11'
+        python-version: ["3.8", "3.12", "3.13"]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: "pip"
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Clean Bazel cache (Windows)
         if: runner.os == 'Windows'
         shell: bash
@@ -833,12 +1025,56 @@ jobs:
           bazel clean --expunge || true
       - name: Run Python CI
         shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "1"
         run: python ./ci/run_ci.py python
-      - name: Run Python CI (ENABLE_FORY_CYTHON_SERIALIZATION=1)
+      - name: Run Python tests (ENABLE_FORY_CYTHON_SERIALIZATION=0)
+        shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "0"
+        run: |
+          cd python
+          pytest -v -s --durations=60 pyfory/tests
+
+  python_windows:
+    name: Python CI (${{ matrix.python-version }}, windows-2022)
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.cpp == 'true'
+    runs-on: windows-2022
+    strategy:
+      matrix:
+        # windows-2022 runners don't have Python 3.8 preinstalled, and pinned 3.13.3
+        # forces a download/reinstall; use cached 3.11/3.12/3.13 on Windows instead.
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        with:
+          bazelisk-cache: true
+          bazelisk-version: "1.x"
+      - name: Clean Bazel cache (Windows)
+        shell: bash
+        run: |
+          echo "Cleaning Bazel cache to ensure fresh build..."
+          bazel clean --expunge || true
+      - name: Run Python CI
         shell: bash
         env:
           ENABLE_FORY_CYTHON_SERIALIZATION: "1"
         run: python ./ci/run_ci.py python
+      - name: Run Python tests (ENABLE_FORY_CYTHON_SERIALIZATION=0)
+        shell: bash
+        env:
+          ENABLE_FORY_CYTHON_SERIALIZATION: "0"
+        run: |
+          cd python
+          pytest -v -s --durations=60 pyfory/tests
 
   python_xlang:
     name: Python Xlang Test
@@ -849,7 +1085,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-          cache: 'pip'
+          cache: "pip"
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -894,12 +1130,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.8
-          cache: 'pip'
+          cache: "pip"
       - name: Set up Bazel
         uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
         with:
           bazelisk-cache: true
-          bazelisk-version: '1.x'
+          bazelisk-version: "1.x"
       - name: Install python dependencies
         run: pip install pyarrow cython wheel pytest setuptools -U
       - name: Install pyfory for xlang tests
@@ -915,7 +1151,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: "1.21"
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:

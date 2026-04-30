@@ -238,61 +238,61 @@ public class MemoryBufferTest {
     buf.writePrimitiveArrayWithSize(bytes, Platform.BYTE_ARRAY_OFFSET, bytes.length);
     buf.writePrimitiveArrayWithSize(chars, Platform.CHAR_ARRAY_OFFSET, chars.length * 2);
     assertEquals(bytes, buf.readBytesAndSize());
-    assertEquals(chars, buf.readChars(buf.readVarUint32()));
+    assertEquals(chars, buf.readChars(buf.readVarUInt32()));
   }
 
   @Test
-  public void testWriteVarUint32() {
+  public void testWriteVarUInt32() {
     for (int i = 0; i < 32; i++) {
       MemoryBuffer buf = MemoryUtils.buffer(8);
       for (int j = 0; j < i; j++) {
         buf.writeByte((byte) 1); // make address unaligned.
         buf.readByte();
       }
-      checkVarUint32(buf, 1, 1);
-      checkVarUint32(buf, 1 << 6, 1);
-      checkVarUint32(buf, 1 << 7, 2);
-      checkVarUint32(buf, 1 << 13, 2);
-      checkVarUint32(buf, 1 << 14, 3);
-      checkVarUint32(buf, 1 << 20, 3);
-      checkVarUint32(buf, 1 << 21, 4);
-      checkVarUint32(buf, 1 << 27, 4);
-      checkVarUint32(buf, 1 << 28, 5);
-      checkVarUint32(buf, Integer.MAX_VALUE, 5);
+      checkVarUInt32(buf, 1, 1);
+      checkVarUInt32(buf, 1 << 6, 1);
+      checkVarUInt32(buf, 1 << 7, 2);
+      checkVarUInt32(buf, 1 << 13, 2);
+      checkVarUInt32(buf, 1 << 14, 3);
+      checkVarUInt32(buf, 1 << 20, 3);
+      checkVarUInt32(buf, 1 << 21, 4);
+      checkVarUInt32(buf, 1 << 27, 4);
+      checkVarUInt32(buf, 1 << 28, 5);
+      checkVarUInt32(buf, Integer.MAX_VALUE, 5);
 
-      checkVarUint32(buf, -1);
-      checkVarUint32(buf, -1 << 6);
-      checkVarUint32(buf, -1 << 7);
-      checkVarUint32(buf, -1 << 13);
-      checkVarUint32(buf, -1 << 14);
-      checkVarUint32(buf, -1 << 20);
-      checkVarUint32(buf, -1 << 21);
-      checkVarUint32(buf, -1 << 27);
-      checkVarUint32(buf, -1 << 28);
-      checkVarUint32(buf, Byte.MIN_VALUE);
-      checkVarUint32(buf, Short.MIN_VALUE);
-      checkVarUint32(buf, Integer.MIN_VALUE);
+      checkVarUInt32(buf, -1);
+      checkVarUInt32(buf, -1 << 6);
+      checkVarUInt32(buf, -1 << 7);
+      checkVarUInt32(buf, -1 << 13);
+      checkVarUInt32(buf, -1 << 14);
+      checkVarUInt32(buf, -1 << 20);
+      checkVarUInt32(buf, -1 << 21);
+      checkVarUInt32(buf, -1 << 27);
+      checkVarUInt32(buf, -1 << 28);
+      checkVarUInt32(buf, Byte.MIN_VALUE);
+      checkVarUInt32(buf, Short.MIN_VALUE);
+      checkVarUInt32(buf, Integer.MIN_VALUE);
     }
   }
 
-  private void checkVarUint32(MemoryBuffer buf, int value, int bytesWritten) {
+  private void checkVarUInt32(MemoryBuffer buf, int value, int bytesWritten) {
     assertEquals(buf.writerIndex(), buf.readerIndex());
-    int actualBytesWritten = buf.writeVarUint32(value);
+    int actualBytesWritten = buf.writeVarUInt32(value);
     assertEquals(actualBytesWritten, bytesWritten);
-    int varInt = buf.readVarUint32();
+    int varInt = buf.readVarUInt32();
     assertEquals(buf.writerIndex(), buf.readerIndex());
     assertEquals(value, varInt);
   }
 
-  private void checkVarUint32(MemoryBuffer buf, int value) {
+  private void checkVarUInt32(MemoryBuffer buf, int value) {
     int readerIndex = buf.readerIndex();
     assertEquals(buf.writerIndex(), readerIndex);
-    buf.writeVarUint32(value);
-    int varInt = buf.readVarUint32();
+    buf.writeVarUInt32(value);
+    int varInt = buf.readVarUInt32();
     assertEquals(buf.writerIndex(), buf.readerIndex());
     assertEquals(value, varInt);
     // test slow read branch in `readVarUint`
-    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readVarUint32(), value);
+    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readVarUInt32(), value);
   }
 
   @Test
@@ -424,98 +424,98 @@ public class MemoryBufferTest {
   }
 
   @Test
-  public void testWriteVarUint64() {
+  public void testWriteVarUInt64() {
     MemoryBuffer buf = MemoryUtils.buffer(8);
-    checkVarUint64(buf, -1, 9);
+    checkVarUInt64(buf, -1, 9);
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < i; j++) {
-        checkVarUint64(buf(i), -1, 9);
-        checkVarUint64(buf(i), 1, 1);
-        checkVarUint64(buf(i), 1L << 6, 1);
-        checkVarUint64(buf(i), 1L << 7, 2);
-        checkVarUint64(buf(i), -(2 << 5), 9);
-        checkVarUint64(buf(i), -(2 << 6), 9);
-        checkVarUint64(buf(i), 1L << 13, 2);
-        checkVarUint64(buf(i), 1L << 14, 3);
-        checkVarUint64(buf(i), -(2 << 12), 9);
-        checkVarUint64(buf(i), -(2 << 13), 9);
-        checkVarUint64(buf(i), 1L << 20, 3);
-        checkVarUint64(buf(i), 1L << 21, 4);
-        checkVarUint64(buf(i), -(2 << 19), 9);
-        checkVarUint64(buf(i), -(2 << 20), 9);
-        checkVarUint64(buf(i), 1L << 27, 4);
-        checkVarUint64(buf(i), 1L << 28, 5);
-        checkVarUint64(buf(i), -(2 << 26), 9);
-        checkVarUint64(buf(i), -(2 << 27), 9);
-        checkVarUint64(buf(i), 1L << 30, 5);
-        checkVarUint64(buf(i), -(2L << 29), 9);
-        checkVarUint64(buf(i), 1L << 30, 5);
-        checkVarUint64(buf(i), -(2L << 30), 9);
-        checkVarUint64(buf(i), 1L << 32, 5);
-        checkVarUint64(buf(i), -(2L << 31), 9);
-        checkVarUint64(buf(i), 1L << 34, 5);
-        checkVarUint64(buf(i), -(2L << 33), 9);
-        checkVarUint64(buf(i), 1L << 35, 6);
-        checkVarUint64(buf(i), -(2L << 34), 9);
-        checkVarUint64(buf(i), 1L << 41, 6);
-        checkVarUint64(buf(i), -(2L << 40), 9);
-        checkVarUint64(buf(i), 1L << 42, 7);
-        checkVarUint64(buf(i), -(2L << 41), 9);
-        checkVarUint64(buf(i), 1L << 48, 7);
-        checkVarUint64(buf(i), -(2L << 47), 9);
-        checkVarUint64(buf(i), 1L << 49, 8);
-        checkVarUint64(buf(i), -(2L << 48), 9);
-        checkVarUint64(buf(i), 1L << 55, 8);
-        checkVarUint64(buf(i), -(2L << 54), 9);
-        checkVarUint64(buf(i), 1L << 56, 9);
-        checkVarUint64(buf(i), -(2L << 55), 9);
-        checkVarUint64(buf(i), 1L << 62, 9);
-        checkVarUint64(buf(i), -(2L << 62), 9);
-        checkVarUint64(buf(i), 1L << 63 - 1, 9);
-        checkVarUint64(buf(i), -(2L << 62), 9);
-        checkVarUint64(buf(i), Long.MAX_VALUE, 9);
-        checkVarUint64(buf(i), Long.MIN_VALUE, 9);
+        checkVarUInt64(buf(i), -1, 9);
+        checkVarUInt64(buf(i), 1, 1);
+        checkVarUInt64(buf(i), 1L << 6, 1);
+        checkVarUInt64(buf(i), 1L << 7, 2);
+        checkVarUInt64(buf(i), -(2 << 5), 9);
+        checkVarUInt64(buf(i), -(2 << 6), 9);
+        checkVarUInt64(buf(i), 1L << 13, 2);
+        checkVarUInt64(buf(i), 1L << 14, 3);
+        checkVarUInt64(buf(i), -(2 << 12), 9);
+        checkVarUInt64(buf(i), -(2 << 13), 9);
+        checkVarUInt64(buf(i), 1L << 20, 3);
+        checkVarUInt64(buf(i), 1L << 21, 4);
+        checkVarUInt64(buf(i), -(2 << 19), 9);
+        checkVarUInt64(buf(i), -(2 << 20), 9);
+        checkVarUInt64(buf(i), 1L << 27, 4);
+        checkVarUInt64(buf(i), 1L << 28, 5);
+        checkVarUInt64(buf(i), -(2 << 26), 9);
+        checkVarUInt64(buf(i), -(2 << 27), 9);
+        checkVarUInt64(buf(i), 1L << 30, 5);
+        checkVarUInt64(buf(i), -(2L << 29), 9);
+        checkVarUInt64(buf(i), 1L << 30, 5);
+        checkVarUInt64(buf(i), -(2L << 30), 9);
+        checkVarUInt64(buf(i), 1L << 32, 5);
+        checkVarUInt64(buf(i), -(2L << 31), 9);
+        checkVarUInt64(buf(i), 1L << 34, 5);
+        checkVarUInt64(buf(i), -(2L << 33), 9);
+        checkVarUInt64(buf(i), 1L << 35, 6);
+        checkVarUInt64(buf(i), -(2L << 34), 9);
+        checkVarUInt64(buf(i), 1L << 41, 6);
+        checkVarUInt64(buf(i), -(2L << 40), 9);
+        checkVarUInt64(buf(i), 1L << 42, 7);
+        checkVarUInt64(buf(i), -(2L << 41), 9);
+        checkVarUInt64(buf(i), 1L << 48, 7);
+        checkVarUInt64(buf(i), -(2L << 47), 9);
+        checkVarUInt64(buf(i), 1L << 49, 8);
+        checkVarUInt64(buf(i), -(2L << 48), 9);
+        checkVarUInt64(buf(i), 1L << 55, 8);
+        checkVarUInt64(buf(i), -(2L << 54), 9);
+        checkVarUInt64(buf(i), 1L << 56, 9);
+        checkVarUInt64(buf(i), -(2L << 55), 9);
+        checkVarUInt64(buf(i), 1L << 62, 9);
+        checkVarUInt64(buf(i), -(2L << 62), 9);
+        checkVarUInt64(buf(i), 1L << 63 - 1, 9);
+        checkVarUInt64(buf(i), -(2L << 62), 9);
+        checkVarUInt64(buf(i), Long.MAX_VALUE, 9);
+        checkVarUInt64(buf(i), Long.MIN_VALUE, 9);
       }
     }
   }
 
-  private void checkVarUint64(MemoryBuffer buf, long value, int bytesWritten) {
+  private void checkVarUInt64(MemoryBuffer buf, long value, int bytesWritten) {
     int readerIndex = buf.readerIndex();
     assertEquals(buf.writerIndex(), readerIndex);
-    int actualBytesWritten = buf.writeVarUint64(value);
+    int actualBytesWritten = buf.writeVarUInt64(value);
     assertEquals(actualBytesWritten, bytesWritten);
-    long varLong = buf.readVarUint64();
+    long varLong = buf.readVarUInt64();
     assertEquals(buf.writerIndex(), buf.readerIndex());
     assertEquals(value, varLong);
-    // test slow read branch in `readVarUint64`
-    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readVarUint64(), value);
+    // test slow read branch in `readVarUInt64`
+    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readVarUInt64(), value);
   }
 
   @Test
-  public void testWriteVarUint32Aligned() {
+  public void testWriteVarUInt32Aligned() {
     MemoryBuffer buf = MemoryUtils.buffer(16);
-    assertEquals(buf.writeVarUint32Aligned(1), 4);
-    assertEquals(buf.readAlignedVarUint32(), 1);
-    assertEquals(buf.writeVarUint32Aligned(1 << 5), 4);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 5);
-    assertEquals(buf.writeVarUint32Aligned(1 << 10), 4);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 10);
-    assertEquals(buf.writeVarUint32Aligned(1 << 15), 4);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 15);
-    assertEquals(buf.writeVarUint32Aligned(1 << 20), 4);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 20);
-    assertEquals(buf.writeVarUint32Aligned(1 << 25), 8);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 25);
-    assertEquals(buf.writeVarUint32Aligned(1 << 30), 8);
-    assertEquals(buf.readAlignedVarUint32(), 1 << 30);
-    assertEquals(buf.writeVarUint32Aligned(Integer.MAX_VALUE), 8);
-    assertEquals(buf.readAlignedVarUint32(), Integer.MAX_VALUE);
+    assertEquals(buf.writeVarUInt32Aligned(1), 4);
+    assertEquals(buf.readAlignedVarUInt32(), 1);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 5), 4);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 5);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 10), 4);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 10);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 15), 4);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 15);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 20), 4);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 20);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 25), 8);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 25);
+    assertEquals(buf.writeVarUInt32Aligned(1 << 30), 8);
+    assertEquals(buf.readAlignedVarUInt32(), 1 << 30);
+    assertEquals(buf.writeVarUInt32Aligned(Integer.MAX_VALUE), 8);
+    assertEquals(buf.readAlignedVarUInt32(), Integer.MAX_VALUE);
     buf.writeByte((byte) 1); // make address unaligned.
     buf.writeInt16((short) 1); // make address unaligned.
-    assertEquals(buf.writeVarUint32Aligned(Integer.MAX_VALUE), 9);
+    assertEquals(buf.writeVarUInt32Aligned(Integer.MAX_VALUE), 9);
     buf.readByte();
     buf.readInt16();
-    assertEquals(buf.readAlignedVarUint32(), Integer.MAX_VALUE);
+    assertEquals(buf.readAlignedVarUInt32(), Integer.MAX_VALUE);
     for (int i = 0; i < 32; i++) {
       MemoryBuffer buf1 = MemoryUtils.buffer(16);
       assertAligned(i, buf1);
@@ -529,23 +529,23 @@ public class MemoryBufferTest {
   private void assertAligned(int i, MemoryBuffer buffer) {
     for (int j = 0; j < 31; j++) {
       buffer.writeByte((byte) i); // make address unaligned.
-      buffer.writeVarUint32Aligned(1 << j);
+      buffer.writeVarUInt32Aligned(1 << j);
       assertEquals(buffer.writerIndex() % 4, 0);
       buffer.readByte();
-      assertEquals(buffer.readAlignedVarUint32(), 1 << j);
+      assertEquals(buffer.readAlignedVarUInt32(), 1 << j);
       for (int k = 0; k < i % 4; k++) {
         buffer.writeByte((byte) i); // make address unaligned.
-        buffer.writeVarUint32Aligned(1 << j);
+        buffer.writeVarUInt32Aligned(1 << j);
         assertEquals(buffer.writerIndex() % 4, 0);
         buffer.readByte();
-        assertEquals(buffer.readAlignedVarUint32(), 1 << j);
+        assertEquals(buffer.readAlignedVarUInt32(), 1 << j);
       }
     }
     buffer.writeByte((byte) i); // make address unaligned.
-    buffer.writeVarUint32Aligned(Integer.MAX_VALUE);
+    buffer.writeVarUInt32Aligned(Integer.MAX_VALUE);
     assertEquals(buffer.writerIndex() % 4, 0);
     buffer.readByte();
-    assertEquals(buffer.readAlignedVarUint32(), Integer.MAX_VALUE);
+    assertEquals(buffer.readAlignedVarUInt32(), Integer.MAX_VALUE);
   }
 
   @Test
@@ -597,61 +597,61 @@ public class MemoryBufferTest {
   }
 
   @Test
-  public void testWriteTaggedUint64() {
+  public void testWriteTaggedUInt64() {
     MemoryBuffer buf = MemoryUtils.buffer(8);
-    checkTaggedUint64(buf, 0, 4);
-    checkTaggedUint64(buf, 1, 4);
+    checkTaggedUInt64(buf, 0, 4);
+    checkTaggedUInt64(buf, 1, 4);
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < i; j++) {
         // Values in [0, Integer.MAX_VALUE] should use 4 bytes
-        checkTaggedUint64(buf(i), 0, 4);
-        checkTaggedUint64(buf(i), 1, 4);
-        checkTaggedUint64(buf(i), 1L << 6, 4);
-        checkTaggedUint64(buf(i), 1L << 7, 4);
-        checkTaggedUint64(buf(i), 1L << 28, 4);
-        checkTaggedUint64(buf(i), 1L << 30, 4);
-        checkTaggedUint64(buf(i), Integer.MAX_VALUE, 4);
+        checkTaggedUInt64(buf(i), 0, 4);
+        checkTaggedUInt64(buf(i), 1, 4);
+        checkTaggedUInt64(buf(i), 1L << 6, 4);
+        checkTaggedUInt64(buf(i), 1L << 7, 4);
+        checkTaggedUInt64(buf(i), 1L << 28, 4);
+        checkTaggedUInt64(buf(i), 1L << 30, 4);
+        checkTaggedUInt64(buf(i), Integer.MAX_VALUE, 4);
         // Values > Integer.MAX_VALUE should use 9 bytes
-        checkTaggedUint64(buf(i), (long) Integer.MAX_VALUE + 1, 9);
-        checkTaggedUint64(buf(i), 1L << 31, 9);
-        checkTaggedUint64(buf(i), 1L << 32, 9);
-        checkTaggedUint64(buf(i), 1L << 62, 9);
-        checkTaggedUint64(buf(i), Long.MAX_VALUE, 9);
+        checkTaggedUInt64(buf(i), (long) Integer.MAX_VALUE + 1, 9);
+        checkTaggedUInt64(buf(i), 1L << 31, 9);
+        checkTaggedUInt64(buf(i), 1L << 32, 9);
+        checkTaggedUInt64(buf(i), 1L << 62, 9);
+        checkTaggedUInt64(buf(i), Long.MAX_VALUE, 9);
         // Negative values (large unsigned) should use 9 bytes
-        checkTaggedUint64(buf(i), -1, 9);
-        checkTaggedUint64(buf(i), -1L << 30, 9);
-        checkTaggedUint64(buf(i), Integer.MIN_VALUE, 9);
-        checkTaggedUint64(buf(i), Long.MIN_VALUE, 9);
+        checkTaggedUInt64(buf(i), -1, 9);
+        checkTaggedUInt64(buf(i), -1L << 30, 9);
+        checkTaggedUInt64(buf(i), Integer.MIN_VALUE, 9);
+        checkTaggedUInt64(buf(i), Long.MIN_VALUE, 9);
       }
     }
   }
 
-  private void checkTaggedUint64(MemoryBuffer buf, long value, int bytesWritten) {
+  private void checkTaggedUInt64(MemoryBuffer buf, long value, int bytesWritten) {
     int readerIndex = buf.readerIndex();
     assertEquals(buf.writerIndex(), readerIndex);
-    int actualBytesWritten = buf.writeTaggedUint64(value);
+    int actualBytesWritten = buf.writeTaggedUInt64(value);
     assertEquals(actualBytesWritten, bytesWritten);
-    long varLong = buf.readTaggedUint64();
+    long varLong = buf.readTaggedUInt64();
     assertEquals(buf.writerIndex(), buf.readerIndex());
     assertEquals(value, varLong);
-    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readTaggedUint64(), value);
+    assertEquals(buf.slice(readerIndex, buf.readerIndex() - readerIndex).readTaggedUInt64(), value);
   }
 
   @Test
-  public void testVarUint32Small7() {
+  public void testVarUInt32Small7() {
     MemoryBuffer buf = MemoryUtils.buffer(1);
-    buf.writeVarUint32Small7(1);
-    assertEquals(buf.readVarUint32Small7(), 1);
-    assertEquals(buf.writeVarUint32Small7(127), 1);
-    assertEquals(buf.readVarUint32Small7(), 127);
-    assertEquals(buf.writeVarUint32Small7(Short.MAX_VALUE), 3);
-    assertEquals(buf.readVarUint32Small7(), Short.MAX_VALUE);
-    assertEquals(buf.writeVarUint32Small7(Integer.MAX_VALUE), 5);
-    assertEquals(buf.readVarUint32Small7(), Integer.MAX_VALUE);
-    assertEquals(buf.writeVarUint32Small7(-1), 5);
-    assertEquals(buf.readVarUint32Small7(), -1);
-    assertEquals(buf.writeVarUint32Small7(0), 1);
-    assertEquals(buf.readVarUint32Small7(), 0);
+    buf.writeVarUInt32Small7(1);
+    assertEquals(buf.readVarUInt32Small7(), 1);
+    assertEquals(buf.writeVarUInt32Small7(127), 1);
+    assertEquals(buf.readVarUInt32Small7(), 127);
+    assertEquals(buf.writeVarUInt32Small7(Short.MAX_VALUE), 3);
+    assertEquals(buf.readVarUInt32Small7(), Short.MAX_VALUE);
+    assertEquals(buf.writeVarUInt32Small7(Integer.MAX_VALUE), 5);
+    assertEquals(buf.readVarUInt32Small7(), Integer.MAX_VALUE);
+    assertEquals(buf.writeVarUInt32Small7(-1), 5);
+    assertEquals(buf.readVarUInt32Small7(), -1);
+    assertEquals(buf.writeVarUInt32Small7(0), 1);
+    assertEquals(buf.readVarUInt32Small7(), 0);
   }
 
   @Test

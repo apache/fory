@@ -24,7 +24,6 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -97,13 +96,8 @@ public class ExceptionSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testThrowableCompatibleModeRoundTrip() {
-    Fory fory =
-        builder()
-            .withRefTracking(true)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+  public void testThrowableCompatibleRoundTrip() {
+    Fory fory = builder().withRefTracking(true).withCodegen(false).withCompatible(true).build();
     CustomException cause =
         new CustomException("cause")
             .withParentCode(1)

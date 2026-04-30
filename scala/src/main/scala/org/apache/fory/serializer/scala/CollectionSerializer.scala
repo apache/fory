@@ -54,7 +54,7 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
 
   override def newCollection(readContext: ReadContext): util.Collection[_] = {
     val buffer = readContext.getBuffer
-    val numElements = buffer.readVarUint32()
+    val numElements = buffer.readVarUInt32()
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
     val builder = factory.newBuilder
@@ -141,7 +141,7 @@ class ScalaCollectionSerializer[A, T <: Iterable[A]] (typeResolver: TypeResolver
     val buffer = writeContext.getBuffer
     val factory: Factory[A, Any] = value.iterableFactory.iterableFactory
     val adapter = new CollectionAdapter[A, T](value)
-    buffer.writeVarUint32Small7(adapter.size)
+    buffer.writeVarUInt32Small7(adapter.size)
     writeContext.writeRef(factory)
     adapter
   }
@@ -158,7 +158,7 @@ class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](
       writeContext: WriteContext,
       value: T): util.Collection[_] = {
     val buffer = writeContext.getBuffer
-    buffer.writeVarUint32Small7(value.size)
+    buffer.writeVarUInt32Small7(value.size)
     val factory = value.sortedIterableFactory.evidenceIterableFactory[Any](
       value.ordering.asInstanceOf[Ordering[Any]])
     writeContext.writeRef(factory)
@@ -177,7 +177,7 @@ class ScalaSeqSerializer[A, T <: scala.collection.Seq[A]](
       writeContext: WriteContext,
       value: T): util.Collection[_] = {
     val buffer = writeContext.getBuffer
-    buffer.writeVarUint32Small7(value.size)
+    buffer.writeVarUInt32Small7(value.size)
     val factory: Factory[A, Any] = value.iterableFactory.iterableFactory
     writeContext.writeRef(factory)
     new ListAdapter[Any](value)

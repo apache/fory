@@ -30,7 +30,6 @@ import java.nio.ByteBuffer;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.BigEndian;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -57,7 +56,7 @@ public class JavaSerializerTest extends ForyTestBase {
   public void testWriteObject() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

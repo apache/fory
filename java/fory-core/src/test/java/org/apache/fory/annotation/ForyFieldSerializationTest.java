@@ -30,8 +30,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -137,30 +135,30 @@ public class ForyFieldSerializationTest extends ForyTestBase {
   public Object[][] modes() {
     return new Object[][] {
       // JAVA mode with and without registration
-      {Language.JAVA, CompatibleMode.SCHEMA_CONSISTENT, false, false},
-      {Language.JAVA, CompatibleMode.SCHEMA_CONSISTENT, true, false},
-      {Language.JAVA, CompatibleMode.COMPATIBLE, false, false},
-      {Language.JAVA, CompatibleMode.COMPATIBLE, true, false},
-      {Language.JAVA, CompatibleMode.SCHEMA_CONSISTENT, false, true},
-      {Language.JAVA, CompatibleMode.SCHEMA_CONSISTENT, true, true},
-      {Language.JAVA, CompatibleMode.COMPATIBLE, false, true},
-      {Language.JAVA, CompatibleMode.COMPATIBLE, true, true},
+      {false, false, false, false},
+      {false, false, true, false},
+      {false, true, false, false},
+      {false, true, true, false},
+      {false, false, false, true},
+      {false, false, true, true},
+      {false, true, false, true},
+      {false, true, true, true},
       // XLANG mode always requires registration
-      {Language.XLANG, CompatibleMode.SCHEMA_CONSISTENT, false, true},
-      {Language.XLANG, CompatibleMode.SCHEMA_CONSISTENT, true, true},
-      {Language.XLANG, CompatibleMode.COMPATIBLE, false, true},
-      {Language.XLANG, CompatibleMode.COMPATIBLE, true, true},
+      {true, false, false, true},
+      {true, false, true, true},
+      {true, true, false, true},
+      {true, true, true, true},
     };
   }
 
   @Test(dataProvider = "modes")
   public void testTagIdReducesPayloadSize(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -200,8 +198,8 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Mode: %s/%s/codegen=%s - With tag: %d bytes, Without tag: %d bytes, Opt-out (id=-1): %d bytes%n",
-        language,
-        compatibleMode,
+        xlang,
+        compatible,
         codegen,
         bytesWithTag.length,
         bytesWithoutTag.length,
@@ -213,14 +211,14 @@ public class ForyFieldSerializationTest extends ForyTestBase {
         bytesWithTag.length <= bytesWithoutTag.length,
         String.format(
             "Expected tag ID version (%d bytes) to be <= field name version (%d bytes) in mode %s/%s/codegen=%s",
-            bytesWithTag.length, bytesWithoutTag.length, language, compatibleMode, codegen));
+            bytesWithTag.length, bytesWithoutTag.length, xlang, compatible, codegen));
 
     // Tag ID version should also be smaller than or equal to opt-out version (id=-1)
     assertTrue(
         bytesWithTag.length <= bytesWithOptOut.length,
         String.format(
             "Expected tag ID version (%d bytes) to be <= opt-out id=-1 version (%d bytes) in mode %s/%s/codegen=%s",
-            bytesWithTag.length, bytesWithOptOut.length, language, compatibleMode, codegen));
+            bytesWithTag.length, bytesWithOptOut.length, xlang, compatible, codegen));
 
     // Opt-out (id=-1) should have similar size to no annotation (both use field names)
     // They should be equal or very close in size
@@ -234,12 +232,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
   @Test(dataProvider = "modes")
   public void testFieldNameNotInPayloadWithTagId(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -256,17 +254,17 @@ public class ForyFieldSerializationTest extends ForyTestBase {
     // With tag IDs, field names should generally NOT appear in the payload in most modes
     // Note: Exact behavior may vary by mode, but we verify deserialization always works
     // In XLANG/COMPATIBLE mode specifically, field names should definitely not be present
-    if (language == Language.XLANG && compatibleMode == CompatibleMode.COMPATIBLE) {
+    if (xlang && compatible) {
       assertFalse(
           serialized.contains("veryLongFieldNameForFirstName"),
           String.format(
               "Field name 'veryLongFieldNameForFirstName' should not be in payload with tag ID in mode %s/%s/codegen=%s",
-              language, compatibleMode, codegen));
+              xlang, compatible, codegen));
       assertFalse(
           serialized.contains("anotherVeryLongFieldNameForLastName"),
           String.format(
               "Field name 'anotherVeryLongFieldNameForLastName' should not be in payload with tag ID in mode %s/%s/codegen=%s",
-              language, compatibleMode, codegen));
+              xlang, compatible, codegen));
     }
 
     // Verify deserialization still works in ALL modes
@@ -278,12 +276,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
   @Test(dataProvider = "modes")
   public void testFieldNameInPayloadWithoutTagId(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -296,7 +294,7 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     // In COMPATIBLE mode without tag IDs, field names are used for field matching
     // (though they may be encoded using meta string compression)
-    if (compatibleMode == CompatibleMode.COMPATIBLE) {
+    if (compatible) {
       // Verify the data deserializes correctly
       PersonWithoutTagId deserialized = (PersonWithoutTagId) fory.deserialize(bytes);
       assertEquals(deserialized.veryLongFieldNameForFirstName, "Bob");
@@ -307,12 +305,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
   @Test(dataProvider = "modes")
   public void testMixedTagIdAndFieldName(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -330,8 +328,7 @@ public class ForyFieldSerializationTest extends ForyTestBase {
     assertEquals(deserialized.age, 40);
 
     System.out.printf(
-        "Mixed mode - %s/%s/codegen=%s: %d bytes%n",
-        language, compatibleMode, codegen, bytes.length);
+        "Mixed mode - %s/%s/codegen=%s: %d bytes%n", xlang, compatible, codegen, bytes.length);
   }
 
   /** Test class for nullable and ref flags */
@@ -354,12 +351,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
   @Test(dataProvider = "modes")
   public void testNullableAndRefFlagsInPayload(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -379,7 +376,7 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Nullable/Ref test - %s/%s/codegen=%s: %d bytes%n",
-        language, compatibleMode, codegen, bytes.length);
+        xlang, compatible, codegen, bytes.length);
   }
 
   /** Test class with all fields nullable=false, ref=false for size comparison */
@@ -444,12 +441,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
   @Test(dataProvider = "modes")
   public void testNullableFlagReducesPayloadSize(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -479,12 +476,7 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Nullable flag test - %s/%s/codegen=%s/registered=%s - NonNullable: %d bytes, Nullable: %d bytes%n",
-        language,
-        compatibleMode,
-        codegen,
-        registered,
-        bytesNonNullable.length,
-        bytesNullable.length);
+        xlang, compatible, codegen, registered, bytesNonNullable.length, bytesNullable.length);
 
     // nullable=false should produce smaller or equal payload
     // Each nullable=true field adds 1 byte for null flag
@@ -492,22 +484,17 @@ public class ForyFieldSerializationTest extends ForyTestBase {
         bytesNonNullable.length <= bytesNullable.length,
         String.format(
             "Expected non-nullable (%d bytes) to be <= nullable (%d bytes) in mode %s/%s/codegen=%s/registered=%s",
-            bytesNonNullable.length,
-            bytesNullable.length,
-            language,
-            compatibleMode,
-            codegen,
-            registered));
+            bytesNonNullable.length, bytesNullable.length, xlang, compatible, codegen, registered));
   }
 
   @Test(dataProvider = "modes")
   public void testRefFlagReducesPayloadSize(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -537,7 +524,7 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Ref flag test - %s/%s/codegen=%s/registered=%s - NoRef: %d bytes, WithRef: %d bytes%n",
-        language, compatibleMode, codegen, registered, bytesNoRef.length, bytesWithRef.length);
+        xlang, compatible, codegen, registered, bytesNoRef.length, bytesWithRef.length);
 
     // ref=false should produce smaller or equal payload
     // Each ref=true field may add overhead for reference tracking
@@ -545,17 +532,17 @@ public class ForyFieldSerializationTest extends ForyTestBase {
         bytesNoRef.length <= bytesWithRef.length,
         String.format(
             "Expected no-ref (%d bytes) to be <= with-ref (%d bytes) in mode %s/%s/codegen=%s/registered=%s",
-            bytesNoRef.length, bytesWithRef.length, language, compatibleMode, codegen, registered));
+            bytesNoRef.length, bytesWithRef.length, xlang, compatible, codegen, registered));
   }
 
   @Test(dataProvider = "modes")
   public void testCombinedNullableAndRefFlagsReducePayloadSize(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -588,8 +575,8 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Combined flags test - %s/%s/codegen=%s/registered=%s - Optimized: %d bytes, Unoptimized: %d bytes, Savings: %d bytes (%.1f%%)%n",
-        language,
-        compatibleMode,
+        xlang,
+        compatible,
         codegen,
         registered,
         bytesOptimized.length,
@@ -605,8 +592,8 @@ public class ForyFieldSerializationTest extends ForyTestBase {
             "Expected optimized (nullable=false,ref=false) %d bytes to be < unoptimized (nullable=true,ref=true) %d bytes in mode %s/%s/codegen=%s/registered=%s",
             bytesOptimized.length,
             bytesUnoptimized.length,
-            language,
-            compatibleMode,
+            xlang,
+            compatible,
             codegen,
             registered));
   }
@@ -642,8 +629,8 @@ public class ForyFieldSerializationTest extends ForyTestBase {
   public void testSchemaEvolutionWithTagIds() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
 
@@ -681,12 +668,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
    */
   @Test(dataProvider = "modes")
   public void testNestedObjectsWithTagIds(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -749,24 +736,14 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Nested objects test - %s/%s/codegen=%s/registered=%s - With tags: %d bytes, Without tags: %d bytes%n",
-        language,
-        compatibleMode,
-        codegen,
-        registered,
-        bytesWithTags.length,
-        bytesWithoutTags.length);
+        xlang, compatible, codegen, registered, bytesWithTags.length, bytesWithoutTags.length);
 
     // Tag IDs should produce smaller payload in all modes
     assertTrue(
         bytesWithTags.length < bytesWithoutTags.length,
         String.format(
             "Expected nested objects with tag IDs (%d bytes) to be < without tag IDs (%d bytes) in %s/%s/codegen=%s/registered=%s",
-            bytesWithTags.length,
-            bytesWithoutTags.length,
-            language,
-            compatibleMode,
-            codegen,
-            registered));
+            bytesWithTags.length, bytesWithoutTags.length, xlang, compatible, codegen, registered));
 
     // Print savings information
     System.out.printf(
@@ -781,12 +758,12 @@ public class ForyFieldSerializationTest extends ForyTestBase {
    */
   @Test(dataProvider = "modes")
   public void testNestedObjectFieldIdInPayload(
-      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+      boolean xlang, boolean compatible, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
-            .withCompatibleMode(compatibleMode)
+            .withCompatible(compatible)
             .withCodegen(codegen)
             .build();
 
@@ -824,15 +801,15 @@ public class ForyFieldSerializationTest extends ForyTestBase {
         hasLongFieldName1,
         String.format(
             "Field name 'veryLongFieldNameForNestedObject' should NOT be in payload with tag ID in %s/%s/codegen=%s/registered=%s",
-            language, compatibleMode, codegen, registered));
+            xlang, compatible, codegen, registered));
     assertFalse(
         hasLongFieldName2,
         String.format(
             "Field name 'anotherVeryLongFieldNameForAnotherNestedObject' should NOT be in payload with tag ID in %s/%s/codegen=%s/registered=%s",
-            language, compatibleMode, codegen, registered));
+            xlang, compatible, codegen, registered));
 
     System.out.printf(
         "Verified: Field IDs used instead of field names in %s/%s/codegen=%s/registered=%s%n",
-        language, compatibleMode, codegen, registered);
+        xlang, compatible, codegen, registered);
   }
 }

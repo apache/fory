@@ -137,15 +137,15 @@ class TypeDefEncoder {
     int currentClassHeader = fields.size();
     if (fields.size() >= SMALL_NUM_FIELDS_THRESHOLD) {
       currentClassHeader = SMALL_NUM_FIELDS_THRESHOLD;
-      buffer.writeVarUint32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
+      buffer.writeVarUInt32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
     }
     if (resolver.isRegisteredById(type)) {
-      buffer.writeUint8(typeInfo.getTypeId());
+      buffer.writeUInt8(typeInfo.getTypeId());
       Preconditions.checkArgument(
           typeInfo.getUserTypeId() != -1,
           "User type id is required for typeId %s",
           typeInfo.getTypeId());
-      buffer.writeVarUint32(typeInfo.getUserTypeId());
+      buffer.writeVarUInt32(typeInfo.getUserTypeId());
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
@@ -204,7 +204,7 @@ class TypeDefEncoder {
       if (bigSize) {
         header |= 0b00111100;
         buffer.writeByte(header);
-        buffer.writeVarUint32Small7(size - FIELD_NAME_SIZE_THRESHOLD);
+        buffer.writeVarUInt32Small7(size - FIELD_NAME_SIZE_THRESHOLD);
       } else {
         header |= (size << 2);
         buffer.writeByte(header);

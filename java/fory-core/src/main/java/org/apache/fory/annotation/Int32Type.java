@@ -23,40 +23,15 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import org.apache.fory.config.Int32Encoding;
 
 /**
- * Annotation to specify encoding options for 32-bit signed integer fields.
- *
- * <p>When applied to a field of type {@code int} or {@code Integer}, this annotation controls how
- * the value is serialized:
- *
- * <ul>
- *   <li>{@code compress=true} (default): Uses variable-length encoding (VARINT32, type_id=5) which
- *       is more compact for small values
- *   <li>{@code compress=false}: Uses fixed 4-byte encoding (INT32, type_id=4) which has consistent
- *       size
- * </ul>
- *
- * <p>Example usage:
- *
- * <pre>{@code
- * public class MyStruct {
- *   {@literal @}Int32Type(compress = true)  // Uses varint encoding (default)
- *   int compactId;
- *
- *   {@literal @}Int32Type(compress = false) // Uses fixed 4-byte encoding
- *   int fixedId;
- * }
- * }</pre>
+ * Annotation to specify encoding options for 32-bit signed integer fields or nested type-use
+ * positions.
  */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD})
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
 public @interface Int32Type {
-  /**
-   * Whether to use variable-length compression for this int32 field.
-   *
-   * @return true to use VARINT32 encoding (compact for small values), false to use fixed INT32
-   *     encoding (4 bytes)
-   */
-  boolean compress() default true;
+  /** The encoding strategy to use for this int32 value. */
+  Int32Encoding encoding() default Int32Encoding.VARINT;
 }

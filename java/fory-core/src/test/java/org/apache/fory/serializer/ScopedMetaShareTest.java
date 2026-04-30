@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.test.bean.Foo;
 import org.testng.Assert;
@@ -40,11 +39,7 @@ public class ScopedMetaShareTest extends ForyTestBase {
   @Test
   public void testRegister() throws Exception {
     Supplier<ForyBuilder> builder =
-        () ->
-            builder()
-                .withCodegen(true)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
-                .withScopedMetaShare(true);
+        () -> builder().withCodegen(true).withCompatible(true).withScopedMetaShare(true);
     Object foo = Foo.create();
     Class<?> fooClass = Foo.createCompatibleClass1();
     Object newFoo = fooClass.newInstance();

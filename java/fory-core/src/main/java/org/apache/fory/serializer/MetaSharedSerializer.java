@@ -23,7 +23,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.RefReader;
@@ -60,7 +59,6 @@ import org.apache.fory.util.record.RecordUtils;
  * all non-inner final types as non-final, so that fory can write class definition when write class
  * info for those types.
  *
- * @see CompatibleMode
  * @see ForyBuilder#withMetaShare
  * @see MetaSharedCodecBuilder
  * @see ObjectSerializer

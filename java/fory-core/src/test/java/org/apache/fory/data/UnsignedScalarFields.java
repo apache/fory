@@ -19,30 +19,30 @@
 
 package org.apache.fory.data;
 
-import org.apache.fory.annotation.Uint16Type;
-import org.apache.fory.annotation.Uint32Type;
-import org.apache.fory.annotation.Uint64Type;
-import org.apache.fory.annotation.Uint8Type;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.annotation.UInt16Type;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.config.Int32Encoding;
+import org.apache.fory.config.Int64Encoding;
 
 /** Test class with all unsigned integer scalar fields. */
 public class UnsignedScalarFields {
-  @Uint8Type public byte u8;
+  @UInt8Type public int u8;
 
-  @Uint16Type public short u16;
+  @UInt16Type public int u16;
 
-  @Uint32Type(compress = false)
-  public int u32;
+  @UInt32Type(encoding = Int32Encoding.FIXED)
+  public long u32;
 
-  @Uint32Type(compress = true)
-  public int u32Var;
+  @UInt32Type public long u32Var;
 
-  @Uint64Type(encoding = LongEncoding.FIXED)
+  @UInt64Type(encoding = Int64Encoding.FIXED)
   public long u64;
 
-  @Uint64Type(encoding = LongEncoding.VARINT)
+  @UInt64Type(encoding = Int64Encoding.VARINT)
   public long u64Var;
 
-  @Uint64Type(encoding = LongEncoding.TAGGED)
+  @UInt64Type(encoding = Int64Encoding.TAGGED)
   public long u64Tagged;
 }

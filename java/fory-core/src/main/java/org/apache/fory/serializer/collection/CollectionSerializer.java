@@ -44,7 +44,7 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
 
   @Override
   public Collection onCollectionWrite(WriteContext writeContext, T value) {
-    writeContext.getBuffer().writeVarUint32Small7(value.size());
+    writeContext.getBuffer().writeVarUInt32Small7(value.size());
     return value;
   }
 

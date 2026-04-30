@@ -22,7 +22,7 @@
 #include "fory/util/error.h"
 #include "fory/util/result.h"
 
-#include "absl/container/flat_hash_map.h"
+#include "fory/thirdparty/flat_hash_map.h"
 
 #include <any>
 #include <cstdint>
@@ -65,10 +65,10 @@ public:
     }
 
     auto address = reinterpret_cast<uintptr_t>(ptr.get());
-    auto it = ptr_to_id_.find(address);
-    if (it != ptr_to_id_.end()) {
+    auto *entry = ptr_to_id_.find(address);
+    if (entry != nullptr) {
       writer.write_int8(static_cast<int8_t>(RefFlag::Ref));
-      writer.write_var_uint32(it->second);
+      writer.write_var_uint32(entry->second);
       return true;
     }
 
@@ -91,7 +91,7 @@ public:
   }
 
 private:
-  absl::flat_hash_map<uintptr_t, uint32_t> ptr_to_id_;
+  fory::flat_hash_map<uintptr_t, uint32_t> ptr_to_id_;
   uint32_t next_id_;
 };
 

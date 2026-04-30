@@ -42,7 +42,7 @@ public class MapSerializer<T extends Map> extends MapLikeSerializer<T> {
 
   @Override
   public Map onMapWrite(WriteContext writeContext, T value) {
-    writeContext.getBuffer().writeVarUint32Small7(value.size());
+    writeContext.getBuffer().writeVarUInt32Small7(value.size());
     return value;
   }
 

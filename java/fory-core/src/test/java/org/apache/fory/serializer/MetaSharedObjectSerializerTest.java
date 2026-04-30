@@ -22,7 +22,6 @@ package org.apache.fory.serializer;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.codegen.JaninoUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.testng.annotations.Test;
 
 public class MetaSharedObjectSerializerTest extends ForyTestBase {
@@ -53,7 +52,7 @@ public class MetaSharedObjectSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withDeserializeUnknownClass(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .deserializeUnknownEnumValueAsNull(true)
             .withScopedMetaShare(true)
             .withCodegen(false)
@@ -64,7 +63,7 @@ public class MetaSharedObjectSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withDeserializeUnknownClass(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .deserializeUnknownEnumValueAsNull(true)
             .withScopedMetaShare(true)
             .withCodegen(false)

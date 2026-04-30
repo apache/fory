@@ -64,7 +64,6 @@ target_link_libraries(fory_serialization
         fory_type
         fory_util
         fory_thirdparty
-        absl::flat_hash_map
 )
 
 set_target_properties(fory_serialization PROPERTIES

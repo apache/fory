@@ -97,7 +97,7 @@ If max depth is reached, Fory will throw `ForyException`. This can be used to pr
 
 ```java
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   .withMaxDepth(100)  // Set custom max depth
   .build();
 ```

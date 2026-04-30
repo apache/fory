@@ -20,7 +20,6 @@
 package org.apache.fory.util
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.apache.fory.`type`.Descriptor
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -144,7 +143,7 @@ object NestedClasses {
 class ScalaDefaultValueUtilsTest extends AnyWordSpec with Matchers {
 
   def createFory(): Fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .withRefTracking(true)
     .withScalaOptimizationEnabled(true)
     .requireClassRegistration(false)

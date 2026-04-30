@@ -42,7 +42,6 @@ import java.util.regex.Pattern;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
@@ -51,10 +50,10 @@ import org.testng.annotations.Test;
 public class SerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testStringBuilder(boolean referenceTracking, Language language) {
+  public void testStringBuilder(boolean referenceTracking, boolean xlang) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -83,7 +82,7 @@ public class SerializersTest extends ForyTestBase {
   public void testXlangDecimalRoundTrip(boolean referenceTracking) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -130,14 +129,14 @@ public class SerializersTest extends ForyTestBase {
   public void testXlangDecimalCodecRejectsNonCanonicalBigPayloads() {
     MemoryBuffer zeroBigEncoding = MemoryUtils.buffer(16);
     zeroBigEncoding.writeVarInt32(0);
-    zeroBigEncoding.writeVarUint64(1L);
+    zeroBigEncoding.writeVarUInt64(1L);
     zeroBigEncoding.readerIndex(0);
     assertThrows(
         IllegalArgumentException.class, () -> DecimalSerializer.readXlangDecimal(zeroBigEncoding));
 
     MemoryBuffer trailingZeroPayload = MemoryUtils.buffer(16);
     trailingZeroPayload.writeVarInt32(0);
-    trailingZeroPayload.writeVarUint64(9L);
+    trailingZeroPayload.writeVarUInt64(9L);
     trailingZeroPayload.writeBytes(new byte[] {1, 0});
     trailingZeroPayload.readerIndex(0);
     assertThrows(
@@ -147,10 +146,8 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testDecimalSerializerSelectionByLanguage() {
-    Fory nativeFory =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    Fory xlangFory =
-        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    Fory nativeFory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory xlangFory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
     assertEquals(nativeFory.getSerializer(BigDecimal.class).getClass(), DecimalSerializer.class);
     assertEquals(xlangFory.getSerializer(BigDecimal.class).getClass(), DecimalSerializer.class);
     assertEquals(nativeFory.getSerializer(BigInteger.class).getClass(), BigIntegerSerializer.class);
@@ -184,7 +181,7 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testCharset() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     Assert.assertEquals(
         serDeCheckSerializer(fory, Charset.defaultCharset(), "Charset"), Charset.defaultCharset());
   }

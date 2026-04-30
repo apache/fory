@@ -64,5 +64,6 @@ cc_test(
     deps = [
         ":fory_meta",
         "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )

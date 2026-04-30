@@ -40,7 +40,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.util.Preconditions;
 import org.testng.annotations.Test;
 
@@ -75,7 +74,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testCommonReplace(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -156,7 +155,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteReplaceCircularClass(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -205,7 +204,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteReplaceSameClassCircularRef() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -277,7 +276,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteReplaceDifferentClassCircularRef() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -331,7 +330,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteReplaceSubClass(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -386,7 +385,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteReplaceWithWriteObject(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -423,7 +422,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testUnInheritableReplaceMethod() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -443,7 +442,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testReplaceNotSerializable() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -463,13 +462,13 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testImmutableListResolve() {
     Fory fory1 =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
     Fory fory2 =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -504,13 +503,13 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
   public void testImmutableMapResolve() {
     Fory fory1 =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
     Fory fory2 =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();

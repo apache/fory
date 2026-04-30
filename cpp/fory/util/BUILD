@@ -7,11 +7,6 @@ cc_library(
     strip_include_prefix = "/cpp",
     alwayslink=True,
     linkstatic=True,
-    deps = [
-        "@abseil-cpp//absl/debugging:failure_signal_handler",
-        "@abseil-cpp//absl/debugging:stacktrace",
-        "@abseil-cpp//absl/debugging:symbolize",
-    ],
     visibility = ["//visibility:public"],
 )
 

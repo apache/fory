@@ -243,7 +243,7 @@ public class Message {
 
 Fory fory = Fory.builder()
     .withXlang(true)
-    .withCompatibleMode(true)
+    .withCompatible(true)
     .build();
 fory.register(Message.class, 1);
 Message msg = fory.deserialize(data, Message.class);

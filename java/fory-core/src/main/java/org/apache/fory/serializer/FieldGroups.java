@@ -33,11 +33,13 @@ import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
@@ -169,12 +171,16 @@ public class FieldGroups {
     public final GenericType genericType;
     public final TypeInfoHolder classInfoHolder;
     public final TypeInfo containerTypeInfo;
+    public final Serializer<?> containerSerializerOverride;
 
     SerializationFieldInfo(TypeResolver resolver, Descriptor d) {
       this.descriptor = d;
       this.type = descriptor.getRawType();
       this.typeRef = d.getTypeRef();
       this.dispatchId = DispatchId.getDispatchId(resolver, d);
+      boolean primitiveListCollection =
+          TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+              d.getTypeAnnotation(), typeRef.getRawType());
       // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
       if (resolver.isMonomorphic(descriptor)) {
         typeInfo = resolver.getTypeInfo(typeRef.getRawType());
@@ -188,7 +194,8 @@ public class FieldGroups {
       } else {
         typeInfo = null;
       }
-      useDeclaredTypeInfo = typeInfo != null && resolver.isMonomorphic(descriptor);
+      useDeclaredTypeInfo =
+          typeInfo != null && resolver.isMonomorphic(descriptor) && !primitiveListCollection;
       if (typeInfo != null) {
         serializer = typeInfo.getSerializer();
       } else {
@@ -217,7 +224,19 @@ public class FieldGroups {
       }
       refMode = RefMode.of(trackingRef, nullable);
 
-      GenericType t = resolver.buildGenericType(typeRef);
+      GenericType t;
+      if (primitiveListCollection) {
+        int elementTypeId =
+            TypeAnnotationUtils.getPrimitiveListElementTypeId(
+                d.getTypeAnnotation(), typeRef.getRawType());
+        Class<?> elementClass =
+            TypeAnnotationUtils.getPrimitiveListElementClass(typeRef.getRawType());
+        TypeRef<?> elementTypeRef =
+            TypeRef.of(elementClass, TypeExtMeta.of(elementTypeId, true, false));
+        t = new GenericType(typeRef, true, resolver.buildGenericType(elementTypeRef));
+      } else {
+        t = resolver.buildGenericType(typeRef);
+      }
       Class<?> cls = t.getCls();
       if (t.getTypeParametersCount() > 0) {
         boolean skip =
@@ -237,10 +256,16 @@ public class FieldGroups {
         classInfoHolder = null;
       }
       isArray = cls.isArray();
+      if (primitiveListCollection) {
+        containerSerializerOverride = new CollectionSerializer(resolver, (Class) type);
+      } else {
+        containerSerializerOverride = null;
+      }
       if (!resolver.isCrossLanguage()) {
         containerTypeInfo = null;
       } else {
-        if (resolver.isMap(cls) || resolver.isCollection(cls) || resolver.isSet(cls)) {
+        if (!primitiveListCollection
+            && (resolver.isMap(cls) || resolver.isCollection(cls) || resolver.isSet(cls))) {
           containerTypeInfo = resolver.getTypeInfo(cls);
         } else {
           containerTypeInfo = null;

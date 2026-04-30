@@ -35,9 +35,7 @@ import org.apache.fory.TestUtils;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.meta.NativeTypeDefEncoderTest;
@@ -103,9 +101,9 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
 
   private static ForyBuilder foryBuilder() {
     return builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .requireClassRegistration(false)
         .withScopedMetaShare(false);
   }
@@ -215,7 +213,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
         foryBuilder()
             .withCodegen(false)
             .withMetaShare(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withClassLoader(cls1.getClassLoader())
             .build();
     code =
@@ -240,7 +238,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
         foryBuilder()
             .withCodegen(false)
             .withMetaShare(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withClassLoader(cls2.getClassLoader())
             .build();
 
@@ -681,11 +679,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
   @Test
   public void testBigClassNameObject() {
     Fory fory =
-        builder()
-            .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withScopedMetaShare(false)
-            .build();
+        builder().withRefTracking(true).withCompatible(true).withScopedMetaShare(false).build();
     Object o =
         new NativeTypeDefEncoderTest
             .TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
@@ -761,11 +755,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       Class<?> A = classLoader.loadClass("demo.pkg1.A");
       Class<?> B = classLoader.loadClass("demo.test.B");
       Class<?> C = classLoader.loadClass("demo.report.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A);
       fory.register(B);
       fory.register(C);
@@ -802,11 +792,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       Class<?> A = classLoader.loadClass("example.pkg1.A");
       Class<?> B = classLoader.loadClass("example.report.B");
       Class<?> C = classLoader.loadClass("example.test.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A);
       fory.register(B);
       fory.register(C);
@@ -824,11 +810,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       Class<?> A = classLoader.loadClass("demo.pkg1.A");
       Class<?> B = classLoader.loadClass("demo.test.B");
       Class<?> C = classLoader.loadClass("demo.report.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A, 300);
       fory.register(B, 301);
       fory.register(C, 302);
@@ -841,11 +823,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
           JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), newAUnit, newCUnit);
       Class<?> A = classLoader.loadClass("example.pkg1.A");
       Class<?> C = classLoader.loadClass("example.test.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A, 300);
       fory.register(C, 302);
       Object newObj = fory.deserialize(serialized);
@@ -865,11 +843,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       Class<?> A = classLoader.loadClass("demo.pkg1.A");
       Class<?> B = classLoader.loadClass("demo.test.B");
       Class<?> C = classLoader.loadClass("demo.report.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A, "test.A");
       fory.register(B, "test.B");
       fory.register(C, "test.C");
@@ -882,11 +856,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
           JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), newAUnit, newCUnit);
       Class<?> A = classLoader.loadClass("example.pkg1.A");
       Class<?> C = classLoader.loadClass("example.test.C");
-      Fory fory =
-          builder()
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
-              .withClassLoader(classLoader)
-              .build();
+      Fory fory = builder().withCompatible(true).withClassLoader(classLoader).build();
       fory.register(A, "test.A");
       fory.register(C, "test.C");
       Object newObj = fory.deserialize(serialized);
@@ -925,11 +895,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
     ReflectionUtils.setObjectFieldValue(o, "f1", 10);
     ReflectionUtils.setObjectFieldValue(o, "f2", 20);
     ReflectionUtils.setObjectFieldValue(o, "f3", 30);
-    Fory fory =
-        builder()
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withClassLoader(classLoader1)
-            .build();
+    Fory fory = builder().withCompatible(true).withClassLoader(classLoader1).build();
     fory.register(classLoader1.loadClass("example.test.Child"));
     fory.register(classLoader1.loadClass("example.test.Parent"));
     byte[] serialized = fory.serialize(o);
@@ -943,11 +909,7 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
                 + "  public Integer f2;\n"
                 + "}"));
     ClassLoader classLoader2 = JaninoUtils.compile(getClass().getClassLoader(), u11, u2);
-    Fory fory2 =
-        builder()
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withClassLoader(classLoader2)
-            .build();
+    Fory fory2 = builder().withCompatible(true).withClassLoader(classLoader2).build();
     fory2.register(classLoader2.loadClass("example.test.Child"));
     fory2.register(classLoader2.loadClass("example.test.Parent"));
     Object o1 = fory2.deserialize(serialized);

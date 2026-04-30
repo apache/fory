@@ -24,7 +24,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.integration_tests.state.generated.ProtoMessage;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -41,17 +40,12 @@ public class StructBenchmark {
   private static byte[] foryKVCompatibleBytes;
   private static byte[] pbBytes;
 
-  private static final Fory fory =
-      Fory.builder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+  private static final Fory fory = Fory.builder().withCompatible(true).build();
 
-  private static final Fory foryStrict =
-      Fory.builder().withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT).build();
+  private static final Fory foryStrict = Fory.builder().withCompatible(false).build();
 
   private static final Fory foryKVCompatible =
-      Fory.builder()
-          .withCompatibleMode(CompatibleMode.COMPATIBLE)
-          .withScopedMetaShare(false)
-          .build();
+      Fory.builder().withCompatible(true).withScopedMetaShare(false).build();
 
   static {
     try {

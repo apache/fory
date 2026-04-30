@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Objects;
 import org.apache.fory.Fory;
 import org.apache.fory.TestBase;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -198,7 +197,7 @@ public class GuavaCollectionSerializersTest extends TestBase {
   public void testXlangSerialize() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
             .build();

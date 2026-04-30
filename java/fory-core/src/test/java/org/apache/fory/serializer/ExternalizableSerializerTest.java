@@ -24,7 +24,6 @@ import static org.testng.Assert.assertEquals;
 import java.io.Externalizable;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.test.Factory;
 import org.testng.annotations.Test;
 
@@ -36,7 +35,7 @@ public class ExternalizableSerializerTest extends ForyTestBase {
 
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

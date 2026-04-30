@@ -23,7 +23,6 @@ import java.rmi.server.UnicastRemoteObject;
 import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.Platform;
 import org.testng.Assert;
@@ -81,7 +80,7 @@ public class DisallowedListTest extends ForyTestBase {
       boolean requireClassRegistration = i % 2 == 0;
       Fory fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .requireClassRegistration(requireClassRegistration)
               .build();
       if (requireClassRegistration) {

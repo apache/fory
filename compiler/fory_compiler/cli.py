@@ -520,7 +520,10 @@ def compile_file(
             print("======================")
 
     # Validate merged schema
-    validator = SchemaValidator(schema)
+    allow_nested_collections = set(lang_output_dirs) == {"cpp"}
+    validator = SchemaValidator(
+        schema, allow_nested_collections=allow_nested_collections
+    )
     if not validator.validate():
         for error in validator.errors:
             print(f"Error: {error}", file=sys.stderr)

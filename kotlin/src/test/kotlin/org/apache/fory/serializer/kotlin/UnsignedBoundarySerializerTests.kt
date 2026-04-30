@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.testng.Assert
 import org.testng.annotations.Test
 
@@ -29,7 +28,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUByteBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -43,7 +42,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUShortBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -57,7 +56,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUIntBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -71,7 +70,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testULongBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -85,7 +84,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUByteArrayBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -97,7 +96,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUShortArrayBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -109,7 +108,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testUIntArrayBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 
@@ -121,7 +120,7 @@ class UnsignedBoundarySerializerTests {
   @Test
   fun testULongArrayBoundarySerialization() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
 

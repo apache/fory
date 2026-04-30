@@ -247,6 +247,10 @@ The text of each license is the standard Apache 2.0 license.
     Files:
       bazel/cython_library.bzl
 
+* abseil-cpp (https://github.com/abseil/abseil-cpp)
+    Files:
+      cpp/fory/thirdparty/flat_hash_map.h
+
 
 ================================================================
 BSD-3-Clause licenses
@@ -281,10 +285,6 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 * murmurHash3.js (https://github.com/karanlyons/murmurHash3.js)
     Files:
       javascript/packages/fory/lib/murmurHash3.ts
-
-* cython-abseil-sample (https://github.com/messense/cython-abseil-sample)
-    Files:
-      python/pyfory/includes/libabsl.pxd
 
 
 ================================================================

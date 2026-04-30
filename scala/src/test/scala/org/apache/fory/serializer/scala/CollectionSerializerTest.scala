@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.apache.fory.resolver.ClassResolver
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -29,7 +28,7 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
   val params: Seq[(Boolean, Boolean)] = List((false, false), (false, true), (true, false), (true, true))
   params.foreach{case (setOpt, setFactory) => {
     val fory1: Fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefTracking(true)
       .withScalaOptimizationEnabled(setOpt)
       .requireClassRegistration(false)

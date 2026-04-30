@@ -297,6 +297,7 @@ class ProtoTranslator:
                 oneof_type_name, location=self._location(oneof.line, oneof.column)
             ),
             number=first_case.number,
+            tag_id=first_case.number,
             optional=True,
             ref=False,
             options={},

@@ -857,6 +857,18 @@ struct StructWithMap {
     data: HashMap<Option<String>, Option<String>>,
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedAnnotatedContainerSchemaConsistent {
+    #[fory(map(key(nullable = true, encoding = fixed), value(list(element(nullable = true, encoding = tagged)))))]
+    values: HashMap<Option<u32>, Option<Vec<Option<u64>>>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedAnnotatedContainerCompatible {
+    #[fory(map(key(nullable = true, encoding = fixed), value(list(element(nullable = true, encoding = tagged)))))]
+    values: HashMap<Option<u32>, Option<Vec<Option<u64>>>>,
+}
+
 // ============================================================================
 // Schema Evolution Test Types
 // ============================================================================
@@ -1058,6 +1070,60 @@ fn test_struct_with_map() {
     fory.serialize_to(&mut buf, &remote_struct1).unwrap();
     fory.serialize_to(&mut buf, &remote_struct2).unwrap();
     fs::write(&data_file_path, buf).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_nested_annotated_container_schema_consistent() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
+    fory.register::<NestedAnnotatedContainerSchemaConsistent>(801)
+        .unwrap();
+
+    let local_obj = NestedAnnotatedContainerSchemaConsistent {
+        values: HashMap::from([
+            (
+                Some(4000000000u32),
+                Some(vec![Some(7u64), Some(1000000000u64)]),
+            ),
+            (Some(3u32), Some(vec![Some(42u64)])),
+        ]),
+    };
+
+    let remote_obj: NestedAnnotatedContainerSchemaConsistent = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_nested_annotated_container_compatible() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::builder().compatible(true).xlang(true).build();
+    fory.register::<NestedAnnotatedContainerCompatible>(802)
+        .unwrap();
+
+    let local_obj = NestedAnnotatedContainerCompatible {
+        values: HashMap::from([
+            (
+                Some(4000000000u32),
+                Some(vec![Some(7u64), Some(1000000000u64)]),
+            ),
+            (Some(3u32), Some(vec![Some(42u64)])),
+        ]),
+    };
+
+    let remote_obj: NestedAnnotatedContainerCompatible = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
 }
 
 // ============================================================================

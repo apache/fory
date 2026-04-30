@@ -30,7 +30,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.testng.annotations.Test;
 
@@ -52,7 +51,7 @@ public class LazyMapTest extends ForyTestBase {
 
   @Test
   public void testMapSerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+    Fory fory = Fory.builder().withXlang(false).build();
     Map<String, Integer> map = new HashMap<>();
     map.put("k1", 1);
     map.put("k2", 2);

@@ -23,7 +23,6 @@ import java.io.StringReader;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
-import org.apache.fory.config.Language;
 import org.codehaus.janino.SimpleCompiler;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -48,7 +47,7 @@ public class ClassLoaderUtilsTest {
     compiler.cook(new StringReader(classCode));
     ClassLoader classLoader = compiler.getClassLoader();
     Class<?> clz = classLoader.loadClass("demo.pkg1." + classname);
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     Thread.currentThread().setContextClassLoader(classLoader);
     byte[] bytes = fory.serialize(clz.newInstance());
     fory.deserialize(bytes);

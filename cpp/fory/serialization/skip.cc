@@ -82,7 +82,7 @@ void skip_list(ReadContext &ctx, const FieldType &field_type) {
     elem_type = field_type.generics[0];
   } else {
     // Unknown element type, need to read type info for each element
-    elem_type.type_id = 0; // Unknown
+    elem_type.set_type_id(0); // Unknown
     elem_type.nullable = false;
   }
 
@@ -135,8 +135,8 @@ void skip_map(ReadContext &ctx, const FieldType &field_type) {
     value_type = field_type.generics[1];
   } else {
     // Unknown types
-    key_type.type_id = 0;
-    value_type.type_id = 0;
+    key_type.set_type_id(0);
+    value_type.set_type_id(0);
   }
 
   uint64_t read_count = 0;
@@ -423,7 +423,7 @@ void skip_unknown(ReadContext &ctx) {
     // For non-struct types (primitives, arrays, maps, etc.),
     // recursively call skip_field_value with the actual type
     FieldType actual_field_type;
-    actual_field_type.type_id = type_info->type_id;
+    actual_field_type.set_type_id(type_info->type_id);
     actual_field_type.nullable = false;
     skip_field_value(ctx, actual_field_type, RefMode::None);
     return;
@@ -469,7 +469,7 @@ void skip_union(ReadContext &ctx) {
 
   // skip the alternative's value
   FieldType alt_field_type;
-  alt_field_type.type_id = type_info->type_id;
+  alt_field_type.set_type_id(type_info->type_id);
   alt_field_type.nullable = false;
   skip_field_value(ctx, alt_field_type, RefMode::None);
 }

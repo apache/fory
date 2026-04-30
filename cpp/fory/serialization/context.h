@@ -23,13 +23,12 @@
 #include "fory/serialization/config.h"
 #include "fory/serialization/ref_resolver.h"
 #include "fory/serialization/type_info.h"
+#include "fory/thirdparty/flat_hash_map.h"
 #include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
 #include "fory/util/flat_int_map.h"
 #include "fory/util/result.h"
-
-#include "absl/container/flat_hash_map.h"
 
 #include <cassert>
 #include <typeindex>
@@ -674,7 +673,7 @@ private:
   // Index-based access (pointers to owned_reading_type_infos_ or type_resolver)
   std::vector<const TypeInfo *> reading_type_infos_;
   // Cache by meta_header (pointers to cached_type_infos_)
-  absl::flat_hash_map<int64_t, const TypeInfo *> parsed_type_infos_;
+  fory::flat_hash_map<int64_t, const TypeInfo *> parsed_type_infos_;
   // Fast path for repeated type meta headers.
   int64_t last_meta_header_ = 0;
   const TypeInfo *last_meta_type_info_ = nullptr;

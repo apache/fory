@@ -28,7 +28,7 @@ import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 
 /**
- * An BinaryMap implementation of Map which is backed by two BinaryArray./ForyObjectOutput
+ * An BinaryMap implementation of Map which is backed by two BinaryArray./ForyStructOutput
  *
  * <p>[8 byte(key array size in bytes)] + [Key BinaryArray] + [Value BinaryArray].
  *

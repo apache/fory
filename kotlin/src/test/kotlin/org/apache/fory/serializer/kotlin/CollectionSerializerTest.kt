@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.testng.Assert.assertEquals
 import org.testng.annotations.Test
 
@@ -28,7 +27,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeArrayDeque() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val arrayDeque = ArrayDeque(listOf(1, 2, 3, 4, 5))
@@ -38,7 +37,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeArrayList() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val arrayList = arrayListOf(1, 2, 3, 4, 5)
@@ -48,7 +47,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeEmptyList() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val emptyList = listOf<Int>()
@@ -58,7 +57,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeList() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val list = listOf(1, 2, 3, 4, 5)
@@ -68,7 +67,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeMutableList() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val mutableList = mutableListOf(1, 2, 3, 4, 5)
@@ -78,7 +77,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeEmptySet() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val emptySet = setOf<Int>()
@@ -88,7 +87,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeSet() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val set = setOf(1, 2, 3, 4, 5)
@@ -98,7 +97,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeMutableSet() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val mutableSet = mutableSetOf(1, 2, 3, 4, 5)
@@ -108,7 +107,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeHashSet() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val set = hashSetOf(1, 2, 3, 4, 5)
@@ -118,7 +117,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeLinkedSet() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val set = linkedSetOf(1, 2, 3, 4, 5)
@@ -128,7 +127,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeEmptyMap() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val emptyMap: Map<Int, String> = mapOf()
@@ -138,7 +137,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeMap() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val map = mapOf(1 to "one", 2 to "two", 3 to "three")
@@ -148,7 +147,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeMutableMap() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val mutableMap = mapOf(1 to "one", 2 to "two", 3 to "three")
@@ -158,7 +157,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeHashMap() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val map = hashMapOf(1 to "one", 2 to "two", 3 to "three")
@@ -168,7 +167,7 @@ class CollectionSerializerTest {
   @Test
   fun testSerializeLinkedMap() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
     KotlinSerializers.registerSerializers(fory)
 
     val map = linkedMapOf(1 to "one", 2 to "two", 3 to "three")

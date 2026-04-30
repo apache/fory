@@ -112,12 +112,12 @@ Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
   if (tid == static_cast<uint32_t>(TypeId::LIST) ||
       tid == static_cast<uint32_t>(TypeId::SET)) {
     FORY_TRY(generic, FieldType::read_from(buffer, true, false));
-    ft.generics.push_back(std::move(generic));
+    ft.add_generic(std::move(generic));
   } else if (tid == static_cast<uint32_t>(TypeId::MAP)) {
     FORY_TRY(key, FieldType::read_from(buffer, true, false));
     FORY_TRY(val, FieldType::read_from(buffer, true, false));
-    ft.generics.push_back(std::move(key));
-    ft.generics.push_back(std::move(val));
+    ft.add_generic(std::move(key));
+    ft.add_generic(std::move(val));
   }
 
   return ft;
@@ -778,8 +778,6 @@ bool is_compress(uint32_t type_id) {
          type_id == static_cast<uint32_t>(TypeId::TAGGED_UINT64);
 }
 
-bool field_type_needs_user_type_id(uint32_t) { return false; }
-
 std::string field_sort_key(const FieldInfo &field) {
   if (field.field_id >= 0) {
     return std::to_string(field.field_id);
@@ -949,79 +947,41 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
       local_field_id_map.emplace(local_fields[i].field_id, i);
     }
   }
+  const bool local_uses_field_ids = !local_field_id_map.empty();
+  bool remote_uses_field_ids = false;
+  for (const auto &remote_field : remote_fields) {
+    if (remote_field.field_id >= 0) {
+      remote_uses_field_ids = true;
+      break;
+    }
+  }
+
+  if (local_uses_field_ids || remote_uses_field_ids) {
+    for (auto &remote_field : remote_fields) {
+      size_t local_index = static_cast<size_t>(-1);
+      if (local_uses_field_ids && remote_field.field_id >= 0) {
+        auto id_it = local_field_id_map.find(remote_field.field_id);
+        if (id_it != local_field_id_map.end() &&
+            field_types_compatible(local_fields[id_it->second].field_type,
+                                   remote_field.field_type)) {
+          local_index = id_it->second;
+        }
+      }
+      remote_field.field_id = local_index == static_cast<size_t>(-1)
+                                  ? -1
+                                  : static_cast<int16_t>(local_index);
+    }
+    return;
+  }
 
   // Track which local fields have already been matched so that each
   // local field is bound to at most one remote field when we fall
   // back to type-based matching.
   std::vector<bool> used(local_fields.size(), false);
 
-  // Normalize user-defined type IDs so that different encodings of the
-  // same logical category (STRUCT vs COMPATIBLE_STRUCT, ENUM vs
-  // NAMED_ENUM, EXT vs NAMED_EXT, and their ID-based variants) are
-  // treated as equal for schema-evolution matching.
-  auto normalize_type_id = [](uint32_t tid) {
-    switch (static_cast<TypeId>(tid)) {
-    case TypeId::STRUCT:
-    case TypeId::COMPATIBLE_STRUCT:
-    case TypeId::NAMED_STRUCT:
-    case TypeId::NAMED_COMPATIBLE_STRUCT:
-    case TypeId::UNKNOWN:
-      // UNKNOWN is used for polymorphic types (e.g., Java interfaces) and
-      // should match STRUCT for cross-language schema evolution.
-      return static_cast<uint32_t>(TypeId::STRUCT);
-    case TypeId::ENUM:
-    case TypeId::NAMED_ENUM:
-      return static_cast<uint32_t>(TypeId::ENUM);
-    case TypeId::EXT:
-    case TypeId::NAMED_EXT:
-      return static_cast<uint32_t>(TypeId::EXT);
-    case TypeId::BINARY:
-    case TypeId::INT8_ARRAY:
-    case TypeId::UINT8_ARRAY:
-      return static_cast<uint32_t>(TypeId::BINARY);
-    default:
-      return tid;
-    }
-  };
-
-  // Recursive logical type comparison that ignores language-specific
-  // encoding details (such as embedded user IDs or named vs unnamed
-  // variants) while still matching full generic structure.
-  std::function<bool(const FieldType &, const FieldType &)> types_match;
-  types_match = [&](const FieldType &a, const FieldType &b) -> bool {
-    if (normalize_type_id(a.type_id) != normalize_type_id(b.type_id)) {
-      return false;
-    }
-    if (field_type_needs_user_type_id(a.type_id) ||
-        field_type_needs_user_type_id(b.type_id)) {
-      if ((a.user_type_id != kInvalidUserTypeId ||
-           b.user_type_id != kInvalidUserTypeId) &&
-          a.user_type_id != b.user_type_id) {
-        return false;
-      }
-    }
-    if (a.generics.size() != b.generics.size()) {
-      return false;
-    }
-    for (size_t i = 0; i < a.generics.size(); ++i) {
-      if (!types_match(a.generics[i], b.generics[i])) {
-        return false;
-      }
-    }
-    return true;
-  };
-
   // For each remote field, assign field ID (sorted index in local schema)
   for (auto &remote_field : remote_fields) {
     size_t local_index = static_cast<size_t>(-1);
-
-    // 0) If remote field carries a tag ID, map directly by ID.
-    if (remote_field.field_id >= 0) {
-      auto id_it = local_field_id_map.find(remote_field.field_id);
-      if (id_it != local_field_id_map.end()) {
-        local_index = id_it->second;
-      }
-    }
 
     // 1) Try exact name + type match first (fast path for same-language
     //    schemas and most C++-only cases).
@@ -1030,7 +990,8 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
       if (it != local_field_index_map.end()) {
         size_t idx = it->second;
         const FieldInfo &local_field = local_fields[idx];
-        if (types_match(remote_field.field_type, local_field.field_type)) {
+        if (field_types_compatible(local_field.field_type,
+                                   remote_field.field_type)) {
           local_index = idx;
         }
       }
@@ -1043,7 +1004,8 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
         if (used[i]) {
           continue;
         }
-        if (types_match(remote_field.field_type, local_fields[i].field_type)) {
+        if (field_types_compatible(local_fields[i].field_type,
+                                   remote_field.field_type)) {
           local_index = i;
           break;
         }
@@ -1208,7 +1170,6 @@ std::string TypeMeta::compute_struct_fingerprint(
     }
     fingerprint.append(std::to_string(effective_type_id));
     fingerprint.push_back(',');
-    // Use field-level ref tracking flag from FORY_FIELD_TAGS or fory::field<>
     fingerprint.push_back(fi.field_type.track_ref ? '1' : '0');
     fingerprint.push_back(',');
     fingerprint.append(fi.field_type.nullable ? "1;" : "0;");
@@ -1324,11 +1285,11 @@ encode_meta_string(const std::string &value, bool is_namespace) {
 Result<const TypeInfo *, Error>
 TypeResolver::get_type_info(const std::type_index &type_index) const {
   // For runtime polymorphic lookups (e.g., smart pointers with dynamic types)
-  auto it = type_info_by_runtime_type_.find(type_index);
-  if (it == type_info_by_runtime_type_.end()) {
+  auto *entry = type_info_by_runtime_type_.find(type_index);
+  if (entry == nullptr) {
     return Unexpected(Error::type_error("TypeInfo not found for type_index"));
   }
-  return it->second;
+  return entry->second;
 }
 
 Result<std::unique_ptr<TypeResolver>, Error>
@@ -1343,7 +1304,7 @@ TypeResolver::build_final_type_resolver() {
   final_resolver->finalized_ = true;
 
   // Build mapping from old pointers to new pointers for rebuilding lookup maps
-  absl::flat_hash_map<const TypeInfo *, TypeInfo *> ptr_map;
+  fory::flat_hash_map<const TypeInfo *, TypeInfo *> ptr_map;
 
   // Deep clone all existing TypeInfo objects
   for (const auto &info : type_infos_) {
@@ -1352,26 +1313,31 @@ TypeResolver::build_final_type_resolver() {
     ptr_map[info.get()] = new_ptr;
     final_resolver->type_infos_.push_back(std::move(cloned));
   }
+  auto remap_type_info = [&ptr_map](const TypeInfo *old_ptr) {
+    auto *entry = ptr_map.find(old_ptr);
+    FORY_CHECK(entry != nullptr);
+    return entry->second;
+  };
 
   // Rebuild lookup maps with new pointers
   for (const auto &[key, old_ptr] : type_info_by_ctid_) {
-    final_resolver->type_info_by_ctid_.put(key, ptr_map[old_ptr]);
+    final_resolver->type_info_by_ctid_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : type_info_by_id_) {
-    final_resolver->type_info_by_id_.put(key, ptr_map[old_ptr]);
+    final_resolver->type_info_by_id_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : user_type_info_by_id_) {
-    final_resolver->user_type_info_by_id_.put(key, ptr_map[old_ptr]);
+    final_resolver->user_type_info_by_id_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : type_info_by_name_) {
-    final_resolver->type_info_by_name_[key] = ptr_map[old_ptr];
+    final_resolver->type_info_by_name_[key] = remap_type_info(old_ptr);
   }
   for (const auto &[key, old_ptr] : type_info_by_runtime_type_) {
-    final_resolver->type_info_by_runtime_type_[key] = ptr_map[old_ptr];
+    final_resolver->type_info_by_runtime_type_[key] = remap_type_info(old_ptr);
   }
 
   for (const auto &[key, old_ptr] : partial_type_infos_) {
-    final_resolver->partial_type_infos_.put(key, ptr_map[old_ptr]);
+    final_resolver->partial_type_infos_.put(key, remap_type_info(old_ptr));
   }
 
   // Process all partial type infos to build complete type metadata
@@ -1418,7 +1384,7 @@ std::unique_ptr<TypeResolver> TypeResolver::clone() const {
   cloned->finalized_ = finalized_;
 
   // Build mapping from old pointers to new pointers
-  absl::flat_hash_map<const TypeInfo *, TypeInfo *> ptr_map;
+  fory::flat_hash_map<const TypeInfo *, TypeInfo *> ptr_map;
 
   // Deep clone all TypeInfo objects
   for (const auto &info : type_infos_) {
@@ -1427,22 +1393,27 @@ std::unique_ptr<TypeResolver> TypeResolver::clone() const {
     ptr_map[info.get()] = new_ptr;
     cloned->type_infos_.push_back(std::move(cloned_info));
   }
+  auto remap_type_info = [&ptr_map](const TypeInfo *old_ptr) {
+    auto *entry = ptr_map.find(old_ptr);
+    FORY_CHECK(entry != nullptr);
+    return entry->second;
+  };
 
   // Rebuild lookup maps with new pointers
   for (const auto &[key, old_ptr] : type_info_by_ctid_) {
-    cloned->type_info_by_ctid_.put(key, ptr_map[old_ptr]);
+    cloned->type_info_by_ctid_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : type_info_by_id_) {
-    cloned->type_info_by_id_.put(key, ptr_map[old_ptr]);
+    cloned->type_info_by_id_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : user_type_info_by_id_) {
-    cloned->user_type_info_by_id_.put(key, ptr_map[old_ptr]);
+    cloned->user_type_info_by_id_.put(key, remap_type_info(old_ptr));
   }
   for (const auto &[key, old_ptr] : type_info_by_name_) {
-    cloned->type_info_by_name_[key] = ptr_map[old_ptr];
+    cloned->type_info_by_name_[key] = remap_type_info(old_ptr);
   }
   for (const auto &[key, old_ptr] : type_info_by_runtime_type_) {
-    cloned->type_info_by_runtime_type_[key] = ptr_map[old_ptr];
+    cloned->type_info_by_runtime_type_[key] = remap_type_info(old_ptr);
   }
   // Note: Don't copy partial_type_infos_ - clone should only be used on
   // finalized resolvers

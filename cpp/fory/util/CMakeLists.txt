@@ -50,14 +50,6 @@ target_include_directories(fory_util
         $<INSTALL_INTERFACE:include>
 )
 
-# Link Abseil for debugging support
-target_link_libraries(fory_util
-    PUBLIC
-        absl::failure_signal_handler
-        absl::stacktrace
-        absl::symbolize
-)
-
 set_target_properties(fory_util PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME fory_util
@@ -92,10 +84,6 @@ if(FORY_BUILD_TESTS)
     add_executable(fory_util_time_util_test time_util_test.cc)
     target_link_libraries(fory_util_time_util_test fory_util GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_util_time_util_test)
-
-    add_executable(fory_util_int_map_test int_map_test.cc)
-    target_link_libraries(fory_util_int_map_test fory_util GTest::gtest GTest::gtest_main)
-    gtest_discover_tests(fory_util_int_map_test)
 
     add_executable(fory_util_flat_int_map_test flat_int_map_test.cc)
     target_link_libraries(fory_util_flat_int_map_test fory_util GTest::gtest GTest::gtest_main)

@@ -23,7 +23,7 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
@@ -59,7 +59,7 @@ public final class ReadContext {
   private final StringSerializer stringSerializer;
   private final boolean crossLanguage;
   private final boolean compressInt;
-  private final LongEncoding longEncoding;
+  private final Int64Encoding longEncoding;
   private final int maxDepth;
   private final boolean scopedMetaShareEnabled;
   private final boolean forVirtualThread;
@@ -146,10 +146,10 @@ public final class ReadContext {
    * Reads an unsigned byte directly from the current buffer.
    *
    * <p>If a caller needs multiple primitive reads, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#readUint8()} directly for better performance.
+   * #getBuffer()} and invoke {@link MemoryBuffer#readUInt8()} directly for better performance.
    */
-  public int readUint8() {
-    return buffer.readUint8();
+  public int readUInt8() {
+    return buffer.readUInt8();
   }
 
   /**
@@ -236,10 +236,10 @@ public final class ReadContext {
    * Reads an unsigned variable-length 32-bit integer.
    *
    * <p>If a caller needs multiple primitive reads, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#readVarUint32()} directly for better performance.
+   * #getBuffer()} and invoke {@link MemoryBuffer#readVarUInt32()} directly for better performance.
    */
-  public int readVarUint32() {
-    return buffer.readVarUint32();
+  public int readVarUInt32() {
+    return buffer.readVarUInt32();
   }
 
   /**
@@ -256,10 +256,10 @@ public final class ReadContext {
    * Reads an unsigned variable-length 64-bit integer.
    *
    * <p>If a caller needs multiple primitive reads, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#readVarUint64()} directly for better performance.
+   * #getBuffer()} and invoke {@link MemoryBuffer#readVarUInt64()} directly for better performance.
    */
-  public long readVarUint64() {
-    return buffer.readVarUint64();
+  public long readVarUInt64() {
+    return buffer.readVarUInt64();
   }
 
   /**
@@ -277,11 +277,11 @@ public final class ReadContext {
    * Reads a tagged unsigned 64-bit integer using the compact small-long encoding.
    *
    * <p>If a caller needs multiple primitive reads, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#readTaggedUint64()} directly for better
+   * #getBuffer()} and invoke {@link MemoryBuffer#readTaggedUInt64()} directly for better
    * performance.
    */
-  public long readTaggedUint64() {
-    return buffer.readTaggedUint64();
+  public long readTaggedUInt64() {
+    return buffer.readTaggedUInt64();
   }
 
   /** Clears all operation-local state so this context can be reused for another read. */
@@ -463,9 +463,9 @@ public final class ReadContext {
     if (inBand) {
       int size;
       if (!crossLanguage) {
-        size = buffer.readAlignedVarUint32();
+        size = buffer.readAlignedVarUInt32();
       } else {
-        size = buffer.readVarUint32();
+        size = buffer.readVarUInt32();
       }
       if (buffer.readerIndex() + size > buffer.size() && buffer.getStreamReader() != null) {
         buffer.getStreamReader().fillBuffer(buffer.readerIndex() + size - buffer.size());

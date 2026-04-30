@@ -21,8 +21,6 @@ package org.apache.fory.serializer.compatible;
 
 import java.util.Arrays;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.compatible.classes.ClassCompleteField;
 import org.apache.fory.serializer.compatible.classes.ClassMissingField;
 import org.testng.Assert;
@@ -37,9 +35,9 @@ public class DifferentPOJOCompatibleSerializerTest extends Assert {
   Fory getFory(Class<?>... classes) {
     Fory instance =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withMetaShare(true)
             .withScopedMetaShare(true)
             .requireClassRegistration(false)

@@ -86,7 +86,6 @@ int main() {
 
 ```java
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 
 public class Message {
     public String topic;
@@ -98,7 +97,7 @@ public class Message {
 public class Consumer {
     public static void main(String[] args) throws Exception {
         Fory fory = Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .build();
         fory.register(Message.class, 100);  // Same ID as C++
 

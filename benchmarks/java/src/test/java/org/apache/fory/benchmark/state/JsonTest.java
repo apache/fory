@@ -24,8 +24,6 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.Collections;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -67,11 +65,10 @@ public class JsonTest {
     DemoResponse resp = new DemoResponse(jsonObject);
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(trackingRef)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withCompatible(compatible)
             .withScopedMetaShare(scoped)
             .withCodegen(codegen)
             .registerGuavaTypes(false)

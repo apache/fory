@@ -27,7 +27,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.serializer.ObjectStreamSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -39,7 +38,7 @@ public class ObjectStreamExample extends AbstractMap<Integer, Integer> {
           .registerGuavaTypes(false)
           .withRefTracking(true)
           .withCodegen(true)
-          .withCompatibleMode(CompatibleMode.COMPATIBLE)
+          .withCompatible(true)
           .withAsyncCompilation(true)
           .build();
 

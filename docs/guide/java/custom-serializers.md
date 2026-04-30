@@ -134,7 +134,7 @@ public final class CustomCollectionSerializer<T extends Collection<?>>
 
   @Override
   public Collection onCollectionWrite(WriteContext writeContext, T value) {
-    writeContext.getBuffer().writeVarUint32Small7(value.size());
+    writeContext.getBuffer().writeVarUInt32Small7(value.size());
     return value;
   }
 
@@ -146,7 +146,7 @@ public final class CustomCollectionSerializer<T extends Collection<?>>
   @Override
   public Collection newCollection(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int numElements = buffer.readVarUint32Small7();
+    int numElements = buffer.readVarUInt32Small7();
     setNumElements(numElements);
     return new ArrayList(numElements);
   }
@@ -173,7 +173,7 @@ public final class CustomMapSerializer<T extends Map<?, ?>> extends MapSerialize
 
   @Override
   public Map onMapWrite(WriteContext writeContext, T value) {
-    writeContext.getBuffer().writeVarUint32Small7(value.size());
+    writeContext.getBuffer().writeVarUInt32Small7(value.size());
     return value;
   }
 
@@ -185,7 +185,7 @@ public final class CustomMapSerializer<T extends Map<?, ?>> extends MapSerialize
   @Override
   public Map newMap(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int numElements = buffer.readVarUint32Small7();
+    int numElements = buffer.readVarUInt32Small7();
     setNumElements(numElements);
     return new LinkedHashMap(numElements);
   }

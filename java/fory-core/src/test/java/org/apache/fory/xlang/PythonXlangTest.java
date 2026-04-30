@@ -29,8 +29,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
@@ -255,8 +253,8 @@ public class PythonXlangTest extends XlangTestBase {
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();

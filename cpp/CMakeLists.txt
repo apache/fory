@@ -67,18 +67,23 @@ endif()
 # Set Fory root directory for include paths (important when used as subdirectory)
 set(FORY_CPP_ROOT ${CMAKE_CURRENT_SOURCE_DIR} CACHE PATH "Fory C++ root directory")
 
-# Fetch Abseil (required for debugging support)
-message(STATUS "Fetching Abseil via FetchContent")
-include(FetchContent)
-set(ABSL_PROPAGATE_CXX_STD ON)
-set(ABSL_BUILD_TESTING OFF)
-set(ABSL_ENABLE_INSTALL ON)
-FetchContent_Declare(
-    abseil-cpp
-    GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
-    GIT_TAG 20240722.0
-)
-FetchContent_MakeAvailable(abseil-cpp)
+# Tests are declared inside runtime subdirectories, so GTest's CMake helpers must
+# be available before those subdirectories are configured.
+if(FORY_BUILD_TESTS)
+    enable_testing()
+    find_package(GTest QUIET)
+    if(NOT GTest_FOUND)
+        include(FetchContent)
+        set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG v1.15.2
+        )
+        FetchContent_MakeAvailable(googletest)
+    endif()
+    include(GoogleTest)
+endif()
 
 # Add subdirectories
 add_subdirectory(fory/thirdparty)
@@ -105,10 +110,7 @@ target_link_libraries(fory_lib INTERFACE fory_serialization fory_row_format fory
 add_library(fory::fory ALIAS fory_lib)
 
 # Tests
-if(FORY_BUILD_TESTS)
-    enable_testing()
-    find_package(GTest REQUIRED)
-    include(GoogleTest)
+if(FORY_BUILD_TESTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
     add_subdirectory(tests)
 endif()
 

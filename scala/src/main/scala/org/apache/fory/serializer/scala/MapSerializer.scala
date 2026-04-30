@@ -51,7 +51,7 @@ abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, c
 
   override def newMap(readContext: ReadContext): util.Map[_, _] = {
     val buffer = readContext.getBuffer
-    val numElements = buffer.readVarUint32()
+    val numElements = buffer.readVarUInt32()
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[(K, V), T]]
     val builder = factory.newBuilder
@@ -120,7 +120,7 @@ class ScalaMapSerializer[K, V, T <: scala.collection.Map[K, V]](
       writeContext: WriteContext,
       value: T): util.Map[_, _] = {
     val buffer = writeContext.getBuffer
-    buffer.writeVarUint32Small7(value.size)
+    buffer.writeVarUInt32Small7(value.size)
     val factory = value.mapFactory.mapFactory[Any, Any].asInstanceOf[Factory[Any, Any]]
     writeContext.writeRef(factory)
     new MapAdapter[K, V](value)
@@ -140,7 +140,7 @@ class ScalaSortedMapSerializer[K, V, T <: scala.collection.SortedMap[K, V]](
       writeContext: WriteContext,
       value: T): util.Map[_, _] = {
     val buffer = writeContext.getBuffer
-    buffer.writeVarUint32Small7(value.size)
+    buffer.writeVarUInt32Small7(value.size)
     val factory = value.sortedMapFactory.sortedMapFactory[Any, Any](
       value.ordering.asInstanceOf[Ordering[Any]]).asInstanceOf[Factory[Any, Any]]
     writeContext.writeRef(factory)

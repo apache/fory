@@ -41,7 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyField;
-import org.apache.fory.annotation.ForyObject;
+import org.apache.fory.annotation.ForyStruct;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.builder.Generated.GeneratedMetaSharedSerializer;
@@ -432,13 +432,13 @@ public abstract class TypeResolver {
   public final void writeTypeInfo(WriteContext writeContext, TypeInfo typeInfo) {
     MemoryBuffer buffer = writeContext.getBuffer();
     int typeId = typeInfo.getTypeId();
-    buffer.writeUint8(typeId);
+    buffer.writeUInt8(typeId);
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        buffer.writeVarUint32(typeInfo.userTypeId);
+        buffer.writeVarUInt32(typeInfo.userTypeId);
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -498,10 +498,10 @@ public abstract class TypeResolver {
     int id = classMap.putOrGet(typeInfo.type, newId);
     if (id >= 0) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
-      buffer.writeVarUint32((id << 1) | 1);
+      buffer.writeVarUInt32((id << 1) | 1);
     } else {
       // New type: index << 1, LSB=0, followed by TypeDef bytes inline
-      buffer.writeVarUint32(newId << 1);
+      buffer.writeVarUInt32(newId << 1);
       TypeDef typeDef = typeInfo.typeDef;
       if (typeDef == null) {
         typeDef = buildTypeDef(typeInfo);
@@ -525,14 +525,14 @@ public abstract class TypeResolver {
    */
   public final TypeInfo readTypeInfo(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int typeId = buffer.readUint8();
+    int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -570,14 +570,14 @@ public abstract class TypeResolver {
    */
   public final TypeInfo readTypeInfo(ReadContext readContext, Class<?> targetClass) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int typeId = buffer.readUint8();
+    int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -620,14 +620,14 @@ public abstract class TypeResolver {
   @CodegenInvoke
   public final TypeInfo readTypeInfo(ReadContext readContext, TypeInfo typeInfoCache) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int typeId = buffer.readUint8();
+    int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -668,7 +668,7 @@ public abstract class TypeResolver {
   @CodegenInvoke
   public final TypeInfo readTypeInfo(ReadContext readContext, TypeInfoHolder classInfoHolder) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int typeId = buffer.readUint8();
+    int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     boolean updateCache = false;
     switch (typeId) {
@@ -676,7 +676,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUint32()));
+        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -762,7 +762,7 @@ public abstract class TypeResolver {
     MemoryBuffer buffer = readContext.getBuffer();
     MetaReadContext metaReadContext = readContext.getMetaReadContext();
     assert metaReadContext != null : SET_META_READ_CONTEXT_MSG;
-    int indexMarker = buffer.readVarUint32Small14();
+    int indexMarker = buffer.readVarUInt32Small14();
     boolean isRef = (indexMarker & 1) == 1;
     int index = indexMarker >>> 1;
     TypeInfo typeInfo;
@@ -1031,7 +1031,7 @@ public abstract class TypeResolver {
     if (cls == null) {
       return true;
     }
-    ForyObject annotation = cls.getAnnotation(ForyObject.class);
+    ForyStruct annotation = cls.getAnnotation(ForyStruct.class);
     return annotation == null || annotation.evolving();
   }
 
@@ -1102,6 +1102,15 @@ public abstract class TypeResolver {
   public final Serializer<?> getSerializer(TypeRef<?> typeRef) {
     if (!isCrossLanguage()) {
       return getSerializer(typeRef.getRawType());
+    }
+    TypeExtMeta typeExtMeta = typeRef.getTypeExtMeta();
+    if (typeExtMeta != null
+        && typeExtMeta.typeId() != Types.UNKNOWN
+        && !Types.isUserDefinedType((byte) typeExtMeta.typeId())) {
+      TypeInfo typeInfo = getInternalTypeInfoByTypeId(typeExtMeta.typeId());
+      if (typeInfo != null && typeInfo.getSerializer() != null) {
+        return typeInfo.getSerializer();
+      }
     }
     Class<?> rawType = typeRef.getRawType();
     return getSerializer(rawType);
@@ -1485,11 +1494,15 @@ public abstract class TypeResolver {
   }
 
   private int getPrimitiveFieldSize(Descriptor descriptor) {
+    int typeId = Types.getDescriptorTypeId(this, descriptor);
+    if (Types.isPrimitiveType(typeId)) {
+      return Types.getPrimitiveTypeSize(typeId);
+    }
     Class<?> rawType = descriptor.getRawType();
     if (TypeUtils.isPrimitive(rawType) || TypeUtils.isBoxed(rawType)) {
       return TypeUtils.getSizeOfPrimitiveType(TypeUtils.unwrap(rawType));
     }
-    return Types.getPrimitiveTypeSize(Types.getDescriptorTypeId(this, descriptor));
+    return Types.getPrimitiveTypeSize(typeId);
   }
 
   /**
@@ -1546,12 +1559,11 @@ public abstract class TypeResolver {
     Map<String, GenericType> map = new HashMap<>();
     Map<String, GenericType> map2 = new HashMap<>();
     for (Field field : ReflectionUtils.getFields(cls, true)) {
-      Type type = field.getGenericType();
-      GenericType genericType = buildGenericType(type);
       AnnotatedType annotatedType = field.getAnnotatedType();
+      TypeRef<?> typeRef = TypeRef.of(annotatedType);
+      GenericType genericType = buildGenericType(typeRef);
       TypeUtils.applyRefTrackingOverride(genericType, annotatedType, trackingRef());
       buildGenericMap(map, genericType);
-      TypeRef<?> typeRef = TypeRef.of(type);
       buildGenericMap(map2, typeRef);
     }
     for (Map.Entry<String, GenericType> entry : map2.entrySet()) {
@@ -1561,10 +1573,11 @@ public abstract class TypeResolver {
   }
 
   private void buildGenericMap(Map<String, GenericType> map, TypeRef<?> typeRef) {
-    if (map.containsKey(typeRef.getType().getTypeName())) {
+    String typeKey = typeRef.getTypeKey();
+    if (map.containsKey(typeKey)) {
       return;
     }
-    map.put(typeRef.getType().getTypeName(), buildGenericType(typeRef));
+    map.put(typeKey, buildGenericType(typeRef));
     Class<?> rawType = typeRef.getRawType();
     if (TypeUtils.isMap(rawType)) {
       Tuple2<TypeRef<?>, TypeRef<?>> kvTypes = TypeUtils.getMapKeyValueType(typeRef);
@@ -1580,10 +1593,11 @@ public abstract class TypeResolver {
   }
 
   private void buildGenericMap(Map<String, GenericType> map, GenericType genericType) {
-    if (map.containsKey(genericType.getType().getTypeName())) {
+    String typeKey = genericType.getTypeRef().getTypeKey();
+    if (map.containsKey(typeKey)) {
       return;
     }
-    map.put(genericType.getType().getTypeName(), genericType);
+    map.put(typeKey, genericType);
     for (GenericType t : genericType.getTypeParameters()) {
       buildGenericMap(map, t);
     }

@@ -543,6 +543,79 @@ def test_java_repeated_float16_generation_uses_float16_list():
     assert "private Float16List vals;" in java_output
 
 
+def test_java_unsigned_carriers_and_integer_encoding_annotations():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message UnsignedCarriers {
+                uint8 u8 = 1;
+                uint16 u16 = 2;
+                fixed_uint32 fixed_u32 = 3;
+                uint32 var_u32 = 4;
+                optional uint32 maybe_u32 = 5;
+                fixed_int32 fixed_i32 = 6;
+            }
+            """
+        )
+    )
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert "import org.apache.fory.config.Int32Encoding;" in java_output
+    assert "@UInt8Type\n    private int u8;" in java_output
+    assert "@UInt16Type\n    private int u16;" in java_output
+    assert (
+        "@UInt32Type(encoding = Int32Encoding.FIXED)\n    private long fixedU32;"
+        in java_output
+    )
+    assert "@UInt32Type\n    private long varU32;" in java_output
+    assert "@UInt32Type\n    private Long maybeU32;" in java_output
+    assert (
+        "@Int32Type(encoding = Int32Encoding.FIXED)\n    private int fixedI32;"
+        in java_output
+    )
+
+
+def test_java_nested_integer_annotations_in_generic_containers():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message NestedIntegerAnnotations {
+                map<fixed_uint32, list<optional tagged_uint64>> values = 1;
+            }
+            """
+        )
+    )
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert (
+        "private Map<@UInt32Type(encoding = Int32Encoding.FIXED) Long, "
+        "List<@UInt64Type(encoding = Int64Encoding.TAGGED) Long>> values;"
+        in java_output
+    )
+
+
+def test_cpp_nested_integer_specs_in_generic_containers():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message NestedIntegerSpecs {
+                map<fixed_uint32, list<optional tagged_uint64>> values = 1;
+            }
+            """
+        )
+    )
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert (
+        "FORY_STRUCT(NestedIntegerSpecs, "
+        "(values_, fory::F(1).map(fory::T::uint32().fixed(), "
+        "fory::T::list(fory::T::inner(fory::T::uint64().tagged())))));" in cpp_output
+    )
+
+
 def test_cpp_generator_supports_decimal_fields_and_unions():
     schema = parse_fdl(
         dedent(
@@ -565,7 +638,7 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
     assert '#include "fory/serialization/decimal_serializers.h"' in cpp_output
     assert "const fory::serialization::Decimal& amount() const" in cpp_output
     assert "std::variant<fory::serialization::Decimal, Money> value_" in cpp_output
-    assert "(fory::serialization::Decimal, amount, fory::F(1))" in cpp_output
+    assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
 
 
 def test_java_enum_generation_uses_fory_enum_ids():

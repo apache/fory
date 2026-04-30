@@ -83,7 +83,7 @@ public class ConcurrentCollectionSerializer<T extends Collection> extends Collec
       snapshot = new CollectionSnapshot();
     }
     snapshot.setCollection(value);
-    writeContext.getBuffer().writeVarUint32Small7(snapshot.size());
+    writeContext.getBuffer().writeVarUInt32Small7(snapshot.size());
     return snapshot;
   }
 

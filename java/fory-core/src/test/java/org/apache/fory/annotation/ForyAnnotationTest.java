@@ -26,7 +26,6 @@ import java.util.List;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -143,7 +142,7 @@ public class ForyAnnotationTest extends ForyTestBase {
   public void testForyFieldAnnotation(boolean trackingRef, boolean codeGen, boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(trackingRef)
             .requireClassRegistration(false)
             .withCodegen(codeGen)
@@ -159,7 +158,7 @@ public class ForyAnnotationTest extends ForyTestBase {
   public void testForyFieldAnnotationException(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .withCodegen(false)

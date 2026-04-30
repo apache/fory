@@ -20,8 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
-import org.apache.fory.config.CompatibleMode
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -83,13 +81,13 @@ class ScalaDefaultValueTest extends AnyWordSpec with Matchers {
   )
 
   def createFory(codegen: Boolean): Fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .withRefTracking(true)
     .withScalaOptimizationEnabled(true)
     .requireClassRegistration(false)
     .suppressClassRegistrationWarnings(false)
     .withCodegen(codegen)
-    .withCompatibleMode(CompatibleMode.COMPATIBLE)
+    .withCompatible(true)
     .build()
 
   "Fory Scala default value support" should {

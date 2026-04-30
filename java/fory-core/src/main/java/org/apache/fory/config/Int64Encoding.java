@@ -19,11 +19,18 @@
 
 package org.apache.fory.config;
 
-/**
- * Encoding option for long. Default encoding is fory SLI(Small long as int) encoding: {@link
- * #TAGGED}.
- */
-public enum LongEncoding {
+/** Encoding option for 64-bit integer fields and nested container values. */
+public enum Int64Encoding {
+  /** Write eight little-endian bytes. */
+  FIXED,
+  /**
+   * Fory Progressive Variable-length Long Encoding:
+   * <li>positive long format: first bit in every byte indicate whether has next byte, then next
+   *     byte should be read util first bit is unset.
+   * <li>Negative number will be converted to positive number by {@code (v << 1) ^ (v >> 63)} to
+   *     reduce cost of small negative numbers.
+   */
+  VARINT,
   /**
    * Fory Tagged int64 Encoding:
    * <li>If long is in [0xc0000000, 0x3fffffff], encode as 4 bytes int: {@code | little-endian:
@@ -34,14 +41,4 @@ public enum LongEncoding {
    *     ints in short range.
    */
   TAGGED,
-  /**
-   * Fory Progressive Variable-length Long Encoding:
-   * <li>positive long format: first bit in every byte indicate whether has next byte, then next
-   *     byte should be read util first bit is unset.
-   * <li>Negative number will be converted to positive number by {@code (v << 1) ^ (v >> 63)} to
-   *     reduce cost of small negative numbers.
-   */
-  VARINT,
-  /** Write long as little endian 8bytes, no compression. */
-  FIXED,
 }

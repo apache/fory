@@ -22,12 +22,15 @@ package org.apache.fory.builder;
 import static org.apache.fory.codegen.Code.LiteralValue.FalseLiteral;
 import static org.apache.fory.codegen.Expression.Invoke.inlineInvoke;
 import static org.apache.fory.codegen.ExpressionUtils.add;
+import static org.apache.fory.codegen.ExpressionUtils.cast;
 import static org.apache.fory.collection.Collections.ofHashSet;
 import static org.apache.fory.type.TypeUtils.OBJECT_ARRAY_TYPE;
 import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_BYTE_ARRAY_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_BYTE_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_INT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_LONG_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_VOID_TYPE;
 import static org.apache.fory.type.TypeUtils.SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
@@ -281,14 +284,26 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         if (dispatchId == DispatchId.BOOL) {
           groupExpressions.add(unsafePutBoolean(base, getWriterPos(writerAddr, acc), fieldValue));
           acc += 1;
-        } else if (dispatchId == DispatchId.INT8 || dispatchId == DispatchId.UINT8) {
+        } else if (dispatchId == DispatchId.INT8) {
           groupExpressions.add(unsafePut(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 1;
+        } else if (dispatchId == DispatchId.UINT8) {
+          groupExpressions.add(
+              unsafePut(
+                  base, getWriterPos(writerAddr, acc), primitiveByteValue(fieldValue, descriptor)));
           acc += 1;
         } else if (dispatchId == DispatchId.CHAR) {
           groupExpressions.add(unsafePutChar(base, getWriterPos(writerAddr, acc), fieldValue));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT16 || dispatchId == DispatchId.UINT16) {
+        } else if (dispatchId == DispatchId.INT16) {
           groupExpressions.add(unsafePutShort(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 2;
+        } else if (dispatchId == DispatchId.UINT16) {
+          groupExpressions.add(
+              unsafePutShort(
+                  base,
+                  getWriterPos(writerAddr, acc),
+                  primitiveShortValue(fieldValue, descriptor)));
           acc += 2;
         } else if (dispatchId == DispatchId.FLOAT16 || dispatchId == DispatchId.BFLOAT16) {
           groupExpressions.add(
@@ -297,8 +312,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
                   getWriterPos(writerAddr, acc),
                   new Invoke(fieldValue, "toBits", SHORT_TYPE)));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT32 || dispatchId == DispatchId.UINT32) {
+        } else if (dispatchId == DispatchId.INT32) {
           groupExpressions.add(unsafePutInt(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 4;
+        } else if (dispatchId == DispatchId.UINT32) {
+          groupExpressions.add(
+              unsafePutInt(
+                  base, getWriterPos(writerAddr, acc), primitiveIntValue(fieldValue, descriptor)));
           acc += 4;
         } else if (dispatchId == DispatchId.INT64 || dispatchId == DispatchId.UINT64) {
           groupExpressions.add(unsafePutLong(base, getWriterPos(writerAddr, acc), fieldValue));
@@ -378,14 +398,26 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         if (dispatchId == DispatchId.BOOL) {
           groupExpressions.add(unsafePutBoolean(base, getWriterPos(writerAddr, acc), fieldValue));
           acc += 1;
-        } else if (dispatchId == DispatchId.INT8 || dispatchId == DispatchId.UINT8) {
+        } else if (dispatchId == DispatchId.INT8) {
           groupExpressions.add(unsafePut(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 1;
+        } else if (dispatchId == DispatchId.UINT8) {
+          groupExpressions.add(
+              unsafePut(
+                  base, getWriterPos(writerAddr, acc), primitiveByteValue(fieldValue, descriptor)));
           acc += 1;
         } else if (dispatchId == DispatchId.CHAR) {
           groupExpressions.add(unsafePutChar(base, getWriterPos(writerAddr, acc), fieldValue));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT16 || dispatchId == DispatchId.UINT16) {
+        } else if (dispatchId == DispatchId.INT16) {
           groupExpressions.add(unsafePutShort(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 2;
+        } else if (dispatchId == DispatchId.UINT16) {
+          groupExpressions.add(
+              unsafePutShort(
+                  base,
+                  getWriterPos(writerAddr, acc),
+                  primitiveShortValue(fieldValue, descriptor)));
           acc += 2;
         } else if (dispatchId == DispatchId.FLOAT16 || dispatchId == DispatchId.BFLOAT16) {
           groupExpressions.add(
@@ -400,8 +432,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         } else if (dispatchId == DispatchId.FLOAT64) {
           groupExpressions.add(unsafePutDouble(base, getWriterPos(writerAddr, acc), fieldValue));
           acc += 8;
-        } else if (dispatchId == DispatchId.INT32 || dispatchId == DispatchId.UINT32) {
+        } else if (dispatchId == DispatchId.INT32) {
           groupExpressions.add(unsafePutInt(base, getWriterPos(writerAddr, acc), fieldValue));
+          acc += 4;
+        } else if (dispatchId == DispatchId.UINT32) {
+          groupExpressions.add(
+              unsafePutInt(
+                  base, getWriterPos(writerAddr, acc), primitiveIntValue(fieldValue, descriptor)));
           acc += 4;
         } else if (dispatchId == DispatchId.INT64 || dispatchId == DispatchId.UINT64) {
           groupExpressions.add(unsafePutLong(base, getWriterPos(writerAddr, acc), fieldValue));
@@ -417,7 +454,9 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             addIncWriterIndexExpr(groupExpressions, buffer, acc);
             compressStarted = true;
           }
-          groupExpressions.add(new Invoke(buffer, "_unsafeWriteVarUint32", fieldValue));
+          groupExpressions.add(
+              new Invoke(
+                  buffer, "_unsafeWriteVarUInt32", primitiveIntValue(fieldValue, descriptor)));
         } else if (dispatchId == DispatchId.VARINT64) {
           if (!compressStarted) {
             addIncWriterIndexExpr(groupExpressions, buffer, acc);
@@ -435,13 +474,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             addIncWriterIndexExpr(groupExpressions, buffer, acc);
             compressStarted = true;
           }
-          groupExpressions.add(new Invoke(buffer, "writeVarUint64", fieldValue));
+          groupExpressions.add(new Invoke(buffer, "writeVarUInt64", fieldValue));
         } else if (dispatchId == DispatchId.TAGGED_UINT64) {
           if (!compressStarted) {
             addIncWriterIndexExpr(groupExpressions, buffer, acc);
             compressStarted = true;
           }
-          groupExpressions.add(new Invoke(buffer, "writeTaggedUint64", fieldValue));
+          groupExpressions.add(new Invoke(buffer, "writeTaggedUInt64", fieldValue));
         } else {
           throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
         }
@@ -459,6 +498,30 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
       }
     }
     return expressions;
+  }
+
+  private Expression primitiveByteValue(Expression fieldValue, Descriptor descriptor) {
+    return fieldValue.type().isPrimitive()
+        ? cast(fieldValue, PRIMITIVE_BYTE_TYPE)
+        : new Invoke(boxedNumericValue(fieldValue, descriptor), "byteValue", PRIMITIVE_BYTE_TYPE);
+  }
+
+  private Expression primitiveShortValue(Expression fieldValue, Descriptor descriptor) {
+    return fieldValue.type().isPrimitive()
+        ? cast(fieldValue, PRIMITIVE_SHORT_TYPE)
+        : new Invoke(boxedNumericValue(fieldValue, descriptor), "shortValue", PRIMITIVE_SHORT_TYPE);
+  }
+
+  private Expression primitiveIntValue(Expression fieldValue, Descriptor descriptor) {
+    return fieldValue.type().isPrimitive()
+        ? cast(fieldValue, PRIMITIVE_INT_TYPE)
+        : new Invoke(boxedNumericValue(fieldValue, descriptor), "intValue", PRIMITIVE_INT_TYPE);
+  }
+
+  private Expression boxedNumericValue(Expression fieldValue, Descriptor descriptor) {
+    return Number.class.isAssignableFrom(getRawType(fieldValue.type()))
+        ? fieldValue
+        : cast(fieldValue, descriptor.getTypeRef());
   }
 
   private void addIncWriterIndexExpr(ListExpression expressions, Expression buffer, int diff) {
@@ -695,14 +758,30 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         if (dispatchId == DispatchId.BOOL) {
           fieldValue = unsafeGetBoolean(heapBuffer, getReaderAddress(readerAddr, acc));
           acc += 1;
-        } else if (dispatchId == DispatchId.INT8 || dispatchId == DispatchId.UINT8) {
+        } else if (dispatchId == DispatchId.INT8) {
           fieldValue = unsafeGet(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 1;
+        } else if (dispatchId == DispatchId.UINT8) {
+          fieldValue =
+              new StaticInvoke(
+                  Byte.class,
+                  "toUnsignedInt",
+                  descriptor.getTypeRef(),
+                  unsafeGet(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 1;
         } else if (dispatchId == DispatchId.CHAR) {
           fieldValue = unsafeGetChar(heapBuffer, getReaderAddress(readerAddr, acc));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT16 || dispatchId == DispatchId.UINT16) {
+        } else if (dispatchId == DispatchId.INT16) {
           fieldValue = unsafeGetShort(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 2;
+        } else if (dispatchId == DispatchId.UINT16) {
+          fieldValue =
+              new StaticInvoke(
+                  Short.class,
+                  "toUnsignedInt",
+                  descriptor.getTypeRef(),
+                  unsafeGetShort(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 2;
         } else if (dispatchId == DispatchId.FLOAT16) {
           fieldValue =
@@ -720,8 +799,16 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
                   TypeRef.of(BFloat16.class),
                   unsafeGetShort(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT32 || dispatchId == DispatchId.UINT32) {
+        } else if (dispatchId == DispatchId.INT32) {
           fieldValue = unsafeGetInt(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 4;
+        } else if (dispatchId == DispatchId.UINT32) {
+          fieldValue =
+              new StaticInvoke(
+                  Integer.class,
+                  "toUnsignedLong",
+                  descriptor.getTypeRef(),
+                  unsafeGetInt(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 4;
         } else if (dispatchId == DispatchId.INT64 || dispatchId == DispatchId.UINT64) {
           fieldValue = unsafeGetLong(heapBuffer, getReaderAddress(readerAddr, acc));
@@ -776,14 +863,30 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         if (dispatchId == DispatchId.BOOL) {
           fieldValue = unsafeGetBoolean(heapBuffer, getReaderAddress(readerAddr, acc));
           acc += 1;
-        } else if (dispatchId == DispatchId.INT8 || dispatchId == DispatchId.UINT8) {
+        } else if (dispatchId == DispatchId.INT8) {
           fieldValue = unsafeGet(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 1;
+        } else if (dispatchId == DispatchId.UINT8) {
+          fieldValue =
+              new StaticInvoke(
+                  Byte.class,
+                  "toUnsignedInt",
+                  descriptor.getTypeRef(),
+                  unsafeGet(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 1;
         } else if (dispatchId == DispatchId.CHAR) {
           fieldValue = unsafeGetChar(heapBuffer, getReaderAddress(readerAddr, acc));
           acc += 2;
-        } else if (dispatchId == DispatchId.INT16 || dispatchId == DispatchId.UINT16) {
+        } else if (dispatchId == DispatchId.INT16) {
           fieldValue = unsafeGetShort(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 2;
+        } else if (dispatchId == DispatchId.UINT16) {
+          fieldValue =
+              new StaticInvoke(
+                  Short.class,
+                  "toUnsignedInt",
+                  descriptor.getTypeRef(),
+                  unsafeGetShort(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 2;
         } else if (dispatchId == DispatchId.FLOAT16) {
           fieldValue =
@@ -807,8 +910,16 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         } else if (dispatchId == DispatchId.FLOAT64) {
           fieldValue = unsafeGetDouble(heapBuffer, getReaderAddress(readerAddr, acc));
           acc += 8;
-        } else if (dispatchId == DispatchId.INT32 || dispatchId == DispatchId.UINT32) {
+        } else if (dispatchId == DispatchId.INT32) {
           fieldValue = unsafeGetInt(heapBuffer, getReaderAddress(readerAddr, acc));
+          acc += 4;
+        } else if (dispatchId == DispatchId.UINT32) {
+          fieldValue =
+              new StaticInvoke(
+                  Integer.class,
+                  "toUnsignedLong",
+                  descriptor.getTypeRef(),
+                  unsafeGetInt(heapBuffer, getReaderAddress(readerAddr, acc)));
           acc += 4;
         } else if (dispatchId == DispatchId.INT64 || dispatchId == DispatchId.UINT64) {
           fieldValue = unsafeGetLong(heapBuffer, getReaderAddress(readerAddr, acc));
@@ -824,7 +935,12 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             compressStarted = true;
             addIncReaderIndexExpr(groupExpressions, buffer, acc);
           }
-          fieldValue = new Invoke(buffer, "readVarUint32", PRIMITIVE_INT_TYPE);
+          fieldValue =
+              new StaticInvoke(
+                  Integer.class,
+                  "toUnsignedLong",
+                  descriptor.getTypeRef(),
+                  new Invoke(buffer, "readVarUInt32", PRIMITIVE_INT_TYPE));
         } else if (dispatchId == DispatchId.VARINT64) {
           if (!compressStarted) {
             compressStarted = true;
@@ -842,13 +958,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             compressStarted = true;
             addIncReaderIndexExpr(groupExpressions, buffer, acc);
           }
-          fieldValue = new Invoke(buffer, "readVarUint64", PRIMITIVE_LONG_TYPE);
+          fieldValue = new Invoke(buffer, "readVarUInt64", PRIMITIVE_LONG_TYPE);
         } else if (dispatchId == DispatchId.TAGGED_UINT64) {
           if (!compressStarted) {
             compressStarted = true;
             addIncReaderIndexExpr(groupExpressions, buffer, acc);
           }
-          fieldValue = new Invoke(buffer, "readTaggedUint64", PRIMITIVE_LONG_TYPE);
+          fieldValue = new Invoke(buffer, "readTaggedUInt64", PRIMITIVE_LONG_TYPE);
         } else {
           throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
         }

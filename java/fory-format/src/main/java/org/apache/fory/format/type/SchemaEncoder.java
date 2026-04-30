@@ -90,7 +90,7 @@ public class SchemaEncoder {
    */
   public static void toBytes(Schema schema, MemoryBuffer buffer) {
     buffer.writeByte(SCHEMA_VERSION);
-    buffer.writeVarUint32Small7(schema.numFields());
+    buffer.writeVarUInt32Small7(schema.numFields());
     for (Field field : schema.fields()) {
       writeField(buffer, field);
     }
@@ -119,7 +119,7 @@ public class SchemaEncoder {
       throw new IllegalArgumentException(
           "Unsupported schema version: " + version + ", expected: " + SCHEMA_VERSION);
     }
-    int numFields = buffer.readVarUint32Small7();
+    int numFields = buffer.readVarUInt32Small7();
     List<Field> fields = new ArrayList<>(numFields);
     for (int i = 0; i < numFields; i++) {
       fields.add(readField(buffer));
@@ -147,7 +147,7 @@ public class SchemaEncoder {
     buffer.writeByte(header);
 
     if (bigSize) {
-      buffer.writeVarUint32Small7(nameSize - FIELD_NAME_SIZE_THRESHOLD);
+      buffer.writeVarUInt32Small7(nameSize - FIELD_NAME_SIZE_THRESHOLD);
     }
     buffer.writeBytes(nameBytes);
 
@@ -162,7 +162,7 @@ public class SchemaEncoder {
 
     int nameSize;
     if (nameSizeMinus1 == FIELD_NAME_SIZE_THRESHOLD) {
-      nameSize = buffer.readVarUint32Small7() + FIELD_NAME_SIZE_THRESHOLD;
+      nameSize = buffer.readVarUInt32Small7() + FIELD_NAME_SIZE_THRESHOLD;
     } else {
       nameSize = nameSizeMinus1 + 1;
     }
@@ -192,7 +192,7 @@ public class SchemaEncoder {
       writeField(buffer, mapType.itemField());
     } else if (type instanceof DataTypes.StructType) {
       DataTypes.StructType structType = (DataTypes.StructType) type;
-      buffer.writeVarUint32Small7(structType.numFields());
+      buffer.writeVarUInt32Small7(structType.numFields());
       for (Field field : structType.fields()) {
         writeField(buffer, field);
       }
@@ -241,7 +241,7 @@ public class SchemaEncoder {
         Field itemField = readField(buffer);
         return new DataTypes.MapType(keyField.type(), itemField.type());
       case Types.STRUCT:
-        int numFields = buffer.readVarUint32Small7();
+        int numFields = buffer.readVarUInt32Small7();
         List<Field> fields = new ArrayList<>(numFields);
         for (int i = 0; i < numFields; i++) {
           fields.add(readField(buffer));

@@ -22,12 +22,284 @@
 #include "fory/meta/preprocessor.h"
 #include "fory/meta/type_traits.h"
 #include <array>
+#include <cstdint>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 
 namespace fory {
+
+/// Encoding strategies for integer field nodes.
+enum class Encoding { Default = 0, Varint = 1, Fixed = 2, Tagged = 3 };
+
+enum class FieldNodeKind {
+  Default = 0,
+  Scalar = 1,
+  List = 2,
+  Set = 3,
+  Map = 4,
+  Inner = 5
+};
+
+enum class FieldScalarKind {
+  Inferred = 0,
+  Bool,
+  Int8,
+  Int16,
+  Int32,
+  Int64,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  Float16,
+  BFloat16,
+  Float32,
+  Float64,
+  String
+};
+
+struct FieldNodeSpec {
+  static constexpr uint8_t kMaxNodes = 16;
+
+  FieldNodeKind kind_[kMaxNodes]{};
+  Encoding encoding_[kMaxNodes]{};
+  FieldScalarKind scalar_[kMaxNodes]{};
+  int8_t child0_[kMaxNodes]{};
+  int8_t child1_[kMaxNodes]{};
+  uint8_t size_ = 1;
+
+  constexpr FieldNodeSpec() {
+    for (uint8_t i = 0; i < kMaxNodes; ++i) {
+      kind_[i] = FieldNodeKind::Default;
+      encoding_[i] = Encoding::Default;
+      scalar_[i] = FieldScalarKind::Inferred;
+      child0_[i] = -1;
+      child1_[i] = -1;
+    }
+  }
+
+  static constexpr FieldNodeSpec
+  scalar(FieldScalarKind scalar_kind = FieldScalarKind::Inferred) {
+    FieldNodeSpec spec;
+    spec.kind_[0] = FieldNodeKind::Scalar;
+    spec.scalar_[0] = scalar_kind;
+    return spec;
+  }
+
+  constexpr int8_t append_tree(const FieldNodeSpec &child,
+                               int8_t child_index = 0) {
+    const int8_t dest = static_cast<int8_t>(size_++);
+    kind_[dest] = child.kind_[child_index];
+    encoding_[dest] = child.encoding_[child_index];
+    scalar_[dest] = child.scalar_[child_index];
+    if (child.child0_[child_index] >= 0) {
+      child0_[dest] = append_tree(child, child.child0_[child_index]);
+    }
+    if (child.child1_[child_index] >= 0) {
+      child1_[dest] = append_tree(child, child.child1_[child_index]);
+    }
+    return dest;
+  }
+
+  constexpr FieldNodeSpec with_encoding(Encoding encoding) const {
+    auto copy = *this;
+    copy.encoding_[0] = encoding;
+    if (copy.kind_[0] == FieldNodeKind::Default) {
+      copy.kind_[0] = FieldNodeKind::Scalar;
+    }
+    return copy;
+  }
+
+  constexpr FieldNodeSpec fixed() const {
+    return with_encoding(Encoding::Fixed);
+  }
+  constexpr FieldNodeSpec varint() const {
+    return with_encoding(Encoding::Varint);
+  }
+  constexpr FieldNodeSpec tagged() const {
+    return with_encoding(Encoding::Tagged);
+  }
+
+  constexpr FieldNodeSpec list(FieldNodeSpec elem) const {
+    auto copy = *this;
+    copy.size_ = 1;
+    copy.kind_[0] = FieldNodeKind::List;
+    copy.child0_[0] = copy.append_tree(elem);
+    copy.child1_[0] = -1;
+    copy.encoding_[0] = Encoding::Default;
+    return copy;
+  }
+
+  constexpr FieldNodeSpec set(FieldNodeSpec elem) const {
+    auto copy = *this;
+    copy.size_ = 1;
+    copy.kind_[0] = FieldNodeKind::Set;
+    copy.child0_[0] = copy.append_tree(elem);
+    copy.child1_[0] = -1;
+    copy.encoding_[0] = Encoding::Default;
+    return copy;
+  }
+
+  constexpr FieldNodeSpec map() const {
+    auto copy = *this;
+    copy.size_ = 1;
+    copy.kind_[0] = FieldNodeKind::Map;
+    copy.child0_[0] = -1;
+    copy.child1_[0] = -1;
+    copy.encoding_[0] = Encoding::Default;
+    return copy;
+  }
+
+  constexpr FieldNodeSpec map(FieldNodeSpec key, FieldNodeSpec value) const {
+    return map().key(key).value(value);
+  }
+
+  constexpr FieldNodeSpec key(FieldNodeSpec key_spec) const {
+    auto copy = *this;
+    copy.kind_[0] = FieldNodeKind::Map;
+    copy.child0_[0] = copy.append_tree(key_spec);
+    return copy;
+  }
+
+  constexpr FieldNodeSpec value(FieldNodeSpec value_spec) const {
+    auto copy = *this;
+    copy.kind_[0] = FieldNodeKind::Map;
+    copy.child1_[0] = copy.append_tree(value_spec);
+    return copy;
+  }
+
+  constexpr FieldNodeSpec inner(FieldNodeSpec child) const {
+    auto copy = *this;
+    copy.size_ = 1;
+    copy.kind_[0] = FieldNodeKind::Inner;
+    copy.child0_[0] = copy.append_tree(child);
+    copy.child1_[0] = -1;
+    copy.encoding_[0] = Encoding::Default;
+    return copy;
+  }
+};
+
+struct FieldMeta {
+  int16_t id_ = -1;
+  bool has_id_ = false;
+  bool nullable_ = false;
+  bool ref_ = false;
+  int dynamic_ = -1;
+  FieldNodeSpec spec_{};
+  Encoding encoding_ = Encoding::Default;
+  bool compress_ = true;
+  int16_t type_id_override_ = -1;
+
+  constexpr FieldMeta id(int16_t v) const {
+    auto copy = *this;
+    copy.id_ = v;
+    copy.has_id_ = true;
+    return copy;
+  }
+  constexpr FieldMeta nullable(bool v = true) const {
+    auto copy = *this;
+    copy.nullable_ = v;
+    return copy;
+  }
+  constexpr FieldMeta ref(bool v = true) const {
+    auto copy = *this;
+    copy.ref_ = v;
+    return copy;
+  }
+  constexpr FieldMeta dynamic(bool v) const {
+    auto copy = *this;
+    copy.dynamic_ = v ? 1 : 0;
+    return copy;
+  }
+  constexpr FieldMeta with_spec(FieldNodeSpec spec) const {
+    auto copy = *this;
+    copy.spec_ = spec;
+    copy.encoding_ = spec.encoding_[0];
+    return copy;
+  }
+  constexpr FieldMeta fixed() const { return with_spec(spec_.fixed()); }
+  constexpr FieldMeta varint() const { return with_spec(spec_.varint()); }
+  constexpr FieldMeta tagged() const { return with_spec(spec_.tagged()); }
+  constexpr FieldMeta list(FieldNodeSpec elem) const {
+    return with_spec(spec_.list(elem));
+  }
+  constexpr FieldMeta set(FieldNodeSpec elem) const {
+    return with_spec(spec_.set(elem));
+  }
+  constexpr FieldMeta map() const { return with_spec(spec_.map()); }
+  constexpr FieldMeta map(FieldNodeSpec key, FieldNodeSpec value) const {
+    return with_spec(spec_.map(key, value));
+  }
+  constexpr FieldMeta key(FieldNodeSpec key_spec) const {
+    return with_spec(spec_.key(key_spec));
+  }
+  constexpr FieldMeta value(FieldNodeSpec value_spec) const {
+    return with_spec(spec_.value(value_spec));
+  }
+  constexpr FieldMeta inner(FieldNodeSpec child) const {
+    return with_spec(spec_.inner(child));
+  }
+};
+
+constexpr FieldMeta F() { return FieldMeta{}; }
+constexpr FieldMeta F(int16_t id) { return FieldMeta{}.id(id); }
+
+namespace T {
+
+constexpr FieldNodeSpec
+scalar(FieldScalarKind kind = FieldScalarKind::Inferred) {
+  return FieldNodeSpec::scalar(kind);
+}
+constexpr FieldNodeSpec fixed() { return scalar().fixed(); }
+constexpr FieldNodeSpec varint() { return scalar().varint(); }
+constexpr FieldNodeSpec tagged() { return scalar().tagged(); }
+constexpr FieldNodeSpec list(FieldNodeSpec elem) {
+  return FieldNodeSpec{}.list(elem);
+}
+constexpr FieldNodeSpec set(FieldNodeSpec elem) {
+  return FieldNodeSpec{}.set(elem);
+}
+constexpr FieldNodeSpec map() { return FieldNodeSpec{}.map(); }
+constexpr FieldNodeSpec map(FieldNodeSpec key, FieldNodeSpec value) {
+  return FieldNodeSpec{}.map(key, value);
+}
+constexpr FieldNodeSpec inner(FieldNodeSpec child) {
+  return FieldNodeSpec{}.inner(child);
+}
+
+constexpr FieldNodeSpec boolean() { return scalar(FieldScalarKind::Bool); }
+constexpr FieldNodeSpec int8() { return scalar(FieldScalarKind::Int8); }
+constexpr FieldNodeSpec int16() { return scalar(FieldScalarKind::Int16); }
+constexpr FieldNodeSpec int32() { return scalar(FieldScalarKind::Int32); }
+constexpr FieldNodeSpec int64() { return scalar(FieldScalarKind::Int64); }
+constexpr FieldNodeSpec uint8() { return scalar(FieldScalarKind::UInt8); }
+constexpr FieldNodeSpec uint16() { return scalar(FieldScalarKind::UInt16); }
+constexpr FieldNodeSpec uint32() { return scalar(FieldScalarKind::UInt32); }
+constexpr FieldNodeSpec uint64() { return scalar(FieldScalarKind::UInt64); }
+constexpr FieldNodeSpec float16() { return scalar(FieldScalarKind::Float16); }
+constexpr FieldNodeSpec bfloat16() { return scalar(FieldScalarKind::BFloat16); }
+constexpr FieldNodeSpec float32() { return scalar(FieldScalarKind::Float32); }
+constexpr FieldNodeSpec float64() { return scalar(FieldScalarKind::Float64); }
+constexpr FieldNodeSpec string() { return scalar(FieldScalarKind::String); }
+
+} // namespace T
+
+namespace detail {
+
+struct FieldEntry {
+  const char *name;
+  FieldMeta meta;
+
+  constexpr FieldEntry(const char *n, FieldMeta m) : name(n), meta(m) {}
+};
+
+constexpr auto make_field_entry(const char *name, FieldMeta meta) {
+  return FieldEntry{name, meta};
+}
+
+} // namespace detail
 
 namespace meta {
 
@@ -214,15 +486,40 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
 
 #define FORY_BASE_TYPE(arg) FORY_PP_TUPLE_SECOND(arg)
 
+#define FORY_PP_IS_CONFIG(arg)                                                 \
+  FORY_PP_IS_CONFIG_IMPL(FORY_PP_IS_PAREN(arg), arg)
+#define FORY_PP_IS_CONFIG_IMPL(is_paren, arg)                                  \
+  FORY_PP_CONCAT(FORY_PP_IS_CONFIG_IMPL_, is_paren)(arg)
+#define FORY_PP_IS_CONFIG_IMPL_0(arg) 0
+#define FORY_PP_IS_CONFIG_IMPL_1(arg) FORY_PP_NOT(FORY_PP_IS_BASE(arg))
+
+#define FORY_FIELD_ARG_NAME(arg)                                               \
+  FORY_PP_IF(FORY_PP_IS_CONFIG(arg))                                           \
+  (FORY_PP_TUPLE_FIRST(arg), arg)
+
+#define FORY_FIELD_ARG_META(arg)                                               \
+  FORY_PP_IF(FORY_PP_IS_CONFIG(arg))                                           \
+  (FORY_PP_TUPLE_SECOND(arg), ::fory::F())
+
 #define FORY_FIELD_INFO_NAMES_FIELD(field) #field,
+#define FORY_FIELD_INFO_NAMES_ARG(arg) FORY_FIELD_INFO_NAMES_FIELD(arg)
 #define FORY_FIELD_INFO_NAMES_FUNC(arg)                                        \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
-  (FORY_PP_EMPTY(), FORY_FIELD_INFO_NAMES_FIELD(arg))
+  (FORY_PP_EMPTY(), FORY_FIELD_INFO_NAMES_ARG(FORY_FIELD_ARG_NAME(arg)))
 
 #define FORY_FIELD_INFO_PTRS_FIELD(type, field) &type::field,
+#define FORY_FIELD_INFO_PTRS_ARG(type, field)                                  \
+  FORY_FIELD_INFO_PTRS_FIELD(type, field)
 #define FORY_FIELD_INFO_PTRS_FUNC(type, arg)                                   \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
-  (FORY_PP_EMPTY(), FORY_FIELD_INFO_PTRS_FIELD(type, arg))
+  (FORY_PP_EMPTY(), FORY_FIELD_INFO_PTRS_ARG(type, FORY_FIELD_ARG_NAME(arg)))
+
+#define FORY_FIELD_INFO_CONFIG_ENTRY(arg)                                      \
+  ::fory::detail::make_field_entry(                                            \
+      FORY_PP_STRINGIFY(FORY_FIELD_ARG_NAME(arg)), FORY_FIELD_ARG_META(arg)),
+#define FORY_FIELD_INFO_CONFIG_FUNC(arg)                                       \
+  FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
+  (FORY_PP_EMPTY(), FORY_FIELD_INFO_CONFIG_ENTRY(arg))
 
 #define FORY_BASE_NAMES_ARG(arg)                                               \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
@@ -268,6 +565,13 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     static inline constexpr std::array<std::string_view, FieldSize>            \
         FieldNames = {                                                         \
             FORY_PP_FOREACH(FORY_FIELD_INFO_NAMES_FUNC, __VA_ARGS__)};         \
+    static inline constexpr auto FieldConfigEntries =                          \
+        std::tuple{FORY_PP_FOREACH(FORY_FIELD_INFO_CONFIG_FUNC, __VA_ARGS__)}; \
+    static constexpr bool has_config = true;                                   \
+    static inline constexpr auto entries = FieldConfigEntries;                 \
+    using FieldConfigEntriesType = std::decay_t<decltype(entries)>;            \
+    [[maybe_unused]] static constexpr size_t field_count =                     \
+        std::tuple_size_v<FieldConfigEntriesType>;                             \
     static inline constexpr auto Names =                                       \
         fory::meta::concat_arrays(BaseNames, FieldNames);                      \
     using BasePtrsType = decltype(fory::meta::concat_tuples_from_tuple(        \
@@ -303,6 +607,10 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
       const ::fory::meta::Identity<type> &) noexcept {                         \
     return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
   }                                                                            \
+  [[maybe_unused]] inline static constexpr auto fory_field_config(             \
+      const ::fory::meta::Identity<type> &) noexcept {                         \
+    return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
+  }                                                                            \
   [[maybe_unused]] inline static constexpr std::true_type fory_struct_marker(  \
       const ::fory::meta::Identity<type> &) noexcept {                         \
     return {};                                                                 \
@@ -314,6 +622,9 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     static inline constexpr size_t Size = 0;                                   \
     static inline constexpr std::string_view Name = #type;                     \
     static inline constexpr std::array<std::string_view, Size> Names = {};     \
+    static constexpr bool has_config = false;                                  \
+    static inline constexpr auto entries = std::tuple{};                       \
+    [[maybe_unused]] static constexpr size_t field_count = 0;                  \
     using PtrsType = decltype(std::tuple{});                                   \
     static constexpr PtrsType ptrs() { return {}; }                            \
     static const PtrsType &ptrs_ref() {                                        \
@@ -329,6 +640,10 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
           FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id)::Size,           \
       "ForyFieldInfoDescriptor names size mismatch");                          \
   [[maybe_unused]] inline static constexpr auto fory_struct_info(              \
+      const ::fory::meta::Identity<type> &) noexcept {                         \
+    return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
+  }                                                                            \
+  [[maybe_unused]] inline static constexpr auto fory_field_config(             \
       const ::fory::meta::Identity<type> &) noexcept {                         \
     return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
   }                                                                            \

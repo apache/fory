@@ -24,7 +24,6 @@
 #include <array>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <list>
 #include <map>
 #include <memory>
@@ -42,8 +41,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
-
 #include "fory/meta/field.h"
 #include "fory/meta/field_info.h"
 #include "fory/meta/type_traits.h"
@@ -51,6 +48,7 @@
 #include "fory/serialization/serializer.h"
 #include "fory/serialization/serializer_traits.h"
 #include "fory/serialization/type_info.h"
+#include "fory/thirdparty/flat_hash_map.h"
 #include "fory/type/type.h"
 #include "fory/util/buffer.h"
 #include "fory/util/error.h"
@@ -111,17 +109,40 @@ public:
   bool track_ref;
   RefMode ref_mode; // Precomputed from nullable and track_ref
   std::vector<FieldType> generics;
+  uint64_t compatible_fingerprint;
+
+  static uint64_t
+  compute_compatible_fingerprint(uint32_t tid,
+                                 const std::vector<FieldType> &generic_types);
 
   FieldType()
       : type_id(0), user_type_id(kInvalidUserTypeId), nullable(false),
-        track_ref(false), ref_mode(RefMode::None) {}
+        track_ref(false), ref_mode(RefMode::None), generics(),
+        compatible_fingerprint(
+            compute_compatible_fingerprint(type_id, generics)) {}
 
   FieldType(uint32_t tid, bool null, bool ref_track = false,
             std::vector<FieldType> gens = {},
             uint32_t user_tid = kInvalidUserTypeId)
       : type_id(tid), user_type_id(user_tid), nullable(null),
         track_ref(ref_track), ref_mode(make_ref_mode(null, ref_track)),
-        generics(std::move(gens)) {}
+        generics(std::move(gens)),
+        compatible_fingerprint(
+            compute_compatible_fingerprint(type_id, generics)) {}
+
+  void refresh_compatible_fingerprint() {
+    compatible_fingerprint = compute_compatible_fingerprint(type_id, generics);
+  }
+
+  void set_type_id(uint32_t tid) {
+    type_id = tid;
+    refresh_compatible_fingerprint();
+  }
+
+  void add_generic(FieldType generic) {
+    generics.push_back(std::move(generic));
+    refresh_compatible_fingerprint();
+  }
 
   /// write field type to buffer
   /// @param buffer Target buffer
@@ -147,6 +168,70 @@ public:
 
   bool operator!=(const FieldType &other) const { return !(*this == other); }
 };
+
+inline uint32_t compatible_fingerprint_type_id(uint32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::UNKNOWN:
+    return static_cast<uint32_t>(TypeId::STRUCT);
+  case TypeId::ENUM:
+  case TypeId::NAMED_ENUM:
+    return static_cast<uint32_t>(TypeId::ENUM);
+  case TypeId::EXT:
+  case TypeId::NAMED_EXT:
+    return static_cast<uint32_t>(TypeId::EXT);
+  case TypeId::BINARY:
+  case TypeId::INT8_ARRAY:
+  case TypeId::UINT8_ARRAY:
+    return static_cast<uint32_t>(TypeId::BINARY);
+  case TypeId::INT32:
+  case TypeId::VARINT32:
+    return static_cast<uint32_t>(TypeId::VARINT32);
+  case TypeId::INT64:
+  case TypeId::VARINT64:
+  case TypeId::TAGGED_INT64:
+    return static_cast<uint32_t>(TypeId::VARINT64);
+  case TypeId::UINT32:
+  case TypeId::VAR_UINT32:
+    return static_cast<uint32_t>(TypeId::VAR_UINT32);
+  case TypeId::UINT64:
+  case TypeId::VAR_UINT64:
+  case TypeId::TAGGED_UINT64:
+    return static_cast<uint32_t>(TypeId::VAR_UINT64);
+  default:
+    return type_id;
+  }
+}
+
+inline uint64_t FieldType::compute_compatible_fingerprint(
+    uint32_t tid, const std::vector<FieldType> &generic_types) {
+  uint64_t hash = 14695981039346656037ULL;
+  hash = fnv1a_64_combine(hash, compatible_fingerprint_type_id(tid));
+  hash = fnv1a_64_combine(hash, static_cast<uint64_t>(generic_types.size()));
+  for (const auto &generic : generic_types) {
+    hash = fnv1a_64_combine(hash, generic.compatible_fingerprint);
+  }
+  return hash;
+}
+
+inline bool collection_type_allows_empty_generic_fallback(uint32_t type_id) {
+  return type_id == static_cast<uint32_t>(TypeId::LIST) ||
+         type_id == static_cast<uint32_t>(TypeId::SET) ||
+         type_id == static_cast<uint32_t>(TypeId::MAP);
+}
+
+inline bool field_types_compatible(const FieldType &local,
+                                   const FieldType &remote) {
+  if (local.compatible_fingerprint == remote.compatible_fingerprint) {
+    return true;
+  }
+  return local.type_id == remote.type_id &&
+         collection_type_allows_empty_generic_fallback(local.type_id) &&
+         (local.generics.empty() || remote.generics.empty());
+}
 
 // ============================================================================
 // FieldInfo - Field metadata (name, type, id)
@@ -378,7 +463,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_vector_v<decay_t<T>>>> {
     if constexpr (vec_type_id == TypeId::LIST) {
       FieldType elem = FieldTypeBuilder<Element>::build(false);
       FieldType ft(to_type_id(vec_type_id), nullable);
-      ft.generics.push_back(std::move(elem));
+      ft.add_generic(std::move(elem));
       return ft;
     } else {
       return FieldType(to_type_id(vec_type_id), nullable);
@@ -393,7 +478,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_list_v<decay_t<T>>>> {
   static FieldType build(bool nullable) {
     FieldType elem = FieldTypeBuilder<Element>::build(false);
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   }
 };
@@ -405,7 +490,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_deque_v<decay_t<T>>>> {
   static FieldType build(bool nullable) {
     FieldType elem = FieldTypeBuilder<Element>::build(false);
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   }
 };
@@ -417,7 +502,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_forward_list_v<decay_t<T>>>> {
   static FieldType build(bool nullable) {
     FieldType elem = FieldTypeBuilder<Element>::build(false);
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   }
 };
@@ -429,7 +514,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_set_like_v<decay_t<T>>>> {
   static FieldType build(bool nullable) {
     FieldType elem = FieldTypeBuilder<Element>::build(false);
     FieldType ft(to_type_id(Serializer<Set>::type_id), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   }
 };
@@ -443,8 +528,8 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_map_like_v<decay_t<T>>>> {
     FieldType key_ft = FieldTypeBuilder<Key>::build(false);
     FieldType value_ft = FieldTypeBuilder<Value>::build(false);
     FieldType ft(to_type_id(Serializer<Map>::type_id), nullable);
-    ft.generics.push_back(std::move(key_ft));
-    ft.generics.push_back(std::move(value_ft));
+    ft.add_generic(std::move(key_ft));
+    ft.add_generic(std::move(value_ft));
     return ft;
   }
 };
@@ -464,7 +549,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_tuple_v<decay_t<T>>>> {
 
   template <size_t... Is>
   static void add_element_types(FieldType &ft, std::index_sequence<Is...>) {
-    (ft.generics.push_back(
+    (ft.add_generic(
          FieldTypeBuilder<std::tuple_element_t<Is, Tuple>>::build(false)),
      ...);
   }
@@ -476,8 +561,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_tuple_v<decay_t<T>>>> {
       add_element_types(ft, std::make_index_sequence<tuple_size>{});
     } else {
       // Empty tuple: use UNKNOWN as stub element type for schema encoding
-      ft.generics.push_back(
-          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
+      ft.add_generic(FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
     }
     return ft;
   }
@@ -511,11 +595,192 @@ struct FieldTypeBuilder<
   }
 };
 
-inline bool field_type_needs_user_type_id(uint32_t) { return false; }
-
 template <typename T>
 Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
                                                         bool nullable);
+
+inline bool field_node_has_override(const FieldNodeSpec &spec,
+                                    int8_t node_index) {
+  return node_index >= 0 &&
+         (spec.kind_[node_index] != FieldNodeKind::Default ||
+          spec.encoding_[node_index] != Encoding::Default ||
+          spec.scalar_[node_index] != FieldScalarKind::Inferred);
+}
+
+template <typename Element>
+TypeId vector_type_id_for_spec(const FieldNodeSpec &spec, int8_t node_index,
+                               TypeId default_type_id) {
+  if (node_index < 0 || spec.kind_[node_index] != FieldNodeKind::List) {
+    return default_type_id;
+  }
+  const int8_t child = spec.child0_[node_index];
+  if (child < 0 || spec.kind_[child] != FieldNodeKind::Scalar ||
+      spec.encoding_[child] != Encoding::Default) {
+    return TypeId::LIST;
+  }
+  if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
+    if (spec.scalar_[child] == FieldScalarKind::Int8) {
+      return TypeId::INT8_ARRAY;
+    }
+  } else if constexpr (std::is_same_v<decay_t<Element>, uint8_t>) {
+    if (spec.scalar_[child] == FieldScalarKind::UInt8) {
+      return TypeId::UINT8_ARRAY;
+    }
+  }
+  return TypeId::LIST;
+}
+
+template <typename FieldT>
+void apply_integer_encoding(FieldType &ft, const FieldNodeSpec &spec,
+                            int8_t node_index) {
+  using Decayed = decay_t<FieldT>;
+  const Encoding enc =
+      node_index >= 0 ? spec.encoding_[node_index] : Encoding::Default;
+  if (enc == Encoding::Default) {
+    return;
+  }
+  if constexpr (std::is_same_v<Decayed, uint8_t>) {
+    ft.set_type_id(static_cast<uint32_t>(TypeId::UINT8));
+  } else if constexpr (std::is_same_v<Decayed, uint16_t>) {
+    ft.set_type_id(static_cast<uint32_t>(TypeId::UINT16));
+  } else if constexpr (std::is_same_v<Decayed, uint32_t>) {
+    ft.set_type_id(static_cast<uint32_t>(
+        enc == Encoding::Varint ? TypeId::VAR_UINT32 : TypeId::UINT32));
+  } else if constexpr (std::is_same_v<Decayed, uint64_t>) {
+    ft.set_type_id(static_cast<uint32_t>(enc == Encoding::Varint
+                                             ? TypeId::VAR_UINT64
+                                             : (enc == Encoding::Tagged
+                                                    ? TypeId::TAGGED_UINT64
+                                                    : TypeId::UINT64)));
+  } else if constexpr (std::is_same_v<Decayed, int32_t> ||
+                       std::is_same_v<Decayed, int>) {
+    ft.set_type_id(static_cast<uint32_t>(
+        enc == Encoding::Fixed ? TypeId::INT32 : TypeId::VARINT32));
+  } else if constexpr (std::is_same_v<Decayed, int64_t> ||
+                       std::is_same_v<Decayed, long long>) {
+    ft.set_type_id(static_cast<uint32_t>(
+        enc == Encoding::Fixed ? TypeId::INT64
+                               : (enc == Encoding::Tagged ? TypeId::TAGGED_INT64
+                                                          : TypeId::VARINT64)));
+  }
+}
+
+template <typename T>
+FieldType build_field_type_with_spec(bool nullable, const FieldNodeSpec &spec,
+                                     int8_t node_index = 0) {
+  using Decayed = decay_t<T>;
+  const FieldNodeKind node_kind =
+      node_index >= 0 ? spec.kind_[node_index] : FieldNodeKind::Default;
+
+  if constexpr (is_optional_v<Decayed>) {
+    using Inner = typename Decayed::value_type;
+    const int8_t child = node_kind == FieldNodeKind::Inner
+                             ? spec.child0_[node_index]
+                             : node_index;
+    FieldType inner = build_field_type_with_spec<Inner>(true, spec, child);
+    inner.nullable = true;
+    return inner;
+  } else if constexpr (is_shared_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FieldType inner = build_field_type_with_spec<Inner>(true, spec, child);
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (::fory::detail::is_shared_weak_v<Decayed>) {
+    using Inner = nullable_element_t<Decayed>;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FieldType inner = build_field_type_with_spec<Inner>(true, spec, child);
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_unique_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FieldType inner = build_field_type_with_spec<Inner>(true, spec, child);
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_vector_v<Decayed>) {
+    using Element = element_type_t<Decayed>;
+    constexpr TypeId default_type_id = Serializer<Decayed>::type_id;
+    const bool force_list = node_kind == FieldNodeKind::List;
+    const TypeId type_id =
+        vector_type_id_for_spec<Element>(spec, node_index, default_type_id);
+    if (type_id == TypeId::LIST) {
+      const int8_t child = force_list ? spec.child0_[node_index] : -1;
+      FieldType elem =
+          field_node_has_override(spec, child)
+              ? build_field_type_with_spec<Element>(false, spec, child)
+              : FieldTypeBuilder<Element>::build(false);
+      FieldType ft(to_type_id(TypeId::LIST), nullable);
+      ft.add_generic(std::move(elem));
+      return ft;
+    }
+    return FieldType(to_type_id(type_id), nullable);
+  } else if constexpr (is_list_v<Decayed> || is_deque_v<Decayed> ||
+                       is_forward_list_v<Decayed>) {
+    using Element = typename Decayed::value_type;
+    const int8_t child =
+        node_kind == FieldNodeKind::List ? spec.child0_[node_index] : -1;
+    FieldType elem =
+        field_node_has_override(spec, child)
+            ? build_field_type_with_spec<Element>(false, spec, child)
+            : FieldTypeBuilder<Element>::build(false);
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.add_generic(std::move(elem));
+    return ft;
+  } else if constexpr (is_set_like_v<Decayed>) {
+    using Element = element_type_t<Decayed>;
+    const int8_t child =
+        node_kind == FieldNodeKind::Set ? spec.child0_[node_index] : -1;
+    FieldType elem =
+        field_node_has_override(spec, child)
+            ? build_field_type_with_spec<Element>(false, spec, child)
+            : FieldTypeBuilder<Element>::build(false);
+    FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
+    ft.add_generic(std::move(elem));
+    return ft;
+  } else if constexpr (is_map_like_v<Decayed>) {
+    using Key = key_type_t<Decayed>;
+    using Value = mapped_type_t<Decayed>;
+    const int8_t key_child =
+        node_kind == FieldNodeKind::Map ? spec.child0_[node_index] : -1;
+    const int8_t value_child =
+        node_kind == FieldNodeKind::Map ? spec.child1_[node_index] : -1;
+    FieldType key_ft =
+        field_node_has_override(spec, key_child)
+            ? build_field_type_with_spec<Key>(false, spec, key_child)
+            : FieldTypeBuilder<Key>::build(false);
+    FieldType value_ft =
+        field_node_has_override(spec, value_child)
+            ? build_field_type_with_spec<Value>(false, spec, value_child)
+            : FieldTypeBuilder<Value>::build(false);
+    FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
+    ft.add_generic(std::move(key_ft));
+    ft.add_generic(std::move(value_ft));
+    return ft;
+  } else {
+    FieldType ft = FieldTypeBuilder<Decayed>::build(nullable);
+    apply_integer_encoding<Decayed>(ft, spec, node_index);
+    return ft;
+  }
+}
 
 template <typename Tuple, size_t Index>
 Result<void, Error> add_tuple_element_types(TypeResolver &resolver,
@@ -523,7 +788,7 @@ Result<void, Error> add_tuple_element_types(TypeResolver &resolver,
   if constexpr (Index < std::tuple_size_v<Tuple>) {
     using Elem = std::tuple_element_t<Index, Tuple>;
     FORY_TRY(elem_ft, build_field_type_with_resolver<Elem>(resolver, false));
-    ft.generics.push_back(std::move(elem_ft));
+    ft.add_generic(std::move(elem_ft));
     return add_tuple_element_types<Tuple, Index + 1>(resolver, ft);
   } else {
     return Result<void, Error>();
@@ -573,7 +838,7 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     if constexpr (vec_type_id == TypeId::LIST) {
       FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
       FieldType ft(to_type_id(vec_type_id), nullable);
-      ft.generics.push_back(std::move(elem));
+      ft.add_generic(std::move(elem));
       return ft;
     } else {
       return FieldType(to_type_id(vec_type_id), nullable);
@@ -582,26 +847,26 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     using Element = typename Decayed::value_type;
     FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   } else if constexpr (is_deque_v<Decayed>) {
     using Element = typename Decayed::value_type;
     FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   } else if constexpr (is_forward_list_v<Decayed>) {
     using Element = typename Decayed::value_type;
     FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
     FieldType ft(to_type_id(TypeId::LIST), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   } else if constexpr (is_set_like_v<Decayed>) {
     using Set = Decayed;
     using Element = element_type_t<Set>;
     FORY_TRY(elem, build_field_type_with_resolver<Element>(resolver, false));
     FieldType ft(to_type_id(Serializer<Set>::type_id), nullable);
-    ft.generics.push_back(std::move(elem));
+    ft.add_generic(std::move(elem));
     return ft;
   } else if constexpr (is_map_like_v<Decayed>) {
     using Map = Decayed;
@@ -610,8 +875,8 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     FORY_TRY(key_ft, build_field_type_with_resolver<Key>(resolver, false));
     FORY_TRY(val_ft, build_field_type_with_resolver<Value>(resolver, false));
     FieldType ft(to_type_id(Serializer<Map>::type_id), nullable);
-    ft.generics.push_back(std::move(key_ft));
-    ft.generics.push_back(std::move(val_ft));
+    ft.add_generic(std::move(key_ft));
+    ft.add_generic(std::move(val_ft));
     return ft;
   } else if constexpr (is_string_view_v<Decayed>) {
     using StringT = std::basic_string<typename Decayed::value_type,
@@ -623,8 +888,7 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
     if constexpr (tuple_size > 0) {
       FORY_RETURN_IF_ERROR((add_tuple_element_types<Decayed, 0>(resolver, ft)));
     } else {
-      ft.generics.push_back(
-          FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
+      ft.add_generic(FieldType(static_cast<uint32_t>(TypeId::UNKNOWN), false));
     }
     return ft;
   } else {
@@ -637,7 +901,7 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
           if (resolved_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
             resolved_type_id = static_cast<uint32_t>(TypeId::ENUM);
           }
-          ft.type_id = resolved_type_id;
+          ft.set_type_id(resolved_type_id);
         }
       } else {
         FORY_TRY(info, get_type_info_with_resolver<Decayed>(resolver));
@@ -653,9 +917,137 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
         default:
           break;
         }
-        ft.type_id = resolved_type_id;
+        ft.set_type_id(resolved_type_id);
       }
     }
+    return ft;
+  }
+}
+
+template <typename T>
+Result<FieldType, Error>
+build_field_type_with_resolver_and_spec(TypeResolver &resolver, bool nullable,
+                                        const FieldNodeSpec &spec,
+                                        int8_t node_index = 0) {
+  using Decayed = decay_t<T>;
+  const FieldNodeKind node_kind =
+      node_index >= 0 ? spec.kind_[node_index] : FieldNodeKind::Default;
+
+  if constexpr (is_optional_v<Decayed>) {
+    using Inner = typename Decayed::value_type;
+    const int8_t child = node_kind == FieldNodeKind::Inner
+                             ? spec.child0_[node_index]
+                             : node_index;
+    FORY_TRY(inner, (build_field_type_with_resolver_and_spec<Inner>(
+                        resolver, true, spec, child)));
+    inner.nullable = true;
+    return inner;
+  } else if constexpr (is_shared_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FORY_TRY(inner, (build_field_type_with_resolver_and_spec<Inner>(
+                          resolver, true, spec, child)));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (::fory::detail::is_shared_weak_v<Decayed>) {
+    using Inner = nullable_element_t<Decayed>;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FORY_TRY(inner, (build_field_type_with_resolver_and_spec<Inner>(
+                          resolver, true, spec, child)));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_unique_ptr_v<Decayed>) {
+    using Inner = typename Decayed::element_type;
+    if constexpr (std::is_polymorphic_v<Inner>) {
+      return FieldType(to_type_id(TypeId::UNKNOWN), true);
+    } else {
+      const int8_t child = node_kind == FieldNodeKind::Inner
+                               ? spec.child0_[node_index]
+                               : node_index;
+      FORY_TRY(inner, (build_field_type_with_resolver_and_spec<Inner>(
+                          resolver, true, spec, child)));
+      inner.nullable = true;
+      return inner;
+    }
+  } else if constexpr (is_vector_v<Decayed>) {
+    using Element = element_type_t<Decayed>;
+    constexpr TypeId default_type_id = Serializer<Decayed>::type_id;
+    const bool force_list = node_kind == FieldNodeKind::List;
+    const TypeId type_id =
+        vector_type_id_for_spec<Element>(spec, node_index, default_type_id);
+    if (type_id == TypeId::LIST) {
+      const int8_t child = force_list ? spec.child0_[node_index] : -1;
+      FORY_TRY(elem, (field_node_has_override(spec, child)
+                          ? build_field_type_with_resolver_and_spec<Element>(
+                                resolver, false, spec, child)
+                          : build_field_type_with_resolver<Element>(resolver,
+                                                                    false)));
+      FieldType ft(to_type_id(TypeId::LIST), nullable);
+      ft.add_generic(std::move(elem));
+      return ft;
+    }
+    return FieldType(to_type_id(type_id), nullable);
+  } else if constexpr (is_list_v<Decayed> || is_deque_v<Decayed> ||
+                       is_forward_list_v<Decayed>) {
+    using Element = typename Decayed::value_type;
+    const int8_t child =
+        node_kind == FieldNodeKind::List ? spec.child0_[node_index] : -1;
+    FORY_TRY(elem,
+             (field_node_has_override(spec, child)
+                  ? build_field_type_with_resolver_and_spec<Element>(
+                        resolver, false, spec, child)
+                  : build_field_type_with_resolver<Element>(resolver, false)));
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.add_generic(std::move(elem));
+    return ft;
+  } else if constexpr (is_set_like_v<Decayed>) {
+    using Element = element_type_t<Decayed>;
+    const int8_t child =
+        node_kind == FieldNodeKind::Set ? spec.child0_[node_index] : -1;
+    FORY_TRY(elem,
+             (field_node_has_override(spec, child)
+                  ? build_field_type_with_resolver_and_spec<Element>(
+                        resolver, false, spec, child)
+                  : build_field_type_with_resolver<Element>(resolver, false)));
+    FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
+    ft.add_generic(std::move(elem));
+    return ft;
+  } else if constexpr (is_map_like_v<Decayed>) {
+    using Key = key_type_t<Decayed>;
+    using Value = mapped_type_t<Decayed>;
+    const int8_t key_child =
+        node_kind == FieldNodeKind::Map ? spec.child0_[node_index] : -1;
+    const int8_t value_child =
+        node_kind == FieldNodeKind::Map ? spec.child1_[node_index] : -1;
+    FORY_TRY(key_ft,
+             (field_node_has_override(spec, key_child)
+                  ? build_field_type_with_resolver_and_spec<Key>(
+                        resolver, false, spec, key_child)
+                  : build_field_type_with_resolver<Key>(resolver, false)));
+    FORY_TRY(value_ft,
+             (field_node_has_override(spec, value_child)
+                  ? build_field_type_with_resolver_and_spec<Value>(
+                        resolver, false, spec, value_child)
+                  : build_field_type_with_resolver<Value>(resolver, false)));
+    FieldType ft(to_type_id(Serializer<Decayed>::type_id), nullable);
+    ft.add_generic(std::move(key_ft));
+    ft.add_generic(std::move(value_ft));
+    return ft;
+  } else {
+    FORY_TRY(ft, (build_field_type_with_resolver<Decayed>(resolver, nullable)));
+    apply_integer_encoding<Decayed>(ft, spec, node_index);
     return ft;
   }
 }
@@ -665,15 +1057,9 @@ Result<FieldType, Error> build_field_type_with_resolver(TypeResolver &resolver,
 template <typename ActualFieldType, typename T, size_t Index,
           typename UnwrappedFieldType>
 constexpr bool compute_is_nullable() {
-  if constexpr (is_fory_field_v<ActualFieldType>) {
-    return ActualFieldType::is_nullable;
-  } else if constexpr (::fory::detail::has_field_tags_v<T>) {
-    return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
-  } else if constexpr (::fory::detail::has_field_config_v<T> &&
-                       ::fory::detail::GetFieldConfigEntry<T,
-                                                           Index>::has_entry &&
-                       ::fory::detail::GetFieldConfigEntry<T,
-                                                           Index>::nullable) {
+  if constexpr (::fory::detail::has_field_config_v<T> &&
+                ::fory::detail::GetFieldConfigEntry<T, Index>::has_entry &&
+                ::fory::detail::GetFieldConfigEntry<T, Index>::nullable) {
     return true;
   } else {
     // Default: nullable if std::optional or smart pointers.
@@ -685,14 +1071,9 @@ constexpr bool compute_is_nullable() {
 
 template <typename ActualFieldType, typename T, size_t Index>
 constexpr bool compute_track_ref() {
-  if constexpr (is_fory_field_v<ActualFieldType>) {
-    return ActualFieldType::track_ref;
-  } else if constexpr (::fory::detail::has_field_tags_v<T>) {
-    return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
-  } else if constexpr (::fory::detail::has_field_config_v<T> &&
-                       ::fory::detail::GetFieldConfigEntry<T,
-                                                           Index>::has_entry &&
-                       ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
+  if constexpr (::fory::detail::has_field_config_v<T> &&
+                ::fory::detail::GetFieldConfigEntry<T, Index>::has_entry &&
+                ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
     return true;
   } else {
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
@@ -708,15 +1089,6 @@ constexpr int16_t compute_field_id() {
         ::fory::detail::GetFieldConfigEntry<T, Index>::id;
     if constexpr (config_id >= 0) {
       return config_id;
-    }
-  }
-  if constexpr (is_fory_field_v<ActualFieldType>) {
-    return field_tag_id_v<ActualFieldType>;
-  }
-  if constexpr (::fory::detail::has_field_tags_v<T>) {
-    constexpr int16_t tag_id = ::fory::detail::GetFieldTagEntry<T, Index>::id;
-    if constexpr (tag_id >= 0) {
-      return tag_id;
     }
   }
   return -1;
@@ -742,10 +1114,10 @@ struct unwrap_optional_inner<T, std::enable_if_t<is_optional_v<decay_t<T>>>> {
 template <typename T>
 using unwrap_optional_inner_t = typename unwrap_optional_inner<T>::type;
 
-// Helper to compute the correct type_id for unsigned types based on encoding
+// Helper to compute the correct type_id for unsigned types based on the
+// effective field spec.
 template <typename FieldT, typename StructT, size_t Index>
 constexpr uint32_t compute_unsigned_type_id() {
-  // For unsigned types, check if FORY_FIELD_CONFIG specifies an encoding
   if constexpr (::fory::detail::has_field_config_v<StructT>) {
     constexpr auto enc =
         ::fory::detail::GetFieldConfigEntry<StructT, Index>::encoding;
@@ -771,7 +1143,7 @@ constexpr uint32_t compute_unsigned_type_id() {
       }
     }
   }
-  // Not an unsigned type with field config, use default
+  // Not an unsigned type with configured encoding; use the type default.
   return 0;
 }
 
@@ -818,42 +1190,17 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
-    // unwrap fory::field<> to get the underlying type for FieldTypeBuilder
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
 
-    // get nullable and track_ref from field tags (FORY_FIELD_TAGS or
-    // fory::field<>)
     constexpr bool is_nullable =
         compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
     constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
     constexpr int16_t field_id = compute_field_id<ActualFieldType, T, Index>();
 
-    FieldType field_type = FieldTypeBuilder<UnwrappedFieldType>::build(false);
-
-    // Override type_id for unsigned types based on encoding from
-    // FORY_FIELD_CONFIG
-    using InnerType = unwrap_optional_inner_t<UnwrappedFieldType>;
-    constexpr uint32_t unsigned_tid =
-        compute_unsigned_type_id<UnwrappedFieldType, T, Index>();
-    if constexpr (unsigned_tid != 0 && is_unsigned_integer_v<InnerType>) {
-      field_type.type_id = unsigned_tid;
-    }
-
-    // Override type_id for signed types based on encoding from
-    // FORY_FIELD_CONFIG
-    constexpr uint32_t signed_tid =
-        compute_signed_type_id<UnwrappedFieldType, T, Index>();
-    if constexpr (signed_tid != 0) {
-      field_type.type_id = signed_tid;
-    }
-
-    if constexpr (::fory::detail::has_field_config_v<T>) {
-      constexpr int16_t override_id =
-          ::fory::detail::GetFieldConfigEntry<T, Index>::type_id_override;
-      if constexpr (override_id >= 0) {
-        field_type.type_id = static_cast<uint32_t>(override_id);
-      }
-    }
+    constexpr FieldNodeSpec spec =
+        ::fory::detail::GetFieldConfigEntry<T, Index>::spec;
+    FieldType field_type =
+        build_field_type_with_spec<UnwrappedFieldType>(false, spec);
 
     // Override nullable and track_ref from field-level metadata
     field_type.nullable = is_nullable;
@@ -863,9 +1210,9 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
     // DEBUG: Print field info for debugging fingerprint mismatch
     std::cerr << "[xlang][debug] FieldInfoBuilder T=" << typeid(T).name()
               << " Index=" << Index << " field=" << field_name
-              << " type_id=" << field_type.type_id << " has_tags="
-              << ::fory::detail::has_field_tags_v<T> << " is_nullable="
-              << is_nullable << " track_ref=" << track_ref << std::endl;
+              << " type_id=" << field_type.type_id
+              << " is_nullable=" << is_nullable << " track_ref=" << track_ref
+              << std::endl;
 #endif
     FieldInfo info(std::move(field_name), std::move(field_type));
     info.field_id = field_id;
@@ -890,43 +1237,18 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
-    // unwrap fory::field<> to get the underlying type for FieldTypeBuilder
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
 
-    // get nullable and track_ref from field tags (FORY_FIELD_TAGS or
-    // fory::field<>)
     constexpr bool is_nullable =
         compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
     constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
     constexpr int16_t field_id = compute_field_id<ActualFieldType, T, Index>();
 
-    FORY_TRY(field_type, build_field_type_with_resolver<UnwrappedFieldType>(
-                             resolver, false));
-
-    // Override type_id for unsigned types based on encoding from
-    // FORY_FIELD_CONFIG
-    using InnerType = unwrap_optional_inner_t<UnwrappedFieldType>;
-    constexpr uint32_t unsigned_tid =
-        compute_unsigned_type_id<UnwrappedFieldType, T, Index>();
-    if constexpr (unsigned_tid != 0 && is_unsigned_integer_v<InnerType>) {
-      field_type.type_id = unsigned_tid;
-    }
-
-    // Override type_id for signed types based on encoding from
-    // FORY_FIELD_CONFIG
-    constexpr uint32_t signed_tid =
-        compute_signed_type_id<UnwrappedFieldType, T, Index>();
-    if constexpr (signed_tid != 0) {
-      field_type.type_id = signed_tid;
-    }
-
-    if constexpr (::fory::detail::has_field_config_v<T>) {
-      constexpr int16_t override_id =
-          ::fory::detail::GetFieldConfigEntry<T, Index>::type_id_override;
-      if constexpr (override_id >= 0) {
-        field_type.type_id = static_cast<uint32_t>(override_id);
-      }
-    }
+    constexpr FieldNodeSpec spec =
+        ::fory::detail::GetFieldConfigEntry<T, Index>::spec;
+    FORY_TRY(field_type,
+             (build_field_type_with_resolver_and_spec<UnwrappedFieldType>(
+                 resolver, false, spec)));
 
     // Override nullable and track_ref from field-level metadata
     field_type.nullable = is_nullable;
@@ -936,9 +1258,9 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
     // DEBUG: Print field info for debugging fingerprint mismatch
     std::cerr << "[xlang][debug] FieldInfoBuilder T=" << typeid(T).name()
               << " Index=" << Index << " field=" << field_name
-              << " type_id=" << field_type.type_id << " has_tags="
-              << ::fory::detail::has_field_tags_v<T> << " is_nullable="
-              << is_nullable << " track_ref=" << track_ref << std::endl;
+              << " type_id=" << field_type.type_id
+              << " is_nullable=" << is_nullable << " track_ref=" << track_ref
+              << std::endl;
 #endif
     FieldInfo info(std::move(field_name), std::move(field_type));
     info.field_id = field_id;
@@ -1194,11 +1516,11 @@ private:
   util::U64PtrMap<TypeInfo> type_info_by_ctid_{256};
   util::U32PtrMap<TypeInfo> type_info_by_id_{256};
   util::U64PtrMap<TypeInfo> user_type_info_by_id_{256};
-  absl::flat_hash_map<std::string, TypeInfo *> type_info_by_name_;
+  fory::flat_hash_map<std::string, TypeInfo *> type_info_by_name_;
   util::U64PtrMap<TypeInfo> partial_type_infos_{256};
 
   // For runtime polymorphic lookups (smart pointers) - uses std::type_index
-  absl::flat_hash_map<std::type_index, TypeInfo *> type_info_by_runtime_type_;
+  fory::flat_hash_map<std::type_index, TypeInfo *> type_info_by_runtime_type_;
 };
 
 // Alias for backward compatibility (already defined above as top-level)
@@ -1579,11 +1901,11 @@ TypeResolver::build_struct_type_info(uint32_t type_id, uint32_t user_type_id,
   entry->sorted_indices.clear();
   entry->sorted_indices.reserve(field_count);
   for (const auto &sorted_field : sorted_fields) {
-    auto it = entry->name_to_index.find(sorted_field.field_name);
-    FORY_CHECK(it != entry->name_to_index.end())
+    auto *name_entry = entry->name_to_index.find(sorted_field.field_name);
+    FORY_CHECK(name_entry != nullptr)
         << "Sorted field name '" << sorted_field.field_name
         << "' not found in original struct definition";
-    entry->sorted_indices.push_back(it->second);
+    entry->sorted_indices.push_back(name_entry->second);
   }
 
   entry->harness = make_struct_harness<T>();
@@ -1889,8 +2211,8 @@ TypeResolver::register_type_internal(uint64_t ctid,
 
   if (raw_ptr->register_by_name) {
     name_key = make_name_key(raw_ptr->namespace_name, raw_ptr->type_name);
-    auto it = type_info_by_name_.find(name_key);
-    if (it != type_info_by_name_.end()) {
+    auto *entry = type_info_by_name_.find(name_key);
+    if (entry != nullptr) {
       return Unexpected(Error::invalid(
           "Type already registered for namespace '" + raw_ptr->namespace_name +
           "' and name '" + raw_ptr->type_name + "'"));
@@ -1949,9 +2271,9 @@ inline Result<const TypeInfo *, Error>
 TypeResolver::get_type_info_by_name(const std::string &ns,
                                     const std::string &type_name) const {
   auto key = make_name_key(ns, type_name);
-  auto it = type_info_by_name_.find(key);
-  if (it != type_info_by_name_.end()) {
-    return it->second;
+  auto *entry = type_info_by_name_.find(key);
+  if (entry != nullptr) {
+    return entry->second;
   }
   return Unexpected(Error::type_error("TypeInfo not found for type: " + ns +
                                       "." + type_name));

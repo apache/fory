@@ -11,6 +11,7 @@ The C# implementation provides high-performance object graph serialization for .
 - High-performance binary serialization for .NET 8+
 - Cross-language compatibility with Java, Python, C++, Go, Rust, and JavaScript
 - Source-generator-based serializers for `[ForyObject]` types
+- Field-level schema descriptors with `[ForyField(Type = typeof(...))]`
 - Optional shared/circular reference tracking (`TrackRef(true)`)
 - Compatible mode for schema evolution
 - Reduced-precision carriers for `Half` / `BFloat16` scalars and `Half[]` / `List<Half>` / `BFloat16[]` / `List<BFloat16>` array payloads

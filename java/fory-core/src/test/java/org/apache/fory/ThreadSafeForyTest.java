@@ -32,7 +32,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.Data;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.context.ReadContext;
@@ -148,7 +147,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
     BeanA beanA = BeanA.createBeanA(2);
     ThreadSafeFory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withAsyncCompilation(true)
@@ -161,7 +160,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
     BeanA beanA = BeanA.createBeanA(2);
     ThreadSafeFory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withAsyncCompilation(true)
@@ -237,13 +236,10 @@ public class ThreadSafeForyTest extends ForyTestBase {
   @Test
   public void testSerializeWithMetaShare() throws InterruptedException {
     ThreadSafeFory plain =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .buildThreadSafeFory();
+        Fory.builder().withXlang(false).requireClassRegistration(false).buildThreadSafeFory();
     ThreadSafeFory shared =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withMetaShare(true)
             .requireClassRegistration(false)
             .buildThreadSafeFory();
@@ -288,7 +284,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   public void testThreadLocalMetaShareWithPerThreadMetaContexts() throws InterruptedException {
     ThreadSafeFory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withMetaShare(true)
             .requireClassRegistration(false)
             .buildThreadLocalFory();

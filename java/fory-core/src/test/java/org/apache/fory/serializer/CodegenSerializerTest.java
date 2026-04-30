@@ -41,8 +41,6 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Cyclic;
@@ -64,7 +62,7 @@ public class CodegenSerializerTest extends ForyTestBase {
 
   @Test
   public void testSimpleBean() {
-    Fory fory = builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
     // serDe(fory, new A());
     B b = new B();
     b.f1 = "str1";
@@ -91,11 +89,7 @@ public class CodegenSerializerTest extends ForyTestBase {
   public void testSerializeCircularReference() {
     Cyclic cyclic = Cyclic.create(true);
     Fory fory =
-        builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(true)
-            .requireClassRegistration(false)
-            .build();
+        builder().withXlang(false).withRefTracking(true).requireClassRegistration(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
 
     fory.serialize(buffer, cyclic);
@@ -148,11 +142,7 @@ public class CodegenSerializerTest extends ForyTestBase {
     circular2.circular1 = circular1;
     circular2.circular2 = circular2;
     Fory fory =
-        builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(true)
-            .requireClassRegistration(false)
-            .build();
+        builder().withXlang(false).withRefTracking(true).requireClassRegistration(false).build();
     serDe(fory, circular1);
     serDe(fory, circular1);
     serDe(fory, circular2);
@@ -197,7 +187,7 @@ public class CodegenSerializerTest extends ForyTestBase {
 
   @Test
   public void testCacheNonFinalTypeInfo() {
-    Fory fory = builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
     TestCacheNonFinalTypeInfo obj = new TestCacheNonFinalTypeInfo();
     obj.finalList = new ArrayList<>(ImmutableList.of("a", "b"));
     obj.nonFinalPublicList =
@@ -233,18 +223,18 @@ public class CodegenSerializerTest extends ForyTestBase {
     pojo.f8 = 2L;
     int length =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withNumberCompressed(false)
-            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCompatible(false)
             .requireClassRegistration(false)
             .build()
             .serialize(pojo)
             .length;
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withNumberCompressed(true)
-            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCompatible(false)
             .requireClassRegistration(false)
             .build();
     serDeCheck(fory, pojo);
@@ -252,10 +242,10 @@ public class CodegenSerializerTest extends ForyTestBase {
     {
       Fory fory1 =
           builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withIntCompressed(true)
               .withLongCompressed(false)
-              .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+              .withCompatible(false)
               .requireClassRegistration(false)
               .build();
       serDeCheck(fory1, pojo);
@@ -268,10 +258,10 @@ public class CodegenSerializerTest extends ForyTestBase {
     {
       Fory fory1 =
           builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withIntCompressed(false)
               .withLongCompressed(true)
-              .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+              .withCompatible(false)
               .requireClassRegistration(false)
               .build();
       serDeCheck(fory1, pojo);
@@ -306,10 +296,10 @@ public class CodegenSerializerTest extends ForyTestBase {
   public void testFinalTypeField() {
     Fory fory =
         builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(true)
-            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCompatible(false)
             .build();
     fory.register(Column.class);
     fory.register(Get.class);

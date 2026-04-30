@@ -22,14 +22,13 @@ package org.apache.fory.serializer;
 import java.util.Locale;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
 public class LocaleSerializerTest extends ForyTestBase {
 
   @Test
   public void testWrite() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     serDeCheckSerializerAndEqual(fory, Locale.US, "LocaleSerializer");
     serDeCheckSerializerAndEqual(fory, Locale.CHINESE, "LocaleSerializer");
     serDeCheckSerializerAndEqual(fory, Locale.ENGLISH, "LocaleSerializer");

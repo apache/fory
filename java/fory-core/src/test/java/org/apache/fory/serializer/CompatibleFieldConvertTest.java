@@ -24,8 +24,6 @@ import java.lang.reflect.Field;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.serializer.converter.FieldConverters;
@@ -96,8 +94,8 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
     }
   }
 
-  @Test(dataProvider = "language")
-  public void testCompatibleFieldConvert(Language language) throws Exception {
+  @Test(dataProvider = "xlang")
+  public void testCompatibleFieldConvert(boolean xlang) throws Exception {
     byte[] bytes;
     Object o1;
     ImmutableSet<String> floatFields = ImmutableSet.of("f11", "f12", "f13", "f14");
@@ -112,16 +110,14 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
         Object converted = converter.convert(name.substring(1));
         field.set(o1, converted);
       }
-      Fory fory =
-          builder().withLanguage(language).withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+      Fory fory = builder().withXlang(xlang).withCompatible(true).build();
       fory.register(cls);
       bytes = fory.serialize(o1);
     }
     {
       Class<?> cls = CompatibleFieldConvert2.class;
       Assert.assertNotEquals(o1.getClass(), cls);
-      Fory fory =
-          builder().withLanguage(language).withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+      Fory fory = builder().withXlang(xlang).withCompatible(true).build();
       fory.register(cls);
       Object o = fory.deserialize(bytes);
       Assert.assertEquals(o.getClass(), cls);
@@ -139,8 +135,7 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
       Assert.assertEquals(o.toString(), o1.toString());
     }
     {
-      Fory fory =
-          builder().withLanguage(language).withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+      Fory fory = builder().withXlang(xlang).withCompatible(true).build();
       Class<?> cls = CompatibleFieldConvert3.class;
       Assert.assertNotEquals(o1.getClass(), cls);
       fory.register(cls);

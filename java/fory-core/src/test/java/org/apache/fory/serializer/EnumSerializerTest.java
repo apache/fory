@@ -28,9 +28,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ForyEnumId;
 import org.apache.fory.codegen.JaninoUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.Test;
@@ -148,10 +146,10 @@ public class EnumSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testEnumSerialization(boolean referenceTracking, Language language) {
+  public void testEnumSerialization(boolean referenceTracking, boolean xlang) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -255,13 +253,10 @@ public class EnumSerializerTest extends ForyTestBase {
     Class<?> cls2 =
         JaninoUtils.compileClass(getClass().getClassLoader(), "", "TestEnum2", enumCode2);
     ForyBuilder builderSerialization =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefTracking(true)
-            .requireClassRegistration(false);
+        Fory.builder().withXlang(false).withRefTracking(true).requireClassRegistration(false);
     ForyBuilder builderDeserialize =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .deserializeUnknownEnumValueAsNull(true)
@@ -284,8 +279,8 @@ public class EnumSerializerTest extends ForyTestBase {
 
     Fory foryDeserialize =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -293,8 +288,8 @@ public class EnumSerializerTest extends ForyTestBase {
             .build();
     Fory forySerialization =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -321,8 +316,8 @@ public class EnumSerializerTest extends ForyTestBase {
 
     Fory foryDeserialize =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -330,8 +325,8 @@ public class EnumSerializerTest extends ForyTestBase {
             .build();
     Fory forySerialization =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -358,8 +353,8 @@ public class EnumSerializerTest extends ForyTestBase {
 
     Fory foryDeserialize =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -367,8 +362,8 @@ public class EnumSerializerTest extends ForyTestBase {
             .build();
     Fory forySerialization =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -399,8 +394,8 @@ public class EnumSerializerTest extends ForyTestBase {
 
     Fory foryDeserialize =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -408,8 +403,8 @@ public class EnumSerializerTest extends ForyTestBase {
             .build();
     Fory forySerialization =
         Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(false)
+            .withCompatible(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .serializeEnumByName(true)
@@ -442,10 +437,7 @@ public class EnumSerializerTest extends ForyTestBase {
   @Test(dataProvider = "scopedMetaShare")
   public void testEnumSubclassFieldCompatible(boolean scopedMetaShare) {
     serDeCheck(
-        builder()
-            .withScopedMetaShare(scopedMetaShare)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build(),
+        builder().withScopedMetaShare(scopedMetaShare).withCompatible(true).build(),
         new EnumSubclassFieldTest(EnumSubClass.B));
   }
 
@@ -459,7 +451,7 @@ public class EnumSerializerTest extends ForyTestBase {
     try {
       fory.getWriteContext().prepare(buffer, null);
       serializer.write(fory.getWriteContext(), value);
-      return buffer.readVarUint32Small7();
+      return buffer.readVarUInt32Small7();
     } finally {
       fory.getWriteContext().reset();
     }

@@ -35,8 +35,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
@@ -164,7 +162,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testFinalFieldReplace(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -188,7 +186,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testFinalFieldWriteReplaceCircularClass(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -218,7 +216,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testFinalFieldWriteReplaceSameClassCircularRef() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .build();
@@ -267,7 +265,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testFinalFieldImmutableList(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -289,7 +287,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testFinalFieldImmutableMap(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -311,7 +309,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testMultipleFinalFieldsWithReplace(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
@@ -347,7 +345,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteTypeInfoIsNull() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(false)
             .build();
@@ -387,7 +385,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testNoClassNameWrittenForFinalField(boolean codegen) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withRefTracking(false)
@@ -429,7 +427,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   public void testWriteObjectSkipsClassNameWrite() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(false)
             .build();
@@ -450,17 +448,17 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     // without calling classResolver.writeClassInternal(buffer, writeTypeInfo)
   }
 
-  // TODO fix: bug with CompatibleMode and final field replace/resolve on main branch
+  // TODO fix: bug with compatible mode and final field replace/resolve on main branch
   @Ignore
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testFinalFieldReplaceWithCompatibleModeFinalClass(boolean refTracking) {
+  public void testFinalFieldReplaceWithCompatibleFinalClass(boolean refTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(false)
             .withRefTracking(refTracking)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
 
     ImmutableIntArray list1 = ImmutableIntArray.of(10, 20, 30);
@@ -472,18 +470,18 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   }
 
   /**
-   * Test that final fields with writeReplace/readResolve work correctly with
-   * CompatibleMode.COMPATIBLE which uses MetaSharedSerializer instead of ObjectSerializer.
+   * Test that final fields with writeReplace/readResolve work correctly with compatible mode, which
+   * uses MetaSharedSerializer instead of ObjectSerializer.
    */
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testFinalFieldReplaceWithCompatibleMode(boolean refTracking) {
+  public void testFinalFieldReplaceWithCompatible(boolean refTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(false)
             .withRefTracking(refTracking)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
 
     // Test CustomReplaceClass1 with final field

@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
 
 public class ZeroCopyExample {
   public static void main(String[] args) {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    Fory fory = Fory.builder().withXlang(true).build();
 
     // Data with large arrays
     List<Object> list = List.of(

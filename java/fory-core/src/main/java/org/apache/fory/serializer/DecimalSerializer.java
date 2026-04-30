@@ -58,17 +58,17 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
   private void writeNative(WriteContext writeContext, BigDecimal value) {
     MemoryBuffer buffer = writeContext.getBuffer();
     byte[] bytes = value.unscaledValue().toByteArray();
-    buffer.writeVarUint32Small7(value.scale());
-    buffer.writeVarUint32Small7(value.precision());
-    buffer.writeVarUint32Small7(bytes.length);
+    buffer.writeVarUInt32Small7(value.scale());
+    buffer.writeVarUInt32Small7(value.precision());
+    buffer.writeVarUInt32Small7(bytes.length);
     buffer.writeBytes(bytes);
   }
 
   private BigDecimal readNative(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int scale = buffer.readVarUint32Small7();
-    int precision = buffer.readVarUint32Small7();
-    int len = buffer.readVarUint32Small7();
+    int scale = buffer.readVarUInt32Small7();
+    int precision = buffer.readVarUInt32Small7();
+    int len = buffer.readVarUInt32Small7();
     byte[] bytes = buffer.readBytes(len);
     BigInteger bigInteger = new BigInteger(bytes);
     return new BigDecimal(bigInteger, scale, new MathContext(precision));
@@ -87,7 +87,7 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
     if (canUseSmallEncoding(unscaled)) {
       long smallValue = unscaled.longValue();
       long header = encodeZigZag64(smallValue) << 1;
-      buffer.writeVarUint64(header);
+      buffer.writeVarUInt64(header);
       return;
     }
 
@@ -95,7 +95,7 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
     byte[] payload = toCanonicalLittleEndianMagnitude(unscaled.abs());
     long meta = (((long) payload.length) << 1) | sign;
     long header = (meta << 1) | 1L;
-    buffer.writeVarUint64(header);
+    buffer.writeVarUInt64(header);
     buffer.writeBytes(payload);
   }
 
@@ -115,7 +115,7 @@ public final class DecimalSerializer extends ImmutableSerializer<BigDecimal> imp
   }
 
   private static BigInteger readXlangUnscaled(MemoryBuffer buffer) {
-    long header = buffer.readVarUint64();
+    long header = buffer.readVarUInt64();
     if ((header & 1L) == 0L) {
       return BigInteger.valueOf(decodeZigZag64(header >>> 1));
     }

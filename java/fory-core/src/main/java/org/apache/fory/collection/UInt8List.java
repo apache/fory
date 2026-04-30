@@ -23,7 +23,6 @@ import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.RandomAccess;
-import org.apache.fory.type.unsigned.Uint8;
 
 /**
  * Resizable list backed by a byte array for unsigned 8-bit values.
@@ -33,14 +32,14 @@ import org.apache.fory.type.unsigned.Uint8;
  * elements are always non-null. The {@link #size()} tracks the logical element count while the
  * backing array capacity may be larger.
  */
-public final class Uint8List extends AbstractList<Uint8> implements RandomAccess {
+public final class UInt8List extends AbstractList<Integer> implements RandomAccess {
   private static final int DEFAULT_CAPACITY = 10;
 
   private byte[] array;
   private int size;
 
   /** Creates an empty list with default capacity. */
-  public Uint8List() {
+  public UInt8List() {
     this(DEFAULT_CAPACITY);
   }
 
@@ -50,7 +49,7 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
    * @param initialCapacity starting backing array length; must be non-negative
    * @throws IllegalArgumentException if {@code initialCapacity} is negative
    */
-  public Uint8List(int initialCapacity) {
+  public UInt8List(int initialCapacity) {
     if (initialCapacity < 0) {
       throw new IllegalArgumentException("Illegal capacity: " + initialCapacity);
     }
@@ -63,15 +62,15 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
    *
    * @param array source array; its current length becomes {@link #size()}
    */
-  public Uint8List(byte[] array) {
+  public UInt8List(byte[] array) {
     this.array = array;
     this.size = array.length;
   }
 
   @Override
-  public Uint8 get(int index) {
+  public Integer get(int index) {
     checkIndex(index);
-    return new Uint8(array[index]);
+    return array[index] & 0xFF;
   }
 
   @Override
@@ -80,12 +79,12 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
   }
 
   @Override
-  public Uint8 set(int index, Uint8 element) {
+  public Integer set(int index, Integer element) {
     checkIndex(index);
     Objects.requireNonNull(element, "element");
-    byte prev = array[index];
+    int prev = array[index] & 0xFF;
     array[index] = element.byteValue();
-    return new Uint8(prev);
+    return prev;
   }
 
   /** Sets a value without boxing. */
@@ -101,8 +100,9 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
   }
 
   @Override
-  public void add(int index, Uint8 element) {
+  public void add(int index, Integer element) {
     checkPositionIndex(index);
+    Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
     System.arraycopy(array, index, array, index + 1, size - index);
     array[index] = element.byteValue();
@@ -111,7 +111,7 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
   }
 
   @Override
-  public boolean add(Uint8 element) {
+  public boolean add(Integer element) {
     Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
     array[size++] = element.byteValue();

@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
 /** Regression test for codegen CompileException when map key/value types are package-private. */
@@ -40,7 +39,7 @@ public class PackagePrivateMapKeyTest {
   public void testCodegenForMapWithPackagePrivateEnumKey() {
     ThreadSafeFory fury =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .buildThreadSafeFory();

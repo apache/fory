@@ -65,7 +65,7 @@ To enable array compression, you must explicitly register the serializers:
 
 ```java
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   // Enable int array compression
   .withIntArrayCompressed(true)
   // Enable long array compression
@@ -114,14 +114,14 @@ String compression can be enabled via `ForyBuilder#withStringCompressed(true)`. 
 ```java
 // For mostly numeric data - disable compression
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   .withIntCompressed(false)
   .withLongCompressed(false)
   .build();
 
 // For mixed data with arrays - enable array compression
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   .withIntCompressed(true)
   .withLongCompressed(true)
   .withIntArrayCompressed(true)

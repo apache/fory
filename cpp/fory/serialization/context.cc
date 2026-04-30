@@ -520,10 +520,10 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     return cached;
   }
 
-  auto cache_it = parsed_type_infos_.find(meta_header);
-  if (cache_it != parsed_type_infos_.end()) {
+  auto *cache_entry = parsed_type_infos_.find(meta_header);
+  if (cache_entry != nullptr) {
     // Found in cache - reuse and skip the bytes
-    const TypeInfo *cached = cache_it->second;
+    const TypeInfo *cached = cache_entry->second;
     reading_type_infos_.push_back(cached);
     has_last_meta_header_ = true;
     last_meta_header_ = meta_header;

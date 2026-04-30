@@ -27,32 +27,30 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.Int8ArrayType;
-import org.apache.fory.annotation.Uint16ArrayType;
-import org.apache.fory.annotation.Uint32ArrayType;
-import org.apache.fory.annotation.Uint64ArrayType;
-import org.apache.fory.annotation.Uint8ArrayType;
+import org.apache.fory.annotation.UInt16Elements;
+import org.apache.fory.annotation.UInt32Elements;
+import org.apache.fory.annotation.UInt64Elements;
+import org.apache.fory.annotation.UInt8Elements;
 import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
-import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class PrimitiveSerializersTest extends ForyTestBase {
   @Test
-  public void testUint8Serializer() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
-    PrimitiveSerializers.Uint8Serializer serializer =
-        new PrimitiveSerializers.Uint8Serializer(fory.getConfig());
+  public void testUInt8Serializer() {
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
+    PrimitiveSerializers.UInt8Serializer serializer =
+        new PrimitiveSerializers.UInt8Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
     writeSerializer(fory, serializer, buffer, 0);
     assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
@@ -65,10 +63,10 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testUint16Serializer() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
-    PrimitiveSerializers.Uint16Serializer serializer =
-        new PrimitiveSerializers.Uint16Serializer(fory.getConfig());
+  public void testUInt16Serializer() {
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
+    PrimitiveSerializers.UInt16Serializer serializer =
+        new PrimitiveSerializers.UInt16Serializer(fory.getConfig());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
     writeSerializer(fory, serializer, buffer, 0);
     assertEquals(readSerializer(fory, serializer, buffer), Integer.valueOf(0));
@@ -121,20 +119,17 @@ public class PrimitiveSerializersTest extends ForyTestBase {
             Double.MIN_VALUE);
     if (compressNumber) {
       ForyBuilder builder =
-          Fory.builder()
-              .withLanguage(Language.JAVA)
-              .withCodegen(codegen)
-              .requireClassRegistration(false);
+          Fory.builder().withXlang(false).withCodegen(codegen).requireClassRegistration(false);
       serDeCheck(
-          builder.withNumberCompressed(true).withLongCompressed(LongEncoding.VARINT).build(),
+          builder.withNumberCompressed(true).withLongCompressed(Int64Encoding.VARINT).build(),
           struct);
       serDeCheck(
-          builder.withNumberCompressed(true).withLongCompressed(LongEncoding.TAGGED).build(),
+          builder.withNumberCompressed(true).withLongCompressed(Int64Encoding.TAGGED).build(),
           struct);
     } else {
       Fory fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withCodegen(codegen)
               .requireClassRegistration(false)
               .build();
@@ -174,10 +169,10 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     public short[] int16Values;
     public int[] int32Values;
     public long[] int64Values;
-    @Uint8ArrayType public byte[] uint8Values;
-    @Uint16ArrayType public short[] uint16Values;
-    @Uint32ArrayType public int[] uint32Values;
-    @Uint64ArrayType public long[] uint64Values;
+    @UInt8Elements public byte[] uint8Values;
+    @UInt16Elements public short[] uint16Values;
+    @UInt32Elements public int[] uint32Values;
+    @UInt64Elements public long[] uint64Values;
   }
 
   public static class PrimitiveListStruct {
@@ -185,10 +180,10 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     public Int16List int16Values;
     public Int32List int32Values;
     public Int64List int64Values;
-    public Uint8List uint8Values;
-    public Uint16List uint16Values;
-    public Uint32List uint32Values;
-    public Uint64List uint64Values;
+    public UInt8List uint8Values;
+    public UInt16List uint16Values;
+    public UInt32List uint32Values;
+    public UInt64List uint64Values;
   }
 
   public static class PrimitiveCollectionFieldStruct {
@@ -202,17 +197,16 @@ public class PrimitiveSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "compatibleMode")
   public void testPrimitiveArrayListRoundTrip(boolean compatible) {
-    CompatibleMode mode = compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
     Fory arrayFory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(mode)
+            .withXlang(true)
+            .withCompatible(compatible)
             .requireClassRegistration(true)
             .build();
     Fory listFory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(mode)
+            .withXlang(true)
+            .withCompatible(compatible)
             .requireClassRegistration(true)
             .build();
 
@@ -234,11 +228,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   @Test
   public void testPrimitiveListAsCollectionFieldWithCodegen() {
     Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(true)
-            .requireClassRegistration(false)
-            .build();
+        Fory.builder().withXlang(false).withCodegen(true).requireClassRegistration(false).build();
     PrimitiveCollectionFieldStruct struct = new PrimitiveCollectionFieldStruct();
     struct.int8Values = new Int8List(new byte[] {1, -2, 3});
     PrimitiveCollectionFieldStruct roundTrip =
@@ -252,7 +242,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   public void testPrimitiveListCopyTracksReferences() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withRefCopy(true)
             .requireClassRegistration(false)
@@ -292,10 +282,10 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     struct.int16Values = new Int16List(arrays.int16Values);
     struct.int32Values = new Int32List(arrays.int32Values);
     struct.int64Values = new Int64List(arrays.int64Values);
-    struct.uint8Values = new Uint8List(arrays.uint8Values);
-    struct.uint16Values = new Uint16List(arrays.uint16Values);
-    struct.uint32Values = new Uint32List(arrays.uint32Values);
-    struct.uint64Values = new Uint64List(arrays.uint64Values);
+    struct.uint8Values = new UInt8List(arrays.uint8Values);
+    struct.uint16Values = new UInt16List(arrays.uint16Values);
+    struct.uint32Values = new UInt32List(arrays.uint32Values);
+    struct.uint64Values = new UInt64List(arrays.uint64Values);
     return struct;
   }
 

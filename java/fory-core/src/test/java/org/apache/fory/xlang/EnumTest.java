@@ -21,8 +21,6 @@ package org.apache.fory.xlang;
 
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyEnumId;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.config.UnknownEnumValueStrategy;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -92,19 +90,14 @@ public class EnumTest {
 
   @Test
   public void testEnumEnum() {
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(true).withCompatible(true).withCodegen(false).build();
     fory1.register(Color.class, 101);
     fory1.register(Color2.class, 102);
     fory1.register(EnumWrapper.class, 103);
     Fory fory2 =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withUnknownEnumValueStrategy(UnknownEnumValueStrategy.RETURN_FIRST_VARIANT)
             .withCodegen(false)
             .build();
@@ -120,8 +113,8 @@ public class EnumTest {
 
     Fory fory3 =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withUnknownEnumValueStrategy(UnknownEnumValueStrategy.RETURN_LAST_VARIANT)
             .withCodegen(false)
             .build();
@@ -134,19 +127,14 @@ public class EnumTest {
 
   @Test
   public void testEnumById() {
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(true).withCompatible(true).withCodegen(false).build();
     fory1.register(StableColor.class, 201);
     fory1.register(StableColor2.class, 202);
     fory1.register(StableEnumWrapper.class, 203);
     Fory fory2 =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withUnknownEnumValueStrategy(UnknownEnumValueStrategy.RETURN_FIRST_VARIANT)
             .withCodegen(false)
             .build();
@@ -168,8 +156,8 @@ public class EnumTest {
 
     Fory fory3 =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withUnknownEnumValueStrategy(UnknownEnumValueStrategy.RETURN_LAST_VARIANT)
             .withCodegen(false)
             .build();

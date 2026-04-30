@@ -616,6 +616,32 @@ struct CircularRefStruct {
   FORY_STRUCT(CircularRefStruct, name, self_ref);
 };
 
+struct NestedAnnotatedContainerSchemaConsistent {
+  std::map<uint32_t, std::vector<uint64_t>> values;
+
+  bool operator==(const NestedAnnotatedContainerSchemaConsistent &other) const {
+    return values == other.values;
+  }
+
+  FORY_STRUCT(NestedAnnotatedContainerSchemaConsistent,
+              (values,
+               fory::F().map(fory::T::uint32().fixed(),
+                             fory::T::list(fory::T::uint64().tagged()))));
+};
+
+struct NestedAnnotatedContainerCompatible {
+  std::map<uint32_t, std::vector<uint64_t>> values;
+
+  bool operator==(const NestedAnnotatedContainerCompatible &other) const {
+    return values == other.values;
+  }
+
+  FORY_STRUCT(NestedAnnotatedContainerCompatible,
+              (values,
+               fory::F().map(fory::T::uint32().fixed(),
+                             fory::T::list(fory::T::uint64().tagged()))));
+};
+
 // ============================================================================
 // Unsigned Number Test Types
 // ============================================================================
@@ -630,11 +656,9 @@ struct UnsignedSchemaConsistentSimple {
     return u64_tagged == other.u64_tagged &&
            u64_tagged_nullable == other.u64_tagged_nullable;
   }
-  FORY_STRUCT(UnsignedSchemaConsistentSimple, u64_tagged, u64_tagged_nullable);
+  FORY_STRUCT(UnsignedSchemaConsistentSimple, (u64_tagged, fory::F().tagged()),
+              (u64_tagged_nullable, fory::F().nullable().tagged()));
 };
-FORY_FIELD_CONFIG(UnsignedSchemaConsistentSimple,
-                  (u64_tagged, fory::F().tagged()),
-                  (u64_tagged_nullable, fory::F().nullable().tagged()));
 
 // UnsignedSchemaConsistent (type id 501)
 // Test struct for unsigned numbers in SCHEMA_CONSISTENT mode.
@@ -674,26 +698,20 @@ struct UnsignedSchemaConsistent {
            u64_fixed_nullable_field == other.u64_fixed_nullable_field &&
            u64_tagged_nullable_field == other.u64_tagged_nullable_field;
   }
-  FORY_STRUCT(UnsignedSchemaConsistent, u8_field, u16_field, u32_var_field,
-              u32_fixed_field, u64_var_field, u64_fixed_field, u64_tagged_field,
-              u8_nullable_field, u16_nullable_field, u32_var_nullable_field,
-              u32_fixed_nullable_field, u64_var_nullable_field,
-              u64_fixed_nullable_field, u64_tagged_nullable_field);
+  FORY_STRUCT(UnsignedSchemaConsistent, (u8_field, fory::F()),
+              (u16_field, fory::F()), (u32_var_field, fory::F().varint()),
+              (u32_fixed_field, fory::F().fixed()),
+              (u64_var_field, fory::F().varint()),
+              (u64_fixed_field, fory::F().fixed()),
+              (u64_tagged_field, fory::F().tagged()),
+              (u8_nullable_field, fory::F().nullable()),
+              (u16_nullable_field, fory::F().nullable()),
+              (u32_var_nullable_field, fory::F().nullable().varint()),
+              (u32_fixed_nullable_field, fory::F().nullable().fixed()),
+              (u64_var_nullable_field, fory::F().nullable().varint()),
+              (u64_fixed_nullable_field, fory::F().nullable().fixed()),
+              (u64_tagged_nullable_field, fory::F().nullable().tagged()));
 };
-// Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
-FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8_field, fory::F()),
-                  (u16_field, fory::F()), (u32_var_field, fory::F().varint()),
-                  (u32_fixed_field, fory::F().fixed()),
-                  (u64_var_field, fory::F().varint()),
-                  (u64_fixed_field, fory::F().fixed()),
-                  (u64_tagged_field, fory::F().tagged()),
-                  (u8_nullable_field, fory::F().nullable()),
-                  (u16_nullable_field, fory::F().nullable()),
-                  (u32_var_nullable_field, fory::F().nullable().varint()),
-                  (u32_fixed_nullable_field, fory::F().nullable().fixed()),
-                  (u64_var_nullable_field, fory::F().nullable().varint()),
-                  (u64_fixed_nullable_field, fory::F().nullable().fixed()),
-                  (u64_tagged_nullable_field, fory::F().nullable().tagged()));
 
 // UnsignedSchemaCompatible (type id 502)
 // Test struct for unsigned numbers in COMPATIBLE mode.
@@ -733,28 +751,20 @@ struct UnsignedSchemaCompatible {
            u64_fixed_field2 == other.u64_fixed_field2 &&
            u64_tagged_field2 == other.u64_tagged_field2;
   }
-  FORY_STRUCT(UnsignedSchemaCompatible, u8_field1, u16_field1, u32_var_field1,
-              u32_fixed_field1, u64_var_field1, u64_fixed_field1,
-              u64_tagged_field1, u8_field2, u16_field2, u32_var_field2,
-              u32_fixed_field2, u64_var_field2, u64_fixed_field2,
-              u64_tagged_field2);
+  FORY_STRUCT(UnsignedSchemaCompatible, (u8_field1, fory::F().nullable()),
+              (u16_field1, fory::F().nullable()),
+              (u32_var_field1, fory::F().nullable().varint()),
+              (u32_fixed_field1, fory::F().nullable().fixed()),
+              (u64_var_field1, fory::F().nullable().varint()),
+              (u64_fixed_field1, fory::F().nullable().fixed()),
+              (u64_tagged_field1, fory::F().nullable().tagged()),
+              (u8_field2, fory::F()), (u16_field2, fory::F()),
+              (u32_var_field2, fory::F().varint()),
+              (u32_fixed_field2, fory::F().fixed()),
+              (u64_var_field2, fory::F().varint()),
+              (u64_fixed_field2, fory::F().fixed()),
+              (u64_tagged_field2, fory::F().tagged()));
 };
-// Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
-// Group 1: nullable in C++ (std::optional), non-nullable in Java
-// Group 2: non-nullable in C++, nullable in Java
-FORY_FIELD_CONFIG(UnsignedSchemaCompatible, (u8_field1, fory::F().nullable()),
-                  (u16_field1, fory::F().nullable()),
-                  (u32_var_field1, fory::F().nullable().varint()),
-                  (u32_fixed_field1, fory::F().nullable().fixed()),
-                  (u64_var_field1, fory::F().nullable().varint()),
-                  (u64_fixed_field1, fory::F().nullable().fixed()),
-                  (u64_tagged_field1, fory::F().nullable().tagged()),
-                  (u8_field2, fory::F()), (u16_field2, fory::F()),
-                  (u32_var_field2, fory::F().varint()),
-                  (u32_fixed_field2, fory::F().fixed()),
-                  (u64_var_field2, fory::F().varint()),
-                  (u64_fixed_field2, fory::F().fixed()),
-                  (u64_tagged_field2, fory::F().tagged()));
 
 namespace fory {
 namespace serialization {
@@ -955,6 +965,10 @@ void run_test_ref_compatible(const std::string &data_file);
 void run_test_collection_element_ref_override(const std::string &data_file);
 void run_test_circular_ref_schema_consistent(const std::string &data_file);
 void run_test_circular_ref_compatible(const std::string &data_file);
+void run_test_nested_annotated_container_schema_consistent(
+    const std::string &data_file);
+void run_test_nested_annotated_container_compatible(
+    const std::string &data_file);
 void run_test_decimal(const std::string &data_file);
 void run_test_unsigned_schema_consistent_simple(const std::string &data_file);
 void run_test_unsigned_schema_consistent(const std::string &data_file);
@@ -1069,6 +1083,11 @@ int main(int argc, char **argv) {
       run_test_circular_ref_schema_consistent(data_file);
     } else if (case_name == "test_circular_ref_compatible") {
       run_test_circular_ref_compatible(data_file);
+    } else if (case_name ==
+               "test_nested_annotated_container_schema_consistent") {
+      run_test_nested_annotated_container_schema_consistent(data_file);
+    } else if (case_name == "test_nested_annotated_container_compatible") {
+      run_test_nested_annotated_container_compatible(data_file);
     } else if (case_name == "test_unsigned_schema_consistent_simple") {
       run_test_unsigned_schema_consistent_simple(data_file);
     } else if (case_name == "test_unsigned_schema_consistent") {
@@ -2788,6 +2807,45 @@ void run_test_circular_ref_compatible(const std::string &data_file) {
   std::vector<uint8_t> out;
   append_serialized(fory, obj, out);
   write_file(data_file, out);
+}
+
+std::map<uint32_t, std::vector<uint64_t>>
+build_nested_annotated_container_values() {
+  return {{4000000000u, {7u, 1000000000u}}, {3u, {42u}}};
+}
+
+template <typename T>
+void run_nested_annotated_container_test(Fory &fory,
+                                         const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<T>(fory, buffer);
+  const auto expected = build_nested_annotated_container_values();
+  if (value.values != expected) {
+    fail("Nested annotated container values mismatch");
+  }
+
+  std::vector<uint8_t> out;
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
+}
+
+void run_test_nested_annotated_container_schema_consistent(
+    const std::string &data_file) {
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_struct<NestedAnnotatedContainerSchemaConsistent>(801),
+            "register NestedAnnotatedContainerSchemaConsistent");
+  run_nested_annotated_container_test<NestedAnnotatedContainerSchemaConsistent>(
+      fory, data_file);
+}
+
+void run_test_nested_annotated_container_compatible(
+    const std::string &data_file) {
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<NestedAnnotatedContainerCompatible>(802),
+            "register NestedAnnotatedContainerCompatible");
+  run_nested_annotated_container_test<NestedAnnotatedContainerCompatible>(
+      fory, data_file);
 }
 
 // ============================================================================

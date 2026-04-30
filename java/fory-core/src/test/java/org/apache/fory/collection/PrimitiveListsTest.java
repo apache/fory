@@ -22,10 +22,6 @@ package org.apache.fory.collection;
 import static org.testng.Assert.*;
 
 import org.apache.fory.type.Float16;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
 import org.testng.annotations.Test;
 
 public class PrimitiveListsTest {
@@ -276,7 +272,7 @@ public class PrimitiveListsTest {
 
   @Test
   public void uint8ListSupportsPrimitiveOps() {
-    Uint8List list = new Uint8List();
+    UInt8List list = new UInt8List();
     assertEquals(list.size(), 0);
     byte[] initial = list.getArray();
 
@@ -288,12 +284,12 @@ public class PrimitiveListsTest {
     assertEquals(list.size(), 12);
     assertNotSame(initial, list.getArray());
 
-    list.add(1, new Uint8((byte) 100));
+    list.add(1, 100);
     assertEquals(list.getInt(0), 255);
     assertEquals(list.getInt(1), 100);
     assertEquals(list.getInt(2), 5);
 
-    Uint8 prev = list.set(0, new Uint8((byte) 7));
+    Integer prev = list.set(0, Integer.valueOf(7));
     assertEquals(prev.intValue(), 255);
     list.set(0, (int) 9);
     assertEquals(list.getInt(0), 9);
@@ -303,13 +299,13 @@ public class PrimitiveListsTest {
     assertEquals(copy[1], list.getByte(1));
     assertNotSame(copy, list.getArray());
 
-    expectThrows(NullPointerException.class, () -> list.add((Uint8) null));
-    expectThrows(NullPointerException.class, () -> list.set(0, (Uint8) null));
+    expectThrows(NullPointerException.class, () -> list.add((Integer) null));
+    expectThrows(NullPointerException.class, () -> list.set(0, (Integer) null));
   }
 
   @Test
   public void uint16ListSupportsPrimitiveOps() {
-    Uint16List list = new Uint16List();
+    UInt16List list = new UInt16List();
     assertEquals(list.size(), 0);
     short[] initial = list.getArray();
 
@@ -321,12 +317,12 @@ public class PrimitiveListsTest {
     assertEquals(list.size(), 12);
     assertNotSame(initial, list.getArray());
 
-    list.add(2, new Uint16((short) 500));
+    list.add(2, 500);
     assertEquals(list.getInt(0), 65535);
     assertEquals(list.getInt(2), 500);
     assertEquals(list.getInt(3), 0);
 
-    Uint16 prev = list.set(0, new Uint16((short) 7));
+    Integer prev = list.set(0, Integer.valueOf(7));
     assertEquals(prev.intValue(), 65535);
     list.set(0, 9);
     assertEquals(list.getInt(0), 9);
@@ -336,13 +332,13 @@ public class PrimitiveListsTest {
     assertEquals(copy[2], list.getShort(2));
     assertNotSame(copy, list.getArray());
 
-    expectThrows(NullPointerException.class, () -> list.add((Uint16) null));
-    expectThrows(NullPointerException.class, () -> list.set(0, (Uint16) null));
+    expectThrows(NullPointerException.class, () -> list.add((Integer) null));
+    expectThrows(NullPointerException.class, () -> list.set(0, (Integer) null));
   }
 
   @Test
   public void uint32ListSupportsPrimitiveOps() {
-    Uint32List list = new Uint32List();
+    UInt32List list = new UInt32List();
     assertEquals(list.size(), 0);
     int[] initial = list.getArray();
 
@@ -354,13 +350,13 @@ public class PrimitiveListsTest {
     assertEquals(list.size(), 12);
     assertNotSame(initial, list.getArray());
 
-    list.add(3, new Uint32(123456));
+    list.add(3, 123456L);
     assertEquals(list.getInt(0), -1);
     assertEquals(list.getInt(3), 123456);
     assertEquals(list.getInt(4), 1);
 
-    Uint32 prev = list.set(0, new Uint32(7));
-    assertEquals(prev.intValue(), -1);
+    Long prev = list.set(0, Long.valueOf(7));
+    assertEquals(prev.longValue(), 0xFFFF_FFFFL);
     list.set(0, 9L);
     assertEquals(list.getInt(0), 9);
 
@@ -369,13 +365,13 @@ public class PrimitiveListsTest {
     assertEquals(copy[3], list.getInt(3));
     assertNotSame(copy, list.getArray());
 
-    expectThrows(NullPointerException.class, () -> list.add((Uint32) null));
-    expectThrows(NullPointerException.class, () -> list.set(0, (Uint32) null));
+    expectThrows(NullPointerException.class, () -> list.add((Long) null));
+    expectThrows(NullPointerException.class, () -> list.set(0, (Long) null));
   }
 
   @Test
   public void uint64ListSupportsPrimitiveOps() {
-    Uint64List list = new Uint64List();
+    UInt64List list = new UInt64List();
     assertEquals(list.size(), 0);
     long[] initial = list.getArray();
 
@@ -387,12 +383,12 @@ public class PrimitiveListsTest {
     assertEquals(list.size(), 12);
     assertNotSame(initial, list.getArray());
 
-    list.add(2, new Uint64(123456789L));
+    list.add(2, 123456789L);
     assertEquals(list.getLong(0), -1L);
     assertEquals(list.getLong(2), 123456789L);
     assertEquals(list.getLong(3), 0L);
 
-    Uint64 prev = list.set(0, new Uint64(7L));
+    Long prev = list.set(0, Long.valueOf(7));
     assertEquals(prev.longValue(), -1L);
     list.set(0, 9L);
     assertEquals(list.getLong(0), 9L);
@@ -402,7 +398,7 @@ public class PrimitiveListsTest {
     assertEquals(copy[2], list.getLong(2));
     assertNotSame(copy, list.getArray());
 
-    expectThrows(NullPointerException.class, () -> list.add((Uint64) null));
-    expectThrows(NullPointerException.class, () -> list.set(0, (Uint64) null));
+    expectThrows(NullPointerException.class, () -> list.add((Long) null));
+    expectThrows(NullPointerException.class, () -> list.set(0, (Long) null));
   }
 }

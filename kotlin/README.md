@@ -72,7 +72,6 @@ When a Kotlin data class has parameters with default values, Fory can:
 
 ```kotlin
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 // Original data class
@@ -83,7 +82,7 @@ data class UserV2(val name: String, val age: Int, val email: String = "default@e
 
 fun main() {
     val fory = Fory.builder()
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .build()
     KotlinSerializers.registerSerializers(fory)
     fory.register(User::class.java)
@@ -128,14 +127,13 @@ Fory Kotlin is built on Fory Java, so all Java configuration options are availab
 
 ```kotlin
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 val fory = Fory.builder()
     // Enable reference tracking for circular references
     .withRefTracking(true)
     // Enable schema evolution support
-    .withCompatibleMode(CompatibleMode.COMPATIBLE)
+    .withCompatible(true)
     // Enable async compilation for better startup performance
     .withAsyncCompilation(true)
     // Compression options

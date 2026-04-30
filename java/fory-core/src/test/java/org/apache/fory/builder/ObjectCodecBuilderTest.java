@@ -39,7 +39,6 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.codegen.javalangnameconflict.MethodSpiltObject;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.CollectionSerializersTest;
 import org.apache.fory.test.bean.AccessBeans;
 import org.apache.fory.test.bean.BeanA;
@@ -57,7 +56,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
   public void genCode(boolean compressNumber) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withNumberCompressed(compressNumber)
             .requireClassRegistration(false)
@@ -82,7 +81,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
     Class<?> clz = classLoader.loadClass("A");
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withClassLoader(clz.getClassLoader())
             .requireClassRegistration(false)
@@ -151,7 +150,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
 
   @Test
   public void testContainer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     CollectionSerializersTest.Container container = new CollectionSerializersTest.Container();
     container.list1 = ofArrayList(new CollectionSerializersTest.NotFinal(1));
     container.map1 = ofHashMap("k", new CollectionSerializersTest.NotFinal(2));
@@ -167,7 +166,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
 
   @Test
   public void testNestedContainer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     NestedContainer nestedContainer = new NestedContainer();
     List<List<String>> list1 = new ArrayList<>();
     list1.add(new ArrayList<>(ImmutableList.of("a", "b")));
@@ -191,7 +190,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
   @Test
   public void testTypeConflictWhenMethodSplits() {
     // For issue #1370
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.serialize(new MethodSpiltObject());
     Assert.assertTrue(
         fory.getTypeResolver().getSerializer(MethodSpiltObject.class)

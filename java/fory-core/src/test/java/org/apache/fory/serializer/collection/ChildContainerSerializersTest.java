@@ -48,8 +48,6 @@ import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.Cyclic;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -77,26 +75,9 @@ public class ChildContainerSerializersTest extends ForyTestBase {
   @DataProvider(name = "foryConfig")
   public static Object[][] foryConfig() {
     return new Object[][] {
-      {
-        builder()
-            .withRefTracking(false)
-            .withScopedMetaShare(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
-      {
-        builder()
-            .withRefTracking(false)
-            .withScopedMetaShare(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
-      {
-        builder()
-            .withRefTracking(false)
-            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
-            .build()
-      },
+      {builder().withRefTracking(false).withScopedMetaShare(false).withCompatible(true).build()},
+      {builder().withRefTracking(false).withScopedMetaShare(true).withCompatible(true).build()},
+      {builder().withRefTracking(false).withCompatible(false).build()},
     };
   }
 
@@ -266,7 +247,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     outerDO.setFeatures(features);
     Fory fory =
         builder()
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withDeserializeUnknownClass(true)
             .withMetaShare(true)
             .withScopedMetaShare(false)
@@ -288,7 +269,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             .withCodegen(enableCodegen)
             .withAsyncCompilation(false)
             .withRefTracking(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
 
     ChildHashMap1 map1a = new ChildHashMap1();
@@ -343,7 +324,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             .withCodegen(enableCodegen)
             .withRefTracking(false)
             .requireClassRegistration(false)
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .build();
 
     ChildHashMap1 map1a = new ChildHashMap1();
@@ -378,15 +359,15 @@ public class ChildContainerSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testNestedHashMapSubclassWithCompatibleMode() {
+  public void testNestedHashMapSubclassWithCompatible() {
     Fory fory =
         Fory.builder()
             .withCodegen(false)
             .withAsyncCompilation(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withXlang(false)
             .build();
 
     ChildHashMap1 map1a = new ChildHashMap1();
@@ -611,15 +592,15 @@ public class ChildContainerSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testMixedCollectionSubclassesWithCompatibleMode() {
+  public void testMixedCollectionSubclassesWithCompatible() {
     Fory fory =
         Fory.builder()
             .withCodegen(false)
             .withAsyncCompilation(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withXlang(false)
             .build();
 
     ChildHashMap1 map1 = new ChildHashMap1();

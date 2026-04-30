@@ -60,6 +60,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -83,12 +84,11 @@ import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaStringReader;
 import org.apache.fory.context.MetaStringWriter;
 import org.apache.fory.context.ReadContext;
@@ -159,10 +159,10 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
+import org.apache.fory.type.unsigned.UInt16;
+import org.apache.fory.type.unsigned.UInt32;
+import org.apache.fory.type.unsigned.UInt64;
+import org.apache.fory.type.unsigned.UInt8;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
@@ -275,10 +275,10 @@ public class ClassResolver extends TypeResolver {
     registerInternal(Float16.class, Types.FLOAT16);
     registerInternal(BFloat16.class, Types.BFLOAT16);
     registerInternal(String.class, Types.STRING);
-    registerInternal(Uint8.class, Types.UINT8);
-    registerInternal(Uint16.class, Types.UINT16);
-    registerInternal(Uint32.class, Types.UINT32);
-    registerInternal(Uint64.class, Types.UINT64);
+    registerInternal(UInt8.class, Types.UINT8);
+    registerInternal(UInt16.class, Types.UINT16);
+    registerInternal(UInt32.class, Types.UINT32);
+    registerInternal(UInt64.class, Types.UINT64);
     registerInternal(boolean[].class, PRIMITIVE_BOOLEAN_ARRAY_ID);
     registerInternal(byte[].class, PRIMITIVE_BYTE_ARRAY_ID);
     registerInternal(char[].class, PRIMITIVE_CHAR_ARRAY_ID);
@@ -296,10 +296,10 @@ public class ClassResolver extends TypeResolver {
     registerInternal(Int16List.class, Types.INT16_ARRAY);
     registerInternal(Int32List.class, Types.INT32_ARRAY);
     registerInternal(Int64List.class, Types.INT64_ARRAY);
-    registerInternal(Uint8List.class, Types.UINT8_ARRAY);
-    registerInternal(Uint16List.class, Types.UINT16_ARRAY);
-    registerInternal(Uint32List.class, Types.UINT32_ARRAY);
-    registerInternal(Uint64List.class, Types.UINT64_ARRAY);
+    registerInternal(UInt8List.class, Types.UINT8_ARRAY);
+    registerInternal(UInt16List.class, Types.UINT16_ARRAY);
+    registerInternal(UInt32List.class, Types.UINT32_ARRAY);
+    registerInternal(UInt64List.class, Types.UINT64_ARRAY);
     registerInternal(Float32List.class, Types.FLOAT32_ARRAY);
     registerInternal(Float64List.class, Types.FLOAT64_ARRAY);
     registerInternal(Float16List.class, Types.FLOAT16_ARRAY);
@@ -426,8 +426,8 @@ public class ClassResolver extends TypeResolver {
     registerInternal(AtomicInteger.class);
     registerInternal(AtomicLong.class);
     registerInternal(AtomicReference.class);
-    registerInternal(EnumSet.allOf(Language.class).getClass());
-    registerInternal(EnumSet.of(Language.JAVA).getClass());
+    registerInternal(EnumSet.allOf(TimeUnit.class).getClass());
+    registerInternal(EnumSet.of(TimeUnit.SECONDS).getClass());
     registerInternal(SerializedLambda.class);
     registerInternal(
         Throwable.class,
@@ -933,8 +933,10 @@ public class ClassResolver extends TypeResolver {
   }
 
   public boolean isBuildIn(Descriptor descriptor) {
-    if (TypeUtils.isPrimitiveListClass(descriptor.getRawType())) {
-      return true;
+    Class<?> rawType = descriptor.getRawType();
+    if (TypeUtils.isPrimitiveListClass(rawType)) {
+      return !org.apache.fory.type.TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+          descriptor.getTypeAnnotation(), rawType);
     }
     return isMonomorphic(descriptor);
   }
@@ -1772,9 +1774,9 @@ public class ClassResolver extends TypeResolver {
     MemoryBuffer buffer = writeContext.getBuffer();
     // fast path for common type
     if (cls == Integer.class) {
-      buffer.writeVarUint32Small7(Types.INT32);
+      buffer.writeVarUInt32Small7(Types.INT32);
     } else if (cls == Long.class) {
-      buffer.writeVarUint32Small7(Types.INT64);
+      buffer.writeVarUInt32Small7(Types.INT64);
     } else {
       writeTypeInfo(writeContext, getOrUpdateTypeInfo(cls));
     }
@@ -1833,14 +1835,14 @@ public class ClassResolver extends TypeResolver {
     int typeId = typeInfo.typeId;
     boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(typeId);
     if (writeById) {
-      buffer.writeVarUint32Small7(typeId << 1);
+      buffer.writeVarUInt32Small7(typeId << 1);
       switch (typeId) {
         case Types.ENUM:
         case Types.STRUCT:
         case Types.COMPATIBLE_STRUCT:
         case Types.EXT:
         case Types.TYPED_UNION:
-          buffer.writeVarUint32(typeInfo.userTypeId);
+          buffer.writeVarUInt32(typeInfo.userTypeId);
           break;
         default:
           break;
@@ -1878,7 +1880,7 @@ public class ClassResolver extends TypeResolver {
    */
   public Class<?> readClassInternal(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int header = buffer.readVarUint32Small14();
+    int header = buffer.readVarUInt32Small14();
     if ((header & 0b1) != 0) {
       // let the lowermost bit of next byte be set, so the deserialization can know
       // whether need to read class by name in advance
@@ -1894,7 +1896,7 @@ public class ClassResolver extends TypeResolver {
       case Types.COMPATIBLE_STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        return getTypeInfoByTypeIdForReadClassInternal(typeId, buffer.readVarUint32()).type;
+        return getTypeInfoByTypeIdForReadClassInternal(typeId, buffer.readVarUInt32()).type;
       default:
         TypeInfo internalTypeInfoByTypeId = getInternalTypeInfoByTypeId(typeId);
         Preconditions.checkNotNull(internalTypeInfoByTypeId);

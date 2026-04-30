@@ -19,18 +19,18 @@
 
 package org.apache.fory.data;
 
-import org.apache.fory.annotation.Uint16ArrayType;
-import org.apache.fory.annotation.Uint32ArrayType;
-import org.apache.fory.annotation.Uint64ArrayType;
-import org.apache.fory.annotation.Uint8ArrayType;
+import org.apache.fory.annotation.UInt16Elements;
+import org.apache.fory.annotation.UInt32Elements;
+import org.apache.fory.annotation.UInt64Elements;
+import org.apache.fory.annotation.UInt8Elements;
 
 /** Test class with all unsigned integer array fields. */
 public class UnsignedArrayFields {
-  @Uint8ArrayType public byte[] u8Array;
+  @UInt8Elements public byte[] u8Array;
 
-  @Uint16ArrayType public short[] u16Array;
+  @UInt16Elements public short[] u16Array;
 
-  @Uint32ArrayType public int[] u32Array;
+  @UInt32Elements public int[] u32Array;
 
-  @Uint64ArrayType public long[] u64Array;
+  @UInt64Elements public long[] u64Array;
 }

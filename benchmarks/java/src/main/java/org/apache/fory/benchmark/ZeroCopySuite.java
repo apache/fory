@@ -40,7 +40,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.benchmark.data.ComparableByteArray;
 import org.apache.fory.benchmark.data.SerializableByteBuffer;
 import org.apache.fory.benchmark.state.BufferType;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.ByteBufferUtil;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -68,7 +67,7 @@ public class ZeroCopySuite {
     Object o = new ArraysData(200);
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -156,7 +155,7 @@ public class ZeroCopySuite {
       bufferObjects = new ArrayList<>();
       fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withClassVersionCheck(false)
               .withRefTracking(references)
               .requireClassRegistration(false)

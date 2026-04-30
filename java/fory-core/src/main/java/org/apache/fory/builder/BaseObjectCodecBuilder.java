@@ -70,6 +70,7 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_BYTE_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_INT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_LONG_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.PRIMITIVE_VOID_TYPE;
 import static org.apache.fory.type.TypeUtils.SET_TYPE;
 import static org.apache.fory.type.TypeUtils.SHORT_TYPE;
@@ -119,6 +120,7 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
@@ -521,20 +523,23 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       case DispatchId.BOOL:
         return new Invoke(buffer, "writeBoolean", inputObject);
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         return new Invoke(buffer, "writeByte", inputObject);
+      case DispatchId.UINT8:
+        return new Invoke(buffer, "writeByte", primitiveIntValue(inputObject, descriptor));
       case DispatchId.CHAR:
         return new Invoke(buffer, "writeChar", inputObject);
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         return new Invoke(buffer, "writeInt16", inputObject);
+      case DispatchId.UINT16:
+        return new Invoke(buffer, "writeInt16", primitiveShortValue(inputObject, descriptor));
       case DispatchId.INT32:
-      case DispatchId.UINT32:
         return new Invoke(buffer, "writeInt32", inputObject);
+      case DispatchId.UINT32:
+        return new Invoke(buffer, "writeInt32", primitiveIntValue(inputObject, descriptor));
       case DispatchId.VARINT32:
         return new Invoke(buffer, "writeVarInt32", inputObject);
       case DispatchId.VAR_UINT32:
-        return new Invoke(buffer, "writeVarUint32", inputObject);
+        return new Invoke(buffer, "writeVarUInt32", primitiveIntValue(inputObject, descriptor));
       case DispatchId.INT64:
       case DispatchId.UINT64:
         return new Invoke(buffer, "writeInt64", inputObject);
@@ -543,9 +548,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       case DispatchId.TAGGED_INT64:
         return new Invoke(buffer, "writeTaggedInt64", inputObject);
       case DispatchId.VAR_UINT64:
-        return new Invoke(buffer, "writeVarUint64", inputObject);
+        return new Invoke(buffer, "writeVarUInt64", inputObject);
       case DispatchId.TAGGED_UINT64:
-        return new Invoke(buffer, "writeTaggedUint64", inputObject);
+        return new Invoke(buffer, "writeTaggedUInt64", inputObject);
       case DispatchId.FLOAT32:
         return new Invoke(buffer, "writeFloat32", inputObject);
       case DispatchId.FLOAT64:
@@ -557,6 +562,80 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       default:
         throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
     }
+  }
+
+  private Expression primitiveShortValue(Expression inputObject, Descriptor descriptor) {
+    return inputObject.type().isPrimitive()
+        ? cast(inputObject, PRIMITIVE_SHORT_TYPE)
+        : new Invoke(
+            boxedNumericValue(inputObject, descriptor), "shortValue", PRIMITIVE_SHORT_TYPE);
+  }
+
+  private Expression primitiveShortValue(Expression inputObject, TypeRef<?> typeRef) {
+    return inputObject.type().isPrimitive()
+        ? cast(inputObject, PRIMITIVE_SHORT_TYPE)
+        : new Invoke(boxedNumericValue(inputObject, typeRef), "shortValue", PRIMITIVE_SHORT_TYPE);
+  }
+
+  private Expression primitiveIntValue(Expression inputObject, Descriptor descriptor) {
+    return inputObject.type().isPrimitive()
+        ? cast(inputObject, PRIMITIVE_INT_TYPE)
+        : new Invoke(boxedNumericValue(inputObject, descriptor), "intValue", PRIMITIVE_INT_TYPE);
+  }
+
+  private Expression primitiveIntValue(Expression inputObject, TypeRef<?> typeRef) {
+    return inputObject.type().isPrimitive()
+        ? cast(inputObject, PRIMITIVE_INT_TYPE)
+        : new Invoke(boxedNumericValue(inputObject, typeRef), "intValue", PRIMITIVE_INT_TYPE);
+  }
+
+  private Expression boxedNumericValue(Expression inputObject, Descriptor descriptor) {
+    return boxedNumericValue(inputObject, descriptor.getTypeRef());
+  }
+
+  private Expression boxedNumericValue(Expression inputObject, TypeRef<?> typeRef) {
+    return Number.class.isAssignableFrom(getRawType(inputObject.type()))
+        ? inputObject
+        : cast(inputObject, typeRef);
+  }
+
+  private Expression serializePrimitive(
+      Expression inputObject, Expression buffer, TypeRef<?> typeRef) {
+    TypeExtMeta extMeta = typeRef.getTypeExtMeta();
+    if (extMeta != null) {
+      switch (extMeta.typeId()) {
+        case Types.INT8:
+          return new Invoke(buffer, "writeByte", inputObject);
+        case Types.UINT8:
+          return new Invoke(buffer, "writeByte", primitiveIntValue(inputObject, typeRef));
+        case Types.INT16:
+          return new Invoke(buffer, "writeInt16", inputObject);
+        case Types.UINT16:
+          return new Invoke(buffer, "writeInt16", primitiveShortValue(inputObject, typeRef));
+        case Types.INT32:
+          return new Invoke(buffer, "writeInt32", inputObject);
+        case Types.UINT32:
+          return new Invoke(buffer, "writeInt32", primitiveIntValue(inputObject, typeRef));
+        case Types.VARINT32:
+          return new Invoke(buffer, "writeVarInt32", inputObject);
+        case Types.VAR_UINT32:
+          return new Invoke(buffer, "writeVarUInt32", primitiveIntValue(inputObject, typeRef));
+        case Types.INT64:
+        case Types.UINT64:
+          return new Invoke(buffer, "writeInt64", inputObject);
+        case Types.VARINT64:
+          return new Invoke(buffer, "writeVarInt64", inputObject);
+        case Types.TAGGED_INT64:
+          return new Invoke(buffer, "writeTaggedInt64", inputObject);
+        case Types.VAR_UINT64:
+          return new Invoke(buffer, "writeVarUInt64", inputObject);
+        case Types.TAGGED_UINT64:
+          return new Invoke(buffer, "writeTaggedUInt64", inputObject);
+        default:
+          break;
+      }
+    }
+    return serializePrimitive(inputObject, buffer, getRawType(typeRef));
   }
 
   private Expression serializePrimitive(Expression inputObject, Expression buffer, Class<?> clz) {
@@ -672,7 +751,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       boolean generateNewMethod) {
     Class<?> clz = getRawType(typeRef);
     if (isPrimitive(clz) || isBoxed(clz)) {
-      return serializePrimitive(inputObject, buffer, clz);
+      return serializePrimitive(inputObject, buffer, typeRef);
     } else {
       if (clz == String.class) {
         return StringSerializer.writeStringExpr(
@@ -959,7 +1038,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                 "getGenericTypeInStruct",
                 GENERIC_TYPE,
                 beanClassExpr(),
-                ofString(typeRef.getType().getTypeName())));
+                ofString(typeRef.getTypeKey())));
   }
 
   /**
@@ -1980,7 +2059,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, TypeRef<?> typeRef, Expression serializer, InvokeHint invokeHint) {
     Class<?> cls = getRawType(typeRef);
     if (isPrimitive(cls) || isBoxed(cls)) {
-      return deserializePrimitive(buffer, cls);
+      return deserializePrimitive(buffer, typeRef);
     } else {
       if (cls == String.class) {
         return StringSerializer.readStringExpr(
@@ -2113,22 +2192,27 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         return new Invoke(
             buffer, "readBoolean", isPrimitive ? PRIMITIVE_BOOLEAN_TYPE : BOOLEAN_TYPE);
       case DispatchId.INT8:
-      case DispatchId.UINT8:
         return new Invoke(buffer, "readByte", isPrimitive ? PRIMITIVE_BYTE_TYPE : BYTE_TYPE);
+      case DispatchId.UINT8:
+        return unsignedByteValue(
+            descriptor, new Invoke(buffer, "readByte", PRIMITIVE_BYTE_TYPE), isPrimitive);
       case DispatchId.CHAR:
         return isPrimitive ? readChar(buffer) : new Invoke(buffer, "readChar", CHAR_TYPE);
       case DispatchId.INT16:
-      case DispatchId.UINT16:
         return isPrimitive ? readInt16(buffer) : new Invoke(buffer, readInt16Func(), SHORT_TYPE);
+      case DispatchId.UINT16:
+        return unsignedShortValue(descriptor, readInt16(buffer), isPrimitive);
       case DispatchId.INT32:
-      case DispatchId.UINT32:
         return isPrimitive ? readInt32(buffer) : new Invoke(buffer, readIntFunc(), INT_TYPE);
+      case DispatchId.UINT32:
+        return unsignedIntValue(descriptor, readInt32(buffer), isPrimitive);
       case DispatchId.VARINT32:
         return isPrimitive
             ? readVarInt32(buffer)
             : new Invoke(buffer, readVarInt32Func(), INT_TYPE);
       case DispatchId.VAR_UINT32:
-        return new Invoke(buffer, "readVarUint32", isPrimitive ? PRIMITIVE_INT_TYPE : INT_TYPE);
+        return unsignedIntValue(
+            descriptor, new Invoke(buffer, "readVarUInt32", PRIMITIVE_INT_TYPE), isPrimitive);
       case DispatchId.INT64:
       case DispatchId.UINT64:
         return isPrimitive ? readInt64(buffer) : new Invoke(buffer, readLongFunc(), LONG_TYPE);
@@ -2137,10 +2221,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       case DispatchId.TAGGED_INT64:
         return new Invoke(buffer, "readTaggedInt64", isPrimitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
       case DispatchId.VAR_UINT64:
-        return new Invoke(buffer, "readVarUint64", isPrimitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+        return new Invoke(buffer, "readVarUInt64", isPrimitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
       case DispatchId.TAGGED_UINT64:
         return new Invoke(
-            buffer, "readTaggedUint64", isPrimitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+            buffer, "readTaggedUInt64", isPrimitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
       case DispatchId.FLOAT32:
         return isPrimitive
             ? readFloat32(buffer)
@@ -2158,6 +2242,97 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       default:
         throw new IllegalStateException("Unsupported dispatchId: " + dispatchId);
     }
+  }
+
+  private Expression unsignedByteValue(Descriptor descriptor, Expression value, boolean primitive) {
+    return unsignedByteValue(descriptor.getTypeRef(), value, primitive);
+  }
+
+  private Expression unsignedByteValue(TypeRef<?> typeRef, Expression value, boolean primitive) {
+    return unsignedPrimitiveCarrier(
+        typeRef,
+        new StaticInvoke(
+            Byte.class, "toUnsignedInt", primitive ? PRIMITIVE_INT_TYPE : INT_TYPE, value),
+        primitive);
+  }
+
+  private Expression unsignedShortValue(
+      Descriptor descriptor, Expression value, boolean primitive) {
+    return unsignedShortValue(descriptor.getTypeRef(), value, primitive);
+  }
+
+  private Expression unsignedShortValue(TypeRef<?> typeRef, Expression value, boolean primitive) {
+    return unsignedPrimitiveCarrier(
+        typeRef,
+        new StaticInvoke(
+            Short.class, "toUnsignedInt", primitive ? PRIMITIVE_INT_TYPE : INT_TYPE, value),
+        primitive);
+  }
+
+  private Expression unsignedIntValue(Descriptor descriptor, Expression value, boolean primitive) {
+    return unsignedIntValue(descriptor.getTypeRef(), value, primitive);
+  }
+
+  private Expression unsignedIntValue(TypeRef<?> typeRef, Expression value, boolean primitive) {
+    return unsignedPrimitiveCarrier(
+        typeRef,
+        new StaticInvoke(
+            Integer.class, "toUnsignedLong", primitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE, value),
+        primitive);
+  }
+
+  private Expression unsignedPrimitiveCarrier(
+      Descriptor descriptor, Expression value, boolean primitive) {
+    return unsignedPrimitiveCarrier(descriptor.getTypeRef(), value, primitive);
+  }
+
+  private Expression unsignedPrimitiveCarrier(
+      TypeRef<?> typeRef, Expression value, boolean primitive) {
+    return primitive ? cast(value, typeRef) : value;
+  }
+
+  private Expression deserializePrimitive(Expression buffer, TypeRef<?> typeRef) {
+    TypeExtMeta extMeta = typeRef.getTypeExtMeta();
+    if (extMeta != null) {
+      boolean primitive = typeRef.isPrimitive();
+      switch (extMeta.typeId()) {
+        case Types.INT8:
+          return new Invoke(buffer, "readByte", primitive ? PRIMITIVE_BYTE_TYPE : BYTE_TYPE);
+        case Types.UINT8:
+          return unsignedByteValue(
+              typeRef, new Invoke(buffer, "readByte", PRIMITIVE_BYTE_TYPE), primitive);
+        case Types.INT16:
+          return primitive ? readInt16(buffer) : new Invoke(buffer, readInt16Func(), SHORT_TYPE);
+        case Types.UINT16:
+          return unsignedShortValue(typeRef, readInt16(buffer), primitive);
+        case Types.INT32:
+          return primitive ? readInt32(buffer) : new Invoke(buffer, readIntFunc(), INT_TYPE);
+        case Types.UINT32:
+          return unsignedIntValue(typeRef, readInt32(buffer), primitive);
+        case Types.VARINT32:
+          return primitive
+              ? readVarInt32(buffer)
+              : new Invoke(buffer, readVarInt32Func(), INT_TYPE);
+        case Types.VAR_UINT32:
+          return unsignedIntValue(
+              typeRef, new Invoke(buffer, "readVarUInt32", PRIMITIVE_INT_TYPE), primitive);
+        case Types.INT64:
+        case Types.UINT64:
+          return primitive ? readInt64(buffer) : new Invoke(buffer, readLongFunc(), LONG_TYPE);
+        case Types.VARINT64:
+          return new Invoke(buffer, "readVarInt64", primitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+        case Types.TAGGED_INT64:
+          return new Invoke(buffer, "readTaggedInt64", primitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+        case Types.VAR_UINT64:
+          return new Invoke(buffer, "readVarUInt64", primitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+        case Types.TAGGED_UINT64:
+          return new Invoke(
+              buffer, "readTaggedUInt64", primitive ? PRIMITIVE_LONG_TYPE : LONG_TYPE);
+        default:
+          break;
+      }
+    }
+    return deserializePrimitive(buffer, getRawType(typeRef));
   }
 
   private Expression deserializePrimitive(Expression buffer, Class<?> cls) {

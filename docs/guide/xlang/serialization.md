@@ -42,7 +42,7 @@ import java.util.*;
 
 public class Example1 {
   public static void main(String[] args) {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    Fory fory = Fory.builder().withXlang(true).build();
     List<Object> list = ofArrayList(true, false, "str", -1.1, 1, new int[100], new double[20]);
     byte[] bytes = fory.serialize(list);
     // bytes can be deserialized by other languages
@@ -201,7 +201,7 @@ public class Example2 {
 
   // mvn exec:java -Dexec.mainClass="org.apache.fory.examples.Example2"
   public static void main(String[] args) {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    Fory fory = Fory.builder().withXlang(true).build();
     fory.register(SomeClass1.class, "example.SomeClass1");
     fory.register(SomeClass2.class, "example.SomeClass2");
     byte[] bytes = fory.serialize(createObject());
@@ -447,7 +447,7 @@ public class ReferenceExample {
 
   // mvn exec:java -Dexec.mainClass="org.apache.fory.examples.ReferenceExample"
   public static void main(String[] args) {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG)
+    Fory fory = Fory.builder().withXlang(true)
       .withRefTracking(true).build();
     fory.register(SomeClass.class, "example.SomeClass");
     byte[] bytes = fory.serialize(createObject());

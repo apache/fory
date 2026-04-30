@@ -25,24 +25,24 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to mark a field as an unsigned 8-bit integer.
+ * Annotation to mark a field as an unsigned 64-bit integer array.
  *
- * <p>When applied to a field of type {@code byte}, {@code short}, or {@code int}, this annotation
- * indicates that the value should be serialized as an unsigned 8-bit integer (UINT8, type_id=9)
- * with a valid range of [0, 255].
+ * <p>When applied to a field of type {@code long[]}, this annotation indicates that the array
+ * should be serialized as an unsigned 64-bit integer array (UINT64_ARRAY, type_id=47) with element
+ * values in the range [0, 18446744073709551615].
  *
- * <p>This is useful for compatibility with languages that have native unsigned integer types (e.g.,
- * Rust's u8, Go's uint8, C++'s uint8_t).
+ * <p>This is useful for compatibility with languages that have native unsigned integer array types
+ * (e.g., Rust's Vec&lt;u64&gt;, Go's []uint64, C++'s std::vector&lt;uint64_t&gt;).
  *
  * <p>Example usage:
  *
  * <pre>{@code
  * public class MyStruct {
- *   {@literal @}Uint8Type
- *   short flags;  // Will be serialized as unsigned 8-bit [0, 255]
+ *   {@literal @}UInt64Elements
+ *   long[] timestamps;  // Will be serialized as unsigned 64-bit array
  * }
  * }</pre>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint8Type {}
+public @interface UInt64Elements {}

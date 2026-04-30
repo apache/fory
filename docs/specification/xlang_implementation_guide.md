@@ -124,7 +124,7 @@ It exposes one-shot primitive helpers such as:
 
 - `writeBool`
 - `writeInt32`
-- `writeVarUint32`
+- `writeVarUInt32`
 
 These helpers are convenience methods. Serializers that perform repeated
 primitive IO should cache `final buffer = context.buffer;` and call buffer
@@ -145,7 +145,7 @@ It exposes matching one-shot primitive helpers such as:
 
 - `readBool`
 - `readInt32`
-- `readVarUint32`
+- `readVarUInt32`
 
 Generated struct serializers call `context.reference(value)` immediately after
 constructing the target instance so back-references can resolve to that object.

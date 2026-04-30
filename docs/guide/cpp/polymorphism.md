@@ -137,7 +137,8 @@ struct Container2 {
 
 ## Controlling Dynamic Dispatch
 
-Use `fory::dynamic<V>` to override automatic polymorphism detection:
+Use `fory::F().dynamic(V)` in `FORY_STRUCT` to override automatic
+polymorphism detection:
 
 ```cpp
 struct Animal {
@@ -150,23 +151,24 @@ struct Pet {
   std::shared_ptr<Animal> animal1;
 
   // Force dynamic: type info written explicitly
-  fory::field<std::shared_ptr<Animal>, 0, fory::dynamic<true>> animal2;
+  std::shared_ptr<Animal> animal2;
 
   // Force non-dynamic: skip type info (faster but no runtime subtyping)
-  fory::field<std::shared_ptr<Animal>, 1, fory::dynamic<false>> animal3;
+  std::shared_ptr<Animal> animal3;
 };
-FORY_STRUCT(Pet, animal1, animal2, animal3);
+FORY_STRUCT(Pet, animal1, (animal2, fory::F().dynamic(true)),
+            (animal3, fory::F().dynamic(false)));
 ```
 
-**When to use `fory::dynamic<false>`:**
+**When to use `dynamic(false)`:**
 
 - You know the runtime type will always match the declared type
 - Performance is critical and you don't need subtype support
 - Working with monomorphic data despite having a polymorphic base class
 
-### Field Configuration Without Wrapper Types
+### Field Configuration
 
-Use `FORY_FIELD_CONFIG` to configure fields without `fory::field<>` wrapper:
+Configure field metadata directly in `FORY_STRUCT`:
 
 ```cpp
 struct Zoo {
@@ -174,17 +176,13 @@ struct Zoo {
   std::shared_ptr<Animal> backup;    // Nullable polymorphic field
   std::shared_ptr<Animal> mascot;    // Non-dynamic (no subtype dispatch)
 };
-FORY_STRUCT(Zoo, star, backup, mascot);
-
-// Configure fields with tag IDs and options
-FORY_FIELD_CONFIG(Zoo,
-    (star, fory::F(0)),                    // Tag ID 0, default options
-    (backup, fory::F(1).nullable()),       // Tag ID 1, allow nullptr
-    (mascot, fory::F(2).dynamic(false))    // Tag ID 2, disable polymorphism
-);
+FORY_STRUCT(Zoo, (star, fory::F(0)),
+            (backup, fory::F(1).nullable()),
+            (mascot, fory::F(2).dynamic(false)));
 ```
 
-See [Field Configuration](field-configuration.md) for complete details on `fory::nullable`, `fory::ref`, and other field-level options
+See [Field Configuration](field-configuration.md) for complete details on
+`nullable()`, `ref()`, and other field-level options.
 
 ## std::unique_ptr Polymorphism
 
@@ -307,8 +305,8 @@ assert(!result.ok());  // Fails with depth exceeded error
 ## Nullability for Polymorphic Fields
 
 By default, `std::shared_ptr<T>` and `std::unique_ptr<T>` fields are treated as
-non-nullable in the schema. To allow `nullptr`, wrap the field with
-`fory::field<>` (or `FORY_FIELD_TAGS`) and opt in with `fory::nullable`.
+non-nullable in the schema. To allow `nullptr`, mark the field nullable in
+`FORY_STRUCT`.
 
 ```cpp
 struct Pet {
@@ -316,9 +314,9 @@ struct Pet {
   std::shared_ptr<Animal> primary;
 
   // Nullable via explicit field metadata
-  fory::field<std::shared_ptr<Animal>, 0, fory::nullable> optional;
+  std::shared_ptr<Animal> optional;
 };
-FORY_STRUCT(Pet, primary, optional);
+FORY_STRUCT(Pet, primary, (optional, fory::F().nullable()));
 ```
 
 See [Field Configuration](field-configuration.md) for more details.
@@ -415,10 +413,10 @@ auto fory = Fory::builder()
    auto fory = Fory::builder().max_dyn_depth(10).build();
    ```
 
-7. **Use `fory::nullable`** for optional polymorphic fields:
+7. **Use `nullable()`** for optional polymorphic fields:
 
    ```cpp
-   fory::field<std::shared_ptr<Base>, 0, fory::nullable> optional_ptr;
+   FORY_STRUCT(Holder, (optional_ptr, fory::F().nullable()));
    ```
 
 ## Error Handling
@@ -455,10 +453,10 @@ if (!decoded_result.ok()) {
 
 **Optimization tips:**
 
-1. **Use `fory::dynamic<false>`** when runtime type matches declared type:
+1. **Use `dynamic(false)`** when runtime type matches declared type:
 
    ```cpp
-   fory::field<std::shared_ptr<Base>, 0, fory::dynamic<false>> fixed_type;
+   FORY_STRUCT(Holder, (fixed_type, fory::F().dynamic(false)));
    ```
 
 2. **Minimize nesting depth** to reduce metadata overhead

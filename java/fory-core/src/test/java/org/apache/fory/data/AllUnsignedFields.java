@@ -19,33 +19,34 @@
 
 package org.apache.fory.data;
 
-import org.apache.fory.annotation.Uint16ArrayType;
-import org.apache.fory.annotation.Uint16Type;
-import org.apache.fory.annotation.Uint32ArrayType;
-import org.apache.fory.annotation.Uint32Type;
-import org.apache.fory.annotation.Uint64ArrayType;
-import org.apache.fory.annotation.Uint64Type;
-import org.apache.fory.annotation.Uint8ArrayType;
-import org.apache.fory.annotation.Uint8Type;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.annotation.UInt16Elements;
+import org.apache.fory.annotation.UInt16Type;
+import org.apache.fory.annotation.UInt32Elements;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.annotation.UInt64Elements;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.annotation.UInt8Elements;
+import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.config.Int32Encoding;
+import org.apache.fory.config.Int64Encoding;
 
 /** Test class with both unsigned integer scalar and array fields. */
 public class AllUnsignedFields {
-  @Uint8Type public byte u8;
+  @UInt8Type public int u8;
 
-  @Uint16Type public short u16;
+  @UInt16Type public int u16;
 
-  @Uint32Type(compress = false)
-  public int u32;
+  @UInt32Type(encoding = Int32Encoding.FIXED)
+  public long u32;
 
-  @Uint64Type(encoding = LongEncoding.FIXED)
+  @UInt64Type(encoding = Int64Encoding.FIXED)
   public long u64;
 
-  @Uint8ArrayType public byte[] u8Array;
+  @UInt8Elements public byte[] u8Array;
 
-  @Uint16ArrayType public short[] u16Array;
+  @UInt16Elements public short[] u16Array;
 
-  @Uint32ArrayType public int[] u32Array;
+  @UInt32Elements public int[] u32Array;
 
-  @Uint64ArrayType public long[] u64Array;
+  @UInt64Elements public long[] u64Array;
 }

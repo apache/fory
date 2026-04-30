@@ -81,7 +81,7 @@ public class ConcurrentMapSerializer<T extends Map> extends MapSerializer<T> {
       snapshot = new MapSnapshot();
     }
     snapshot.setMap(value);
-    writeContext.getBuffer().writeVarUint32Small7(snapshot.size());
+    writeContext.getBuffer().writeVarUInt32Small7(snapshot.size());
     return snapshot;
   }
 

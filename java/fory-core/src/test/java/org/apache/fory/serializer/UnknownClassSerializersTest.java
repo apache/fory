@@ -35,9 +35,7 @@ import org.apache.fory.TestUtils;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.memory.MemoryBuffer;
@@ -75,8 +73,8 @@ public class UnknownClassSerializersTest extends ForyTestBase {
 
   private ForyBuilder foryBuilder() {
     return builder()
-        .withLanguage(Language.JAVA)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withXlang(false)
+        .withCompatible(true)
         .requireClassRegistration(false)
         .withCodegen(false)
         .withDeserializeUnknownClass(true);
@@ -89,7 +87,7 @@ public class UnknownClassSerializersTest extends ForyTestBase {
         foryBuilder()
             .withRefTracking(referenceTracking)
             .withCodegen(enableCodegen1)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     ClassLoader classLoader = getClass().getClassLoader();
     for (Class<?> structClass :
@@ -441,24 +439,14 @@ public class UnknownClassSerializersTest extends ForyTestBase {
    * This simulates the scenario where fory2 doesn't have the class registered, so it deserializes
    * to UnknownStruct.
    */
-  @Test(dataProvider = "language")
-  public void testUnknownClassDeserializationPreservesValues(Language language) {
+  @Test(dataProvider = "xlang")
+  public void testUnknownClassDeserializationPreservesValues(boolean xlang) {
     // Fory1: serializer with class registered
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
     fory1.register(SimpleTestClass.class, "test.SimpleTestClass");
 
     // Fory2: deserializer without class registered - will use UnknownClassSerializer
-    Fory fory2 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory2 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
     // Don't register SimpleTestClass - fory2 doesn't know this class
 
     // Create and serialize object with fory1
@@ -501,24 +489,14 @@ public class UnknownClassSerializersTest extends ForyTestBase {
   }
 
   /** Test UnknownClass with null values in nullable fields. */
-  @Test(dataProvider = "language")
-  public void testUnknownClassDeserializationWithNulls(Language language) {
+  @Test(dataProvider = "xlang")
+  public void testUnknownClassDeserializationWithNulls(boolean xlang) {
     // Fory1: serializer with class registered
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
     fory1.register(SimpleTestClass.class, "test.SimpleTestClass");
 
     // Fory2: deserializer without class registered
-    Fory fory2 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory2 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
 
     // Create object with null nullable fields
     SimpleTestClass obj = createTestObject();
@@ -562,24 +540,14 @@ public class UnknownClassSerializersTest extends ForyTestBase {
    * doesn't know the class. This verifies that unknown class data is preserved across serialization
    * cycles.
    */
-  @Test(dataProvider = "language")
-  public void testUnknownClassRoundTripWithinSameFory(Language language) {
+  @Test(dataProvider = "xlang")
+  public void testUnknownClassRoundTripWithinSameFory(boolean xlang) {
     // Fory1: knows the class
-    Fory fory1 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory1 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
     fory1.register(SimpleTestClass.class, "test.SimpleTestClass");
 
     // Fory2: doesn't know the class
-    Fory fory2 =
-        Fory.builder()
-            .withLanguage(language)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
+    Fory fory2 = Fory.builder().withXlang(xlang).withCodegen(false).withCompatible(true).build();
 
     // Step 1: Serialize with fory1
     SimpleTestClass original = createTestObject();

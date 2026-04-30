@@ -25,19 +25,19 @@ This page covers schema evolution, meta sharing, and handling non-existent/unkno
 
 In many systems, the schema of a class used for serialization may change over time. For instance, fields within a class may be added or removed. When serialization and deserialization processes use different versions of jars, the schema of the class being deserialized may differ from the one used during serialization.
 
-### Default Mode: SCHEMA_CONSISTENT
+### Default Mode: Schema Consistent
 
-By default, Fory serializes objects using the `CompatibleMode.SCHEMA_CONSISTENT` mode. This mode assumes that the deserialization process uses the same class schema as the serialization process, minimizing payload overhead. However, if there is a schema inconsistency, deserialization will fail.
+By default, Fory serializes objects using schema-consistent mode. This mode assumes that the deserialization process uses the same class schema as the serialization process, minimizing payload overhead. However, if there is a schema inconsistency, deserialization will fail.
 
 ### Compatible Mode
 
-If the schema is expected to change, to make deserialization succeed (i.e., schema forward/backward compatibility), users must configure Fory to use `CompatibleMode.COMPATIBLE`. This can be done using the `ForyBuilder#withCompatibleMode(CompatibleMode.COMPATIBLE)` method.
+If the schema is expected to change, to make deserialization succeed (i.e., schema forward/backward compatibility), users must configure Fory with `ForyBuilder#withCompatible(true)`.
 
 In this compatible mode, deserialization can handle schema changes such as missing or extra fields, allowing it to succeed even when the serialization and deserialization processes have different class schemas.
 
 ```java
 Fory fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .build();
 
 byte[] bytes = fory.serialize(object);
@@ -48,12 +48,12 @@ This compatible mode involves serializing class metadata into the serialized out
 
 ### Disable Evolution for Stable Classes
 
-If a class schema is stable and will not change, you can opt out of schema evolution on a per-class basis to avoid compatible metadata overhead. Annotate the class with `@ForyObject(evolving = false)` to force `STRUCT/NAMED_STRUCT` type IDs even when Compatible mode is enabled.
+If a class schema is stable and will not change, you can opt out of schema evolution on a per-class basis to avoid compatible metadata overhead. Annotate the class with `@ForyStruct(evolving = false)` to force `STRUCT/NAMED_STRUCT` type IDs even when Compatible mode is enabled.
 
 ```java
-import org.apache.fory.annotation.ForyObject;
+import org.apache.fory.annotation.ForyStruct;
 
-@ForyObject(evolving = false)
+@ForyStruct(evolving = false)
 public class StableMessage {
   public int id;
   public String name;
@@ -70,7 +70,7 @@ Fory supports sharing type metadata (class name, field name, final field type in
 
 ```java
 // Fory.builder()
-//   .withLanguage(Language.JAVA)
+//   .withXlang(false)
 //   .withRefTracking(false)
 //   // share meta across serialization.
 //   .withMetaShare(true)
@@ -152,9 +152,9 @@ public class StructMappingExample {
   }
 
   static ThreadSafeFory fory1 = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
+    .withCompatible(true).buildThreadSafeFory();
   static ThreadSafeFory fory2 = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
+    .withCompatible(true).buildThreadSafeFory();
 
   static {
     fory1.register(Struct1.class);
@@ -175,7 +175,7 @@ public class StructMappingExample {
 
 ## Deserialize POJO into Another Type
 
-Fory allows you to serialize one POJO and deserialize it into a different POJO. The different POJO means schema inconsistency. Users must configure Fory with `CompatibleMode` set to `org.apache.fory.config.CompatibleMode.COMPATIBLE`.
+Fory allows you to serialize one POJO and deserialize it into a different POJO. The different POJO means schema inconsistency. Users must enable compatible mode with `ForyBuilder#withCompatible(true)`.
 
 ```java
 public class DeserializeIntoType {
@@ -196,7 +196,7 @@ public class DeserializeIntoType {
   }
 
   static ThreadSafeFory fory = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
+    .withCompatible(true).buildThreadSafeFory();
 
   public static void main(String[] args) {
     Struct1 struct1 = new Struct1(10, "abc");

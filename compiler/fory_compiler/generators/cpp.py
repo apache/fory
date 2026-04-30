@@ -125,14 +125,6 @@ class CppGenerator(BaseGenerator):
             return f"{namespace}::{qualified_name}"
         return qualified_name
 
-    def get_field_config_type(
-        self,
-        type_name: str,
-        parent_stack: List[Message],
-    ) -> str:
-        """Get type name for FORY_FIELD_CONFIG."""
-        return self.get_namespaced_type_name(type_name, parent_stack)
-
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
         if not self.schema.source_file:
@@ -252,7 +244,6 @@ class CppGenerator(BaseGenerator):
         includes: Set[str] = set()
         enum_macros: List[str] = []
         union_macros: List[str] = []
-        field_config_macros: List[str] = []
         evolving_macros: List[str] = []
         definition_items = self.get_definition_order()
 
@@ -342,7 +333,6 @@ class CppGenerator(BaseGenerator):
                     [],
                     enum_macros,
                     union_macros,
-                    field_config_macros,
                     evolving_macros,
                     "",
                 )
@@ -351,10 +341,6 @@ class CppGenerator(BaseGenerator):
 
         if union_macros:
             lines.extend(union_macros)
-            lines.append("")
-
-        if field_config_macros:
-            lines.extend(field_config_macros)
             lines.append("")
 
         if enum_macros:
@@ -658,12 +644,14 @@ class CppGenerator(BaseGenerator):
             return f"std::unique_ptr<{type_name}>"
         return self.generate_type(
             field.field_type,
-            False
-            if (
-                self.is_message_type(field.field_type, parent_stack)
-                and (field.ref or weak_ref)
-            )
-            else field.optional,
+            (
+                False
+                if (
+                    self.is_message_type(field.field_type, parent_stack)
+                    and (field.ref or weak_ref)
+                )
+                else field.optional
+            ),
             field.ref,
             field.element_optional,
             field.element_ref,
@@ -878,7 +866,6 @@ class CppGenerator(BaseGenerator):
         parent_stack: List[Message],
         enum_macros: List[str],
         union_macros: List[str],
-        field_config_macros: List[str],
         evolving_macros: List[str],
         indent: str,
     ) -> List[str]:
@@ -908,7 +895,6 @@ class CppGenerator(BaseGenerator):
                     lineage,
                     enum_macros,
                     union_macros,
-                    field_config_macros,
                     evolving_macros,
                     body_indent,
                 )
@@ -959,13 +945,7 @@ class CppGenerator(BaseGenerator):
             lines.append("")
             lines.append(f"{body_indent}public:")
             field_members = ", ".join(
-                self.get_field_member_name(f) for f in message.fields
-            )
-            field_config_type_name = self.get_field_config_type(
-                message.name, parent_stack
-            )
-            field_config_macros.append(
-                self.generate_field_config_macro(message, field_config_type_name)
+                self.get_field_macro_entry(f) for f in message.fields
             )
             lines.append(
                 f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
@@ -1144,7 +1124,7 @@ class CppGenerator(BaseGenerator):
                 case_ctor = self.to_snake_case(field.name)
                 meta = self.get_union_field_meta(field)
                 suffix = "," if index + 1 < len(union.fields) else ""
-                lines.append(f"  ({case_type}, {case_ctor}, {meta}){suffix}")
+                lines.append(f"  ({case_ctor}, {case_type}, {meta}){suffix}")
             lines.append(");")
             return lines
 
@@ -1539,39 +1519,40 @@ class CppGenerator(BaseGenerator):
 
         return "void*"
 
-    def generate_field_config_macro(
-        self,
-        message: Message,
-        qualified_name: str,
-    ) -> str:
-        """Generate FORY_FIELD_CONFIG macro for a message."""
-        entries = []
-        for field in message.fields:
-            field_name = self.get_field_member_name(field)
-            meta = self.get_field_meta(field)
-            entries.append(f"({field_name}, {meta})")
-        joined = ", ".join(entries)
-        return f"FORY_FIELD_CONFIG({qualified_name}, {joined});"
+    def get_field_macro_entry(self, field: Field) -> str:
+        """Build one FORY_STRUCT field entry."""
+        return f"({self.get_field_member_name(field)}, {self.get_field_meta(field)})"
 
     def get_field_meta(self, field: Field) -> str:
         """Build FieldMeta expression for a field."""
-        meta = "fory::F()"
+        if field.tag_id is not None:
+            meta = f"fory::F({field.tag_id})"
+        else:
+            meta = "fory::F()"
         is_any = (
             isinstance(field.field_type, PrimitiveType)
             and field.field_type.kind == PrimitiveKind.ANY
         )
-        if field.tag_id is not None:
-            meta += f".id({field.tag_id})"
         if field.optional or is_any:
             meta += ".nullable()"
         if field.ref:
             meta += ".ref()"
-        encoding = self.get_encoding_config(field.field_type)
-        if encoding:
-            meta += encoding
-        array_type = self.get_array_type_config(field)
-        if array_type:
-            meta += array_type
+        spec = self.get_field_type_spec(field)
+        if spec:
+            if field.optional or field.ref:
+                meta += f".inner({spec})"
+            elif spec.startswith("fory::T::list("):
+                meta += f".list({spec[len('fory::T::list(') : -1]})"
+            elif spec.startswith("fory::T::set("):
+                meta += f".set({spec[len('fory::T::set(') : -1]})"
+            elif spec.startswith("fory::T::map("):
+                meta += f".map({spec[len('fory::T::map(') : -1]})"
+            elif spec.endswith(".fixed()"):
+                meta += ".fixed()"
+            elif spec.endswith(".varint()"):
+                meta += ".varint()"
+            elif spec.endswith(".tagged()"):
+                meta += ".tagged()"
         return meta
 
     def get_union_field_meta(self, field: Field) -> str:
@@ -1585,52 +1566,105 @@ class CppGenerator(BaseGenerator):
             meta += ".nullable()"
         if field.ref:
             meta += ".ref()"
-        encoding = self.get_encoding_config(field.field_type)
-        if encoding:
-            meta += encoding
-        array_type = self.get_array_type_config(field)
-        if array_type:
-            meta += array_type
+        spec = self.get_field_type_spec(field)
+        if spec:
+            if field.optional or field.ref:
+                meta += f".inner({spec})"
+            elif spec.startswith("fory::T::list("):
+                meta += f".list({spec[len('fory::T::list(') : -1]})"
+            elif spec.startswith("fory::T::set("):
+                meta += f".set({spec[len('fory::T::set(') : -1]})"
+            elif spec.startswith("fory::T::map("):
+                meta += f".map({spec[len('fory::T::map(') : -1]})"
+            elif spec.endswith(".fixed()"):
+                meta += ".fixed()"
+            elif spec.endswith(".varint()"):
+                meta += ".varint()"
+            elif spec.endswith(".tagged()"):
+                meta += ".tagged()"
         return meta
 
-    def get_encoding_config(self, field_type: FieldType) -> str:
-        """Return encoding config for primitive types."""
-        kind = None
-        if isinstance(field_type, PrimitiveType):
-            kind = field_type.kind
-        elif isinstance(field_type, ListType) and isinstance(
-            field_type.element_type, PrimitiveType
-        ):
-            kind = field_type.element_type.kind
-        if kind is None:
-            return ""
-        if kind in (
-            PrimitiveKind.INT32,
-            PrimitiveKind.INT64,
-            PrimitiveKind.UINT32,
-            PrimitiveKind.UINT64,
-        ):
-            return ".fixed()"
-        if kind in (PrimitiveKind.VAR_UINT32, PrimitiveKind.VAR_UINT64):
-            return ".varint()"
-        if kind in (PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64):
-            return ".tagged()"
-        return ""
+    def get_field_type_spec(self, field: Field) -> str:
+        """Return the T-node spec for a field when generated metadata needs it."""
+        return self.get_type_spec(
+            field.field_type,
+            field.element_optional,
+            field.element_ref,
+        )
 
-    def get_array_type_config(self, field: Field) -> str:
-        """Return array type override for int8/uint8 arrays."""
-        if not isinstance(field.field_type, ListType):
-            return ""
-        if field.element_optional or field.element_ref:
-            return ""
-        element_type = field.field_type.element_type
-        if not isinstance(element_type, PrimitiveType):
-            return ""
-        if element_type.kind == PrimitiveKind.INT8:
-            return ".int8_array()"
-        if element_type.kind == PrimitiveKind.UINT8:
-            return ".uint8_array()"
-        return ""
+    def get_type_spec(
+        self,
+        field_type: FieldType,
+        optional: bool = False,
+        ref: bool = False,
+    ) -> str:
+        """Return a recursive fory::T spec for generated C++ metadata."""
+        if isinstance(field_type, PrimitiveType):
+            spec = self.get_primitive_type_spec(field_type.kind)
+        elif isinstance(field_type, ListType):
+            if (
+                isinstance(field_type.element_type, PrimitiveType)
+                and not field_type.element_optional
+                and not field_type.element_ref
+                and field_type.element_type.kind
+                not in (PrimitiveKind.INT8, PrimitiveKind.UINT8)
+            ):
+                spec = ""
+            else:
+                element = self.get_type_spec(
+                    field_type.element_type,
+                    field_type.element_optional,
+                    field_type.element_ref,
+                )
+                if not element:
+                    element = "fory::FieldNodeSpec{}"
+                spec = f"fory::T::list({element})"
+        elif isinstance(field_type, MapType):
+            key = self.get_type_spec(field_type.key_type)
+            element = self.get_type_spec(
+                field_type.value_type,
+                field_type.value_optional,
+                field_type.value_ref,
+            )
+            if key or element:
+                if not key:
+                    key = "fory::FieldNodeSpec{}"
+                if not element:
+                    element = "fory::FieldNodeSpec{}"
+                spec = f"fory::T::map({key}, {element})"
+            else:
+                spec = ""
+        else:
+            spec = ""
+
+        if (optional or ref) and spec:
+            return f"fory::T::inner({spec})"
+        return spec
+
+    def get_primitive_type_spec(self, kind: PrimitiveKind) -> str:
+        """Return a scalar T-node spec for primitive encoding metadata."""
+        typed = {
+            PrimitiveKind.BOOL: "fory::T::boolean()",
+            PrimitiveKind.INT8: "fory::T::int8()",
+            PrimitiveKind.INT16: "fory::T::int16()",
+            PrimitiveKind.INT32: "fory::T::int32().fixed()",
+            PrimitiveKind.VARINT32: "fory::T::int32().varint()",
+            PrimitiveKind.INT64: "fory::T::int64().fixed()",
+            PrimitiveKind.VARINT64: "fory::T::int64().varint()",
+            PrimitiveKind.TAGGED_INT64: "fory::T::int64().tagged()",
+            PrimitiveKind.UINT8: "fory::T::uint8()",
+            PrimitiveKind.UINT16: "fory::T::uint16()",
+            PrimitiveKind.UINT32: "fory::T::uint32().fixed()",
+            PrimitiveKind.VAR_UINT32: "fory::T::uint32().varint()",
+            PrimitiveKind.UINT64: "fory::T::uint64().fixed()",
+            PrimitiveKind.VAR_UINT64: "fory::T::uint64().varint()",
+            PrimitiveKind.TAGGED_UINT64: "fory::T::uint64().tagged()",
+            PrimitiveKind.FLOAT16: "fory::T::float16()",
+            PrimitiveKind.FLOAT32: "fory::T::float32()",
+            PrimitiveKind.FLOAT64: "fory::T::float64()",
+            PrimitiveKind.STRING: "fory::T::string()",
+        }
+        return typed.get(kind, "")
 
     def generate_type(
         self,

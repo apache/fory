@@ -30,10 +30,10 @@ import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -204,16 +204,16 @@ public class Fingerprint {
     if (cls == Int64List.class) {
       return Types.INT64_ARRAY;
     }
-    if (cls == Uint8List.class) {
+    if (cls == UInt8List.class) {
       return Types.UINT8_ARRAY;
     }
-    if (cls == Uint16List.class) {
+    if (cls == UInt16List.class) {
       return Types.UINT16_ARRAY;
     }
-    if (cls == Uint32List.class) {
+    if (cls == UInt32List.class) {
       return Types.UINT32_ARRAY;
     }
-    if (cls == Uint64List.class) {
+    if (cls == UInt64List.class) {
       return Types.UINT64_ARRAY;
     }
     if (cls == Float32List.class) {

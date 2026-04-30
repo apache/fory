@@ -22,7 +22,6 @@ package org.apache.fory.graalvm;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadLocalFory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.CompatibleMode;
 
 public class CompatibleThreadSafeExample {
   static ThreadSafeFory fory;
@@ -35,7 +34,7 @@ public class CompatibleThreadSafeExample {
                   Fory.builder()
                       .withName(CompatibleThreadSafeExample.class.getName())
                       .requireClassRegistration(true)
-                      .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                      .withCompatible(true)
                       .build();
               // register and generate serializer code.
               f.register(Foo.class);

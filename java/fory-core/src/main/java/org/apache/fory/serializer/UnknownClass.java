@@ -20,14 +20,13 @@
 package org.apache.fory.serializer;
 
 import org.apache.fory.collection.LazyMap;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Config;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.type.TypeUtils;
 
 /**
- * A class for hold deserialization data when the class doesn't exist in this process. When {@link
- * CompatibleMode#COMPATIBLE} is enabled
+ * A class for holding deserialization data when the class doesn't exist in this process and
+ * compatible mode is enabled.
  *
  * @see Config#isMetaShareEnabled()
  */

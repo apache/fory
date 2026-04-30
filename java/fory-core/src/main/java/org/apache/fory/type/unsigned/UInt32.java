@@ -28,84 +28,84 @@ import java.io.Serializable;
  * #toLong()} to obtain an unsigned magnitude when interacting with APIs that require a larger
  * signed container.
  */
-public final class Uint32 extends Number implements Comparable<Uint32>, Serializable {
+public final class UInt32 implements Comparable<UInt32>, Serializable {
   public static final int SIZE_BITS = 32;
   public static final int SIZE_BYTES = 4;
 
-  public static final Uint32 MIN_VALUE = new Uint32(0);
-  public static final Uint32 MAX_VALUE = new Uint32(-1);
+  public static final UInt32 MIN_VALUE = new UInt32(0);
+  public static final UInt32 MAX_VALUE = new UInt32(-1);
 
   private final int data;
 
-  public Uint32(int data) {
+  public UInt32(int data) {
     this.data = data;
   }
 
-  public static Uint32 valueOf(int value) {
-    return new Uint32(value);
+  public static UInt32 valueOf(int value) {
+    return new UInt32(value);
   }
 
-  public static Uint32 add(int a, int b) {
-    return new Uint32(a + b);
+  public static UInt32 add(int a, int b) {
+    return new UInt32(a + b);
   }
 
   /** Adds {@code other} with wrapping semantics. */
-  public Uint32 add(Uint32 other) {
+  public UInt32 add(UInt32 other) {
     return add(data, other.data);
   }
 
-  public static Uint32 subtract(int a, int b) {
-    return new Uint32(a - b);
+  public static UInt32 subtract(int a, int b) {
+    return new UInt32(a - b);
   }
 
   /** Subtracts {@code other} with wrapping semantics. */
-  public Uint32 subtract(Uint32 other) {
+  public UInt32 subtract(UInt32 other) {
     return subtract(data, other.data);
   }
 
-  public static Uint32 multiply(int a, int b) {
-    return new Uint32(a * b);
+  public static UInt32 multiply(int a, int b) {
+    return new UInt32(a * b);
   }
 
   /** Multiplies by {@code other} with wrapping semantics. */
-  public Uint32 multiply(Uint32 other) {
+  public UInt32 multiply(UInt32 other) {
     return multiply(data, other.data);
   }
 
-  public static Uint32 divide(int a, int b) {
-    return new Uint32(Integer.divideUnsigned(a, b));
+  public static UInt32 divide(int a, int b) {
+    return new UInt32(Integer.divideUnsigned(a, b));
   }
 
   /** Divides by {@code other} treating both operands as unsigned. */
-  public Uint32 divide(Uint32 other) {
+  public UInt32 divide(UInt32 other) {
     return divide(data, other.data);
   }
 
-  public static Uint32 remainder(int a, int b) {
-    return new Uint32(Integer.remainderUnsigned(a, b));
+  public static UInt32 remainder(int a, int b) {
+    return new UInt32(Integer.remainderUnsigned(a, b));
   }
 
   /** Computes the remainder of the unsigned division by {@code other}. */
-  public Uint32 remainder(Uint32 other) {
+  public UInt32 remainder(UInt32 other) {
     return remainder(data, other.data);
   }
 
-  public static Uint32 min(int a, int b) {
-    return compare(a, b) <= 0 ? new Uint32(a) : new Uint32(b);
+  public static UInt32 min(int a, int b) {
+    return compare(a, b) <= 0 ? new UInt32(a) : new UInt32(b);
   }
 
-  public static Uint32 max(int a, int b) {
-    return compare(a, b) >= 0 ? new Uint32(a) : new Uint32(b);
+  public static UInt32 max(int a, int b) {
+    return compare(a, b) >= 0 ? new UInt32(a) : new UInt32(b);
   }
 
-  /** Parses an unsigned decimal string into a {@link Uint32}. */
-  public static Uint32 parse(String value) {
+  /** Parses an unsigned decimal string into a {@link UInt32}. */
+  public static UInt32 parse(String value) {
     return parse(value, 10);
   }
 
-  /** Parses an unsigned string in {@code radix} into a {@link Uint32}. */
-  public static Uint32 parse(String value, int radix) {
-    return new Uint32(Integer.parseUnsignedInt(value, radix));
+  /** Parses an unsigned string in {@code radix} into a {@link UInt32}. */
+  public static UInt32 parse(String value, int radix) {
+    return new UInt32(Integer.parseUnsignedInt(value, radix));
   }
 
   public int toInt() {
@@ -158,68 +158,62 @@ public final class Uint32 extends Number implements Comparable<Uint32>, Serializ
   }
 
   /** Bitwise AND with {@code other}. */
-  public Uint32 and(Uint32 other) {
-    return new Uint32(data & other.data);
+  public UInt32 and(UInt32 other) {
+    return new UInt32(data & other.data);
   }
 
   /** Bitwise OR with {@code other}. */
-  public Uint32 or(Uint32 other) {
-    return new Uint32(data | other.data);
+  public UInt32 or(UInt32 other) {
+    return new UInt32(data | other.data);
   }
 
   /** Bitwise XOR with {@code other}. */
-  public Uint32 xor(Uint32 other) {
-    return new Uint32(data ^ other.data);
+  public UInt32 xor(UInt32 other) {
+    return new UInt32(data ^ other.data);
   }
 
   /** Bitwise NOT. */
-  public Uint32 not() {
-    return new Uint32(~data);
+  public UInt32 not() {
+    return new UInt32(~data);
   }
 
   /** Logical left shift; bits shifted out are discarded. */
-  public Uint32 shiftLeft(int bits) {
+  public UInt32 shiftLeft(int bits) {
     int shift = bits & 0x1F;
-    return new Uint32(data << shift);
+    return new UInt32(data << shift);
   }
 
   /** Logical right shift; zeros are shifted in from the left. */
-  public Uint32 shiftRight(int bits) {
+  public UInt32 shiftRight(int bits) {
     int shift = bits & 0x1F;
-    return new Uint32(data >>> shift);
+    return new UInt32(data >>> shift);
   }
 
   @Override
-  public int compareTo(Uint32 other) {
+  public int compareTo(UInt32 other) {
     return compare(data, other.data);
   }
 
-  @Override
   public int intValue() {
     return data;
   }
 
-  @Override
   public long longValue() {
     return toLong();
   }
 
-  @Override
   public float floatValue() {
     return (float) toLong();
   }
 
-  @Override
   public double doubleValue() {
     return (double) toLong();
   }
 
-  @Override
   public byte byteValue() {
     return (byte) data;
   }
 
-  @Override
   public short shortValue() {
     return (short) data;
   }
@@ -229,10 +223,10 @@ public final class Uint32 extends Number implements Comparable<Uint32>, Serializ
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof Uint32)) {
+    if (!(obj instanceof UInt32)) {
       return false;
     }
-    return data == ((Uint32) obj).data;
+    return data == ((UInt32) obj).data;
   }
 
   @Override

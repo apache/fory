@@ -81,7 +81,7 @@ import org.apache.fory.*;
 import org.apache.fory.config.*;
 
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)  // Enable cross-language mode
+    .withXlang(true)  // Enable cross-language mode
     .withRefTracking(true)          // Optional: for circular references
     .build();
 ```
@@ -246,7 +246,7 @@ public class Person {
 public class HelloWorld {
     public static void main(String[] args) throws Exception {
         Fory fory = Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .build();
         fory.register(Person.class, "example.Person");
 

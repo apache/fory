@@ -24,7 +24,6 @@ import java.util.Map;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.TestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -36,8 +35,7 @@ public class Object2ObjectOpenHashMapTest extends TestBase {
 
   @Test(dataProvider = "enableCodegen")
   public void testObject2ObjectOpenHashMap(boolean enableCodegen) {
-    Fory fory =
-        builder().withCompatibleMode(CompatibleMode.COMPATIBLE).withCodegen(enableCodegen).build();
+    Fory fory = builder().withCompatible(true).withCodegen(enableCodegen).build();
 
     TestObject2ObjectOpenHashMap o = new TestObject2ObjectOpenHashMap();
     byte[] bytes = fory.serialize(o);

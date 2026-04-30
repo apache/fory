@@ -68,7 +68,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareab
     if (!config.isXlang() && config.serializeEnumByName()) {
       writeContext.writeString(value.name());
     } else {
-      writeContext.getBuffer().writeVarUint32Small7(tagByOrdinal[value.ordinal()]);
+      writeContext.getBuffer().writeVarUInt32Small7(tagByOrdinal[value.ordinal()]);
     }
   }
 
@@ -82,7 +82,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareab
       }
       return handleUnknownEnumValue(name);
     } else {
-      int tag = readContext.getBuffer().readVarUint32Small7();
+      int tag = readContext.getBuffer().readVarUInt32Small7();
       Enum value = null;
       if (enumConstantByTagArray != null && tag < enumConstantByTagArray.length) {
         value = enumConstantByTagArray[tag];

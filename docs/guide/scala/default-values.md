@@ -49,7 +49,7 @@ Fory supports default values for:
 
 This feature is automatically enabled when:
 
-- Compatible mode is enabled (`withCompatibleMode(CompatibleMode.COMPATIBLE)`)
+- Compatible mode is enabled (`withCompatible(true)`)
 - The target class is detected as a Scala class with default values
 - A field is missing from the serialized data but exists in the target class
 
@@ -61,7 +61,6 @@ No additional configuration is required.
 
 ```scala
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 // Class WITHOUT default values (for serialization)
@@ -71,7 +70,7 @@ case class PersonV1(name: String)
 case class PersonV2(name: String, age: Int = 25, city: String = "Unknown")
 
 val fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .withScalaOptimizationEnabled(true)
   .build()
 
@@ -103,7 +102,7 @@ class EmployeeV2(
 )
 
 val fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .withScalaOptimizationEnabled(true)
   .build()
 
@@ -137,7 +136,7 @@ case class ConfigV2(
 )
 
 val fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .withScalaOptimizationEnabled(true)
   .build()
 
@@ -166,7 +165,7 @@ object Models {
 }
 
 val fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .withScalaOptimizationEnabled(true)
   .build()
 

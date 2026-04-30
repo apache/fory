@@ -19,12 +19,10 @@
 
 package org.apache.fory.exception;
 
-import org.apache.fory.config.CompatibleMode;
-
 /**
- * Exception for class compatibility. If {@link CompatibleMode#COMPATIBLE} is not enabled, and the
- * class when serializing is different from deserialization, for example, the class add/delete some
- * fields, this exception will be thrown.
+ * Exception for class compatibility. If compatible mode is not enabled, and the class when
+ * serializing is different from deserialization, for example, the class add/delete some fields,
+ * this exception will be thrown.
  */
 public class ClassNotCompatibleException extends ForyException {
   public ClassNotCompatibleException(String message) {

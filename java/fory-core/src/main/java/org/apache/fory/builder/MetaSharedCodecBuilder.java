@@ -35,7 +35,6 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.StaticInvoke;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.logging.Logger;
@@ -72,7 +71,6 @@ import org.apache.fory.util.record.RecordUtils;
  * all non-inner final types as non-final, so that fory can write class definition when write class
  * info for those types.
  *
- * @see CompatibleMode
  * @see ForyBuilder#withMetaShare
  * @see GeneratedMetaSharedSerializer
  * @see MetaSharedSerializer

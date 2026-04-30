@@ -24,9 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
@@ -105,22 +103,14 @@ public class RegisterTest extends ForyTestBase {
   @Test(dataProvider = "enableCodegen")
   public void testJava(boolean enableCodegen) {
     Fory fory1 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(enableCodegen)
-            .build();
+        Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
     fory1.register(Color.class, 101);
     fory1.register(MyStruct.class, 102);
     fory1.register(MyExt.class, 103);
     fory1.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory1.register(MyWrapper.class, 104);
     Fory fory2 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(enableCodegen)
-            .build();
+        Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
     fory2.register(MyExt.class, 103);
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory2.register(EmptyWrapper.class, 104);
@@ -137,7 +127,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testXlangBuiltInAliasTypeIdsKeepCanonicalTypeInfo() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
     TypeResolver typeResolver = fory.getTypeResolver();
 
     typeResolver.getSerializer(StringBuffer.class);
@@ -157,8 +147,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testShareableSerializerOverrideStaysLocal() {
-    ForyBuilder builder =
-        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true);
+    ForyBuilder builder = Fory.builder().withXlang(true).requireClassRegistration(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);
@@ -178,8 +167,7 @@ public class RegisterTest extends ForyTestBase {
 
   @Test
   public void testShareableInternalSerializerSharedAcrossRuntimes() {
-    ForyBuilder builder =
-        Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true);
+    ForyBuilder builder = Fory.builder().withXlang(true).requireClassRegistration(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, RegisterTest.class.getClassLoader(), sharedRegistry);

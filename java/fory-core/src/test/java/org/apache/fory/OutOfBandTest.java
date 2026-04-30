@@ -25,7 +25,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -40,7 +39,7 @@ public class OutOfBandTest extends ForyTestBase {
   public void testByteBuffer(boolean referenceTracking) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();

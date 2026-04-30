@@ -31,9 +31,7 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -46,8 +44,8 @@ import org.testng.annotations.Test;
 
 /**
  * Tests for compatible mode serialization using meta-shared approach with codegen. These tests
- * verify forward/backward compatibility when using {@link CompatibleMode#COMPATIBLE} with scoped
- * meta share and codegen enabled.
+ * verify forward/backward compatibility when using compatible mode with scoped meta share and
+ * codegen enabled.
  */
 public class CodegenCompatibleSerializerTest extends ForyTestBase {
 
@@ -63,7 +61,7 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
 
   private ForyBuilder foryBuilder() {
     return Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(false)
         .suppressClassRegistrationWarnings(true);
   }
@@ -74,7 +72,7 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
         foryBuilder()
             .withRefTracking(referenceTracking)
             .withCodegen(enableCodegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     serDeCheck(fory, Foo.create());
     serDeCheck(fory, BeanB.createBeanB(2));
@@ -87,7 +85,7 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
         foryBuilder()
             .withRefCopy(referenceTracking)
             .withCodegen(enableCodegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     copyCheck(fory, Foo.create());
     copyCheck(fory, BeanB.createBeanB(2));
@@ -100,10 +98,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefTracking(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     Object foo = Foo.create();
@@ -147,10 +145,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefCopy(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     Object foo = Foo.create();
@@ -180,10 +178,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefTracking(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     String pkg = BeanA.class.getPackage().getName();
@@ -244,10 +242,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefTracking(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     BeanA beanA = BeanA.createBeanA(2);
@@ -275,10 +273,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefTracking(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     CollectionFields collectionFields = UnmodifiableSerializersTest.createCollectionFields();
@@ -327,10 +325,10 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .withRefTracking(referenceTracking)
                 .withCodegen(enableCodegen)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .withCompatible(true)
                 .requireClassRegistration(false);
     Fory fory = builder.get().build();
     MapFields mapFields = UnmodifiableSerializersTest.createMapFields();

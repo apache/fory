@@ -64,7 +64,7 @@ public final class MapRefWriter implements RefWriter {
             : writtenObjects.putOrGet(obj, newWriteRefId);
     if (writtenRefId >= 0) {
       buffer._unsafeWriteByte(Fory.REF_FLAG);
-      buffer._unsafeWriteVarUint32(writtenRefId);
+      buffer._unsafeWriteVarUInt32(writtenRefId);
       return true;
     }
     buffer._unsafeWriteByte(Fory.REF_VALUE_FLAG);
@@ -83,7 +83,7 @@ public final class MapRefWriter implements RefWriter {
             : writtenObjects.putOrGet(obj, newWriteRefId);
     if (writtenRefId >= 0) {
       buffer._unsafeWriteByte(Fory.REF_FLAG);
-      buffer._unsafeWriteVarUint32(writtenRefId);
+      buffer._unsafeWriteVarUInt32(writtenRefId);
       return false;
     }
     buffer._unsafeWriteByte(Fory.REF_VALUE_FLAG);

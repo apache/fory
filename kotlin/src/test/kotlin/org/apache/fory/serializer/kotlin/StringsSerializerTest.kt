@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.testng.Assert
 import org.testng.annotations.Test
 
@@ -28,7 +27,7 @@ class StringsSerializerTest {
   @Test
   fun testSerializeStringValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: String = "Hello World!"
@@ -38,7 +37,7 @@ class StringsSerializerTest {
   @Test
   fun testSerializeNullableStringValue() {
     val fory: Fory =
-      Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build()
+      Fory.builder().withXlang(false).requireClassRegistration(true).build()
 
     KotlinSerializers.registerSerializers(fory)
     val value: String? = null

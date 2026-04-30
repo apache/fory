@@ -22,8 +22,6 @@ package org.apache.fory.benchmark;
 import java.io.IOException;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -44,11 +42,11 @@ public class ThreadSafeForyPoolSuite {
 
   private ThreadSafeFory fory =
       Fory.builder()
-          .withLanguage(Language.JAVA)
+          .withXlang(false)
           .requireClassRegistration(false)
           .withJdkClassSerializableCheck(false)
           .withRefTracking(false)
-          .withCompatibleMode(CompatibleMode.COMPATIBLE)
+          .withCompatible(true)
           .withAsyncCompilation(true)
           .withRefTracking(true)
           .buildThreadSafeForyPool(60);

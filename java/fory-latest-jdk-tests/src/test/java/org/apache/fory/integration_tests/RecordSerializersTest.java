@@ -30,9 +30,7 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.test.bean.Struct;
@@ -105,9 +103,9 @@ public class RecordSerializersTest {
   public void testCompatibleCodegenBoxedPrimitiveRecordRoundTrip() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withClassVersionCheck(true)
             .withCodegen(true)
             .build();
@@ -126,14 +124,14 @@ public class RecordSerializersTest {
 
   private static ForyBuilder newNumberCompressedBuilder() {
     return Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withCodegen(true)
         .withAsyncCompilation(false)
         .requireClassRegistration(false)
         .suppressClassRegistrationWarnings(true)
         .withDeserializeUnknownClass(true)
         .withRefTracking(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .withStringCompressed(true)
         .withNumberCompressed(true)
         .withRefCopy(true);
@@ -173,7 +171,7 @@ public class RecordSerializersTest {
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withClassLoader(cls1.getClassLoader())
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     byte[] bytes1 = fory.serialize(record1);
     Object o = fory.deserialize(bytes1);
@@ -191,7 +189,7 @@ public class RecordSerializersTest {
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withClassLoader(cls2.getClassLoader())
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     Object o2 = fory2.deserialize(fory2.serialize(record2));
     Assert.assertEquals(o2, record2);
@@ -215,7 +213,7 @@ public class RecordSerializersTest {
         Fory.builder()
             .requireClassRegistration(false)
             .withCodegen(codegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withMetaShare(true)
             .withClassLoader(cls1.getClassLoader())
             .build();
@@ -231,7 +229,7 @@ public class RecordSerializersTest {
         Fory.builder()
             .requireClassRegistration(false)
             .withCodegen(codegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withMetaShare(true)
             .withClassLoader(cls2.getClassLoader())
             .build();
@@ -264,7 +262,7 @@ public class RecordSerializersTest {
           Fory.builder()
               .requireClassRegistration(false)
               .withCodegen(codegen)
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withCompatible(true)
               .build();
       Object o1 = Records.createPrivateRecord(11);
       Assert.assertEquals(fory.deserialize(fory.serialize(o1)), o1);

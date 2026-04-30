@@ -79,3 +79,14 @@ def test_map_with_list_key_rejected():
     }
     """
     assert_nested_collections_rejected(source)
+
+
+def test_nested_collections_allowed_for_capable_targets():
+    source = """
+    message Foo {
+        map<string, list<int32>> values = 1;
+    }
+    """
+    schema = parse_schema(source)
+    validator = SchemaValidator(schema, allow_nested_collections=True)
+    assert validator.validate(), validator.errors

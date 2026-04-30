@@ -950,7 +950,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
    */
   public Map newMap(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = buffer.readVarUint32Small7();
+    numElements = buffer.readVarUInt32Small7();
     if (constructor == null) {
       constructor = ReflectionUtils.getCtrHandle(type, true);
     }

@@ -31,7 +31,6 @@ import java.lang.reflect.Proxy;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.testng.annotations.Test;
 
@@ -50,7 +49,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
   public void testJdkProxy(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -101,7 +100,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
   public void testJdkProxyRef() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -135,8 +134,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
 
   @Test
   public void testSerializeProxyWriteReplace() {
-    final Fory fory =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    final Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     final Object o = ProxyFactory.createProxy(TestInterface.class);
     final byte[] s = fory.serialize(o);

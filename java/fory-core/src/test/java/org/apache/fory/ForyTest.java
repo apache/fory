@@ -56,9 +56,7 @@ import lombok.EqualsAndHashCode;
 import org.apache.fory.annotation.Expose;
 import org.apache.fory.annotation.Ignore;
 import org.apache.fory.builder.Generated;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.context.ReadContext;
@@ -86,22 +84,22 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class ForyTest extends ForyTestBase {
-  @DataProvider(name = "languageConfig")
-  public static Object[][] languageConfig() {
-    return new Object[][] {{Language.JAVA}, {Language.XLANG}};
+  @DataProvider(name = "xlangConfig")
+  public static Object[][] xlangConfig() {
+    return new Object[][] {{false}, {true}};
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void primitivesTest(boolean referenceTracking, Language language) {
+  public void primitivesTest(boolean referenceTracking, boolean xlang) {
     Fory fory1 =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
     Fory fory2 =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -172,18 +170,18 @@ public class ForyTest extends ForyTestBase {
         Collections.singletonMap("k", 1), serDe(fory1, fory2, Collections.singletonMap("k", 1)));
   }
 
-  @Test(dataProvider = "languageConfig")
-  public void testSerializationToBuffer(Language language) {
-    Fory fory1 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
-    Fory fory2 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
+  @Test(dataProvider = "xlangConfig")
+  public void testSerializationToBuffer(boolean xlang) {
+    Fory fory1 = Fory.builder().withXlang(xlang).requireClassRegistration(false).build();
+    Fory fory2 = Fory.builder().withXlang(xlang).requireClassRegistration(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(64);
     assertSerializationToBuffer(fory1, fory2, buffer);
   }
 
-  @Test(dataProvider = "languageConfig")
-  public void testSerializationSlicedBuffer(Language language) {
-    Fory fory1 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
-    Fory fory2 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
+  @Test(dataProvider = "xlangConfig")
+  public void testSerializationSlicedBuffer(boolean xlang) {
+    Fory fory1 = Fory.builder().withXlang(xlang).requireClassRegistration(false).build();
+    Fory fory2 = Fory.builder().withXlang(xlang).requireClassRegistration(false).build();
     MemoryBuffer buffer0 = MemoryUtils.buffer(64);
     buffer0.writeInt64(-1);
     buffer0.writeInt64(-1);
@@ -225,7 +223,7 @@ public class ForyTest extends ForyTestBase {
   public void serializeBeanTest(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -239,7 +237,7 @@ public class ForyTest extends ForyTestBase {
   public void testSerializeException() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(true)
             .build();
@@ -256,7 +254,7 @@ public class ForyTest extends ForyTestBase {
   public void registerTest(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -284,7 +282,7 @@ public class ForyTest extends ForyTestBase {
   public void testOffHeap(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -314,11 +312,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testSerializePrivateBean() {
     Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(false)
-            .requireClassRegistration(false)
-            .build();
+        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
     Outer outer = new Outer();
     outer.inner = new Outer.Inner();
     fory.deserialize(fory.serialize(outer));
@@ -329,11 +323,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testSerializePrivateBeanJIT() {
     Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(true)
-            .requireClassRegistration(false)
-            .build();
+        Fory.builder().withXlang(false).withCodegen(true).requireClassRegistration(false).build();
     Outer outer = new Outer();
     outer.inner = new Outer.Inner();
     fory.deserialize(fory.serialize(outer));
@@ -350,11 +340,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testSerializePackageLevelBean() {
     Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(false)
-            .requireClassRegistration(false)
-            .build();
+        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
     PackageLevelBean o = new PackageLevelBean();
     o.f1 = 10;
     o.f2 = 1;
@@ -364,11 +350,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testSerializePackageLevelBeanJIT() {
     Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withCodegen(true)
-            .requireClassRegistration(false)
-            .build();
+        Fory.builder().withXlang(false).withCodegen(true).requireClassRegistration(false).build();
     PackageLevelBean o = new PackageLevelBean();
     o.f1 = 10;
     o.f2 = 1;
@@ -396,10 +378,10 @@ public class ForyTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testGuava(boolean referenceTracking, Language language) {
+  public void testGuava(boolean referenceTracking, boolean xlang) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -414,7 +396,7 @@ public class ForyTest extends ForyTestBase {
   public void testSerializeJDKObject(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withJdkClassSerializableCheck(false)
             .requireClassRegistration(false)
             .withCodegen(enableCodegen)
@@ -427,7 +409,7 @@ public class ForyTest extends ForyTestBase {
   public void testJDKSerializableCheck() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -533,7 +515,7 @@ public class ForyTest extends ForyTestBase {
 
   @Test
   public void testSerializeDeserializeApis() {
-    Fory fory = Fory.builder().requireClassRegistration(false).withLanguage(Language.JAVA).build();
+    Fory fory = Fory.builder().requireClassRegistration(false).withXlang(false).build();
     BeanA beanA = BeanA.createBeanA(2);
     assertEquals(fory.deserialize(fory.serialize(beanA), BeanA.class), beanA);
     assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
@@ -685,10 +667,8 @@ public class ForyTest extends ForyTestBase {
 
   @Test
   public void testStructMapping() {
-    ThreadSafeFory fory1 =
-        Fory.builder().withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
-    ThreadSafeFory fory2 =
-        Fory.builder().withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
+    ThreadSafeFory fory1 = Fory.builder().withCompatible(true).buildThreadSafeFory();
+    ThreadSafeFory fory2 = Fory.builder().withCompatible(true).buildThreadSafeFory();
     fory1.register(Struct1.class);
     fory2.register(Struct2.class);
     Struct1 struct1 = new Struct1(10, "abc");

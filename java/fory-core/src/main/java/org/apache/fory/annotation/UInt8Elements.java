@@ -25,24 +25,24 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Annotation to mark a field as an unsigned 32-bit integer array.
+ * Annotation to mark a field as an unsigned 8-bit integer array.
  *
- * <p>When applied to a field of type {@code int[]}, this annotation indicates that the array should
- * be serialized as an unsigned 32-bit integer array (UINT32_ARRAY, type_id=46) with element values
- * in the range [0, 4294967295].
+ * <p>When applied to a field of type {@code byte[]}, this annotation indicates that the array
+ * should be serialized as an unsigned 8-bit integer array (UINT8_ARRAY, type_id=44) with element
+ * values in the range [0, 255].
  *
  * <p>This is useful for compatibility with languages that have native unsigned integer array types
- * (e.g., Rust's Vec&lt;u32&gt;, Go's []uint32, C++'s std::vector&lt;uint32_t&gt;).
+ * (e.g., Rust's Vec&lt;u8&gt;, Go's []uint8, C++'s std::vector&lt;uint8_t&gt;).
  *
  * <p>Example usage:
  *
  * <pre>{@code
  * public class MyStruct {
- *   {@literal @}Uint32ArrayType
- *   int[] counts;  // Will be serialized as unsigned 32-bit array
+ *   {@literal @}UInt8Elements
+ *   byte[] data;  // Will be serialized as unsigned 8-bit array
  * }
  * }</pre>
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint32ArrayType {}
+public @interface UInt8Elements {}

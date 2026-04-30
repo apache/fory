@@ -24,6 +24,8 @@
 #include "fory/meta/field_info.h"
 #include "fory/meta/preprocessor.h"
 #include "fory/meta/type_traits.h"
+#include "fory/serialization/collection_serializer.h"
+#include "fory/serialization/map_serializer.h"
 #include "fory/serialization/serializer.h"
 #include "fory/serialization/serializer_traits.h"
 #include "fory/serialization/skip.h"
@@ -34,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
@@ -476,6 +479,587 @@ void for_each_index(std::index_sequence<Indices...>, Func &&func) {
   (func(std::integral_constant<size_t, Indices>{}), ...);
 }
 
+template <typename StructT, size_t Index, int8_t NodeIndex = 0>
+constexpr FieldNodeKind configured_node_kind() {
+  constexpr auto spec =
+      ::fory::detail::GetFieldConfigEntry<StructT, Index>::spec;
+  return NodeIndex >= 0 ? spec.kind_[NodeIndex] : FieldNodeKind::Default;
+}
+
+template <typename StructT, size_t Index, int8_t NodeIndex = 0>
+constexpr Encoding configured_node_encoding() {
+  constexpr auto spec =
+      ::fory::detail::GetFieldConfigEntry<StructT, Index>::spec;
+  return NodeIndex >= 0 ? spec.encoding_[NodeIndex] : Encoding::Default;
+}
+
+template <typename StructT, size_t Index, int8_t NodeIndex = 0>
+constexpr bool configured_node_has_override() {
+  constexpr auto spec =
+      ::fory::detail::GetFieldConfigEntry<StructT, Index>::spec;
+  return NodeIndex >= 0 &&
+         (spec.kind_[NodeIndex] != FieldNodeKind::Default ||
+          spec.encoding_[NodeIndex] != Encoding::Default ||
+          spec.scalar_[NodeIndex] != FieldScalarKind::Inferred);
+}
+
+template <typename StructT, size_t Index, int8_t NodeIndex = 0>
+constexpr FieldScalarKind configured_node_scalar() {
+  constexpr auto spec =
+      ::fory::detail::GetFieldConfigEntry<StructT, Index>::spec;
+  return NodeIndex >= 0 ? spec.scalar_[NodeIndex] : FieldScalarKind::Inferred;
+}
+
+template <typename FieldType, FieldScalarKind ScalarKind>
+constexpr bool configured_scalar_kind_matches() {
+  using Decayed = decay_t<FieldType>;
+  if constexpr (ScalarKind == FieldScalarKind::Inferred) {
+    return true;
+  } else if constexpr (ScalarKind == FieldScalarKind::Bool) {
+    return std::is_same_v<Decayed, bool>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Int8) {
+    return std::is_same_v<Decayed, int8_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Int16) {
+    return std::is_same_v<Decayed, int16_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Int32) {
+    return std::is_same_v<Decayed, int32_t> || std::is_same_v<Decayed, int>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Int64) {
+    return std::is_same_v<Decayed, int64_t> ||
+           std::is_same_v<Decayed, long long>;
+  } else if constexpr (ScalarKind == FieldScalarKind::UInt8) {
+    return std::is_same_v<Decayed, uint8_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::UInt16) {
+    return std::is_same_v<Decayed, uint16_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::UInt32) {
+    return std::is_same_v<Decayed, uint32_t> ||
+           std::is_same_v<Decayed, unsigned int>;
+  } else if constexpr (ScalarKind == FieldScalarKind::UInt64) {
+    return std::is_same_v<Decayed, uint64_t> ||
+           std::is_same_v<Decayed, unsigned long long>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Float16) {
+    return std::is_same_v<Decayed, float16_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::BFloat16) {
+    return std::is_same_v<Decayed, bfloat16_t>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Float32) {
+    return std::is_same_v<Decayed, float>;
+  } else if constexpr (ScalarKind == FieldScalarKind::Float64) {
+    return std::is_same_v<Decayed, double>;
+  } else if constexpr (ScalarKind == FieldScalarKind::String) {
+    return std::is_same_v<Decayed, std::string>;
+  } else {
+    return false;
+  }
+}
+
+template <typename StructT, size_t Index, int8_t NodeIndex, int ChildSlot>
+constexpr int8_t configured_node_child() {
+  constexpr auto spec =
+      ::fory::detail::GetFieldConfigEntry<StructT, Index>::spec;
+  if constexpr (ChildSlot == 0) {
+    return NodeIndex >= 0 ? spec.child0_[NodeIndex] : -1;
+  } else {
+    return NodeIndex >= 0 ? spec.child1_[NodeIndex] : -1;
+  }
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+constexpr bool configured_vector_primitive_array_spec() {
+  if constexpr (!is_vector_v<ValueType>) {
+    return false;
+  } else {
+    using Element = element_type_t<ValueType>;
+    if constexpr (!std::is_same_v<decay_t<Element>, int8_t> &&
+                  !std::is_same_v<decay_t<Element>, uint8_t>) {
+      return false;
+    } else {
+      constexpr FieldNodeKind kind =
+          configured_node_kind<StructT, Index, NodeIndex>();
+      constexpr int8_t child =
+          configured_node_child<StructT, Index, NodeIndex, 0>();
+      if constexpr (kind != FieldNodeKind::List || child < 0) {
+        return false;
+      } else if constexpr (configured_node_kind<StructT, Index, child>() !=
+                               FieldNodeKind::Scalar ||
+                           configured_node_encoding<StructT, Index, child>() !=
+                               Encoding::Default) {
+        return false;
+      } else if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
+        return configured_node_scalar<StructT, Index, child>() ==
+               FieldScalarKind::Int8;
+      } else {
+        return configured_node_scalar<StructT, Index, child>() ==
+               FieldScalarKind::UInt8;
+      }
+    }
+  }
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+constexpr uint32_t configured_vector_primitive_array_type_id() {
+  if constexpr (!configured_vector_primitive_array_spec<ValueType, StructT,
+                                                        Index, NodeIndex>()) {
+    return 0;
+  } else {
+    using Element = element_type_t<ValueType>;
+    if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
+      return static_cast<uint32_t>(TypeId::INT8_ARRAY);
+    } else {
+      return static_cast<uint32_t>(TypeId::UINT8_ARRAY);
+    }
+  }
+}
+
+template <typename FieldType, typename StructT, size_t Index, int8_t NodeIndex>
+constexpr uint32_t configured_scalar_type_id() {
+  constexpr Encoding enc =
+      configured_node_encoding<StructT, Index, NodeIndex>();
+  using Decayed = decay_t<FieldType>;
+  if constexpr (std::is_same_v<Decayed, bool>) {
+    return static_cast<uint32_t>(TypeId::BOOL);
+  } else if constexpr (std::is_same_v<Decayed, int8_t>) {
+    return static_cast<uint32_t>(TypeId::INT8);
+  } else if constexpr (std::is_same_v<Decayed, uint8_t>) {
+    return static_cast<uint32_t>(TypeId::UINT8);
+  } else if constexpr (std::is_same_v<Decayed, int16_t>) {
+    return static_cast<uint32_t>(TypeId::INT16);
+  } else if constexpr (std::is_same_v<Decayed, uint16_t>) {
+    return static_cast<uint32_t>(TypeId::UINT16);
+  } else if constexpr (std::is_same_v<Decayed, int32_t> ||
+                       std::is_same_v<Decayed, int>) {
+    if constexpr (enc == Encoding::Fixed) {
+      return static_cast<uint32_t>(TypeId::INT32);
+    }
+    return static_cast<uint32_t>(TypeId::VARINT32);
+  } else if constexpr (std::is_same_v<Decayed, uint32_t> ||
+                       std::is_same_v<Decayed, unsigned int>) {
+    if constexpr (enc == Encoding::Varint) {
+      return static_cast<uint32_t>(TypeId::VAR_UINT32);
+    }
+    return static_cast<uint32_t>(TypeId::UINT32);
+  } else if constexpr (std::is_same_v<Decayed, int64_t> ||
+                       std::is_same_v<Decayed, long long>) {
+    if constexpr (enc == Encoding::Fixed) {
+      return static_cast<uint32_t>(TypeId::INT64);
+    } else if constexpr (enc == Encoding::Tagged) {
+      return static_cast<uint32_t>(TypeId::TAGGED_INT64);
+    }
+    return static_cast<uint32_t>(TypeId::VARINT64);
+  } else if constexpr (std::is_same_v<Decayed, uint64_t> ||
+                       std::is_same_v<Decayed, unsigned long long>) {
+    if constexpr (enc == Encoding::Varint) {
+      return static_cast<uint32_t>(TypeId::VAR_UINT64);
+    } else if constexpr (enc == Encoding::Tagged) {
+      return static_cast<uint32_t>(TypeId::TAGGED_UINT64);
+    }
+    return static_cast<uint32_t>(TypeId::UINT64);
+  } else if constexpr (std::is_same_v<Decayed, float16_t>) {
+    return static_cast<uint32_t>(TypeId::FLOAT16);
+  } else if constexpr (std::is_same_v<Decayed, bfloat16_t>) {
+    return static_cast<uint32_t>(TypeId::BFLOAT16);
+  } else if constexpr (std::is_same_v<Decayed, float>) {
+    return static_cast<uint32_t>(TypeId::FLOAT32);
+  } else if constexpr (std::is_same_v<Decayed, double>) {
+    return static_cast<uint32_t>(TypeId::FLOAT64);
+  } else if constexpr (std::is_same_v<Decayed, std::string>) {
+    return static_cast<uint32_t>(TypeId::STRING);
+  }
+  return 0;
+}
+
+template <typename FieldType, typename StructT, size_t Index, int8_t NodeIndex>
+constexpr uint32_t configured_effective_type_id() {
+  constexpr FieldNodeKind kind =
+      configured_node_kind<StructT, Index, NodeIndex>();
+  if constexpr (is_optional_v<FieldType>) {
+    using Inner = typename decay_t<FieldType>::value_type;
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? configured_node_child<StructT, Index, NodeIndex, 0>()
+            : NodeIndex;
+    return configured_effective_type_id<Inner, StructT, Index, child>();
+  } else {
+    constexpr uint32_t vector_array_tid =
+        configured_vector_primitive_array_type_id<FieldType, StructT, Index,
+                                                  NodeIndex>();
+    if constexpr (vector_array_tid != 0) {
+      return vector_array_tid;
+    } else if constexpr (kind == FieldNodeKind::List) {
+      return static_cast<uint32_t>(TypeId::LIST);
+    } else if constexpr (kind == FieldNodeKind::Set) {
+      return static_cast<uint32_t>(TypeId::SET);
+    } else if constexpr (kind == FieldNodeKind::Map) {
+      return static_cast<uint32_t>(TypeId::MAP);
+    } else if constexpr (kind == FieldNodeKind::Scalar ||
+                         configured_node_encoding<StructT, Index,
+                                                  NodeIndex>() !=
+                             Encoding::Default) {
+      return configured_scalar_type_id<FieldType, StructT, Index, NodeIndex>();
+    }
+    return 0;
+  }
+}
+
+template <typename FieldType, typename StructT, size_t Index, int8_t NodeIndex>
+FORY_ALWAYS_INLINE void write_configured_scalar(const FieldType &value,
+                                                WriteContext &ctx) {
+  constexpr Encoding enc =
+      configured_node_encoding<StructT, Index, NodeIndex>();
+  if constexpr (is_configurable_int_v<FieldType>) {
+    if constexpr (std::is_same_v<FieldType, uint32_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        ctx.write_var_uint32(value);
+      } else {
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        ctx.write_var_uint64(value);
+      } else if constexpr (enc == Encoding::Tagged) {
+        ctx.write_tagged_uint64(value);
+      } else {
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                         std::is_same_v<FieldType, int>) {
+      if constexpr (enc == Encoding::Fixed) {
+        ctx.buffer().write_int32(static_cast<int32_t>(value));
+      } else {
+        ctx.write_var_int32(static_cast<int32_t>(value));
+      }
+    } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                         std::is_same_v<FieldType, long long>) {
+      if constexpr (enc == Encoding::Fixed) {
+        ctx.buffer().write_int64(static_cast<int64_t>(value));
+      } else if constexpr (enc == Encoding::Tagged) {
+        ctx.write_tagged_int64(static_cast<int64_t>(value));
+      } else {
+        ctx.write_var_int64(static_cast<int64_t>(value));
+      }
+    } else {
+      Serializer<FieldType>::write_data(value, ctx);
+    }
+  } else {
+    Serializer<FieldType>::write_data(value, ctx);
+  }
+}
+
+template <typename FieldType, typename StructT, size_t Index, int8_t NodeIndex>
+FORY_ALWAYS_INLINE FieldType read_configured_scalar(ReadContext &ctx) {
+  if constexpr (is_configurable_int_v<FieldType>) {
+    constexpr Encoding enc =
+        configured_node_encoding<StructT, Index, NodeIndex>();
+    if constexpr (std::is_same_v<FieldType, uint32_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        return static_cast<FieldType>(ctx.read_var_uint32(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_int32(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, uint64_t>) {
+      if constexpr (enc == Encoding::Varint) {
+        return static_cast<FieldType>(ctx.read_var_uint64(ctx.error()));
+      } else if constexpr (enc == Encoding::Tagged) {
+        return static_cast<FieldType>(ctx.read_tagged_uint64(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_uint64(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, int32_t> ||
+                         std::is_same_v<FieldType, int>) {
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<FieldType>(ctx.read_int32(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_var_int32(ctx.error()));
+    } else if constexpr (std::is_same_v<FieldType, int64_t> ||
+                         std::is_same_v<FieldType, long long>) {
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<FieldType>(ctx.read_int64(ctx.error()));
+      } else if constexpr (enc == Encoding::Tagged) {
+        return static_cast<FieldType>(ctx.read_tagged_int64(ctx.error()));
+      }
+      return static_cast<FieldType>(ctx.read_var_int64(ctx.error()));
+    } else {
+      return Serializer<FieldType>::read_data(ctx);
+    }
+  } else {
+    return Serializer<FieldType>::read_data(ctx);
+  }
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+void write_configured_value(const ValueType &value, WriteContext &ctx,
+                            RefMode ref_mode, bool write_type,
+                            bool has_generics);
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+ValueType read_configured_value(ReadContext &ctx, RefMode ref_mode,
+                                bool read_type);
+
+template <typename Container, typename StructT, size_t Index, int8_t NodeIndex,
+          int8_t ElemNode>
+void write_configured_list_data(const Container &coll, WriteContext &ctx) {
+  using Elem = element_type_t<Container>;
+  ctx.write_var_uint32(static_cast<uint32_t>(coll.size()));
+  if (coll.empty()) {
+    return;
+  }
+  ctx.write_uint8(COLL_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE);
+  for (const auto &elem : coll) {
+    if constexpr (ElemNode >= 0) {
+      write_configured_value<Elem, StructT, Index, ElemNode>(
+          elem, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Elem>::write_data(elem, ctx);
+    }
+  }
+}
+
+template <typename Container, typename StructT, size_t Index, int8_t NodeIndex,
+          int8_t ElemNode>
+Container read_configured_list_data(ReadContext &ctx) {
+  using Elem = element_type_t<Container>;
+  uint32_t length = ctx.read_var_uint32(ctx.error());
+  Container result;
+  if constexpr (has_reserve_v<Container>) {
+    result.reserve(length);
+  }
+  if (FORY_PREDICT_FALSE(ctx.has_error()) || length == 0) {
+    return result;
+  }
+  uint8_t bitmap = ctx.read_uint8(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return result;
+  }
+  const bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
+  const bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
+  if (is_same_type && !is_decl_type) {
+    (void)ctx.read_any_type_info(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+  }
+  for (uint32_t i = 0; i < length; ++i) {
+    if constexpr (ElemNode >= 0) {
+      auto elem = read_configured_value<Elem, StructT, Index, ElemNode>(
+          ctx, RefMode::None, false);
+      collection_insert(result, std::move(elem));
+    } else {
+      auto elem = Serializer<Elem>::read_data(ctx);
+      collection_insert(result, std::move(elem));
+    }
+  }
+  return result;
+}
+
+template <typename MapType, typename StructT, size_t Index, int8_t KeyNode,
+          int8_t ValueNode>
+void write_configured_map_data(const MapType &map, WriteContext &ctx) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  ctx.write_var_uint32(static_cast<uint32_t>(map.size()));
+  if (map.empty()) {
+    return;
+  }
+  size_t header_offset = 0;
+  uint8_t pair_counter = 0;
+  bool need_write_header = true;
+  for (const auto &[key, value] : map) {
+    if (need_write_header) {
+      ctx.enter_flush_barrier();
+      header_offset = ctx.buffer().writer_index();
+      ctx.write_uint16(0);
+      ctx.buffer().unsafe_put_byte(
+          header_offset, static_cast<uint8_t>(DECL_KEY_TYPE | DECL_VALUE_TYPE));
+      need_write_header = false;
+    }
+    if constexpr (KeyNode >= 0) {
+      write_configured_value<Key, StructT, Index, KeyNode>(
+          key, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Key>::write_data(key, ctx);
+    }
+    if constexpr (ValueNode >= 0) {
+      write_configured_value<Value, StructT, Index, ValueNode>(
+          value, ctx, RefMode::None, false, true);
+    } else {
+      Serializer<Value>::write_data(value, ctx);
+    }
+    ++pair_counter;
+    if (pair_counter == MAX_CHUNK_SIZE) {
+      write_chunk_size(ctx, header_offset, pair_counter);
+      ctx.exit_flush_barrier();
+      ctx.try_flush();
+      pair_counter = 0;
+      need_write_header = true;
+    }
+  }
+  if (pair_counter > 0) {
+    write_chunk_size(ctx, header_offset, pair_counter);
+    ctx.exit_flush_barrier();
+    ctx.try_flush();
+  }
+}
+
+template <typename MapType, typename StructT, size_t Index, int8_t KeyNode,
+          int8_t ValueNode>
+MapType read_configured_map_data(ReadContext &ctx) {
+  using Key = key_type_t<MapType>;
+  using Value = mapped_type_t<MapType>;
+  uint32_t length = ctx.read_var_uint32(ctx.error());
+  MapType result;
+  MapReserver<MapType>::reserve(result, length);
+  uint32_t read_count = 0;
+  while (read_count < length && !ctx.has_error()) {
+    uint8_t header = ctx.read_uint8(ctx.error());
+    uint8_t chunk_size = ctx.read_uint8(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+    const bool key_decl = (header & DECL_KEY_TYPE) != 0;
+    const bool value_decl = (header & DECL_VALUE_TYPE) != 0;
+    if (!key_decl) {
+      (void)ctx.read_any_type_info(ctx.error());
+    }
+    if (!value_decl) {
+      (void)ctx.read_any_type_info(ctx.error());
+    }
+    for (uint8_t i = 0; i < chunk_size && read_count < length; ++i) {
+      Key key = [&]() {
+        if constexpr (KeyNode >= 0) {
+          return read_configured_value<Key, StructT, Index, KeyNode>(
+              ctx, RefMode::None, false);
+        } else {
+          return Serializer<Key>::read_data(ctx);
+        }
+      }();
+      Value value = [&]() {
+        if constexpr (ValueNode >= 0) {
+          return read_configured_value<Value, StructT, Index, ValueNode>(
+              ctx, RefMode::None, false);
+        } else {
+          return Serializer<Value>::read_data(ctx);
+        }
+      }();
+      result.emplace(std::move(key), std::move(value));
+      ++read_count;
+    }
+  }
+  return result;
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+void write_configured_value(const ValueType &value, WriteContext &ctx,
+                            RefMode ref_mode, bool write_type,
+                            bool has_generics) {
+  constexpr FieldNodeKind kind =
+      configured_node_kind<StructT, Index, NodeIndex>();
+  constexpr FieldScalarKind scalar_kind =
+      configured_node_scalar<StructT, Index, NodeIndex>();
+  static_assert(configured_scalar_kind_matches<ValueType, scalar_kind>(),
+                "fory::T typed scalar spec does not match the C++ field type");
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    if (!value.has_value()) {
+      if (ref_mode != RefMode::None) {
+        ctx.write_int8(NULL_FLAG);
+      }
+      return;
+    }
+    write_not_null_ref_flag(ctx, ref_mode);
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? configured_node_child<StructT, Index, NodeIndex, 0>()
+            : NodeIndex;
+    write_configured_value<Inner, StructT, Index, child>(
+        *value, ctx, RefMode::None, false, has_generics);
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       (kind == FieldNodeKind::List ||
+                        kind == FieldNodeKind::Set)) {
+    if constexpr (configured_vector_primitive_array_spec<ValueType, StructT,
+                                                         Index, NodeIndex>()) {
+      Serializer<ValueType>::write(value, ctx, ref_mode, false, has_generics);
+    } else {
+      write_not_null_ref_flag(ctx, ref_mode);
+      constexpr int8_t child =
+          configured_node_child<StructT, Index, NodeIndex, 0>();
+      write_configured_list_data<ValueType, StructT, Index, NodeIndex, child>(
+          value, ctx);
+    }
+  } else if constexpr (is_map_like_v<ValueType> && kind == FieldNodeKind::Map) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    constexpr int8_t key_child =
+        configured_node_child<StructT, Index, NodeIndex, 0>();
+    constexpr int8_t value_child =
+        configured_node_child<StructT, Index, NodeIndex, 1>();
+    write_configured_map_data<ValueType, StructT, Index, key_child,
+                              value_child>(value, ctx);
+  } else if constexpr (kind == FieldNodeKind::Scalar ||
+                       configured_node_encoding<StructT, Index, NodeIndex>() !=
+                           Encoding::Default) {
+    write_not_null_ref_flag(ctx, ref_mode);
+    write_configured_scalar<ValueType, StructT, Index, NodeIndex>(value, ctx);
+  } else {
+    Serializer<ValueType>::write(value, ctx, ref_mode, write_type,
+                                 has_generics);
+  }
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+ValueType read_configured_value(ReadContext &ctx, RefMode ref_mode,
+                                bool read_type) {
+  constexpr FieldNodeKind kind =
+      configured_node_kind<StructT, Index, NodeIndex>();
+  constexpr FieldScalarKind scalar_kind =
+      configured_node_scalar<StructT, Index, NodeIndex>();
+  static_assert(configured_scalar_kind_matches<ValueType, scalar_kind>(),
+                "fory::T typed scalar spec does not match the C++ field type");
+  if constexpr (is_optional_v<ValueType>) {
+    using Inner = typename ValueType::value_type;
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return std::nullopt;
+    }
+    constexpr int8_t child =
+        kind == FieldNodeKind::Inner
+            ? configured_node_child<StructT, Index, NodeIndex, 0>()
+            : NodeIndex;
+    Inner inner = read_configured_value<Inner, StructT, Index, child>(
+        ctx, RefMode::None, false);
+    return ValueType{std::move(inner)};
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       (kind == FieldNodeKind::List ||
+                        kind == FieldNodeKind::Set)) {
+    if constexpr (configured_vector_primitive_array_spec<ValueType, StructT,
+                                                         Index, NodeIndex>()) {
+      return Serializer<ValueType>::read(ctx, ref_mode, false);
+    } else {
+      if (!read_null_only_flag(ctx, ref_mode)) {
+        return ValueType{};
+      }
+      constexpr int8_t child =
+          configured_node_child<StructT, Index, NodeIndex, 0>();
+      return read_configured_list_data<ValueType, StructT, Index, NodeIndex,
+                                       child>(ctx);
+    }
+  } else if constexpr (is_map_like_v<ValueType> && kind == FieldNodeKind::Map) {
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return ValueType{};
+    }
+    constexpr int8_t key_child =
+        configured_node_child<StructT, Index, NodeIndex, 0>();
+    constexpr int8_t value_child =
+        configured_node_child<StructT, Index, NodeIndex, 1>();
+    return read_configured_map_data<ValueType, StructT, Index, key_child,
+                                    value_child>(ctx);
+  } else if constexpr (kind == FieldNodeKind::Scalar ||
+                       configured_node_encoding<StructT, Index, NodeIndex>() !=
+                           Encoding::Default) {
+    if (!read_null_only_flag(ctx, ref_mode)) {
+      return ValueType{};
+    }
+    return read_configured_scalar<ValueType, StructT, Index, NodeIndex>(ctx);
+  } else {
+    return Serializer<ValueType>::read(ctx, ref_mode, read_type);
+  }
+}
+
 template <typename T, typename Func, size_t... Indices>
 void dispatch_field_index_impl(size_t target_index, Func &&func,
                                std::index_sequence<Indices...>, bool &handled) {
@@ -509,17 +1093,47 @@ template <typename T> struct CompileTimeFieldHelpers {
   static inline constexpr auto ptrs = FieldDescriptor::ptrs();
   using FieldPtrs = decltype(ptrs);
 
+  template <size_t... Indices>
+  static constexpr bool any_field_has_id(std::index_sequence<Indices...>) {
+    if constexpr (sizeof...(Indices) == 0) {
+      return false;
+    } else {
+      return ((::fory::detail::GetFieldConfigEntry<T, Indices>::has_id) || ...);
+    }
+  }
+
+  template <size_t... Indices>
+  static constexpr bool all_fields_have_id(std::index_sequence<Indices...>) {
+    if constexpr (sizeof...(Indices) == 0) {
+      return true;
+    } else {
+      return ((::fory::detail::GetFieldConfigEntry<T, Indices>::has_id) && ...);
+    }
+  }
+
+  static constexpr bool any_id_mode_field =
+      any_field_has_id(std::make_index_sequence<FieldCount>{});
+  static constexpr bool all_id_mode_fields =
+      all_fields_have_id(std::make_index_sequence<FieldCount>{});
+
+  static_assert(!any_id_mode_field || all_id_mode_fields,
+                "FORY_STRUCT must use exactly one identity mode: either all "
+                "fields use fory::F(id), or no fields use ids.");
+
   template <size_t Index> static constexpr uint32_t field_type_id() {
     if constexpr (FieldCount == 0) {
       return 0;
     } else {
       using PtrT = std::tuple_element_t<Index, FieldPtrs>;
       using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
-      // unwrap fory::field<> to get the actual type for serialization
       using FieldType = unwrap_field_t<RawFieldType>;
 
-      // Check for encoding override from FORY_FIELD_CONFIG
       if constexpr (::fory::detail::has_field_config_v<T>) {
+        constexpr uint32_t effective_tid =
+            configured_effective_type_id<FieldType, T, Index, 0>();
+        if constexpr (effective_tid != 0) {
+          return effective_tid;
+        }
         constexpr uint32_t unsigned_tid =
             compute_unsigned_type_id<FieldType, T, Index>();
         if constexpr (unsigned_tid != 0) {
@@ -541,11 +1155,8 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   /// Returns true if the field at Index is nullable for fingerprint
-  /// computation. This checks:
-  /// 1. If the field is a fory::field<>, use its is_nullable metadata
-  /// 2. Else if FORY_FIELD_TAGS is defined, use that metadata
-  /// 3. Otherwise, use xlang defaults: only std::optional is nullable
-  ///    (For xlang: nullable=false by default, except for Optional types)
+  /// computation. Configured fields may opt in to nullable behavior; otherwise
+  /// xlang defaults make only std::optional nullable.
   template <size_t Index> static constexpr bool field_nullable() {
     if constexpr (FieldCount == 0) {
       return false;
@@ -553,19 +1164,9 @@ template <typename T> struct CompileTimeFieldHelpers {
       using PtrT = std::tuple_element_t<Index, FieldPtrs>;
       using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
 
-      // If it's a fory::field<> wrapper, use its metadata
       if constexpr (is_fory_field_v<RawFieldType>) {
         return RawFieldType::is_nullable;
-      }
-      // Else if FORY_FIELD_TAGS is defined, use that metadata
-      else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        if constexpr (::fory::detail::GetFieldTagEntry<T, Index>::has_entry) {
-          return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
-        }
-        return field_is_nullable_v<RawFieldType>;
-      }
-      // Else if FORY_FIELD_CONFIG is defined, use nullable from config
-      else if constexpr (::fory::detail::has_field_config_v<T>) {
+      } else if constexpr (::fory::detail::has_field_config_v<T>) {
         if constexpr (::fory::detail::GetFieldConfigEntry<T,
                                                           Index>::has_entry &&
                       ::fory::detail::GetFieldConfigEntry<T, Index>::nullable) {
@@ -599,13 +1200,8 @@ template <typename T> struct CompileTimeFieldHelpers {
           return config_id;
         }
       }
-      // If it's a fory::field<> wrapper, use its tag_id
       if constexpr (is_fory_field_v<RawFieldType>) {
         return RawFieldType::tag_id;
-      }
-      // Else if FORY_FIELD_TAGS is defined, use that metadata
-      else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        return ::fory::detail::GetFieldTagEntry<T, Index>::id;
       }
       // No tag ID defined
       else {
@@ -633,16 +1229,9 @@ template <typename T> struct CompileTimeFieldHelpers {
       using PtrT = std::tuple_element_t<Index, FieldPtrs>;
       using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
 
-      // If it's a fory::field<> wrapper, use its track_ref metadata
       if constexpr (is_fory_field_v<RawFieldType>) {
         return RawFieldType::track_ref;
-      }
-      // Else if FORY_FIELD_TAGS is defined, use that metadata
-      else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
-      }
-      // Else if FORY_FIELD_CONFIG is defined, use ref from config
-      else if constexpr (::fory::detail::has_field_config_v<T>) {
+      } else if constexpr (::fory::detail::has_field_config_v<T>) {
         if constexpr (::fory::detail::GetFieldConfigEntry<T,
                                                           Index>::has_entry &&
                       ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
@@ -668,16 +1257,9 @@ template <typename T> struct CompileTimeFieldHelpers {
       using PtrT = std::tuple_element_t<Index, FieldPtrs>;
       using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
 
-      // If it's a fory::field<> wrapper, use its dynamic_value metadata
       if constexpr (is_fory_field_v<RawFieldType>) {
         return RawFieldType::dynamic_value;
-      }
-      // Else if FORY_FIELD_TAGS is defined, use that metadata
-      else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        return ::fory::detail::GetFieldTagEntry<T, Index>::dynamic_value;
-      }
-      // Else if FORY_FIELD_CONFIG is defined, use dynamic_value from config
-      else if constexpr (::fory::detail::has_field_config_v<T>) {
+      } else if constexpr (::fory::detail::has_field_config_v<T>) {
         constexpr int dynamic_value =
             ::fory::detail::GetFieldConfigEntry<T, Index>::dynamic_value;
         if constexpr (dynamic_value != -1) {
@@ -733,7 +1315,7 @@ template <typename T> struct CompileTimeFieldHelpers {
       !any_field_needs_type_info_in_compatible(
           std::make_index_sequence<FieldCount>{});
 
-  /// get the underlying field type (unwraps fory::field<> if present)
+  /// get the underlying field type.
   template <size_t Index> struct UnwrappedFieldTypeHelper {
     using PtrT = std::tuple_element_t<Index, FieldPtrs>;
     using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
@@ -1635,7 +2217,7 @@ FORY_ALWAYS_INLINE void write_single_fixed_field(const T &obj, Buffer &buffer,
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // get the actual value (unwrap fory::field<> if needed)
+  // get the actual field value.
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1677,7 +2259,7 @@ FORY_ALWAYS_INLINE void write_single_varint_field(const T &obj, Buffer &buffer,
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // get the actual value (unwrap fory::field<> if needed)
+  // get the actual field value.
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1720,7 +2302,7 @@ write_single_remaining_field(const T &obj, Buffer &buffer, uint32_t &offset) {
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
-  // get the actual value (unwrap fory::field<> if needed)
+  // get the actual field value.
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
       return (obj.*field_ptr).value;
@@ -1803,10 +2385,9 @@ void write_single_field(const T &obj, WriteContext &ctx,
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // unwrap fory::field<> to get the actual type for serialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
-  // get the actual value (unwrap fory::field<> if needed)
+  // get the actual field value.
   const auto &raw_field_ref = obj.*field_ptr;
   const FieldType &field_value = [&]() -> const FieldType & {
     if constexpr (is_fory_field_v<RawFieldType>) {
@@ -1819,11 +2400,27 @@ void write_single_field(const T &obj, WriteContext &ctx,
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
-  // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
+  // get field metadata from the effective field spec or defaults.
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
   constexpr bool track_ref = Helpers::template field_track_ref<Index>();
   // Some wrapper types always require ref/null flags in the wire format.
   constexpr bool field_type_is_nullable = is_nullable_v<FieldType>;
+
+  if constexpr (configured_node_has_override<T, Index>()) {
+    constexpr RefMode field_ref_mode =
+        make_ref_mode(is_nullable || field_type_is_nullable, track_ref);
+    constexpr bool is_struct = is_struct_type(field_type_id);
+    constexpr bool is_ext = is_ext_type(field_type_id);
+    constexpr bool is_polymorphic = field_type_id == TypeId::UNKNOWN;
+    constexpr int dynamic_val = Helpers::template field_dynamic_value<Index>();
+    constexpr bool polymorphic_write_type =
+        (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
+    bool write_type = polymorphic_write_type ||
+                      ((is_struct || is_ext) && ctx.is_compatible());
+    write_configured_value<FieldType, T, Index, 0>(
+        field_value, ctx, field_ref_mode, write_type, has_generics);
+    return;
+  }
 
   // Special handling for std::optional<uint32_t/uint64_t> with encoding config
   // This must come BEFORE the general primitive check because optional requires
@@ -2229,7 +2826,6 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // unwrap fory::field<> to get the actual type for deserialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
   // In non-compatible mode, no type info for fields except for polymorphic
@@ -2257,7 +2853,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
                    (dynamic_val == -1 && is_polymorphic_field) ||
                    ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
-  // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
+  // get field metadata from the effective field spec or defaults.
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
   constexpr bool track_ref = Helpers::template field_track_ref<Index>();
 
@@ -2271,6 +2867,18 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // Per xlang protocol: non-nullable fields skip ref flag entirely
   constexpr RefMode field_ref_mode =
       make_ref_mode(is_nullable || field_type_is_nullable, track_ref);
+
+  if constexpr (configured_node_has_override<T, Index>()) {
+    FieldType result = read_configured_value<FieldType, T, Index, 0>(
+        ctx, field_ref_mode, read_type);
+    if constexpr (is_fory_field_v<RawFieldType>) {
+      (obj.*field_ptr).value = std::move(result);
+    } else {
+      obj.*field_ptr = std::move(result);
+    }
+    return;
+  }
+
   // OPTIMIZATION: For raw primitive fields (not wrappers like optional,
   // shared_ptr) that don't need ref metadata, bypass Serializer<T>::read
   // and use direct buffer reads with Error&.
@@ -2283,7 +2891,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
       }
       return read_primitive_field_direct<FieldType>(ctx, ctx.error());
     };
-    // Assign to field (handle fory::field<> wrapper if needed)
+    // Assign to field.
     if constexpr (is_fory_field_v<RawFieldType>) {
       (obj.*field_ptr).value = read_value();
     } else {
@@ -2382,7 +2990,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
         obj.*field_ptr = std::optional<InnerType>(value);
       }
     } else {
-      // Assign to field (handle fory::field<> wrapper if needed)
+      // Assign to field.
       FieldType result =
           Serializer<FieldType>::read(ctx, field_ref_mode, read_type);
       if constexpr (is_fory_field_v<RawFieldType>) {
@@ -2396,19 +3004,19 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
 
 /// Helper to read a single field by index in compatible mode using
 /// remote field metadata to decide reference flag presence.
-/// @param remote_type_id The type_id from the remote schema (for encoding)
+/// @param remote_field_type The field type tree from the remote schema.
 template <size_t Index, typename T>
 void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
-                                           RefMode remote_ref_mode,
-                                           uint32_t remote_type_id) {
+                                           const FieldType &remote_field_type) {
   using Helpers = CompileTimeFieldHelpers<T>;
   const auto field_info = fory_field_info(obj);
   const auto &field_ptrs = decltype(field_info)::ptrs_ref();
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
-  // unwrap fory::field<> to get the actual type for deserialization
   using FieldType = unwrap_field_t<RawFieldType>;
+  const RefMode remote_ref_mode = remote_field_type.ref_mode;
+  const uint32_t remote_type_id = remote_field_type.type_id;
 
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
   // Check if field is a struct type - use type_id to handle shared_ptr<Struct>
@@ -2527,6 +3135,17 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
     }
   }
 
+  if constexpr (configured_node_has_override<T, Index>()) {
+    FieldType result = read_configured_value<FieldType, T, Index, 0>(
+        ctx, remote_ref_mode, read_type);
+    if constexpr (is_fory_field_v<RawFieldType>) {
+      (obj.*field_ptr).value = std::move(result);
+    } else {
+      obj.*field_ptr = std::move(result);
+    }
+    return;
+  }
+
   // For non-primitive types, use the standard serializer path
   FieldType result =
       Serializer<FieldType>::read(ctx, remote_ref_mode, read_type);
@@ -2540,11 +3159,13 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
 /// Helper to dispatch field reading by field_id in compatible mode.
 /// Uses fold expression with short-circuit to avoid lambda overhead.
 /// Sets handled=true if field was matched.
-/// @param remote_type_id The type_id from the remote schema (for encoding)
+/// @param remote_field_type The field type tree from the remote schema.
 template <typename T, size_t... Indices>
-FORY_ALWAYS_INLINE void dispatch_compatible_field_read_impl(
-    T &obj, ReadContext &ctx, int16_t field_id, RefMode remote_ref_mode,
-    uint32_t remote_type_id, bool &handled, std::index_sequence<Indices...>) {
+FORY_ALWAYS_INLINE void
+dispatch_compatible_field_read_impl(T &obj, ReadContext &ctx, int16_t field_id,
+                                    const FieldType &remote_field_type,
+                                    bool &handled,
+                                    std::index_sequence<Indices...>) {
   using Helpers = CompileTimeFieldHelpers<T>;
 
   // Short-circuit fold: stops at first match
@@ -2552,8 +3173,8 @@ FORY_ALWAYS_INLINE void dispatch_compatible_field_read_impl(
   (void)((static_cast<int16_t>(Indices) == field_id
               ? (handled = true,
                  read_single_field_by_index_compatible<
-                     Helpers::sorted_indices[Indices]>(
-                     obj, ctx, remote_ref_mode, remote_type_id),
+                     Helpers::sorted_indices[Indices]>(obj, ctx,
+                                                       remote_field_type),
                  true)
               : false) ||
          ...);
@@ -2667,7 +3288,7 @@ FORY_ALWAYS_INLINE void read_single_fixed_field(T &obj, Buffer &buffer,
   using FieldType = unwrap_field_t<RawFieldType>;
   FieldType result =
       read_fixed_primitive_at<FieldType>(buffer, base_offset + field_offset);
-  // Assign to field (handle fory::field<> wrapper if needed)
+  // Assign to field.
   if constexpr (is_fory_field_v<RawFieldType>) {
     (obj.*field_ptr).value = result;
   } else {
@@ -2753,7 +3374,7 @@ FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
     result = read_varint_at<FieldType>(buffer, offset);
   }
 
-  // Assign to field (handle fory::field<> wrapper if needed)
+  // Assign to field.
   if constexpr (is_fory_field_v<RawFieldType>) {
     (obj.*field_ptr).value = result;
   } else {
@@ -2926,11 +3547,11 @@ void read_struct_fields_compatible(T &obj, ReadContext &ctx,
 
     // Dispatch to the correct local field by field_id
     // Uses fold expression with short-circuit - no lambda overhead
-    // Pass remote type_id for correct encoding in compatible mode
+    // Pass remote field type for correct encoding and ref metadata.
     bool handled = false;
-    dispatch_compatible_field_read_impl<T>(
-        obj, ctx, field_id, remote_ref_mode, remote_field.field_type.type_id,
-        handled, std::index_sequence<Indices...>{});
+    dispatch_compatible_field_read_impl<T>(obj, ctx, field_id,
+                                           remote_field.field_type, handled,
+                                           std::index_sequence<Indices...>{});
 
     if (!handled) {
       // Shouldn't happen if TypeMeta::assign_field_ids worked correctly

@@ -19,30 +19,23 @@
 
 package org.apache.fory.annotation;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/**
- * Annotation to mark a field as an unsigned 8-bit integer array.
- *
- * <p>When applied to a field of type {@code byte[]}, this annotation indicates that the array
- * should be serialized as an unsigned 8-bit integer array (UINT8_ARRAY, type_id=44) with element
- * values in the range [0, 255].
- *
- * <p>This is useful for compatibility with languages that have native unsigned integer array types
- * (e.g., Rust's Vec&lt;u8&gt;, Go's []uint8, C++'s std::vector&lt;uint8_t&gt;).
- *
- * <p>Example usage:
- *
- * <pre>{@code
- * public class MyStruct {
- *   {@literal @}Uint8ArrayType
- *   byte[] data;  // Will be serialized as unsigned 8-bit array
- * }
- * }</pre>
- */
+/** Marker annotation for Fory-serializable types with optional serialization behavior settings. */
+@Documented
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Uint8ArrayType {}
+@Target(ElementType.TYPE)
+public @interface ForyStruct {
+  /**
+   * Whether the annotated type should use schema evolution in compatible mode.
+   *
+   * <p>When {@code true} (default), compatible mode uses COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT
+   * to include schema metadata for evolution. When {@code false}, STRUCT/NAMED_STRUCT is used to
+   * avoid that overhead.
+   */
+  boolean evolving() default true;
+}

@@ -42,8 +42,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.serializer.collection.CollectionSerializersTest;
@@ -69,7 +67,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
             c ->
                 new Object[] {
                   builder()
-                      .withLanguage(Language.JAVA)
+                      .withXlang(false)
                       .withRefTracking((Boolean) c[0])
                       .withNumberCompressed((Boolean) c[1])
                       .withCodegen(false)
@@ -77,7 +75,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
                       .requireClassRegistration(false)
                       .build(),
                   builder()
-                      .withLanguage(Language.JAVA)
+                      .withXlang(false)
                       .withRefTracking((Boolean) c[0])
                       .withNumberCompressed((Boolean) c[1])
                       .withCodegen(true)
@@ -239,7 +237,7 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
   @DataProvider(name = "metaShareFory")
   public static Object[][] metaShareFory() {
     return Sets.cartesianProduct(
-            ImmutableSet.of(CompatibleMode.COMPATIBLE) // structFieldsRepeat
+            ImmutableSet.of(true) // structFieldsRepeat
             )
         .stream()
         .map(List::toArray)
@@ -247,17 +245,17 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
             c ->
                 new Object[] {
                   builder()
-                      .withLanguage(Language.JAVA)
+                      .withXlang(false)
                       .withMetaShare(true)
-                      .withCompatibleMode((CompatibleMode) c[0])
+                      .withCompatible((Boolean) c[0])
                       .withScopedMetaShare(false)
                       .withCodegen(false)
                       .requireClassRegistration(false)
                       .build(),
                   builder()
-                      .withLanguage(Language.JAVA)
+                      .withXlang(false)
                       .withMetaShare(true)
-                      .withCompatibleMode((CompatibleMode) c[0])
+                      .withCompatible((Boolean) c[0])
                       .withScopedMetaShare(false)
                       .withCodegen(true)
                       .requireClassRegistration(false)

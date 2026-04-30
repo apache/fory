@@ -437,7 +437,7 @@ TEST(SmartPtrSerializerTest, MaxDynDepthDefault) {
 } // namespace
 
 // ============================================================================
-// Monomorphic field tests (fory::field<> style)
+// Monomorphic field tests
 // ============================================================================
 namespace {
 
@@ -450,21 +450,17 @@ struct PolymorphicBaseForMono {
   FORY_STRUCT(PolymorphicBaseForMono, value, data);
 };
 
-// Holder with non-dynamic field using fory::field<>
 struct NonDynamicFieldHolder {
-  // Field marked as dynamic<false> - no dynamic type dispatch, always
-  // PolymorphicBaseForMono
-  fory::field<std::shared_ptr<PolymorphicBaseForMono>, 0, fory::nullable,
-              fory::dynamic<false>>
-      ptr;
-  FORY_STRUCT(NonDynamicFieldHolder, ptr);
+  std::shared_ptr<PolymorphicBaseForMono> ptr;
+  FORY_STRUCT(NonDynamicFieldHolder,
+              (ptr, fory::F().nullable().dynamic(false)));
 };
 
-TEST(SmartPtrSerializerTest, NonDynamicFieldWithForyField) {
+TEST(SmartPtrSerializerTest, NonDynamicFieldConfig) {
   NonDynamicFieldHolder original;
-  original.ptr.value = std::make_shared<PolymorphicBaseForMono>();
-  original.ptr.value->value = 42;
-  original.ptr.value->data = "test data";
+  original.ptr = std::make_shared<PolymorphicBaseForMono>();
+  original.ptr->value = 42;
+  original.ptr->data = "test data";
 
   auto fory = Fory::builder().track_ref(false).build();
   fory.register_struct<NonDynamicFieldHolder>(400);
@@ -479,15 +475,15 @@ TEST(SmartPtrSerializerTest, NonDynamicFieldWithForyField) {
       << deserialize_result.error().to_string();
 
   auto deserialized = std::move(deserialize_result).value();
-  ASSERT_TRUE(deserialized.ptr.value);
-  EXPECT_EQ(deserialized.ptr.value->value, 42);
-  EXPECT_EQ(deserialized.ptr.value->data, "test data");
-  EXPECT_EQ(deserialized.ptr.value->name(), "PolymorphicBaseForMono");
+  ASSERT_TRUE(deserialized.ptr);
+  EXPECT_EQ(deserialized.ptr->value, 42);
+  EXPECT_EQ(deserialized.ptr->data, "test data");
+  EXPECT_EQ(deserialized.ptr->name(), "PolymorphicBaseForMono");
 }
 
 TEST(SmartPtrSerializerTest, NonDynamicFieldNullValue) {
   NonDynamicFieldHolder original;
-  original.ptr.value = nullptr;
+  original.ptr = nullptr;
 
   auto fory = Fory::builder().track_ref(false).build();
   fory.register_struct<NonDynamicFieldHolder>(404);
@@ -502,7 +498,7 @@ TEST(SmartPtrSerializerTest, NonDynamicFieldNullValue) {
       << deserialize_result.error().to_string();
 
   auto deserialized = std::move(deserialize_result).value();
-  EXPECT_FALSE(deserialized.ptr.value);
+  EXPECT_FALSE(deserialized.ptr);
 }
 
 } // namespace

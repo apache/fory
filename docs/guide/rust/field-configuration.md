@@ -321,10 +321,10 @@ struct Bad2 {
     field: String,
 }
 
-// Error: removed shorthand
+// Error: invalid encoding for i32
 #[derive(ForyStruct)]
 struct Bad3 {
-    #[fory(compress = false)]  // Compile error: use encoding = fixed
+    #[fory(encoding = tagged)]  // Compile error: tagged is only valid for i64/u64
     field: i32,
 }
 ```

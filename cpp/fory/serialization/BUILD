@@ -38,10 +38,10 @@ cc_library(
     strip_include_prefix = "/cpp",
     deps = [
         "//cpp/fory/meta:fory_meta",
+        "//cpp/fory/thirdparty:flat_hash_map",
         "//cpp/fory/thirdparty:libmmh3",
         "//cpp/fory/type:fory_type",
         "//cpp/fory/util:fory_util",
-        "@abseil-cpp//absl/container:flat_hash_map",
     ],
     visibility = ["//visibility:public"],
 )
@@ -143,15 +143,6 @@ cc_test(
         ":fory_serialization",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "field_serializer_test",
-    srcs = ["field_serializer_test.cc"],
-    deps = [
-        ":fory_serialization",
-        "@googletest//:gtest",
     ],
 )
 

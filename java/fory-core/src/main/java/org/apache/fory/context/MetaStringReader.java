@@ -93,7 +93,7 @@ public final class MetaStringReader {
 
   /** Reads a meta string from the current buffer, including any dynamic-id indirection. */
   public EncodedMetaString readMetaString(MemoryBuffer buffer) {
-    int header = buffer.readVarUint32Small7();
+    int header = buffer.readVarUInt32Small7();
     int len = header >>> 1;
     if ((header & 0b1) == 0) {
       EncodedMetaString encodedMetaString =
@@ -111,7 +111,7 @@ public final class MetaStringReader {
    * first.
    */
   public EncodedMetaString readMetaString(MemoryBuffer buffer, EncodedMetaString cache) {
-    int header = buffer.readVarUint32Small7();
+    int header = buffer.readVarUInt32Small7();
     int len = header >>> 1;
     if ((header & 0b1) == 0) {
       EncodedMetaString encodedMetaString =

@@ -77,7 +77,7 @@ public final class ExceptionSerializers {
       writeContext.writeRef(value.getStackTrace());
       writeContext.writeRef(value.getCause());
       writeContext.writeStringRef(value.getMessage());
-      buffer.writeVarUint32(0);
+      buffer.writeVarUInt32(0);
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
       }
@@ -115,7 +115,7 @@ public final class ExceptionSerializers {
 
     private void skipExtraFields(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numExtraFields = buffer.readVarUint32();
+      int numExtraFields = buffer.readVarUInt32();
       for (int i = 0; i < numExtraFields; i++) {
         readContext.readString();
         readContext.readRef();
@@ -157,7 +157,7 @@ public final class ExceptionSerializers {
       writeContext.writeStringRef(value.getMethodName());
       writeContext.writeStringRef(value.getFileName());
       buffer.writeInt32(value.getLineNumber());
-      buffer.writeVarUint32(0);
+      buffer.writeVarUInt32(0);
     }
 
     @Override
@@ -170,7 +170,7 @@ public final class ExceptionSerializers {
       String methodName = readContext.readStringRef();
       String fileName = readContext.readStringRef();
       int lineNumber = buffer.readInt32();
-      int numExtraFields = buffer.readVarUint32();
+      int numExtraFields = buffer.readVarUInt32();
       for (int i = 0; i < numExtraFields; i++) {
         readContext.readString();
         readContext.readRef();
@@ -300,7 +300,7 @@ public final class ExceptionSerializers {
     if (metaReadContext == null) {
       return;
     }
-    int indexMarker = buffer.readVarUint32Small14();
+    int indexMarker = buffer.readVarUInt32Small14();
     boolean isRef = (indexMarker & 1) == 1;
     if (isRef) {
       return;

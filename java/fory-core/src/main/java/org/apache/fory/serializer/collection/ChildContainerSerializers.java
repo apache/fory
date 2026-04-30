@@ -174,7 +174,7 @@ public class ChildContainerSerializers {
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, T value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
       }
@@ -242,7 +242,7 @@ public class ChildContainerSerializers {
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, T value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       writeContext.writeRef(value.comparator());
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
@@ -253,7 +253,7 @@ public class ChildContainerSerializers {
     @Override
     public T newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -290,7 +290,7 @@ public class ChildContainerSerializers {
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, T value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       writeContext.writeRef(value.comparator());
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
@@ -301,7 +301,7 @@ public class ChildContainerSerializers {
     @Override
     public T newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -350,7 +350,7 @@ public class ChildContainerSerializers {
     @Override
     public Map onMapWrite(WriteContext writeContext, T value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
       }
@@ -402,7 +402,7 @@ public class ChildContainerSerializers {
     @Override
     public Map onMapWrite(WriteContext writeContext, T value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      buffer.writeVarUint32Small7(value.size());
+      buffer.writeVarUInt32Small7(value.size());
       writeContext.writeRef(value.comparator());
       for (Serializer slotsSerializer : slotsSerializers) {
         slotsSerializer.write(writeContext, value);
@@ -413,7 +413,7 @@ public class ChildContainerSerializers {
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -677,7 +677,7 @@ public class ChildContainerSerializers {
     if (metaReadContext == null) {
       return;
     }
-    int indexMarker = buffer.readVarUint32Small14();
+    int indexMarker = buffer.readVarUInt32Small14();
     boolean isRef = (indexMarker & 1) == 1;
     int index = indexMarker >>> 1;
     if (isRef) {

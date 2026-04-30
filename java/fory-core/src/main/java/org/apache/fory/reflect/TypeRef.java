@@ -38,6 +38,7 @@ import java.util.stream.Stream;
 import javax.annotation.CheckForNull;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 
@@ -130,6 +131,16 @@ public class TypeRef<T> {
     return new TypeRef<>(type);
   }
 
+  public static <T> TypeRef<T> of(
+      Type type,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType) {
+    List<TypeRef<?>> explicitTypeArguments =
+        typeArguments == null ? null : Collections.unmodifiableList(new ArrayList<>(typeArguments));
+    return new TypeRef<>(type, typeExtMeta, explicitTypeArguments, componentType);
+  }
+
   public static <T> TypeRef<T> of(AnnotatedType annotatedType) {
     @SuppressWarnings("unchecked")
     TypeRef<T> ref = (TypeRef<T>) ofAnnotatedType(annotatedType, false);
@@ -171,8 +182,13 @@ public class TypeRef<T> {
     }
     TypeExtMeta meta = null;
     if (includeRefMeta) {
+      Annotation typeAnnotation =
+          TypeAnnotationUtils.getTypeAnnotation(annotatedType.getAnnotations());
       Ref ref = annotatedType.getAnnotation(Ref.class);
-      if (ref != null) {
+      if (typeAnnotation != null) {
+        int typeId = TypeAnnotationUtils.getTypeId(typeAnnotation, TypeUtils.getRawType(type));
+        meta = TypeExtMeta.of(typeId, true, ref != null && ref.enable());
+      } else if (ref != null) {
         meta = TypeExtMeta.of(Types.UNKNOWN, true, ref.enable());
       }
     }
@@ -265,6 +281,35 @@ public class TypeRef<T> {
           .collect(Collectors.toList());
     }
     return new ArrayList<>();
+  }
+
+  public String getTypeKey() {
+    StringBuilder builder = new StringBuilder();
+    appendTypeKey(builder);
+    return builder.toString();
+  }
+
+  private void appendTypeKey(StringBuilder builder) {
+    builder.append(typeName(type));
+    if (typeExtMeta != null) {
+      builder.append('#').append(typeExtMeta.typeId());
+      builder.append(':').append(typeExtMeta.nullable() ? '1' : '0');
+      builder.append(':').append(typeExtMeta.trackingRef() ? '1' : '0');
+    }
+    if (typeArguments != null && !typeArguments.isEmpty()) {
+      builder.append('<');
+      for (int i = 0; i < typeArguments.size(); i++) {
+        if (i > 0) {
+          builder.append(',');
+        }
+        typeArguments.get(i).appendTypeKey(builder);
+      }
+      builder.append('>');
+    }
+    if (componentType != null) {
+      builder.append("[]");
+      componentType.appendTypeKey(builder);
+    }
   }
 
   /** Returns true if this type is one of the primitive types (including {@code void}). */
@@ -1106,19 +1151,31 @@ public class TypeRef<T> {
   public boolean equals(Object o) {
     if (o instanceof TypeRef) {
       final TypeRef<?> that = (TypeRef<?>) o;
-      return type.equals(that.type);
+      if (!hasTypeExtMeta && !that.hasTypeExtMeta) {
+        return type.equals(that.type);
+      }
+      return type.equals(that.type)
+          && Objects.equals(typeExtMeta, that.typeExtMeta)
+          && Objects.equals(typeArguments, that.typeArguments)
+          && Objects.equals(componentType, that.componentType);
     }
     return false;
   }
 
   @Override
   public int hashCode() {
-    return type.hashCode();
+    if (!hasTypeExtMeta) {
+      return type.hashCode();
+    }
+    return Objects.hash(type, typeExtMeta, typeArguments, componentType);
   }
 
   @Override
   public String toString() {
-    return (type instanceof Class) ? ((Class<?>) type).getName() : type.toString();
+    if (!hasTypeExtMeta) {
+      return (type instanceof Class) ? ((Class<?>) type).getName() : type.toString();
+    }
+    return getTypeKey();
   }
 
   /** Returns the {@code Class} object of arrays with {@code componentType}. */

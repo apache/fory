@@ -29,7 +29,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.stream.Collectors;
-import org.apache.fory.config.Language;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.collection.GuavaCollectionSerializers;
 import org.testng.annotations.Test;
@@ -56,7 +55,7 @@ public class GuavaOptionalDependencyTest {
   private static int registeredInternalId(boolean registerGuavaTypes) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .registerGuavaTypes(registerGuavaTypes)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
@@ -120,7 +119,7 @@ public class GuavaOptionalDependencyTest {
       RegistrationIds ids = currentProcessIds();
       Fory fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .registerGuavaTypes(true)
               .requireClassRegistration(false)
               .suppressClassRegistrationWarnings(true)

@@ -23,24 +23,23 @@ import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.RandomAccess;
-import org.apache.fory.type.unsigned.Uint32;
 
 /**
- * Resizable list backed by an int array for unsigned 32-bit values.
+ * Resizable list backed by a short array for unsigned 16-bit values.
  *
  * <p>Supports auto-growing on insertions, primitive overloads to avoid boxing, and direct access to
  * the backing array for zero-copy interop. Prefer primitive get/set/add to avoid boxing cost;
  * elements are always non-null. The {@link #size()} tracks the logical element count while the
  * backing array capacity may be larger.
  */
-public final class Uint32List extends AbstractList<Uint32> implements RandomAccess {
+public final class UInt16List extends AbstractList<Integer> implements RandomAccess {
   private static final int DEFAULT_CAPACITY = 10;
 
-  private int[] array;
+  private short[] array;
   private int size;
 
   /** Creates an empty list with default capacity. */
-  public Uint32List() {
+  public UInt16List() {
     this(DEFAULT_CAPACITY);
   }
 
@@ -50,11 +49,11 @@ public final class Uint32List extends AbstractList<Uint32> implements RandomAcce
    * @param initialCapacity starting backing array length; must be non-negative
    * @throws IllegalArgumentException if {@code initialCapacity} is negative
    */
-  public Uint32List(int initialCapacity) {
+  public UInt16List(int initialCapacity) {
     if (initialCapacity < 0) {
       throw new IllegalArgumentException("Illegal capacity: " + initialCapacity);
     }
-    this.array = new int[initialCapacity];
+    this.array = new short[initialCapacity];
     this.size = 0;
   }
 
@@ -63,15 +62,15 @@ public final class Uint32List extends AbstractList<Uint32> implements RandomAcce
    *
    * @param array source array; its current length becomes {@link #size()}
    */
-  public Uint32List(int[] array) {
+  public UInt16List(short[] array) {
     this.array = array;
     this.size = array.length;
   }
 
   @Override
-  public Uint32 get(int index) {
+  public Integer get(int index) {
     checkIndex(index);
-    return new Uint32(array[index]);
+    return array[index] & 0xFFFF;
   }
 
   @Override
@@ -80,67 +79,68 @@ public final class Uint32List extends AbstractList<Uint32> implements RandomAcce
   }
 
   @Override
-  public Uint32 set(int index, Uint32 element) {
+  public Integer set(int index, Integer element) {
     checkIndex(index);
     Objects.requireNonNull(element, "element");
-    int prev = array[index];
-    array[index] = element.intValue();
-    return new Uint32(prev);
+    int prev = array[index] & 0xFFFF;
+    array[index] = element.shortValue();
+    return prev;
   }
 
   /** Sets a value without boxing. */
-  public void set(int index, int value) {
+  public void set(int index, short value) {
     checkIndex(index);
     array[index] = value;
   }
 
-  /** Sets a value without boxing; truncates to 32 bits. */
-  public void set(int index, long value) {
+  /** Sets a value without boxing; truncates to 16 bits. */
+  public void set(int index, int value) {
     checkIndex(index);
-    array[index] = (int) value;
+    array[index] = (short) value;
   }
 
   @Override
-  public void add(int index, Uint32 element) {
+  public void add(int index, Integer element) {
     checkPositionIndex(index);
+    Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
     System.arraycopy(array, index, array, index + 1, size - index);
-    array[index] = element.intValue();
+    array[index] = element.shortValue();
     size++;
     modCount++;
   }
 
   @Override
-  public boolean add(Uint32 element) {
+  public boolean add(Integer element) {
     Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
-    array[size++] = element.intValue();
+    array[size++] = element.shortValue();
     modCount++;
     return true;
   }
 
   /** Appends a value without boxing. */
-  public boolean add(int value) {
+  public boolean add(short value) {
     ensureCapacity(size + 1);
     array[size++] = value;
     modCount++;
     return true;
   }
 
-  /** Appends a value without boxing; truncates to 32 bits. */
-  public boolean add(long value) {
+  /** Appends a value without boxing; truncates to 16 bits. */
+  public boolean add(int value) {
     ensureCapacity(size + 1);
-    array[size++] = (int) value;
+    array[size++] = (short) value;
     modCount++;
     return true;
   }
 
-  public long getLong(int index) {
+  public int getInt(int index) {
     checkIndex(index);
-    return Integer.toUnsignedLong(array[index]);
+    return array[index] & 0xFFFF;
   }
 
-  public int getInt(int index) {
+  public short getShort(int index) {
     checkIndex(index);
     return array[index];
   }
@@ -170,12 +170,12 @@ public final class Uint32List extends AbstractList<Uint32> implements RandomAcce
    * @return the backing array
    * @throws UnsupportedOperationException if this list is not backed by an accessible heap array
    */
-  public int[] getArray() {
+  public short[] getArray() {
     return array;
   }
 
   /** Returns a trimmed copy containing exactly {@code size()} elements. */
-  public int[] copyArray() {
+  public short[] copyArray() {
     return Arrays.copyOf(array, size);
   }
 

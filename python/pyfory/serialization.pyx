@@ -34,7 +34,7 @@ from cpython.dict cimport PyDict_Next
 from cpython.list cimport PyList_New, PyList_SET_ITEM
 from cpython.tuple cimport PyTuple_New, PyTuple_SET_ITEM
 from cpython.ref cimport Py_INCREF, Py_XDECREF
-from pyfory.includes.libabsl cimport flat_hash_map
+from pyfory.includes.libflat_hash_map cimport flat_hash_map
 from pyfory.includes.libutil cimport FlatIntMap
 from pyfory._fory import (
     NO_USER_TYPE_ID,
@@ -315,8 +315,11 @@ cdef class TypeResolver:
         self._populate_type_info(typeinfo)
 
     cpdef inline TypeInfo get_type_info(self, cls, create=True):
-        cdef PyObject * typeinfo_ptr = self._c_types_info[<uintptr_t> <PyObject *> cls]
+        cdef pair[uint64_t, PyObject *] *entry = self._c_types_info.find(<uintptr_t> <PyObject *> cls)
+        cdef PyObject * typeinfo_ptr = NULL
         cdef TypeInfo typeinfo
+        if entry != NULL:
+            typeinfo_ptr = deref(entry).second
         if typeinfo_ptr != NULL:
             typeinfo = <TypeInfo> typeinfo_ptr
             if typeinfo.serializer is None:
@@ -388,6 +391,7 @@ cdef class TypeResolver:
         cdef object ns_metabytes
         cdef object type_metabytes
         cdef PyObject * typeinfo_ptr = NULL
+        cdef pair[uint32_t, PyObject *] *entry
         if (
             type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT
             or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT
@@ -417,10 +421,10 @@ cdef class TypeResolver:
             return self._load_bytes_to_type_info(ns_metabytes, type_metabytes)
         if reg_kind == TypeRegistrationKind.BY_ID:
             user_type_id = buffer.read_var_uint32()
-            typeinfo_ptr = self._c_user_type_id_to_type_info[user_type_id]
-            if typeinfo_ptr == NULL:
+            entry = self._c_user_type_id_to_type_info.find(user_type_id)
+            if entry == NULL or deref(entry).second == NULL:
                 raise ValueError(f"Unexpected user_type_id {user_type_id}")
-            return <TypeInfo>typeinfo_ptr
+            return <TypeInfo>deref(entry).second
         if type_id >= self._c_registered_id_to_type_info.size():
             raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
@@ -468,7 +472,7 @@ cdef class TypeResolver:
         cdef uint8_t type_id
         cdef object type_def
         cdef uint64_t type_addr
-        cdef flat_hash_map[uint64_t, int32_t].iterator it
+        cdef pair[uint64_t, int32_t] *entry
         cdef int32_t index
         if meta_context is None:
             raise AssertionError(
@@ -481,9 +485,9 @@ cdef class TypeResolver:
             write_context.write_bytes(typeinfo.type_def.encoded)
             return
         type_addr = <uint64_t> <PyObject *> type_cls
-        it = meta_context.class_map.find(type_addr)
-        if it != meta_context.class_map.end():
-            write_context.write_var_uint32((deref(it).second << 1) | 1)
+        entry = meta_context.class_map.find(type_addr)
+        if entry != NULL:
+            write_context.write_var_uint32((deref(entry).second << 1) | 1)
             return
         index = meta_context.class_map.size()
         meta_context.class_map[type_addr] = index
@@ -526,21 +530,17 @@ cdef class TypeResolver:
         return typeinfo
 
     cdef inline TypeInfo _load_bytes_to_type_info(self, object ns_metabytes, object type_metabytes):
-        cdef PyObject * typeinfo_ptr = self._c_meta_hash_to_type_info[
-            pair[int64_t, int64_t](
-                ns_metabytes.hashcode,
-                type_metabytes.hashcode,
-            )
-        ]
+        cdef pair[int64_t, int64_t] hash_key = pair[int64_t, int64_t](
+            ns_metabytes.hashcode,
+            type_metabytes.hashcode,
+        )
+        cdef pair[pair[int64_t, int64_t], PyObject *] *entry = self._c_meta_hash_to_type_info.find(hash_key)
         cdef TypeInfo typeinfo
-        if typeinfo_ptr != NULL:
-            return <TypeInfo>typeinfo_ptr
+        if entry != NULL and deref(entry).second != NULL:
+            return <TypeInfo>deref(entry).second
         typeinfo = self.resolver._load_metabytes_to_type_info(ns_metabytes, type_metabytes)
         self._c_meta_hash_to_type_info[
-            pair[int64_t, int64_t](
-                ns_metabytes.hashcode,
-                type_metabytes.hashcode,
-            )
+            hash_key
         ] = <PyObject *>typeinfo
         return typeinfo
 

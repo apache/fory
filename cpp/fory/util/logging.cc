@@ -18,12 +18,18 @@
  */
 
 #include "fory/util/logging.h"
-#include "absl/debugging/failure_signal_handler.h"
-#include "absl/debugging/stacktrace.h"
-#include "absl/debugging/symbolize.h"
 #include "fory/util/time_util.h"
+
+#if !defined(_WIN32)
+#include <execinfo.h>
+#endif
+
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <cstdlib>
+#include <sstream>
 #include <unordered_map>
-#include <vector>
 
 namespace std {
 template <> struct hash<fory::ForyLogLevel> {
@@ -36,18 +42,30 @@ namespace fory {
 const ForyLogLevel fory_severity_threshold = ForyLog::get_log_level();
 
 std::string get_call_trace() {
-  std::vector<void *> local_stack;
-  local_stack.resize(100);
-  absl::GetStackTrace(local_stack.data(), 100, 0);
-  static constexpr size_t buf_size = 16 * 1024;
-  char buf[buf_size];
+#if !defined(_WIN32)
+  std::array<void *, 100> local_stack{};
+  int frames =
+      backtrace(local_stack.data(), static_cast<int>(local_stack.size()));
   std::string output;
-  for (auto &stack : local_stack) {
-    if (absl::Symbolize(stack, buf, buf_size)) {
-      output.append("    ").append(buf).append("\n");
+  char **symbols = backtrace_symbols(local_stack.data(), frames);
+  if (symbols != nullptr) {
+    for (int i = 0; i < frames; ++i) {
+      output.append("    ").append(symbols[i]).append("\n");
     }
+    std::free(symbols);
+    return output;
+  }
+  for (int i = 0; i < frames; ++i) {
+    std::ostringstream stream;
+    stream << "    frame[" << i << "] " << local_stack[static_cast<size_t>(i)]
+           << "\n";
+    output.append(stream.str());
   }
   return output;
+#else
+  std::string output = "    Stack trace is not supported on this platform.\n";
+  return output;
+#endif
 }
 
 std::unordered_map<ForyLogLevel, std::string> log_level_to_str = {

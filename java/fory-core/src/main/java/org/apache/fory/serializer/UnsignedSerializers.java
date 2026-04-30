@@ -23,80 +23,80 @@ import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
+import org.apache.fory.type.unsigned.UInt16;
+import org.apache.fory.type.unsigned.UInt32;
+import org.apache.fory.type.unsigned.UInt64;
+import org.apache.fory.type.unsigned.UInt8;
 
 /** Serializers for unsigned numeric types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class UnsignedSerializers {
 
-  public static final class Uint8Serializer extends ImmutableSerializer<Uint8>
+  public static final class UInt8Serializer extends ImmutableSerializer<UInt8>
       implements Shareable {
-    public Uint8Serializer(Config config) {
-      super(config, Uint8.class, false);
+    public UInt8Serializer(Config config) {
+      super(config, UInt8.class, false);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint8 value) {
+    public void write(WriteContext writeContext, UInt8 value) {
       writeContext.getBuffer().writeByte(value.byteValue());
     }
 
     @Override
-    public Uint8 read(ReadContext readContext) {
-      return new Uint8(readContext.getBuffer().readByte());
+    public UInt8 read(ReadContext readContext) {
+      return new UInt8(readContext.getBuffer().readByte());
     }
   }
 
-  public static final class Uint16Serializer extends ImmutableSerializer<Uint16>
+  public static final class UInt16Serializer extends ImmutableSerializer<UInt16>
       implements Shareable {
-    public Uint16Serializer(Config config) {
-      super(config, Uint16.class, false);
+    public UInt16Serializer(Config config) {
+      super(config, UInt16.class, false);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint16 value) {
+    public void write(WriteContext writeContext, UInt16 value) {
       writeContext.getBuffer().writeInt16(value.shortValue());
     }
 
     @Override
-    public Uint16 read(ReadContext readContext) {
-      return new Uint16(readContext.getBuffer().readInt16());
+    public UInt16 read(ReadContext readContext) {
+      return new UInt16(readContext.getBuffer().readInt16());
     }
   }
 
-  public static final class Uint32Serializer extends ImmutableSerializer<Uint32>
+  public static final class UInt32Serializer extends ImmutableSerializer<UInt32>
       implements Shareable {
-    public Uint32Serializer(Config config) {
-      super(config, Uint32.class, false);
+    public UInt32Serializer(Config config) {
+      super(config, UInt32.class, false);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint32 value) {
+    public void write(WriteContext writeContext, UInt32 value) {
       writeContext.getBuffer().writeInt32(value.intValue());
     }
 
     @Override
-    public Uint32 read(ReadContext readContext) {
-      return new Uint32(readContext.getBuffer().readInt32());
+    public UInt32 read(ReadContext readContext) {
+      return new UInt32(readContext.getBuffer().readInt32());
     }
   }
 
-  public static final class Uint64Serializer extends ImmutableSerializer<Uint64>
+  public static final class UInt64Serializer extends ImmutableSerializer<UInt64>
       implements Shareable {
-    public Uint64Serializer(Config config) {
-      super(config, Uint64.class, false);
+    public UInt64Serializer(Config config) {
+      super(config, UInt64.class, false);
     }
 
     @Override
-    public void write(WriteContext writeContext, Uint64 value) {
+    public void write(WriteContext writeContext, UInt64 value) {
       writeContext.getBuffer().writeInt64(value.longValue());
     }
 
     @Override
-    public Uint64 read(ReadContext readContext) {
-      return new Uint64(readContext.getBuffer().readInt64());
+    public UInt64 read(ReadContext readContext) {
+      return new UInt64(readContext.getBuffer().readInt64());
     }
   }
 
@@ -104,9 +104,9 @@ public class UnsignedSerializers {
     // Note: Classes are already registered in ClassResolver.initialize()
     // We only need to register serializers here
     Config config = resolver.getConfig();
-    resolver.registerInternalSerializer(Uint8.class, new Uint8Serializer(config));
-    resolver.registerInternalSerializer(Uint16.class, new Uint16Serializer(config));
-    resolver.registerInternalSerializer(Uint32.class, new Uint32Serializer(config));
-    resolver.registerInternalSerializer(Uint64.class, new Uint64Serializer(config));
+    resolver.registerInternalSerializer(UInt8.class, new UInt8Serializer(config));
+    resolver.registerInternalSerializer(UInt16.class, new UInt16Serializer(config));
+    resolver.registerInternalSerializer(UInt32.class, new UInt32Serializer(config));
+    resolver.registerInternalSerializer(UInt64.class, new UInt64Serializer(config));
   }
 }

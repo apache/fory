@@ -22,7 +22,7 @@ package org.apache.fory.context;
 import java.util.IdentityHashMap;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
@@ -61,7 +61,7 @@ public final class WriteContext {
   private final StringSerializer stringSerializer;
   private final boolean crossLanguage;
   private final boolean compressInt;
-  private final LongEncoding longEncoding;
+  private final Int64Encoding longEncoding;
   private final boolean forVirtualThread;
   private final boolean scopedMetaShareEnabled;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
@@ -141,10 +141,10 @@ public final class WriteContext {
    * Writes an unsigned byte directly to the current buffer.
    *
    * <p>If a caller needs multiple primitive writes, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#writeUint8(int)} directly for better performance.
+   * #getBuffer()} and invoke {@link MemoryBuffer#writeUInt8(int)} directly for better performance.
    */
-  public void writeUint8(int value) {
-    buffer.writeUint8(value);
+  public void writeUInt8(int value) {
+    buffer.writeUInt8(value);
   }
 
   /**
@@ -237,11 +237,11 @@ public final class WriteContext {
    * Writes an unsigned variable-length 32-bit integer.
    *
    * <p>If a caller needs multiple primitive writes, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#writeVarUint32(int)} directly for better
+   * #getBuffer()} and invoke {@link MemoryBuffer#writeVarUInt32(int)} directly for better
    * performance.
    */
-  public int writeVarUint32(int value) {
-    return buffer.writeVarUint32(value);
+  public int writeVarUInt32(int value) {
+    return buffer.writeVarUInt32(value);
   }
 
   /**
@@ -259,11 +259,11 @@ public final class WriteContext {
    * Writes an unsigned variable-length 64-bit integer.
    *
    * <p>If a caller needs multiple primitive writes, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#writeVarUint64(long)} directly for better
+   * #getBuffer()} and invoke {@link MemoryBuffer#writeVarUInt64(long)} directly for better
    * performance.
    */
-  public int writeVarUint64(long value) {
-    return buffer.writeVarUint64(value);
+  public int writeVarUInt64(long value) {
+    return buffer.writeVarUInt64(value);
   }
 
   /**
@@ -281,11 +281,11 @@ public final class WriteContext {
    * Writes a tagged unsigned 64-bit integer using the compact small-long encoding.
    *
    * <p>If a caller needs multiple primitive writes, fetch the buffer once through {@link
-   * #getBuffer()} and invoke {@link MemoryBuffer#writeTaggedUint64(long)} directly for better
+   * #getBuffer()} and invoke {@link MemoryBuffer#writeTaggedUInt64(long)} directly for better
    * performance.
    */
-  public int writeTaggedUint64(long value) {
-    return buffer.writeTaggedUint64(value);
+  public int writeTaggedUInt64(long value) {
+    return buffer.writeTaggedUInt64(value);
   }
 
   /** Clears all operation-local state so this context can be reused for another write. */
@@ -405,7 +405,7 @@ public final class WriteContext {
   }
 
   /** Returns the configured long encoding policy for 64-bit integers. */
-  public LongEncoding longEncoding() {
+  public Int64Encoding longEncoding() {
     return longEncoding;
   }
 
@@ -647,9 +647,9 @@ public final class WriteContext {
       buffer.writeBoolean(true);
       int totalBytes = bufferObject.totalBytes();
       if (!crossLanguage) {
-        buffer.writeVarUint32Aligned(totalBytes);
+        buffer.writeVarUInt32Aligned(totalBytes);
       } else {
-        buffer.writeVarUint32(totalBytes);
+        buffer.writeVarUInt32(totalBytes);
       }
       int writerIndex = buffer.writerIndex();
       buffer.ensure(writerIndex + bufferObject.totalBytes());
@@ -668,9 +668,9 @@ public final class WriteContext {
       buffer.writeBoolean(true);
       int totalBytes = bufferObject.totalBytes();
       if (!crossLanguage) {
-        buffer.writeVarUint32Aligned(totalBytes);
+        buffer.writeVarUInt32Aligned(totalBytes);
       } else {
-        buffer.writeVarUint32(totalBytes);
+        buffer.writeVarUInt32(totalBytes);
       }
       bufferObject.writeTo(buffer);
     } else {

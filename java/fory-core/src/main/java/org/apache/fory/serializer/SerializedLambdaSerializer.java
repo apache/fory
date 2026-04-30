@@ -73,7 +73,7 @@ public class SerializedLambdaSerializer extends Serializer {
     buffer.writeVarInt32(serializedLambda.getImplMethodKind());
     writeContext.writeStringRef(serializedLambda.getInstantiatedMethodType());
     int capturedArgCount = serializedLambda.getCapturedArgCount();
-    buffer.writeVarUint32Small7(capturedArgCount);
+    buffer.writeVarUInt32Small7(capturedArgCount);
     for (int i = 0; i < capturedArgCount; i++) {
       writeContext.writeRef(serializedLambda.getCapturedArg(i));
     }
@@ -116,7 +116,7 @@ public class SerializedLambdaSerializer extends Serializer {
     String implMethodSignature = readContext.readStringRef();
     int implMethodKind = buffer.readVarInt32();
     String instantiatedMethodType = readContext.readStringRef();
-    int capturedArgCount = buffer.readVarUint32Small7();
+    int capturedArgCount = buffer.readVarUInt32Small7();
     Object[] capturedArgs = new Object[capturedArgCount];
     for (int i = 0; i < capturedArgCount; i++) {
       capturedArgs[i] = readContext.readRef();

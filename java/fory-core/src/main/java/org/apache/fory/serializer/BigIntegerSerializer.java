@@ -55,13 +55,13 @@ public final class BigIntegerSerializer extends ImmutableSerializer<BigInteger>
   private void writeNative(WriteContext writeContext, BigInteger value) {
     MemoryBuffer buffer = writeContext.getBuffer();
     byte[] bytes = value.toByteArray();
-    buffer.writeVarUint32Small7(bytes.length);
+    buffer.writeVarUInt32Small7(bytes.length);
     buffer.writeBytes(bytes);
   }
 
   private BigInteger readNative(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int len = buffer.readVarUint32Small7();
+    int len = buffer.readVarUInt32Small7();
     byte[] bytes = buffer.readBytes(len);
     return new BigInteger(bytes);
   }

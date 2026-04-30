@@ -34,8 +34,7 @@ import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -90,13 +89,13 @@ public class ArraySerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testObjectArraySerialization(boolean referenceTracking, Language language) {
-    if (language != Language.JAVA) {
+  public void testObjectArraySerialization(boolean referenceTracking, boolean xlang) {
+    if (xlang) {
       return;
     }
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -111,7 +110,7 @@ public class ArraySerializersTest extends ForyTestBase {
     serDeCheck(fory1, fory2, new Object[] {false, true});
     serDeCheck(fory1, fory2, new Object[] {(byte) 1, (byte) 1});
     serDeCheck(fory1, fory2, new Object[] {(short) 1, (short) 1});
-    if (language == Language.JAVA) {
+    if (!xlang) {
       serDeCheck(fory1, fory2, new Object[] {(char) 1, (char) 1});
     }
     serDeCheck(fory1, fory2, new Object[] {1, 1});
@@ -121,7 +120,7 @@ public class ArraySerializersTest extends ForyTestBase {
     serDeCheck(fory1, fory2, new Boolean[] {false, true});
     serDeCheck(fory1, fory2, new Byte[] {(byte) 1, (byte) 1});
     serDeCheck(fory1, fory2, new Short[] {(short) 1, (short) 1});
-    if (language == Language.JAVA) {
+    if (!xlang) {
       serDeCheck(fory1, fory2, new Character[] {(char) 1, (char) 1});
     }
     serDeCheck(fory1, fory2, new Integer[] {1, 1});
@@ -158,13 +157,13 @@ public class ArraySerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testMultiArraySerialization(boolean referenceTracking, Language language) {
-    if (language != Language.JAVA) {
+  public void testMultiArraySerialization(boolean referenceTracking, boolean xlang) {
+    if (xlang) {
       return;
     }
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -200,11 +199,11 @@ public class ArraySerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
-  public void testPrimitiveArray(boolean referenceTracking, Language language) {
+  public void testPrimitiveArray(boolean referenceTracking, boolean xlang) {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(language)
+                .withXlang(xlang)
                 .withRefTracking(referenceTracking)
                 .requireClassRegistration(false);
     Fory fory1 = builder.get().build();
@@ -244,7 +243,7 @@ public class ArraySerializersTest extends ForyTestBase {
   public void testArrayZeroCopy(boolean referenceTracking) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -264,7 +263,7 @@ public class ArraySerializersTest extends ForyTestBase {
   public void testArrayStructZeroCopy(boolean referenceTracking) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -382,7 +381,7 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .requireClassRegistration(false)
             .withLongArrayCompressed(true)
-            .withLongCompressed(LongEncoding.VARINT)
+            .withLongCompressed(Int64Encoding.VARINT)
             .build();
 
     // Test empty array
@@ -435,7 +434,7 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .requireClassRegistration(false)
             .withLongArrayCompressed(true)
-            .withLongCompressed(LongEncoding.VARINT)
+            .withLongCompressed(Int64Encoding.VARINT)
             .build();
 
     // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)

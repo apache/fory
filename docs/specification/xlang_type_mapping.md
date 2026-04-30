@@ -138,9 +138,9 @@ Here is en example:
 
   ```java
   class Foo {
-    @Int32Type(compress = false)
+    @Int32Type(encoding = Int32Encoding.FIXED)
     int f1;
-    List<Integer> f2;
+    List<@Int32Type(encoding = Int32Encoding.FIXED) Integer> f2;
   }
   ```
 

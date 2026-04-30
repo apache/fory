@@ -78,10 +78,10 @@ import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeParameter;
@@ -466,9 +466,13 @@ public class TypeUtils {
   }
 
   public static TypeRef<?> getArrayComponent(TypeRef<?> type) {
+    TypeRef<?> componentType = type.getComponentType();
+    if (componentType != null) {
+      return componentType;
+    }
     if (type.getType() instanceof GenericArrayType) {
-      Type componentType = ((GenericArrayType) (type.getType())).getGenericComponentType();
-      return TypeRef.of(componentType);
+      Type genericComponentType = ((GenericArrayType) (type.getType())).getGenericComponentType();
+      return TypeRef.of(genericComponentType);
     }
     return TypeRef.of(getArrayComponentInfo(type.getRawType()).f0);
   }
@@ -638,17 +642,23 @@ public class TypeUtils {
   }
 
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType) {
-    return new TypeRef<Collection<E>>() {}.where(new TypeParameter<E>() {}, elemType);
+    TypeRef<Collection<E>> raw =
+        new TypeRef<Collection<E>>() {}.where(new TypeParameter<E>() {}, elemType);
+    return TypeRef.of(raw.getType(), null, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType, TypeExtMeta extMeta) {
-    return new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType);
+    TypeRef<Collection<E>> raw =
+        new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType);
+    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<? extends Collection<E>> collectionOf(
       Class<?> collectionType, TypeRef<E> elemType, TypeExtMeta extMeta) {
-    return new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType)
-        .getSubtype(collectionType);
+    TypeRef<? extends Collection<E>> raw =
+        new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType)
+            .getSubtype(collectionType);
+    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(Class<K> keyType, Class<V> valueType) {
@@ -656,14 +666,18 @@ public class TypeUtils {
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(TypeRef<K> keyType, TypeRef<V> valueType) {
-    return new TypeRef<Map<K, V>>() {}.where(new TypeParameter<K>() {}, keyType)
-        .where(new TypeParameter<V>() {}, valueType);
+    TypeRef<Map<K, V>> raw =
+        new TypeRef<Map<K, V>>() {}.where(new TypeParameter<K>() {}, keyType)
+            .where(new TypeParameter<V>() {}, valueType);
+    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(
       TypeRef<K> keyType, TypeRef<V> valueType, TypeExtMeta extMeta) {
-    return new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
-        .where(new TypeParameter<V>() {}, valueType);
+    TypeRef<Map<K, V>> raw =
+        new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
+            .where(new TypeParameter<V>() {}, valueType);
+    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
@@ -671,13 +685,15 @@ public class TypeUtils {
     TypeRef<Map<K, V>> mapTypeRef =
         new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
-    return mapTypeRef.getSubtype(mapType);
+    TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
+    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
       Class<?> mapType, TypeRef<K> keyType, TypeRef<V> valueType) {
     TypeRef<Map<K, V>> mapTypeRef = mapOf(keyType, valueType);
-    return mapTypeRef.getSubtype(mapType);
+    TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
+    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
@@ -708,10 +724,10 @@ public class TypeUtils {
         || cls == Int16List.class
         || cls == Int32List.class
         || cls == Int64List.class
-        || cls == Uint8List.class
-        || cls == Uint16List.class
-        || cls == Uint32List.class
-        || cls == Uint64List.class
+        || cls == UInt8List.class
+        || cls == UInt16List.class
+        || cls == UInt32List.class
+        || cls == UInt64List.class
         || cls == Float16List.class
         || cls == BFloat16List.class
         || cls == Float32List.class

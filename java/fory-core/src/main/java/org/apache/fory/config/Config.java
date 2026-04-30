@@ -48,7 +48,7 @@ public class Config implements Serializable {
   private final boolean writeNumUtf16BytesForUtf8Encoding;
   private final boolean compressInt;
   private final boolean compressLong;
-  private final LongEncoding longEncoding;
+  private final Int64Encoding longEncoding;
   private final boolean compressIntArray;
   private final boolean compressLongArray;
   private final boolean requireClassRegistration;
@@ -79,7 +79,7 @@ public class Config implements Serializable {
     writeNumUtf16BytesForUtf8Encoding = builder.writeNumUtf16BytesForUtf8Encoding;
     compressInt = builder.compressInt;
     longEncoding = builder.longEncoding;
-    compressLong = longEncoding != LongEncoding.FIXED;
+    compressLong = longEncoding != Int64Encoding.FIXED;
     compressIntArray = builder.compressIntArray;
     compressLongArray = builder.compressLongArray;
     requireClassRegistration = builder.requireClassRegistration;
@@ -181,11 +181,6 @@ public class Config implements Serializable {
     return compatible;
   }
 
-  /** Returns the compatibility mode derived from {@link #isCompatible()} for API compatibility. */
-  public CompatibleMode getCompatibleMode() {
-    return compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
-  }
-
   public boolean checkJdkClassSerializable() {
     return checkJdkClassSerializable;
   }
@@ -207,7 +202,7 @@ public class Config implements Serializable {
   }
 
   /** Returns long encoding. */
-  public LongEncoding longEncoding() {
+  public Int64Encoding longEncoding() {
     return longEncoding;
   }
 

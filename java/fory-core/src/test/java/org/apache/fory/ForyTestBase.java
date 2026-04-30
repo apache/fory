@@ -35,9 +35,7 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
@@ -60,7 +58,7 @@ public abstract class ForyTestBase {
       ThreadLocal.withInitial(
           () ->
               Fory.builder()
-                  .withLanguage(Language.JAVA)
+                  .withXlang(false)
                   .requireClassRegistration(false)
                   .suppressClassRegistrationWarnings(true)
                   .build());
@@ -71,7 +69,7 @@ public abstract class ForyTestBase {
 
   public static ForyBuilder builder() {
     return Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .suppressClassRegistrationWarnings(true)
         .requireClassRegistration(false);
   }
@@ -82,7 +80,7 @@ public abstract class ForyTestBase {
       {
         builder()
             .withRefCopy(true)
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withJdkClassSerializableCheck(false)
             .withCodegen(false)
             .build()
@@ -90,7 +88,7 @@ public abstract class ForyTestBase {
       {
         builder()
             .withRefCopy(true)
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withJdkClassSerializableCheck(false)
             .withCodegen(true)
             .build()
@@ -108,7 +106,7 @@ public abstract class ForyTestBase {
     return new Object[][] {
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withCodegen(false)
             .requireClassRegistration(false)
@@ -117,7 +115,7 @@ public abstract class ForyTestBase {
       },
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withCodegen(false)
             .requireClassRegistration(false)
@@ -186,16 +184,16 @@ public abstract class ForyTestBase {
   @DataProvider
   public static Object[][] crossLanguageReferenceTrackingConfig() {
     return new Object[][] {
-      {false, Language.JAVA},
-      {true, Language.JAVA},
-      {false, Language.XLANG},
-      {true, Language.XLANG}
+      {false, false},
+      {true, false},
+      {false, true},
+      {true, true}
     };
   }
 
   @DataProvider
-  public static Object[][] language() {
-    return new Object[][] {{Language.JAVA}, {Language.XLANG}};
+  public static Object[][] xlang() {
+    return new Object[][] {{false}, {true}};
   }
 
   @DataProvider(name = "javaFory")
@@ -203,7 +201,7 @@ public abstract class ForyTestBase {
     return new Object[][] {
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withCodegen(false)
             .requireClassRegistration(false)
@@ -212,7 +210,7 @@ public abstract class ForyTestBase {
       },
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withCodegen(false)
             .requireClassRegistration(false)
@@ -221,7 +219,7 @@ public abstract class ForyTestBase {
       },
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withCodegen(true)
             .requireClassRegistration(false)
@@ -230,7 +228,7 @@ public abstract class ForyTestBase {
       },
       {
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withCodegen(true)
             .requireClassRegistration(false)
@@ -245,43 +243,15 @@ public abstract class ForyTestBase {
     Supplier<ForyBuilder> builder =
         () ->
             Fory.builder()
-                .withLanguage(Language.JAVA)
+                .withXlang(false)
                 .requireClassRegistration(false)
                 .suppressClassRegistrationWarnings(true)
                 .withScopedMetaShare(false);
     return new Object[][] {
-      {
-        builder
-            .get()
-            .withRefTracking(true)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
-      {
-        builder
-            .get()
-            .withRefTracking(false)
-            .withCodegen(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
-      {
-        builder
-            .get()
-            .withRefTracking(true)
-            .withCodegen(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
-      {
-        builder
-            .get()
-            .withRefTracking(false)
-            .withCodegen(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build()
-      },
+      {builder.get().withRefTracking(true).withCodegen(false).withCompatible(true).build()},
+      {builder.get().withRefTracking(false).withCodegen(false).withCompatible(true).build()},
+      {builder.get().withRefTracking(true).withCodegen(true).withCompatible(true).build()},
+      {builder.get().withRefTracking(false).withCodegen(true).withCompatible(true).build()},
     };
   }
 

@@ -47,7 +47,7 @@ import org.apache.fory.builder.LayerMarkerClassGenerator;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectIntMap;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
@@ -140,9 +140,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
      */
     MetaSharedLayerSerializerBase getCurrentReadSerializer();
 
-    ForyObjectOutputStream getObjectOutputStream();
+    ForyStructOutputStream getObjectOutputStream();
 
-    ForyObjectInputStream getObjectInputStream();
+    ForyStructInputStream getObjectInputStream();
 
     ObjectArray getFieldPool();
 
@@ -245,11 +245,11 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
           // No custom writeObject - write fields directly
           serializer.writeFieldsOnly(writeContext, value);
         } else {
-          ForyObjectOutputStream objectOutputStream = slotsInfo.getObjectOutputStream();
+          ForyStructOutputStream objectOutputStream = slotsInfo.getObjectOutputStream();
           Object oldObject = objectOutputStream.targetObject;
           MemoryBuffer oldBuffer = objectOutputStream.buffer;
           WriteContext oldWriteContext = objectOutputStream.writeContext;
-          ForyObjectOutputStream.PutFieldImpl oldPutField = objectOutputStream.curPut;
+          ForyStructOutputStream.PutFieldImpl oldPutField = objectOutputStream.curPut;
           boolean fieldsWritten = objectOutputStream.fieldsWritten;
           try {
             objectOutputStream.targetObject = value;
@@ -337,15 +337,15 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
           matchedSlot.getCurrentReadSerializer().readAndSetFields(readContext, obj);
         } else {
           // For custom readObject, it handles its own format
-          ForyObjectInputStream objectInputStream = matchedSlot.getObjectInputStream();
+          ForyStructInputStream objectInputStream = matchedSlot.getObjectInputStream();
           MemoryBuffer oldBuffer = objectInputStream.buffer;
           Object oldObject = objectInputStream.targetObject;
           ReadContext oldReadContext = objectInputStream.readContext;
-          ForyObjectInputStream.GetFieldImpl oldGetField = objectInputStream.getField;
-          ForyObjectInputStream.GetFieldImpl getField =
-              (ForyObjectInputStream.GetFieldImpl) matchedSlot.getFieldPool().popOrNull();
+          ForyStructInputStream.GetFieldImpl oldGetField = objectInputStream.getField;
+          ForyStructInputStream.GetFieldImpl getField =
+              (ForyStructInputStream.GetFieldImpl) matchedSlot.getFieldPool().popOrNull();
           if (getField == null) {
-            getField = new ForyObjectInputStream.GetFieldImpl(matchedSlot);
+            getField = new ForyStructInputStream.GetFieldImpl(matchedSlot);
           }
           boolean fieldsRead = objectInputStream.fieldsRead;
           try {
@@ -368,7 +368,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
             objectInputStream.getField = oldGetField;
             matchedSlot.getFieldPool().add(getField);
             objectInputStream.callbacks = null;
-            Arrays.fill(getField.vals, ForyObjectInputStream.NO_VALUE_STUB);
+            Arrays.fill(getField.vals, ForyStructInputStream.NO_VALUE_STUB);
           }
         }
       }
@@ -422,7 +422,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     if (metaReadContext == null) {
       throw new IllegalStateException("MetaReadContext is null but meta share is enabled");
     }
-    int indexMarker = buffer.readVarUint32Small14();
+    int indexMarker = buffer.readVarUInt32Small14();
     boolean isRef = (indexMarker & 1) == 1;
     int index = indexMarker >>> 1;
     TypeInfo typeInfo;
@@ -646,8 +646,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private final ObjectIntMap<String> fieldIndexMap;
     private final int numPutFields;
     private final Class<?>[] putFieldTypes;
-    private final ForyObjectOutputStream objectOutputStream;
-    private final ForyObjectInputStream objectInputStream;
+    private final ForyStructOutputStream objectOutputStream;
+    private final ForyStructInputStream objectInputStream;
     private final ObjectArray getFieldPool;
     // Current read serializer (set by getReadSerializer, used by getCurrentReadSerializer)
     private MetaSharedLayerSerializerBase currentReadSerializer;
@@ -726,7 +726,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
       if (streamTypeInfo != null && streamTypeInfo.writeObjectMethod != null) {
         try {
-          objectOutputStream = new ForyObjectOutputStream(this);
+          objectOutputStream = new ForyStructOutputStream(this);
         } catch (IOException e) {
           Platform.throwException(e);
           throw new IllegalStateException("unreachable");
@@ -736,7 +736,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       }
       if (streamTypeInfo != null && streamTypeInfo.readObjectMethod != null) {
         try {
-          objectInputStream = new ForyObjectInputStream(this);
+          objectInputStream = new ForyStructInputStream(this);
         } catch (IOException e) {
           Platform.throwException(e);
           throw new IllegalStateException("unreachable");
@@ -763,12 +763,12 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     }
 
     @Override
-    public ForyObjectOutputStream getObjectOutputStream() {
+    public ForyStructOutputStream getObjectOutputStream() {
       return objectOutputStream;
     }
 
     @Override
-    public ForyObjectInputStream getObjectInputStream() {
+    public ForyStructInputStream getObjectInputStream() {
       return objectInputStream;
     }
 
@@ -837,7 +837,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (metaReadContext == null) {
         return null;
       }
-      int indexMarker = buffer.readVarUint32Small14();
+      int indexMarker = buffer.readVarUInt32Small14();
       boolean isRef = (indexMarker & 1) == 1;
       int index = indexMarker >>> 1;
       if (isRef) {
@@ -875,9 +875,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * @see <a href="https://docs.oracle.com/en/java/javase/18/docs/specs/serialization/output.html">
    *     Java Object Serialization Output Specification</a>
    */
-  private static class ForyObjectOutputStream extends ObjectOutputStream {
+  private static class ForyStructOutputStream extends ObjectOutputStream {
     private final boolean compressInt;
-    private final LongEncoding longEncoding;
+    private final Int64Encoding longEncoding;
     private final SlotInfo slotsInfo;
     private final TypeResolver typeResolver;
     private WriteContext writeContext;
@@ -885,7 +885,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private Object targetObject;
     private boolean fieldsWritten;
 
-    protected ForyObjectOutputStream(SlotInfo slotsInfo) throws IOException {
+    protected ForyStructOutputStream(SlotInfo slotsInfo) throws IOException {
       super();
       this.slotsInfo = slotsInfo;
       this.typeResolver = slotsInfo.getSlotsSerializer().typeResolver;
@@ -1190,9 +1190,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * @see <a href="https://docs.oracle.com/en/java/javase/18/docs/specs/serialization/input.html">
    *     Java Object Serialization Input Specification</a>
    */
-  private static class ForyObjectInputStream extends ObjectInputStream {
+  private static class ForyStructInputStream extends ObjectInputStream {
     private final boolean compressInt;
-    private final LongEncoding longEncoding;
+    private final Int64Encoding longEncoding;
     private final SlotInfo slotsInfo;
     private final TypeResolver typeResolver;
     private ReadContext readContext;
@@ -1202,7 +1202,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private boolean fieldsRead;
     private TreeMap<Integer, ObjectInputValidation> callbacks;
 
-    protected ForyObjectInputStream(SlotInfo slotsInfo) throws IOException {
+    protected ForyStructInputStream(SlotInfo slotsInfo) throws IOException {
       this.compressInt = slotsInfo.getSlotsSerializer().config.compressInt();
       this.longEncoding = slotsInfo.getSlotsSerializer().config.longEncoding();
       this.slotsInfo = slotsInfo;

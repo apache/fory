@@ -88,7 +88,7 @@ final bytes = fory.serialize(Person()
 
 ```java
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .build();
 
 fory.register(Person.class, 100);

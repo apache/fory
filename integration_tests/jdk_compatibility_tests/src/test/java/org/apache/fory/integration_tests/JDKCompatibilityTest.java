@@ -26,9 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.Platform;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -36,7 +34,7 @@ import org.testng.annotations.Test;
 public class JDKCompatibilityTest {
 
   ForyBuilder builder() {
-    return Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    return Fory.builder().withXlang(false).requireClassRegistration(false);
   }
 
   Object createObject() {
@@ -55,7 +53,7 @@ public class JDKCompatibilityTest {
       write("object_schema_consistent" + Platform.JAVA_VERSION, serialized);
     }
     {
-      Fory fory = builder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+      Fory fory = builder().withCompatible(true).build();
       Object object = createObject();
       byte[] serialized = fory.serialize(object);
       Assert.assertEquals(fory.deserialize(serialized), object);
@@ -72,7 +70,7 @@ public class JDKCompatibilityTest {
       write("custom_object_schema_consistent" + Platform.JAVA_VERSION, serialized);
     }
     {
-      Fory fory = builder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+      Fory fory = builder().withCompatible(true).build();
       fory.register(CustomObject.class);
       CustomObject customObject = createCustomObject();
       byte[] serialized = fory.serialize(customObject);
@@ -99,7 +97,7 @@ public class JDKCompatibilityTest {
   @Test
   public void testSchemaCompatible() throws IOException {
     Object object = createObject();
-    Fory fory = builder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+    Fory fory = builder().withCompatible(true).build();
     fory.register(CustomObject.class);
     File dir = new File(".");
     File[] files = dir.listFiles((d, name) -> name.startsWith("object_schema_compatible"));

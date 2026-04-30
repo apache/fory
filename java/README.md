@@ -151,7 +151,7 @@ Enable schema compatibility mode to support forward and backward compatibility w
 ```java
 // Enable forward/backward compatibility
 Fory fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .build();
 
 // Serialization and deserialization can use different class versions
@@ -181,7 +181,7 @@ Use XLANG mode to serialize data that can be deserialized by other languages (Py
 ```java
 // Use XLANG mode for cross-language compatibility
 Fory fory = Fory.builder()
-  .withLanguage(Language.XLANG)
+  .withXlang(true)
   .withRefTracking(true)
   .build();
 
@@ -202,11 +202,11 @@ Configure Fory with various options to suit your specific use case:
 ```java
 Fory fory = Fory.builder()
   // Language mode: JAVA (fastest) or XLANG (cross-language)
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   // Reference tracking for circular/shared references
   .withRefTracking(true)
   // Schema evolution mode
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   // Compression options
   .withIntCompressed(true)
   .withLongCompressed(true)
@@ -256,7 +256,7 @@ Enable reference tracking during deep copy to preserve object identity and handl
 
 ```java
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   .withRefCopy(true)
   .build();
 
@@ -401,7 +401,7 @@ mvn -T16 checkstyle:check
 1. **Reuse Fory Instances**: Creating Fory is expensive; reuse instances across serializations
 2. **Enable Compression**: For numeric-heavy data, enable int/long compression
 3. **Disable Reference Tracking**: If no circular references exist, disable tracking for better performance
-4. **Use Java Mode**: Use `Language.JAVA` instead of `Language.XLANG` when cross-language support isn't needed. Java mode reduces type metadata overhead and supports more Java-native types not available in xlang mode
+4. **Use Java Mode**: Leave xlang disabled when cross-language support isn't needed. Java mode reduces type metadata overhead and supports more Java-native types not available in xlang mode
 5. **Warm Up**: Allow JIT compilation to complete before benchmarking
 6. **Register Classes**: Class registration reduces metadata overhead
 7. **Use SIMD**: Enable array compression on Java 16+ for numeric arrays

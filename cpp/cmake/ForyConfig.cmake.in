@@ -19,9 +19,6 @@
 
 include(CMakeFindDependencyMacro)
 
-# Check for Abseil (optional)
-find_package(absl CONFIG QUIET)
-
 include("${CMAKE_CURRENT_LIST_DIR}/ForyTargets.cmake")
 
 # Provide convenient component targets

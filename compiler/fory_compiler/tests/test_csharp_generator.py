@@ -101,9 +101,50 @@ def test_csharp_field_encoding_attributes():
         """
     )
 
-    assert "[Field(Encoding = FieldEncoding.Fixed)]" in file.content
-    assert "[Field(Encoding = FieldEncoding.Tagged)]" in file.content
+    assert "[ForyField(Type = typeof(S.Int32))]" in file.content
+    assert "[ForyField(Type = typeof(S.TaggedUInt64))]" in file.content
     assert "public int Plain { get; set; }" in file.content
+
+
+def test_csharp_nested_schema_type_attributes():
+    file = generate(
+        """
+        package example;
+
+        message Nested {
+            map<fixed_uint32, list<optional tagged_uint64>> values = 1;
+        }
+        """
+    )
+
+    assert (
+        "[ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]"
+        in file.content
+    )
+    assert (
+        "public Dictionary<uint, List<ulong?>> Values { get; set; } = new();"
+        in file.content
+    )
+
+
+def test_csharp_reduced_precision_carriers():
+    file = generate(
+        """
+        package example;
+
+        message Reduced {
+            float16 f16 = 1;
+            bfloat16 bf16 = 2;
+            list<float16> f16_values = 3;
+            list<bfloat16> bf16_values = 4;
+        }
+        """
+    )
+
+    assert "public Half F16 { get; set; }" in file.content
+    assert "public BFloat16 Bf16 { get; set; }" in file.content
+    assert "public List<Half> F16Values { get; set; } = new();" in file.content
+    assert "public List<BFloat16> Bf16Values { get; set; } = new();" in file.content
 
 
 def test_csharp_imported_registration_calls_generated():

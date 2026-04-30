@@ -30,7 +30,8 @@ namespace fory {
 TEST(PrintLogTest, BasicLog) {
   FORY_LOG(FORY_INFO) << "test info";
   ASSERT_DEATH(FORY_LOG(FORY_FATAL) << "test fatal",
-               "\\[.*\\] FATAL cpp/fory/util/logging_test.cc:.*: test fatal");
+               "\\[.*\\] FATAL .*cpp/fory/util/logging_test.cc:.*: test "
+               "fatal");
 }
 
 TEST(PrintLogTest, TestCheckOp) {
@@ -71,12 +72,10 @@ std::string test_function_level2() { return test_function_level1(); }
 TEST(PrintLogTest, CallstackTraceTest) {
   auto ret = test_function_level2();
   FORY_LOG(FORY_INFO) << "stack trace:\n" << ret;
-  // work for linux
-  // EXPECT_TRUE(ret.find("test_function_level0") != std::string::npos);
-  // work for mac
-  // EXPECT_TRUE(ret.find("get_call_trace") != std::string::npos);
-  EXPECT_TRUE(ret.find("fory") != std::string::npos);
-  EXPECT_TRUE(ret.find("PrintLogTest") != std::string::npos);
+  EXPECT_FALSE(ret.empty());
+  EXPECT_TRUE(ret.find("0x") != std::string::npos ||
+              ret.find("test_function") != std::string::npos ||
+              ret.find("PrintLogTest") != std::string::npos);
 }
 #endif
 

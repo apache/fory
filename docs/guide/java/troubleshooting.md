@@ -23,25 +23,25 @@ This page covers common issues and their solutions.
 
 ## Class Inconsistency and Class Version Check
 
-If you create Fory without setting `CompatibleMode` to `org.apache.fory.config.CompatibleMode.COMPATIBLE`, and you get a strange serialization error, it may be caused by class inconsistency between the serialization peer and deserialization peer.
+If you create Fory without enabling compatible mode and you get a strange serialization error, it may be caused by class inconsistency between the serialization peer and deserialization peer.
 
-In such cases, you can invoke `ForyBuilder#withClassVersionCheck` to create Fory to validate it. If deserialization throws `org.apache.fory.exception.ClassNotCompatibleException`, it shows classes are inconsistent, and you should create Fory with `ForyBuilder#withCompatibleMode(CompatibleMode.COMPATIBLE)`.
+In such cases, you can invoke `ForyBuilder#withClassVersionCheck` to create Fory to validate it. If deserialization throws `org.apache.fory.exception.ClassNotCompatibleException`, it shows classes are inconsistent, and you should create Fory with `ForyBuilder#withCompatible(true)`.
 
 ```java
 // Enable class version check to diagnose issues
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   .withClassVersionCheck(true)
   .build();
 
 // If ClassNotCompatibleException is thrown, use compatible mode
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withXlang(false)
+  .withCompatible(true)
   .build();
 ```
 
-**Note**: `CompatibleMode.COMPATIBLE` has more performance and space cost. Do not set it by default if your classes are always consistent between serialization and deserialization.
+**Note**: compatible mode has more performance and space cost. Do not set it by default if your classes are always consistent between serialization and deserialization.
 
 ## Using Wrong API for Deserialization
 
@@ -71,7 +71,7 @@ MyClass typedResult = fory.deserialize(typedBytes, MyClass.class);
 
 ## Deserialize POJO into Another Type
 
-If you want to serialize one POJO and deserialize it into a different POJO type, you must use `CompatibleMode.COMPATIBLE`:
+If you want to serialize one POJO and deserialize it into a different POJO type, enable compatible mode:
 
 ```java
 public class DeserializeIntoType {
@@ -92,7 +92,7 @@ public class DeserializeIntoType {
   }
 
   static ThreadSafeFory fory = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE).buildThreadSafeFory();
+    .withCompatible(true).buildThreadSafeFory();
 
   public static void main(String[] args) {
     Struct1 struct1 = new Struct1(10, "abc");
@@ -124,7 +124,7 @@ fory.register(MyClass.class, 100);
 
 ```java
 Fory fory = Fory.builder()
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   .build();
 ```
 

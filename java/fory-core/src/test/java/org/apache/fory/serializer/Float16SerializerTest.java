@@ -26,7 +26,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Float16List;
-import org.apache.fory.config.Language;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.type.Float16;
 import org.testng.annotations.Test;
@@ -35,7 +34,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16Serialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     byte[] bytes = fory.serialize(Float16.NaN);
     Float16 result = (Float16) fory.deserialize(bytes);
@@ -64,7 +63,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16ArraySerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     Float16[] array =
         new Float16[] {
@@ -102,7 +101,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16ArraySerializationWithNullElements() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     Float16[] array =
         new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
@@ -113,7 +112,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16EmptyArray() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     Float16[] empty = new Float16[0];
     byte[] bytes = fory.serialize(empty);
@@ -123,7 +122,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16LargeArray() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     Float16[] large = new Float16[1000];
     for (int i = 0; i < large.length; i++) {
@@ -149,7 +148,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testStructWithFloat16Field() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.register(StructWithFloat16.class);
 
     StructWithFloat16 obj = new StructWithFloat16(Float16.valueOf(1.5f), Float16.valueOf(-2.5f));
@@ -169,7 +168,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testStructWithFloat16Array() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.register(StructWithFloat16Array.class);
 
     Float16[] array = new Float16[] {Float16.ONE, Float16.valueOf(2.0f), Float16.valueOf(3.0f)};
@@ -192,7 +191,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testStructWithFloat16ListField() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.register(StructWithFloat16List.class);
 
     StructWithFloat16List obj = new StructWithFloat16List(buildFloat16List());
@@ -204,7 +203,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16ListTopLevelSerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     Float16List list = buildFloat16List();
     byte[] bytes = fory.serialize(list);
@@ -217,7 +216,7 @@ public class Float16SerializerTest extends ForyTestBase {
   public void testFloat16XlangTopLevelSerialization() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -245,7 +244,7 @@ public class Float16SerializerTest extends ForyTestBase {
   public void testStructWithFloat16ListFieldInXlang() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -259,7 +258,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16WithNullableField() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     @Data
     @AllArgsConstructor
@@ -282,7 +281,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16SpecialValuesInStruct() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     @Data
     @AllArgsConstructor
@@ -316,7 +315,7 @@ public class Float16SerializerTest extends ForyTestBase {
 
   @Test
   public void testFloat16BitPatternPreservation() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
 
     short[] testBits = {
       (short) 0x0000,

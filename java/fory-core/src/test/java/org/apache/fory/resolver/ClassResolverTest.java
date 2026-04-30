@@ -51,7 +51,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
@@ -83,7 +82,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testPrimitivesClassId() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     // Test that primitive types have consecutive IDs
     List<Class<?>> primitiveClasses = TypeUtils.getSortedPrimitiveClasses();
@@ -105,7 +104,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testRegisterClassByName() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     classResolver.register(C1.class, "ns", "C1");
     Assert.assertThrows(
@@ -130,13 +129,13 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testRegisterClass() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
   }
 
   @Test
   public void testRegisterClassWithUserIds() {
     // Test that user IDs 0 and 1 work correctly with separated user type IDs.
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
 
     // Register with user ID 0
@@ -170,8 +169,7 @@ public class ClassResolverTest extends ForyTestBase {
   @Test
   public void testGetSerializerClass() throws ClassNotFoundException {
     {
-      Fory fory =
-          Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
       // serialize class first will create a class info with serializer null.
       serDeCheck(fory, BeanB.class);
       Assert.assertTrue(
@@ -181,11 +179,10 @@ public class ClassResolverTest extends ForyTestBase {
       serDeCheck(fory, BeanB.createBeanB(2));
     }
     {
-      Fory fory =
-          Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
       serDeCheck(fory, new Object[] {BeanB.class, BeanB.createBeanB(2)});
     }
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     assertEquals(
         classResolver.getSerializerClass(ArrayList.class),
@@ -231,8 +228,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testSharedRegistrySharesTypeDefCachesAcrossForyInstances() {
-    ForyBuilder builder =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    ForyBuilder builder = Fory.builder().withXlang(false).requireClassRegistration(false);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -256,10 +252,7 @@ public class ClassResolverTest extends ForyTestBase {
   @Test
   public void testSharedRegistryCachesTypeDefByIdButKeepsTypeInfoLocal() {
     ForyBuilder builder =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .withMetaShare(true);
+        Fory.builder().withXlang(false).requireClassRegistration(false).withMetaShare(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -291,8 +284,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testSharedRegistryCachesFieldDescriptorsAndDescriptorGrouper() {
-    ForyBuilder builder =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    ForyBuilder builder = Fory.builder().withXlang(false).requireClassRegistration(false);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -324,10 +316,7 @@ public class ClassResolverTest extends ForyTestBase {
   @Test
   public void testSharedRegistryCachesTypeDefDescriptorsAndDescriptorGrouperBySemanticKey() {
     ForyBuilder builder =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withMetaShare(true)
-            .requireClassRegistration(false);
+        Fory.builder().withXlang(false).withMetaShare(true).requireClassRegistration(false);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -361,7 +350,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testRegisterNamedClassCachesOnlyNamespaceAndTypeName() {
-    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    ForyBuilder builder = Fory.builder().withXlang(false).requireClassRegistration(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -375,7 +364,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testFinishRegisterPublishesAndAdoptsSharedRegistration() {
-    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    ForyBuilder builder = Fory.builder().withXlang(false).requireClassRegistration(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -423,7 +412,7 @@ public class ClassResolverTest extends ForyTestBase {
   public void testSerializeClasses(boolean referenceTracking) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .build();
@@ -446,7 +435,7 @@ public class ClassResolverTest extends ForyTestBase {
     {
       Fory fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withRefTracking(true)
               .requireClassRegistration(false)
               .build();
@@ -466,7 +455,7 @@ public class ClassResolverTest extends ForyTestBase {
     {
       Fory fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withRefTracking(true)
               .requireClassRegistration(false)
               .build();
@@ -527,7 +516,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testClassRegistrationInit() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).withCodegen(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(false).build();
     serDeCheck(fory, new HashMap<>(ImmutableMap.of("a", 1, "b", 2)));
   }
 
@@ -540,7 +529,7 @@ public class ClassResolverTest extends ForyTestBase {
   public void testNeedToWriteReference() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -554,7 +543,7 @@ public class ClassResolverTest extends ForyTestBase {
   public void testSetSerializer() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -605,7 +594,7 @@ public class ClassResolverTest extends ForyTestBase {
   public void testResetSerializer() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -621,7 +610,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testPrimitive() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+    Fory fory = Fory.builder().withXlang(false).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     Assert.assertTrue(classResolver.isPrimitive(classResolver.getRegisteredClassId(void.class)));
     Assert.assertTrue(classResolver.isPrimitive(classResolver.getRegisteredClassId(boolean.class)));
@@ -677,7 +666,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testFooCustomSerializer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+    Fory fory = Fory.builder().withXlang(false).build();
     Assert.assertThrows(() -> fory.registerSerializer(Foo.class, FooCustomSerializer.class));
     fory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
     final Foo foo = new Foo();
@@ -690,7 +679,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testShareableSerializerSharedAcrossRuntimes() {
-    ForyBuilder builder = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true);
+    ForyBuilder builder = Fory.builder().withXlang(false).requireClassRegistration(true);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory1 = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
@@ -724,7 +713,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testRejectIncompatibleCollectionAndMapSerializerRegistration() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     IllegalArgumentException collectionException =
         Assert.expectThrows(
             IllegalArgumentException.class,
@@ -782,7 +771,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testInterfaceCustomSerializer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.registerSerializer(
         ITest.class, new InterfaceCustomSerializer(fory.getTypeResolver(), ITest.class));
     final ITest iTest = new ImplTest();
@@ -793,13 +782,13 @@ public class ClassResolverTest extends ForyTestBase {
         fory.getTypeResolver().getSerializer(iTest.getClass()).getClass(),
         InterfaceCustomSerializer.class);
 
-    fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.register(ITest.class);
     Assert.assertNotEquals(
         fory.getTypeResolver().getSerializer(ImplTest.class).getClass(),
         InterfaceCustomSerializer.class);
 
-    fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.registerSerializer(
         ITest.class, new InterfaceCustomSerializer(fory.getTypeResolver(), ITest.class));
     Assert.assertEquals(
@@ -849,7 +838,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractCustomSerializer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     fory.registerSerializer(
         AbsTest.class, new AbstractCustomSerializer(fory.getTypeResolver(), AbsTest.class));
     final AbsTest absTest = new SubAbsTest();
@@ -889,7 +878,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractEnumIsSerializable() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     // Abstract enums should be serializable
     Assert.assertTrue(classResolver.isSerializable(AbstractEnum.class));
@@ -900,7 +889,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractEnumSerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     // Serialize and deserialize abstract enum values
     Assert.assertEquals(AbstractEnum.VALUE1, serDe(fory, AbstractEnum.VALUE1));
     Assert.assertEquals(AbstractEnum.VALUE2, serDe(fory, AbstractEnum.VALUE2));
@@ -910,7 +899,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractObjectArraySerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     // Create an array of abstract type with concrete instances
     AbsTest[] array = new AbsTest[2];
     SubAbsTest item1 = new SubAbsTest();
@@ -934,7 +923,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractObjectArrayWithRegistration() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
     // Register the concrete types but not the abstract type
     fory.register(SubAbsTest.class);
     fory.register(Sub2AbsTest.class);
@@ -959,7 +948,7 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractEnumArraySerialization() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     // Create an array of abstract enum type
     AbstractEnum[] array = new AbstractEnum[] {AbstractEnum.VALUE1, AbstractEnum.VALUE2};
 

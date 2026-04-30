@@ -402,8 +402,8 @@ auto fory = Fory::builder()
 ```java
 // Java with compatible mode
 Fory fory = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE)
-    .withLanguage(Language.XLANG)
+    .withCompatible(true)
+    .withXlang(true)
     .build();
 ```
 

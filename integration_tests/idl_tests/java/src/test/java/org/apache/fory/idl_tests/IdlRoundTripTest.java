@@ -91,12 +91,10 @@ import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -629,17 +627,15 @@ public class IdlRoundTripTest {
 
   private Fory buildFory(boolean compatible) {
     return Fory.builder()
-        .withLanguage(Language.XLANG)
-        .withCompatibleMode(
-            compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+        .withXlang(true)
+        .withCompatible(compatible)
         .build();
   }
 
   private Fory buildRefFory(boolean compatible) {
     return Fory.builder()
-        .withLanguage(Language.XLANG)
-        .withCompatibleMode(
-            compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+        .withXlang(true)
+        .withCompatible(compatible)
         .withRefTracking(true)
         .build();
   }
@@ -883,8 +879,8 @@ public class IdlRoundTripTest {
     types.setInt64Value(-123456789L);
     types.setVarint64Value(-987654321L);
     types.setTaggedInt64Value(123456789L);
-    types.setUint8Value((byte) 200);
-    types.setUint16Value((short) 60000);
+    types.setUint8Value(200);
+    types.setUint16Value(60000);
     types.setUint32Value(1234567890);
     types.setVarUint32Value(1234567890);
     types.setUint64Value(9876543210L);
@@ -904,10 +900,10 @@ public class IdlRoundTripTest {
     collections.setInt16Values(new Int16List(new short[] {100, -200, 300}));
     collections.setInt32Values(new Int32List(new int[] {1000, -2000, 3000}));
     collections.setInt64Values(new Int64List(new long[] {10000L, -20000L, 30000L}));
-    collections.setUint8Values(new Uint8List(new byte[] {(byte) 200, (byte) 250}));
-    collections.setUint16Values(new Uint16List(new short[] {(short) 50000, (short) 60000}));
-    collections.setUint32Values(new Uint32List(new int[] {2000000000, 2100000000}));
-    collections.setUint64Values(new Uint64List(new long[] {9000000000L, 12000000000L}));
+    collections.setUint8Values(new UInt8List(new byte[] {(byte) 200, (byte) 250}));
+    collections.setUint16Values(new UInt16List(new short[] {(short) 50000, (short) 60000}));
+    collections.setUint32Values(new UInt32List(new int[] {2000000000, 2100000000}));
+    collections.setUint64Values(new UInt64List(new long[] {9000000000L, 12000000000L}));
     collections.setFloat32Values(new float[] {1.5f, 2.5f});
     collections.setFloat64Values(new double[] {3.5d, 4.5d});
     return collections;
@@ -980,7 +976,7 @@ public class IdlRoundTripTest {
     monster.setHp((short) 80);
     monster.setName("Orc");
     monster.setFriendly(true);
-    monster.setInventory(new Uint8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
+    monster.setInventory(new UInt8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
     monster.setColor(Color.Blue);
     return monster;
   }
@@ -997,11 +993,11 @@ public class IdlRoundTripTest {
     allTypes.setFixedInt64Value(-123456789L);
     allTypes.setVarint64Value(-987654321L);
     allTypes.setTaggedInt64Value(123456789L);
-    allTypes.setUint8Value((byte) 200);
-    allTypes.setUint16Value((short) 60000);
-    allTypes.setUint32Value(1234567890);
-    allTypes.setFixedUint32Value(1234567890);
-    allTypes.setVarUint32Value(1234567890);
+    allTypes.setUint8Value(200);
+    allTypes.setUint16Value(60000);
+    allTypes.setUint32Value(1234567890L);
+    allTypes.setFixedUint32Value(1234567890L);
+    allTypes.setVarUint32Value(1234567890L);
     allTypes.setUint64Value(9876543210L);
     allTypes.setFixedUint64Value(9876543210L);
     allTypes.setVarUint64Value(12345678901L);
@@ -1112,9 +1108,9 @@ public class IdlRoundTripTest {
   private Container buildContainer() {
     ScalarPack pack = new ScalarPack();
     pack.setB((byte) -8);
-    pack.setUb((byte) 200);
+    pack.setUb(200);
     pack.setS((short) -1234);
-    pack.setUs((short) 40000);
+    pack.setUs(40000);
     pack.setI(-123456);
     pack.setUi(123456);
     pack.setL(-123456789L);

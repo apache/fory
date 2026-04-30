@@ -27,7 +27,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
-import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.FinalCyclic;
 import org.testng.Assert;
@@ -59,7 +58,7 @@ public class CyclicTest extends ForyTestBase {
   public void testBean(boolean enableCodegen, boolean asyncCompilation, boolean compatible) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)

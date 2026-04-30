@@ -24,8 +24,7 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import org.apache.fory.Fory;
-import org.apache.fory.annotation.ForyObject;
-import org.apache.fory.config.Language;
+import org.apache.fory.annotation.ForyStruct;
 import org.apache.fory.type.Types;
 import org.testng.annotations.Test;
 
@@ -34,14 +33,14 @@ public class TypeInfoTest {
     public int id;
   }
 
-  @ForyObject(evolving = false)
+  @ForyStruct(evolving = false)
   public static class FixedStruct {
     public int id;
   }
 
   @Test
   public void testEncodePackageNameAndTypeName() {
-    Fory fory1 = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory1 = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     TypeInfo info1 = fory1.getTypeResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
     assertNotNull(info1.namespace);
     assertNotNull(info1.typeName);
@@ -49,7 +48,7 @@ public class TypeInfoTest {
 
   @Test
   public void testStructEvolvingOverride() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).withCompatible(true).build();
+    Fory fory = Fory.builder().withXlang(true).withCompatible(true).build();
     fory.register(EvolvingStruct.class, "test", "EvolvingStruct");
     fory.register(FixedStruct.class, "test", "FixedStruct");
 

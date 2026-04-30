@@ -20,7 +20,6 @@
 package org.apache.fory.graalvm;
 
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 
 public class ScopedCompatibleExample {
   private static Fory fory;
@@ -34,7 +33,7 @@ public class ScopedCompatibleExample {
         Fory.builder()
             .withName(ScopedCompatibleExample.class.getName())
             .requireClassRegistration(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .build();
     // register and generate serializer code.
     fory.register(Foo.class);

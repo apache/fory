@@ -28,7 +28,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.CollectionFields;
 import org.apache.fory.test.bean.MapFields;
 import org.testng.Assert;
@@ -110,7 +109,7 @@ public class ImmutableCollectionSerializersTest {
     Pojo pojo = new Pojo(List.of(List.of(1, 2), List.of(2, 2)));
     ThreadSafeFory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withRefTracking(trackingRef)

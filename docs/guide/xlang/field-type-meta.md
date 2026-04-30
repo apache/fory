@@ -85,9 +85,7 @@ public class Container {
 
 ### C++
 
-C++ uses the `fory::dynamic<V>` template tag or `.dynamic(bool)` builder method:
-
-**Using `fory::field<>` template**:
+C++ uses the `.dynamic(bool)` builder method inside `FORY_STRUCT`:
 
 ```cpp
 #include "fory/serialization/fory.h"
@@ -100,29 +98,15 @@ struct Animal {
 
 struct Zoo {
     // Auto: type info written because Animal is polymorphic (std::is_polymorphic)
-    fory::field<std::shared_ptr<Animal>, 0, fory::nullable> animal;
+    std::shared_ptr<Animal> animal;
 
     // Force non-dynamic: skip type info even though Animal is polymorphic
-    fory::field<std::shared_ptr<Animal>, 1, fory::nullable, fory::dynamic<false>> fixed_animal;
+    std::shared_ptr<Animal> fixed_animal;
 
     // Force dynamic: write type info even for non-polymorphic types
-    fory::field<std::shared_ptr<Data>, 2, fory::dynamic<true>> polymorphic_data;
-};
-FORY_STRUCT(Zoo, animal, fixed_animal, polymorphic_data);
-```
-
-**Using `FORY_FIELD_CONFIG` macro**:
-
-```cpp
-struct Zoo {
-    std::shared_ptr<Animal> animal;
-    std::shared_ptr<Animal> fixed_animal;
     std::shared_ptr<Data> polymorphic_data;
 };
-
-FORY_STRUCT(Zoo, animal, fixed_animal, polymorphic_data);
-
-FORY_FIELD_CONFIG(Zoo,
+FORY_STRUCT(Zoo,
     (animal, fory::F(0).nullable()),                    // Auto-detect polymorphism
     (fixed_animal, fory::F(1).nullable().dynamic(false)), // Skip type info
     (polymorphic_data, fory::F(2).dynamic(true))        // Force type info
@@ -286,9 +270,7 @@ struct Zoo {
     std::shared_ptr<Dog> maybe_mixed_breed;
 };
 
-FORY_STRUCT(Zoo, animal, maybe_mixed_breed);
-
-FORY_FIELD_CONFIG(Zoo,
+FORY_STRUCT(Zoo,
     (animal, fory::F(0).nullable()),              // Auto-detect (Animal is polymorphic)
     (maybe_mixed_breed, fory::F(1).dynamic(true)) // Force dynamic for concrete type
 );

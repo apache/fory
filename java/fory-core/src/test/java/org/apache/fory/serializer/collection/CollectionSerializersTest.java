@@ -66,7 +66,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -137,7 +136,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testBasicList(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -161,7 +160,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testBasicListNested(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -204,7 +203,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testCollectionGenerics(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -229,7 +228,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testSortedSet(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -311,7 +310,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testTreeSetConstructorMatrix(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -341,7 +340,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testConcurrentSkipListSetConstructorMatrix(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -371,7 +370,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testPriorityQueueConstructorMatrix(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -420,7 +419,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testSortedSetSubclassWithoutComparatorCtor(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -437,7 +436,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testSortedSetSubclassWithComparatorCtor(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -455,7 +454,7 @@ public class CollectionSerializersTest extends ForyTestBase {
       boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -479,7 +478,7 @@ public class CollectionSerializersTest extends ForyTestBase {
       boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
             .build();
@@ -950,7 +949,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testSerializeJavaBlockingQueue() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -1002,7 +1001,7 @@ public class CollectionSerializersTest extends ForyTestBase {
 
   @Test
   public void testCollectionNoJIT() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).withCodegen(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(false).build();
     serDeCheck(fory, new ArrayList<>(ImmutableList.of("a", "b", "c")));
     serDeCheck(fory, new ArrayList<>(ImmutableList.of(1, 2, 3)));
     serDeCheck(fory, new ArrayList<>(ImmutableList.of("a", 1, "b", 2)));
@@ -1270,7 +1269,7 @@ public class CollectionSerializersTest extends ForyTestBase {
 
   @Test
   public void testDefaultCollectionSerializer() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     TestClassForDefaultCollectionSerializer collection =
         new TestClassForDefaultCollectionSerializer();
     collection.add("a");
@@ -1294,7 +1293,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testDefaultCollectionSerializerAsyncCompilation() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withCompatible(true)
             .withCodegen(true)
             .withAsyncCompilation(true)
@@ -1320,7 +1319,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     Class<? extends ImmutableSortedSet> setClass = set.getClass();
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -1359,7 +1358,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32();
+      int numElements = buffer.readVarUInt32();
       setNumElements(numElements);
       return new ArrayList<>(numElements);
     }
@@ -1369,7 +1368,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   public void testSubList() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withJdkClassSerializableCheck(false)
             .build();
@@ -1393,7 +1392,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     // will be equal to element type: null
     List data = new ArrayList<>();
     data.add(null);
-    Fory f = Fory.builder().withLanguage(Language.JAVA).withRefTracking(refTracking).build();
+    Fory f = Fory.builder().withXlang(false).withRefTracking(refTracking).build();
     serDeCheck(f, data);
   }
 

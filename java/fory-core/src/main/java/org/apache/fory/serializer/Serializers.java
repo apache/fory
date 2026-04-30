@@ -366,7 +366,7 @@ public class Serializers {
           bytesLen <<= 1;
         }
         long header = ((long) bytesLen << 2) | coder;
-        buffer.writeVarUint64(header);
+        buffer.writeVarUInt64(header);
         buffer.writeBytes(v, 0, bytesLen);
       } else {
         char[] v = (char[]) GET_VALUE.apply(value);

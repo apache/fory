@@ -59,8 +59,8 @@ class CSharpGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "ulong",
         PrimitiveKind.VAR_UINT64: "ulong",
         PrimitiveKind.TAGGED_UINT64: "ulong",
-        PrimitiveKind.FLOAT16: "float",
-        PrimitiveKind.BFLOAT16: "float",
+        PrimitiveKind.FLOAT16: "Half",
+        PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "string",
@@ -401,6 +401,7 @@ class CSharpGenerator(BaseGenerator):
         lines.append("using System;")
         lines.append("using System.Collections.Generic;")
         lines.append("using Apache.Fory;")
+        lines.append("using S = Apache.Fory.Schema.Types;")
         lines.append("")
         lines.append(f"namespace {namespace_name};")
         lines.append("")
@@ -573,20 +574,74 @@ class CSharpGenerator(BaseGenerator):
 
         return None
 
-    def _field_encoding(self, field: Field) -> Optional[str]:
-        field_type = field.field_type
-        if not isinstance(field_type, PrimitiveType):
-            return None
-        kind = field_type.kind
+    def _schema_type_hint(
+        self, field_type: FieldType, force: bool = False
+    ) -> Optional[str]:
+        if isinstance(field_type, PrimitiveType):
+            return self._primitive_schema_type_hint(field_type.kind, force)
+
+        if isinstance(field_type, ListType):
+            element_hint = self._schema_type_hint(field_type.element_type, force=True)
+            if element_hint is None:
+                return None
+            return f"S.List<{element_hint}>"
+
+        if isinstance(field_type, MapType):
+            key_hint = self._schema_type_hint(field_type.key_type, force=True)
+            value_hint = self._schema_type_hint(field_type.value_type, force=True)
+            if key_hint is None and value_hint is None:
+                return None
+            if key_hint is None:
+                key_hint = self._schema_type_hint(field_type.key_type, force=True)
+            if value_hint is None:
+                value_hint = self._schema_type_hint(field_type.value_type, force=True)
+            if key_hint is None or value_hint is None:
+                return None
+            return f"S.Map<{key_hint}, {value_hint}>"
+
+        return None
+
+    def _primitive_schema_type_hint(
+        self, kind: PrimitiveKind, force: bool
+    ) -> Optional[str]:
+        hints = {
+            PrimitiveKind.BOOL: "S.Bool",
+            PrimitiveKind.INT8: "S.Int8",
+            PrimitiveKind.INT16: "S.Int16",
+            PrimitiveKind.INT32: "S.Int32",
+            PrimitiveKind.VARINT32: "S.VarInt32",
+            PrimitiveKind.INT64: "S.Int64",
+            PrimitiveKind.VARINT64: "S.VarInt64",
+            PrimitiveKind.TAGGED_INT64: "S.TaggedInt64",
+            PrimitiveKind.UINT8: "S.UInt8",
+            PrimitiveKind.UINT16: "S.UInt16",
+            PrimitiveKind.UINT32: "S.UInt32",
+            PrimitiveKind.VAR_UINT32: "S.VarUInt32",
+            PrimitiveKind.UINT64: "S.UInt64",
+            PrimitiveKind.VAR_UINT64: "S.VarUInt64",
+            PrimitiveKind.TAGGED_UINT64: "S.TaggedUInt64",
+            PrimitiveKind.FLOAT16: "S.Float16",
+            PrimitiveKind.BFLOAT16: "S.BFloat16",
+            PrimitiveKind.FLOAT32: "S.Float32",
+            PrimitiveKind.FLOAT64: "S.Float64",
+            PrimitiveKind.STRING: "S.String",
+            PrimitiveKind.BYTES: "S.Binary",
+            PrimitiveKind.DATE: "S.Date",
+            PrimitiveKind.TIMESTAMP: "S.Timestamp",
+            PrimitiveKind.DURATION: "S.Duration",
+            PrimitiveKind.DECIMAL: "S.Decimal",
+        }
+        if force:
+            return hints.get(kind)
         if kind in {
             PrimitiveKind.INT32,
             PrimitiveKind.INT64,
             PrimitiveKind.UINT32,
             PrimitiveKind.UINT64,
+            PrimitiveKind.TAGGED_INT64,
+            PrimitiveKind.TAGGED_UINT64,
         }:
-            return "Fixed"
-        if kind in {PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64}:
-            return "Tagged"
+            return hints[kind]
         return None
 
     def _type_reference_for_local(
@@ -774,10 +829,10 @@ class CSharpGenerator(BaseGenerator):
         used_field_names: Set[str] = set()
         for field in message.fields:
             lines.append("")
-            encoding = self._field_encoding(field)
-            if encoding:
+            schema_type = self._schema_type_hint(field.field_type)
+            if schema_type:
                 lines.append(
-                    f"{ind}{self.indent_str}[Field(Encoding = FieldEncoding.{encoding})]"
+                    f"{ind}{self.indent_str}[ForyField(Type = typeof({schema_type}))]"
                 )
             field_name = self._field_member_name(field, message, used_field_names)
             field_type = self.generate_type(

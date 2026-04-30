@@ -21,10 +21,10 @@ package org.apache.fory.type;
 
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
+import org.apache.fory.type.unsigned.UInt16;
+import org.apache.fory.type.unsigned.UInt32;
+import org.apache.fory.type.unsigned.UInt64;
+import org.apache.fory.type.unsigned.UInt8;
 
 /**
  * Dispatch IDs for basic types. These IDs identify the type for serialization dispatch. The
@@ -142,13 +142,13 @@ public class DispatchId {
   }
 
   private static int adjustUnsignedDispatchId(int typeId, Class<?> rawType, int dispatchId) {
-    if (rawType == Uint8.class && typeId == Types.UINT8) {
+    if (rawType == UInt8.class && typeId == Types.UINT8) {
       return EXT_UINT8;
     }
-    if (rawType == Uint16.class && typeId == Types.UINT16) {
+    if (rawType == UInt16.class && typeId == Types.UINT16) {
       return EXT_UINT16;
     }
-    if (rawType == Uint32.class) {
+    if (rawType == UInt32.class) {
       if (typeId == Types.VAR_UINT32) {
         return EXT_VAR_UINT32;
       }
@@ -156,7 +156,7 @@ public class DispatchId {
         return EXT_UINT32;
       }
     }
-    if (rawType == Uint64.class) {
+    if (rawType == UInt64.class) {
       if (typeId == Types.VAR_UINT64) {
         return EXT_VAR_UINT64;
       }

@@ -136,7 +136,7 @@ Users can also provide meta hints for fields of a type, or the type whole. Here 
 annotation to provide such information.
 
 ```java
-@ForyObject(fieldsNullable = false, trackingRef = false)
+@ForyStruct(fieldsNullable = false, trackingRef = false)
 class Foo {
   @ForyField(trackingRef = false)
   int[] intArray;

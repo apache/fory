@@ -25,10 +25,12 @@
 #include "gtest/gtest.h"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace macro_test {
 
@@ -47,7 +49,7 @@ private:
   int32_t id_ = 0;
 
 public:
-  FORY_STRUCT(Configured, id_);
+  FORY_STRUCT(Configured, (id_, fory::F(1).varint()));
 };
 
 class OptionalHolder final {
@@ -64,7 +66,7 @@ private:
   std::optional<std::string> name_;
 
 public:
-  FORY_STRUCT(OptionalHolder, name_);
+  FORY_STRUCT(OptionalHolder, (name_, fory::F(1)));
 };
 
 class Choice final {
@@ -103,6 +105,32 @@ private:
       : value_(tag, std::forward<Args>(args)...) {}
 };
 
+class NestedChoice final {
+public:
+  using Values = std::map<uint32_t, std::vector<uint64_t>>;
+
+  NestedChoice() = default;
+
+  static NestedChoice values(Values value) {
+    return NestedChoice(std::move(value));
+  }
+
+  uint32_t fory_case_id() const noexcept { return 1; }
+
+  template <class Visitor> decltype(auto) visit(Visitor &&vis) const {
+    return std::forward<Visitor>(vis)(values_);
+  }
+
+  bool operator==(const NestedChoice &other) const {
+    return values_ == other.values_;
+  }
+
+private:
+  Values values_;
+
+  explicit NestedChoice(Values value) : values_(std::move(value)) {}
+};
+
 class Partial final {
 public:
   Partial() = default;
@@ -115,7 +143,8 @@ private:
   int64_t count_ = 0;
 
 public:
-  FORY_STRUCT(Partial, id_, name_, count_);
+  FORY_STRUCT(Partial, (id_, fory::F(5)), (name_, fory::F(6)),
+              (count_, fory::F(7).varint()));
 };
 
 class EnumContainer final {
@@ -125,13 +154,12 @@ public:
 
 FORY_ENUM(EnumContainer::Kind, Alpha, Beta);
 
-FORY_FIELD_CONFIG(Configured, (id_, fory::F().id(1).varint()));
-FORY_FIELD_TAGS(OptionalHolder, (name_, 1));
-FORY_FIELD_CONFIG(Partial, (count_, fory::F().id(7).varint()));
-FORY_FIELD_TAGS(Partial, (id_, 5));
-
-FORY_UNION(Choice, (std::string, text, fory::F(1)),
-           (int32_t, number, fory::F(2).varint()));
+FORY_UNION(Choice, (text, std::string, fory::F(1)),
+           (number, int32_t, fory::F(2).varint()));
+FORY_UNION(NestedChoice,
+           (values, NestedChoice::Values,
+            fory::F(1).map(fory::T::uint32().fixed(),
+                           fory::T::list(fory::T::uint64().tagged()))));
 
 } // namespace macro_test
 
@@ -139,7 +167,7 @@ namespace fory {
 namespace serialization {
 namespace test {
 
-TEST(NamespaceMacros, FieldConfigAndTagsInNamespace) {
+TEST(NamespaceMacros, FieldConfigInNamespace) {
   static_assert(::fory::detail::has_field_config_v<macro_test::Configured>);
   static_assert(
       ::fory::detail::GetFieldConfigEntry<macro_test::Configured, 0>::id == 1);
@@ -147,20 +175,20 @@ TEST(NamespaceMacros, FieldConfigAndTagsInNamespace) {
                                                     0>::encoding ==
                 ::fory::Encoding::Varint);
 
-  static_assert(::fory::detail::has_field_tags_v<macro_test::OptionalHolder>);
-  static_assert(::fory::detail::GetFieldTagEntry<macro_test::OptionalHolder,
-                                                 0>::is_nullable);
-
-  static_assert(::fory::detail::GetFieldTagEntry<macro_test::Partial, 0>::id ==
-                5);
   static_assert(
-      !::fory::detail::GetFieldTagEntry<macro_test::Partial, 1>::has_entry);
+      ::fory::detail::GetFieldConfigEntry<macro_test::OptionalHolder, 0>::id ==
+      1);
+  static_assert(::fory::serialization::detail::CompileTimeFieldHelpers<
+                macro_test::OptionalHolder>::field_nullable<0>());
+
+  static_assert(
+      ::fory::detail::GetFieldConfigEntry<macro_test::Partial, 0>::id == 5);
+  static_assert(
+      ::fory::detail::GetFieldConfigEntry<macro_test::Partial, 1>::id == 6);
   static_assert(::fory::serialization::detail::CompileTimeFieldHelpers<
                 macro_test::Partial>::field_nullable<1>());
   static_assert(
       ::fory::detail::GetFieldConfigEntry<macro_test::Partial, 2>::id == 7);
-  static_assert(
-      ::fory::detail::GetFieldConfigEntry<macro_test::Partial, 0>::id == -1);
 }
 
 TEST(NamespaceMacros, UnionInNamespace) {
@@ -174,6 +202,21 @@ TEST(NamespaceMacros, UnionInNamespace) {
       fory.deserialize<macro_test::Choice>(bytes->data(), bytes->size());
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
   EXPECT_EQ(macro_test::Choice::text("hello"), decoded.value());
+}
+
+TEST(NamespaceMacros, NestedUnionPayloadSpec) {
+  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_union<macro_test::NestedChoice>(1002).ok());
+
+  macro_test::NestedChoice::Values values = {{4000000000u, {7u, 1000000000u}},
+                                             {3u, {42u}}};
+  auto bytes = fory.serialize(macro_test::NestedChoice::values(values));
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded =
+      fory.deserialize<macro_test::NestedChoice>(bytes->data(), bytes->size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(macro_test::NestedChoice::values(values), decoded.value());
 }
 
 TEST(NamespaceMacros, EnumInAndOutOfClass) {

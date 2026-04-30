@@ -71,7 +71,7 @@ byte[] payload = fory.Serialize(person);
 
 ```java
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .withRefTracking(true)
     .build();
 

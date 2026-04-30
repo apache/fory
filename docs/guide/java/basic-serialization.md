@@ -29,14 +29,14 @@ For single-threaded applications:
 
 ```java
 Fory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   // enable reference tracking for shared/circular reference.
   // Disable it will have better performance if no duplicate reference.
   .withRefTracking(false)
-  .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+  .withCompatible(false)
   // enable type forward/backward compatibility
   // disable it for small size and better performance.
-  // .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  // .withCompatible(true)
   // enable async multi-threaded compilation.
   .withAsyncCompilation(true)
   .build();
@@ -50,7 +50,7 @@ For multi-threaded applications:
 
 ```java
 ThreadSafeFory fory = Fory.builder()
-  .withLanguage(Language.JAVA)
+  .withXlang(false)
   // enable reference tracking for shared/circular reference.
   // Disable it will have better performance if no duplicate reference.
   .withRefTracking(false)
@@ -58,10 +58,10 @@ ThreadSafeFory fory = Fory.builder()
   // .withIntCompressed(true)
   // compress long for smaller size
   // .withLongCompressed(true)
-  .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+  .withCompatible(false)
   // enable type forward/backward compatibility
   // disable it for small size and better performance.
-  // .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  // .withCompatible(true)
   // enable async multi-threaded compilation.
   .withAsyncCompilation(true)
   .buildThreadSafeFory();

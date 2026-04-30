@@ -21,7 +21,6 @@ package org.apache.fory.serializer.scala
 
 import java.math.{BigDecimal => JBigDecimal, BigInteger}
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -31,7 +30,7 @@ package object SomePackageObject {
 
 class ScalaTest extends AnyWordSpec with Matchers {
   def fory: Fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .withRefTracking(true)
     .withScalaOptimizationEnabled(true)
     .requireClassRegistration(false)
@@ -55,9 +54,9 @@ class ScalaTest extends AnyWordSpec with Matchers {
         new JBigDecimal(BigInteger.valueOf(Long.MinValue).subtract(BigInteger.ONE), 0),
         new JBigDecimal(new BigInteger("123456789012345678901234567890123456789"), 37)
       )
-      Seq(Language.JAVA, Language.XLANG).foreach { language =>
+      Seq(false, true).foreach { xlang =>
         val decimalFory = Fory.builder()
-          .withLanguage(language)
+          .withXlang(xlang)
           .withRefTracking(true)
           .withScalaOptimizationEnabled(true)
           .requireClassRegistration(false)

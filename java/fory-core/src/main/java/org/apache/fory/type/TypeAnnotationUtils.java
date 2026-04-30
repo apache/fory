@@ -23,14 +23,18 @@ import java.lang.annotation.Annotation;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
 import org.apache.fory.annotation.Int8ArrayType;
-import org.apache.fory.annotation.Uint16ArrayType;
-import org.apache.fory.annotation.Uint16Type;
-import org.apache.fory.annotation.Uint32ArrayType;
-import org.apache.fory.annotation.Uint32Type;
-import org.apache.fory.annotation.Uint64ArrayType;
-import org.apache.fory.annotation.Uint64Type;
-import org.apache.fory.annotation.Uint8ArrayType;
-import org.apache.fory.annotation.Uint8Type;
+import org.apache.fory.annotation.UInt16Elements;
+import org.apache.fory.annotation.UInt16Type;
+import org.apache.fory.annotation.UInt32Elements;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.annotation.UInt64Elements;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.annotation.UInt8Elements;
+import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 
 public class TypeAnnotationUtils {
 
@@ -46,19 +50,26 @@ public class TypeAnnotationUtils {
     if (typeAnnotation == null) {
       return Types.UNKNOWN;
     }
-    if (typeAnnotation instanceof Uint8Type) {
-      checkFieldType(fieldType, "@Uint8Type", byte.class, Byte.class);
+    if (typeAnnotation instanceof UInt8Type) {
+      checkFieldType(fieldType, "@UInt8Type", int.class, Integer.class);
       return Types.UINT8;
-    } else if (typeAnnotation instanceof Uint16Type) {
-      checkFieldType(fieldType, "@Uint16Type", short.class, Short.class);
+    } else if (typeAnnotation instanceof UInt16Type) {
+      checkFieldType(fieldType, "@UInt16Type", int.class, Integer.class);
       return Types.UINT16;
-    } else if (typeAnnotation instanceof Uint32Type) {
-      checkFieldType(fieldType, "@Uint32Type", int.class, Integer.class);
-      Uint32Type uint32Type = (Uint32Type) typeAnnotation;
-      return uint32Type.compress() ? Types.VAR_UINT32 : Types.UINT32;
-    } else if (typeAnnotation instanceof Uint64Type) {
-      checkFieldType(fieldType, "@Uint64Type", long.class, Long.class);
-      Uint64Type uint64Type = (Uint64Type) typeAnnotation;
+    } else if (typeAnnotation instanceof UInt32Type) {
+      checkFieldType(fieldType, "@UInt32Type", long.class, Long.class);
+      UInt32Type uint32Type = (UInt32Type) typeAnnotation;
+      switch (uint32Type.encoding()) {
+        case VARINT:
+          return Types.VAR_UINT32;
+        case FIXED:
+          return Types.UINT32;
+        default:
+          throw new IllegalArgumentException("Unsupported encoding: " + uint32Type.encoding());
+      }
+    } else if (typeAnnotation instanceof UInt64Type) {
+      checkFieldType(fieldType, "@UInt64Type", long.class, Long.class);
+      UInt64Type uint64Type = (UInt64Type) typeAnnotation;
       switch (uint64Type.encoding()) {
         case VARINT:
           return Types.VAR_UINT64;
@@ -72,7 +83,14 @@ public class TypeAnnotationUtils {
     } else if (typeAnnotation instanceof Int32Type) {
       checkFieldType(fieldType, "@Int32Type", int.class, Integer.class);
       Int32Type int32Type = (Int32Type) typeAnnotation;
-      return int32Type.compress() ? Types.VARINT32 : Types.INT32;
+      switch (int32Type.encoding()) {
+        case VARINT:
+          return Types.VARINT32;
+        case FIXED:
+          return Types.INT32;
+        default:
+          throw new IllegalArgumentException("Unsupported encoding: " + int32Type.encoding());
+      }
     } else if (typeAnnotation instanceof Int64Type) {
       checkFieldType(fieldType, "@Int64Type", long.class, Long.class);
       Int64Type int64Type = (Int64Type) typeAnnotation;
@@ -89,20 +107,122 @@ public class TypeAnnotationUtils {
     } else if (typeAnnotation instanceof Int8ArrayType) {
       checkFieldType(fieldType, "@Int8ArrayType", byte[].class);
       return Types.INT8_ARRAY;
-    } else if (typeAnnotation instanceof Uint8ArrayType) {
-      checkFieldType(fieldType, "@Uint8ArrayType", byte[].class);
+    } else if (typeAnnotation instanceof UInt8Elements) {
+      checkFieldType(fieldType, "@UInt8Elements", byte[].class);
       return Types.UINT8_ARRAY;
-    } else if (typeAnnotation instanceof Uint16ArrayType) {
-      checkFieldType(fieldType, "@Uint16ArrayType", short[].class);
+    } else if (typeAnnotation instanceof UInt16Elements) {
+      checkFieldType(fieldType, "@UInt16Elements", short[].class);
       return Types.UINT16_ARRAY;
-    } else if (typeAnnotation instanceof Uint32ArrayType) {
-      checkFieldType(fieldType, "@Uint32ArrayType", int[].class);
+    } else if (typeAnnotation instanceof UInt32Elements) {
+      checkFieldType(fieldType, "@UInt32Elements", int[].class);
       return Types.UINT32_ARRAY;
-    } else if (typeAnnotation instanceof Uint64ArrayType) {
-      checkFieldType(fieldType, "@Uint64ArrayType", long[].class);
+    } else if (typeAnnotation instanceof UInt64Elements) {
+      checkFieldType(fieldType, "@UInt64Elements", long[].class);
       return Types.UINT64_ARRAY;
     }
     throw new IllegalArgumentException("Unsupported type annotation: " + typeAnnotation.getClass());
+  }
+
+  public static int getPrimitiveListTypeId(Annotation typeAnnotation, Class<?> fieldType) {
+    int elementTypeId = getPrimitiveListElementTypeId(typeAnnotation, fieldType);
+    if (elementTypeId == Types.UNKNOWN) {
+      return Types.UNKNOWN;
+    }
+    if (usesCollectionProtocolForPrimitiveListElementType(elementTypeId)) {
+      return Types.LIST;
+    }
+    return Types.getPrimitiveArrayTypeId(elementTypeId);
+  }
+
+  public static int getPrimitiveListElementTypeId(Annotation typeAnnotation, Class<?> fieldType) {
+    if (typeAnnotation == null) {
+      return Types.UNKNOWN;
+    }
+    if (fieldType == UInt8List.class && typeAnnotation instanceof UInt8Type) {
+      return Types.UINT8;
+    }
+    if (fieldType == UInt16List.class && typeAnnotation instanceof UInt16Type) {
+      return Types.UINT16;
+    }
+    if (fieldType == UInt32List.class && typeAnnotation instanceof UInt32Type) {
+      UInt32Type uint32Type = (UInt32Type) typeAnnotation;
+      switch (uint32Type.encoding()) {
+        case VARINT:
+          return Types.VAR_UINT32;
+        case FIXED:
+          return Types.UINT32;
+        default:
+          throw new IllegalArgumentException("Unsupported encoding: " + uint32Type.encoding());
+      }
+    }
+    if (fieldType == UInt64List.class && typeAnnotation instanceof UInt64Type) {
+      UInt64Type uint64Type = (UInt64Type) typeAnnotation;
+      switch (uint64Type.encoding()) {
+        case VARINT:
+          return Types.VAR_UINT64;
+        case FIXED:
+          return Types.UINT64;
+        case TAGGED:
+          return Types.TAGGED_UINT64;
+        default:
+          throw new IllegalArgumentException("Unsupported encoding: " + uint64Type.encoding());
+      }
+    }
+    if (fieldType == UInt8List.class
+        || fieldType == UInt16List.class
+        || fieldType == UInt32List.class
+        || fieldType == UInt64List.class) {
+      throw new IllegalArgumentException(
+          typeAnnotation.annotationType().getSimpleName()
+              + " is not compatible with primitive list field "
+              + fieldType.getName());
+    }
+    return Types.UNKNOWN;
+  }
+
+  public static boolean usesCollectionProtocolForPrimitiveList(
+      Annotation typeAnnotation, Class<?> fieldType) {
+    return usesCollectionProtocolForPrimitiveListElementType(
+        getPrimitiveListElementTypeId(typeAnnotation, fieldType));
+  }
+
+  private static boolean usesCollectionProtocolForPrimitiveListElementType(int elementTypeId) {
+    return elementTypeId == Types.VAR_UINT32
+        || elementTypeId == Types.VAR_UINT64
+        || elementTypeId == Types.TAGGED_UINT64;
+  }
+
+  public static Class<?> getPrimitiveListElementClass(Class<?> fieldType) {
+    if (fieldType == UInt8List.class || fieldType == UInt16List.class) {
+      return Integer.class;
+    }
+    if (fieldType == UInt32List.class || fieldType == UInt64List.class) {
+      return Long.class;
+    }
+    return null;
+  }
+
+  public static Annotation getTypeAnnotation(Annotation[] annotations) {
+    for (Annotation annotation : annotations) {
+      if (isTypeAnnotation(annotation)) {
+        return annotation;
+      }
+    }
+    return null;
+  }
+
+  public static boolean isTypeAnnotation(Annotation annotation) {
+    return annotation instanceof UInt8Type
+        || annotation instanceof UInt16Type
+        || annotation instanceof UInt32Type
+        || annotation instanceof UInt64Type
+        || annotation instanceof Int32Type
+        || annotation instanceof Int64Type
+        || annotation instanceof Int8ArrayType
+        || annotation instanceof UInt8Elements
+        || annotation instanceof UInt16Elements
+        || annotation instanceof UInt32Elements
+        || annotation instanceof UInt64Elements;
   }
 
   private static void checkFieldType(

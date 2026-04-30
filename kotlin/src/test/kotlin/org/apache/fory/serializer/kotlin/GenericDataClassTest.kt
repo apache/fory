@@ -20,8 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
-import org.apache.fory.config.Language
 import org.testng.Assert.assertEquals
 import org.testng.annotations.Test
 
@@ -36,9 +34,9 @@ class GenericDataClassTest {
       Fory.builder()
         .requireClassRegistration(true)
         .withCodegen(true)
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withRefTracking(false)
-        .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+        .withCompatible(false)
         .build()
 
     fory.register(Change::class.java)
@@ -58,9 +56,9 @@ class GenericDataClassTest {
       Fory.builder()
         .requireClassRegistration(true)
         .withCodegen(true)
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withRefTracking(false)
-        .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+        .withCompatible(false)
         .build()
 
     fory.register(Change::class.java)
@@ -80,9 +78,9 @@ class GenericDataClassTest {
       Fory.builder()
         .requireClassRegistration(true)
         .withCodegen(true)
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withRefTracking(false)
-        .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+        .withCompatible(false)
         .build()
 
     fory.register(Change::class.java)

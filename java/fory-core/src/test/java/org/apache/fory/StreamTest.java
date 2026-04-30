@@ -35,7 +35,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.io.ForyStreamReader;
@@ -61,15 +60,15 @@ public class StreamTest extends ForyTestBase {
       buffer0.writeVarInt32(i);
       buffer0.writeVarInt32(Integer.MIN_VALUE);
       buffer0.writeVarInt32(Integer.MAX_VALUE);
-      buffer0.writeVarUint32(i);
-      buffer0.writeVarUint32(Integer.MIN_VALUE);
-      buffer0.writeVarUint32(Integer.MAX_VALUE);
+      buffer0.writeVarUInt32(i);
+      buffer0.writeVarUInt32(Integer.MIN_VALUE);
+      buffer0.writeVarUInt32(Integer.MAX_VALUE);
       buffer0.writeVarInt64(i);
       buffer0.writeVarInt64(Long.MIN_VALUE);
       buffer0.writeVarInt64(Long.MAX_VALUE);
-      buffer0.writeVarUint64(i);
-      buffer0.writeVarUint64(Long.MIN_VALUE);
-      buffer0.writeVarUint64(Long.MAX_VALUE);
+      buffer0.writeVarUInt64(i);
+      buffer0.writeVarUInt64(Long.MIN_VALUE);
+      buffer0.writeVarUInt64(Long.MAX_VALUE);
       buffer0.writeTaggedInt64(i);
       buffer0.writeTaggedInt64(Long.MIN_VALUE);
       buffer0.writeTaggedInt64(Long.MAX_VALUE);
@@ -96,15 +95,15 @@ public class StreamTest extends ForyTestBase {
       assertEquals(buffer.readVarInt32(), i);
       assertEquals(buffer.readVarInt32(), Integer.MIN_VALUE);
       assertEquals(buffer.readVarInt32(), Integer.MAX_VALUE);
-      assertEquals(buffer.readVarUint32(), i);
-      assertEquals(buffer.readVarUint32(), Integer.MIN_VALUE);
-      assertEquals(buffer.readVarUint32(), Integer.MAX_VALUE);
+      assertEquals(buffer.readVarUInt32(), i);
+      assertEquals(buffer.readVarUInt32(), Integer.MIN_VALUE);
+      assertEquals(buffer.readVarUInt32(), Integer.MAX_VALUE);
       assertEquals(buffer.readVarInt64(), i);
       assertEquals(buffer.readVarInt64(), Long.MIN_VALUE);
       assertEquals(buffer.readVarInt64(), Long.MAX_VALUE);
-      assertEquals(buffer.readVarUint64(), i);
-      assertEquals(buffer.readVarUint64(), Long.MIN_VALUE);
-      assertEquals(buffer.readVarUint64(), Long.MAX_VALUE);
+      assertEquals(buffer.readVarUInt64(), i);
+      assertEquals(buffer.readVarUInt64(), Long.MIN_VALUE);
+      assertEquals(buffer.readVarUInt64(), Long.MAX_VALUE);
       assertEquals(buffer.readTaggedInt64(), i);
       assertEquals(buffer.readTaggedInt64(), Long.MIN_VALUE);
       assertEquals(buffer.readTaggedInt64(), Long.MAX_VALUE);
@@ -287,7 +286,7 @@ public class StreamTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .requireClassRegistration(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withScopedMetaShare(true)
             .build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
@@ -309,7 +308,7 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testBigBufferStreamingMetaShared() throws IOException {
-    Fory fory = builder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+    Fory fory = builder().withCompatible(true).build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     List<Integer> list = new ArrayList<>();
     HashMap<String, String> map = new HashMap<>();

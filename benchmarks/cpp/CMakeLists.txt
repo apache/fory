@@ -42,15 +42,14 @@ endif()
 # =============================================================================
 include(FetchContent)
 
-# Fory C++ library (local source) - this will also fetch Abseil
+# Fory C++ library (local source)
 FetchContent_Declare(
     fory
     SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../cpp"
 )
 FetchContent_MakeAvailable(fory)
 
-# Protobuf - fetch to ensure Abseil version compatibility
-# Using v25.5 which is compatible with Abseil 20240722.0
+# Protobuf benchmark dependency may use Abseil; Fory targets must not depend on it.
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(protobuf_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(protobuf_ABSL_PROVIDER "package" CACHE STRING "" FORCE)

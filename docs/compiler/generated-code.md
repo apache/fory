@@ -515,7 +515,9 @@ class Animal final {
 };
 ```
 
-Generated headers also include `FORY_UNION`, `FORY_FIELD_CONFIG`, `FORY_ENUM`, and `FORY_STRUCT` macros for serialization metadata.
+Generated headers include `FORY_UNION`, `FORY_ENUM`, and `FORY_STRUCT` macros
+for serialization metadata. Field and payload configuration is embedded in the
+generated `FORY_STRUCT`/`FORY_UNION` entries.
 
 ### Registration
 

@@ -33,7 +33,7 @@ When a Kotlin data class has parameters with default values, Fory can:
 
 This feature is automatically enabled when:
 
-- Compatible mode is enabled (`withCompatibleMode(CompatibleMode.COMPATIBLE)`)
+- Compatible mode is enabled (`withCompatible(true)`)
 - Kotlin serializers are registered (`KotlinSerializers.registerSerializers(fory)`)
 - A field is missing from the serialized data but exists in the target class with a default value
 
@@ -41,7 +41,6 @@ This feature is automatically enabled when:
 
 ```kotlin
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 // Original data class
@@ -52,7 +51,7 @@ data class UserV2(val name: String, val age: Int, val email: String = "default@e
 
 fun main() {
     val fory = Fory.builder()
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .build()
     KotlinSerializers.registerSerializers(fory)
     fory.register(User::class.java)
@@ -94,7 +93,7 @@ data class ConfigV2(
 )
 
 val fory = Fory.builder()
-    .withCompatibleMode(CompatibleMode.COMPATIBLE)
+    .withCompatible(true)
     .build()
 KotlinSerializers.registerSerializers(fory)
 

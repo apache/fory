@@ -631,7 +631,8 @@ struct Serializer<
 
     if (total_bytes_u32 % sizeof(T) != 0) {
       ctx.set_error(Error::invalid_data(
-          "Vector byte size not aligned with element size"));
+          "Vector byte size " + std::to_string(total_bytes_u32) +
+          " not aligned with element size " + std::to_string(sizeof(T))));
       return std::vector<T, Alloc>();
     }
     std::vector<T, Alloc> result(elem_count);

@@ -54,8 +54,9 @@ class ValidationIssue:
 class SchemaValidator:
     """Validates a Fory IR schema."""
 
-    def __init__(self, schema: Schema):
+    def __init__(self, schema: Schema, allow_nested_collections: bool = False):
         self.schema = schema
+        self.allow_nested_collections = allow_nested_collections
         self.errors: List[ValidationIssue] = []
         self.warnings: List[ValidationIssue] = []
 
@@ -67,7 +68,8 @@ class SchemaValidator:
         self._check_messages()
         self._check_type_references()
         self._check_services()
-        self._check_collection_nesting()
+        if not self.allow_nested_collections:
+            self._check_collection_nesting()
         self._check_ref_rules()
         self._check_weak_refs()
         return not self.errors

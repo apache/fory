@@ -33,9 +33,7 @@ import org.apache.fory.benchmark.data.Image;
 import org.apache.fory.benchmark.data.Media;
 import org.apache.fory.benchmark.data.MediaContent;
 import org.apache.fory.benchmark.data.Struct;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.Logger;
@@ -72,7 +70,7 @@ public class ForyState {
     public void setup() {
       fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withClassVersionCheck(false)
               .withRefTracking(references)
               .requireClassRegistration(false)
@@ -96,7 +94,7 @@ public class ForyState {
     Object o = Struct.create(true);
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -124,12 +122,12 @@ public class ForyState {
       Thread.currentThread().setContextClassLoader(object.getClass().getClassLoader());
       ForyBuilder foryBuilder =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withClassVersionCheck(false)
               .withRefTracking(references)
               .requireClassRegistration(false);
       if (compatible()) {
-        foryBuilder.withCompatibleMode(CompatibleMode.COMPATIBLE);
+        foryBuilder.withCompatible(true);
       }
       fory = foryBuilder.build();
       switch (objectType) {
@@ -189,12 +187,12 @@ public class ForyState {
       Thread.currentThread().setContextClassLoader(object.getClass().getClassLoader());
       fory =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withClassVersionCheck(false)
               .withRefTracking(references)
               .requireClassRegistration(false)
               .withMetaShare(true)
-              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withCompatible(true)
               .build();
       // share meta first time.
       new UserTypeSerializeSuite().forymetashared_serialize_compatible(this);

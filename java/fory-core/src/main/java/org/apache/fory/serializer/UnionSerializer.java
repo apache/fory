@@ -139,7 +139,7 @@ public class UnionSerializer extends Serializer<Union> {
   public void write(WriteContext writeContext, Union union) {
     MemoryBuffer buffer = writeContext.getBuffer();
     int index = union.getIndex();
-    buffer.writeVarUint32(index);
+    buffer.writeVarUInt32(index);
 
     Object value = union.getValue();
     int valueTypeId = union.getValueTypeId();
@@ -157,7 +157,7 @@ public class UnionSerializer extends Serializer<Union> {
   @Override
   public Union read(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    int index = buffer.readVarUint32();
+    int index = buffer.readVarUInt32();
     Object caseValue;
     int nextReadRefId = readContext.tryPreserveRefId();
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
@@ -215,7 +215,7 @@ public class UnionSerializer extends Serializer<Union> {
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
     if (!Types.isUserDefinedType(internalTypeId)) {
-      buffer.writeUint8(typeId);
+      buffer.writeUInt8(typeId);
     } else {
       resolver.writeTypeInfo(writeContext, typeInfo);
     }
@@ -246,7 +246,7 @@ public class UnionSerializer extends Serializer<Union> {
         buffer.writeVarInt32(((Number) value).intValue());
         return;
       case Types.VAR_UINT32:
-        buffer.writeVarUint32(((Number) value).intValue());
+        buffer.writeVarUInt32(((Number) value).intValue());
         return;
       case Types.FLOAT32:
         buffer.writeFloat32(((Number) value).floatValue());
@@ -262,10 +262,10 @@ public class UnionSerializer extends Serializer<Union> {
         buffer.writeTaggedInt64(((Number) value).longValue());
         return;
       case Types.VAR_UINT64:
-        buffer.writeVarUint64(((Number) value).longValue());
+        buffer.writeVarUInt64(((Number) value).longValue());
         return;
       case Types.TAGGED_UINT64:
-        buffer.writeTaggedUint64(((Number) value).longValue());
+        buffer.writeTaggedUInt64(((Number) value).longValue());
         return;
       case Types.FLOAT64:
         buffer.writeFloat64(((Number) value).doubleValue());

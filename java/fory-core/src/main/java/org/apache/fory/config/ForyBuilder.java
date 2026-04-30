@@ -74,7 +74,7 @@ public final class ForyBuilder {
   ClassLoader classLoader;
   SharedRegistry sharedRegistry;
   boolean compressInt = true;
-  public LongEncoding longEncoding = LongEncoding.TAGGED;
+  public Int64Encoding longEncoding = Int64Encoding.TAGGED;
   boolean compressIntArray = false;
   boolean compressLongArray = false;
   boolean compressString = false;
@@ -194,7 +194,7 @@ public final class ForyBuilder {
   /** Use variable length encoding for int/long. */
   public ForyBuilder withNumberCompressed(boolean numberCompressed) {
     this.compressInt = numberCompressed;
-    this.longEncoding = numberCompressed ? LongEncoding.TAGGED : LongEncoding.FIXED;
+    this.longEncoding = numberCompressed ? Int64Encoding.TAGGED : Int64Encoding.FIXED;
     recordAction(b -> b.withNumberCompressed(numberCompressed));
     return this;
   }
@@ -207,17 +207,17 @@ public final class ForyBuilder {
   }
 
   /**
-   * Use variable length encoding for long. Enabled by default, use {@link LongEncoding#TAGGED}
+   * Use variable length encoding for long. Enabled by default, use {@link Int64Encoding#TAGGED}
    * (Small long as int) for long encoding.
    */
   public ForyBuilder withLongCompressed(boolean longCompressed) {
-    this.longEncoding = longCompressed ? LongEncoding.TAGGED : LongEncoding.FIXED;
+    this.longEncoding = longCompressed ? Int64Encoding.TAGGED : Int64Encoding.FIXED;
     recordAction(b -> b.withLongCompressed(longCompressed));
     return this;
   }
 
   /** Use variable length encoding for long. */
-  public ForyBuilder withLongCompressed(LongEncoding longEncoding) {
+  public ForyBuilder withLongCompressed(Int64Encoding longEncoding) {
     this.longEncoding = Objects.requireNonNull(longEncoding);
     recordAction(b -> b.withLongCompressed(longEncoding));
     return this;
@@ -312,9 +312,8 @@ public final class ForyBuilder {
   }
 
   /**
-   * Whether check class schema consistency, will be disabled automatically when {@link
-   * CompatibleMode#COMPATIBLE} is enabled. Do not disable this option unless you can ensure the
-   * class won't evolve.
+   * Whether check class schema consistency. This is disabled automatically when compatible mode is
+   * enabled. Do not disable this option unless you can ensure the class won't evolve.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
     if (xlang && !compatible && !checkClassVersion) {
@@ -535,7 +534,7 @@ public final class ForyBuilder {
     }
     if (xlang) {
       stringRefIgnored = true;
-      longEncoding = LongEncoding.VARINT;
+      longEncoding = Int64Encoding.VARINT;
       compressInt = true;
       compressString = true;
     }
@@ -578,9 +577,7 @@ public final class ForyBuilder {
         deserializeUnknownClass = false;
       }
       if (scopedMetaShareEnabled != null && scopedMetaShareEnabled) {
-        LOG.warn(
-            "Scoped meta share is for CompatibleMode only, disable it for {}",
-            CompatibleMode.SCHEMA_CONSISTENT);
+        LOG.warn("Scoped meta share is for compatible mode only, disabling it");
       }
       scopedMetaShareEnabled = false;
       if (metaShareEnabled == null) {

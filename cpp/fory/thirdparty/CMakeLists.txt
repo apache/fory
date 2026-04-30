@@ -30,3 +30,9 @@ set_target_properties(fory_thirdparty PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME fory_thirdparty
 )
+
+if(FORY_BUILD_TESTS)
+    add_executable(fory_thirdparty_flat_hash_map_test flat_hash_map_test.cc)
+    target_link_libraries(fory_thirdparty_flat_hash_map_test fory_thirdparty GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_thirdparty_flat_hash_map_test)
+endif()

@@ -19,7 +19,6 @@
 
 package org.apache.fory.serializer;
 
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
@@ -27,7 +26,7 @@ import org.apache.fory.resolver.TypeResolver;
 /**
  * Serializer for class which: - has jdk `writeReplace`/`readResolve` method defined, - is a final
  * class. Main advantage of this serializer is that it does not write class name to the payload.
- * NOTE: this serializer is used only with {@link CompatibleMode#SCHEMA_CONSISTENT} mode.
+ * NOTE: this serializer is used only when schema consistency is required.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer {

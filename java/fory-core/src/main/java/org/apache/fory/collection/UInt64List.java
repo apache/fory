@@ -23,24 +23,23 @@ import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Objects;
 import java.util.RandomAccess;
-import org.apache.fory.type.unsigned.Uint16;
 
 /**
- * Resizable list backed by a short array for unsigned 16-bit values.
+ * Resizable list backed by a long array for unsigned 64-bit values.
  *
  * <p>Supports auto-growing on insertions, primitive overloads to avoid boxing, and direct access to
  * the backing array for zero-copy interop. Prefer primitive get/set/add to avoid boxing cost;
  * elements are always non-null. The {@link #size()} tracks the logical element count while the
  * backing array capacity may be larger.
  */
-public final class Uint16List extends AbstractList<Uint16> implements RandomAccess {
+public final class UInt64List extends AbstractList<Long> implements RandomAccess {
   private static final int DEFAULT_CAPACITY = 10;
 
-  private short[] array;
+  private long[] array;
   private int size;
 
   /** Creates an empty list with default capacity. */
-  public Uint16List() {
+  public UInt64List() {
     this(DEFAULT_CAPACITY);
   }
 
@@ -50,11 +49,11 @@ public final class Uint16List extends AbstractList<Uint16> implements RandomAcce
    * @param initialCapacity starting backing array length; must be non-negative
    * @throws IllegalArgumentException if {@code initialCapacity} is negative
    */
-  public Uint16List(int initialCapacity) {
+  public UInt64List(int initialCapacity) {
     if (initialCapacity < 0) {
       throw new IllegalArgumentException("Illegal capacity: " + initialCapacity);
     }
-    this.array = new short[initialCapacity];
+    this.array = new long[initialCapacity];
     this.size = 0;
   }
 
@@ -63,15 +62,15 @@ public final class Uint16List extends AbstractList<Uint16> implements RandomAcce
    *
    * @param array source array; its current length becomes {@link #size()}
    */
-  public Uint16List(short[] array) {
+  public UInt64List(long[] array) {
     this.array = array;
     this.size = array.length;
   }
 
   @Override
-  public Uint16 get(int index) {
+  public Long get(int index) {
     checkIndex(index);
-    return new Uint16(array[index]);
+    return array[index];
   }
 
   @Override
@@ -80,67 +79,49 @@ public final class Uint16List extends AbstractList<Uint16> implements RandomAcce
   }
 
   @Override
-  public Uint16 set(int index, Uint16 element) {
+  public Long set(int index, Long element) {
     checkIndex(index);
     Objects.requireNonNull(element, "element");
-    short prev = array[index];
-    array[index] = element.shortValue();
-    return new Uint16(prev);
+    long prev = array[index];
+    array[index] = element;
+    return prev;
   }
 
   /** Sets a value without boxing. */
-  public void set(int index, short value) {
+  public void set(int index, long value) {
     checkIndex(index);
     array[index] = value;
   }
 
-  /** Sets a value without boxing; truncates to 16 bits. */
-  public void set(int index, int value) {
-    checkIndex(index);
-    array[index] = (short) value;
-  }
-
   @Override
-  public void add(int index, Uint16 element) {
+  public void add(int index, Long element) {
     checkPositionIndex(index);
+    Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
     System.arraycopy(array, index, array, index + 1, size - index);
-    array[index] = element.shortValue();
+    array[index] = element;
     size++;
     modCount++;
   }
 
   @Override
-  public boolean add(Uint16 element) {
+  public boolean add(Long element) {
     Objects.requireNonNull(element, "element");
     ensureCapacity(size + 1);
-    array[size++] = element.shortValue();
+    array[size++] = element;
     modCount++;
     return true;
   }
 
   /** Appends a value without boxing. */
-  public boolean add(short value) {
+  public boolean add(long value) {
     ensureCapacity(size + 1);
     array[size++] = value;
     modCount++;
     return true;
   }
 
-  /** Appends a value without boxing; truncates to 16 bits. */
-  public boolean add(int value) {
-    ensureCapacity(size + 1);
-    array[size++] = (short) value;
-    modCount++;
-    return true;
-  }
-
-  public int getInt(int index) {
-    checkIndex(index);
-    return array[index] & 0xFFFF;
-  }
-
-  public short getShort(int index) {
+  public long getLong(int index) {
     checkIndex(index);
     return array[index];
   }
@@ -170,12 +151,12 @@ public final class Uint16List extends AbstractList<Uint16> implements RandomAcce
    * @return the backing array
    * @throws UnsupportedOperationException if this list is not backed by an accessible heap array
    */
-  public short[] getArray() {
+  public long[] getArray() {
     return array;
   }
 
   /** Returns a trimmed copy containing exactly {@code size()} elements. */
-  public short[] copyArray() {
+  public long[] copyArray() {
     return Arrays.copyOf(array, size);
   }
 

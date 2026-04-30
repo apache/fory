@@ -25,7 +25,6 @@ import static org.testng.Assert.assertNotSame;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Cyclic;
@@ -46,7 +45,7 @@ public class ObjectSerializerTest extends ForyTestBase {
     }
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -90,7 +89,7 @@ public class ObjectSerializerTest extends ForyTestBase {
         };
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
@@ -127,7 +126,7 @@ public class ObjectSerializerTest extends ForyTestBase {
     Cyclic cyclic = Cyclic.create(true);
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -181,7 +180,7 @@ public class ObjectSerializerTest extends ForyTestBase {
   public void testSerialization() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();

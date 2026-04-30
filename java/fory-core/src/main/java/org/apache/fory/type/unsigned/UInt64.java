@@ -27,84 +27,84 @@ import java.io.Serializable;
  * <p>Operations wrap modulo {@code 2^64}. Use {@link #doubleValue()} or {@link #toString()} when
  * the full unsigned magnitude must be exposed beyond the signed {@code long} range.
  */
-public final class Uint64 extends Number implements Comparable<Uint64>, Serializable {
+public final class UInt64 implements Comparable<UInt64>, Serializable {
   public static final int SIZE_BITS = 64;
   public static final int SIZE_BYTES = 8;
 
-  public static final Uint64 MIN_VALUE = new Uint64(0L);
-  public static final Uint64 MAX_VALUE = new Uint64(-1L);
+  public static final UInt64 MIN_VALUE = new UInt64(0L);
+  public static final UInt64 MAX_VALUE = new UInt64(-1L);
 
   private final long data;
 
-  public Uint64(long data) {
+  public UInt64(long data) {
     this.data = data;
   }
 
-  public static Uint64 valueOf(long value) {
-    return new Uint64(value);
+  public static UInt64 valueOf(long value) {
+    return new UInt64(value);
   }
 
-  public static Uint64 add(long a, long b) {
-    return new Uint64(a + b);
+  public static UInt64 add(long a, long b) {
+    return new UInt64(a + b);
   }
 
   /** Adds {@code other} with wrapping semantics. */
-  public Uint64 add(Uint64 other) {
+  public UInt64 add(UInt64 other) {
     return add(data, other.data);
   }
 
-  public static Uint64 subtract(long a, long b) {
-    return new Uint64(a - b);
+  public static UInt64 subtract(long a, long b) {
+    return new UInt64(a - b);
   }
 
   /** Subtracts {@code other} with wrapping semantics. */
-  public Uint64 subtract(Uint64 other) {
+  public UInt64 subtract(UInt64 other) {
     return subtract(data, other.data);
   }
 
-  public static Uint64 multiply(long a, long b) {
-    return new Uint64(a * b);
+  public static UInt64 multiply(long a, long b) {
+    return new UInt64(a * b);
   }
 
   /** Multiplies by {@code other} with wrapping semantics. */
-  public Uint64 multiply(Uint64 other) {
+  public UInt64 multiply(UInt64 other) {
     return multiply(data, other.data);
   }
 
-  public static Uint64 divide(long a, long b) {
-    return new Uint64(Long.divideUnsigned(a, b));
+  public static UInt64 divide(long a, long b) {
+    return new UInt64(Long.divideUnsigned(a, b));
   }
 
   /** Divides by {@code other} treating both operands as unsigned. */
-  public Uint64 divide(Uint64 other) {
+  public UInt64 divide(UInt64 other) {
     return divide(data, other.data);
   }
 
-  public static Uint64 remainder(long a, long b) {
-    return new Uint64(Long.remainderUnsigned(a, b));
+  public static UInt64 remainder(long a, long b) {
+    return new UInt64(Long.remainderUnsigned(a, b));
   }
 
   /** Computes the remainder of the unsigned division by {@code other}. */
-  public Uint64 remainder(Uint64 other) {
+  public UInt64 remainder(UInt64 other) {
     return remainder(data, other.data);
   }
 
-  public static Uint64 min(long a, long b) {
-    return compare(a, b) <= 0 ? new Uint64(a) : new Uint64(b);
+  public static UInt64 min(long a, long b) {
+    return compare(a, b) <= 0 ? new UInt64(a) : new UInt64(b);
   }
 
-  public static Uint64 max(long a, long b) {
-    return compare(a, b) >= 0 ? new Uint64(a) : new Uint64(b);
+  public static UInt64 max(long a, long b) {
+    return compare(a, b) >= 0 ? new UInt64(a) : new UInt64(b);
   }
 
-  /** Parses an unsigned decimal string into a {@link Uint64}. */
-  public static Uint64 parse(String value) {
+  /** Parses an unsigned decimal string into a {@link UInt64}. */
+  public static UInt64 parse(String value) {
     return parse(value, 10);
   }
 
-  /** Parses an unsigned string in {@code radix} into a {@link Uint64}. */
-  public static Uint64 parse(String value, int radix) {
-    return new Uint64(Long.parseUnsignedLong(value, radix));
+  /** Parses an unsigned string in {@code radix} into a {@link UInt64}. */
+  public static UInt64 parse(String value, int radix) {
+    return new UInt64(Long.parseUnsignedLong(value, radix));
   }
 
   public long toLong() {
@@ -149,68 +149,62 @@ public final class Uint64 extends Number implements Comparable<Uint64>, Serializ
   }
 
   /** Bitwise AND with {@code other}. */
-  public Uint64 and(Uint64 other) {
-    return new Uint64(data & other.data);
+  public UInt64 and(UInt64 other) {
+    return new UInt64(data & other.data);
   }
 
   /** Bitwise OR with {@code other}. */
-  public Uint64 or(Uint64 other) {
-    return new Uint64(data | other.data);
+  public UInt64 or(UInt64 other) {
+    return new UInt64(data | other.data);
   }
 
   /** Bitwise XOR with {@code other}. */
-  public Uint64 xor(Uint64 other) {
-    return new Uint64(data ^ other.data);
+  public UInt64 xor(UInt64 other) {
+    return new UInt64(data ^ other.data);
   }
 
   /** Bitwise NOT. */
-  public Uint64 not() {
-    return new Uint64(~data);
+  public UInt64 not() {
+    return new UInt64(~data);
   }
 
   /** Logical left shift; bits shifted out are discarded. */
-  public Uint64 shiftLeft(int bits) {
+  public UInt64 shiftLeft(int bits) {
     int shift = bits & 0x3F;
-    return new Uint64(data << shift);
+    return new UInt64(data << shift);
   }
 
   /** Logical right shift; zeros are shifted in from the left. */
-  public Uint64 shiftRight(int bits) {
+  public UInt64 shiftRight(int bits) {
     int shift = bits & 0x3F;
-    return new Uint64(data >>> shift);
+    return new UInt64(data >>> shift);
   }
 
   @Override
-  public int compareTo(Uint64 other) {
+  public int compareTo(UInt64 other) {
     return compare(data, other.data);
   }
 
-  @Override
   public int intValue() {
     return (int) data;
   }
 
-  @Override
   public long longValue() {
     return data;
   }
 
-  @Override
   public float floatValue() {
     return (float) toUnsignedDouble(data);
   }
 
-  @Override
   public double doubleValue() {
     return toUnsignedDouble(data);
   }
 
-  @Override
   public byte byteValue() {
     return (byte) data;
   }
 
-  @Override
   public short shortValue() {
     return (short) data;
   }
@@ -220,10 +214,10 @@ public final class Uint64 extends Number implements Comparable<Uint64>, Serializ
     if (this == obj) {
       return true;
     }
-    if (!(obj instanceof Uint64)) {
+    if (!(obj instanceof UInt64)) {
       return false;
     }
-    return data == ((Uint64) obj).data;
+    return data == ((UInt64) obj).data;
   }
 
   @Override

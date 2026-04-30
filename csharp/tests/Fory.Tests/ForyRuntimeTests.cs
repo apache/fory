@@ -21,6 +21,7 @@ using System.Collections.Immutable;
 using System.Threading.Tasks;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
+using S = Apache.Fory.Schema.Types;
 
 namespace Apache.Fory.Tests;
 
@@ -69,13 +70,42 @@ public sealed class FieldOrder
 }
 
 [ForyObject]
-public sealed class EncodedNumbers
+public sealed class SchemaNumbers
 {
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint U32Fixed { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong U64Tagged { get; set; }
+}
+
+[ForyObject]
+public sealed class NestedSchemaByName
+{
+    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class NestedSchemaById
+{
+    [ForyField(3, Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class NestedSchemaSkipWriter
+{
+    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
+
+    public int Tail { get; set; }
+}
+
+[ForyObject]
+public sealed class NestedSchemaSkipReader
+{
+    public int Tail { get; set; }
 }
 
 [ForyObject]
@@ -796,34 +826,108 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void MacroFieldEncodingOverridesForUnsignedTypes()
+    public void ForyFieldSchemaTypeOverridesForUnsignedTypes()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
-        fory.Register<EncodedNumbers>(301);
+        fory.Register<SchemaNumbers>(301);
 
-        EncodedNumbers value = new()
+        SchemaNumbers value = new()
         {
             U32Fixed = 0x11223344u,
             U64Tagged = (ulong)int.MaxValue + 99UL,
         };
 
-        EncodedNumbers decoded = fory.Deserialize<EncodedNumbers>(fory.Serialize(value));
+        SchemaNumbers decoded = fory.Deserialize<SchemaNumbers>(fory.Serialize(value));
         Assert.Equal(value.U32Fixed, decoded.U32Fixed);
         Assert.Equal(value.U64Tagged, decoded.U64Tagged);
+    }
+
+    [Fact]
+    public void ForyFieldTypeWithoutIdUsesNameBasedNestedSchema()
+    {
+        TypeResolver resolver = new();
+        resolver.GetTypeInfo<NestedSchemaByName>();
+        TypeMetaFieldInfo field = Assert.Single(resolver.GetTypeInfo<NestedSchemaByName>().TypeMetaFields(false));
+
+        Assert.Null(field.FieldId);
+        Assert.Equal("values", field.FieldName);
+        Assert.Equal((uint)TypeId.Map, field.FieldType.TypeId);
+        Assert.Equal((uint)TypeId.UInt32, field.FieldType.Generics[0].TypeId);
+        Assert.Equal((uint)TypeId.List, field.FieldType.Generics[1].TypeId);
+        Assert.True(field.FieldType.Generics[1].Nullable);
+        Assert.Equal((uint)TypeId.TaggedUInt64, field.FieldType.Generics[1].Generics[0].TypeId);
+        Assert.True(field.FieldType.Generics[1].Generics[0].Nullable);
+    }
+
+    [Fact]
+    public void ForyFieldTypeWithIdUsesAssignedIdNestedSchema()
+    {
+        TypeResolver resolver = new();
+        resolver.GetTypeInfo<NestedSchemaById>();
+        TypeMetaFieldInfo field = Assert.Single(resolver.GetTypeInfo<NestedSchemaById>().TypeMetaFields(false));
+
+        Assert.Equal((short)3, field.FieldId);
+        Assert.Equal((uint)TypeId.Map, field.FieldType.TypeId);
+        Assert.Equal((uint)TypeId.UInt32, field.FieldType.Generics[0].TypeId);
+        Assert.Equal((uint)TypeId.TaggedUInt64, field.FieldType.Generics[1].Generics[0].TypeId);
+    }
+
+    [Fact]
+    public void NestedSchemaAnnotationControlsMapAndListPayload()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<NestedSchemaByName>(303);
+
+        NestedSchemaByName value = new()
+        {
+            Values =
+            {
+                [4_000_000_000u] = [7UL, 1_000_000_000UL, null],
+                [3u] = [42UL],
+            },
+        };
+
+        NestedSchemaByName decoded = fory.Deserialize<NestedSchemaByName>(fory.Serialize(value));
+        Assert.Equal(value.Values.Count, decoded.Values.Count);
+        Assert.Equal(value.Values[4_000_000_000u], decoded.Values[4_000_000_000u]);
+        Assert.Equal(value.Values[3u], decoded.Values[3u]);
+    }
+
+    [Fact]
+    public void CompatibleSkipUsesRemoteNestedSchemaMetadata()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
+        writer.Register<NestedSchemaSkipWriter>(304);
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
+        reader.Register<NestedSchemaSkipReader>(304);
+
+        NestedSchemaSkipWriter value = new()
+        {
+            Values =
+            {
+                [4_000_000_000u] = [7UL, 1_000_000_000UL],
+                [3u] = [42UL],
+            },
+            Tail = 99,
+        };
+
+        NestedSchemaSkipReader decoded = reader.Deserialize<NestedSchemaSkipReader>(writer.Serialize(value));
+        Assert.Equal(99, decoded.Tail);
     }
 
     [Fact]
     public void TaggedUnsignedFieldUsesCompactBoundary()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
-        fory.Register<EncodedNumbers>(301);
+        fory.Register<SchemaNumbers>(301);
 
-        EncodedNumbers compact = new()
+        SchemaNumbers compact = new()
         {
             U32Fixed = 0x11223344u,
             U64Tagged = (ulong)int.MaxValue,
         };
-        EncodedNumbers wide = new()
+        SchemaNumbers wide = new()
         {
             U32Fixed = 0x11223344u,
             U64Tagged = (ulong)int.MaxValue + 1UL,
@@ -833,8 +937,8 @@ public sealed class ForyRuntimeTests
         byte[] widePayload = fory.Serialize(wide);
 
         Assert.Equal(5, widePayload.Length - compactPayload.Length);
-        Assert.Equal(compact.U64Tagged, fory.Deserialize<EncodedNumbers>(compactPayload).U64Tagged);
-        Assert.Equal(wide.U64Tagged, fory.Deserialize<EncodedNumbers>(widePayload).U64Tagged);
+        Assert.Equal(compact.U64Tagged, fory.Deserialize<SchemaNumbers>(compactPayload).U64Tagged);
+        Assert.Equal(wide.U64Tagged, fory.Deserialize<SchemaNumbers>(widePayload).U64Tagged);
     }
 
     [Theory]

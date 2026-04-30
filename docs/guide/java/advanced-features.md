@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
 public class ZeroCopyExample {
   // Note that fory instance should be reused instead of creation every time.
   static Fory fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .build();
 
   public static void main(String[] args) {
@@ -129,7 +129,7 @@ MemoryAllocator customAllocator = new MemoryAllocator() {
 MemoryBuffer.setGlobalAllocator(customAllocator);
 
 // All subsequent MemoryBuffer allocations will use your custom allocator
-Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+Fory fory = Fory.builder().withXlang(false).build();
 byte[] bytes = fory.serialize(someObject); // Uses custom allocator
 ```
 

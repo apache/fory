@@ -215,11 +215,6 @@ fn parse_meta_item(
             return Err(syn::Error::new(nested.path.span(), "duplicate skip config"));
         }
         meta.skip = true;
-    } else if nested.path.is_ident("compress") {
-        return Err(syn::Error::new(
-            nested.path.span(),
-            "compress has been removed; use encoding = varint or encoding = fixed",
-        ));
     } else if nested.path.is_ident("encoding") {
         let encoding = parse_encoding_value(&nested)?;
         if meta.encoding.is_some() {
@@ -683,16 +678,6 @@ mod tests {
             map: None,
         };
         assert!(!meta.effective_ref(FieldTypeClass::Rc)); // Would be true by default
-    }
-
-    #[test]
-    fn test_parse_removed_compress_attribute() {
-        let field: Field = parse_quote! {
-            #[fory(compress = false)]
-            value: u32
-        };
-        let err = parse_field_meta(&field).unwrap_err();
-        assert!(err.to_string().contains("compress has been removed"));
     }
 
     #[test]

@@ -264,14 +264,15 @@ Fory provides annotations to control integer encoding for cross-language compati
 
 ```java
 import org.apache.fory.annotation.Int32Type;
+import org.apache.fory.config.Int32Encoding;
 
 public class MyStruct {
     // Variable-length encoding (default) - compact for small values
-    @Int32Type(compress = true)
+    @Int32Type(encoding = Int32Encoding.VARINT)
     private int compactId;
 
     // Fixed 4-byte encoding - consistent size
-    @Int32Type(compress = false)
+    @Int32Type(encoding = Int32Encoding.FIXED)
     private int fixedId;
 }
 ```
@@ -280,19 +281,19 @@ public class MyStruct {
 
 ```java
 import org.apache.fory.annotation.Int64Type;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 
 public class MyStruct {
     // Variable-length encoding (default)
-    @Int64Type(encoding = LongEncoding.VARINT)
+    @Int64Type(encoding = Int64Encoding.VARINT)
     private long compactId;
 
     // Fixed 8-byte encoding
-    @Int64Type(encoding = LongEncoding.FIXED)
+    @Int64Type(encoding = Int64Encoding.FIXED)
     private long fixedTimestamp;
 
     // Tagged encoding (4 bytes for small values, 9 bytes otherwise)
-    @Int64Type(encoding = LongEncoding.TAGGED)
+    @Int64Type(encoding = Int64Encoding.TAGGED)
     private long taggedValue;
 }
 ```
@@ -300,37 +301,38 @@ public class MyStruct {
 ### Unsigned Integers
 
 ```java
-import org.apache.fory.annotation.Uint8Type;
-import org.apache.fory.annotation.Uint16Type;
-import org.apache.fory.annotation.Uint32Type;
-import org.apache.fory.annotation.Uint64Type;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.annotation.UInt16Type;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.config.Int32Encoding;
+import org.apache.fory.config.Int64Encoding;
 
 public class UnsignedStruct {
     // Unsigned 8-bit [0, 255]
-    @Uint8Type
-    private short flags;
+    @UInt8Type
+    private int flags;
 
     // Unsigned 16-bit [0, 65535]
-    @Uint16Type
+    @UInt16Type
     private int port;
 
     // Unsigned 32-bit with varint encoding (default)
-    @Uint32Type(compress = true)
+    @UInt32Type(encoding = Int32Encoding.VARINT)
     private long compactCount;
 
     // Unsigned 32-bit with fixed encoding
-    @Uint32Type(compress = false)
+    @UInt32Type(encoding = Int32Encoding.FIXED)
     private long fixedCount;
 
     // Unsigned 64-bit with various encodings
-    @Uint64Type(encoding = LongEncoding.VARINT)
+    @UInt64Type(encoding = Int64Encoding.VARINT)
     private long varintU64;
 
-    @Uint64Type(encoding = LongEncoding.FIXED)
+    @UInt64Type(encoding = Int64Encoding.FIXED)
     private long fixedU64;
 
-    @Uint64Type(encoding = LongEncoding.TAGGED)
+    @UInt64Type(encoding = Int64Encoding.TAGGED)
     private long taggedU64;
 }
 ```
@@ -339,18 +341,18 @@ public class UnsignedStruct {
 
 | Annotation                       | Type ID | Encoding | Size         |
 | -------------------------------- | ------- | -------- | ------------ |
-| `@Int32Type(compress = true)`    | 5       | varint   | 1-5 bytes    |
-| `@Int32Type(compress = false)`   | 4       | fixed    | 4 bytes      |
+| `@Int32Type(encoding = VARINT)`  | 5       | varint   | 1-5 bytes    |
+| `@Int32Type(encoding = FIXED)`   | 4       | fixed    | 4 bytes      |
 | `@Int64Type(encoding = VARINT)`  | 7       | varint   | 1-10 bytes   |
 | `@Int64Type(encoding = FIXED)`   | 6       | fixed    | 8 bytes      |
 | `@Int64Type(encoding = TAGGED)`  | 8       | tagged   | 4 or 9 bytes |
-| `@Uint8Type`                     | 9       | fixed    | 1 byte       |
-| `@Uint16Type`                    | 10      | fixed    | 2 bytes      |
-| `@Uint32Type(compress = true)`   | 12      | varint   | 1-5 bytes    |
-| `@Uint32Type(compress = false)`  | 11      | fixed    | 4 bytes      |
-| `@Uint64Type(encoding = VARINT)` | 14      | varint   | 1-10 bytes   |
-| `@Uint64Type(encoding = FIXED)`  | 13      | fixed    | 8 bytes      |
-| `@Uint64Type(encoding = TAGGED)` | 15      | tagged   | 4 or 9 bytes |
+| `@UInt8Type`                     | 9       | fixed    | 1 byte       |
+| `@UInt16Type`                    | 10      | fixed    | 2 bytes      |
+| `@UInt32Type(encoding = VARINT)` | 12      | varint   | 1-5 bytes    |
+| `@UInt32Type(encoding = FIXED)`  | 11      | fixed    | 4 bytes      |
+| `@UInt64Type(encoding = VARINT)` | 14      | varint   | 1-10 bytes   |
+| `@UInt64Type(encoding = FIXED)`  | 13      | fixed    | 8 bytes      |
+| `@UInt64Type(encoding = TAGGED)` | 15      | tagged   | 4 or 9 bytes |
 
 **When to Use**:
 
@@ -359,6 +361,45 @@ public class UnsignedStruct {
 - `tagged`: Good balance between size and performance
 - Unsigned types: For cross-language compatibility with Rust, Go, C++
 
+Unsigned Java scalar carriers are `int`/`Integer` for `@UInt8Type` and
+`@UInt16Type`, and `long`/`Long` for `@UInt32Type` and `@UInt64Type`.
+Annotating `byte` with `@UInt8Type` is invalid because Java `byte` cannot
+represent the unsigned range.
+
+Integer annotations can also be applied to nested generic type arguments:
+
+```java
+import java.util.List;
+import java.util.Map;
+import org.apache.fory.annotation.Int64Type;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.config.Int32Encoding;
+import org.apache.fory.config.Int64Encoding;
+
+public class NestedStruct {
+    private Map<
+            @UInt32Type(encoding = Int32Encoding.FIXED) Long,
+            List<@Int64Type(encoding = Int64Encoding.TAGGED) Long>>
+        values;
+}
+```
+
+Specialized unsigned list carriers still use packed-array wire types when the
+field or nested element encoding is fixed. If a `UInt32List` or `UInt64List`
+field is annotated with a variable or tagged encoding, Fory serializes it with
+the collection protocol so the element type metadata is preserved.
+
+Primitive unsigned arrays can use element annotations for packed-array metadata:
+
+```java
+import org.apache.fory.annotation.UInt32Elements;
+
+public class IdBatch {
+    @UInt32Elements
+    private int[] ids;
+}
+```
+
 ## Complete Example
 
 ```java
@@ -366,8 +407,8 @@ import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Ignore;
 import org.apache.fory.annotation.Int64Type;
-import org.apache.fory.annotation.Uint64Type;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.config.Int64Encoding;
 
 import java.util.List;
 import java.util.Map;
@@ -397,15 +438,15 @@ public class Document {
 
     // Integer with different encodings
     @ForyField(id = 6)
-    @Uint64Type(encoding = LongEncoding.VARINT)
+    @UInt64Type(encoding = Int64Encoding.VARINT)
     private long viewCount;  // varint encoding
 
     @ForyField(id = 7)
-    @Uint64Type(encoding = LongEncoding.FIXED)
+    @UInt64Type(encoding = Int64Encoding.FIXED)
     private long fileSize;   // fixed encoding
 
     @ForyField(id = 8)
-    @Uint64Type(encoding = LongEncoding.TAGGED)
+    @UInt64Type(encoding = Int64Encoding.TAGGED)
     private long checksum;   // tagged encoding
 
     // Reference-tracked field for shared/circular references
@@ -451,15 +492,15 @@ When serializing data to be read by other languages (Python, Rust, C++, Go), use
 public class CrossLangData {
     // Use field IDs for cross-language compatibility
     @ForyField(id = 0)
-    @Int32Type(compress = true)
+    @Int32Type(encoding = Int32Encoding.VARINT)
     private int intVar;
 
     @ForyField(id = 1)
-    @Uint64Type(encoding = LongEncoding.FIXED)
+    @UInt64Type(encoding = Int64Encoding.FIXED)
     private long longFixed;
 
     @ForyField(id = 2)
-    @Uint64Type(encoding = LongEncoding.TAGGED)
+    @UInt64Type(encoding = Int64Encoding.TAGGED)
     private long longTagged;
 
     @ForyField(id = 3, nullable = true)
@@ -591,12 +632,12 @@ public class User {
 | `@ForyField(ref = true)`      | Enable reference tracking              |
 | `@ForyField(dynamic = ...)`   | Control polymorphism for struct fields |
 | `@Ignore`                     | Exclude field from serialization       |
-| `@Int32Type(compress = ...)`  | 32-bit signed integer encoding         |
+| `@Int32Type(encoding = ...)`  | 32-bit signed integer encoding         |
 | `@Int64Type(encoding = ...)`  | 64-bit signed integer encoding         |
-| `@Uint8Type`                  | Unsigned 8-bit integer                 |
-| `@Uint16Type`                 | Unsigned 16-bit integer                |
-| `@Uint32Type(compress = ...)` | Unsigned 32-bit integer encoding       |
-| `@Uint64Type(encoding = ...)` | Unsigned 64-bit integer encoding       |
+| `@UInt8Type`                  | Unsigned 8-bit integer                 |
+| `@UInt16Type`                 | Unsigned 16-bit integer                |
+| `@UInt32Type(encoding = ...)` | Unsigned 32-bit integer encoding       |
+| `@UInt64Type(encoding = ...)` | Unsigned 64-bit integer encoding       |
 
 ## Related Topics
 

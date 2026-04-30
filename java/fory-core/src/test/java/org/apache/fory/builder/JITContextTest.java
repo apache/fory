@@ -32,8 +32,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.ThreadSafeFory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.Logger;
@@ -75,7 +73,7 @@ public class JITContextTest extends ForyTestBase {
       throws InterruptedException {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .withCompatible(compatible)
             .requireClassRegistration(false)
@@ -116,7 +114,7 @@ public class JITContextTest extends ForyTestBase {
       throws InterruptedException {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(referenceTracking)
             .withCompatible(compatible)
             .withScopedMetaShare(scopedMetaShare)
@@ -153,7 +151,7 @@ public class JITContextTest extends ForyTestBase {
   public void testAsyncCompilationSwitch() throws InterruptedException {
     final Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withAsyncCompilation(true)
@@ -193,10 +191,10 @@ public class JITContextTest extends ForyTestBase {
                 try {
                   ThreadSafeFory fory =
                       Fory.builder()
-                          .withLanguage(Language.JAVA)
+                          .withXlang(false)
                           .requireClassRegistration(true)
                           .withAsyncCompilation(true)
-                          .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                          .withCompatible(true)
                           .buildThreadSafeForyPool(4);
                   fory.register(BeanB.class);
                   // fory.register(BeanA.class);

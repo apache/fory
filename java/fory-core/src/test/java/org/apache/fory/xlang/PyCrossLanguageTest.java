@@ -57,9 +57,7 @@ import java.util.stream.IntStream;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
@@ -134,7 +132,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
     buffer.writeInt64(Long.MAX_VALUE);
     buffer.writeFloat32(-1.1f);
     buffer.writeFloat64(-1.1);
-    buffer.writeVarUint32(100);
+    buffer.writeVarUInt32(100);
     byte[] bytes = {'a', 'b'};
     buffer.writeInt32(bytes.length);
     buffer.writeBytes(bytes);
@@ -156,7 +154,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
     Assert.assertEquals(buffer.readInt64(), Long.MAX_VALUE);
     Assert.assertEquals(buffer.readFloat32(), -1.1f, 0.0001);
     Assert.assertEquals(buffer.readFloat64(), -1.1, 0.0001);
-    Assert.assertEquals(buffer.readVarUint32(), 100);
+    Assert.assertEquals(buffer.readVarUInt32(), 100);
     Assert.assertTrue(Arrays.equals(buffer.readBytes(buffer.readInt32()), bytes));
   }
 
@@ -237,7 +235,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testCrossLanguageSerializer() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -329,7 +327,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testCrossLanguagePreserveTypes() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -409,7 +407,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testCrossLanguageReference() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -474,7 +472,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testStructHash() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .withCodegen(false)
             .requireClassRegistration(false)
@@ -515,9 +513,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testSerializeSimpleStruct(boolean compatible) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -533,9 +530,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testRegisterById(boolean compatible) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -550,10 +546,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testRegisterByIdMetaShare(boolean enableCodegen) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withCodegen(enableCodegen)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     fory.register(ComplexObject2.class, 100);
@@ -568,9 +564,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testSerializeComplexStruct(boolean compatible) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -656,7 +651,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testRegisterSerializer() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -698,7 +693,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testOutOfBandBuffer() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -775,7 +770,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
 
   @Test
   public void testStructArrayField() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true).build();
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(true).build();
     fory.register(ArrayStruct.class, "example.bar");
     fory.register(ArrayField.class, "example.foo");
 
@@ -790,7 +785,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void basicTest(boolean referenceTracking) {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
@@ -865,9 +860,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testEnumField(boolean compatible) throws java.io.IOException {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .requireClassRegistration(true)
             .build();
     fory.register(EnumTestClass.class, "test.EnumTestClass");
@@ -887,9 +881,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
         Fory.builder()
             // avoid generated code conflict with register by name
             .withName("testEnumObject")
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .requireClassRegistration(true)
             .build();
     fory.register(EnumTestClass.class, "demo.Enum1");
@@ -908,9 +901,8 @@ public class PyCrossLanguageTest extends ForyTestBase {
         Fory.builder()
             // avoid generated code conflict with register by name
             .withName("testEnumFieldRegisterById")
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(
-                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .withXlang(true)
+            .withCompatible(compatible)
             .requireClassRegistration(true)
             .build();
     fory.register(EnumTestClass.class, 1);
@@ -930,11 +922,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testMissingEnumField(boolean enableCodegen) {
     Supplier<Fory> builder =
         () ->
-            Fory.builder()
-                .withLanguage(Language.XLANG)
-                .withCompatibleMode(CompatibleMode.COMPATIBLE)
-                .withCodegen(enableCodegen)
-                .build();
+            Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
     Fory fory = builder.get();
     fory.register(EnumTestClass.class, "test_enum");
     fory.register(EnumFieldStruct.class, 2);
@@ -961,9 +949,9 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testCrossLanguageMetaShare() throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     fory.register(ComplexObject2.class, "test.ComplexObject2");
@@ -983,10 +971,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
   public void testCrossLanguageMetaShareComplex(boolean enableCodegen) throws Exception {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withCodegen(enableCodegen)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
     fory.register(ComplexObject1.class, "test.ComplexObject1");
@@ -1046,10 +1034,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
     // Test simple schema evolution compatibility
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withCodegen(enableCodegen)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
 
@@ -1070,10 +1058,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
     // Test that old version can read new data (ignoring unknown fields)
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withCodegen(enableCodegen)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
 
@@ -1097,10 +1085,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
     // Test that field reordering doesn't break compatibility
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withCodegen(enableCodegen)
             .withRefTracking(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
 
@@ -1129,10 +1117,10 @@ public class PyCrossLanguageTest extends ForyTestBase {
     // Test mixed version compatibility in one test
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false)
             .build();
 

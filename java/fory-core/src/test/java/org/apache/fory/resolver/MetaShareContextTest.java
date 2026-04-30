@@ -26,8 +26,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.test.bean.BeanA;
@@ -41,7 +39,7 @@ public class MetaShareContextTest extends ForyTestBase {
   public void testShareClassName() {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withMetaShare(true)
             .requireClassRegistration(false)
@@ -55,11 +53,11 @@ public class MetaShareContextTest extends ForyTestBase {
   public void testShareTypeDefCompatible(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withMetaShare(true)
             .withScopedMetaShare(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .requireClassRegistration(false)
             .build();
@@ -102,11 +100,11 @@ public class MetaShareContextTest extends ForyTestBase {
   public void testFinalTypeWriteMeta(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(true)
             .withMetaShare(true)
             .withScopedMetaShare(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .requireClassRegistration(false)
             .build();

@@ -30,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
 import org.testng.SkipException;
@@ -218,6 +216,18 @@ public class CPPXlangTest extends XlangTestBase {
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testNestedAnnotatedContainerSchemaConsistent(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNestedAnnotatedContainerSchemaConsistent(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testNestedAnnotatedContainerCompatible(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNestedAnnotatedContainerCompatible(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
     super.testSkipIdCustom(enableCodegen);
   }
@@ -326,8 +336,8 @@ public class CPPXlangTest extends XlangTestBase {
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withXlang(true)
+            .withCompatible(true)
             .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();

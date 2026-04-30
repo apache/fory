@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -45,7 +44,7 @@ class SingleObjectSerializerTest extends AnyWordSpec with Matchers {
   "fory scala object support" should {
     "serialize/deserialize" in {
       val fory = Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withRefTracking(true)
         .withScalaOptimizationEnabled(true)
         .requireClassRegistration(false).build()
@@ -54,7 +53,7 @@ class SingleObjectSerializerTest extends AnyWordSpec with Matchers {
     }
     "nested type serialization in object type" in {
       val fory = Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .withRefTracking(true)
         .withScalaOptimizationEnabled(true)
         .requireClassRegistration(false).build()

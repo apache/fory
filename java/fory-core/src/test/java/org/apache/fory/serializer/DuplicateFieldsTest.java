@@ -26,9 +26,7 @@ import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.builder.CodecUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
@@ -57,7 +55,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
     assertEquals(c.f1, -100);
     Fory fory =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withCodegen(true)
             .requireClassRegistration(false)
@@ -86,7 +84,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
       // FallbackSerializer/CodegenSerializer will set itself to ClassResolver.
       Fory fory1 =
           Fory.builder()
-              .withLanguage(Language.JAVA)
+              .withXlang(false)
               .withRefTracking(false)
               .withCodegen(true)
               .requireClassRegistration(false)
@@ -107,10 +105,10 @@ public class DuplicateFieldsTest extends ForyTestBase {
     assertEquals(c.f1, -100);
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withRefTracking(false)
             .withCodegen(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .requireClassRegistration(false);
     Fory fory = builder.build();
     {

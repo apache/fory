@@ -30,38 +30,57 @@ public sealed class ForyObjectAttribute : Attribute
 }
 
 /// <summary>
-/// Specifies field-level integer/number encoding strategy for generated serializers.
-/// </summary>
-public enum FieldEncoding
-{
-    /// <summary>
-    /// Variable-length integer encoding.
-    /// </summary>
-    Varint,
-    /// <summary>
-    /// Fixed-width integer encoding.
-    /// </summary>
-    Fixed,
-    /// <summary>
-    /// Tagged field encoding for schema-evolution scenarios.
-    /// </summary>
-    Tagged,
-}
-
-/// <summary>
 /// Overrides generated serializer behavior for a field or property.
 /// </summary>
 [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
-public sealed class FieldAttribute : Attribute
+public sealed class ForyFieldAttribute : Attribute
 {
+    private short id = -1;
+
+    public ForyFieldAttribute()
+    {
+    }
+
+    public ForyFieldAttribute(short id)
+    {
+        ValidateId(id);
+        this.id = id;
+    }
+
+    public ForyFieldAttribute(int id)
+    {
+        if (id is < 0 or > short.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(nameof(id));
+        }
+
+        this.id = (short)id;
+    }
+
     /// <summary>
     /// Optional stable field tag id used for compatible metadata dispatch.
     /// Use a non-negative value to emit numeric field ids instead of field names.
     /// </summary>
-    public short Id { get; set; } = -1;
+    public short Id
+    {
+        get => id;
+        set
+        {
+            ValidateId(value);
+            id = value;
+        }
+    }
 
     /// <summary>
-    /// Gets or sets the field encoding strategy used by generated serializers.
+    /// Optional Fory schema descriptor type from <c>Apache.Fory.Schema.Types</c>.
     /// </summary>
-    public FieldEncoding Encoding { get; set; } = FieldEncoding.Varint;
+    public Type? Type { get; set; }
+
+    private static void ValidateId(short id)
+    {
+        if (id < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(id));
+        }
+    }
 }

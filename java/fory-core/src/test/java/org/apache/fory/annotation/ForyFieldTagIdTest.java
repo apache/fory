@@ -29,7 +29,6 @@ import java.util.List;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.apache.fory.meta.FieldInfo;
 import org.apache.fory.meta.TypeDef;
 import org.testng.annotations.DataProvider;
@@ -52,16 +51,15 @@ public class ForyFieldTagIdTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "languageAndCodegen")
-  public void testFieldInfoCreationWithTagIds(
-      Language language, boolean codegen, boolean registered) {
+  public void testFieldInfoCreationWithTagIds(boolean xlang, boolean codegen, boolean registered) {
     Fory fory =
         Fory.builder()
-            .withLanguage(language)
+            .withXlang(xlang)
             .requireClassRegistration(registered)
             .withCodegen(codegen)
             .build();
 
-    if (language == Language.XLANG) {
+    if (xlang) {
       fory.register(TestClass.class, "test.TestClass");
     }
 
@@ -78,47 +76,47 @@ public class ForyFieldTagIdTest extends ForyTestBase {
     FieldInfo fieldNoAnnotation = findFieldByName(fieldsInfo, "fieldWithoutAnnotation");
 
     // Verify field with id=0 has tag
-    assertTrue(field0.hasFieldId(), "Field with id=0 should have tag in " + language + " mode");
+    assertTrue(field0.hasFieldId(), "Field with id=0 should have tag in xlang=" + xlang);
     assertEquals(
         field0.getFieldId(),
         (short) 0,
-        "Field with id=0 should have tag value 0 in " + language + " mode");
+        "Field with id=0 should have tag value 0 in xlang=" + xlang);
 
     // Verify field with id=5 has tag
-    assertTrue(field5.hasFieldId(), "Field with id=5 should have tag in " + language + " mode");
+    assertTrue(field5.hasFieldId(), "Field with id=5 should have tag in xlang=" + xlang);
     assertEquals(
         field5.getFieldId(),
         (short) 5,
-        "Field with id=5 should have tag value 5 in " + language + " mode");
+        "Field with id=5 should have tag value 5 in xlang=" + xlang);
 
     // Verify field with id=-1 does NOT have tag (opts out)
     assertFalse(
         fieldOptOut.hasFieldId(),
-        "Field with id=-1 should NOT have tag (opt-out) in " + language + " mode");
+        "Field with id=-1 should NOT have tag (opt-out) in xlang=" + xlang);
     assertEquals(
         fieldOptOut.getFieldName(),
         "fieldOptingOutOfTag",
-        "Field with id=-1 should use field name in " + language + " mode");
+        "Field with id=-1 should use field name in xlang=" + xlang);
 
     // Verify field without annotation does NOT have tag
     assertFalse(
         fieldNoAnnotation.hasFieldId(),
-        "Field without annotation should NOT have tag (use field name) in " + language + " mode");
+        "Field without annotation should NOT have tag (use field name) in xlang=" + xlang);
     assertEquals(
         fieldNoAnnotation.getFieldName(),
         "fieldWithoutAnnotation",
-        "Field without annotation should use field name in " + language + " mode");
+        "Field without annotation should use field name in xlang=" + xlang);
   }
 
   @DataProvider(name = "languageAndCodegen")
   public Object[][] languageAndCodegen() {
     return new Object[][] {
-      {Language.JAVA, false, false},
-      {Language.JAVA, false, true},
-      {Language.JAVA, true, false},
-      {Language.JAVA, true, true},
-      {Language.XLANG, false, true},
-      {Language.XLANG, true, true},
+      {false, false, false},
+      {false, false, true},
+      {false, true, false},
+      {false, true, true},
+      {true, false, true},
+      {true, true, true},
     };
   }
 
@@ -146,7 +144,7 @@ public class ForyFieldTagIdTest extends ForyTestBase {
   @Test
   public void testIdMinusOneOptOutBehavior() {
     // Test that id=-1 explicitly opts out of tag ID usage
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(true).requireClassRegistration(false).build();
     fory.register(TestClass.class, "test.TestClass");
 
     TestClass obj = new TestClass();

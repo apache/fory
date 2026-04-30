@@ -49,9 +49,9 @@ struct NumericStruct {
   }
   MSGPACK_DEFINE_MAP(f1, f2, f3, f4, f5, f6, f7, f8);
 };
-FORY_STRUCT(NumericStruct, f1, f2, f3, f4, f5, f6, f7, f8);
-FORY_FIELD_TAGS(NumericStruct, (f1, 1), (f2, 2), (f3, 3), (f4, 4), (f5, 5),
-                (f6, 6), (f7, 7), (f8, 8));
+FORY_STRUCT(NumericStruct, (f1, fory::F(1)), (f2, fory::F(2)), (f3, fory::F(3)),
+            (f4, fory::F(4)), (f5, fory::F(5)), (f6, fory::F(6)),
+            (f7, fory::F(7)), (f8, fory::F(8)));
 
 struct Sample {
   int32_t int_value;
@@ -103,20 +103,17 @@ struct Sample {
                      int_array, long_array, float_array, double_array,
                      short_array, char_array, boolean_array, string);
 };
-FORY_STRUCT(Sample, int_value, long_value, float_value, double_value,
-            short_value, char_value, boolean_value, int_value_boxed,
-            long_value_boxed, float_value_boxed, double_value_boxed,
-            short_value_boxed, char_value_boxed, boolean_value_boxed, int_array,
-            long_array, float_array, double_array, short_array, char_array,
-            boolean_array, string);
-FORY_FIELD_TAGS(Sample, (int_value, 1), (long_value, 2), (float_value, 3),
-                (double_value, 4), (short_value, 5), (char_value, 6),
-                (boolean_value, 7), (int_value_boxed, 8), (long_value_boxed, 9),
-                (float_value_boxed, 10), (double_value_boxed, 11),
-                (short_value_boxed, 12), (char_value_boxed, 13),
-                (boolean_value_boxed, 14), (int_array, 15), (long_array, 16),
-                (float_array, 17), (double_array, 18), (short_array, 19),
-                (char_array, 20), (boolean_array, 21), (string, 22));
+FORY_STRUCT(Sample, (int_value, fory::F(1)), (long_value, fory::F(2)),
+            (float_value, fory::F(3)), (double_value, fory::F(4)),
+            (short_value, fory::F(5)), (char_value, fory::F(6)),
+            (boolean_value, fory::F(7)), (int_value_boxed, fory::F(8)),
+            (long_value_boxed, fory::F(9)), (float_value_boxed, fory::F(10)),
+            (double_value_boxed, fory::F(11)), (short_value_boxed, fory::F(12)),
+            (char_value_boxed, fory::F(13)), (boolean_value_boxed, fory::F(14)),
+            (int_array, fory::F(15)), (long_array, fory::F(16)),
+            (float_array, fory::F(17)), (double_array, fory::F(18)),
+            (short_array, fory::F(19)), (char_array, fory::F(20)),
+            (boolean_array, fory::F(21)), (string, fory::F(22)));
 
 // Enums for MediaContent benchmark
 enum class Player : int32_t { JAVA = 0, FLASH = 1 };
@@ -150,11 +147,11 @@ struct Media {
   MSGPACK_DEFINE_MAP(uri, title, width, height, format, duration, size, bitrate,
                      has_bitrate, persons, player, copyright);
 };
-FORY_STRUCT(Media, uri, title, width, height, format, duration, size, bitrate,
-            has_bitrate, persons, player, copyright);
-FORY_FIELD_TAGS(Media, (uri, 1), (title, 2), (width, 3), (height, 4),
-                (format, 5), (duration, 6), (size, 7), (bitrate, 8),
-                (has_bitrate, 9), (persons, 10), (player, 11), (copyright, 12));
+FORY_STRUCT(Media, (uri, fory::F(1)), (title, fory::F(2)), (width, fory::F(3)),
+            (height, fory::F(4)), (format, fory::F(5)), (duration, fory::F(6)),
+            (size, fory::F(7)), (bitrate, fory::F(8)),
+            (has_bitrate, fory::F(9)), (persons, fory::F(10)),
+            (player, fory::F(11)), (copyright, fory::F(12)));
 
 struct Image {
   std::string uri;
@@ -169,9 +166,8 @@ struct Image {
   }
   MSGPACK_DEFINE_MAP(uri, title, width, height, size);
 };
-FORY_STRUCT(Image, uri, title, width, height, size);
-FORY_FIELD_TAGS(Image, (uri, 1), (title, 2), (width, 3), (height, 4),
-                (size, 5));
+FORY_STRUCT(Image, (uri, fory::F(1)), (title, fory::F(2)), (width, fory::F(3)),
+            (height, fory::F(4)), (size, fory::F(5)));
 
 struct MediaContent {
   Media media;
@@ -182,8 +178,7 @@ struct MediaContent {
   }
   MSGPACK_DEFINE_MAP(media, images);
 };
-FORY_STRUCT(MediaContent, media, images);
-FORY_FIELD_TAGS(MediaContent, (media, 1), (images, 2));
+FORY_STRUCT(MediaContent, (media, fory::F(1)), (images, fory::F(2)));
 
 struct StructList {
   std::vector<NumericStruct> struct_list;
@@ -193,8 +188,7 @@ struct StructList {
   }
   MSGPACK_DEFINE_MAP(struct_list);
 };
-FORY_STRUCT(StructList, struct_list);
-FORY_FIELD_TAGS(StructList, (struct_list, 1));
+FORY_STRUCT(StructList, (struct_list, fory::F(1)));
 
 struct SampleList {
   std::vector<Sample> sample_list;
@@ -204,8 +198,7 @@ struct SampleList {
   }
   MSGPACK_DEFINE_MAP(sample_list);
 };
-FORY_STRUCT(SampleList, sample_list);
-FORY_FIELD_TAGS(SampleList, (sample_list, 1));
+FORY_STRUCT(SampleList, (sample_list, fory::F(1)));
 
 struct MediaContentList {
   std::vector<MediaContent> media_content_list;
@@ -215,8 +208,7 @@ struct MediaContentList {
   }
   MSGPACK_DEFINE_MAP(media_content_list);
 };
-FORY_STRUCT(MediaContentList, media_content_list);
-FORY_FIELD_TAGS(MediaContentList, (media_content_list, 1));
+FORY_STRUCT(MediaContentList, (media_content_list, fory::F(1)));
 
 // ============================================================================
 // Test data creation

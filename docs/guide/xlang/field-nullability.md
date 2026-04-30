@@ -107,7 +107,7 @@ public class Person {
 }
 
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .build();
 fory.register(Person.class, "example.Person");
 ```
@@ -200,17 +200,32 @@ public class Config {
 }
 ```
 
-### C++: fory::field Wrapper
+### C++: FORY_STRUCT Field Config
 
 ```cpp
 struct Config {
-    // Explicitly mark as nullable
-    fory::field<std::string, 1, fory::nullable<true>> optional_setting;
-
-    // Explicitly mark as non-nullable (default)
-    fory::field<std::string, 2, fory::nullable<false>> required_setting;
+    std::optional<std::string> optional_setting;
+    std::string required_setting;
 };
-FORY_STRUCT(Config, optional_setting, required_setting);
+
+FORY_STRUCT(Config,
+    (optional_setting, fory::F(1)),
+    (required_setting, fory::F(2))
+);
+```
+
+For nullable pointer carriers, opt in with `.nullable()`:
+
+```cpp
+struct ConfigRef {
+    std::shared_ptr<std::string> optional_setting;
+    std::shared_ptr<std::string> required_setting;
+};
+
+FORY_STRUCT(ConfigRef,
+    (optional_setting, fory::F(1).nullable()),
+    (required_setting, fory::F(2))
+);
 ```
 
 ## Null Value Handling

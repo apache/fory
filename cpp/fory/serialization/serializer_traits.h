@@ -373,8 +373,19 @@ inline constexpr bool is_shared_ref_v = is_shared_ref<T>::value;
 // Element Type Extraction
 // ============================================================================
 
-/// get element type for containers (reuse meta::GetValueType)
-template <typename T> using element_type_t = typename meta::GetValueType<T>;
+/// get element type for containers.
+template <typename T, typename = void> struct element_type_impl {
+  using type = typename meta::GetValueType<T>;
+};
+
+template <typename T>
+struct element_type_impl<T, std::void_t<typename T::value_type>> {
+  using type = typename T::value_type;
+};
+
+template <typename T>
+using element_type_t = typename element_type_impl<
+    std::remove_cv_t<std::remove_reference_t<T>>>::type;
 
 /// get key type for map-like containers
 template <typename T, typename = void> struct key_type_impl {};

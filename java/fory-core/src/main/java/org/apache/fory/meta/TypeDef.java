@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -62,7 +61,7 @@ import org.apache.fory.util.StringUtils;
  *     enough to create serializer in receiver.
  *
  * @see MetaSharedCodecBuilder
- * @see CompatibleMode#COMPATIBLE
+ * @see ForyBuilder#withCompatible(boolean)
  * @see MetaSharedSerializer
  * @see ForyBuilder#withMetaShare
  * @see ReflectionUtils#getFieldOffset
@@ -124,7 +123,7 @@ public class TypeDef implements Serializable {
   public static void skipTypeDef(MemoryBuffer buffer, long id) {
     int size = (int) (id & META_SIZE_MASKS);
     if (size == META_SIZE_MASKS) {
-      size += buffer.readVarUint32Small14();
+      size += buffer.readVarUInt32Small14();
     }
     buffer.increaseReaderIndex(size);
   }

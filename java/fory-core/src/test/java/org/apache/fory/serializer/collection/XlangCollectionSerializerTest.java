@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -47,7 +46,7 @@ public class XlangCollectionSerializerTest extends ForyTestBase {
 
   @Test(dataProvider = "enableCodegen")
   public void testContainerType(boolean enableCodegen) {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).withCodegen(enableCodegen).build();
+    Fory fory = Fory.builder().withXlang(true).withCodegen(enableCodegen).build();
     fory.register(SomeClass.class, "SomeClass");
 
     SomeClass someClass = new SomeClass();
@@ -63,7 +62,7 @@ public class XlangCollectionSerializerTest extends ForyTestBase {
 
   @Test
   public void testSerializeListWithNullElements() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    Fory fory = Fory.builder().withXlang(true).build();
     ArrayList<String> strList = new ArrayList<>();
     strList.add(null);
     byte[] serialized = fory.serialize(strList);

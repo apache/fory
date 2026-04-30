@@ -68,7 +68,7 @@ cdef class RefWriter:
     cdef inline bint write_ref_or_null(self, CBuffer * c_buffer, obj):
         cdef uint64_t object_id
         cdef int32_t next_id
-        cdef flat_hash_map[uint64_t, int32_t].iterator it
+        cdef pair[uint64_t, int32_t] *entry
         if not self.track_ref:
             if obj is None:
                 deref(c_buffer).write_int8(NULL_FLAG)
@@ -79,8 +79,8 @@ cdef class RefWriter:
             deref(c_buffer).write_int8(NULL_FLAG)
             return True
         object_id = <uintptr_t> <PyObject *> obj
-        it = self.written_objects_id.find(object_id)
-        if it == self.written_objects_id.end():
+        entry = self.written_objects_id.find(object_id)
+        if entry == NULL:
             next_id = self.written_objects_id.size()
             self.written_objects_id[object_id] = next_id
             self.written_objects.push_back(<PyObject *> obj)
@@ -88,20 +88,20 @@ cdef class RefWriter:
             deref(c_buffer).write_int8(REF_VALUE_FLAG)
             return False
         deref(c_buffer).write_int8(REF_FLAG)
-        deref(c_buffer).write_var_uint32(<uint64_t> deref(it).second)
+        deref(c_buffer).write_var_uint32(<uint64_t> deref(entry).second)
         return True
 
     cdef inline bint write_ref_value_flag(self, CBuffer * c_buffer, obj):
         cdef uint64_t object_id
         cdef int32_t next_id
-        cdef flat_hash_map[uint64_t, int32_t].iterator it
+        cdef pair[uint64_t, int32_t] *entry
         assert obj is not None
         if not self.track_ref:
             deref(c_buffer).write_int8(NOT_NULL_VALUE_FLAG)
             return True
         object_id = <uintptr_t> <PyObject *> obj
-        it = self.written_objects_id.find(object_id)
-        if it == self.written_objects_id.end():
+        entry = self.written_objects_id.find(object_id)
+        if entry == NULL:
             next_id = self.written_objects_id.size()
             self.written_objects_id[object_id] = next_id
             self.written_objects.push_back(<PyObject *> obj)
@@ -109,7 +109,7 @@ cdef class RefWriter:
             deref(c_buffer).write_int8(REF_VALUE_FLAG)
             return True
         deref(c_buffer).write_int8(REF_FLAG)
-        deref(c_buffer).write_var_uint32(<uint64_t> deref(it).second)
+        deref(c_buffer).write_var_uint32(<uint64_t> deref(entry).second)
         return False
 
     cdef inline bint write_null_flag(self, CBuffer * c_buffer, obj):
@@ -281,8 +281,8 @@ cdef class MetaStringWriter:
         cdef uint64_t object_id = <uintptr_t> <PyObject *> encoded_meta_string
         cdef int32_t length = encoded_meta_string.length
         cdef int32_t dynamic_id
-        cdef flat_hash_map[uint64_t, int32_t].iterator it = self._written_encoded_meta_strings.find(object_id)
-        if it == self._written_encoded_meta_strings.end():
+        cdef pair[uint64_t, int32_t] *entry = self._written_encoded_meta_strings.find(object_id)
+        if entry == NULL:
             dynamic_id = self._written_encoded_meta_strings.size()
             self._written_encoded_meta_strings[object_id] = dynamic_id
             self._written_objects.push_back(<PyObject *> encoded_meta_string)
@@ -295,7 +295,7 @@ cdef class MetaStringWriter:
                 buffer.write_int64(encoded_meta_string.hashcode)
             buffer.write_bytes(encoded_meta_string.data)
             return
-        buffer.write_var_uint32(((deref(it).second + 1) << 1) | 1)
+        buffer.write_var_uint32(((deref(entry).second + 1) << 1) | 1)
 
     cpdef inline reset(self):
         cdef PyObject *item
@@ -326,6 +326,7 @@ cdef class MetaStringReader:
         cdef int8_t encoding = 0
         cdef bytes data
         cdef object encoded_meta_string
+        cdef pair[int64_t, PyObject *] *entry
         if header & 0b1:
             if length <= 0:
                 raise ValueError("Invalid dynamic metastring id 0")
@@ -344,8 +345,8 @@ cdef class MetaStringReader:
                 v1 = buffer.read_int64()
                 v2 = buffer.read_bytes_as_int64(length - 8)
             hashcode = _hash_small_metastring(v1, v2, length, <uint8_t> encoding)
-            encoded_meta_string_ptr = self._c_hash_to_small_encoded_meta_string[hashcode]
-            if encoded_meta_string_ptr == NULL:
+            entry = self._c_hash_to_small_encoded_meta_string.find(hashcode)
+            if entry == NULL or deref(entry).second == NULL:
                 reader_index = buffer.get_reader_index()
                 data = buffer.get_bytes(reader_index - length, length)
                 encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(
@@ -354,13 +355,15 @@ cdef class MetaStringReader:
                 )
                 encoded_meta_string_ptr = <PyObject *> encoded_meta_string
                 self._c_hash_to_small_encoded_meta_string[hashcode] = encoded_meta_string_ptr
+            else:
+                encoded_meta_string_ptr = deref(entry).second
         else:
             hashcode = buffer.read_int64()
             reader_index = buffer.get_reader_index()
             buffer.check_bound(reader_index, length)
             buffer.set_reader_index(reader_index + length)
-            encoded_meta_string_ptr = self._c_hash_to_encoded_meta_string[hashcode]
-            if encoded_meta_string_ptr == NULL:
+            entry = self._c_hash_to_encoded_meta_string.find(hashcode)
+            if entry == NULL or deref(entry).second == NULL:
                 data = buffer.get_bytes(reader_index, length)
                 encoded_meta_string = self.shared_registry.get_or_create_encoded_meta_string(
                     data,
@@ -368,6 +371,8 @@ cdef class MetaStringReader:
                 )
                 encoded_meta_string_ptr = <PyObject *> encoded_meta_string
                 self._c_hash_to_encoded_meta_string[hashcode] = encoded_meta_string_ptr
+            else:
+                encoded_meta_string_ptr = deref(entry).second
         self._c_dynamic_id_to_encoded_meta_string_vec.push_back(encoded_meta_string_ptr)
         return <object> encoded_meta_string_ptr
 

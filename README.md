@@ -267,7 +267,7 @@ public class Example {
   public static void main(String[] args) {
     // Create Fory instance - should be reused across serializations
     BaseFory fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .requireClassRegistration(true)
       // replace `build` with `buildThreadSafeFory` for Thread-Safe Usage
       .build();
@@ -404,7 +404,7 @@ C# native mode provides source-generator-backed serialization for registered .NE
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class Person
 {
     public long Id { get; set; }
@@ -477,7 +477,6 @@ Scala native mode provides optimized serialization for Scala-specific types incl
 
 ```scala
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 case class Person(name: String, age: Int)
@@ -486,7 +485,7 @@ object Example {
   def main(args: Array[String]): Unit = {
     // Create Fory instance - should be reused across serializations
     val fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .requireClassRegistration(true)
       .build()
     // Register Scala serializers for Scala-specific types
@@ -508,7 +507,6 @@ Kotlin native mode provides optimized serialization for Kotlin-specific types in
 
 ```kotlin
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 data class Person(val name: String, val age: Int)
@@ -516,7 +514,7 @@ data class Person(val name: String, val age: Int)
 fun main() {
     // Create Fory instance - should be reused across serializations
     val fory = Fory.builder()
-        .withLanguage(Language.JAVA)
+        .withXlang(false)
         .requireClassRegistration(true)
         .build()
     // Register Kotlin serializers for Kotlin-specific types
@@ -589,7 +587,7 @@ fn main() -> Result<(), Error> {
 
 **Key Points for Cross-Language Serialization**:
 
-- Use `Language.XLANG` mode in all languages
+- Enable xlang mode in all languages, for example `withXlang(true)` in Java
 - Register types with **consistent IDs or names** across all languages:
   - **By ID** (`fory.register(Person.class, 1)`): Faster serialization, more compact encoding, but requires coordination to avoid ID conflicts
   - **By name** (`fory.register(Person.class, "example.Person")`): More flexible, less prone to conflicts, easier to manage across teams, but slightly larger encoding
@@ -736,7 +734,7 @@ Apache Fory™ supports class schema forward/backward compatibility across **Jav
 
 1. **Schema Consistent Mode (Default)**: Assumes identical class schemas between serialization and deserialization peers. This mode offers minimal serialization overhead, smallest data size, and fastest performance: ideal for stable schemas or controlled environments.
 
-2. **Compatible Mode**: Supports independent schema evolution with forward and backward compatibility. This mode enables field addition/deletion, limited type evolution, and graceful handling of schema mismatches. Enable using `withCompatibleMode(CompatibleMode.COMPATIBLE)` in Java, `compatible=True` in Python, `compatible_mode(true)` in Rust, or `NewFory(true)` in Go.
+2. **Compatible Mode**: Supports independent schema evolution with forward and backward compatibility. This mode enables field addition/deletion, limited type evolution, and graceful handling of schema mismatches. Enable using `withCompatible(true)` in Java, `compatible=True` in Python, `compatible_mode(true)` in Rust, or `NewFory(true)` in Go.
 
 ### Binary Compatibility
 

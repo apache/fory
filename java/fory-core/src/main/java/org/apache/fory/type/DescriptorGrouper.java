@@ -125,7 +125,9 @@ public class DescriptorGrouper {
         } else {
           boxedDescriptors.add(descriptorUpdater.apply(descriptor));
         }
-      } else if (TypeUtils.isCollection(descriptor.getRawType())) {
+      } else if (TypeUtils.isCollection(descriptor.getRawType())
+          || TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+              descriptor.getTypeAnnotation(), descriptor.getRawType())) {
         collectionDescriptors.add(descriptorUpdater.apply(descriptor));
       } else if (TypeUtils.isMap(descriptor.getRawType())) {
         mapDescriptors.add(descriptorUpdater.apply(descriptor));

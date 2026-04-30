@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -28,7 +27,7 @@ case class Struct(tuple2: (String, String), tuple4: (String, String, String, Str
 
 class TupleTest extends AnyWordSpec with Matchers {
   val fory: Fory = Fory.builder()
-    .withLanguage(Language.JAVA)
+    .withXlang(false)
     .withRefTracking(true)
     .withScalaOptimizationEnabled(true)
     .requireClassRegistration(false).build()

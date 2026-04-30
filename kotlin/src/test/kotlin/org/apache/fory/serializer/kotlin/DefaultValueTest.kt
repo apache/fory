@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.testng.Assert.*
 import org.testng.annotations.Test
 
@@ -126,7 +125,7 @@ class DefaultValueTest {
     val fory =
       Fory.builder()
         .requireClassRegistration(false)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .build()
     KotlinSerializers.registerSerializers(fory)
     val obj = ClassNoDefaults("test")

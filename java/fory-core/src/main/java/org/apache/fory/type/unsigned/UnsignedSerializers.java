@@ -29,12 +29,12 @@ public class UnsignedSerializers {
   public static void registerSerializers(TypeResolver resolver) {
     Config config = resolver.getConfig();
     resolver.registerSerializer(
-        Uint8.class, new org.apache.fory.serializer.UnsignedSerializers.Uint8Serializer(config));
+        UInt8.class, new org.apache.fory.serializer.UnsignedSerializers.UInt8Serializer(config));
     resolver.registerSerializer(
-        Uint16.class, new org.apache.fory.serializer.UnsignedSerializers.Uint16Serializer(config));
+        UInt16.class, new org.apache.fory.serializer.UnsignedSerializers.UInt16Serializer(config));
     resolver.registerSerializer(
-        Uint32.class, new org.apache.fory.serializer.UnsignedSerializers.Uint32Serializer(config));
+        UInt32.class, new org.apache.fory.serializer.UnsignedSerializers.UInt32Serializer(config));
     resolver.registerSerializer(
-        Uint64.class, new org.apache.fory.serializer.UnsignedSerializers.Uint64Serializer(config));
+        UInt64.class, new org.apache.fory.serializer.UnsignedSerializers.UInt64Serializer(config));
   }
 }

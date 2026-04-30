@@ -23,7 +23,7 @@ Apache Fory™ supports seamless data exchange between Java and other languages 
 
 ## Enable Cross-Language Mode
 
-To serialize data for consumption by other languages, use `Language.XLANG` mode:
+To serialize data for consumption by other languages, enable xlang mode:
 
 ```java
 import org.apache.fory.*;
@@ -31,7 +31,7 @@ import org.apache.fory.config.*;
 
 // Create Fory instance with XLANG mode
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .withRefTracking(true)  // Enable reference tracking for complex graphs
     .build();
 ```
@@ -85,7 +85,7 @@ public record Person(String name, int age) {}
 public class Example {
     public static void main(String[] args) {
         Fory fory = Fory.builder()
-            .withLanguage(Language.XLANG)
+            .withXlang(true)
             .withRefTracking(true)
             .build();
 
@@ -134,7 +134,7 @@ public class Node {
 }
 
 Fory fory = Fory.builder()
-    .withLanguage(Language.XLANG)
+    .withXlang(true)
     .withRefTracking(true)  // Required for circular references
     .build();
 
@@ -195,7 +195,7 @@ Cross-language mode has additional overhead compared to Java-only mode:
 
 - Use **ID-based registration** when possible (smaller encoding)
 - **Disable reference tracking** if you don't need circular references (`withRefTracking(false)`)
-- **Use Java mode** (`Language.JAVA`) when only Java serialization is needed
+- **Use Java mode** (`withXlang(false)`) when only Java serialization is needed
 
 ## Cross-Language Best Practices
 
@@ -216,7 +216,7 @@ Cross-language mode has additional overhead compared to Java-only mode:
 
 ### Data corruption or unexpected values
 
-- Verify both sides use `Language.XLANG` mode
+- Verify both sides enable xlang mode
 - Ensure both sides have compatible Fory versions
 
 ## See Also

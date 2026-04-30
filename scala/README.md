@@ -67,7 +67,6 @@ When a Scala class has default parameters, the Scala compiler generates methods 
 
 ```scala
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 // Original case class
@@ -79,7 +78,7 @@ case class UserV2(name: String, age: Int, email: String = "unknown", active: Boo
 object DefaultValueExample {
   val fory: Fory = Fory.builder()
     .withScalaOptimizationEnabled(true)
-    .withCompatibleMode(CompatibleMode.COMPATIBLE)
+    .withCompatible(true)
     .build()
 
   ScalaSerializers.registerSerializers(fory)
@@ -132,7 +131,6 @@ Fory Scala is built on Fory Java, so all Java configuration options are availabl
 
 ```scala
 import org.apache.fory.Fory
-import org.apache.fory.config.CompatibleMode
 import org.apache.fory.serializer.scala.ScalaSerializers
 
 val fory = Fory.builder()
@@ -141,7 +139,7 @@ val fory = Fory.builder()
   // Enable reference tracking for circular references
   .withRefTracking(true)
   // Enable schema evolution support
-  .withCompatibleMode(CompatibleMode.COMPATIBLE)
+  .withCompatible(true)
   // Enable async compilation for better startup performance
   .withAsyncCompilation(true)
   // Compression options

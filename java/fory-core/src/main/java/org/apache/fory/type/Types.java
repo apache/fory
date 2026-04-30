@@ -21,6 +21,7 @@ package org.apache.fory.type;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
@@ -384,6 +385,10 @@ public class Types {
     Annotation annotation = Descriptor.getAnnotation(field);
     Class<?> rawType = field.getType();
     if (annotation != null) {
+      int primitiveListTypeId = TypeAnnotationUtils.getPrimitiveListTypeId(annotation, rawType);
+      if (primitiveListTypeId != Types.UNKNOWN) {
+        return primitiveListTypeId;
+      }
       return TypeAnnotationUtils.getTypeId(annotation, rawType);
     } else {
       int unionTypeId = getUnionDescriptorTypeId(resolver, rawType);
@@ -403,6 +408,11 @@ public class Types {
       Class<?> rawType = typeRef.getRawType();
       Annotation typeAnnotation = d.getTypeAnnotation();
       if (typeAnnotation != null) {
+        int primitiveListTypeId =
+            TypeAnnotationUtils.getPrimitiveListTypeId(typeAnnotation, rawType);
+        if (primitiveListTypeId != Types.UNKNOWN) {
+          return primitiveListTypeId;
+        }
         return TypeAnnotationUtils.getTypeId(typeAnnotation, rawType);
       } else {
         int unionTypeId = getUnionDescriptorTypeId(resolver, rawType);
@@ -442,7 +452,10 @@ public class Types {
       } else if (unwrapped == int.class) {
         return resolver.getConfig().compressInt() ? Types.VARINT32 : Types.INT32;
       } else if (unwrapped == long.class) {
-        return resolver.getConfig().compressLong() ? Types.VARINT64 : Types.INT64;
+        Int64Encoding encoding = resolver.getConfig().longEncoding();
+        return encoding == Int64Encoding.FIXED
+            ? Types.INT64
+            : encoding == Int64Encoding.VARINT ? Types.VARINT64 : Types.TAGGED_INT64;
       } else if (unwrapped == float.class) {
         return Types.FLOAT32;
       } else if (unwrapped == double.class) {
@@ -461,16 +474,19 @@ public class Types {
       case BOOL:
         return Boolean.class;
       case INT8:
-      case UINT8:
         return Byte.class;
+      case UINT8:
+        return Integer.class;
       case INT16:
-      case UINT16:
         return Short.class;
+      case UINT16:
+        return Integer.class;
       case INT32:
       case VARINT32:
+        return Integer.class;
       case UINT32:
       case VAR_UINT32:
-        return Integer.class;
+        return Long.class;
       case INT64:
       case VARINT64:
       case TAGGED_INT64:

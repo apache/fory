@@ -24,7 +24,7 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_LONG_TYPE;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
@@ -70,9 +70,9 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class Uint8Serializer extends ImmutableSerializer<Integer>
+  public static final class UInt8Serializer extends ImmutableSerializer<Integer>
       implements Shareable {
-    public Uint8Serializer(Config config) {
+    public UInt8Serializer(Config config) {
       super(config, Integer.class);
     }
 
@@ -84,27 +84,25 @@ public class PrimitiveSerializers {
 
     @Override
     public Integer read(ReadContext readContext) {
-      int b = readContext.getBuffer().readByte();
-      return b >>> 24;
+      return readContext.getBuffer().readByte() & 0xFF;
     }
   }
 
-  public static final class Uint16Serializer extends ImmutableSerializer<Integer>
+  public static final class UInt16Serializer extends ImmutableSerializer<Integer>
       implements Shareable {
-    public Uint16Serializer(Config config) {
+    public UInt16Serializer(Config config) {
       super(config, Integer.class);
     }
 
     @Override
     public void write(WriteContext writeContext, Integer value) {
       Preconditions.checkArgument(value >= 0 && value <= 65535);
-      writeContext.getBuffer().writeByte(value.byteValue());
+      writeContext.getBuffer().writeInt16(value.shortValue());
     }
 
     @Override
     public Integer read(ReadContext readContext) {
-      int b = readContext.getBuffer().readByte();
-      return b >>> 16;
+      return readContext.getBuffer().readInt16() & 0xFFFF;
     }
   }
 
@@ -170,29 +168,64 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarUint32Serializer extends Serializer<Integer> implements Shareable {
-    public VarUint32Serializer(Config config) {
+  public static final class FixedInt32Serializer extends ImmutableSerializer<Integer>
+      implements Shareable {
+    public FixedInt32Serializer(Config config) {
       super(config, Integer.class);
     }
 
     @Override
     public void write(WriteContext writeContext, Integer value) {
-      Preconditions.checkArgument(value >= 0);
-      writeContext.getBuffer().writeVarUint32(value);
+      writeContext.getBuffer().writeInt32(value);
     }
 
     @Override
     public Integer read(ReadContext readContext) {
-      return readContext.getBuffer().readVarUint32();
+      return readContext.getBuffer().readInt32();
+    }
+  }
+
+  public static final class FixedUInt32Serializer extends ImmutableSerializer<Long>
+      implements Shareable {
+    public FixedUInt32Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      Preconditions.checkArgument((value & 0xffffffff00000000L) == 0);
+      writeContext.getBuffer().writeInt32(value.intValue());
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return Integer.toUnsignedLong(readContext.getBuffer().readInt32());
+    }
+  }
+
+  public static final class VarUInt32Serializer extends Serializer<Long> implements Shareable {
+    public VarUInt32Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      Preconditions.checkArgument((value & 0xffffffff00000000L) == 0);
+      writeContext.getBuffer().writeVarUInt32(value.intValue());
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return Integer.toUnsignedLong(readContext.getBuffer().readVarUInt32());
     }
   }
 
   public static final class LongSerializer extends ImmutableSerializer<Long> implements Shareable {
-    private final LongEncoding longEncoding;
+    private final Int64Encoding longEncoding;
 
     public LongSerializer(Config config, Class<?> cls) {
       super(config, (Class) cls, false);
-      longEncoding = config.isXlang() ? LongEncoding.VARINT : config.longEncoding();
+      longEncoding = config.isXlang() ? Int64Encoding.VARINT : config.longEncoding();
     }
 
     @Override
@@ -206,7 +239,7 @@ public class PrimitiveSerializers {
     }
 
     public static Expression writeInt64(
-        Expression buffer, Expression v, LongEncoding longEncoding, boolean ensureBounds) {
+        Expression buffer, Expression v, Int64Encoding longEncoding, boolean ensureBounds) {
       switch (longEncoding) {
         case FIXED:
           return new Invoke(buffer, "writeInt64", v);
@@ -220,31 +253,31 @@ public class PrimitiveSerializers {
       }
     }
 
-    public static void writeInt64(MemoryBuffer buffer, long value, LongEncoding longEncoding) {
-      if (longEncoding == LongEncoding.TAGGED) {
+    public static void writeInt64(MemoryBuffer buffer, long value, Int64Encoding longEncoding) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         buffer.writeTaggedInt64(value);
-      } else if (longEncoding == LongEncoding.FIXED) {
+      } else if (longEncoding == Int64Encoding.FIXED) {
         buffer.writeInt64(value);
       } else {
         buffer.writeVarInt64(value);
       }
     }
 
-    public static long readInt64(MemoryBuffer buffer, LongEncoding longEncoding) {
-      if (longEncoding == LongEncoding.TAGGED) {
+    public static long readInt64(MemoryBuffer buffer, Int64Encoding longEncoding) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         return buffer.readTaggedInt64();
-      } else if (longEncoding == LongEncoding.FIXED) {
+      } else if (longEncoding == Int64Encoding.FIXED) {
         return buffer.readInt64();
       } else {
         return buffer.readVarInt64();
       }
     }
 
-    public static Expression readInt64(Expression buffer, LongEncoding longEncoding) {
+    public static Expression readInt64(Expression buffer, Int64Encoding longEncoding) {
       return new Invoke(buffer, readLongFunc(longEncoding), PRIMITIVE_LONG_TYPE);
     }
 
-    public static String readLongFunc(LongEncoding longEncoding) {
+    public static String readLongFunc(Int64Encoding longEncoding) {
       switch (longEncoding) {
         case FIXED:
           return Platform.IS_LITTLE_ENDIAN ? "_readInt64OnLE" : "_readInt64OnBE";
@@ -258,20 +291,85 @@ public class PrimitiveSerializers {
     }
   }
 
-  public static final class VarUint64Serializer extends Serializer<Long> implements Shareable {
-    public VarUint64Serializer(Config config) {
+  public static final class FixedInt64Serializer extends ImmutableSerializer<Long>
+      implements Shareable {
+    public FixedInt64Serializer(Config config) {
       super(config, Long.class);
     }
 
     @Override
     public void write(WriteContext writeContext, Long value) {
-      Preconditions.checkArgument(value >= 0);
-      writeContext.getBuffer().writeVarUint64(value);
+      writeContext.getBuffer().writeInt64(value);
     }
 
     @Override
     public Long read(ReadContext readContext) {
-      return readContext.getBuffer().readVarUint64();
+      return readContext.getBuffer().readInt64();
+    }
+  }
+
+  public static final class TaggedInt64Serializer extends Serializer<Long> implements Shareable {
+    public TaggedInt64Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      writeContext.getBuffer().writeTaggedInt64(value);
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return readContext.getBuffer().readTaggedInt64();
+    }
+  }
+
+  public static final class FixedUInt64Serializer extends ImmutableSerializer<Long>
+      implements Shareable {
+    public FixedUInt64Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      writeContext.getBuffer().writeInt64(value);
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return readContext.getBuffer().readInt64();
+    }
+  }
+
+  public static final class VarUInt64Serializer extends Serializer<Long> implements Shareable {
+    public VarUInt64Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      writeContext.getBuffer().writeVarUInt64(value);
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return readContext.getBuffer().readVarUInt64();
+    }
+  }
+
+  public static final class TaggedUInt64Serializer extends Serializer<Long> implements Shareable {
+    public TaggedUInt64Serializer(Config config) {
+      super(config, Long.class);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Long value) {
+      writeContext.getBuffer().writeTaggedUInt64(value);
+    }
+
+    @Override
+    public Long read(ReadContext readContext) {
+      return readContext.getBuffer().readTaggedUInt64();
     }
   }
 

@@ -25,7 +25,7 @@ This page covers common problems when using Fory JavaScript.
 
 The Fory JavaScript runtime only reads Fory cross-language payloads. If the producer is a Java or Go service using a language-native format, the JavaScript side cannot decode it.
 
-Fix: switch the producer to the cross-language mode. For Java, use `.withLanguage(Language.XLANG)`; for Go, use `WithXlang(true)`.
+Fix: switch the producer to the cross-language mode. For Java, use `.withXlang(true)`; for Go, use `WithXlang(true)`.
 
 ## `maxDepth must be an integer >= 2`
 

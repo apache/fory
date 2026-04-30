@@ -76,17 +76,13 @@ public class ForyBuilderTest {
 
   @Test
   public void testCompatibleStateIsBooleanBacked() {
-    Fory compatibleFromMode =
-        new ForyBuilder().withCompatibleMode(CompatibleMode.COMPATIBLE).build();
+    Fory compatible = new ForyBuilder().withCompatible(true).build();
     Fory compatibleFromBoolean = new ForyBuilder().withCompatible(true).build();
     Fory schemaConsistent = new ForyBuilder().withCompatible(false).build();
 
-    assertTrue(compatibleFromMode.getConfig().isCompatible());
-    assertEquals(compatibleFromMode.getConfig().getCompatibleMode(), CompatibleMode.COMPATIBLE);
-    assertEquals(compatibleFromMode.getConfig(), compatibleFromBoolean.getConfig());
+    assertTrue(compatible.getConfig().isCompatible());
+    assertEquals(compatible.getConfig(), compatibleFromBoolean.getConfig());
 
     assertFalse(schemaConsistent.getConfig().isCompatible());
-    assertEquals(
-        schemaConsistent.getConfig().getCompatibleMode(), CompatibleMode.SCHEMA_CONSISTENT);
   }
 }

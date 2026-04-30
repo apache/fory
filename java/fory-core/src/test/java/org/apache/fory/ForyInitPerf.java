@@ -23,9 +23,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.logging.LoggerFactory;
@@ -138,11 +136,11 @@ public class ForyInitPerf {
   private static BenchmarkContext newBenchmarkContext() throws Exception {
     ForyBuilder builder =
         Fory.builder()
-            .withLanguage(Language.JAVA)
+            .withXlang(false)
             .withNumberCompressed(true)
             .withMetaShare(true)
             .requireClassRegistration(false)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withAsyncCompilation(false)
             .withCodegen(true);
     finishBuilder(builder);

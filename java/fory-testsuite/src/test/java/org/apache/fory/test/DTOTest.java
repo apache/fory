@@ -26,7 +26,6 @@ import java.util.Set;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -91,7 +90,7 @@ public class DTOTest {
 
   @Test
   public void testFory() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     UserDTO obj = BeanMock.mockBean(UserDTO.class);
     obj.setColorEnum(ColorEnum.RED);
     Assert.assertEquals(fory.deserialize(fory.serialize(obj)), obj);

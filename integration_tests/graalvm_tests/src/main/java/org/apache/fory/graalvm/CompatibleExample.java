@@ -20,7 +20,6 @@
 package org.apache.fory.graalvm;
 
 import org.apache.fory.Fory;
-import org.apache.fory.config.CompatibleMode;
 
 public class CompatibleExample {
   static Fory fory;
@@ -33,7 +32,7 @@ public class CompatibleExample {
     Fory fory =
         Fory.builder()
             .requireClassRegistration(true)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCompatible(true)
             .withScopedMetaShare(false)
             .build();
     // register and generate serializer code.

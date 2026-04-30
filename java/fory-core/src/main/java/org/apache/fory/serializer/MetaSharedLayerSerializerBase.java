@@ -92,9 +92,9 @@ public abstract class MetaSharedLayerSerializerBase<T> extends AbstractObjectSer
     int newId = classMap.size;
     int id = classMap.putOrGet(layerMarkerClass, newId);
     if (id >= 0) {
-      buffer.writeVarUint32((id << 1) | 1);
+      buffer.writeVarUInt32((id << 1) | 1);
     } else {
-      buffer.writeVarUint32(newId << 1);
+      buffer.writeVarUInt32(newId << 1);
       buffer.writeBytes(layerTypeDef.getEncoded());
     }
   }

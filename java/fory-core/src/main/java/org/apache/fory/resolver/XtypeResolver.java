@@ -62,10 +62,10 @@ import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
+import org.apache.fory.collection.UInt16List;
+import org.apache.fory.collection.UInt32List;
+import org.apache.fory.collection.UInt64List;
+import org.apache.fory.collection.UInt8List;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.ClassUnregisteredException;
@@ -116,10 +116,10 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
-import org.apache.fory.type.unsigned.Uint16;
-import org.apache.fory.type.unsigned.Uint32;
-import org.apache.fory.type.unsigned.Uint64;
-import org.apache.fory.type.unsigned.Uint8;
+import org.apache.fory.type.unsigned.UInt16;
+import org.apache.fory.type.unsigned.UInt32;
+import org.apache.fory.type.unsigned.UInt64;
+import org.apache.fory.type.unsigned.UInt8;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
@@ -682,7 +682,8 @@ public class XtypeResolver extends TypeResolver {
   public boolean isBuildIn(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
     if (TypeUtils.isPrimitiveListClass(rawType)) {
-      return true;
+      return !org.apache.fory.type.TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+          descriptor.getTypeAnnotation(), rawType);
     }
     byte typeIdByte = getInternalTypeId(descriptor);
     if (UnknownClass.class.isAssignableFrom(rawType)) {
@@ -836,42 +837,29 @@ public class XtypeResolver extends TypeResolver {
         new PrimitiveSerializers.BooleanSerializer(config, boolean.class));
     registerType(Types.BOOL, AtomicBoolean.class, new Serializers.AtomicBooleanSerializer(config));
 
-    // Byte types
-    registerType(
-        Types.UINT8, Byte.class, new PrimitiveSerializers.ByteSerializer(config, Byte.class));
-    registerType(
-        Types.UINT8, byte.class, new PrimitiveSerializers.ByteSerializer(config, byte.class));
+    // Byte and uint8 types
     registerType(
         Types.INT8, Byte.class, new PrimitiveSerializers.ByteSerializer(config, Byte.class));
     registerType(
         Types.INT8, byte.class, new PrimitiveSerializers.ByteSerializer(config, byte.class));
-    registerType(Types.UINT8, Uint8.class, new UnsignedSerializers.Uint8Serializer(config));
+    registerType(Types.UINT8, Integer.class, new PrimitiveSerializers.UInt8Serializer(config));
+    registerType(Types.UINT8, UInt8.class, new UnsignedSerializers.UInt8Serializer(config));
 
-    // Short types
-    registerType(
-        Types.UINT16, Short.class, new PrimitiveSerializers.ShortSerializer(config, Short.class));
-    registerType(
-        Types.UINT16, short.class, new PrimitiveSerializers.ShortSerializer(config, short.class));
+    // Short and uint16 types
     registerType(
         Types.INT16, Short.class, new PrimitiveSerializers.ShortSerializer(config, Short.class));
     registerType(
         Types.INT16, short.class, new PrimitiveSerializers.ShortSerializer(config, short.class));
-    registerType(Types.UINT16, Uint16.class, new UnsignedSerializers.Uint16Serializer(config));
+    registerType(Types.UINT16, Integer.class, new PrimitiveSerializers.UInt16Serializer(config));
+    registerType(Types.UINT16, UInt16.class, new UnsignedSerializers.UInt16Serializer(config));
 
-    // Integer types
-    registerType(
-        Types.UINT32, Integer.class, new PrimitiveSerializers.IntSerializer(config, Integer.class));
-    registerType(
-        Types.UINT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
-    registerType(
-        Types.UINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
-    registerType(
-        Types.INT32, Integer.class, new PrimitiveSerializers.IntSerializer(config, Integer.class));
-    registerType(Types.INT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
+    // Integer and uint32 types
+    registerType(Types.INT32, Integer.class, new PrimitiveSerializers.FixedInt32Serializer(config));
+    registerType(Types.INT32, int.class, new PrimitiveSerializers.FixedInt32Serializer(config));
     registerType(Types.INT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
+    registerType(Types.UINT32, Long.class, new PrimitiveSerializers.FixedUInt32Serializer(config));
     registerType(
-        Types.VAR_UINT32, Integer.class, new PrimitiveSerializers.VarUint32Serializer(config));
-    registerType(Types.VAR_UINT32, int.class, new PrimitiveSerializers.VarUint32Serializer(config));
+        Types.VAR_UINT32, Long.class, new PrimitiveSerializers.VarUInt32Serializer(config));
     registerType(
         Types.VARINT32,
         Integer.class,
@@ -880,44 +868,29 @@ public class XtypeResolver extends TypeResolver {
         Types.VARINT32, int.class, new PrimitiveSerializers.IntSerializer(config, int.class));
     registerType(
         Types.VARINT32, AtomicInteger.class, new Serializers.AtomicIntegerSerializer(config));
-    registerType(Types.UINT32, Uint32.class, new UnsignedSerializers.Uint32Serializer(config));
-    registerType(Types.UINT64, Uint64.class, new UnsignedSerializers.Uint64Serializer(config));
+    registerType(Types.UINT32, UInt32.class, new UnsignedSerializers.UInt32Serializer(config));
 
-    // Long types
+    // Long and uint64 types
+    registerType(Types.UINT64, Long.class, new PrimitiveSerializers.FixedUInt64Serializer(config));
+    registerType(Types.UINT64, long.class, new PrimitiveSerializers.FixedUInt64Serializer(config));
     registerType(
-        Types.UINT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
+        Types.TAGGED_UINT64, Long.class, new PrimitiveSerializers.TaggedUInt64Serializer(config));
     registerType(
-        Types.UINT64, long.class, new PrimitiveSerializers.LongSerializer(config, long.class));
-    registerType(Types.UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
-    registerType(
-        Types.TAGGED_UINT64,
-        Long.class,
-        new PrimitiveSerializers.LongSerializer(config, Long.class));
-    registerType(
-        Types.TAGGED_UINT64,
-        long.class,
-        new PrimitiveSerializers.LongSerializer(config, long.class));
-    registerType(
-        Types.TAGGED_UINT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
-    registerType(
-        Types.INT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
-    registerType(
-        Types.INT64, long.class, new PrimitiveSerializers.LongSerializer(config, long.class));
+        Types.TAGGED_UINT64, long.class, new PrimitiveSerializers.TaggedUInt64Serializer(config));
+    registerType(Types.INT64, Long.class, new PrimitiveSerializers.FixedInt64Serializer(config));
+    registerType(Types.INT64, long.class, new PrimitiveSerializers.FixedInt64Serializer(config));
     registerType(Types.INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
     registerType(
-        Types.TAGGED_INT64,
-        Long.class,
-        new PrimitiveSerializers.LongSerializer(config, Long.class));
+        Types.TAGGED_INT64, Long.class, new PrimitiveSerializers.TaggedInt64Serializer(config));
     registerType(
-        Types.TAGGED_INT64,
-        long.class,
-        new PrimitiveSerializers.LongSerializer(config, long.class));
+        Types.TAGGED_INT64, long.class, new PrimitiveSerializers.TaggedInt64Serializer(config));
     registerType(
         Types.TAGGED_INT64, AtomicLong.class, new Serializers.AtomicLongSerializer(config));
     registerType(
-        Types.VAR_UINT64, Long.class, new PrimitiveSerializers.VarUint64Serializer(config));
+        Types.VAR_UINT64, Long.class, new PrimitiveSerializers.VarUInt64Serializer(config));
     registerType(
-        Types.VAR_UINT64, long.class, new PrimitiveSerializers.VarUint64Serializer(config));
+        Types.VAR_UINT64, long.class, new PrimitiveSerializers.VarUInt64Serializer(config));
+    registerType(Types.UINT64, UInt64.class, new UnsignedSerializers.UInt64Serializer(config));
     registerType(
         Types.VARINT64, Long.class, new PrimitiveSerializers.LongSerializer(config, Long.class));
     registerType(
@@ -1016,19 +989,19 @@ public class XtypeResolver extends TypeResolver {
     registerType(
         Types.INT64_ARRAY, Int64List.class, new PrimitiveListSerializers.Int64ListSerializer(this));
     registerType(
-        Types.UINT8_ARRAY, Uint8List.class, new PrimitiveListSerializers.Uint8ListSerializer(this));
+        Types.UINT8_ARRAY, UInt8List.class, new PrimitiveListSerializers.UInt8ListSerializer(this));
     registerType(
         Types.UINT16_ARRAY,
-        Uint16List.class,
-        new PrimitiveListSerializers.Uint16ListSerializer(this));
+        UInt16List.class,
+        new PrimitiveListSerializers.UInt16ListSerializer(this));
     registerType(
         Types.UINT32_ARRAY,
-        Uint32List.class,
-        new PrimitiveListSerializers.Uint32ListSerializer(this));
+        UInt32List.class,
+        new PrimitiveListSerializers.UInt32ListSerializer(this));
     registerType(
         Types.UINT64_ARRAY,
-        Uint64List.class,
-        new PrimitiveListSerializers.Uint64ListSerializer(this));
+        UInt64List.class,
+        new PrimitiveListSerializers.UInt64ListSerializer(this));
     registerType(
         Types.FLOAT32_ARRAY,
         Float32List.class,

@@ -21,104 +21,251 @@ public static class FieldSkipper
 {
     public static void SkipFieldValue(ReadContext context, TypeMetaFieldType fieldType)
     {
-        _ = ReadFieldValue(context, fieldType);
+        SkipValue(context, fieldType, RefModeExtensions.From(fieldType.Nullable, fieldType.TrackRef));
     }
 
-    private static uint? ReadEnumOrdinal(ReadContext context, RefMode refMode)
+    private static void SkipValue(ReadContext context, TypeMetaFieldType fieldType, RefMode refMode)
     {
-        return refMode switch
+        switch (refMode)
         {
-            RefMode.None => context.Reader.ReadVarUInt32(),
-            RefMode.NullOnly => ReadNullableEnumOrdinal(context),
-            RefMode.Tracking => throw new InvalidDataException("enum tracking ref mode is not supported"),
-            _ => throw new InvalidDataException($"unsupported ref mode {refMode}"),
+            case RefMode.None:
+                SkipPayload(context, fieldType);
+                return;
+            case RefMode.NullOnly:
+                {
+                    sbyte flag = context.Reader.ReadInt8();
+                    if (flag == (sbyte)RefFlag.Null)
+                    {
+                        return;
+                    }
+
+                    if (flag != (sbyte)RefFlag.NotNullValue)
+                    {
+                        throw new InvalidDataException($"unexpected nullOnly flag {flag}");
+                    }
+
+                    SkipPayload(context, fieldType);
+                    return;
+                }
+            case RefMode.Tracking:
+                _ = ReadTrackedValue(context, fieldType);
+                return;
+            default:
+                throw new InvalidDataException($"unsupported ref mode {refMode}");
+        }
+    }
+
+    private static object? ReadTrackedValue(ReadContext context, TypeMetaFieldType fieldType)
+    {
+        return fieldType.TypeId switch
+        {
+            (uint)TypeId.String => context.TypeResolver.GetSerializer<string>().Read(context, RefMode.Tracking, false),
+            (uint)TypeId.List => context.TypeResolver.GetSerializer<List<object?>>().Read(context, RefMode.Tracking, false),
+            (uint)TypeId.Set => context.TypeResolver.GetSerializer<HashSet<object?>>().Read(context, RefMode.Tracking, false),
+            (uint)TypeId.Map => context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().Read(context, RefMode.Tracking, false),
+            (uint)TypeId.Union or
+            (uint)TypeId.TypedUnion or
+            (uint)TypeId.NamedUnion => context.TypeResolver.GetSerializer<Union>().Read(context, RefMode.Tracking, false),
+            _ => throw new InvalidDataException($"unsupported tracked skip field type id {fieldType.TypeId}"),
         };
     }
 
-    private static uint? ReadNullableEnumOrdinal(ReadContext context)
+    private static void SkipPayload(ReadContext context, TypeMetaFieldType fieldType)
     {
-        sbyte flag = context.Reader.ReadInt8();
-        if (flag == (sbyte)RefFlag.Null)
-        {
-            return null;
-        }
-
-        if (flag != (sbyte)RefFlag.NotNullValue)
-        {
-            throw new InvalidDataException($"unexpected enum nullOnly flag {flag}");
-        }
-
-        return context.Reader.ReadVarUInt32();
-    }
-
-    private static object? ReadFieldValue(ReadContext context, TypeMetaFieldType fieldType)
-    {
-        RefMode refMode = RefModeExtensions.From(fieldType.Nullable, fieldType.TrackRef);
         switch (fieldType.TypeId)
         {
             case (uint)TypeId.Bool:
-                return context.TypeResolver.GetSerializer<bool>().Read(context, refMode, false);
             case (uint)TypeId.Int8:
-                return context.TypeResolver.GetSerializer<sbyte>().Read(context, refMode, false);
+            case (uint)TypeId.UInt8:
+                context.Reader.Skip(1);
+                return;
             case (uint)TypeId.Int16:
-                return context.TypeResolver.GetSerializer<short>().Read(context, refMode, false);
-            case (uint)TypeId.VarInt32:
-                return context.TypeResolver.GetSerializer<int>().Read(context, refMode, false);
-            case (uint)TypeId.VarInt64:
-                return context.TypeResolver.GetSerializer<long>().Read(context, refMode, false);
+            case (uint)TypeId.UInt16:
             case (uint)TypeId.Float16:
-                return context.TypeResolver.GetSerializer<Half>().Read(context, refMode, false);
             case (uint)TypeId.BFloat16:
-                return context.TypeResolver.GetSerializer<BFloat16>().Read(context, refMode, false);
-            case (uint)TypeId.Float16Array:
-                return context.TypeResolver.GetSerializer<Half[]>().Read(context, refMode, false);
-            case (uint)TypeId.BFloat16Array:
-                return context.TypeResolver.GetSerializer<BFloat16[]>().Read(context, refMode, false);
+                context.Reader.Skip(2);
+                return;
+            case (uint)TypeId.Int32:
+            case (uint)TypeId.UInt32:
             case (uint)TypeId.Float32:
-                return context.TypeResolver.GetSerializer<float>().Read(context, refMode, false);
+            case (uint)TypeId.Date:
+                context.Reader.Skip(4);
+                return;
+            case (uint)TypeId.Int64:
+            case (uint)TypeId.UInt64:
             case (uint)TypeId.Float64:
-                return context.TypeResolver.GetSerializer<double>().Read(context, refMode, false);
+            case (uint)TypeId.Timestamp:
+            case (uint)TypeId.Duration:
+                context.Reader.Skip(8);
+                return;
+            case (uint)TypeId.VarInt32:
+                _ = context.Reader.ReadVarInt32();
+                return;
+            case (uint)TypeId.VarUInt32:
+                _ = context.Reader.ReadVarUInt32();
+                return;
+            case (uint)TypeId.VarInt64:
+                _ = context.Reader.ReadVarInt64();
+                return;
+            case (uint)TypeId.VarUInt64:
+                _ = context.Reader.ReadVarUInt64();
+                return;
+            case (uint)TypeId.TaggedInt64:
+                _ = context.Reader.ReadTaggedInt64();
+                return;
+            case (uint)TypeId.TaggedUInt64:
+                _ = context.Reader.ReadTaggedUInt64();
+                return;
             case (uint)TypeId.String:
-                return context.TypeResolver.GetSerializer<string>().Read(context, refMode, false);
+                _ = StringSerializer.ReadString(context);
+                return;
             case (uint)TypeId.Decimal:
-                return context.TypeResolver.GetSerializer<ForyDecimal>().Read(context, refMode, false);
+                _ = context.TypeResolver.GetSerializer<ForyDecimal>().ReadData(context);
+                return;
+            case (uint)TypeId.Binary:
+            case (uint)TypeId.BoolArray:
+            case (uint)TypeId.Int8Array:
+            case (uint)TypeId.Int16Array:
+            case (uint)TypeId.Int32Array:
+            case (uint)TypeId.Int64Array:
+            case (uint)TypeId.UInt8Array:
+            case (uint)TypeId.UInt16Array:
+            case (uint)TypeId.UInt32Array:
+            case (uint)TypeId.UInt64Array:
+            case (uint)TypeId.Float16Array:
+            case (uint)TypeId.BFloat16Array:
+            case (uint)TypeId.Float32Array:
+            case (uint)TypeId.Float64Array:
+                SkipPackedArray(context);
+                return;
             case (uint)TypeId.List:
-                {
-                    if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
-                    {
-                        throw new InvalidDataException("unsupported compatible list element type");
-                    }
-
-                    return context.TypeResolver.GetSerializer<List<string>>().Read(context, refMode, false);
-                }
             case (uint)TypeId.Set:
-                {
-                    if (fieldType.Generics.Count != 1 || fieldType.Generics[0].TypeId != (uint)TypeId.String)
-                    {
-                        throw new InvalidDataException("unsupported compatible set element type");
-                    }
-
-                    return context.TypeResolver.GetSerializer<HashSet<string>>().Read(context, refMode, false);
-                }
+                SkipListOrSet(context, fieldType);
+                return;
             case (uint)TypeId.Map:
-                {
-                    if (fieldType.Generics.Count != 2 ||
-                        fieldType.Generics[0].TypeId != (uint)TypeId.String ||
-                        fieldType.Generics[1].TypeId != (uint)TypeId.String)
-                    {
-                        throw new InvalidDataException("unsupported compatible map key/value type");
-                    }
-
-                    return context.TypeResolver.GetSerializer<Dictionary<string, string>>().Read(context, refMode, false);
-                }
+                SkipMap(context, fieldType);
+                return;
             case (uint)TypeId.Enum:
-                return ReadEnumOrdinal(context, refMode);
+            case (uint)TypeId.NamedEnum:
+                _ = context.Reader.ReadVarUInt32();
+                return;
             case (uint)TypeId.Union:
             case (uint)TypeId.TypedUnion:
             case (uint)TypeId.NamedUnion:
-                return context.TypeResolver.GetSerializer<Union>().Read(context, refMode, false);
+                _ = context.TypeResolver.GetSerializer<Union>().ReadData(context);
+                return;
             default:
                 throw new InvalidDataException($"unsupported compatible field type id {fieldType.TypeId}");
+        }
+    }
+
+    private static void SkipPackedArray(ReadContext context)
+    {
+        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.Skip(payloadSize);
+    }
+
+    private static void SkipListOrSet(ReadContext context, TypeMetaFieldType fieldType)
+    {
+        if (fieldType.Generics.Count != 1)
+        {
+            throw new InvalidDataException("list/set field metadata must have one element type");
+        }
+
+        int length = checked((int)context.Reader.ReadVarUInt32());
+        if (length == 0)
+        {
+            return;
+        }
+
+        TypeMetaFieldType elementType = fieldType.Generics[0];
+        byte header = context.Reader.ReadUInt8();
+        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
+        bool hasNull = (header & CollectionBits.HasNull) != 0;
+        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
+        bool sameType = (header & CollectionBits.SameType) != 0;
+        if (!sameType)
+        {
+            throw new InvalidDataException("dynamic compatible list/set skip is not supported");
+        }
+
+        if (!declared)
+        {
+            _ = context.TypeResolver.ReadAnyTypeInfo(context);
+        }
+
+        RefMode elementRefMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
+        for (int i = 0; i < length; i++)
+        {
+            SkipValue(context, elementType, elementRefMode);
+        }
+    }
+
+    private static void SkipMap(ReadContext context, TypeMetaFieldType fieldType)
+    {
+        if (fieldType.Generics.Count != 2)
+        {
+            throw new InvalidDataException("map field metadata must have key/value types");
+        }
+
+        TypeMetaFieldType keyType = fieldType.Generics[0];
+        TypeMetaFieldType valueType = fieldType.Generics[1];
+        int totalLength = checked((int)context.Reader.ReadVarUInt32());
+        int readCount = 0;
+        while (readCount < totalLength)
+        {
+            byte header = context.Reader.ReadUInt8();
+            bool trackKeyRef = (header & DictionaryBits.TrackingKeyRef) != 0;
+            bool keyNull = (header & DictionaryBits.KeyNull) != 0;
+            bool keyDeclared = (header & DictionaryBits.DeclaredKeyType) != 0;
+            bool trackValueRef = (header & DictionaryBits.TrackingValueRef) != 0;
+            bool valueNull = (header & DictionaryBits.ValueNull) != 0;
+            bool valueDeclared = (header & DictionaryBits.DeclaredValueType) != 0;
+
+            if (keyNull || valueNull)
+            {
+                if (!keyNull)
+                {
+                    if (!keyDeclared)
+                    {
+                        _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                    }
+
+                    SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None);
+                }
+
+                if (!valueNull)
+                {
+                    if (!valueDeclared)
+                    {
+                        _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                    }
+
+                    SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None);
+                }
+
+                readCount++;
+                continue;
+            }
+
+            int chunkSize = context.Reader.ReadUInt8();
+            if (!keyDeclared)
+            {
+                _ = context.TypeResolver.ReadAnyTypeInfo(context);
+            }
+
+            if (!valueDeclared)
+            {
+                _ = context.TypeResolver.ReadAnyTypeInfo(context);
+            }
+
+            for (int i = 0; i < chunkSize; i++)
+            {
+                SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None);
+                SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None);
+            }
+
+            readCount += chunkSize;
         }
     }
 }

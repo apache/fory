@@ -21,47 +21,64 @@ license: |
 
 This page covers field-level serializer configuration for C# generated serializers.
 
-## `[ForyObject]` and `[Field]`
+## `[ForyObject]` and `[ForyField]`
 
-Use `[ForyObject]` to enable source-generated serializers. Use `[Field]` to override integer encoding for a specific field.
+Use `[ForyObject]` to enable source-generated serializers. Use `[ForyField]` to assign an optional stable field id or to override the Fory schema type used for a field.
 
 ```csharp
 using Apache.Fory;
+using S = Apache.Fory.Schema.Types;
 
 [ForyObject]
 public sealed class Metrics
 {
-    // Fixed-width 32-bit encoding
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint Count { get; set; }
 
-    // Tagged 64-bit encoding
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong TraceId { get; set; }
 
-    // Default (varint) encoding
     public long LatencyMicros { get; set; }
 }
 ```
 
-## Available Encodings
+`Id` is optional. When it is omitted, compatible mode still matches the field by name.
 
-| Encoding               | Meaning                                         |
-| ---------------------- | ----------------------------------------------- |
-| `FieldEncoding.Varint` | Variable-length integer encoding (default)      |
-| `FieldEncoding.Fixed`  | Fixed-width integer encoding                    |
-| `FieldEncoding.Tagged` | Tagged integer encoding (`long` / `ulong` only) |
+```csharp
+using Apache.Fory;
+using S = Apache.Fory.Schema.Types;
 
-## Supported Field Types for Encoding Override
+[ForyObject]
+public sealed class NestedMetrics
+{
+    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
 
-`[Field(Encoding = ...)]` currently applies to:
+    [ForyField(3, Type = typeof(S.UInt64))]
+    public ulong StableCount { get; set; }
+}
+```
 
-- `int`
-- `uint`
-- `long`
-- `ulong`
+## Schema Descriptor Types
 
-Nullable value variants (for example `long?`) are also handled by generated serializers.
+Schema descriptors live under `Apache.Fory.Schema.Types` and are metadata only. They do not replace normal C# carrier types.
+
+Common scalar descriptors include:
+
+- `S.Int32`, `S.VarInt32`, `S.UInt32`, `S.VarUInt32`
+- `S.Int64`, `S.VarInt64`, `S.TaggedInt64`
+- `S.UInt64`, `S.VarUInt64`, `S.TaggedUInt64`
+- `S.Float16`, `S.BFloat16`, `S.Float32`, `S.Float64`
+
+Container descriptors are composable:
+
+- `S.List<TElement>`
+- `S.Set<TElement>`
+- `S.Map<TKey, TValue>`
+
+Packed array descriptors such as `S.Int32Array`, `S.UInt32Array`, `S.Float16Array`, and `S.BFloat16Array` are available when the field should use the packed array wire type.
+
+Nullability comes from the C# carrier type. Use `List<ulong?>` for nullable list elements and `NullableKeyDictionary<TKey, TValue>` when a map needs nullable keys.
 
 ## Nullability and Reference Tracking
 

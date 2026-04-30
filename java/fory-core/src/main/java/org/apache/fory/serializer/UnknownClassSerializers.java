@@ -62,7 +62,7 @@ public final class UnknownClassSerializers {
 
   public static final class UnknownStructSerializer extends Serializer {
     private static final int NONEXISTENT_META_SHARED_ID_SIZE =
-        computeVarUint32Size(ClassResolver.NONEXISTENT_META_SHARED_ID);
+        computeVarUInt32Size(ClassResolver.NONEXISTENT_META_SHARED_ID);
     private final Config config;
     private final TypeResolver typeResolver;
     private final TypeDef typeDef;
@@ -102,15 +102,15 @@ public final class UnknownClassSerializers {
       int id = classMap.putOrGet(value.typeDef.getId(), newId);
       if (id >= 0) {
         // Reference to previously written type: (index << 1) | 1, LSB=1
-        buffer.writeVarUint32((id << 1) | 1);
+        buffer.writeVarUInt32((id << 1) | 1);
       } else {
         // New type: index << 1, LSB=0, followed by TypeDef bytes inline
-        buffer.writeVarUint32(newId << 1);
+        buffer.writeVarUInt32(newId << 1);
         buffer.writeBytes(value.typeDef.getEncoded());
       }
     }
 
-    private static int computeVarUint32Size(int value) {
+    private static int computeVarUInt32Size(int value) {
       if ((value & ~0x7f) == 0) {
         return 1;
       }
@@ -146,19 +146,19 @@ public final class UnknownClassSerializers {
       int typeId = resolveTypeId(value.typeDef);
       int userTypeId = value.typeDef.isNamed() ? -1 : value.typeDef.getUserTypeId();
       int typeIdSize = 1;
-      int userTypeIdSize = userTypeId != -1 ? computeVarUint32Size(userTypeId) : 0;
+      int userTypeIdSize = userTypeId != -1 ? computeVarUInt32Size(userTypeId) : 0;
       if (config.isXlang()) {
-        buffer.writeUint8(typeId);
+        buffer.writeUInt8(typeId);
         if (userTypeIdSize > 0) {
-          buffer.writeVarUint32(userTypeId);
+          buffer.writeVarUInt32(userTypeId);
         }
       } else {
         int totalSize = typeIdSize + userTypeIdSize;
         if (totalSize == NONEXISTENT_META_SHARED_ID_SIZE) {
           buffer.increaseWriterIndex(-NONEXISTENT_META_SHARED_ID_SIZE);
-          buffer.writeUint8(typeId);
+          buffer.writeUInt8(typeId);
           if (userTypeIdSize > 0) {
-            buffer.writeVarUint32(userTypeId);
+            buffer.writeVarUInt32(userTypeId);
           }
         } else {
           int originalWriterIndex = buffer.writerIndex();
@@ -167,9 +167,9 @@ public final class UnknownClassSerializers {
           int payloadLength = originalWriterIndex - payloadStart;
           byte[] payload = buffer.getBytes(payloadStart, payloadLength);
           buffer.writerIndex(placeholderStart);
-          buffer.writeUint8(typeId);
+          buffer.writeUInt8(typeId);
           if (userTypeIdSize > 0) {
-            buffer.writeVarUint32(userTypeId);
+            buffer.writeVarUInt32(userTypeId);
           }
           buffer.writeBytes(payload);
         }
@@ -270,7 +270,7 @@ public final class UnknownClassSerializers {
       if (!config.isXlang() && config.serializeEnumByName()) {
         writeContext.writeString(value.name());
       } else {
-        writeContext.getBuffer().writeVarUint32Small7(value.ordinal());
+        writeContext.getBuffer().writeVarUInt32Small7(value.ordinal());
       }
     }
 
@@ -281,7 +281,7 @@ public final class UnknownClassSerializers {
         return UnknownEnum.UNKNOWN;
       }
 
-      int ordinal = readContext.getBuffer().readVarUint32Small7();
+      int ordinal = readContext.getBuffer().readVarUInt32Small7();
       if (ordinal >= enumConstants.length) {
         return UnknownEnum.UNKNOWN;
       }

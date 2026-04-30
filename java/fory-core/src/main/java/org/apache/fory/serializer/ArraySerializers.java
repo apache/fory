@@ -23,7 +23,7 @@ import java.lang.reflect.Array;
 import java.util.Arrays;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Config;
-import org.apache.fory.config.LongEncoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
@@ -96,7 +96,7 @@ public class ArraySerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       if (config.isXlang()) {
         int len = arr.length;
-        buffer.writeVarUint32Small7(len);
+        buffer.writeVarUInt32Small7(len);
         // TODO(chaokunyang) use generics by creating component serializers to multi-dimension
         // array.
         for (T t : arr) {
@@ -107,7 +107,7 @@ public class ArraySerializers {
       int len = arr.length;
       Serializer componentSerializer = this.componentTypeSerializer;
       int header = componentSerializer != null ? 0b1 : 0b0;
-      buffer.writeVarUint32Small7(len << 1 | header);
+      buffer.writeVarUInt32Small7(len << 1 | header);
       if (componentSerializer != null) {
         for (T t : arr) {
           if (!writeContext.writeRefOrNull(t)) {
@@ -157,7 +157,7 @@ public class ArraySerializers {
     public T[] read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       if (config.isXlang()) {
-        int numElements = buffer.readVarUint32Small7();
+        int numElements = buffer.readVarUInt32Small7();
         Object[] value = newArray(numElements);
         readContext.getGenerics().pushGenericType(componentGenericType, readContext.getDepth());
         for (int i = 0; i < numElements; i++) {
@@ -167,7 +167,7 @@ public class ArraySerializers {
         readContext.getGenerics().popGenericType(readContext.getDepth());
         return (T[]) value;
       }
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       boolean isFinal = (numElements & 0b1) != 0;
       numElements >>>= 1;
       Object[] value = newArray(numElements);
@@ -297,7 +297,7 @@ public class ArraySerializers {
         buf.copyToUnsafe(0, values, Platform.BOOLEAN_ARRAY_OFFSET, size);
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         int numElements = size;
         boolean[] values = new boolean[numElements];
         buffer.readToUnsafe(values, Platform.BOOLEAN_ARRAY_OFFSET, size);
@@ -339,7 +339,7 @@ public class ArraySerializers {
         buf.copyToUnsafe(0, values, Platform.BYTE_ARRAY_OFFSET, size);
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         byte[] values = new byte[size];
         buffer.readToUnsafe(values, Platform.BYTE_ARRAY_OFFSET, size);
         return values;
@@ -376,7 +376,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 2);
-      idx += buffer._unsafeWriteVarUint32(length * 2);
+      idx += buffer._unsafeWriteVarUInt32(length * 2);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt16(idx + i * 2, (short) value[i]);
       }
@@ -406,7 +406,7 @@ public class ArraySerializers {
         }
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         int numElements = size / 2;
         char[] values = new char[numElements];
         if (Platform.IS_LITTLE_ENDIAN) {
@@ -455,7 +455,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 2);
-      idx += buffer._unsafeWriteVarUint32(length * 2);
+      idx += buffer._unsafeWriteVarUInt32(length * 2);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt16(idx + i * 2, value[i]);
       }
@@ -482,7 +482,7 @@ public class ArraySerializers {
         }
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         int numElements = size / 2;
         short[] values = new short[numElements];
         if (Platform.IS_LITTLE_ENDIAN) {
@@ -535,7 +535,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 4);
-      idx += buffer._unsafeWriteVarUint32(length * 4);
+      idx += buffer._unsafeWriteVarUInt32(length * 4);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt32(idx + i * 4, value[i]);
       }
@@ -567,7 +567,7 @@ public class ArraySerializers {
       if (config.compressIntArray()) {
         return readInt32Compressed(buffer);
       }
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 4;
       int[] values = new int[numElements];
       if (size > 0) {
@@ -591,14 +591,14 @@ public class ArraySerializers {
     }
 
     private void writeInt32Compressed(MemoryBuffer buffer, int[] value) {
-      buffer.writeVarUint32Small7(value.length);
+      buffer.writeVarUInt32Small7(value.length);
       for (int i : value) {
         buffer.writeVarInt32(i);
       }
     }
 
     private int[] readInt32Compressed(MemoryBuffer buffer) {
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       int[] values = new int[numElements];
 
       for (int i = 0; i < numElements; i++) {
@@ -615,7 +615,7 @@ public class ArraySerializers {
       super(typeResolver, long[].class);
       compressLongArray =
           typeResolver.getConfig().compressLongArray()
-              && typeResolver.getConfig().longEncoding() != LongEncoding.FIXED;
+              && typeResolver.getConfig().longEncoding() != Int64Encoding.FIXED;
     }
 
     @Override
@@ -642,7 +642,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 8);
-      idx += buffer._unsafeWriteVarUint32(length * 8);
+      idx += buffer._unsafeWriteVarUInt32(length * 8);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt64(idx + i * 8, value[i]);
       }
@@ -674,7 +674,7 @@ public class ArraySerializers {
       if (compressLongArray) {
         return readInt64Compressed(buffer, config.longEncoding());
       }
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 8;
       long[] values = new long[numElements];
       if (size > 0) {
@@ -698,11 +698,11 @@ public class ArraySerializers {
     }
 
     private void writeInt64Compressed(
-        MemoryBuffer buffer, long[] value, LongEncoding longEncoding) {
+        MemoryBuffer buffer, long[] value, Int64Encoding longEncoding) {
       int length = value.length;
-      buffer.writeVarUint32Small7(length);
+      buffer.writeVarUInt32Small7(length);
 
-      if (longEncoding == LongEncoding.TAGGED) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < length; i++) {
           buffer.writeTaggedInt64(value[i]);
         }
@@ -713,11 +713,11 @@ public class ArraySerializers {
       }
     }
 
-    private long[] readInt64Compressed(MemoryBuffer buffer, LongEncoding longEncoding) {
-      int numElements = buffer.readVarUint32Small7();
+    private long[] readInt64Compressed(MemoryBuffer buffer, Int64Encoding longEncoding) {
+      int numElements = buffer.readVarUInt32Small7();
       long[] values = new long[numElements];
 
-      if (longEncoding == LongEncoding.TAGGED) {
+      if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < numElements; i++) {
           values[i] = buffer.readTaggedInt64();
         }
@@ -756,7 +756,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 4);
-      idx += buffer._unsafeWriteVarUint32(length * 4);
+      idx += buffer._unsafeWriteVarUInt32(length * 4);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt32(idx + i * 4, Float.floatToRawIntBits(value[i]));
       }
@@ -783,7 +783,7 @@ public class ArraySerializers {
         }
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         int numElements = size / 4;
         float[] values = new float[numElements];
         if (Platform.IS_LITTLE_ENDIAN) {
@@ -832,7 +832,7 @@ public class ArraySerializers {
       int idx = buffer.writerIndex();
       int length = value.length;
       buffer.ensure(idx + 5 + length * 8);
-      idx += buffer._unsafeWriteVarUint32(length * 8);
+      idx += buffer._unsafeWriteVarUInt32(length * 8);
       for (int i = 0; i < length; i++) {
         buffer._unsafePutInt64(idx + i * 8, Double.doubleToRawLongBits(value[i]));
       }
@@ -859,7 +859,7 @@ public class ArraySerializers {
         }
         return values;
       } else {
-        int size = buffer.readVarUint32Small7();
+        int size = buffer.readVarUInt32Small7();
         int numElements = size / 8;
         double[] values = new double[numElements];
         if (Platform.IS_LITTLE_ENDIAN) {
@@ -902,7 +902,7 @@ public class ArraySerializers {
 
     private void writeNonNull(MemoryBuffer buffer, Float16[] value, int length) {
       int size = length * 2;
-      buffer.writeVarUint32Small7(size);
+      buffer.writeVarUInt32Small7(size);
 
       if (Platform.IS_LITTLE_ENDIAN) {
         int writerIndex = buffer.writerIndex();
@@ -926,7 +926,7 @@ public class ArraySerializers {
     @Override
     public Float16[] read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 2;
       Float16[] values = new Float16[numElements];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -965,7 +965,7 @@ public class ArraySerializers {
 
     private void writeNonNull(MemoryBuffer buffer, BFloat16[] value, int length) {
       int size = length * 2;
-      buffer.writeVarUint32Small7(size);
+      buffer.writeVarUInt32Small7(size);
 
       if (Platform.IS_LITTLE_ENDIAN) {
         int writerIndex = buffer.writerIndex();
@@ -989,7 +989,7 @@ public class ArraySerializers {
     @Override
     public BFloat16[] read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 2;
       BFloat16[] values = new BFloat16[numElements];
       if (Platform.IS_LITTLE_ENDIAN) {
@@ -1025,7 +1025,7 @@ public class ArraySerializers {
       MemoryBuffer buffer = writeContext.getBuffer();
       if (config.isXlang()) {
         int len = value.length;
-        buffer.writeVarUint32Small7(len);
+        buffer.writeVarUInt32Small7(len);
         StringSerializer stringSerializer = writeContext.getStringSerializer();
         for (String elem : value) {
           if (elem != null) {
@@ -1038,7 +1038,7 @@ public class ArraySerializers {
         return;
       }
       int len = value.length;
-      buffer.writeVarUint32Small7(len);
+      buffer.writeVarUInt32Small7(len);
       if (len == 0) {
         return;
       }
@@ -1075,7 +1075,7 @@ public class ArraySerializers {
     public String[] read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       if (config.isXlang()) {
-        int numElements = buffer.readVarUint32Small7();
+        int numElements = buffer.readVarUInt32Small7();
         String[] value = new String[numElements];
         StringSerializer stringSerializer = readContext.getStringSerializer();
         for (int i = 0; i < numElements; i++) {
@@ -1087,7 +1087,7 @@ public class ArraySerializers {
         }
         return value;
       }
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       String[] value = new String[numElements];
       if (numElements == 0) {
         return value;
@@ -1148,7 +1148,7 @@ public class ArraySerializers {
   static void writePrimitiveArray(
       MemoryBuffer buffer, Object arr, int offset, int numElements, int elemSize) {
     int size = Math.multiplyExact(numElements, elemSize);
-    buffer.writeVarUint32Small7(size);
+    buffer.writeVarUInt32Small7(size);
     int writerIndex = buffer.writerIndex();
     int end = writerIndex + size;
     buffer.ensure(end);
@@ -1198,7 +1198,7 @@ public class ArraySerializers {
 
     private Object[] read1DArray(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       boolean isFinal = (numElements & 0b1) != 0;
       numElements >>>= 1;
       Object[] value = new Object[numElements];
@@ -1226,7 +1226,7 @@ public class ArraySerializers {
 
     private Object[][] read2DArray(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       boolean isFinal = (numElements & 0b1) != 0;
       numElements >>>= 1;
       Object[][] value = new Object[numElements][];
@@ -1253,7 +1253,7 @@ public class ArraySerializers {
 
     private Object[] read3DArray(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       boolean isFinal = (numElements & 0b1) != 0;
       numElements >>>= 1;
       Object[][][] value = new Object[numElements][][];

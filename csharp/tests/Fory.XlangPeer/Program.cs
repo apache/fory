@@ -20,6 +20,7 @@ using System.Numerics;
 using System.Text;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
+using S = Apache.Fory.Schema.Types;
 
 namespace Apache.Fory.XlangPeer;
 
@@ -236,6 +237,8 @@ internal static class Program
             "test_unsigned_schema_consistent_simple" => CaseUnsignedSchemaConsistentSimple(input),
             "test_unsigned_schema_consistent" => CaseUnsignedSchemaConsistent(input),
             "test_unsigned_schema_compatible" => CaseUnsignedSchemaCompatible(input),
+            "test_nested_annotated_container_schema_consistent" => CaseNestedAnnotatedContainerSchemaConsistent(input),
+            "test_nested_annotated_container_compatible" => CaseNestedAnnotatedContainerCompatible(input),
             _ => throw new InvalidOperationException($"unknown test case {caseName}"),
         };
     }
@@ -995,6 +998,20 @@ internal static class Program
         return RoundTripSingle<UnsignedSchemaCompatible>(input, fory);
     }
 
+    private static byte[] CaseNestedAnnotatedContainerSchemaConsistent(byte[] input)
+    {
+        ForyRuntime fory = BuildFory(compatible: false);
+        fory.Register<NestedAnnotatedContainerSchemaConsistent>(801);
+        return RoundTripSingle<NestedAnnotatedContainerSchemaConsistent>(input, fory);
+    }
+
+    private static byte[] CaseNestedAnnotatedContainerCompatible(byte[] input)
+    {
+        ForyRuntime fory = BuildFory(compatible: true);
+        fory.Register<NestedAnnotatedContainerCompatible>(802);
+        return RoundTripSingle<NestedAnnotatedContainerCompatible>(input, fory);
+    }
+
     private static byte[] RoundTripSingle<T>(byte[] input, ForyRuntime fory)
     {
         ReadOnlySequence<byte> sequence = new(input);
@@ -1357,10 +1374,10 @@ public sealed class CircularRefStruct
 [ForyObject]
 public sealed class UnsignedSchemaConsistentSimple
 {
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong U64Tagged { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong? U64TaggedNullable { get; set; }
 }
 
@@ -1371,30 +1388,30 @@ public sealed class UnsignedSchemaConsistent
     public ushort U16Field { get; set; }
     public uint U32VarField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint U32FixedField { get; set; }
 
     public ulong U64VarField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt64))]
     public ulong U64FixedField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong U64TaggedField { get; set; }
 
     public byte? U8NullableField { get; set; }
     public ushort? U16NullableField { get; set; }
     public uint? U32VarNullableField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint? U32FixedNullableField { get; set; }
 
     public ulong? U64VarNullableField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt64))]
     public ulong? U64FixedNullableField { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong? U64TaggedNullableField { get; set; }
 }
 
@@ -1405,29 +1422,45 @@ public sealed class UnsignedSchemaCompatible
     public ushort? U16Field1 { get; set; }
     public uint? U32VarField1 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint? U32FixedField1 { get; set; }
 
     public ulong? U64VarField1 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt64))]
     public ulong? U64FixedField1 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong? U64TaggedField1 { get; set; }
 
     public byte U8Field2 { get; set; }
     public ushort U16Field2 { get; set; }
     public uint U32VarField2 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt32))]
     public uint U32FixedField2 { get; set; }
 
     public ulong U64VarField2 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Fixed)]
+    [ForyField(Type = typeof(S.UInt64))]
     public ulong U64FixedField2 { get; set; }
 
-    [Field(Encoding = FieldEncoding.Tagged)]
+    [ForyField(Type = typeof(S.TaggedUInt64))]
     public ulong U64TaggedField2 { get; set; }
 }
+
+#pragma warning disable CS8714
+[ForyObject]
+public sealed class NestedAnnotatedContainerSchemaConsistent
+{
+    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public NullableKeyDictionary<uint?, List<ulong?>?> Values { get; set; } = new();
+}
+
+[ForyObject]
+public sealed class NestedAnnotatedContainerCompatible
+{
+    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    public NullableKeyDictionary<uint?, List<ulong?>?> Values { get; set; } = new();
+}
+#pragma warning restore CS8714

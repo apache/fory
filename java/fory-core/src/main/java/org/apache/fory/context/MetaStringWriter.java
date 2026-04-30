@@ -57,7 +57,7 @@ public final class MetaStringWriter {
     if (id == MISSING_DYNAMIC_WRITE_STRING_ID) {
       writeNewMetaStringWithFlag(buffer, encodedMetaString);
     } else {
-      buffer.writeVarUint32Small7(((id + 1) << 2) | 0b11);
+      buffer.writeVarUInt32Small7(((id + 1) << 2) | 0b11);
     }
   }
 
@@ -73,7 +73,7 @@ public final class MetaStringWriter {
     if (id == MISSING_DYNAMIC_WRITE_STRING_ID) {
       writeNewMetaString(buffer, encodedMetaString);
     } else {
-      buffer.writeVarUint32Small7(((id + 1) << 1) | 1);
+      buffer.writeVarUInt32Small7(((id + 1) << 1) | 1);
     }
   }
 
@@ -85,7 +85,7 @@ public final class MetaStringWriter {
   private void writeNewMetaStringWithFlag(
       MemoryBuffer buffer, EncodedMetaString encodedMetaString) {
     int length = encodedMetaString.bytes.length;
-    buffer.writeVarUint32Small7(length << 2 | 0b1);
+    buffer.writeVarUInt32Small7(length << 2 | 0b1);
     if (length > SMALL_STRING_THRESHOLD) {
       buffer.writeInt64(encodedMetaString.hash);
     } else if (length != 0) {
@@ -96,7 +96,7 @@ public final class MetaStringWriter {
 
   private void writeNewMetaString(MemoryBuffer buffer, EncodedMetaString encodedMetaString) {
     int length = encodedMetaString.bytes.length;
-    buffer.writeVarUint32Small7(length << 1);
+    buffer.writeVarUInt32Small7(length << 1);
     if (length > SMALL_STRING_THRESHOLD) {
       buffer.writeInt64(encodedMetaString.hash);
     } else if (length != 0) {

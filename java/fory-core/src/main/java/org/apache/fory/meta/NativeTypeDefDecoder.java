@@ -52,8 +52,8 @@ class NativeTypeDefDecoder {
     encoded.writeInt64(id);
     int size = (int) (id & META_SIZE_MASKS);
     if (size == META_SIZE_MASKS) {
-      int moreSize = inputBuffer.readVarUint32Small14();
-      encoded.writeVarUint32(moreSize);
+      int moreSize = inputBuffer.readVarUInt32Small14();
+      encoded.writeVarUInt32(moreSize);
       size += moreSize;
     }
     byte[] encodedTypeDef = inputBuffer.readBytes(size);
@@ -69,7 +69,7 @@ class NativeTypeDefDecoder {
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int numClasses = typeDefBuf.readByte();
     if (numClasses == NUM_CLASS_THRESHOLD) {
-      numClasses += typeDefBuf.readVarUint32Small7();
+      numClasses += typeDefBuf.readVarUInt32Small7();
     }
     numClasses += 1;
     String className;
@@ -78,14 +78,14 @@ class NativeTypeDefDecoder {
     for (int i = 0; i < numClasses; i++) {
       // | num fields + register flag | header + package name | header + class name
       // | header + type id + field name | next field info | ... |
-      int currentClassHeader = typeDefBuf.readVarUint32Small7();
+      int currentClassHeader = typeDefBuf.readVarUInt32Small7();
       boolean isRegistered = (currentClassHeader & 0b1) != 0;
       int numFields = currentClassHeader >>> 1;
       if (isRegistered) {
-        int typeId = typeDefBuf.readUint8();
+        int typeId = typeDefBuf.readUInt8();
         int userTypeId = -1;
         if (Types.isUserTypeRegisteredById(typeId)) {
-          userTypeId = typeDefBuf.readVarUint32();
+          userTypeId = typeDefBuf.readVarUInt32();
         }
         Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
@@ -152,7 +152,7 @@ class NativeTypeDefDecoder {
       boolean useTagID = encodingFlags == 3;
       int size = header >>> 4;
       if (size == 7) {
-        size += buffer.readVarUint32Small7();
+        size += buffer.readVarUInt32Small7();
       }
       size += 1;
 
@@ -171,7 +171,7 @@ class NativeTypeDefDecoder {
 
       boolean nullable = (header & 0b010) != 0;
       boolean trackingRef = (header & 0b001) != 0;
-      int kindHeader = buffer.readUint8();
+      int kindHeader = buffer.readUInt8();
       int kind = kindHeader >>> 2;
       FieldType fieldType =
           FieldTypes.FieldType.read(buffer, resolver, nullable, trackingRef, kind);
@@ -213,7 +213,7 @@ class NativeTypeDefDecoder {
     Encoding encoding = encodings[encodingFlags];
     int size = header >> 2;
     if (size == BIG_NAME_THRESHOLD) {
-      size = buffer.readVarUint32Small7() + BIG_NAME_THRESHOLD;
+      size = buffer.readVarUInt32Small7() + BIG_NAME_THRESHOLD;
     }
     return decoder.decode(buffer.readBytes(size), encoding);
   }

@@ -84,7 +84,7 @@ public class GenericType {
   }
 
   public static GenericType build(TypeRef<?> type) {
-    return build(type.getType());
+    return build(type, defaultFinalPredicate);
   }
 
   public static GenericType build(Type type) {
@@ -133,15 +133,26 @@ public class GenericType {
     if (type instanceof ParameterizedType) {
       // List<String>, List<T>, Map<String, List<String>>, SomeClass<T>
       Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
+      List<TypeRef<?>> explicitTypeArguments =
+          typeRef.hasExplicitTypeArguments() ? typeRef.getTypeArguments() : null;
       List<GenericType> list = new ArrayList<>();
-      for (Type t : actualTypeArguments) {
-        GenericType build = GenericType.build(t, finalPredicate);
+      for (int i = 0; i < actualTypeArguments.length; i++) {
+        GenericType build =
+            explicitTypeArguments != null
+                ? GenericType.build(explicitTypeArguments.get(i), finalPredicate)
+                : GenericType.build(actualTypeArguments[i], finalPredicate);
         list.add(build);
       }
       GenericType[] genericTypes = list.toArray(new GenericType[0]);
       return new GenericType(typeRef, finalPredicate.test(type), genericTypes);
     } else if (type instanceof GenericArrayType) { // List<String>[] or T[]
-      Type componentType = ((GenericArrayType) type).getGenericComponentType();
+      TypeRef<?> componentType =
+          typeRef.getComponentType() != null
+              ? typeRef.getComponentType()
+              : TypeRef.of(((GenericArrayType) type).getGenericComponentType());
+      return new GenericType(typeRef, finalPredicate.test(type), build(componentType));
+    } else if (type instanceof Class && ((Class<?>) type).isArray()) {
+      TypeRef<?> componentType = typeRef.getComponentType();
       return new GenericType(typeRef, finalPredicate.test(type), build(componentType));
     } else if (type instanceof TypeVariable) { // T
       TypeVariable typeVariable = (TypeVariable) type;

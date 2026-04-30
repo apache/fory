@@ -19,6 +19,8 @@
 
 package org.apache.fory.meta;
 
+import java.util.Objects;
+
 public class TypeExtMeta {
   private final int typeId;
   private final boolean nullable;
@@ -44,6 +46,23 @@ public class TypeExtMeta {
 
   public boolean trackingRef() {
     return trackingRef;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (!(o instanceof TypeExtMeta)) {
+      return false;
+    }
+    TypeExtMeta that = (TypeExtMeta) o;
+    return typeId == that.typeId && nullable == that.nullable && trackingRef == that.trackingRef;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(typeId, nullable, trackingRef);
   }
 
   @Override

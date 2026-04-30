@@ -19,23 +19,30 @@
 
 package org.apache.fory.annotation;
 
-import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/** Marker annotation for Fory-serializable types with optional serialization behavior settings. */
-@Documented
+/**
+ * Annotation to mark a field as an unsigned 16-bit integer.
+ *
+ * <p>When applied to an {@code int}/{@link Integer} field or nested type-use position, this
+ * annotation indicates that the value should be serialized as an unsigned 16-bit integer (UINT16,
+ * type_id=10) with a valid range of [0, 65535].
+ *
+ * <p>This is useful for compatibility with languages that have native unsigned integer types (e.g.,
+ * Rust's u16, Go's uint16, C++'s uint16_t).
+ *
+ * <p>Example usage:
+ *
+ * <pre>{@code
+ * public class MyStruct {
+ *   {@literal @}UInt16Type
+ *   int port;  // Will be serialized as unsigned 16-bit [0, 65535]
+ * }
+ * }</pre>
+ */
 @Retention(RetentionPolicy.RUNTIME)
-@Target(ElementType.TYPE)
-public @interface ForyObject {
-  /**
-   * Whether the annotated type should use schema evolution in compatible mode.
-   *
-   * <p>When {@code true} (default), compatible mode uses COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT
-   * to include schema metadata for evolution. When {@code false}, STRUCT/NAMED_STRUCT is used to
-   * avoid that overhead.
-   */
-  boolean evolving() default true;
-}
+@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+public @interface UInt16Type {}

@@ -157,7 +157,7 @@ public class SubListSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       org.apache.fory.memory.MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUint32Small7();
+      int numElements = buffer.readVarUInt32Small7();
       setNumElements(numElements);
       return new ArrayList(numElements);
     }

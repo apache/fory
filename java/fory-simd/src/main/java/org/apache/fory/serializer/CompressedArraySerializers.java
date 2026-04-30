@@ -221,7 +221,7 @@ public final class CompressedArraySerializers {
     }
 
     private int[] readCompressedFromBytes(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int byteOffset = Platform.BYTE_ARRAY_OFFSET;
       byte[] values = new byte[size];
       buffer.readToUnsafe(values, byteOffset, size);
@@ -229,7 +229,7 @@ public final class CompressedArraySerializers {
     }
 
     private int[] readCompressedFromShorts(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int shortOffset = Platform.SHORT_ARRAY_OFFSET;
       int shortElemSize = 2;
       int numElements = size / shortElemSize;
@@ -239,7 +239,7 @@ public final class CompressedArraySerializers {
     }
 
     private int[] readUncompressed(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 4;
       int[] values = new int[numElements];
       if (size > 0) {
@@ -335,7 +335,7 @@ public final class CompressedArraySerializers {
     }
 
     private long[] readCompressedFromInts(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int intOffset = Platform.INT_ARRAY_OFFSET;
       int intElemSize = 4;
       int numElements = size / intElemSize;
@@ -347,7 +347,7 @@ public final class CompressedArraySerializers {
     }
 
     private long[] readUncompressed(MemoryBuffer buffer) {
-      int size = buffer.readVarUint32Small7();
+      int size = buffer.readVarUInt32Small7();
       int numElements = size / 8;
       long[] values = new long[numElements];
       if (size > 0) {

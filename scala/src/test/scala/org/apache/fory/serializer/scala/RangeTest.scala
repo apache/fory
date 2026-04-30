@@ -20,7 +20,6 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
-import org.apache.fory.config.Language
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
@@ -29,7 +28,7 @@ import scala.collection.immutable.NumericRange
 class RangeTest extends AnyWordSpec with Matchers {
   def fory: Fory = {
     val fory = Fory.builder()
-      .withLanguage(Language.JAVA)
+      .withXlang(false)
       .withRefTracking(true)
       .withScalaOptimizationEnabled(true)
       .requireClassRegistration(true)

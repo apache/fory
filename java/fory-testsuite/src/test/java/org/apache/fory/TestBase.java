@@ -20,7 +20,6 @@
 package org.apache.fory;
 
 import org.apache.fory.config.ForyBuilder;
-import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 
@@ -29,7 +28,7 @@ import org.testng.annotations.DataProvider;
 public abstract class TestBase {
 
   public static ForyBuilder builder() {
-    return Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false);
+    return Fory.builder().withXlang(false).requireClassRegistration(false);
   }
 
   @DataProvider

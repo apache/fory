@@ -176,7 +176,7 @@ public class NativeTypeDefEncoder {
     int numClasses = classLayers.size() - 1; // num class must be greater than 0
     if (numClasses >= NUM_CLASS_THRESHOLD) {
       typeDefBuf.writeByte(NUM_CLASS_THRESHOLD);
-      typeDefBuf.writeVarUint32Small7(numClasses - NUM_CLASS_THRESHOLD);
+      typeDefBuf.writeVarUInt32Small7(numClasses - NUM_CLASS_THRESHOLD);
     } else {
       typeDefBuf.writeByte(numClasses);
     }
@@ -189,15 +189,15 @@ public class NativeTypeDefEncoder {
       int currentClassHeader = (fields.size() << 1);
       if (classResolver.isRegisteredById(currentType)) {
         currentClassHeader |= 1;
-        typeDefBuf.writeVarUint32Small7(currentClassHeader);
+        typeDefBuf.writeVarUInt32Small7(currentClassHeader);
         int typeId = classResolver.getTypeIdForTypeDef(currentType);
-        typeDefBuf.writeUint8(typeId);
+        typeDefBuf.writeUInt8(typeId);
         if (needsUserTypeId(typeId)) {
           int userTypeId = classResolver.getUserTypeIdForTypeDef(currentType);
-          typeDefBuf.writeVarUint32(userTypeId);
+          typeDefBuf.writeVarUInt32(userTypeId);
         }
       } else {
-        typeDefBuf.writeVarUint32Small7(currentClassHeader);
+        typeDefBuf.writeVarUInt32Small7(currentClassHeader);
         String ns, typename;
         if (classResolver.isRegisteredByName(currentType)) {
           Tuple2<String, String> nameTuple = classResolver.getRegisteredNameTuple(currentType);
@@ -244,7 +244,7 @@ public class NativeTypeDefEncoder {
     MemoryBuffer result = MemoryUtils.buffer(metaSize + 8);
     result.writeInt64(header);
     if (metaSize >= META_SIZE_MASKS) {
-      result.writeVarUint32(metaSize - META_SIZE_MASKS);
+      result.writeVarUInt32(metaSize - META_SIZE_MASKS);
     }
     result.writeBytes(buffer.getHeapMemory(), 0, metaSize);
     return result;
@@ -312,7 +312,7 @@ public class NativeTypeDefEncoder {
       if (bigSize) {
         header |= 0b01110000;
         buffer.writeByte(header);
-        buffer.writeVarUint32Small7(size - 7);
+        buffer.writeVarUInt32Small7(size - 7);
       } else {
         header |= (size << 4);
         buffer.writeByte(header);
@@ -356,7 +356,7 @@ public class NativeTypeDefEncoder {
     if (bigSize) {
       int header = (BIG_NAME_THRESHOLD << 2) | encoding;
       buffer.writeByte(header);
-      buffer.writeVarUint32Small7(encoded.length - BIG_NAME_THRESHOLD);
+      buffer.writeVarUInt32Small7(encoded.length - BIG_NAME_THRESHOLD);
     } else {
       int header = (encoded.length << 2) | encoding;
       buffer.writeByte(header);
