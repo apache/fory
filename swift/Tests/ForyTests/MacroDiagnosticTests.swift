@@ -27,6 +27,7 @@ private func foryMacros() -> [String: Macro.Type] {
         "ForyField": ForyFieldMacro.self,
         "ForyCase": ForyCaseMacro.self,
         "ListField": ListFieldMacro.self,
+        "ArrayField": ArrayFieldMacro.self,
         "SetField": SetFieldMacro.self,
         "MapField": MapFieldMacro.self
     ]

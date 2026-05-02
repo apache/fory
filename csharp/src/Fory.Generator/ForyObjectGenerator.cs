@@ -1195,7 +1195,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
     {
         return typeId switch
         {
-            41 or 43 or 44 => 1,
+            41 or 43 or 44 or 48 => 1,
             45 or 49 or 53 or 54 => 2,
             46 or 50 or 55 => 4,
             47 or 51 or 56 => 8,
@@ -1213,6 +1213,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             45 => 3,
             46 => 4,
             47 => 6,
+            48 => 9,
             49 => 10,
             50 => 11,
             51 => 13,
@@ -2025,17 +2026,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (TryGetListElementType(unwrapped, out ITypeSymbol? listElementType))
         {
             bool elementNullable = GenericNullable(listElementType!);
-            if (!elementNullable &&
-                TryResolvePackedArrayTypeIdForElement(listElementType!) is uint packedArrayTypeId &&
-                (explicitTypeId == packedArrayTypeId || explicitTypeId == 22))
-            {
-                return new TypeMetaFieldTypeModel(
-                    packedArrayTypeId.ToString(),
-                    nullable,
-                    false,
-                    ImmutableArray<TypeMetaFieldTypeModel>.Empty);
-            }
-
             TypeMetaFieldTypeModel element = BuildTypeMetaFieldTypeModel(
                 listElementType!,
                 elementNullable,
@@ -2513,6 +2503,42 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return new SchemaTypeModel(22, SchemaTypeKind.List, ImmutableArray.Create(element));
         }
 
+        if (fullName == "Apache.Fory.Schema.Types.Array<TElement>")
+        {
+            if (named.TypeArguments.Length != 1 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel element ||
+                TryResolveArrayTypeIdForElement(element.TypeId) is not uint arrayTypeId)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(arrayTypeId, SchemaTypeKind.PackedArray, ImmutableArray.Create(element));
+        }
+
+        if (fullName == "Apache.Fory.Schema.Types.Fixed<TScalar>")
+        {
+            if (named.TypeArguments.Length != 1 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel scalar ||
+                TryResolveFixedTypeId(scalar.TypeId) is not uint fixedTypeId)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(fixedTypeId, SchemaTypeKind.Scalar, ImmutableArray<SchemaTypeModel>.Empty);
+        }
+
+        if (fullName == "Apache.Fory.Schema.Types.Tagged<TScalar>")
+        {
+            if (named.TypeArguments.Length != 1 ||
+                TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel scalar ||
+                TryResolveTaggedTypeId(scalar.TypeId) is not uint taggedTypeId)
+            {
+                return null;
+            }
+
+            return new SchemaTypeModel(taggedTypeId, SchemaTypeKind.Scalar, ImmutableArray<SchemaTypeModel>.Empty);
+        }
+
         if (fullName == "Apache.Fory.Schema.Types.Set<TElement>")
         {
             if (named.TypeArguments.Length != 1 ||
@@ -2556,19 +2582,10 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 typeId = 3;
                 return true;
             case "Apache.Fory.Schema.Types.Int32":
-                typeId = 4;
-                return true;
-            case "Apache.Fory.Schema.Types.VarInt32":
                 typeId = 5;
                 return true;
             case "Apache.Fory.Schema.Types.Int64":
-                typeId = 6;
-                return true;
-            case "Apache.Fory.Schema.Types.VarInt64":
                 typeId = 7;
-                return true;
-            case "Apache.Fory.Schema.Types.TaggedInt64":
-                typeId = 8;
                 return true;
             case "Apache.Fory.Schema.Types.UInt8":
                 typeId = 9;
@@ -2577,19 +2594,10 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 typeId = 10;
                 return true;
             case "Apache.Fory.Schema.Types.UInt32":
-                typeId = 11;
-                return true;
-            case "Apache.Fory.Schema.Types.VarUInt32":
                 typeId = 12;
                 return true;
             case "Apache.Fory.Schema.Types.UInt64":
-                typeId = 13;
-                return true;
-            case "Apache.Fory.Schema.Types.VarUInt64":
                 typeId = 14;
-                return true;
-            case "Apache.Fory.Schema.Types.TaggedUInt64":
-                typeId = 15;
                 return true;
             case "Apache.Fory.Schema.Types.Float16":
                 typeId = 17;
@@ -2619,64 +2627,56 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 typeId = 39;
                 return true;
             case "Apache.Fory.Schema.Types.Decimal":
-                typeId = 42;
-                return true;
-            case "Apache.Fory.Schema.Types.BoolArray":
-                typeId = 43;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Int8Array":
-                typeId = 44;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Int16Array":
-                typeId = 45;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Int32Array":
-                typeId = 46;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Int64Array":
-                typeId = 47;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.UInt8Array":
-                typeId = 41;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.UInt16Array":
-                typeId = 49;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.UInt32Array":
-                typeId = 50;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.UInt64Array":
-                typeId = 51;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Float16Array":
-                typeId = 53;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.BFloat16Array":
-                typeId = 54;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Float32Array":
-                typeId = 55;
-                kind = SchemaTypeKind.PackedArray;
-                return true;
-            case "Apache.Fory.Schema.Types.Float64Array":
-                typeId = 56;
-                kind = SchemaTypeKind.PackedArray;
+                typeId = 40;
                 return true;
             default:
                 typeId = 0;
                 return false;
         }
+    }
+
+    private static uint? TryResolveFixedTypeId(uint scalarTypeId)
+    {
+        return scalarTypeId switch
+        {
+            5 => 4,
+            7 => 6,
+            12 => 11,
+            14 => 13,
+            4 or 6 or 11 or 13 => scalarTypeId,
+            _ => null,
+        };
+    }
+
+    private static uint? TryResolveTaggedTypeId(uint scalarTypeId)
+    {
+        return scalarTypeId switch
+        {
+            7 or 6 => 8,
+            14 or 13 => 15,
+            _ => null,
+        };
+    }
+
+    private static uint? TryResolveArrayTypeIdForElement(uint elementTypeId)
+    {
+        return elementTypeId switch
+        {
+            1 => 43,
+            2 => 44,
+            3 => 45,
+            4 or 5 => 46,
+            6 or 7 => 47,
+            9 => 48,
+            10 => 49,
+            11 or 12 => 50,
+            13 or 14 => 51,
+            17 => 53,
+            18 => 54,
+            19 => 55,
+            20 => 56,
+            _ => null,
+        };
     }
 
     private static TypeResolution ResolveTypeResolution(ITypeSymbol type, SchemaTypeModel? schemaType)
@@ -2817,13 +2817,6 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         if (TryGetListElementType(type, out _))
         {
-            if (GetCarrierKind(type) == CarrierKind.List &&
-                TryGetListElementType(type, out ITypeSymbol? elementType) &&
-                TryResolvePackedArrayTypeIdForElement(elementType!) is uint packedArrayTypeId)
-            {
-                return new TypeClassification(packedArrayTypeId, false, true, true, false, false, 0);
-            }
-
             return new TypeClassification(22, false, true, true, false, false, 0);
         }
 

@@ -72,7 +72,7 @@ private func readArrayUninitialized<Element>(
     }
 }
 
-private func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
+func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: WriteContext) {
     if Element.self == UInt8.self {
         let bytes = uncheckedArrayCast(value, to: UInt8.self)
         context.buffer.writeVarUInt32(UInt32(bytes.count))
@@ -234,7 +234,7 @@ private func writePrimitiveArray<Element: Serializer>(_ value: [Element], contex
     }
 }
 
-private func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
+func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
     let payloadSize = Int(try context.buffer.readVarUInt32())
     try context.ensureRemainingBytes(payloadSize, label: "primitive_array_payload")
 
@@ -444,15 +444,10 @@ extension Array: Serializer where Element: Serializer {
     }
 
     public static var staticTypeId: TypeId {
-        // Primitive Swift arrays must use ARRAY ids in protocol, not LIST.
-        primitiveArrayTypeID(for: Element.self) ?? .list
+        .list
     }
 
     public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        if Element.self == UInt8.self, context.compatible {
-            context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.binary.rawValue))
-            return
-        }
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
     }
 
@@ -460,13 +455,6 @@ extension Array: Serializer where Element: Serializer {
         let rawTypeID = try context.buffer.readVarUInt32()
         guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
             throw ForyError.invalidData("unknown type id \(rawTypeID)")
-        }
-
-        if Element.self == UInt8.self {
-            if actualTypeID == .uint8Array || actualTypeID == .binary {
-                return nil
-            }
-            throw ForyError.typeMismatch(expected: TypeId.uint8Array.rawValue, actual: rawTypeID)
         }
 
         let expectedTypeID = staticTypeId
@@ -477,11 +465,6 @@ extension Array: Serializer where Element: Serializer {
     }
 
     public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        if primitiveArrayTypeID(for: Element.self) != nil {
-            writePrimitiveArray(self, context: context)
-            return
-        }
-
         let buffer = context.buffer
         buffer.writeVarUInt32(UInt32(self.count))
         if self.isEmpty {
@@ -545,10 +528,6 @@ extension Array: Serializer where Element: Serializer {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> [Element] {
-        if primitiveArrayTypeID(for: Element.self) != nil {
-            return try readPrimitiveArray(context)
-        }
-
         let buffer = context.buffer
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "array")

@@ -72,34 +72,60 @@ public sealed class FieldOrder
 [ForyObject]
 public sealed class SchemaNumbers
 {
-    [ForyField(Type = typeof(S.UInt32))]
+    [ForyField(Type = typeof(S.Fixed<S.UInt32>))]
     public uint U32Fixed { get; set; }
 
-    [ForyField(Type = typeof(S.TaggedUInt64))]
+    [ForyField(Type = typeof(S.Tagged<S.UInt64>))]
     public ulong U64Tagged { get; set; }
 }
 
 [ForyObject]
 public sealed class NestedSchemaByName
 {
-    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
     public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
 }
 
 [ForyObject]
 public sealed class NestedSchemaById
 {
-    [ForyField(3, Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    [ForyField(3, Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
     public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
 }
 
 [ForyObject]
 public sealed class NestedSchemaSkipWriter
 {
-    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
     public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
 
     public int Tail { get; set; }
+}
+
+[ForyObject]
+public sealed class DefaultListSchema
+{
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class ExplicitArraySchema
+{
+    [ForyField(Type = typeof(S.Array<S.Int32>))]
+    public int[] Values { get; set; } = [];
+}
+
+[ForyObject]
+public sealed class SemanticScalarSchema
+{
+    [ForyField(Type = typeof(S.Int32))]
+    public int DefaultInt32 { get; set; }
+
+    [ForyField(Type = typeof(S.Fixed<S.Int32>))]
+    public int FixedInt32 { get; set; }
+
+    [ForyField(Type = typeof(S.Tagged<S.Int64>))]
+    public long TaggedInt64 { get; set; }
 }
 
 [ForyObject]
@@ -870,6 +896,49 @@ public sealed class ForyRuntimeTests
         Assert.Equal((uint)TypeId.Map, field.FieldType.TypeId);
         Assert.Equal((uint)TypeId.UInt32, field.FieldType.Generics[0].TypeId);
         Assert.Equal((uint)TypeId.TaggedUInt64, field.FieldType.Generics[1].Generics[0].TypeId);
+    }
+
+    [Fact]
+    public void UnannotatedListCarrierUsesListSchema()
+    {
+        TypeResolver resolver = new();
+        resolver.GetTypeInfo<DefaultListSchema>();
+        TypeMetaFieldInfo field = Assert.Single(resolver.GetTypeInfo<DefaultListSchema>().TypeMetaFields(false));
+
+        Assert.Equal((uint)TypeId.List, field.FieldType.TypeId);
+        TypeMetaFieldType element = Assert.Single(field.FieldType.Generics);
+        Assert.Equal((uint)TypeId.VarInt32, element.TypeId);
+    }
+
+    [Fact]
+    public void GenericSchemaMarkersDescribeScalarEncodingAndArraySchema()
+    {
+        TypeResolver resolver = new();
+        resolver.GetTypeInfo<SemanticScalarSchema>();
+        Dictionary<string, TypeMetaFieldType> scalarFields = resolver.GetTypeInfo<SemanticScalarSchema>()
+            .TypeMetaFields(false)
+            .ToDictionary(f => f.FieldName, f => f.FieldType);
+
+        Assert.Equal((uint)TypeId.VarInt32, scalarFields["default_int32"].TypeId);
+        Assert.Equal((uint)TypeId.Int32, scalarFields["fixed_int32"].TypeId);
+        Assert.Equal((uint)TypeId.TaggedInt64, scalarFields["tagged_int64"].TypeId);
+
+        resolver.GetTypeInfo<ExplicitArraySchema>();
+        TypeMetaFieldInfo arrayField = Assert.Single(resolver.GetTypeInfo<ExplicitArraySchema>().TypeMetaFields(false));
+        Assert.Equal((uint)TypeId.Int32Array, arrayField.FieldType.TypeId);
+        Assert.Empty(arrayField.FieldType.Generics);
+    }
+
+    [Fact]
+    public void ExplicitArrayMarkerRoundTripsDenseArrayPayload()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+        fory.Register<ExplicitArraySchema>(305);
+
+        ExplicitArraySchema value = new() { Values = [1, -2, int.MaxValue] };
+        ExplicitArraySchema decoded = fory.Deserialize<ExplicitArraySchema>(fory.Serialize(value));
+
+        Assert.Equal(value.Values, decoded.Values);
     }
 
     [Fact]

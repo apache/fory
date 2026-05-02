@@ -30,6 +30,7 @@ struct ForySwiftPlugin: CompilerPlugin {
         ForyUnionMacro.self,
         ForyFieldMacro.self,
         ListFieldMacro.self,
+        ArrayFieldMacro.self,
         SetFieldMacro.self,
         MapFieldMacro.self,
         ForyCaseMacro.self
@@ -215,6 +216,16 @@ public struct ListFieldMacro: PeerMacro {
     }
 }
 
+public struct ArrayFieldMacro: PeerMacro {
+    public static func expansion(
+        of _: AttributeSyntax,
+        providingPeersOf _: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        []
+    }
+}
+
 public struct SetFieldMacro: PeerMacro {
     public static func expansion(
         of _: AttributeSyntax,
@@ -329,6 +340,7 @@ private indirect enum FieldTypeHint {
     case inferredEncoding(FieldEncoding)
     case scalar(name: String, nullable: Bool?, encoding: FieldEncoding?)
     case list(element: FieldTypeHint)
+    case array(element: FieldTypeHint)
     case set(element: FieldTypeHint)
     case map(key: FieldTypeHint?, value: FieldTypeHint?)
 }
@@ -912,6 +924,8 @@ private func parseNestedFieldTypeHint(
         let parsed: FieldTypeHint?
         if attrName == "ListField" || attrName.hasSuffix(".ListField") {
             parsed = try parseListFieldHint(attr)
+        } else if attrName == "ArrayField" || attrName.hasSuffix(".ArrayField") {
+            parsed = try parseArrayFieldHint(attr)
         } else if attrName == "SetField" || attrName.hasSuffix(".SetField") {
             parsed = try parseSetFieldHint(attr)
         } else if attrName == "MapField" || attrName.hasSuffix(".MapField") {
@@ -944,6 +958,22 @@ private func parseListFieldHint(_ attr: AttributeSyntax) throws -> FieldTypeHint
         throw MacroExpansionErrorMessage("@ListField requires an element hint")
     }
     return .list(element: elementHint)
+}
+
+private func parseArrayFieldHint(_ attr: AttributeSyntax) throws -> FieldTypeHint {
+    let args = try attributeArgumentList(attr, name: "@ArrayField")
+    var elementHint: FieldTypeHint?
+    for arg in args {
+        let label = arg.label?.text
+        guard label == nil || label == "element" else {
+            throw MacroExpansionErrorMessage("@ArrayField supports only the 'element' argument")
+        }
+        elementHint = try parseFieldTypeHintExpression(arg.expression)
+    }
+    guard let elementHint else {
+        throw MacroExpansionErrorMessage("@ArrayField requires an element hint")
+    }
+    return .array(element: elementHint)
 }
 
 private func parseSetFieldHint(_ attr: AttributeSyntax) throws -> FieldTypeHint {
@@ -1084,6 +1114,8 @@ private func parseFieldTypeHintExpression(_ expr: ExprSyntax) throws -> FieldTyp
         return try parseScalarFieldTypeHint(name: functionName, args: call.arguments)
     case "list":
         return .list(element: try parseSingleNestedHint(functionName: ".list", args: call.arguments, label: "element"))
+    case "array":
+        return .array(element: try parseSingleNestedHint(functionName: ".array", args: call.arguments, label: "element"))
     case "set":
         return .set(element: try parseSingleNestedHint(functionName: ".set", args: call.arguments, label: "element"))
     case "map":
@@ -1311,24 +1343,27 @@ private func resolveFieldType(
 private func classification(for typeText: String, hint: FieldTypeHint) throws -> TypeClassification {
     switch hint {
     case .list(let elementHint):
-        let elementType = parseArrayElement(trimType(typeText)) ?? hintedValueTypeName(elementHint)
-        if let elementType,
-           let packedTypeID = packedArrayTypeID(typeText: elementType, hint: elementHint) {
-            return .init(
-                typeID: packedTypeID,
-                isPrimitive: false,
-                isBuiltIn: true,
-                isCollection: false,
-                isMap: false,
-                isCompressedNumeric: false,
-                primitiveSize: 0
-            )
-        }
+        _ = elementHint
         return .init(
             typeID: 22,
             isPrimitive: false,
             isBuiltIn: true,
             isCollection: true,
+            isMap: false,
+            isCompressedNumeric: false,
+            primitiveSize: 0
+        )
+    case .array(let elementHint):
+        let elementType = parseArrayElement(trimType(typeText)) ?? hintedValueTypeName(elementHint)
+        guard let elementType,
+              let packedTypeID = packedArrayTypeID(typeText: elementType, hint: elementHint) else {
+            throw MacroExpansionErrorMessage("array field hint requires a non-null numeric or bool Array element type")
+        }
+        return .init(
+            typeID: packedTypeID,
+            isPrimitive: false,
+            isBuiltIn: true,
+            isCollection: false,
             isMap: false,
             isCompressedNumeric: false,
             primitiveSize: 0
@@ -1378,6 +1413,8 @@ private func packedArrayTypeID(typeText: String, hint: FieldTypeHint) -> UInt32?
             return nil
         }
         switch name {
+        case "bool":
+            return 43
         case "int8":
             return 44
         case "int16":
@@ -1386,8 +1423,16 @@ private func packedArrayTypeID(typeText: String, hint: FieldTypeHint) -> UInt32?
             return 48
         case "uint16":
             return 49
+        case "float16":
+            return 53
+        case "bfloat16":
+            return 54
+        case "float32":
+            return 55
+        case "float64":
+            return 56
         case "int32", "int64", "int", "uint32", "uint64", "uint":
-            guard encoding == .fixed else {
+            guard encoding == nil else {
                 return nil
             }
             return fixedIntegerArrayTypeID(typeText: swiftTypeName(forScalarHint: name))
@@ -1545,6 +1590,13 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
         }
         let elementCodec = try codecTypeExpression(typeText: elementType, hint: elementHint)
         baseCodec = "ListFieldCodec<\(elementCodec)>"
+    case .array(let elementHint):
+        let elementType = parseArrayElement(concreteType) ?? hintedValueTypeName(elementHint)
+        guard let elementType else {
+            throw MacroExpansionErrorMessage("array field hint requires an Array Swift type or a full element type hint")
+        }
+        let elementCodec = try arrayElementCodecTypeExpression(typeText: elementType, hint: elementHint)
+        baseCodec = "ArrayFieldCodec<\(elementCodec)>"
     case .set(let elementHint):
         let elementType = parseSetElement(concreteType) ?? hintedValueTypeName(elementHint)
         guard let elementType else {
@@ -1568,6 +1620,69 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
         return "OptionalFieldCodec<\(baseCodec)>"
     }
     return baseCodec
+}
+
+private func arrayElementCodecTypeExpression(typeText: String, hint: FieldTypeHint) throws -> String {
+    let optional = unwrapOptional(typeText)
+    if optional.isOptional {
+        throw MacroExpansionErrorMessage("array field elements cannot be optional")
+    }
+
+    switch hint {
+    case .scalar(let name, let nullable, let encoding):
+        if nullable == true {
+            throw MacroExpansionErrorMessage("array field elements cannot be nullable")
+        }
+        let expectedType = swiftTypeName(forScalarHint: name)
+        if !typeMatchesHint(actual: typeText, expected: expectedType) {
+            throw MacroExpansionErrorMessage("Fory field type hint .\(name) does not match Swift type \(optional.type)")
+        }
+        guard encoding == nil else {
+            throw MacroExpansionErrorMessage("array field elements use fixed-width encoding and cannot specify integer encoding")
+        }
+        return try arrayScalarCodecTypeExpression(name: name)
+    case .inferredEncoding(.fixed):
+        return try integerCodecTypeExpression(typeText: optional.type, encoding: .fixed)
+    default:
+        throw MacroExpansionErrorMessage("array field hint requires a numeric or bool scalar element")
+    }
+}
+
+private func arrayScalarCodecTypeExpression(name: String) throws -> String {
+    switch name {
+    case "bool":
+        return "BoolCodec"
+    case "int8":
+        return "Int8Codec"
+    case "int16":
+        return "Int16Codec"
+    case "int32":
+        return "Int32FixedCodec"
+    case "int64":
+        return "Int64FixedCodec"
+    case "int":
+        return "IntFixedCodec"
+    case "uint8":
+        return "UInt8Codec"
+    case "uint16":
+        return "UInt16Codec"
+    case "uint32":
+        return "UInt32FixedCodec"
+    case "uint64":
+        return "UInt64FixedCodec"
+    case "uint":
+        return "UIntFixedCodec"
+    case "float16":
+        return "Float16Codec"
+    case "bfloat16":
+        return "BFloat16Codec"
+    case "float32":
+        return "FloatCodec"
+    case "float64":
+        return "DoubleCodec"
+    default:
+        throw MacroExpansionErrorMessage("array field hint requires a numeric or bool scalar element")
+    }
 }
 
 private func defaultCodecTypeExpression(typeText: String) throws -> String {
@@ -1774,6 +1889,11 @@ private func hintedValueTypeName(_ hint: FieldTypeHint) -> String? {
         let base = swiftTypeName(forScalarHint: name)
         return nullable == true ? "\(base)?" : base
     case .list(let element):
+        guard let elementType = hintedValueTypeName(element) else {
+            return nil
+        }
+        return "[\(elementType)]"
+    case .array(let element):
         guard let elementType = hintedValueTypeName(element) else {
             return nil
         }
@@ -2049,6 +2169,14 @@ private func buildSchemaTypeFingerprint(
             )
             let prefix = "\"\\(__foryNormalizeSchemaFingerprintTypeID(UInt32(TypeId.list.rawValue))),\\(\(trackFlagExpr)),\(nullableLiteral)\""
             return "\(prefix) + \"[\" + \(elementExpr) + \"]\""
+        case .array:
+            let typeIDExpr: String
+            if let explicitTypeIDExpression {
+                typeIDExpr = explicitTypeIDExpression
+            } else {
+                typeIDExpr = "\(try classification(for: concreteType, hint: hint).typeID)"
+            }
+            return "\"\\(__foryNormalizeSchemaFingerprintTypeID(\(typeIDExpr))),\\(\(trackFlagExpr)),\(nullableLiteral)\""
         case .set(let elementHint):
             let elementType = parseSetElement(concreteType) ?? hintedValueTypeName(elementHint)
             guard let elementType else {
@@ -2722,82 +2850,7 @@ private func classifyType(
     }
 
     if let arrayElement = parseArrayElement(normalized) {
-        let elem = classifyType(arrayElement)
-        if elem.typeID == 9 { // UInt8
-            return .init(typeID: 48, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
-        }
-        if elem.typeID == 1 {
-            return .init(
-                typeID: 43, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 2 {
-            return .init(
-                typeID: 44, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 3 {
-            return .init(
-                typeID: 45, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 5 {
-            return .init(
-                typeID: 46, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 7 {
-            return .init(
-                typeID: 47, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 10 {
-            return .init(
-                typeID: 49, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 12 {
-            return .init(
-                typeID: 50, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 14 {
-            return .init(
-                typeID: 51, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 17 {
-            return .init(
-                typeID: 53, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 18 {
-            return .init(
-                typeID: 54, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 19 {
-            return .init(
-                typeID: 55, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
-        if elem.typeID == 20 {
-            return .init(
-                typeID: 56, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false,
-                isCompressedNumeric: false, primitiveSize: 0
-            )
-        }
+        _ = arrayElement
         return .init(typeID: 22, isPrimitive: false, isBuiltIn: true, isCollection: true, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     }
 

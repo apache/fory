@@ -99,7 +99,7 @@ final class IdlRoundTripTests: XCTestCase {
         XCTAssertEqual(decodedAnimal, animal)
     }
 
-    func testGeneratedFixedIntegerListsUsePackedArrayMetadata() throws {
+    func testGeneratedFixedIntegerListsUseListMetadata() throws {
         let fory = Fory(xlang: true, trackRef: false, compatible: true)
         try Example.ForyRegistration.register(fory)
         let maybeFloat16Values: [String: Float16?] = ["none": nil, "one": Float16(1)]
@@ -124,10 +124,10 @@ final class IdlRoundTripTests: XCTestCase {
                 ($0.fieldName, $0.fieldType)
             }
         )
-        XCTAssertEqual(messageFields["fixedInt32List"]?.typeID, TypeId.int32Array.rawValue)
-        XCTAssertEqual(messageFields["fixedInt64List"]?.typeID, TypeId.int64Array.rawValue)
-        XCTAssertEqual(messageFields["fixedUint32List"]?.typeID, TypeId.uint32Array.rawValue)
-        XCTAssertEqual(messageFields["fixedUint64List"]?.typeID, TypeId.uint64Array.rawValue)
+        XCTAssertEqual(messageFields["fixedInt32List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedInt64List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedUint32List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedUint64List"]?.typeID, TypeId.list.rawValue)
         XCTAssertEqual(messageFields["maybeFixedInt32List"]?.typeID, TypeId.list.rawValue)
 
         let event = Example.ExampleMessageUnion.maybeFixedInt32List([nil, 9, -10])

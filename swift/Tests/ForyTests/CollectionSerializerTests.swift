@@ -69,6 +69,12 @@ private struct AnnotatedFieldCodecHolder: Equatable {
     @ListField(element: .uint64(encoding: .fixed))
     var packedUInt64Values: [UInt64] = []
 
+    @ArrayField(element: .int32())
+    var denseValues: [Int32] = []
+
+  @ForyField(type: .array(element: .uint64()))
+  var denseUInt64Values: [UInt64] = []
+
     @SetField(element: .encoding(.fixed))
     var fixedSet: Set<Int32?> = []
 
@@ -104,20 +110,20 @@ private struct AliasAnnotatedFieldCodecHolder: Equatable {
 }
 
 @Test
-func primitiveArrayTypeIDsAndRoundTripsCoverSwiftCollectionSurface() throws {
-    #expect([Bool].staticTypeId == .boolArray)
-    #expect([Int8].staticTypeId == .int8Array)
-    #expect([Int16].staticTypeId == .int16Array)
-    #expect([Int32].staticTypeId == .int32Array)
-    #expect([Int64].staticTypeId == .int64Array)
-    #expect([UInt8].staticTypeId == .uint8Array)
-    #expect([UInt16].staticTypeId == .uint16Array)
-    #expect([UInt32].staticTypeId == .uint32Array)
-    #expect([UInt64].staticTypeId == .uint64Array)
-    #expect([Float16].staticTypeId == .float16Array)
-    #expect([BFloat16].staticTypeId == .bfloat16Array)
-    #expect([Float].staticTypeId == .float32Array)
-    #expect([Double].staticTypeId == .float64Array)
+func primitiveArraysDefaultToListTypeIDsAndRoundTrip() throws {
+    #expect([Bool].staticTypeId == .list)
+    #expect([Int8].staticTypeId == .list)
+    #expect([Int16].staticTypeId == .list)
+    #expect([Int32].staticTypeId == .list)
+    #expect([Int64].staticTypeId == .list)
+    #expect([UInt8].staticTypeId == .list)
+    #expect([UInt16].staticTypeId == .list)
+    #expect([UInt32].staticTypeId == .list)
+    #expect([UInt64].staticTypeId == .list)
+    #expect([Float16].staticTypeId == .list)
+    #expect([BFloat16].staticTypeId == .list)
+    #expect([Float].staticTypeId == .list)
+    #expect([Double].staticTypeId == .list)
 
     let fory = Fory()
 
@@ -215,23 +221,18 @@ func floatingPointArraysPreserveBits() throws {
 }
 
 @Test
-func uint8ArrayAndDataInteroperateAcrossWireTypes() throws {
+func plainUInt8ArrayUsesListWireType() throws {
     let payload: [UInt8] = [0x00, 0x01, 0x7F, 0xFF]
 
     let schemaConsistent = Fory(config: .init(xlang: true, trackRef: false, compatible: false))
     let schemaBytes = try schemaConsistent.serialize(payload)
-    #expect(Array(schemaBytes)[2] == UInt8(TypeId.uint8Array.rawValue))
+    #expect(Array(schemaBytes)[2] == UInt8(TypeId.list.rawValue))
 
     let compatible = Fory(config: .init(xlang: true, trackRef: false, compatible: true))
     let compatibleBytes = try compatible.serialize(payload)
-    #expect(Array(compatibleBytes)[2] == UInt8(TypeId.binary.rawValue))
+    #expect(Array(compatibleBytes)[2] == UInt8(TypeId.list.rawValue))
 
-    let decodedBinary: Data = try compatible.deserialize(compatibleBytes)
-    #expect(Array(decodedBinary) == payload)
-
-    let binary = Data(payload)
-    let binaryBytes = try compatible.serialize(binary)
-    let decodedArray: [UInt8] = try compatible.deserialize(binaryBytes)
+    let decodedArray: [UInt8] = try compatible.deserialize(compatibleBytes)
     #expect(decodedArray == payload)
 }
 
@@ -272,6 +273,8 @@ func annotatedNestedFieldCodecsRoundTrip() throws {
         values: [1, nil, -2, Int32.max],
         packedValues: [1, -3, 100_000],
         packedUInt64Values: [1, UInt64.max],
+        denseValues: [4, -5, 6],
+        denseUInt64Values: [8, UInt64.max],
         fixedSet: [nil, -7, 42],
         fixedNonNullSet: [6, -7],
         data: [
@@ -314,10 +317,18 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
     )
     #expect(
         fields["packedValues"] ==
-            TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
+            ListFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
     )
     #expect(
         fields["packedUInt64Values"] ==
+            ListFieldCodec<UInt64FixedCodec>.fieldType(nullable: false, trackRef: false)
+    )
+    #expect(
+        fields["denseValues"] ==
+            TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
+    )
+    #expect(
+        fields["denseUInt64Values"] ==
             TypeMeta.FieldType(typeID: TypeId.uint64Array.rawValue, nullable: false, trackRef: false)
     )
     #expect(

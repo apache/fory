@@ -603,13 +603,10 @@ public typealias DataCodec = SerializerCodec<Data>
 public enum ListFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
     public typealias Value = [ElementCodec.Value]
 
-    public static var typeId: TypeId { packedArrayTypeID(for: ElementCodec.self) ?? .list }
+    public static var typeId: TypeId { .list }
     public static var defaultValue: Value { [] }
 
     public static func fieldType(nullable: Bool, trackRef: Bool) -> TypeMeta.FieldType {
-        if let packedTypeID = packedArrayTypeID(for: ElementCodec.self) {
-            return TypeMeta.FieldType(typeID: packedTypeID.rawValue, nullable: nullable, trackRef: trackRef)
-        }
         return TypeMeta.FieldType(
             typeID: TypeId.list.rawValue,
             nullable: nullable,
@@ -619,17 +616,42 @@ public enum ListFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
     }
 
     public static func writePayload(_ value: Value, _ context: WriteContext) throws {
+        try writeCollectionPayload(value, context, elementCodec: ElementCodec.self)
+    }
+
+    public static func readPayload(_ context: ReadContext) throws -> Value {
+        return try readCollectionPayload(context, elementCodec: ElementCodec.self)
+    }
+}
+
+public enum ArrayFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
+    public typealias Value = [ElementCodec.Value]
+
+    public static var typeId: TypeId {
+        guard let typeID = packedArrayTypeID(for: ElementCodec.self) else {
+            preconditionFailure("ArrayFieldCodec requires a non-null numeric or bool element codec")
+        }
+        return typeID
+    }
+
+    public static var defaultValue: Value { [] }
+
+    public static func fieldType(nullable: Bool, trackRef: Bool) -> TypeMeta.FieldType {
+        TypeMeta.FieldType(typeID: typeId.rawValue, nullable: nullable, trackRef: trackRef)
+    }
+
+    public static func writePayload(_ value: Value, _ context: WriteContext) throws {
         if try writePackedArrayPayload(value, context, elementCodec: ElementCodec.self) {
             return
         }
-        try writeCollectionPayload(value, context, elementCodec: ElementCodec.self)
+        throw ForyError.invalidData("unsupported array field element codec \(ElementCodec.self)")
     }
 
     public static func readPayload(_ context: ReadContext) throws -> Value {
         if let value = try readPackedArrayPayload(context, elementCodec: ElementCodec.self) {
             return value
         }
-        return try readCollectionPayload(context, elementCodec: ElementCodec.self)
+        throw ForyError.invalidData("unsupported array field element codec \(ElementCodec.self)")
     }
 }
 
@@ -942,6 +964,9 @@ private func packedArrayTypeID<ElementCodec: FieldCodec>(for _: ElementCodec.Typ
     if ElementCodec.isNullableType {
         return nil
     }
+    if ElementCodec.self == BoolCodec.self {
+        return .boolArray
+    }
     if ElementCodec.self == Int8Codec.self {
         return .int8Array
     }
@@ -966,6 +991,18 @@ private func packedArrayTypeID<ElementCodec: FieldCodec>(for _: ElementCodec.Typ
     if ElementCodec.self == UInt64FixedCodec.self || ElementCodec.self == UIntFixedCodec.self {
         return .uint64Array
     }
+    if ElementCodec.self == Float16Codec.self {
+        return .float16Array
+    }
+    if ElementCodec.self == BFloat16Codec.self {
+        return .bfloat16Array
+    }
+    if ElementCodec.self == FloatCodec.self {
+        return .float32Array
+    }
+    if ElementCodec.self == DoubleCodec.self {
+        return .float64Array
+    }
     return nil
 }
 
@@ -974,24 +1011,24 @@ private func writePackedArrayPayload<ElementCodec: FieldCodec>(
     _ context: WriteContext,
     elementCodec _: ElementCodec.Type
 ) throws -> Bool {
+    if ElementCodec.self == BoolCodec.self {
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Bool.self), context: context)
+        return true
+    }
     if ElementCodec.self == Int8Codec.self {
-        let values = uncheckedPackedArrayCast(value, to: Int8.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Int8.self), context: context)
         return true
     }
     if ElementCodec.self == Int16Codec.self {
-        let values = uncheckedPackedArrayCast(value, to: Int16.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Int16.self), context: context)
         return true
     }
     if ElementCodec.self == Int32FixedCodec.self {
-        let values = uncheckedPackedArrayCast(value, to: Int32.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Int32.self), context: context)
         return true
     }
     if ElementCodec.self == Int64FixedCodec.self {
-        let values = uncheckedPackedArrayCast(value, to: Int64.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Int64.self), context: context)
         return true
     }
     if ElementCodec.self == IntFixedCodec.self {
@@ -999,27 +1036,39 @@ private func writePackedArrayPayload<ElementCodec: FieldCodec>(
         return true
     }
     if ElementCodec.self == UInt8Codec.self {
-        let values = uncheckedPackedArrayCast(value, to: UInt8.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: UInt8.self), context: context)
         return true
     }
     if ElementCodec.self == UInt16Codec.self {
-        let values = uncheckedPackedArrayCast(value, to: UInt16.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: UInt16.self), context: context)
         return true
     }
     if ElementCodec.self == UInt32FixedCodec.self {
-        let values = uncheckedPackedArrayCast(value, to: UInt32.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: UInt32.self), context: context)
         return true
     }
     if ElementCodec.self == UInt64FixedCodec.self {
-        let values = uncheckedPackedArrayCast(value, to: UInt64.self)
-        try values.foryWriteData(context, hasGenerics: false)
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: UInt64.self), context: context)
         return true
     }
     if ElementCodec.self == UIntFixedCodec.self {
         writeUIntArrayPayload(uncheckedPackedArrayCast(value, to: UInt.self), context)
+        return true
+    }
+    if ElementCodec.self == Float16Codec.self {
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Float16.self), context: context)
+        return true
+    }
+    if ElementCodec.self == BFloat16Codec.self {
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: BFloat16.self), context: context)
+        return true
+    }
+    if ElementCodec.self == FloatCodec.self {
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Float.self), context: context)
+        return true
+    }
+    if ElementCodec.self == DoubleCodec.self {
+        writePrimitiveArray(uncheckedPackedArrayCast(value, to: Double.self), context: context)
         return true
     }
     return false
@@ -1029,35 +1078,50 @@ private func readPackedArrayPayload<ElementCodec: FieldCodec>(
     _ context: ReadContext,
     elementCodec _: ElementCodec.Type
 ) throws -> [ElementCodec.Value]? {
+    if ElementCodec.self == BoolCodec.self {
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Bool], to: ElementCodec.Value.self)
+    }
     if ElementCodec.self == Int8Codec.self {
-        return uncheckedPackedArrayCast(try [Int8].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Int8], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int16Codec.self {
-        return uncheckedPackedArrayCast(try [Int16].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Int16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int32FixedCodec.self {
-        return uncheckedPackedArrayCast(try [Int32].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Int32], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int64FixedCodec.self {
-        return uncheckedPackedArrayCast(try [Int64].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Int64], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == IntFixedCodec.self {
         return uncheckedPackedArrayCast(try readIntArrayPayload(context), to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt8Codec.self {
-        return uncheckedPackedArrayCast(try [UInt8].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [UInt8], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt16Codec.self {
-        return uncheckedPackedArrayCast(try [UInt16].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [UInt16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt32FixedCodec.self {
-        return uncheckedPackedArrayCast(try [UInt32].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [UInt32], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt64FixedCodec.self {
-        return uncheckedPackedArrayCast(try [UInt64].foryReadData(context), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [UInt64], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UIntFixedCodec.self {
         return uncheckedPackedArrayCast(try readUIntArrayPayload(context), to: ElementCodec.Value.self)
+    }
+    if ElementCodec.self == Float16Codec.self {
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Float16], to: ElementCodec.Value.self)
+    }
+    if ElementCodec.self == BFloat16Codec.self {
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [BFloat16], to: ElementCodec.Value.self)
+    }
+    if ElementCodec.self == FloatCodec.self {
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Float], to: ElementCodec.Value.self)
+    }
+    if ElementCodec.self == DoubleCodec.self {
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context) as [Double], to: ElementCodec.Value.self)
     }
     return nil
 }

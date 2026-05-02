@@ -162,6 +162,11 @@ public struct ForyFieldType: Sendable {
         return .init()
     }
 
+    public static func array(element: ForyFieldType) -> ForyFieldType {
+        _ = element
+        return .init()
+    }
+
     public static func set(element: ForyFieldType) -> ForyFieldType {
         _ = element
         return .init()
@@ -195,6 +200,11 @@ public macro ForyField(
 public macro ListField(
     element: ForyFieldType
 ) = #externalMacro(module: "ForyMacro", type: "ListFieldMacro")
+
+@attached(peer)
+public macro ArrayField(
+    element: ForyFieldType
+) = #externalMacro(module: "ForyMacro", type: "ArrayFieldMacro")
 
 @attached(peer)
 public macro SetField(
