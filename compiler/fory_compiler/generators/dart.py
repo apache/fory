@@ -874,14 +874,11 @@ class DartGenerator(BaseGenerator):
                 f"{self.indent_str * indent}final class _{name}ForySerializer extends UnionSerializer<{full}> {{",
                 f"{self.indent_str * (indent + 1)}const _{name}ForySerializer();",
                 f"{self.indent_str * (indent + 1)}@override",
-                f"{self.indent_str * (indent + 1)}void write(WriteContext context, {full} value) {{",
-                f"{self.indent_str * (indent + 2)}context.writeVarUint32(value.caseId);",
-                f"{self.indent_str * (indent + 2)}context.writeRef(value.value);",
-                f"{self.indent_str * (indent + 1)}}}",
+                f"{self.indent_str * (indent + 1)}int caseId({full} value) => value.caseId;",
                 f"{self.indent_str * (indent + 1)}@override",
-                f"{self.indent_str * (indent + 1)}{full} read(ReadContext context) {{",
-                f"{self.indent_str * (indent + 2)}final caseId = context.readVarUint32();",
-                f"{self.indent_str * (indent + 2)}final value = context.readRef();",
+                f"{self.indent_str * (indent + 1)}Object? caseValue({full} value) => value.value;",
+                f"{self.indent_str * (indent + 1)}@override",
+                f"{self.indent_str * (indent + 1)}{full} buildValue(int caseId, Object? value) {{",
             ]
         )
         for field in union.fields:
