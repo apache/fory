@@ -62,6 +62,7 @@ cdef class DataClassSerializer(Serializer):
     cdef public object _assign_fields
     cdef public object _assigned_field_names
     cdef public object _value_assignable_checker
+    cdef public object _value_assigner
     cdef vector[FieldRuntimeInfo] _field_runtime_infos
 
     def __init__(
@@ -175,11 +176,13 @@ cdef class DataClassSerializer(Serializer):
         self._build_missing_field_defaults()
 
         if self._has_validation_fields:
-            from pyfory.meta.typedef import is_value_assignable
+            from pyfory.meta.typedef import coerce_assignable_value, is_value_assignable
 
             self._value_assignable_checker = is_value_assignable
+            self._value_assigner = coerce_assignable_value
         else:
             self._value_assignable_checker = None
+            self._value_assigner = None
 
     cdef object _intern_field_name(self, str name):
         cdef bytes encoded = name.encode("utf-8")
@@ -575,6 +578,7 @@ cdef class DataClassSerializer(Serializer):
         if field_info.validation_field_type != NULL:
             if not self._value_assignable_checker(field_value, <object>field_info.validation_field_type):
                 return self._default_field_value(field_name)
+            return self._value_assigner(field_value, <object>field_info.validation_field_type)
         return field_value
 
     cdef inline void _apply_missing_defaults_dict(self, dict obj_dict):

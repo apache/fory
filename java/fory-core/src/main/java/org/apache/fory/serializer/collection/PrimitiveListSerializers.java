@@ -19,7 +19,9 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
 import org.apache.fory.collection.Float16List;
@@ -40,7 +42,12 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.ArraySerializers;
+import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Shareable;
+import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.Float16;
+import org.apache.fory.type.Types;
 
 /** Serializers for primitive list types. */
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -708,6 +715,311 @@ public class PrimitiveListSerializers {
     @Override
     public BFloat16List copy(CopyContext copyContext, BFloat16List value) {
       return new BFloat16List(value.copyArray());
+    }
+  }
+
+  public static final class BoxedArrayAsListSerializer extends Serializer<List<?>>
+      implements Shareable {
+    private final int typeId;
+    private final String fieldName;
+    private final Serializer<?> arraySerializer;
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public BoxedArrayAsListSerializer(TypeResolver typeResolver, int typeId, String fieldName) {
+      super(typeResolver.getConfig(), (Class) List.class);
+      this.typeId = typeId;
+      this.fieldName = fieldName;
+      switch (typeId) {
+        case Types.BOOL_ARRAY:
+          arraySerializer = new ArraySerializers.BooleanArraySerializer(typeResolver);
+          break;
+        case Types.INT8_ARRAY:
+        case Types.UINT8_ARRAY:
+          arraySerializer = new ArraySerializers.ByteArraySerializer(typeResolver);
+          break;
+        case Types.INT16_ARRAY:
+        case Types.UINT16_ARRAY:
+        case Types.FLOAT16_ARRAY:
+        case Types.BFLOAT16_ARRAY:
+          arraySerializer = new ArraySerializers.ShortArraySerializer(typeResolver);
+          break;
+        case Types.INT32_ARRAY:
+        case Types.UINT32_ARRAY:
+          arraySerializer = new ArraySerializers.IntArraySerializer(typeResolver);
+          break;
+        case Types.INT64_ARRAY:
+        case Types.UINT64_ARRAY:
+          arraySerializer = new ArraySerializers.LongArraySerializer(typeResolver);
+          break;
+        case Types.FLOAT32_ARRAY:
+          arraySerializer = new ArraySerializers.FloatArraySerializer(typeResolver);
+          break;
+        case Types.FLOAT64_ARRAY:
+          arraySerializer = new ArraySerializers.DoubleArraySerializer(typeResolver);
+          break;
+        default:
+          throw new IllegalArgumentException("Unsupported array type id " + typeId);
+      }
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void write(WriteContext writeContext, List<?> value) {
+      ((Serializer<Object>) arraySerializer).write(writeContext, toPrimitiveArray(value));
+    }
+
+    @Override
+    public List<?> read(ReadContext readContext) {
+      Object primitiveArray = arraySerializer.read(readContext);
+      return toBoxedList(primitiveArray);
+    }
+
+    @Override
+    public List<?> copy(CopyContext copyContext, List<?> value) {
+      return new ArrayList<>(value);
+    }
+
+    private Object toPrimitiveArray(List<?> value) {
+      switch (typeId) {
+        case Types.BOOL_ARRAY:
+          return toBooleanArray(value);
+        case Types.INT8_ARRAY:
+          return toByteArray(value, false);
+        case Types.UINT8_ARRAY:
+          return toByteArray(value, true);
+        case Types.INT16_ARRAY:
+          return toShortArray(value, false);
+        case Types.UINT16_ARRAY:
+          return toShortArray(value, true);
+        case Types.INT32_ARRAY:
+          return toIntArray(value, false);
+        case Types.UINT32_ARRAY:
+          return toIntArray(value, true);
+        case Types.INT64_ARRAY:
+          return toLongArray(value);
+        case Types.UINT64_ARRAY:
+          return toLongArray(value);
+        case Types.FLOAT16_ARRAY:
+          return toFloat16Bits(value);
+        case Types.BFLOAT16_ARRAY:
+          return toBFloat16Bits(value);
+        case Types.FLOAT32_ARRAY:
+          return toFloatArray(value);
+        case Types.FLOAT64_ARRAY:
+          return toDoubleArray(value);
+        default:
+          throw new IllegalStateException("Unsupported array type id " + typeId);
+      }
+    }
+
+    private List<?> toBoxedList(Object primitiveArray) {
+      if (primitiveArray instanceof boolean[]) {
+        boolean[] values = (boolean[]) primitiveArray;
+        ArrayList<Boolean> list = new ArrayList<>(values.length);
+        for (boolean value : values) {
+          list.add(value);
+        }
+        return list;
+      } else if (primitiveArray instanceof byte[]) {
+        byte[] values = (byte[]) primitiveArray;
+        ArrayList<Object> list = new ArrayList<>(values.length);
+        for (byte value : values) {
+          list.add(typeId == Types.UINT8_ARRAY ? Byte.toUnsignedInt(value) : value);
+        }
+        return list;
+      } else if (primitiveArray instanceof short[]) {
+        short[] values = (short[]) primitiveArray;
+        ArrayList<Object> list = new ArrayList<>(values.length);
+        for (short value : values) {
+          if (typeId == Types.UINT16_ARRAY) {
+            list.add(Short.toUnsignedInt(value));
+          } else if (typeId == Types.FLOAT16_ARRAY) {
+            list.add(Float16.fromBits(value));
+          } else if (typeId == Types.BFLOAT16_ARRAY) {
+            list.add(BFloat16.fromBits(value));
+          } else {
+            list.add(value);
+          }
+        }
+        return list;
+      } else if (primitiveArray instanceof int[]) {
+        int[] values = (int[]) primitiveArray;
+        ArrayList<Object> list = new ArrayList<>(values.length);
+        for (int value : values) {
+          list.add(typeId == Types.UINT32_ARRAY ? Integer.toUnsignedLong(value) : value);
+        }
+        return list;
+      } else if (primitiveArray instanceof long[]) {
+        long[] values = (long[]) primitiveArray;
+        ArrayList<Long> list = new ArrayList<>(values.length);
+        for (long value : values) {
+          list.add(value);
+        }
+        return list;
+      } else if (primitiveArray instanceof float[]) {
+        float[] values = (float[]) primitiveArray;
+        ArrayList<Float> list = new ArrayList<>(values.length);
+        for (float value : values) {
+          list.add(value);
+        }
+        return list;
+      } else if (primitiveArray instanceof double[]) {
+        double[] values = (double[]) primitiveArray;
+        ArrayList<Double> list = new ArrayList<>(values.length);
+        for (double value : values) {
+          list.add(value);
+        }
+        return list;
+      }
+      throw new IllegalStateException("Unsupported array value " + primitiveArray.getClass());
+    }
+
+    private boolean[] toBooleanArray(List<?> value) {
+      boolean[] array = new boolean[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        Object element = requireElement(value, i);
+        if (!(element instanceof Boolean)) {
+          throw wrongElementType(i, "Boolean", element);
+        }
+        array[i] = (Boolean) element;
+      }
+      return array;
+    }
+
+    private byte[] toByteArray(List<?> value, boolean unsigned) {
+      byte[] array = new byte[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        int element = requireNumber(value, i).intValue();
+        if (unsigned) {
+          requireRange(i, element, 0, 0xFF);
+        } else {
+          requireRange(i, element, Byte.MIN_VALUE, Byte.MAX_VALUE);
+        }
+        array[i] = (byte) element;
+      }
+      return array;
+    }
+
+    private short[] toShortArray(List<?> value, boolean unsigned) {
+      short[] array = new short[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        int element = requireNumber(value, i).intValue();
+        if (unsigned) {
+          requireRange(i, element, 0, 0xFFFF);
+        } else {
+          requireRange(i, element, Short.MIN_VALUE, Short.MAX_VALUE);
+        }
+        array[i] = (short) element;
+      }
+      return array;
+    }
+
+    private int[] toIntArray(List<?> value, boolean unsigned) {
+      int[] array = new int[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        long element = requireNumber(value, i).longValue();
+        if (unsigned) {
+          requireRange(i, element, 0L, 0xFFFF_FFFFL);
+        } else {
+          requireRange(i, element, Integer.MIN_VALUE, Integer.MAX_VALUE);
+        }
+        array[i] = (int) element;
+      }
+      return array;
+    }
+
+    private long[] toLongArray(List<?> value) {
+      long[] array = new long[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        array[i] = requireNumber(value, i).longValue();
+      }
+      return array;
+    }
+
+    private short[] toFloat16Bits(List<?> value) {
+      short[] array = new short[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        Object element = requireElement(value, i);
+        if (!(element instanceof Float16)) {
+          throw wrongElementType(i, "Float16", element);
+        }
+        array[i] = ((Float16) element).toBits();
+      }
+      return array;
+    }
+
+    private short[] toBFloat16Bits(List<?> value) {
+      short[] array = new short[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        Object element = requireElement(value, i);
+        if (!(element instanceof BFloat16)) {
+          throw wrongElementType(i, "BFloat16", element);
+        }
+        array[i] = ((BFloat16) element).toBits();
+      }
+      return array;
+    }
+
+    private float[] toFloatArray(List<?> value) {
+      float[] array = new float[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        array[i] = requireNumber(value, i).floatValue();
+      }
+      return array;
+    }
+
+    private double[] toDoubleArray(List<?> value) {
+      double[] array = new double[value.size()];
+      for (int i = 0; i < value.size(); i++) {
+        array[i] = requireNumber(value, i).doubleValue();
+      }
+      return array;
+    }
+
+    private Object requireElement(List<?> value, int index) {
+      Object element = value.get(index);
+      if (element == null) {
+        throw new IllegalArgumentException(
+            "@ArrayType List field " + fieldName + " contains null element at index " + index);
+      }
+      return element;
+    }
+
+    private Number requireNumber(List<?> value, int index) {
+      Object element = requireElement(value, index);
+      if (!(element instanceof Number)) {
+        throw wrongElementType(index, "Number", element);
+      }
+      return (Number) element;
+    }
+
+    private void requireRange(int index, long value, long min, long max) {
+      if (value < min || value > max) {
+        throw new IllegalArgumentException(
+            "@ArrayType List field "
+                + fieldName
+                + " element "
+                + index
+                + " value "
+                + value
+                + " is outside ["
+                + min
+                + ", "
+                + max
+                + "]");
+      }
+    }
+
+    private IllegalArgumentException wrongElementType(int index, String expected, Object actual) {
+      return new IllegalArgumentException(
+          "@ArrayType List field "
+              + fieldName
+              + " element "
+              + index
+              + " must be "
+              + expected
+              + ", but got "
+              + actual.getClass().getName());
     }
   }
 

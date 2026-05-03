@@ -30,7 +30,7 @@ def test_emit_round_trip_preserves_list_modifiers():
     message Foo [id=10] {
         list<optional string> tags = 1;
         list<ref Bar> items = 2;
-        fixed_uint32 count = 3;
+        fixed uint32 count = 3;
         map<string, optional float16> scores = 4;
     }
 
@@ -46,7 +46,7 @@ def test_emit_round_trip_preserves_list_modifiers():
     assert "message Foo [id=10]" in emitted
     assert "list<optional string> tags = 1;" in emitted
     assert "list<ref Bar> items = 2;" in emitted
-    assert "fixed_uint32 count = 3;" in emitted
+    assert "fixed uint32 count = 3;" in emitted
     assert "map<string, optional float16> scores = 4;" in emitted
 
     round_trip = Parser(Lexer(emitted).tokenize()).parse()
@@ -76,8 +76,8 @@ def test_emit_from_proto_translation():
     assert "message Person [id=101]" in emitted
     assert "uint32 id = 1;" in emitted
     assert "int64 signed = 2;" in emitted
-    assert "fixed_uint32 fixed_u32 = 3;" in emitted
-    assert "fixed_int64 fixed_s64 = 4;" in emitted
+    assert "fixed uint32 fixed_u32 = 3;" in emitted
+    assert "fixed int64 fixed_s64 = 4;" in emitted
     assert "uint64 uid = 5;" in emitted
 
 

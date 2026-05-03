@@ -1202,7 +1202,7 @@
 
 pub use fory_core::{
     error::Error, fory::Fory, fory::ForyBuilder, register_trait_type, row::from_row, row::to_row,
-    ArcWeak, ForyDefault, RcWeak, ReadContext, Reader, RefFlag, RefMode, Serializer, TypeId,
-    TypeResolver, WriteContext, Writer,
+    ArcWeak, BFloat16, Decimal, Float16, ForyDefault, RcWeak, ReadContext, Reader, RefFlag,
+    RefMode, Serializer, TypeId, TypeResolver, WriteContext, Writer,
 };
 pub use fory_derive::{ForyEnum, ForyRow, ForyStruct, ForyUnion};

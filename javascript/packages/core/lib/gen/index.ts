@@ -83,7 +83,18 @@ export class Gen {
         return;
       }
       const options = (typeInfo).options;
-      if (options?.props && Object.keys(options.props).length > 0) {
+      const unionType = typeInfo.typeId === TypeId.UNION
+        || typeInfo.typeId === TypeId.TYPED_UNION
+        || typeInfo.typeId === TypeId.NAMED_UNION;
+      if (unionType && options?.cases && Object.keys(options.cases).length > 0) {
+        this.register(typeInfo);
+        Object.values(options.cases).forEach((x) => {
+          this.traversalContainer(x);
+        });
+        const func = this.generate(typeInfo);
+        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
+        return;
+      } else if (options?.props && Object.keys(options.props).length > 0) {
         this.register(typeInfo);
         Object.values(options.props).forEach((x) => {
           this.traversalContainer(x);
@@ -96,6 +107,9 @@ export class Gen {
         // reference.  The placeholder will be filled in via Object.assign
         // when the real serializer is generated later.
         this.register(typeInfo);
+      } else if (TypeId.enumType(typeInfo.typeId) && !this.isRegistered(typeInfo)) {
+        const func = this.generate(typeInfo);
+        this.register(typeInfo, func()(this.typeResolver, Gen.external, typeInfo, this.regOptions));
       }
     }
     if (typeInfo.typeId === TypeId.LIST) {

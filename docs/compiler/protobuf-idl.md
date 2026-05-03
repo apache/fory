@@ -189,8 +189,8 @@ Protobuf imports are supported. Common well-known types map directly:
 | `map<K, V>`                              | `map<K, V>`                              |
 | `optional T`                             | `optional T`                             |
 | `oneof`                                  | `union` + optional union reference field |
-| `int64 [(fory).type = "tagged_int64"]`   | `tagged_int64` encoding                  |
-| `uint64 [(fory).type = "tagged_uint64"]` | `tagged_uint64` encoding                 |
+| `int64 [(fory).type = "tagged_int64"]`   | `tagged int64` encoding                  |
+| `uint64 [(fory).type = "tagged_uint64"]` | `tagged uint64` encoding                 |
 
 ## Fory Extension Options (Protobuf)
 
@@ -229,14 +229,14 @@ message TreeNode {
 
 ### Field-Level Options
 
-| Option                       | Type   | Description                                                  |
-| ---------------------------- | ------ | ------------------------------------------------------------ |
-| `(fory).ref`                 | bool   | Enable reference tracking for this field                     |
-| `(fory).nullable`            | bool   | Treat field as nullable (`optional`)                         |
-| `(fory).weak_ref`            | bool   | Generate weak pointer semantics (C++/Rust codegen)           |
-| `(fory).thread_safe_pointer` | bool   | Rust pointer flavor for ref fields (`Arc` vs `Rc`)           |
-| `(fory).deprecated`          | bool   | Mark field as deprecated                                     |
-| `(fory).type`                | string | Primitive override, currently `tagged_int64`/`tagged_uint64` |
+| Option                       | Type   | Description                                           |
+| ---------------------------- | ------ | ----------------------------------------------------- |
+| `(fory).ref`                 | bool   | Enable reference tracking for this field              |
+| `(fory).nullable`            | bool   | Treat field as nullable (`optional`)                  |
+| `(fory).weak_ref`            | bool   | Generate weak pointer semantics (C++/Rust codegen)    |
+| `(fory).thread_safe_pointer` | bool   | Rust pointer flavor for ref fields (`Arc` vs `Rc`)    |
+| `(fory).deprecated`          | bool   | Mark field as deprecated                              |
+| `(fory).type`                | string | Primitive override for tagged 64-bit integer encoding |
 
 Reference option behavior:
 

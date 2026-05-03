@@ -44,14 +44,17 @@ type UnionCase struct {
 	ID     uint32
 	Type   reflect.Type
 	TypeID TypeId
+	Spec   *TypeSpec
 }
 
 type unionCaseInfo struct {
 	id            uint32
 	type_         reflect.Type
 	typeID        TypeId
+	spec          *TypeSpec
 	serializer    Serializer
 	needsOverride bool
+	declaredValue bool
 }
 
 // UnionSerializer is a generic serializer for generated Go unions.
@@ -77,6 +80,7 @@ func NewUnionSerializer(cases ...UnionCase) *UnionSerializer {
 			id:     c.ID,
 			type_:  c.Type,
 			typeID: c.TypeID,
+			spec:   c.Spec,
 		}
 		if _, ok := caseByID[c.ID]; ok && initErr == nil {
 			initErr = fmt.Errorf("duplicate union case id %d", c.ID)
@@ -99,7 +103,14 @@ func (s *UnionSerializer) initialize(typeResolver *TypeResolver) error {
 	}
 	for i := range s.cases {
 		info := &s.cases[i]
-		serializer, err := typeResolver.getSerializerByType(info.type_, false)
+		var serializer Serializer
+		var err error
+		if info.spec != nil {
+			serializer, err = serializerForTypeSpec(typeResolver, info.type_, info.spec)
+			info.declaredValue = true
+		} else {
+			serializer, err = typeResolver.getSerializerByType(info.type_, false)
+		}
 		if err != nil {
 			return err
 		}
@@ -175,7 +186,9 @@ func (s *UnionSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	}
 
 	ctx.Buffer().WriteVarUint32(uint32(caseID))
-	if info.needsOverride {
+	if info.declaredValue {
+		writeUnionDeclaredValue(ctx, info, reflect.ValueOf(caseValue))
+	} else if info.needsOverride {
 		writeUnionOverrideValue(ctx, info, reflect.ValueOf(caseValue))
 	} else {
 		ctx.WriteValue(reflect.ValueOf(caseValue), RefModeTracking, true)
@@ -237,7 +250,13 @@ func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 
 	var caseValue any
-	if info.needsOverride {
+	if info.declaredValue {
+		val, ok := readUnionDeclaredValue(ctx, info)
+		if !ok {
+			return
+		}
+		caseValue = val
+	} else if info.needsOverride {
 		val, ok := readUnionOverrideValue(ctx, info)
 		if !ok {
 			return
@@ -350,6 +369,30 @@ func isNumericEncodingTypeID(typeID TypeId) bool {
 	default:
 		return false
 	}
+}
+
+func writeUnionDeclaredValue(ctx *WriteContext, info *unionCaseInfo, value reflect.Value) {
+	if !value.IsValid() {
+		ctx.Buffer().WriteInt8(NullFlag)
+		return
+	}
+	if value.Kind() == reflect.Interface {
+		if value.IsNil() {
+			ctx.Buffer().WriteInt8(NullFlag)
+			return
+		}
+		value = value.Elem()
+	}
+	info.serializer.Write(ctx, RefModeTracking, true, true, value)
+}
+
+func readUnionDeclaredValue(ctx *ReadContext, info *unionCaseInfo) (any, bool) {
+	value := reflect.New(info.type_).Elem()
+	info.serializer.Read(ctx, RefModeTracking, true, true, value)
+	if ctx.HasError() {
+		return nil, false
+	}
+	return value.Interface(), true
 }
 
 func writeUnionOverrideValue(ctx *WriteContext, info *unionCaseInfo, value reflect.Value) {

@@ -270,6 +270,9 @@ public static class DynamicAnyCodec
             case string:
                 context.Writer.WriteUInt8((byte)TypeId.String);
                 return true;
+            case decimal:
+                context.Writer.WriteUInt8((byte)TypeId.Decimal);
+                return true;
             case byte[]:
                 context.Writer.WriteUInt8((byte)TypeId.Binary);
                 return true;
@@ -369,6 +372,9 @@ public static class DynamicAnyCodec
                 return true;
             case string v:
                 StringSerializer.WriteString(context, v);
+                return true;
+            case decimal v:
+                context.TypeResolver.GetSerializer<decimal>().WriteData(context, v, false);
                 return true;
             case DateOnly v:
                 TimeCodec.WriteDate(context, v);

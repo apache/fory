@@ -235,6 +235,23 @@ struct PrimitiveVecDefaultWire {
 }
 
 #[derive(ForyStruct, Debug, PartialEq)]
+struct PrimitiveVecArrayWire {
+    #[fory(array)]
+    values: Vec<i32>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct ByteVecDefaultWire {
+    values: Vec<u8>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct ByteVecArrayWire {
+    #[fory(array)]
+    values: Vec<u8>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
 struct PrimitiveVecAnnotatedWire {
     #[fory(list(element(encoding = fixed)))]
     values: Vec<i32>,
@@ -290,6 +307,14 @@ struct BTreeMapDefaultWire {
     values: BTreeMap<String, Vec<String>>,
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedArrayValueWire {
+    #[fory(list(element(array)))]
+    values: Vec<Vec<i32>>,
+    #[fory(map(value(array)))]
+    by_name: HashMap<String, Vec<u8>>,
+}
+
 #[derive(ForyStruct, Debug)]
 struct AnyContainerDefaultWire {
     values: Vec<Box<dyn Any>>,
@@ -314,12 +339,44 @@ fn write_struct_data<T: Serializer>(value: &T) -> Vec<u8> {
 }
 
 #[test]
-fn unannotated_primitive_vec_field_keeps_primitive_array_type_meta() {
+fn unannotated_primitive_vec_field_uses_list_element_type_meta() {
     let type_resolver = TypeResolver::default();
 
     let field_type = only_field_type::<PrimitiveVecDefaultWire>(&type_resolver);
 
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::VARINT32 as u32);
+}
+
+#[test]
+fn explicit_primitive_vec_array_field_uses_array_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<PrimitiveVecArrayWire>(&type_resolver);
+
     assert_eq!(field_type.type_id, TypeId::INT32_ARRAY as u32);
+    assert!(field_type.generics.is_empty());
+}
+
+#[test]
+fn unannotated_byte_vec_field_is_list_uint8_not_bytes_or_array() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<ByteVecDefaultWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(field_type.generics.len(), 1);
+    assert_eq!(field_type.generics[0].type_id, TypeId::UINT8 as u32);
+}
+
+#[test]
+fn explicit_byte_vec_array_field_uses_uint8_array_type_meta() {
+    let type_resolver = TypeResolver::default();
+
+    let field_type = only_field_type::<ByteVecArrayWire>(&type_resolver);
+
+    assert_eq!(field_type.type_id, TypeId::UINT8_ARRAY as u32);
     assert!(field_type.generics.is_empty());
 }
 
@@ -421,6 +478,39 @@ fn serializer_backed_set_and_map_fields_keep_declared_generic_type_meta() {
 }
 
 #[test]
+fn nested_array_values_keep_array_type_meta() {
+    let type_resolver = TypeResolver::default();
+    let fields = NestedArrayValueWire::fory_fields_info(&type_resolver).unwrap();
+    assert_eq!(fields.len(), 2);
+
+    let list_field = fields
+        .iter()
+        .find(|field| field.field_name == "values")
+        .unwrap();
+    assert_eq!(list_field.field_type.type_id, TypeId::LIST as u32);
+    assert_eq!(list_field.field_type.generics.len(), 1);
+    assert_eq!(
+        list_field.field_type.generics[0].type_id,
+        TypeId::INT32_ARRAY as u32
+    );
+
+    let map_field = fields
+        .iter()
+        .find(|field| field.field_name == "by_name")
+        .unwrap();
+    assert_eq!(map_field.field_type.type_id, TypeId::MAP as u32);
+    assert_eq!(map_field.field_type.generics.len(), 2);
+    assert_eq!(
+        map_field.field_type.generics[0].type_id,
+        TypeId::STRING as u32
+    );
+    assert_eq!(
+        map_field.field_type.generics[1].type_id,
+        TypeId::UINT8_ARRAY as u32
+    );
+}
+
+#[test]
 fn any_container_fields_keep_dynamic_generic_type_meta() {
     let type_resolver = TypeResolver::default();
     let fields = AnyContainerDefaultWire::fory_fields_info(&type_resolver).unwrap();
@@ -466,6 +556,30 @@ fn non_primitive_array_field_keeps_declared_element_type_meta() {
 
 #[test]
 fn serializer_backed_container_fields_write_declared_generic_payloads() {
+    let vec_bytes = write_struct_data(&PrimitiveVecDefaultWire {
+        values: vec![1, 2, 3],
+    });
+    assert_eq!(vec_bytes[0], 3);
+    assert_eq!(vec_bytes[1], 0b1100);
+
+    let byte_vec_bytes = write_struct_data(&ByteVecDefaultWire {
+        values: vec![1, 2, 3],
+    });
+    assert_eq!(byte_vec_bytes[0], 3);
+    assert_eq!(byte_vec_bytes[1], 0b1100);
+
+    let array_bytes = write_struct_data(&PrimitiveVecArrayWire {
+        values: vec![1, 2, 3],
+    });
+    assert_eq!(array_bytes[0], 12);
+    assert_eq!(array_bytes.len(), 13);
+
+    let byte_array_bytes = write_struct_data(&ByteVecArrayWire {
+        values: vec![1, 2, 3],
+    });
+    assert_eq!(byte_array_bytes[0], 3);
+    assert_eq!(byte_array_bytes.len(), 4);
+
     let list_bytes = write_struct_data(&VecDequeDefaultWire {
         values: VecDeque::from(["a".to_string(), "b".to_string()]),
     });

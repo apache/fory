@@ -294,3 +294,40 @@ cdef class TimestampSerializer(Serializer):
         cdef unsigned int nanos = read_context.read_uint32()
         ts = seconds + (<double>nanos) / 1000000000.0
         return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+
+
+@cython.final
+cdef class DurationSerializer(Serializer):
+    cpdef inline write(self, WriteContext write_context, value):
+        if type(value) is not datetime.timedelta:
+            raise TypeError(
+                "{} should be {} instead of {}".format(
+                    value, datetime.timedelta, type(value)
+                )
+            )
+        cdef long long total_micros = (
+            value.days * 86400000000
+            + value.seconds * 1000000
+            + value.microseconds
+        )
+        cdef long long seconds
+        cdef long long micros
+        if total_micros >= 0:
+            seconds = total_micros // 1000000
+            micros = total_micros % 1000000
+        else:
+            seconds = -((-total_micros + 999999) // 1000000)
+            micros = total_micros - seconds * 1000000
+        write_context.write_varint64(seconds)
+        write_context.write_int32(<int>(micros * 1000))
+
+    cpdef inline read(self, ReadContext read_context):
+        cdef long long seconds = read_context.read_varint64()
+        cdef int nanos = read_context.read_int32()
+        if nanos < 0 or nanos > 999999999:
+            raise ValueError(
+                "Duration nanoseconds {} out of valid range [0, 999999999]".format(
+                    nanos
+                )
+            )
+        return datetime.timedelta(seconds=seconds, microseconds=nanos // 1000)

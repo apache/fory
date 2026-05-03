@@ -379,8 +379,10 @@ fn field_dispatch_for(
 ) -> syn::Result<FieldDispatch> {
     if meta.encoding.is_none()
         && meta.list.is_none()
+        && !meta.array
         && meta.map.is_none()
         && is_container_type(ty)
+        && !is_vec_type(ty)
         && !contains_custom_trait_object(ty)
         && !contains_exact_any_object(ty)
     {
@@ -427,9 +429,21 @@ pub(crate) fn codec_type_for(
                 ));
             }
             let elem_ty = single_type_arg(args, ty, "Vec")?;
-            if meta.list.is_none() && is_primitive_vec_type(ty) {
+            if meta.array {
+                if meta.list.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        "array cannot be combined with list(...) config",
+                    ));
+                }
+                let type_id = primitive_array_type_id_for_vec_element(elem_ty)?;
                 return Ok(quote! {
-                    fory_core::serializer::codec::SerializerCodec<#ty, #nullable, #track_ref>
+                    fory_core::serializer::codec::PrimitiveArrayVecCodec<
+                        #elem_ty,
+                        #type_id,
+                        #nullable,
+                        #track_ref
+                    >
                 });
             }
             if meta.list.is_none() {
@@ -441,20 +455,8 @@ pub(crate) fn codec_type_for(
                     elem_meta.effective_nullable(elem_class) || is_option_type(elem_ty),
                     elem_meta.effective_ref(elem_class),
                 )?;
-                if contains_custom_trait_object(elem_ty) {
-                    return Ok(quote! {
-                        fory_core::serializer::codec::VecCodec<#elem_ty, #elem_codec, #nullable, #track_ref>
-                    });
-                }
                 return Ok(quote! {
-                    fory_core::serializer::codec::CollectionSerializerCodec<
-                        #ty,
-                        #elem_ty,
-                        #elem_codec,
-                        { fory_core::type_id::TypeId::LIST as u8 },
-                        #nullable,
-                        #track_ref
-                    >
+                    fory_core::serializer::codec::VecCodec<#elem_ty, #elem_codec, #nullable, #track_ref>
                 });
             }
             let elem_meta = meta.element_meta();
@@ -477,6 +479,12 @@ pub(crate) fn codec_type_for(
                 return Err(syn::Error::new_spanned(
                     ty,
                     "list(...) config is only valid for Vec fields",
+                ));
+            }
+            if meta.array {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "array config is only valid for Vec fields",
                 ));
             }
             let (key_ty, value_ty) = two_type_args(args, ty, "HashMap")?;
@@ -520,6 +528,12 @@ pub(crate) fn codec_type_for(
             }
             let key_meta = meta.map_key_meta();
             let value_meta = meta.map_value_meta();
+            if key_meta.array {
+                return Err(syn::Error::new_spanned(
+                    key_ty,
+                    "array schema is not valid for map keys",
+                ));
+            }
             let key_class = classify_field_type(key_ty);
             let value_class = classify_field_type(value_ty);
             let key_codec = codec_type_for(
@@ -555,6 +569,12 @@ pub(crate) fn codec_type_for(
                 return Err(syn::Error::new_spanned(
                     ty,
                     "map(...) config is only valid for HashMap fields",
+                ));
+            }
+            if meta.array {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "array config is only valid for Vec fields",
                 ));
             }
             let elem_ty = single_type_arg(args, ty, "HashSet")?;
@@ -652,6 +672,12 @@ pub(crate) fn codec_type_for(
                 "map(...) config is only valid for HashMap fields",
             ));
         }
+        if meta.array {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "array config is only valid for Vec fields",
+            ));
+        }
         if !is_primitive_array_type(ty) {
             let elem_ty = array.elem.as_ref();
             let elem_meta = ForyFieldMeta::default();
@@ -710,12 +736,22 @@ pub(crate) fn codec_type_for(
             "map(...) config is only valid for HashMap fields",
         ));
     }
+    if meta.array {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "array config is only valid for Vec fields",
+        ));
+    }
 
     if let Some(codec) = integer_codec_type(ty, meta, nullable, track_ref) {
         return Ok(codec);
     }
 
     Ok(quote! { fory_core::serializer::codec::SerializerCodec<#ty, #nullable, #track_ref> })
+}
+
+fn is_vec_type(ty: &Type) -> bool {
+    matches!(type_name_and_args(ty), Some((name, _)) if name == "Vec")
 }
 
 fn integer_codec_type(
@@ -943,10 +979,6 @@ fn field_type_expr_for(ty: &Type, nullable: bool, track_ref: bool) -> syn::Resul
     if let Some((name, Some(args))) = type_name_and_args(ty) {
         match name.as_str() {
             "Vec" => {
-                let type_id = get_type_id_by_type_ast(ty);
-                if fory_core::type_id::PRIMITIVE_ARRAY_TYPES.contains(&type_id) {
-                    return Ok(field_type_literal(type_id, nullable, track_ref, Vec::new()));
-                }
                 let elem_ty = single_type_arg(args, ty, "Vec")?;
                 let elem_type = nested_field_type_expr(elem_ty)?;
                 return Ok(field_type_literal(
@@ -1056,6 +1088,31 @@ fn is_serializer_backed_collection(name: &str) -> bool {
     matches!(name, "VecDeque" | "LinkedList" | "BTreeSet" | "BinaryHeap")
 }
 
+fn primitive_array_type_id_for_vec_element(ty: &Type) -> syn::Result<TokenStream> {
+    let type_name = ty.to_token_stream().to_string().replace(' ', "");
+    match type_name.as_str() {
+        "bool" => Ok(quote! { { fory_core::type_id::TypeId::BOOL_ARRAY as u8 } }),
+        "i8" => Ok(quote! { { fory_core::type_id::TypeId::INT8_ARRAY as u8 } }),
+        "i16" => Ok(quote! { { fory_core::type_id::TypeId::INT16_ARRAY as u8 } }),
+        "i32" => Ok(quote! { { fory_core::type_id::TypeId::INT32_ARRAY as u8 } }),
+        "i64" => Ok(quote! { { fory_core::type_id::TypeId::INT64_ARRAY as u8 } }),
+        "u8" => Ok(quote! { { fory_core::type_id::TypeId::UINT8_ARRAY as u8 } }),
+        "u16" => Ok(quote! { { fory_core::type_id::TypeId::UINT16_ARRAY as u8 } }),
+        "u32" => Ok(quote! { { fory_core::type_id::TypeId::UINT32_ARRAY as u8 } }),
+        "u64" => Ok(quote! { { fory_core::type_id::TypeId::UINT64_ARRAY as u8 } }),
+        "float16" | "Float16" => Ok(quote! { { fory_core::type_id::TypeId::FLOAT16_ARRAY as u8 } }),
+        "bfloat16" | "BFloat16" => {
+            Ok(quote! { { fory_core::type_id::TypeId::BFLOAT16_ARRAY as u8 } })
+        }
+        "f32" => Ok(quote! { { fory_core::type_id::TypeId::FLOAT32_ARRAY as u8 } }),
+        "f64" => Ok(quote! { { fory_core::type_id::TypeId::FLOAT64_ARRAY as u8 } }),
+        _ => Err(syn::Error::new_spanned(
+            ty,
+            "array requires a non-null number or bool Vec element type",
+        )),
+    }
+}
+
 fn serializer_backed_collection_type_id(name: &str) -> TokenStream {
     match name {
         "BTreeSet" | "BinaryHeap" => quote! { { fory_core::type_id::TypeId::SET as u8 } },
@@ -1084,6 +1141,12 @@ fn validate_serializer_backed_collection_meta(
         return Err(syn::Error::new_spanned(
             ty,
             format!("map(...) config is only valid for map fields, not {name}"),
+        ));
+    }
+    if meta.array {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!("array config is only valid for Vec fields, not {name}"),
         ));
     }
     Ok(())
@@ -1116,7 +1179,78 @@ fn validate_serializer_backed_map_meta(
             format!("map(...) config is currently supported only for HashMap fields, not {name}"),
         ));
     }
+    if meta.array {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!("array config is only valid for Vec fields, not {name}"),
+        ));
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn array_codec_accepts_numeric_vec() {
+        let ty: Type = parse_quote! { Vec<i32> };
+        let meta = ForyFieldMeta {
+            array: true,
+            ..Default::default()
+        };
+
+        assert!(codec_type_for(&ty, &meta, false, false).is_ok());
+    }
+
+    #[test]
+    fn array_codec_rejects_non_numeric_vec() {
+        let ty: Type = parse_quote! { Vec<String> };
+        let meta = ForyFieldMeta {
+            array: true,
+            ..Default::default()
+        };
+
+        let err = codec_type_for(&ty, &meta, false, false).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("array requires a non-null number or bool Vec element type"));
+    }
+
+    #[test]
+    fn array_codec_rejects_nullable_elements() {
+        let ty: Type = parse_quote! { Vec<Option<i32>> };
+        let meta = ForyFieldMeta {
+            array: true,
+            ..Default::default()
+        };
+
+        let err = codec_type_for(&ty, &meta, false, false).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("array requires a non-null number or bool Vec element type"));
+    }
+
+    #[test]
+    fn array_codec_rejects_map_keys() {
+        let ty: Type = parse_quote! { HashMap<Vec<i32>, String> };
+        let meta = ForyFieldMeta {
+            map: Some(super::super::field_meta::ForyMapMeta {
+                key: Some(Box::new(ForyFieldMeta {
+                    array: true,
+                    ..Default::default()
+                })),
+                value: None,
+            }),
+            ..Default::default()
+        };
+
+        let err = codec_type_for(&ty, &meta, false, false).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("array schema is not valid for map keys"));
+    }
 }
 
 fn is_exact_any(ty: &Type, owner: &str) -> bool {
@@ -1140,10 +1274,6 @@ fn is_exact_any(ty: &Type, owner: &str) -> bool {
             false
         }
     })
-}
-
-fn is_primitive_vec_type(ty: &Type) -> bool {
-    fory_core::type_id::PRIMITIVE_ARRAY_TYPES.contains(&get_type_id_by_type_ast(ty))
 }
 
 fn is_primitive_array_type(ty: &Type) -> bool {

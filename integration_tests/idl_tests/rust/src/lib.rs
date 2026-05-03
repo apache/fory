@@ -34,6 +34,8 @@ pub mod generated {
     pub mod evolving1;
     #[path = "../generated/evolving2.rs"]
     pub mod evolving2;
+    #[path = "../generated/example.rs"]
+    pub mod example;
     #[path = "../generated/graph.rs"]
     pub mod graph;
     #[path = "../generated/monster.rs"]

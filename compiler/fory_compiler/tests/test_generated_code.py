@@ -160,12 +160,12 @@ def test_generated_code_integer_encoding_variants_equivalent():
         package gen;
 
         message EncodingTypes {
-            fixed_int32 fi32 = 1;
-            fixed_int64 fi64 = 2;
-            fixed_uint32 fu32 = 3;
-            fixed_uint64 fu64 = 4;
-            tagged_int64 ti64 = 5;
-            tagged_uint64 tu64 = 6;
+            fixed int32 fi32 = 1;
+            fixed int64 fi64 = 2;
+            fixed uint32 fu32 = 3;
+            fixed uint64 fu64 = 4;
+            tagged int64 ti64 = 5;
+            tagged uint64 tu64 = 6;
         }
         """
     )
@@ -237,7 +237,7 @@ def test_generated_code_list_modifier_aliases_equivalent():
     assert_all_languages_equal(schemas)
 
 
-def test_generated_code_primitive_arrays_equivalent():
+def test_generated_code_repeated_primitives_are_lists():
     fdl = dedent(
         """
         package gen;
@@ -277,6 +277,14 @@ def test_generated_code_primitive_arrays_equivalent():
         }
         """
     )
+    schemas = {
+        "fdl": parse_fdl(fdl),
+        "proto": parse_proto(proto),
+    }
+    assert_all_languages_equal(schemas)
+
+
+def test_generated_code_flatbuffers_primitive_vectors_are_arrays():
     fbs = dedent(
         """
         namespace gen;
@@ -296,12 +304,17 @@ def test_generated_code_primitive_arrays_equivalent():
         }
         """
     )
-    schemas = {
-        "fdl": parse_fdl(fdl),
-        "proto": parse_proto(proto),
-        "fbs": parse_fbs(fbs),
-    }
-    assert_all_languages_equal(schemas)
+    schema = parse_fbs(fbs)
+
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert "private boolean[] flags;" in java_output
+    assert "private int[] i32s;" in java_output
+    assert "private int[] u32s;" in java_output
+
+    dart_output = render_files(generate_files(schema, DartGenerator))
+    assert "List<bool> flags = <bool>[];" in dart_output
+    assert "Int32List i32s = Int32List(0);" in dart_output
+    assert "Uint32List u32s = Uint32List(0);" in dart_output
 
 
 def test_generated_code_list_types_equivalent():
@@ -336,25 +349,9 @@ def test_generated_code_list_types_equivalent():
         }
         """
     )
-    fbs = dedent(
-        """
-        namespace gen;
-
-        table ListItem {
-            value:string;
-        }
-
-        table ListTypes {
-            names:[string];
-            flags:[bool];
-            items:[ListItem];
-        }
-        """
-    )
     schemas = {
         "fdl": parse_fdl(fdl),
         "proto": parse_proto(proto),
-        "fbs": parse_fbs(fbs),
     }
     assert_all_languages_equal(schemas)
 
@@ -549,6 +546,34 @@ def test_java_repeated_float16_generation_uses_float16_list():
     assert "private Float16List vals;" in java_output
 
 
+def test_java_nested_array_values_use_deep_equals_hash_generation():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message NestedArrays {
+                list<array<int32>> groups = 1;
+                map<string, array<uint8>> bytes_by_name = 2;
+            }
+
+            union NestedArrayUnion {
+                list<array<int32>> groups = 1;
+                map<string, array<uint8>> bytes_by_name = 2;
+            }
+            """
+        )
+    )
+    java_output = render_files(generate_files(schema, JavaGenerator))
+    assert "private static boolean deepValueEquals(Object left, Object right)" in java_output
+    assert "deepValueEquals(groups, that.groups)" in java_output
+    assert "deepValueEquals(bytesByName, that.bytesByName)" in java_output
+    assert "deepValueHashCode(groups)" in java_output
+    assert "deepValueHashCode(bytesByName)" in java_output
+    assert "index == that.index && deepValueEquals(value, that.value)" in java_output
+    assert "31 * Integer.hashCode(index) + deepValueHashCode(value)" in java_output
+
+
 def test_java_unsigned_carriers_and_integer_encoding_annotations():
     schema = parse_fdl(
         dedent(
@@ -558,10 +583,10 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
             message UnsignedCarriers {
                 uint8 u8 = 1;
                 uint16 u16 = 2;
-                fixed_uint32 fixed_u32 = 3;
+                fixed uint32 fixed_u32 = 3;
                 uint32 var_u32 = 4;
                 optional uint32 maybe_u32 = 5;
-                fixed_int32 fixed_i32 = 6;
+                fixed int32 fixed_i32 = 6;
             }
             """
         )
@@ -589,7 +614,7 @@ def test_java_nested_integer_annotations_in_generic_containers():
             package gen;
 
             message NestedIntegerAnnotations {
-                map<fixed_uint32, list<optional tagged_uint64>> values = 1;
+                map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
             """
         )
@@ -615,8 +640,8 @@ def test_python_nested_integer_schema_aliases_in_generic_containers():
             package gen;
 
             message NestedIntegerSchemaAliases {
-                map<fixed_int32, list<tagged_int64>> signed_values = 1;
-                map<fixed_uint32, list<tagged_uint64>> unsigned_values = 2;
+                map<fixed int32, list<tagged int64>> signed_values = 1;
+                map<fixed uint32, list<tagged uint64>> unsigned_values = 2;
             }
             """
         )
@@ -639,7 +664,7 @@ def test_cpp_nested_integer_specs_in_generic_containers():
             package gen;
 
             message NestedIntegerSpecs {
-                map<fixed_uint32, list<optional tagged_uint64>> values = 1;
+                map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
             """
         )

@@ -164,9 +164,9 @@ describe('depth-limit', () => {
       expect(fory.readContext.depth).toBe(0); // Should be reset after deserialization
     });
 
-    test('should deserialize array of primitives within depth limit', () => {
+    test('should deserialize list of primitives within depth limit', () => {
       const fory = new Fory({ maxDepth: 10 });
-      const arrayType = Type.array(Type.int32());
+      const arrayType = Type.list(Type.int32());
 
       const { serialize, deserialize } = fory.register(arrayType);
       const data = [1, 2, 3, 4, 5];
@@ -190,9 +190,9 @@ describe('depth-limit', () => {
       expect(fory.readContext.depth).toBe(0); // Should be 0 after deserialization
     });
 
-    test('should throw when nested arrays exceed maxDepth', () => {
+    test('should throw when nested lists exceed maxDepth', () => {
       const fory = new Fory({ maxDepth: 2 });
-      const nestedArrayType = Type.array(Type.array(Type.array(Type.int32())));
+      const nestedArrayType = Type.list(Type.list(Type.list(Type.int32())));
       const { serialize, deserialize } = fory.register(nestedArrayType);
       const serialized = serialize([[[1]]]);
 

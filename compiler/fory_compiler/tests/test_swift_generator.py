@@ -50,9 +50,9 @@ def test_swift_generator_emits_field_ids_and_encodings():
     package demo;
 
     message Scalar [id=100] {
-        fixed_int32 fixed_value = 1;
+        fixed int32 fixed_value = 1;
         int32 varint_value = 2;
-        tagged_uint64 tagged_value = 3;
+        tagged uint64 tagged_value = 3;
     }
     """
     content = generate_swift(source)
@@ -69,34 +69,46 @@ def test_swift_generator_emits_nested_field_encoding_hints():
     package demo;
 
     message Nested [id=100] {
-        list<fixed_int32> fixed_values = 1;
-        list<fixed_uint64> fixed_unsigned_values = 2;
-        map<fixed_int32, tagged_uint64> indexed_values = 3;
-        list<optional fixed_int32> maybe_fixed_values = 4;
+        list<fixed int32> fixed_values = 1;
+        list<fixed uint64> fixed_unsigned_values = 2;
+        map<fixed int32, tagged uint64> indexed_values = 3;
+        list<optional fixed int32> maybe_fixed_values = 4;
         list<optional uint64> maybe_unsigned_values = 5;
         map<string, optional float16> maybe_float_values = 6;
         bfloat16 bfloat_value = 7;
+        array<int32> dense_values = 8;
+        map<string, array<uint8>> bytes_by_name = 9;
     }
 
     union Event [id=101] {
-        fixed_uint64 deleted = 1;
-        list<fixed_int32> many = 2;
-        map<fixed_int32, string> fixed_keys = 3;
+        fixed uint64 deleted = 1;
+        list<fixed int32> many = 2;
+        map<fixed int32, string> fixed_keys = 3;
+        array<int32> dense = 4;
     }
     """
     content = generate_swift(source)
-    assert content.count("@ListField(element: .encoding(.fixed))") == 3
+    assert "@ListField(element: .int32(encoding: .fixed))" in content
+    assert "@ListField(element: .uint64(encoding: .fixed))" in content
+    assert "@ListField(element: .int32(nullable: true, encoding: .fixed))" in content
+    assert "@ListField(element: .uint64(nullable: true))" in content
     assert "public var fixedUnsignedValues: [UInt64] = []" in content
     assert "public var maybeFixedValues: [Int32?] = []" in content
     assert "public var maybeUnsignedValues: [UInt64?] = []" in content
     assert "public var maybeFloatValues: [String: Float16?] = [:]" in content
     assert "public var bfloatValue: BFloat16 = BFloat16.foryDefault()" in content
     assert "bfloatValue: BFloat16 = BFloat16.foryDefault()" in content
-    assert "@MapField(key: .encoding(.fixed), value: .encoding(.tagged))" in content
+    assert "public var denseValues: [Int32] = []" in content
+    assert "public var bytesByName: [String: [UInt8]] = [:]" in content
+    assert "@MapField(key: .int32(encoding: .fixed), value: .uint64(encoding: .tagged))" in content
+    assert "@MapField(key: .string, value: .float16)" in content
+    assert "@ArrayField(element: .int32())" in content
+    assert "@MapField(key: .string, value: .array(element: .uint8))" in content
     assert "@ForyUnion" in content
-    assert "@ForyCase(id: 1, payload: .encoding(.fixed))" in content
-    assert "@ForyCase(id: 2, payload: .list(element: .encoding(.fixed)))" in content
-    assert "@ForyCase(id: 3, payload: .map(key: .encoding(.fixed)))" in content
+    assert "@ForyCase(id: 1, payload: .uint64(encoding: .fixed))" in content
+    assert "@ForyCase(id: 2, payload: .list(element: .int32(encoding: .fixed)))" in content
+    assert "@ForyCase(id: 3, payload: .map(key: .int32(encoding: .fixed), value: .string))" in content
+    assert "@ForyCase(id: 4, payload: .array(element: .int32()))" in content
 
 
 def test_swift_generator_emits_tagged_union_case_ids():
@@ -117,7 +129,7 @@ def test_swift_generator_emits_tagged_union_case_ids():
     assert "public enum Animal: Equatable" in content
     assert "@ForyCase(id: 3)" in content
     assert "case node(Demo.Node)" in content
-    assert "@ForyCase(id: 7)" in content
+    assert "@ForyCase(id: 7, payload: .string)" in content
     assert "case note(String)" in content
     assert "fory.register(Demo.Animal.self, id: 101)" in content
 

@@ -623,6 +623,88 @@ public enum UnsafeUtil {
 
     @inlinable
     @inline(__always)
+    public static func readBool(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> Bool {
+        try readUInt8(from: base, length: length, index: &index) != 0
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readInt8(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> Int8 {
+        Int8(bitPattern: try readUInt8(from: base, length: length, index: &index))
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readUInt8(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> UInt8 {
+        try checkReadable(length: length, index: index, need: 1)
+        let value = readUInt8Unchecked(from: base, index: index)
+        index += 1
+        return value
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readInt16(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> Int16 {
+        Int16(bitPattern: try readUInt16(from: base, length: length, index: &index))
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readUInt16(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> UInt16 {
+        try checkReadable(length: length, index: index, need: 2)
+        let value = readUInt16Unchecked(from: base, index: index)
+        index += 2
+        return value
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readFloat32(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> Float {
+        try checkReadable(length: length, index: index, need: 4)
+        let value = readFloat32Unchecked(from: base, index: index)
+        index += 4
+        return value
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readFloat64(
+        from base: UnsafePointer<UInt8>,
+        length: Int,
+        index: inout Int
+    ) throws -> Double {
+        try checkReadable(length: length, index: index, need: 8)
+        let value = readFloat64Unchecked(from: base, index: index)
+        index += 8
+        return value
+    }
+
+    @inlinable
+    @inline(__always)
     public static func readVarUInt32(
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int

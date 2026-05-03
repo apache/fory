@@ -31,6 +31,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     Schema,
 )
@@ -197,6 +198,7 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "[]byte",
         PrimitiveKind.DATE: "fory.Date",
         PrimitiveKind.TIMESTAMP: "time.Time",
+        PrimitiveKind.DURATION: "time.Duration",
         PrimitiveKind.DECIMAL: "fory.Decimal",
         PrimitiveKind.ANY: "any",
     }
@@ -661,16 +663,40 @@ class GoGenerator(BaseGenerator):
                 PrimitiveKind.VAR_UINT64: "fory.VAR_UINT64",
                 PrimitiveKind.TAGGED_UINT64: "fory.TAGGED_UINT64",
                 PrimitiveKind.FLOAT16: "fory.FLOAT16",
+                PrimitiveKind.BFLOAT16: "fory.BFLOAT16",
                 PrimitiveKind.FLOAT32: "fory.FLOAT32",
                 PrimitiveKind.FLOAT64: "fory.FLOAT64",
                 PrimitiveKind.STRING: "fory.STRING",
                 PrimitiveKind.BYTES: "fory.BINARY",
                 PrimitiveKind.DATE: "fory.DATE",
                 PrimitiveKind.TIMESTAMP: "fory.TIMESTAMP",
+                PrimitiveKind.DURATION: "fory.DURATION",
                 PrimitiveKind.DECIMAL: "fory.DECIMAL",
                 PrimitiveKind.ANY: "fory.UNKNOWN",
             }
             return primitive_type_ids.get(kind, "fory.UNKNOWN")
+        if isinstance(field.field_type, ArrayType):
+            kind = field.field_type.element_type.kind
+            array_type_ids = {
+                PrimitiveKind.BOOL: "fory.BOOL_ARRAY",
+                PrimitiveKind.INT8: "fory.INT8_ARRAY",
+                PrimitiveKind.INT16: "fory.INT16_ARRAY",
+                PrimitiveKind.INT32: "fory.INT32_ARRAY",
+                PrimitiveKind.VARINT32: "fory.INT32_ARRAY",
+                PrimitiveKind.INT64: "fory.INT64_ARRAY",
+                PrimitiveKind.VARINT64: "fory.INT64_ARRAY",
+                PrimitiveKind.UINT8: "fory.UINT8_ARRAY",
+                PrimitiveKind.UINT16: "fory.UINT16_ARRAY",
+                PrimitiveKind.UINT32: "fory.UINT32_ARRAY",
+                PrimitiveKind.VAR_UINT32: "fory.UINT32_ARRAY",
+                PrimitiveKind.UINT64: "fory.UINT64_ARRAY",
+                PrimitiveKind.VAR_UINT64: "fory.UINT64_ARRAY",
+                PrimitiveKind.FLOAT16: "fory.FLOAT16_ARRAY",
+                PrimitiveKind.BFLOAT16: "fory.BFLOAT16_ARRAY",
+                PrimitiveKind.FLOAT32: "fory.FLOAT32_ARRAY",
+                PrimitiveKind.FLOAT64: "fory.FLOAT64_ARRAY",
+            }
+            return array_type_ids.get(kind, "fory.UNKNOWN")
         if isinstance(field.field_type, ListType):
             return "fory.LIST"
         if isinstance(field.field_type, MapType):
@@ -704,6 +730,153 @@ class GoGenerator(BaseGenerator):
         if case_type.startswith("*"):
             return f"reflect.TypeOf((*{case_type[1:]})(nil))"
         return f"reflect.TypeOf((*{case_type})(nil)).Elem()"
+
+    def get_union_case_type_spec_expr(
+        self, field: Field, parent_stack: Optional[List[Message]]
+    ) -> Optional[str]:
+        """Return declared TypeSpec expression for union cases needing schema metadata."""
+        if isinstance(field.field_type, (ListType, ArrayType, MapType)):
+            return self.build_type_spec_expr(
+                field.field_type,
+                nullable=False,
+                ref=False,
+                parent_stack=parent_stack,
+            )
+        return None
+
+    def build_type_spec_expr(
+        self,
+        field_type: FieldType,
+        nullable: bool,
+        ref: bool,
+        parent_stack: Optional[List[Message]],
+        is_root: bool = True,
+    ) -> str:
+        if isinstance(field_type, ListType):
+            element_expr = self.build_type_spec_expr(
+                field_type.element_type,
+                field_type.element_optional,
+                field_type.element_ref,
+                parent_stack,
+                False,
+            )
+            expr = f"fory.NewCollectionTypeSpec(fory.LIST, {element_expr})"
+        elif isinstance(field_type, ArrayType):
+            type_id_expr = self.get_type_id_expr(field_type, parent_stack)
+            expr = f"fory.NewSimpleTypeSpec({type_id_expr})"
+        elif isinstance(field_type, MapType):
+            key_expr = self.build_type_spec_expr(
+                field_type.key_type, False, False, parent_stack, False
+            )
+            value_expr = self.build_type_spec_expr(
+                field_type.value_type,
+                field_type.value_optional,
+                field_type.value_ref,
+                parent_stack,
+                False,
+            )
+            expr = f"fory.NewMapTypeSpec(fory.MAP, {key_expr}, {value_expr})"
+        else:
+            type_id_expr = self.get_type_id_expr(field_type, parent_stack)
+            expr = f"fory.NewSimpleTypeSpec({type_id_expr})"
+
+        flags = []
+        effective_nullable = nullable
+        if (
+            not is_root
+            and isinstance(field_type, PrimitiveType)
+            and field_type.kind == PrimitiveKind.BYTES
+        ):
+            effective_nullable = True
+        if effective_nullable:
+            flags.append("spec.Nullable = true")
+        if ref:
+            flags.append("spec.TrackRef = true")
+        if not flags:
+            return expr
+        assignments = "; ".join(flags)
+        return f"func() *fory.TypeSpec {{ spec := {expr}; {assignments}; return spec }}()"
+
+    def get_type_id_expr(
+        self, field_type: FieldType, parent_stack: Optional[List[Message]]
+    ) -> str:
+        if isinstance(field_type, PrimitiveType):
+            kind = field_type.kind
+            primitive_type_ids = {
+                PrimitiveKind.BOOL: "fory.BOOL",
+                PrimitiveKind.INT8: "fory.INT8",
+                PrimitiveKind.INT16: "fory.INT16",
+                PrimitiveKind.INT32: "fory.INT32",
+                PrimitiveKind.VARINT32: "fory.VARINT32",
+                PrimitiveKind.INT64: "fory.INT64",
+                PrimitiveKind.VARINT64: "fory.VARINT64",
+                PrimitiveKind.TAGGED_INT64: "fory.TAGGED_INT64",
+                PrimitiveKind.UINT8: "fory.UINT8",
+                PrimitiveKind.UINT16: "fory.UINT16",
+                PrimitiveKind.UINT32: "fory.UINT32",
+                PrimitiveKind.VAR_UINT32: "fory.VAR_UINT32",
+                PrimitiveKind.UINT64: "fory.UINT64",
+                PrimitiveKind.VAR_UINT64: "fory.VAR_UINT64",
+                PrimitiveKind.TAGGED_UINT64: "fory.TAGGED_UINT64",
+                PrimitiveKind.FLOAT16: "fory.FLOAT16",
+                PrimitiveKind.BFLOAT16: "fory.BFLOAT16",
+                PrimitiveKind.FLOAT32: "fory.FLOAT32",
+                PrimitiveKind.FLOAT64: "fory.FLOAT64",
+                PrimitiveKind.STRING: "fory.STRING",
+                PrimitiveKind.BYTES: "fory.BINARY",
+                PrimitiveKind.DATE: "fory.DATE",
+                PrimitiveKind.TIMESTAMP: "fory.TIMESTAMP",
+                PrimitiveKind.DURATION: "fory.DURATION",
+                PrimitiveKind.DECIMAL: "fory.DECIMAL",
+                PrimitiveKind.ANY: "fory.UNKNOWN",
+            }
+            return primitive_type_ids.get(kind, "fory.UNKNOWN")
+        if isinstance(field_type, ArrayType):
+            kind = field_type.element_type.kind
+            array_type_ids = {
+                PrimitiveKind.BOOL: "fory.BOOL_ARRAY",
+                PrimitiveKind.INT8: "fory.INT8_ARRAY",
+                PrimitiveKind.INT16: "fory.INT16_ARRAY",
+                PrimitiveKind.INT32: "fory.INT32_ARRAY",
+                PrimitiveKind.VARINT32: "fory.INT32_ARRAY",
+                PrimitiveKind.INT64: "fory.INT64_ARRAY",
+                PrimitiveKind.VARINT64: "fory.INT64_ARRAY",
+                PrimitiveKind.UINT8: "fory.UINT8_ARRAY",
+                PrimitiveKind.UINT16: "fory.UINT16_ARRAY",
+                PrimitiveKind.UINT32: "fory.UINT32_ARRAY",
+                PrimitiveKind.VAR_UINT32: "fory.UINT32_ARRAY",
+                PrimitiveKind.UINT64: "fory.UINT64_ARRAY",
+                PrimitiveKind.VAR_UINT64: "fory.UINT64_ARRAY",
+                PrimitiveKind.FLOAT16: "fory.FLOAT16_ARRAY",
+                PrimitiveKind.BFLOAT16: "fory.BFLOAT16_ARRAY",
+                PrimitiveKind.FLOAT32: "fory.FLOAT32_ARRAY",
+                PrimitiveKind.FLOAT64: "fory.FLOAT64_ARRAY",
+            }
+            return array_type_ids.get(kind, "fory.UNKNOWN")
+        if isinstance(field_type, ListType):
+            return "fory.LIST"
+        if isinstance(field_type, MapType):
+            return "fory.MAP"
+        if isinstance(field_type, NamedType):
+            type_def = self.resolve_named_type(field_type.name, parent_stack)
+            if isinstance(type_def, Enum):
+                if type_def.type_id is None:
+                    return "fory.NAMED_ENUM"
+                return "fory.ENUM"
+            if isinstance(type_def, Union):
+                if type_def.type_id is None:
+                    return "fory.NAMED_UNION"
+                return "fory.UNION"
+            if isinstance(type_def, Message):
+                evolving = self.get_effective_evolving(type_def)
+                if type_def.type_id is None:
+                    if evolving:
+                        return "fory.NAMED_COMPATIBLE_STRUCT"
+                    return "fory.NAMED_STRUCT"
+                if evolving:
+                    return "fory.COMPATIBLE_STRUCT"
+                return "fory.STRUCT"
+        return "fory.UNKNOWN"
 
     def resolve_named_type(
         self, name: str, parent_stack: Optional[List[Message]]
@@ -920,6 +1093,18 @@ class GoGenerator(BaseGenerator):
             if element_hint is None:
                 return None
             return self.render_type_hint("list", [f"element={element_hint}"])
+        if isinstance(field.field_type, ArrayType):
+            element_hint = self.build_node_type_hint(
+                field.field_type.element_type,
+                False,
+                False,
+                parent_stack,
+            )
+            if element_hint is None and isinstance(field.field_type.element_type, PrimitiveType):
+                element_hint = self.get_type_hint_name(field.field_type.element_type)
+            if element_hint is None:
+                return None
+            return self.render_type_hint("array", [f"element={element_hint}"])
         if isinstance(field.field_type, MapType):
             key_hint = self.build_node_type_hint(
                 field.field_type.key_type, False, False, parent_stack
@@ -957,6 +1142,19 @@ class GoGenerator(BaseGenerator):
             if element_hint is not None:
                 params.append(f"element={element_hint}")
             return self.render_type_hint("list", params)
+        if isinstance(field_type, ArrayType):
+            params = self.build_node_modifiers(field_type, nullable, ref, parent_stack)
+            element_hint = self.build_node_type_hint(
+                field_type.element_type,
+                False,
+                False,
+                parent_stack,
+            )
+            if element_hint is None and isinstance(field_type.element_type, PrimitiveType):
+                element_hint = self.get_type_hint_name(field_type.element_type)
+            if element_hint is not None:
+                params.append(f"element={element_hint}")
+            return self.render_type_hint("array", params)
         if isinstance(field_type, MapType):
             params = self.build_node_modifiers(field_type, nullable, ref, parent_stack)
             key_hint = self.build_node_type_hint(
@@ -1031,7 +1229,14 @@ class GoGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ) -> List[str]:
         params: List[str] = []
-        if nullable != self.infers_nullable_from_go(field_type, nullable, ref):
+        if (
+            nullable != self.infers_nullable_from_go(field_type, nullable, ref)
+            and not (
+                isinstance(field_type, PrimitiveType)
+                and field_type.kind == PrimitiveKind.BYTES
+                and not nullable
+            )
+        ):
             params.append(f"nullable={str(nullable).lower()}")
         if ref:
             params.append("ref=true")
@@ -1094,6 +1299,7 @@ class GoGenerator(BaseGenerator):
             PrimitiveKind.BYTES: "bytes",
             PrimitiveKind.DATE: "date",
             PrimitiveKind.TIMESTAMP: "timestamp",
+            PrimitiveKind.DURATION: "duration",
             PrimitiveKind.DECIMAL: "decimal",
         }
         return names[kind]
@@ -1189,6 +1395,18 @@ class GoGenerator(BaseGenerator):
             )
             return f"[]{element_type}"
 
+        elif isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                False,
+                False,
+                False,
+                False,
+                parent_stack,
+                use_option=False,
+            )
+            return f"[]{element_type}"
+
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -1273,7 +1491,11 @@ class GoGenerator(BaseGenerator):
     def collect_imports(self, field_type: FieldType, imports: Set[str]):
         """Collect required imports for a field type."""
         if isinstance(field_type, PrimitiveType):
-            if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
+            if field_type.kind in (
+                PrimitiveKind.DATE,
+                PrimitiveKind.TIMESTAMP,
+                PrimitiveKind.DURATION,
+            ):
                 imports.add('"time"')
             elif field_type.kind == PrimitiveKind.FLOAT16:
                 imports.add('float16 "github.com/apache/fory/go/fory/float16"')
@@ -1281,6 +1503,9 @@ class GoGenerator(BaseGenerator):
                 imports.add('bfloat16 "github.com/apache/fory/go/fory/bfloat16"')
 
         elif isinstance(field_type, ListType):
+            self.collect_imports(field_type.element_type, imports)
+
+        elif isinstance(field_type, ArrayType):
             self.collect_imports(field_type.element_type, imports)
 
         elif isinstance(field_type, MapType):
@@ -1438,8 +1663,10 @@ class GoGenerator(BaseGenerator):
         for field in union.fields:
             type_expr = self.get_union_case_reflect_type_expr(field, parent_stack)
             type_id_expr = self.get_union_case_type_id_expr(field, parent_stack)
+            spec_expr = self.get_union_case_type_spec_expr(field, parent_stack)
+            spec_field = f", Spec: {spec_expr}" if spec_expr is not None else ""
             cases.append(
-                f"fory.UnionCase{{ID: {field.number}, Type: {type_expr}, TypeID: {type_id_expr}}}"
+                f"fory.UnionCase{{ID: {field.number}, Type: {type_expr}, TypeID: {type_id_expr}{spec_field}}}"
             )
         serializer_expr = f"fory.NewUnionSerializer({', '.join(cases)})"
 

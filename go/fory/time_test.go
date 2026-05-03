@@ -103,3 +103,22 @@ func TestXlangDateSupportsWideRange(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, date, decoded)
 }
+
+func TestDurationFromWireBounds(t *testing.T) {
+	duration, err := durationFromWire(42, 7)
+	require.NoError(t, err)
+	require.Equal(t, 42*time.Second+7*time.Nanosecond, duration)
+
+	duration, err = durationFromWire(minDurationNanos/nanosPerSecond, 0)
+	require.NoError(t, err)
+	require.Equal(t, time.Duration((minDurationNanos/nanosPerSecond)*nanosPerSecond), duration)
+
+	_, err = durationFromWire(maxDurationNanos/nanosPerSecond, int32(maxDurationNanos%nanosPerSecond)+1)
+	require.Error(t, err)
+
+	_, err = durationFromWire(minDurationNanos/nanosPerSecond-1, 0)
+	require.Error(t, err)
+
+	_, err = durationFromWire(0, int32(nanosPerSecond))
+	require.Error(t, err)
+}

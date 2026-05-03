@@ -421,12 +421,13 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
           ${
             this.keyGenerator.needToWriteRef()
               ? `
-              const ${keyRef} = ${this.builder.referenceResolver.getWrittenRefId(v)};
+              const ${keyRef} = ${this.builder.referenceResolver.getWrittenRefId(k)};
               if (${keyRef} !== undefined) {
                 ${this.builder.writer.writeInt8(RefFlags.RefFlag)};
                 ${this.builder.writer.writeVarUInt32(keyRef)};
               } else {
                 ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
+                ${this.builder.referenceResolver.writeRef(k)}
                 ${this.keyGenerator.writeEmbed().write(k)}
               }
           `
@@ -444,6 +445,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 ${this.builder.writer.writeVarUInt32(valueRef)};
               } else {
                 ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)};
+                ${this.builder.referenceResolver.writeRef(v)}
                 ${this.valueGenerator.writeEmbed().write(v)};
               }
           `
@@ -508,6 +510,21 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         ? this.valueGenerator.read(assignStmt, refState)
         : this.valueGenerator.readWithDepth(assignStmt, refState);
     };
+    const anyHelper = this.builder.getExternal(AnyHelper.name);
+    const readContextName = this.builder.getReadContextName();
+    const keySerializer = this.scope.uniqueName("keySerializer");
+    const valueSerializer = this.scope.uniqueName("valueSerializer");
+    const keyDeclaredType = this.scope.uniqueName("keyDeclaredType");
+    const valueDeclaredType = this.scope.uniqueName("valueDeclaredType");
+    const readDynamic = (
+      serializer: string,
+      assignStmt: (x: string) => string,
+      refState: string,
+    ) => `
+      ${readContextName}.incReadDepth();
+      ${assignStmt(`${serializer}.read(${refState})`)}
+      ${readContextName}.decReadDepth();
+    `;
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
@@ -524,9 +541,21 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
         const keyTrackingRef = keyHeader & ${MapFlags.TRACKING_REF};
         const valueIncludeNone = valueHeader & ${MapFlags.HAS_NULL};
         const valueTrackingRef = valueHeader & ${MapFlags.TRACKING_REF};
+        const ${keyDeclaredType} = keyHeader & ${MapFlags.DECL_ELEMENT_TYPE};
+        const ${valueDeclaredType} = valueHeader & ${MapFlags.DECL_ELEMENT_TYPE};
         let chunkSize = 1;
         if (!keyIncludeNone && !valueIncludeNone) {
           chunkSize = ${this.builder.reader.readUint8()};
+        }
+        let ${keySerializer} = null;
+        let ${valueSerializer} = null;
+        if (!keyIncludeNone && !valueIncludeNone) {
+          if (!${keyDeclaredType}) {
+            ${keySerializer} = ${anyHelper}.detectSerializer(${readContextName});
+          }
+          if (!${valueDeclaredType}) {
+            ${valueSerializer} = ${anyHelper}.detectSerializer(${readContextName});
+          }
         }
         for (let index = 0; index < chunkSize; index++) {
           let key;
@@ -537,7 +566,14 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${readKey(x => `key = ${x}`, "true")}
+                if (${keyDeclaredType}) {
+                  ${readKey(x => `key = ${x}`, "true")}
+                } else {
+                  if (!${keySerializer}) {
+                    ${keySerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                  }
+                  ${readDynamic(keySerializer, x => `key = ${x}`, "true")}
+                }
                 break;
               case ${RefFlags.RefFlag}:
                 key = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())}
@@ -546,11 +582,25 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 key = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${readKey(x => `key = ${x}`, "false")}
+                if (${keyDeclaredType}) {
+                  ${readKey(x => `key = ${x}`, "false")}
+                } else {
+                  if (!${keySerializer}) {
+                    ${keySerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                  }
+                  ${readDynamic(keySerializer, x => `key = ${x}`, "false")}
+                }
                 break;
             }
           } else {
-              ${readKey(x => `key = ${x}`, "false")}
+              if (${keyDeclaredType}) {
+                ${readKey(x => `key = ${x}`, "false")}
+              } else {
+                if (!${keySerializer}) {
+                  ${keySerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                }
+                ${readDynamic(keySerializer, x => `key = ${x}`, "false")}
+              }
           }
           
           if (valueIncludeNone) {
@@ -559,7 +609,14 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
             const flag = ${this.builder.reader.readInt8()};
             switch (flag) {
               case ${RefFlags.RefValueFlag}:
-                ${readValue(x => `value = ${x}`, "true")}
+                if (${valueDeclaredType}) {
+                  ${readValue(x => `value = ${x}`, "true")}
+                } else {
+                  if (!${valueSerializer}) {
+                    ${valueSerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                  }
+                  ${readDynamic(valueSerializer, x => `value = ${x}`, "true")}
+                }
                 break;
               case ${RefFlags.RefFlag}:
                 value = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())}
@@ -568,11 +625,25 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
                 value = null;
                 break;
               case ${RefFlags.NotNullValueFlag}:
-                ${readValue(x => `value = ${x}`, "false")}
+                if (${valueDeclaredType}) {
+                  ${readValue(x => `value = ${x}`, "false")}
+                } else {
+                  if (!${valueSerializer}) {
+                    ${valueSerializer} = ${anyHelper}.detectSerializer(${readContextName});
+                  }
+                  ${readDynamic(valueSerializer, x => `value = ${x}`, "false")}
+                }
                 break;
             }
           } else {
-            ${readValue(x => `value = ${x}`, "false")}
+            if (${valueDeclaredType}) {
+              ${readValue(x => `value = ${x}`, "false")}
+            } else {
+              if (!${valueSerializer}) {
+                ${valueSerializer} = ${anyHelper}.detectSerializer(${readContextName});
+              }
+              ${readDynamic(valueSerializer, x => `value = ${x}`, "false")}
+            }
           }
           
           ${result}.set(

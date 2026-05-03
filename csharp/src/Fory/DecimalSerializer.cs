@@ -21,6 +21,61 @@ namespace Apache.Fory;
 
 public readonly record struct ForyDecimal(BigInteger UnscaledValue, int Scale);
 
+public sealed class DecimalSerializer : Serializer<decimal>
+{
+    private static readonly BigInteger UInt32Mask = uint.MaxValue;
+
+    public override decimal DefaultValue => 0m;
+
+    public override void WriteData(WriteContext context, in decimal value, bool hasGenerics)
+    {
+        _ = hasGenerics;
+        (int scale, BigInteger unscaled) = ToParts(value);
+        DecimalCodec.Write(context.Writer, scale, unscaled);
+    }
+
+    public override decimal ReadData(ReadContext context)
+    {
+        (int scale, BigInteger unscaled) = DecimalCodec.Read(context.Reader);
+        return FromParts(scale, unscaled);
+    }
+
+    private static (int Scale, BigInteger Unscaled) ToParts(decimal value)
+    {
+        int[] bits = decimal.GetBits(value);
+        BigInteger unscaled =
+            ((BigInteger)(uint)bits[2] << 64) |
+            ((BigInteger)(uint)bits[1] << 32) |
+            (uint)bits[0];
+        if ((bits[3] & unchecked((int)0x8000_0000)) != 0)
+        {
+            unscaled = BigInteger.Negate(unscaled);
+        }
+
+        return ((bits[3] >> 16) & 0xFF, unscaled);
+    }
+
+    private static decimal FromParts(int scale, BigInteger unscaled)
+    {
+        if (scale is < 0 or > 28)
+        {
+            throw new InvalidDataException($"decimal scale {scale} is outside System.Decimal range");
+        }
+
+        bool negative = unscaled.Sign < 0;
+        BigInteger magnitude = BigInteger.Abs(unscaled);
+        if ((magnitude >> 96) != BigInteger.Zero)
+        {
+            throw new InvalidDataException("decimal magnitude exceeds System.Decimal range");
+        }
+
+        int lo = unchecked((int)(uint)(magnitude & UInt32Mask));
+        int mid = unchecked((int)(uint)((magnitude >> 32) & UInt32Mask));
+        int hi = unchecked((int)(uint)((magnitude >> 64) & UInt32Mask));
+        return new decimal(lo, mid, hi, negative, (byte)scale);
+    }
+}
+
 internal sealed class ForyDecimalSerializer : Serializer<ForyDecimal>
 {
     public override ForyDecimal DefaultValue => default;

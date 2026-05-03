@@ -24,7 +24,7 @@ import typing
 from typing import TypeVar
 from abc import ABC, abstractmethod
 
-from pyfory.types import RefMeta
+from pyfory.annotation import ArrayMeta, RefMeta
 
 try:
     from typing import Annotated as _Annotated
@@ -48,15 +48,21 @@ except ImportError:
 
 
 def _get_origin(type_):
+    origin = None
     if _typing_extensions_get_origin is not None:
-        return _typing_extensions_get_origin(type_)
-    return typing.get_origin(type_) if hasattr(typing, "get_origin") else getattr(type_, "__origin__", None)
+        origin = _typing_extensions_get_origin(type_)
+    elif hasattr(typing, "get_origin"):
+        origin = typing.get_origin(type_)
+    return origin or getattr(type_, "__origin__", None)
 
 
 def _get_args(type_):
+    args = ()
     if _typing_extensions_get_args is not None:
-        return _typing_extensions_get_args(type_)
-    return typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
+        args = _typing_extensions_get_args(type_)
+    elif hasattr(typing, "get_args"):
+        args = typing.get_args(type_)
+    return args or getattr(type_, "__args__", ())
 
 
 def get_type_hints(type_):
@@ -74,10 +80,14 @@ def unwrap_ref(type_):
         args = _get_args(type_)
         if args:
             base = args[0]
+            other_metadata = []
             for meta in args[1:]:
                 if isinstance(meta, RefMeta):
+                    if other_metadata:
+                        return _Annotated[(base, *other_metadata)], meta.enable
                     return base, meta.enable
-            return base, None
+                other_metadata.append(meta)
+            return type_, None
     if origin is typing.Union:
         args = _get_args(type_)
         new_args = list(args)
@@ -90,6 +100,16 @@ def unwrap_ref(type_):
         if ref_override is not None:
             return typing.Union[tuple(new_args)], ref_override
     return type_, None
+
+
+def unwrap_array(type_):
+    origin = _get_origin(type_)
+    if _Annotated is not None and origin is _Annotated:
+        args = _get_args(type_)
+        for meta in args[1:]:
+            if isinstance(meta, ArrayMeta):
+                return meta
+    return getattr(type_, "__fory_array_meta__", None)
 
 
 # modified from `fluent python`
@@ -204,6 +224,9 @@ def is_subclass(from_type, to_type):
 
 
 class TypeVisitor(ABC):
+    def visit_array(self, field_name, elem_type, carrier, types_path=None):
+        raise TypeError(f"Array type with element {elem_type} is not supported")
+
     @abstractmethod
     def visit_list(self, field_name, elem_type, types_path=None):
         pass
@@ -280,6 +303,9 @@ def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     types_path = list(types_path or [])
     type_, _ = unwrap_ref(type_)
     types_path.append(type_)
+    array_meta = unwrap_array(type_)
+    if array_meta is not None:
+        return visitor.visit_array(field_name, array_meta.element_type, array_meta.carrier, types_path=types_path)
     origin = _get_origin(type_) or getattr(type_, "__origin__", type_)
     origin = origin or type_
     args = _get_args(type_)

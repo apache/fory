@@ -37,10 +37,12 @@ import java.util.stream.Collectors;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ArrayType;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.ForyStruct;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
+import org.apache.fory.annotation.Int8Type;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.annotation.UInt16Type;
 import org.apache.fory.annotation.UInt32Type;
@@ -54,7 +56,10 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.MetaCompressor;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -1130,6 +1135,62 @@ public abstract class XlangTestBase extends ForyTestBase {
         values;
   }
 
+  @Data
+  static class ManualSchemaKindStruct {
+    public List<Integer> orderedValues;
+
+    @ArrayType public List<Integer> denseValues;
+
+    public int[] primitiveValues;
+
+    public byte[] payload;
+
+    @Int8Type public byte[] signedBytes;
+
+    @UInt8Type public byte[] unsignedBytes;
+  }
+
+  protected void testManualSchemaKindStruct(boolean enableCodegen) throws java.io.IOException {
+    assertManualSchemaKindStruct(enableCodegen, false);
+  }
+
+  private void assertManualSchemaKindStruct(boolean enableCodegen, boolean compatible) {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(compatible)
+            .withCodegen(enableCodegen)
+            .withMetaCompressor(new NoOpMetaCompressor())
+            .build();
+    fory.register(ManualSchemaKindStruct.class, 805);
+
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), ManualSchemaKindStruct.class);
+    FieldTypes.CollectionFieldType orderedValues =
+        assertManualCollection(manualFieldType(typeDef, "orderedValues"), Types.LIST);
+    assertManualRegistered(orderedValues.getElementType(), Types.VARINT32);
+    assertManualRegistered(manualFieldType(typeDef, "denseValues"), Types.INT32_ARRAY);
+    assertManualRegistered(manualFieldType(typeDef, "primitiveValues"), Types.INT32_ARRAY);
+    assertManualRegistered(manualFieldType(typeDef, "payload"), Types.BINARY);
+    assertManualRegistered(manualFieldType(typeDef, "signedBytes"), Types.INT8_ARRAY);
+    assertManualRegistered(manualFieldType(typeDef, "unsignedBytes"), Types.UINT8_ARRAY);
+
+    ManualSchemaKindStruct value = new ManualSchemaKindStruct();
+    value.orderedValues = Arrays.asList(1, 128, 16_384);
+    value.denseValues = Arrays.asList(4, 5, 6);
+    value.primitiveValues = new int[] {7, 8, 9};
+    value.payload = new byte[] {1, 2, 3};
+    value.signedBytes = new byte[] {-1, 0, 1};
+    value.unsignedBytes = new byte[] {(byte) 0xff, 0, 1};
+
+    ManualSchemaKindStruct copy = (ManualSchemaKindStruct) xserDe(fory, value);
+    Assert.assertEquals(copy.orderedValues, value.orderedValues);
+    assertManualIntegralListEquals(copy.denseValues, value.denseValues);
+    Assert.assertEquals(copy.primitiveValues, value.primitiveValues);
+    Assert.assertEquals(copy.payload, value.payload);
+    Assert.assertEquals(copy.signedBytes, value.signedBytes);
+    Assert.assertEquals(copy.unsignedBytes, value.unsignedBytes);
+  }
+
   protected void testNestedAnnotatedContainerCompatible(boolean enableCodegen)
       throws java.io.IOException {
     String caseName = "test_nested_annotated_container_compatible";
@@ -1565,6 +1626,35 @@ public abstract class XlangTestBase extends ForyTestBase {
   private Object xserDe(Fory fory, Object obj) {
     byte[] bytes = fory.serialize(obj);
     return fory.deserialize(bytes);
+  }
+
+  private static FieldTypes.FieldType manualFieldType(TypeDef typeDef, String fieldName) {
+    for (FieldInfo fieldInfo : typeDef.getFieldsInfo()) {
+      if (fieldInfo.getFieldName().equals(fieldName)) {
+        return fieldInfo.getFieldType();
+      }
+    }
+    throw new AssertionError("No field named " + fieldName + " in " + typeDef);
+  }
+
+  private static FieldTypes.CollectionFieldType assertManualCollection(
+      FieldTypes.FieldType fieldType, int typeId) {
+    Assert.assertTrue(fieldType instanceof FieldTypes.CollectionFieldType, fieldType.toString());
+    Assert.assertEquals(fieldType.getTypeId(), typeId);
+    return (FieldTypes.CollectionFieldType) fieldType;
+  }
+
+  private static void assertManualRegistered(FieldTypes.FieldType fieldType, int typeId) {
+    Assert.assertTrue(fieldType instanceof FieldTypes.RegisteredFieldType, fieldType.toString());
+    Assert.assertEquals(((FieldTypes.RegisteredFieldType) fieldType).getTypeId(), typeId);
+  }
+
+  private static void assertManualIntegralListEquals(
+      List<? extends Number> actual, List<? extends Number> expected) {
+    Assert.assertEquals(actual.size(), expected.size());
+    for (int i = 0; i < actual.size(); i++) {
+      Assert.assertEquals(actual.get(i).longValue(), expected.get(i).longValue());
+    }
   }
 
   // ============================================================================

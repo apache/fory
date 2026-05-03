@@ -178,9 +178,11 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 			cachedTypeInfo = typeResolver.getTypeInfoByType(cachedType)
 		}
 
-		// Pre-compute DispatchId, with special handling for enum fields and pointer-to-numeric
+		// Pre-compute DispatchId, with special handling for enum fields and pointer-to-numeric.
+		// Declared LIST fields must use their declared serializer even when the local
+		// Go carrier is a primitive slice; primitive array specs keep the slice fast path.
 		dispatchId := getDispatchIdFromTypeId(fieldTypeId, nullableFlag)
-		if dispatchId == UnknownDispatchId {
+		if dispatchId == UnknownDispatchId && fieldTypeId != LIST {
 			dispatchType := baseType
 			if dispatchType.Kind() == reflect.Ptr {
 				dispatchType = dispatchType.Elem()
@@ -629,7 +631,9 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		localIsPtr := localKind == reflect.Ptr
 		localIsPrimitive := isPrimitiveDispatchKind(baseKind) || (localIsPtr && isPrimitiveDispatchKind(fieldType.Elem().Kind()))
 
-		if localIsPrimitive {
+		if fieldTypeId == LIST {
+			dispatchId = UnknownDispatchId
+		} else if localIsPrimitive {
 			if def.nullable {
 				dispatchId = getDispatchIdFromTypeId(fieldTypeId, true)
 			} else {

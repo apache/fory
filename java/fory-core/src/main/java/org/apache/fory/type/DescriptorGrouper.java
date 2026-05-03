@@ -58,9 +58,11 @@ public class DescriptorGrouper {
   private final Collection<Descriptor> descriptors;
   private final Predicate<Descriptor> usesPrimitiveFieldOrdering;
   private final Predicate<Descriptor> isBuildIn;
+  private final Predicate<Descriptor> isCollection;
   private final Function<Descriptor, Descriptor> descriptorUpdater;
   private final boolean descriptorsGroupedOrdered;
   private boolean sorted = false;
+  private Predicate<Descriptor> sortTogetherPredicate;
 
   private final Collection<Descriptor> primitiveDescriptors;
   private final Collection<Descriptor> boxedDescriptors;
@@ -84,6 +86,7 @@ public class DescriptorGrouper {
   private DescriptorGrouper(
       Predicate<Descriptor> usesPrimitiveFieldOrdering,
       Predicate<Descriptor> isBuildIn,
+      Predicate<Descriptor> isCollection,
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdater,
@@ -92,6 +95,7 @@ public class DescriptorGrouper {
     this.usesPrimitiveFieldOrdering = usesPrimitiveFieldOrdering;
     this.descriptors = descriptors;
     this.isBuildIn = isBuildIn;
+    this.isCollection = isCollection;
     this.descriptorUpdater = descriptorUpdater;
     this.descriptorsGroupedOrdered = descriptorsGroupedOrdered;
     this.primitiveDescriptors =
@@ -114,9 +118,34 @@ public class DescriptorGrouper {
     return this;
   }
 
+  public DescriptorGrouper setSortTogetherComparator(
+      Comparator<Descriptor> comparator, Predicate<Descriptor> predicate) {
+    Preconditions.checkArgument(!sorted);
+    sortTogetherPredicate = predicate;
+    this.otherDescriptors =
+        descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
+    return this;
+  }
+
   public DescriptorGrouper sort() {
     if (sorted) {
       return this;
+    }
+    if (sortTogetherPredicate != null) {
+      boolean sortTogether = true;
+      for (Descriptor descriptor : descriptors) {
+        if (!sortTogetherPredicate.test(descriptor)) {
+          sortTogether = false;
+          break;
+        }
+      }
+      if (sortTogether) {
+        for (Descriptor descriptor : descriptors) {
+          otherDescriptors.add(descriptorUpdater.apply(descriptor));
+        }
+        sorted = true;
+        return this;
+      }
     }
     for (Descriptor descriptor : descriptors) {
       if (usesPrimitiveFieldOrdering.test(descriptor)) {
@@ -125,9 +154,7 @@ public class DescriptorGrouper {
         } else {
           boxedDescriptors.add(descriptorUpdater.apply(descriptor));
         }
-      } else if (TypeUtils.isCollection(descriptor.getRawType())
-          || TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
-              descriptor.getTypeAnnotation(), descriptor.getRawType())) {
+      } else if (isCollection.test(descriptor)) {
         collectionDescriptors.add(descriptorUpdater.apply(descriptor));
       } else if (TypeUtils.isMap(descriptor.getRawType())) {
         mapDescriptors.add(descriptorUpdater.apply(descriptor));
@@ -207,6 +234,7 @@ public class DescriptorGrouper {
             TypeUtils.isPrimitive(descriptor.getRawType())
                 || TypeUtils.isBoxed(descriptor.getRawType()),
         isBuildIn,
+        DescriptorGrouper::isDefaultCollectionDescriptor,
         descriptors,
         descriptorsGroupedOrdered,
         descriptorUpdator,
@@ -222,14 +250,41 @@ public class DescriptorGrouper {
       Function<Descriptor, Descriptor> descriptorUpdator,
       Comparator<Descriptor> primitiveComparator,
       Comparator<Descriptor> comparator) {
+    return createDescriptorGrouper(
+        usesPrimitiveFieldOrdering,
+        isBuildIn,
+        DescriptorGrouper::isDefaultCollectionDescriptor,
+        descriptors,
+        descriptorsGroupedOrdered,
+        descriptorUpdator,
+        primitiveComparator,
+        comparator);
+  }
+
+  public static DescriptorGrouper createDescriptorGrouper(
+      Predicate<Descriptor> usesPrimitiveFieldOrdering,
+      Predicate<Descriptor> isBuildIn,
+      Predicate<Descriptor> isCollection,
+      Collection<Descriptor> descriptors,
+      boolean descriptorsGroupedOrdered,
+      Function<Descriptor, Descriptor> descriptorUpdator,
+      Comparator<Descriptor> primitiveComparator,
+      Comparator<Descriptor> comparator) {
     return new DescriptorGrouper(
         usesPrimitiveFieldOrdering,
         isBuildIn,
+        isCollection,
         descriptors,
         descriptorsGroupedOrdered,
         descriptorUpdator == null ? DescriptorGrouper::createDescriptor : descriptorUpdator,
         primitiveComparator,
         comparator);
+  }
+
+  private static boolean isDefaultCollectionDescriptor(Descriptor descriptor) {
+    return TypeUtils.isCollection(descriptor.getRawType())
+        || TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+            descriptor.getTypeAnnotation(), descriptor.getRawType());
   }
 
   public int getNumDescriptors() {

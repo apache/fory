@@ -144,6 +144,7 @@ final class IdlRoundTripTests: XCTestCase {
         try AnyExample.ForyRegistration.register(fory)
         try MonsterNamespace.ForyRegistration.register(fory)
         try ComplexFbs.ForyRegistration.register(fory)
+        try Example.ForyRegistration.register(fory)
 
         let book = buildAddressBook()
         let bookRoundTrip: Addressbook.AddressBook = try roundTrip(fory, value: book)
@@ -199,6 +200,26 @@ final class IdlRoundTripTests: XCTestCase {
             env: "DATA_FILE_COLLECTION_ARRAY_UNION",
             expected: collectionArrayUnion
         ) { expected, actual in
+            XCTAssertEqual(actual, expected)
+        }
+
+        let exampleMessage = buildExampleMessage()
+        let exampleRoundTrip: Example.ExampleMessage = try roundTrip(fory, value: exampleMessage)
+        assertExampleMessage(expected: exampleMessage, actual: exampleRoundTrip)
+        try roundTripFile(fory, env: "DATA_FILE_EXAMPLE", expected: exampleMessage) { expected, actual in
+            self.assertExampleMessage(expected: expected, actual: actual)
+        }
+
+        let exampleUnion = buildExampleMessageUnion()
+        let exampleUnionRoundTrip: Example.ExampleMessageUnion = try roundTrip(fory, value: exampleUnion)
+        XCTAssertEqual(exampleUnionRoundTrip, exampleUnion)
+
+        let exampleArrayListUnion = buildExampleArrayListUnion()
+        let exampleArrayListUnionRoundTrip: Example.ExampleMessageUnion =
+            try roundTrip(fory, value: exampleArrayListUnion)
+        XCTAssertEqual(exampleArrayListUnionRoundTrip, exampleArrayListUnion)
+
+        try roundTripFile(fory, env: "DATA_FILE_EXAMPLE_UNION", expected: exampleUnion) { expected, actual in
             XCTAssertEqual(actual, expected)
         }
 
@@ -430,6 +451,173 @@ final class IdlRoundTripTests: XCTestCase {
             float32Values: [1.5, 2.5],
             float64Values: [3.5, 4.5]
         )
+    }
+
+    private func buildExampleMessage() -> Example.ExampleMessage {
+        let leaf = Example.ExampleLeaf(label: "leaf", count: 7)
+        let otherLeaf = Example.ExampleLeaf(label: "other", count: 8)
+        return Example.ExampleMessage(
+            boolValue: true,
+            int8Value: -12,
+            int16Value: -1234,
+            fixedInt32Value: -123456,
+            varint32Value: -12345,
+            fixedInt64Value: -123456789,
+            varint64Value: -987654321,
+            taggedInt64Value: 123456789,
+            uint8Value: 200,
+            uint16Value: 60000,
+            fixedUint32Value: 1234567890,
+            varUint32Value: 1234567890,
+            fixedUint64Value: 9876543210,
+            varUint64Value: 12345678901,
+            taggedUint64Value: 2222222222,
+            float16Value: Float16(1.5),
+            bfloat16Value: BFloat16(rawValue: 0x4020),
+            float32Value: 3.5,
+            float64Value: 4.5,
+            stringValue: "example",
+            bytesValue: Data([1, 2, 3]),
+            dateValue: try! LocalDate(year: 2024, month: 2, day: 3),
+            timestampValue: Date(timeIntervalSince1970: 1706933106),
+            durationValue: .seconds(42) + .microseconds(7),
+            decimalValue: Decimal(string: "123.45")!,
+            enumValue: .ready,
+            messageValue: leaf,
+            unionValue: .leaf(otherLeaf),
+            boolList: [true, false, true],
+            int8List: [1, -2, 3],
+            int16List: [100, -200, 300],
+            fixedInt32List: [1000, -2000, 3000],
+            varint32List: [-10, 20, -30],
+            fixedInt64List: [10000, -20000],
+            varint64List: [-40, 50],
+            taggedInt64List: [60, 70],
+            uint8List: [200, 250],
+            uint16List: [50000, 60000],
+            fixedUint32List: [2000000000, 2100000000],
+            varUint32List: [100, 200],
+            fixedUint64List: [9000000000],
+            varUint64List: [12000000000],
+            taggedUint64List: [13000000000],
+            float16List: [Float16(1), Float16(2)],
+            bfloat16List: [BFloat16(rawValue: 0x3F80), BFloat16(rawValue: 0x4000)],
+            maybeFloat16List: [Float16(1), nil, Float16(2)],
+            maybeBfloat16List: [BFloat16(rawValue: 0x3F80), nil, BFloat16(rawValue: 0x4040)],
+            float32List: [1.5, 2.5],
+            float64List: [3.5, 4.5],
+            stringList: ["alpha", "beta"],
+            bytesList: [Data([4, 5]), Data([6, 7])],
+            dateList: [try! LocalDate(year: 2024, month: 1, day: 1), try! LocalDate(year: 2024, month: 1, day: 2)],
+            timestampList: [Date(timeIntervalSince1970: 1704067200), Date(timeIntervalSince1970: 1704153600)],
+            durationList: [.milliseconds(1), .seconds(2)],
+            decimalList: [Decimal(string: "1.25")!, Decimal(string: "2.50")!],
+            enumList: [.unknown, .failed],
+            messageList: [leaf, otherLeaf],
+            unionList: [.note("note"), .leaf(otherLeaf)],
+            maybeFixedInt32List: [1, nil, 3],
+            maybeUint64List: [10, nil, 30],
+            boolArray: [true, false],
+            int8Array: [1, -2],
+            int16Array: [100, -200],
+            int32Array: [1000, -2000],
+            int64Array: [10000, -20000],
+            uint8Array: [200, 250],
+            uint16Array: [50000, 60000],
+            uint32Array: [2000000000, 2100000000],
+            uint64Array: [9000000000, 12000000000],
+            float16Array: [Float16(1), Float16(2)],
+            bfloat16Array: [BFloat16(rawValue: 0x3F80), BFloat16(rawValue: 0x4000)],
+            float32Array: [1.5, 2.5],
+            float64Array: [3.5, 4.5],
+            int32ArrayList: [[1, 2], [3, 4]],
+            uint8ArrayList: [[201, 202], [203]],
+            stringValuesByBool: [true: "bool"],
+            stringValuesByInt8: [-1: "int8"],
+            stringValuesByInt16: [-2: "int16"],
+            stringValuesByFixedInt32: [-3: "fixed-int32"],
+            stringValuesByVarint32: [4: "varint32"],
+            stringValuesByFixedInt64: [-5: "fixed-int64"],
+            stringValuesByVarint64: [6: "varint64"],
+            stringValuesByTaggedInt64: [7: "tagged-int64"],
+            stringValuesByUint8: [200: "uint8"],
+            stringValuesByUint16: [60000: "uint16"],
+            stringValuesByFixedUint32: [1234567890: "fixed-uint32"],
+            stringValuesByVarUint32: [1234567891: "var-uint32"],
+            stringValuesByFixedUint64: [9876543210: "fixed-uint64"],
+            stringValuesByVarUint64: [9876543211: "var-uint64"],
+            stringValuesByTaggedUint64: [9876543212: "tagged-uint64"],
+            stringValuesByString: ["name": "value"],
+            stringValuesByTimestamp: [Date(timeIntervalSince1970: 1709528767): "time"],
+            stringValuesByDuration: [.seconds(9): "duration"],
+            stringValuesByEnum: [.ready: "ready"],
+            float16ValuesByName: ["f16": Float16(1.25)],
+            maybeFloat16ValuesByName: ["maybe-f16": Float16(1.5)],
+            bfloat16ValuesByName: ["bf16": BFloat16(rawValue: 0x3FE0)],
+            maybeBfloat16ValuesByName: ["maybe-bf16": BFloat16(rawValue: 0x4010)],
+            bytesValuesByName: ["bytes": Data([8, 9])],
+            dateValuesByName: ["date": try! LocalDate(year: 2024, month: 5, day: 6)],
+            decimalValuesByName: ["decimal": Decimal(string: "99.01")!],
+            messageValuesByName: ["leaf": leaf],
+            unionValuesByName: ["union": .code(42)],
+            uint8ArrayValuesByName: ["u8": [201, 202]],
+            float32ArrayValuesByName: ["f32": [1.25, 2.5]],
+            int32ArrayValuesByName: ["i32": [101, 202]]
+        )
+    }
+
+    private func buildExampleMessageUnion() -> Example.ExampleMessageUnion {
+        .int32ArrayList([[11, 12], [13, 14]])
+    }
+
+    private func buildExampleArrayListUnion() -> Example.ExampleMessageUnion {
+        .uint8ArrayList([[4, 5], [6]])
+    }
+
+    private func assertExampleMessage(expected: Example.ExampleMessage, actual: Example.ExampleMessage) {
+        XCTAssertEqual(actual.boolValue, expected.boolValue)
+        XCTAssertEqual(actual.int8Value, expected.int8Value)
+        XCTAssertEqual(actual.int16Value, expected.int16Value)
+        XCTAssertEqual(actual.fixedInt32Value, expected.fixedInt32Value)
+        XCTAssertEqual(actual.varint32Value, expected.varint32Value)
+        XCTAssertEqual(actual.fixedInt64Value, expected.fixedInt64Value)
+        XCTAssertEqual(actual.varint64Value, expected.varint64Value)
+        XCTAssertEqual(actual.taggedInt64Value, expected.taggedInt64Value)
+        XCTAssertEqual(actual.uint8Value, expected.uint8Value)
+        XCTAssertEqual(actual.uint16Value, expected.uint16Value)
+        XCTAssertEqual(actual.fixedUint32Value, expected.fixedUint32Value)
+        XCTAssertEqual(actual.varUint32Value, expected.varUint32Value)
+        XCTAssertEqual(actual.fixedUint64Value, expected.fixedUint64Value)
+        XCTAssertEqual(actual.varUint64Value, expected.varUint64Value)
+        XCTAssertEqual(actual.taggedUint64Value, expected.taggedUint64Value)
+        XCTAssertEqual(actual.float32Value, expected.float32Value)
+        XCTAssertEqual(actual.float64Value, expected.float64Value)
+        XCTAssertEqual(actual.stringValue, expected.stringValue)
+        XCTAssertEqual(actual.bytesValue, expected.bytesValue)
+        XCTAssertEqual(actual.dateValue, expected.dateValue)
+        XCTAssertEqual(actual.timestampValue.timeIntervalSince1970, expected.timestampValue.timeIntervalSince1970)
+        XCTAssertEqual(actual.durationValue, expected.durationValue)
+        XCTAssertEqual(actual.enumValue, expected.enumValue)
+        XCTAssertEqual(actual.messageValue, expected.messageValue)
+        XCTAssertEqual(actual.unionValue, expected.unionValue)
+        XCTAssertEqual(actual.boolList, expected.boolList)
+        XCTAssertEqual(actual.fixedInt32List, expected.fixedInt32List)
+        XCTAssertEqual(actual.varint32List, expected.varint32List)
+        XCTAssertEqual(actual.stringList, expected.stringList)
+        XCTAssertEqual(actual.messageList, expected.messageList)
+        XCTAssertEqual(actual.unionList, expected.unionList)
+        XCTAssertEqual(actual.maybeFixedInt32List, expected.maybeFixedInt32List)
+        XCTAssertEqual(actual.maybeUint64List, expected.maybeUint64List)
+        XCTAssertEqual(actual.boolArray, expected.boolArray)
+        XCTAssertEqual(actual.int32Array, expected.int32Array)
+        XCTAssertEqual(actual.uint8Array, expected.uint8Array)
+        XCTAssertEqual(actual.float32Array, expected.float32Array)
+        XCTAssertEqual(actual.int32ArrayList, expected.int32ArrayList)
+        XCTAssertEqual(actual.uint8ArrayList, expected.uint8ArrayList)
+        XCTAssertEqual(actual.stringValuesByString, expected.stringValuesByString)
+        XCTAssertEqual(actual.uint8ArrayValuesByName, expected.uint8ArrayValuesByName)
+        XCTAssertEqual(actual.float32ArrayValuesByName, expected.float32ArrayValuesByName)
+        XCTAssertEqual(actual.int32ArrayValuesByName, expected.int32ArrayValuesByName)
     }
 
     private func buildOptionalHolder() -> OptionalTypes.OptionalHolder {

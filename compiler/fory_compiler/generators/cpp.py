@@ -32,6 +32,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     Schema,
 )
@@ -62,6 +63,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.VAR_UINT64: "uint64_t",
         PrimitiveKind.TAGGED_UINT64: "uint64_t",
         PrimitiveKind.FLOAT16: "fory::float16_t",
+        PrimitiveKind.BFLOAT16: "fory::bfloat16_t",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "std::string",
@@ -69,6 +71,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.DECIMAL: "fory::serialization::Decimal",
         PrimitiveKind.DATE: "fory::serialization::Date",
         PrimitiveKind.TIMESTAMP: "fory::serialization::Timestamp",
+        PrimitiveKind.DURATION: "fory::serialization::Duration",
         PrimitiveKind.ANY: "std::any",
     }
     NUMERIC_PRIMITIVES = {
@@ -88,6 +91,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.VAR_UINT64,
         PrimitiveKind.TAGGED_UINT64,
         PrimitiveKind.FLOAT16,
+        PrimitiveKind.BFLOAT16,
         PrimitiveKind.FLOAT32,
         PrimitiveKind.FLOAT64,
     }
@@ -499,6 +503,9 @@ class CppGenerator(BaseGenerator):
         if isinstance(field_type, ListType):
             self.collect_type_dependencies(field_type.element_type, parent_stack, deps)
             return
+        if isinstance(field_type, ArrayType):
+            self.collect_type_dependencies(field_type.element_type, parent_stack, deps)
+            return
         if isinstance(field_type, MapType):
             self.collect_type_dependencies(field_type.key_type, parent_stack, deps)
             self.collect_type_dependencies(field_type.value_type, parent_stack, deps)
@@ -746,7 +753,7 @@ class CppGenerator(BaseGenerator):
         weak_ref = self.get_field_weak_ref(field)
         is_union = self.is_union_type(field.field_type, parent_stack)
         is_enum = self.is_enum_type(field.field_type, parent_stack)
-        is_collection = isinstance(field.field_type, (ListType, MapType))
+        is_collection = isinstance(field.field_type, (ListType, ArrayType, MapType))
         is_bytes = self.is_bytes_field(field)
         is_string = self.is_string_field(field)
         needs_mutable = is_string or is_collection or is_bytes or is_union
@@ -1493,6 +1500,27 @@ class CppGenerator(BaseGenerator):
                 list_type = f"std::optional<{list_type}>"
             return list_type
 
+        if isinstance(field_type, ArrayType):
+            element_type = self.generate_namespaced_type(
+                field_type.element_type,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                parent_stack,
+            )
+            array_type = f"std::vector<{element_type}>"
+            if ref:
+                wrapper = (
+                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                )
+                array_type = f"{wrapper}<{array_type}>"
+            if nullable:
+                array_type = f"std::optional<{array_type}>"
+            return array_type
+
         if isinstance(field_type, MapType):
             key_type = self.generate_namespaced_type(
                 field_type.key_type, False, False, False, False, parent_stack
@@ -1543,6 +1571,8 @@ class CppGenerator(BaseGenerator):
                 meta += f".inner({spec})"
             elif spec.startswith("fory::T::list("):
                 meta += f".list({spec[len('fory::T::list(') : -1]})"
+            elif spec.startswith("fory::T::array("):
+                meta += f".array({spec[len('fory::T::array(') : -1]})"
             elif spec.startswith("fory::T::set("):
                 meta += f".set({spec[len('fory::T::set(') : -1]})"
             elif spec.startswith("fory::T::map("):
@@ -1572,6 +1602,8 @@ class CppGenerator(BaseGenerator):
                 meta += f".inner({spec})"
             elif spec.startswith("fory::T::list("):
                 meta += f".list({spec[len('fory::T::list(') : -1]})"
+            elif spec.startswith("fory::T::array("):
+                meta += f".array({spec[len('fory::T::array(') : -1]})"
             elif spec.startswith("fory::T::set("):
                 meta += f".set({spec[len('fory::T::set(') : -1]})"
             elif spec.startswith("fory::T::map("):
@@ -1602,23 +1634,19 @@ class CppGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             spec = self.get_primitive_type_spec(field_type.kind)
         elif isinstance(field_type, ListType):
-            if (
-                isinstance(field_type.element_type, PrimitiveType)
-                and not field_type.element_optional
-                and not field_type.element_ref
-                and field_type.element_type.kind
-                not in (PrimitiveKind.INT8, PrimitiveKind.UINT8)
-            ):
-                spec = ""
-            else:
-                element = self.get_type_spec(
-                    field_type.element_type,
-                    field_type.element_optional,
-                    field_type.element_ref,
-                )
-                if not element:
-                    element = "fory::FieldNodeSpec{}"
-                spec = f"fory::T::list({element})"
+            element = self.get_type_spec(
+                field_type.element_type,
+                field_type.element_optional,
+                field_type.element_ref,
+            )
+            if not element:
+                element = "fory::FieldNodeSpec{}"
+            spec = f"fory::T::list({element})"
+        elif isinstance(field_type, ArrayType):
+            element = self.get_array_element_type_spec(field_type.element_type)
+            if not element:
+                element = "fory::FieldNodeSpec{}"
+            spec = f"fory::T::array({element})"
         elif isinstance(field_type, MapType):
             key = self.get_type_spec(field_type.key_type)
             element = self.get_type_spec(
@@ -1641,6 +1669,30 @@ class CppGenerator(BaseGenerator):
             return f"fory::T::inner({spec})"
         return spec
 
+    def get_array_element_type_spec(self, field_type: FieldType) -> str:
+        if not isinstance(field_type, PrimitiveType):
+            return self.get_type_spec(field_type)
+        typed = {
+            PrimitiveKind.BOOL: "fory::T::boolean()",
+            PrimitiveKind.INT8: "fory::T::int8()",
+            PrimitiveKind.INT16: "fory::T::int16()",
+            PrimitiveKind.INT32: "fory::T::int32()",
+            PrimitiveKind.VARINT32: "fory::T::int32()",
+            PrimitiveKind.INT64: "fory::T::int64()",
+            PrimitiveKind.VARINT64: "fory::T::int64()",
+            PrimitiveKind.UINT8: "fory::T::uint8()",
+            PrimitiveKind.UINT16: "fory::T::uint16()",
+            PrimitiveKind.UINT32: "fory::T::uint32()",
+            PrimitiveKind.VAR_UINT32: "fory::T::uint32()",
+            PrimitiveKind.UINT64: "fory::T::uint64()",
+            PrimitiveKind.VAR_UINT64: "fory::T::uint64()",
+            PrimitiveKind.FLOAT16: "fory::T::float16()",
+            PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
+            PrimitiveKind.FLOAT32: "fory::T::float32()",
+            PrimitiveKind.FLOAT64: "fory::T::float64()",
+        }
+        return typed.get(field_type.kind, "")
+
     def get_primitive_type_spec(self, kind: PrimitiveKind) -> str:
         """Return a scalar T-node spec for primitive encoding metadata."""
         typed = {
@@ -1660,6 +1712,7 @@ class CppGenerator(BaseGenerator):
             PrimitiveKind.VAR_UINT64: "fory::T::uint64().varint()",
             PrimitiveKind.TAGGED_UINT64: "fory::T::uint64().tagged()",
             PrimitiveKind.FLOAT16: "fory::T::float16()",
+            PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
             PrimitiveKind.FLOAT32: "fory::T::float32()",
             PrimitiveKind.FLOAT64: "fory::T::float64()",
             PrimitiveKind.STRING: "fory::T::string()",
@@ -1722,6 +1775,27 @@ class CppGenerator(BaseGenerator):
             if nullable:
                 list_type = f"std::optional<{list_type}>"
             return list_type
+
+        elif isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                parent_stack,
+            )
+            array_type = f"std::vector<{element_type}>"
+            if ref:
+                wrapper = (
+                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                )
+                array_type = f"{wrapper}<{array_type}>"
+            if nullable:
+                array_type = f"std::optional<{array_type}>"
+            return array_type
 
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
@@ -1816,12 +1890,18 @@ class CppGenerator(BaseGenerator):
                 includes.add("<vector>")
             elif field_type.kind == PrimitiveKind.DECIMAL:
                 includes.add('"fory/serialization/decimal_serializers.h"')
-            elif field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
+            elif field_type.kind in (
+                PrimitiveKind.DATE,
+                PrimitiveKind.TIMESTAMP,
+                PrimitiveKind.DURATION,
+            ):
                 includes.add('"fory/serialization/temporal_serializers.h"')
             elif field_type.kind == PrimitiveKind.ANY:
                 includes.add("<any>")
             elif field_type.kind == PrimitiveKind.FLOAT16:
                 includes.add('"fory/util/float16.h"')
+            elif field_type.kind == PrimitiveKind.BFLOAT16:
+                includes.add('"fory/util/bfloat16.h"')
 
         elif isinstance(field_type, ListType):
             includes.add("<vector>")
@@ -1833,6 +1913,19 @@ class CppGenerator(BaseGenerator):
                 False,
                 False,
                 element_weak_ref,
+                False,
+            )
+
+        elif isinstance(field_type, ArrayType):
+            includes.add("<vector>")
+            self.collect_includes(
+                field_type.element_type,
+                False,
+                False,
+                includes,
+                False,
+                False,
+                False,
                 False,
             )
 

@@ -65,6 +65,15 @@ void main() {
       expect(declaredValue.ref, isTrue);
     });
 
+    test('ArrayType stores dense element specs', () {
+      const array = ArrayType(
+        element: Int32Type(),
+        nullable: true,
+      );
+      expect(array.nullable, isTrue);
+      expect(array.element, isA<Int32Type>());
+    });
+
     test('MapType stores explicit key and value trees', () {
       const mt = MapType(
         key: StringType(),
@@ -109,12 +118,16 @@ void main() {
       const listField = ListField(
         element: DeclaredType(ref: true),
       );
+      const arrayField = ArrayField(
+        element: Uint8Type(),
+      );
       const mapField = MapField(
         value: ListType(
           element: Int32Type(encoding: Encoding.fixed),
         ),
       );
       expect((listField.element as DeclaredType).ref, isTrue);
+      expect(arrayField.element, isA<Uint8Type>());
       final nestedList = mapField.value as ListType;
       final nestedElement = nestedList.element as Int32Type;
       expect(nestedElement.encoding, equals(Encoding.fixed));

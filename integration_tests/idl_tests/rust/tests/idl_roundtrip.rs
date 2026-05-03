@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::{env, fs};
 
 use chrono::NaiveDate;
-use fory::{ArcWeak, Fory};
+use fory::{ArcWeak, BFloat16, Float16, Fory};
 use idl_tests::generated::addressbook::{
     self,
     person::{PhoneNumber, PhoneType},
@@ -36,6 +36,9 @@ use idl_tests::generated::complex_fbs::{self, Container, Note, Payload, ScalarPa
 use idl_tests::generated::complex_pb::{self, PrimitiveTypes};
 use idl_tests::generated::evolving1;
 use idl_tests::generated::evolving2;
+use idl_tests::generated::example::{
+    self, ExampleLeaf, ExampleLeafUnion, ExampleMessage, ExampleMessageUnion, ExampleState,
+};
 use idl_tests::generated::monster::{self, Color, Monster, Vec3};
 use idl_tests::generated::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
 use idl_tests::generated::root;
@@ -349,6 +352,160 @@ fn build_any_holder_with_collections() -> AnyHolder {
     }
 }
 
+fn decimal_value(unscaled: i64, scale: i32) -> fory::Decimal {
+    fory::Decimal::new(unscaled.into(), scale)
+}
+
+fn build_example_message() -> ExampleMessage {
+    let date = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
+    let timestamp = date.and_hms_opt(3, 4, 5).expect("timestamp");
+    let duration = chrono::Duration::seconds(5);
+    let leaf = ExampleLeaf {
+        label: "leaf".to_string(),
+        count: 7,
+    };
+    ExampleMessage {
+        bool_value: true,
+        int8_value: -8,
+        int16_value: 1234,
+        fixed_int32_value: -123456,
+        varint32_value: -12345,
+        fixed_int64_value: -123456789,
+        varint64_value: -987654321,
+        tagged_int64_value: 123456789,
+        uint8_value: 200,
+        uint16_value: 60000,
+        fixed_uint32_value: 1234567890,
+        var_uint32_value: 1234567890,
+        fixed_uint64_value: 9876543210,
+        var_uint64_value: 12345678901,
+        tagged_uint64_value: 2222222222,
+        float16_value: Float16::from_f32(1.5),
+        bfloat16_value: BFloat16::from_f32(2.0),
+        float32_value: 3.5,
+        float64_value: 4.5,
+        string_value: "example".to_string(),
+        bytes_value: vec![1, 2, 3],
+        date_value: date,
+        timestamp_value: timestamp,
+        duration_value: duration,
+        decimal_value: decimal_value(1234, 2),
+        enum_value: ExampleState::Ready,
+        message_value: Some(leaf.clone()),
+        union_value: ExampleLeafUnion::Note("union".to_string()),
+        bool_list: vec![true, false],
+        int8_list: vec![-1, 2],
+        int16_list: vec![100, -200],
+        fixed_int32_list: vec![1000, -2000],
+        varint32_list: vec![7, 8, 9],
+        fixed_int64_list: vec![10000, -20000],
+        varint64_list: vec![30000, 40000],
+        tagged_int64_list: vec![-5, 6],
+        uint8_list: vec![1, 2],
+        uint16_list: vec![1000, 2000],
+        fixed_uint32_list: vec![3000, 4000],
+        var_uint32_list: vec![5000, 6000],
+        fixed_uint64_list: vec![7000, 8000],
+        var_uint64_list: vec![9000, 10000],
+        tagged_uint64_list: vec![11000, 12000],
+        float16_list: vec![Float16::from_f32(1.0), Float16::from_f32(2.0)],
+        bfloat16_list: vec![BFloat16::from_f32(3.0), BFloat16::from_f32(4.0)],
+        maybe_float16_list: vec![Some(Float16::from_f32(1.0)), None],
+        maybe_bfloat16_list: vec![Some(BFloat16::from_f32(2.0)), None],
+        float32_list: vec![1.5, 2.5],
+        float64_list: vec![3.5, 4.5],
+        string_list: vec!["alpha".to_string(), "beta".to_string()],
+        bytes_list: vec![vec![b'a'], vec![b'b']],
+        date_list: vec![date],
+        timestamp_list: vec![timestamp],
+        duration_list: vec![duration],
+        decimal_list: vec![decimal_value(125, 2)],
+        enum_list: vec![ExampleState::Ready, ExampleState::Failed],
+        message_list: vec![
+            leaf.clone(),
+            ExampleLeaf {
+                label: "other".to_string(),
+                count: 8,
+            },
+        ],
+        union_list: vec![ExampleLeafUnion::Code(12)],
+        maybe_fixed_int32_list: vec![Some(9), None],
+        maybe_uint64_list: vec![Some(10), None],
+        bool_array: vec![true, false],
+        int8_array: vec![-1, 2],
+        int16_array: vec![100, -200],
+        int32_array: vec![1000, -2000],
+        int64_array: vec![10000, -20000],
+        uint8_array: vec![1, 2, 3],
+        uint16_array: vec![1000, 2000],
+        uint32_array: vec![3000, 4000],
+        uint64_array: vec![5000, 6000],
+        float16_array: vec![Float16::from_f32(1.0), Float16::from_f32(2.0)],
+        bfloat16_array: vec![BFloat16::from_f32(3.0), BFloat16::from_f32(4.0)],
+        float32_array: vec![1.5, 2.5],
+        float64_array: vec![3.5, 4.5],
+        int32_array_list: vec![vec![1, 2], vec![3, 4]],
+        string_values_by_string: HashMap::from([("name".to_string(), "value".to_string())]),
+        uint8_array_values_by_name: HashMap::from([("u8".to_string(), vec![201, 202])]),
+        float32_array_values_by_name: HashMap::from([("f32".to_string(), vec![1.25, 2.5])]),
+        ..Default::default()
+    }
+}
+
+fn build_example_union() -> ExampleMessageUnion {
+    ExampleMessageUnion::Int32ArrayList(vec![vec![11, 12], vec![13, 14]])
+}
+
+fn run_local_example_roundtrip(
+    fory: &Fory,
+    message: &ExampleMessage,
+    union_value: &ExampleMessageUnion,
+) {
+    let bytes = fory.serialize(message).expect("serialize example message");
+    let roundtrip: ExampleMessage = fory
+        .deserialize(&bytes)
+        .expect("deserialize example message");
+    assert_eq!(*message, roundtrip);
+
+    let union_bytes = fory
+        .serialize(union_value)
+        .expect("serialize example union");
+    let union_roundtrip: ExampleMessageUnion = fory
+        .deserialize(&union_bytes)
+        .expect("deserialize example union");
+    assert_eq!(*union_value, union_roundtrip);
+}
+
+fn run_file_example_roundtrip(
+    fory: &Fory,
+    message: &ExampleMessage,
+    union_value: &ExampleMessageUnion,
+) {
+    if let Ok(data_file) = env::var("DATA_FILE_EXAMPLE") {
+        let payload = fs::read(&data_file).expect("read example data file");
+        let peer_message: ExampleMessage = fory
+            .deserialize(&payload)
+            .expect("deserialize example peer payload");
+        assert_eq!(*message, peer_message);
+        let encoded = fory
+            .serialize(&peer_message)
+            .expect("serialize example peer payload");
+        fs::write(data_file, encoded).expect("write example data file");
+    }
+
+    if let Ok(data_file) = env::var("DATA_FILE_EXAMPLE_UNION") {
+        let payload = fs::read(&data_file).expect("read example union data file");
+        let peer_union: ExampleMessageUnion = fory
+            .deserialize(&payload)
+            .expect("deserialize example union peer payload");
+        assert_eq!(*union_value, peer_union);
+        let encoded = fory
+            .serialize(&peer_union)
+            .expect("serialize example union peer payload");
+        fs::write(data_file, encoded).expect("write example union data file");
+    }
+}
+
 fn assert_any_holder(holder: &AnyHolder) {
     let bool_value = holder.bool_value.downcast_ref::<bool>().expect("bool any");
     assert_eq!(*bool_value, true);
@@ -569,6 +726,7 @@ fn run_address_book_roundtrip(compatible: bool) {
     collection::register_types(&mut fory).expect("register collection types");
     optional_types::register_types(&mut fory).expect("register optional types");
     any_example::register_types(&mut fory).expect("register any example types");
+    example::register_types(&mut fory).expect("register example types");
 
     let book = build_address_book();
     let bytes = fory.serialize(&book).expect("serialize");
@@ -589,6 +747,11 @@ fn run_address_book_roundtrip(compatible: bool) {
     let wrapper_roundtrip: auto_id::Wrapper =
         fory.deserialize(&wrapper_bytes).expect("deserialize auto_id wrapper");
     assert_eq!(auto_wrapper, wrapper_roundtrip);
+
+    let example_message = build_example_message();
+    let example_union = build_example_union();
+    run_local_example_roundtrip(&fory, &example_message, &example_union);
+    run_file_example_roundtrip(&fory, &example_message, &example_union);
 
     let data_file = match env::var("DATA_FILE") {
         Ok(path) => path,

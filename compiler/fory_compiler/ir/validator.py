@@ -30,6 +30,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     SourceLocation,
 )
@@ -68,6 +69,7 @@ class SchemaValidator:
         self._check_messages()
         self._check_type_references()
         self._check_services()
+        self._check_array_rules()
         if not self.allow_nested_collections:
             self._check_collection_nesting()
         self._check_ref_rules()
@@ -364,6 +366,8 @@ class SchemaValidator:
                     self._error(f"Unknown type '{type_name}'", field.location)
             elif isinstance(field_type, ListType):
                 check_type_ref(field_type.element_type, field, enclosing_messages)
+            elif isinstance(field_type, ArrayType):
+                check_type_ref(field_type.element_type, field, enclosing_messages)
             elif isinstance(field_type, MapType):
                 check_type_ref(field_type.key_type, field, enclosing_messages)
                 check_type_ref(field_type.value_type, field, enclosing_messages)
@@ -519,6 +523,71 @@ class SchemaValidator:
         for union in self.schema.unions:
             for f in union.fields:
                 check_field(f, None)
+
+    def _check_array_rules(self) -> None:
+        valid_array_elements = {
+            PrimitiveKind.BOOL,
+            PrimitiveKind.INT8,
+            PrimitiveKind.INT16,
+            PrimitiveKind.INT32,
+            PrimitiveKind.VARINT32,
+            PrimitiveKind.INT64,
+            PrimitiveKind.VARINT64,
+            PrimitiveKind.UINT8,
+            PrimitiveKind.UINT16,
+            PrimitiveKind.UINT32,
+            PrimitiveKind.VAR_UINT32,
+            PrimitiveKind.UINT64,
+            PrimitiveKind.VAR_UINT64,
+            PrimitiveKind.FLOAT16,
+            PrimitiveKind.BFLOAT16,
+            PrimitiveKind.FLOAT32,
+            PrimitiveKind.FLOAT64,
+        }
+
+        def check_type(field_type: FieldType, field: Field, in_map_key: bool = False):
+            if isinstance(field_type, ArrayType):
+                if in_map_key:
+                    self._error("array<T> is not valid as a map key type", field.location)
+                element_type = field_type.element_type
+                if not isinstance(element_type, PrimitiveType):
+                    self._error(
+                        "array<T> elements must be number or bool scalar types",
+                        field.location,
+                    )
+                    return
+                if element_type.encoding_modifier is not None:
+                    self._error(
+                        "array<T> elements do not support scalar encoding modifiers",
+                        field.location,
+                    )
+                    return
+                if element_type.kind not in valid_array_elements:
+                    self._error(
+                        "array<T> elements must be number or bool scalar types",
+                        field.location,
+                    )
+                return
+            if isinstance(field_type, ListType):
+                check_type(field_type.element_type, field)
+            elif isinstance(field_type, MapType):
+                check_type(field_type.key_type, field, in_map_key=True)
+                check_type(field_type.value_type, field)
+
+        def check_message_fields(message: Message) -> None:
+            for f in message.fields:
+                check_type(f.field_type, f)
+            for nested_msg in message.nested_messages:
+                check_message_fields(nested_msg)
+            for nested_union in message.nested_unions:
+                for f in nested_union.fields:
+                    check_type(f.field_type, f)
+
+        for message in self.schema.messages:
+            check_message_fields(message)
+        for union in self.schema.unions:
+            for f in union.fields:
+                check_type(f.field_type, f)
 
     def _check_collection_nesting(self) -> None:
         def check_field(

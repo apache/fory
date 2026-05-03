@@ -57,6 +57,9 @@ final class ForyGenerator extends Generator {
   static final TypeChecker _listFieldChecker = TypeChecker.fromRuntime(
     ListField,
   );
+  static final TypeChecker _arrayFieldChecker = TypeChecker.fromRuntime(
+    ArrayField,
+  );
   static final TypeChecker _setFieldChecker = TypeChecker.fromRuntime(
     SetField,
   );
@@ -212,19 +215,20 @@ final class ForyGenerator extends Generator {
       final specDynamic = typeSpec.dynamic;
       if (specDynamic != null) dynamic = specDynamic;
     }
-    if (typeSpec == null && _isDefaultBoolArrayCarrier(type)) {
-      return _GeneratedFieldTypeSpec(
-        typeLiteral: _typeReferenceLiteral(type),
-        declaredTypeName: _typeReferenceLiteral(type),
-        typeId: TypeIds.boolArray,
-        nullable: nullable,
-        ref: ref,
-        dynamic: dynamic,
-        arguments: const <_GeneratedFieldTypeSpec>[],
-      );
-    }
     if (_isList(type) || _isSet(type)) {
       final expectedTypeId = _isSet(type) ? TypeIds.set : TypeIds.list;
+      if (_isList(type) &&
+          typeSpec?.typeId != null &&
+          _isDenseArrayTypeId(typeSpec!.typeId!)) {
+        return _fieldTypeForArrayListCarrier(
+          type,
+          typeSpec.typeId!,
+          nullable: nullable,
+          ref: ref,
+          dynamic: dynamic,
+          errorElement: errorElement,
+        );
+      }
       if (typeSpec?.typeId != null && typeSpec!.typeId != expectedTypeId) {
         throw InvalidGenerationSourceError(
           'Type override ${_typeSpecName(typeSpec.typeId!)} does not match '
@@ -242,7 +246,6 @@ final class ForyGenerator extends Generator {
         typeSpec: elementSpec,
         errorElement: errorElement,
       );
-      _validatePackedListCarrier(type, child, errorElement);
       return _GeneratedFieldTypeSpec(
         typeLiteral: _typeReferenceLiteral(type),
         declaredTypeName: _typeReferenceLiteral(type),
@@ -2033,12 +2036,13 @@ GeneratedFieldType(
     final annotations = <DartObject?>[
       _foryFieldChecker.firstAnnotationOf(field),
       _listFieldChecker.firstAnnotationOf(field),
+      _arrayFieldChecker.firstAnnotationOf(field),
       _setFieldChecker.firstAnnotationOf(field),
       _mapFieldChecker.firstAnnotationOf(field),
     ].whereType<DartObject>().toList(growable: false);
     if (annotations.length > 1) {
       throw InvalidGenerationSourceError(
-        'Use only one of @ForyField, @ListField, @SetField, or @MapField on a field.',
+        'Use only one of @ForyField, @ListField, @ArrayField, @SetField, or @MapField on a field.',
         element: field,
       );
     }
@@ -2072,6 +2076,13 @@ GeneratedFieldType(
       );
     }
     if (annotationType != null &&
+        _arrayFieldChecker.isExactlyType(annotationType)) {
+      final element = _readRequiredTypeSpec(reader.peek('element'), field);
+      return _TypeSpecInfo(
+        typeId: _arrayTypeIdForElementSpec(element, field),
+      );
+    }
+    if (annotationType != null &&
         _setFieldChecker.isExactlyType(annotationType)) {
       return _TypeSpecInfo(
         typeId: TypeIds.set,
@@ -2096,6 +2107,16 @@ GeneratedFieldType(
     return _readTypeSpecObj(reader, field);
   }
 
+  _TypeSpecInfo _readRequiredTypeSpec(ConstantReader? reader, Element field) {
+    if (reader == null || reader.isNull) {
+      throw InvalidGenerationSourceError(
+        'ArrayType requires an element type spec.',
+        element: field,
+      );
+    }
+    return _readTypeSpecObj(reader, field);
+  }
+
   _TypeSpecInfo _readTypeSpecObj(ConstantReader reader, Element field) {
     final objType = reader.objectValue.type;
     final typeName = objType?.element?.displayName;
@@ -2116,6 +2137,14 @@ GeneratedFieldType(
           ref: ref,
           dynamic: dynamic,
           element: _readOptionalTypeSpec(reader.peek('element'), field),
+        );
+      case 'ArrayType':
+        final element = _readRequiredTypeSpec(reader.peek('element'), field);
+        return _TypeSpecInfo(
+          typeId: _arrayTypeIdForElementSpec(element, field),
+          nullable: nullable,
+          ref: ref,
+          dynamic: dynamic,
         );
       case 'SetType':
         return _TypeSpecInfo(
@@ -2166,6 +2195,7 @@ GeneratedFieldType(
           nullable: nullable,
           ref: ref,
           dynamic: dynamic,
+          hasExplicitScalarEncoding: _hasExplicitScalarEncoding(reader),
         );
       case 'Int64Type':
         return _TypeSpecInfo(
@@ -2179,6 +2209,7 @@ GeneratedFieldType(
           nullable: nullable,
           ref: ref,
           dynamic: dynamic,
+          hasExplicitScalarEncoding: _hasExplicitScalarEncoding(reader),
         );
       case 'Uint8Type':
         return _TypeSpecInfo(
@@ -2205,6 +2236,7 @@ GeneratedFieldType(
           nullable: nullable,
           ref: ref,
           dynamic: dynamic,
+          hasExplicitScalarEncoding: _hasExplicitScalarEncoding(reader),
         );
       case 'Uint64Type':
         return _TypeSpecInfo(
@@ -2218,6 +2250,7 @@ GeneratedFieldType(
           nullable: nullable,
           ref: ref,
           dynamic: dynamic,
+          hasExplicitScalarEncoding: _hasExplicitScalarEncoding(reader),
         );
       case 'Float16Type':
         return _TypeSpecInfo(
@@ -2304,6 +2337,11 @@ GeneratedFieldType(
     return reader.boolValue;
   }
 
+  bool _hasExplicitScalarEncoding(ConstantReader reader) {
+    final encodingReader = reader.peek('encoding');
+    return encodingReader != null && !encodingReader.isNull;
+  }
+
   int _encodingTypeId(
     ConstantReader reader, {
     required int fixed,
@@ -2363,50 +2401,76 @@ GeneratedFieldType(
     }
   }
 
-  bool _isDefaultBoolArrayCarrier(DartType type) {
-    if (!_isList(type) || _isNullable(type)) {
-      return false;
+  bool _isDenseArrayTypeId(int typeId) =>
+      typeId >= TypeIds.boolArray && typeId <= TypeIds.float64Array;
+
+  int _arrayTypeIdForElementSpec(_TypeSpecInfo element, Element field) {
+    if (element.typeId == null) {
+      throw InvalidGenerationSourceError(
+        'ArrayType requires a concrete numeric or bool scalar element type.',
+        element: field,
+      );
     }
-    final argument = (type as InterfaceType).typeArguments.single;
-    return !_isNullable(argument) &&
-        _withoutNullability(argument).isDartCoreBool;
+    if (element.hasExplicitScalarEncoding ||
+        element.nullable == true ||
+        element.ref == true ||
+        element.dynamic == true) {
+      throw InvalidGenerationSourceError(
+        'ArrayType elements cannot use scalar encoding modifiers, nullable, ref-tracked, or dynamic.',
+        element: field,
+      );
+    }
+    return switch (element.typeId!) {
+      TypeIds.boolType => TypeIds.boolArray,
+      TypeIds.int8 => TypeIds.int8Array,
+      TypeIds.int16 => TypeIds.int16Array,
+      TypeIds.varInt32 => TypeIds.int32Array,
+      TypeIds.varInt64 => TypeIds.int64Array,
+      TypeIds.uint8 => TypeIds.uint8Array,
+      TypeIds.uint16 => TypeIds.uint16Array,
+      TypeIds.varUint32 => TypeIds.uint32Array,
+      TypeIds.varUint64 => TypeIds.uint64Array,
+      TypeIds.float16 => TypeIds.float16Array,
+      TypeIds.bfloat16 => TypeIds.bfloat16Array,
+      TypeIds.float32 => TypeIds.float32Array,
+      TypeIds.float64 => TypeIds.float64Array,
+      _ => throw InvalidGenerationSourceError(
+          'ArrayType requires a numeric or bool scalar element type without fixed/tagged encoding.',
+          element: field,
+        ),
+    };
   }
 
-  void _validatePackedListCarrier(
-    DartType listOrSetType,
-    _GeneratedFieldTypeSpec elementType,
-    Element errorElement,
-  ) {
-    if (!_isList(listOrSetType)) {
-      return;
+  _GeneratedFieldTypeSpec _fieldTypeForArrayListCarrier(
+    DartType type,
+    int typeId, {
+    required bool nullable,
+    required bool ref,
+    required bool? dynamic,
+    required Element errorElement,
+  }) {
+    if (typeId != TypeIds.boolArray) {
+      throw InvalidGenerationSourceError(
+        'ArrayType ${_typeSpecName(typeId)} is not valid for declared Dart type ${_typeCodeString(type)}.',
+        element: errorElement,
+      );
     }
-    if (elementType.nullable ||
-        elementType.ref ||
-        elementType.dynamic == true) {
-      return;
+    final argument = (type as InterfaceType).typeArguments.single;
+    if (_isNullable(argument) ||
+        !_withoutNullability(argument).isDartCoreBool) {
+      throw InvalidGenerationSourceError(
+        'ArrayType(BoolType) requires a non-nullable List<bool> carrier.',
+        element: errorElement,
+      );
     }
-    final suggestedCarrier = switch (elementType.typeId) {
-      TypeIds.int8 => 'Int8List',
-      TypeIds.int16 => 'Int16List',
-      TypeIds.int32 => 'Int32List',
-      TypeIds.int64 => 'Int64List',
-      TypeIds.uint8 => 'Uint8List',
-      TypeIds.uint16 => 'Uint16List',
-      TypeIds.uint32 => 'Uint32List',
-      TypeIds.uint64 => 'Uint64List',
-      TypeIds.float16 => 'Float16List',
-      TypeIds.bfloat16 => 'Bfloat16List',
-      TypeIds.float32 => 'Float32List',
-      TypeIds.float64 => 'Float64List',
-      _ => null,
-    };
-    if (suggestedCarrier == null) {
-      return;
-    }
-    throw InvalidGenerationSourceError(
-      'Generic List fields with non-null fixed-width ${_typeSpecName(elementType.typeId)} '
-      'elements must use $suggestedCarrier instead.',
-      element: errorElement,
+    return _GeneratedFieldTypeSpec(
+      typeLiteral: _typeReferenceLiteral(type),
+      declaredTypeName: _typeReferenceLiteral(type),
+      typeId: typeId,
+      nullable: nullable,
+      ref: ref,
+      dynamic: dynamic,
+      arguments: const <_GeneratedFieldTypeSpec>[],
     );
   }
 
@@ -2571,6 +2635,32 @@ GeneratedFieldType(
         return 'SetType';
       case TypeIds.map:
         return 'MapType';
+      case TypeIds.boolArray:
+        return 'ArrayType(element: BoolType())';
+      case TypeIds.int8Array:
+        return 'ArrayType(element: Int8Type())';
+      case TypeIds.int16Array:
+        return 'ArrayType(element: Int16Type())';
+      case TypeIds.int32Array:
+        return 'ArrayType(element: Int32Type())';
+      case TypeIds.int64Array:
+        return 'ArrayType(element: Int64Type())';
+      case TypeIds.uint8Array:
+        return 'ArrayType(element: Uint8Type())';
+      case TypeIds.uint16Array:
+        return 'ArrayType(element: Uint16Type())';
+      case TypeIds.uint32Array:
+        return 'ArrayType(element: Uint32Type())';
+      case TypeIds.uint64Array:
+        return 'ArrayType(element: Uint64Type())';
+      case TypeIds.float16Array:
+        return 'ArrayType(element: Float16Type())';
+      case TypeIds.bfloat16Array:
+        return 'ArrayType(element: Bfloat16Type())';
+      case TypeIds.float32Array:
+        return 'ArrayType(element: Float32Type())';
+      case TypeIds.float64Array:
+        return 'ArrayType(element: Float64Type())';
       default:
         return 'type id $typeId';
     }
@@ -2594,8 +2684,6 @@ GeneratedFieldType(
     switch (display) {
       case 'Uint8List':
         return TypeIds.binary;
-      case 'List<bool>':
-        return TypeIds.boolArray;
       case 'Int8List':
         return TypeIds.int8Array;
       case 'Int16List':
@@ -2970,6 +3058,7 @@ class _TypeSpecInfo {
   final _TypeSpecInfo? element;
   final _TypeSpecInfo? key;
   final _TypeSpecInfo? value;
+  final bool hasExplicitScalarEncoding;
 
   const _TypeSpecInfo({
     this.typeId,
@@ -2979,5 +3068,6 @@ class _TypeSpecInfo {
     this.element,
     this.key,
     this.value,
+    this.hasExplicitScalarEncoding = false,
   });
 }

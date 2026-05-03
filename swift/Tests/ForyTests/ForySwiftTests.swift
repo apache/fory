@@ -57,7 +57,9 @@ struct EncodedNumberFields: Equatable {
 struct ReducedPrecisionMacroFields: Equatable {
     var float16Value: Float16
     var bfloat16Value: BFloat16
+    @ArrayField(element: .float16)
     var float16Array: [Float16]
+    @ArrayField(element: .bfloat16)
     var bfloat16Array: [BFloat16]
 }
 
@@ -471,11 +473,11 @@ func primitiveArrayTypeIDs() throws {
     let int32Bytes = [UInt8](int32Data)
     #expect(int32Bytes[0] == ForyHeaderFlag.isXlang)
     #expect(Int8(bitPattern: int32Bytes[1]) == RefFlag.notNullValue.rawValue)
-    #expect(UInt32(int32Bytes[2]) == TypeId.int32Array.rawValue)
+    #expect(UInt32(int32Bytes[2]) == TypeId.list.rawValue)
 
     let uint8Data = try fory.serialize([UInt8(1), 2, 3])
     let uint8Bytes = [UInt8](uint8Data)
-    #expect(UInt32(uint8Bytes[2]) == TypeId.uint8Array.rawValue)
+    #expect(UInt32(uint8Bytes[2]) == TypeId.list.rawValue)
 }
 
 @Test

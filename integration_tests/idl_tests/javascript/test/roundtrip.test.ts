@@ -172,16 +172,6 @@ function expectAcyclicEqual(expected: unknown, actual: unknown): void {
   expect(normalize(actual)).toEqual(normalize(expected));
 }
 
-function asGeneratedNumberArray<T extends ArrayBufferView>(value: T): number[] {
-  return value as unknown as number[];
-}
-
-function asGeneratedBigIntArray<T extends BigInt64Array | BigUint64Array>(
-  value: T,
-): (bigint | number)[] {
-  return value as unknown as (bigint | number)[];
-}
-
 function buildDog(): Dog {
   return { name: "Rex", barkVolume: 5 };
 }
@@ -265,57 +255,45 @@ function buildPrimitiveTypes(): PrimitiveTypes {
 
 function buildNumericCollections(): NumericCollections {
   return {
-    int8Values: asGeneratedNumberArray(new Int8Array([1, -2, 3])),
-    int16Values: asGeneratedNumberArray(new Int16Array([100, -200, 300])),
-    int32Values: asGeneratedNumberArray(new Int32Array([1000, -2000, 3000])),
-    int64Values: asGeneratedBigIntArray(
-      new BigInt64Array([10000n, -20000n, 30000n]),
-    ),
-    uint8Values: asGeneratedNumberArray(new Uint8Array([200, 250])),
-    uint16Values: asGeneratedNumberArray(new Uint16Array([50000, 60000])),
-    uint32Values: asGeneratedNumberArray(
-      new Uint32Array([2000000000, 2100000000]),
-    ),
-    uint64Values: asGeneratedBigIntArray(
-      new BigUint64Array([9000000000n, 12000000000n]),
-    ),
-    float32Values: asGeneratedNumberArray(new Float32Array([1.5, 2.5])),
-    float64Values: asGeneratedNumberArray(new Float64Array([3.5, 4.5])),
+    int8Values: [1, -2, 3],
+    int16Values: [100, -200, 300],
+    int32Values: [1000, -2000, 3000],
+    int64Values: [10000n, -20000n, 30000n],
+    uint8Values: [200, 250],
+    uint16Values: [50000, 60000],
+    uint32Values: [2000000000, 2100000000],
+    uint64Values: [9000000000n, 12000000000n],
+    float32Values: [1.5, 2.5],
+    float64Values: [3.5, 4.5],
   };
 }
 
 function buildNumericCollectionsArray(): NumericCollectionsArray {
   return {
-    int8Values: asGeneratedNumberArray(new Int8Array([1, -2, 3])),
-    int16Values: asGeneratedNumberArray(new Int16Array([100, -200, 300])),
-    int32Values: asGeneratedNumberArray(new Int32Array([1000, -2000, 3000])),
-    int64Values: asGeneratedBigIntArray(
-      new BigInt64Array([10000n, -20000n, 30000n]),
-    ),
-    uint8Values: asGeneratedNumberArray(new Uint8Array([200, 250])),
-    uint16Values: asGeneratedNumberArray(new Uint16Array([50000, 60000])),
-    uint32Values: asGeneratedNumberArray(
-      new Uint32Array([2000000000, 2100000000]),
-    ),
-    uint64Values: asGeneratedBigIntArray(
-      new BigUint64Array([9000000000n, 12000000000n]),
-    ),
-    float32Values: asGeneratedNumberArray(new Float32Array([1.5, 2.5])),
-    float64Values: asGeneratedNumberArray(new Float64Array([3.5, 4.5])),
+    int8Values: new Int8Array([1, -2, 3]),
+    int16Values: new Int16Array([100, -200, 300]),
+    int32Values: new Int32Array([1000, -2000, 3000]),
+    int64Values: new BigInt64Array([10000n, -20000n, 30000n]),
+    uint8Values: new Uint8Array([200, 250]),
+    uint16Values: new Uint16Array([50000, 60000]),
+    uint32Values: new Uint32Array([2000000000, 2100000000]),
+    uint64Values: new BigUint64Array([9000000000n, 12000000000n]),
+    float32Values: new Float32Array([1.5, 2.5]),
+    float64Values: new Float64Array([3.5, 4.5]),
   };
 }
 
 function buildNumericCollectionUnion(): NumericCollectionUnion {
   return {
     case: NumericCollectionUnionCase.INT64_VALUES,
-    value: asGeneratedBigIntArray(new BigInt64Array([10000n, -20000n, 30000n])),
+    value: [10000n, -20000n, 30000n],
   };
 }
 
 function buildNumericCollectionArrayUnion(): NumericCollectionArrayUnion {
   return {
     case: NumericCollectionArrayUnionCase.FLOAT64_VALUES,
-    value: asGeneratedNumberArray(new Float64Array([3.5, 4.5, 5.5])),
+    value: new Float64Array([3.5, 4.5, 5.5]),
   };
 }
 
@@ -377,10 +355,14 @@ function buildExampleLeaf(): ExampleLeaf {
 
 function buildExampleMessage(): ExampleMessage {
   const leaf = buildExampleLeaf();
+  const otherLeaf: ExampleLeaf = {
+    label: "other",
+    count: 8,
+  };
   return {
     boolValue: true,
-    int8Value: 12,
-    int16Value: 1234,
+    int8Value: -12,
+    int16Value: -1234,
     fixedInt32Value: -123456,
     varint32Value: -12345,
     fixedInt64Value: -123456789n,
@@ -399,96 +381,104 @@ function buildExampleMessage(): ExampleMessage {
     float64Value: 4.5,
     stringValue: "example",
     bytesValue: new Uint8Array([1, 2, 3]),
-    dateValue: buildLocalDate(2024, 1, 2),
-    timestampValue: new Date("2024-01-02T03:04:05Z"),
-    durationValue: 3000,
-    decimalValue: Decimal.from(1n << 70n, 2),
+    dateValue: buildLocalDate(2024, 2, 3),
+    timestampValue: new Date("2024-02-03T04:05:06Z"),
+    durationValue: 42000.007,
+    decimalValue: Decimal.from(12345n, 2),
     enumValue: ExampleState.READY,
     messageValue: leaf,
     unionValue: {
       case: ExampleLeafUnionCase.LEAF,
-      value: leaf,
+      value: otherLeaf,
     },
-    boolList: [true, false],
-    int8List: [],
-    int16List: [],
-    fixedInt32List: [],
-    varint32List: [1, -2, 3],
-    fixedInt64List: [],
-    varint64List: [],
-    taggedInt64List: [],
-    uint8List: [],
-    uint16List: [],
-    fixedUint32List: [],
-    varUint32List: [],
-    fixedUint64List: [],
-    varUint64List: [],
-    taggedUint64List: [],
-    float16List: [],
-    bfloat16List: [],
-    maybeFloat16List: [],
-    maybeBfloat16List: [],
-    float32List: [],
-    float64List: [],
+    boolList: [true, false, true],
+    int8List: [1, -2, 3],
+    int16List: [100, -200, 300],
+    fixedInt32List: [1000, -2000, 3000],
+    varint32List: [-10, 20, -30],
+    fixedInt64List: [10000n, -20000n],
+    varint64List: [-40n, 50n],
+    taggedInt64List: [60n, 70n],
+    uint8List: [200, 250],
+    uint16List: [50000, 60000],
+    fixedUint32List: [2000000000, 2100000000],
+    varUint32List: [100, 200],
+    fixedUint64List: [9000000000n],
+    varUint64List: [12000000000n],
+    taggedUint64List: [13000000000n],
+    float16List: [1, 2],
+    bfloat16List: [1, 2],
+    maybeFloat16List: [1, null, 2],
+    maybeBfloat16List: [1, null, 3],
+    float32List: [1.5, 2.5],
+    float64List: [3.5, 4.5],
     stringList: ["alpha", "beta"],
-    bytesList: [new Uint8Array([4, 5])],
-    dateList: [],
-    timestampList: [],
-    durationList: [],
-    decimalList: [],
-    enumList: [],
-    messageList: [leaf],
-    unionList: [{ case: ExampleLeafUnionCase.NOTE, value: "note" }],
-    maybeFixedInt32List: [],
-    maybeUint64List: [],
+    bytesList: [new Uint8Array([4, 5]), new Uint8Array([6, 7])],
+    dateList: [buildLocalDate(2024, 1, 1), buildLocalDate(2024, 1, 2)],
+    timestampList: [
+      new Date("2024-01-01T00:00:00Z"),
+      new Date("2024-01-02T00:00:00Z"),
+    ],
+    durationList: [1, 2000],
+    decimalList: [Decimal.from(125n, 2), Decimal.from(250n, 2)],
+    enumList: [ExampleState.UNKNOWN, ExampleState.FAILED],
+    messageList: [leaf, otherLeaf],
+    unionList: [
+      { case: ExampleLeafUnionCase.NOTE, value: "note" },
+      { case: ExampleLeafUnionCase.LEAF, value: otherLeaf },
+    ],
+    maybeFixedInt32List: [1, null, 3],
+    maybeUint64List: [10n, null, 30n],
     boolArray: [true, false],
-    int8Array: new Int8Array(),
-    int16Array: new Int16Array(),
-    int32Array: new Int32Array([10, -20, 30]),
-    int64Array: new BigInt64Array(),
-    uint8Array: new Uint8Array([6, 7, 8]),
-    uint16Array: new Uint16Array(),
-    uint32Array: new Uint32Array(),
-    uint64Array: new BigUint64Array(),
-    float16Array: [],
-    bfloat16Array: [],
-    float32Array: new Float32Array([1.25, 2.5]),
-    float64Array: new Float64Array(),
-    int32ArrayList: [new Int32Array([1, 2]), new Int32Array([-3])],
-    uint8ArrayList: [new Uint8Array([1, 2]), new Uint8Array([3])],
-    stringValuesByBool: new Map(),
-    stringValuesByInt8: new Map(),
-    stringValuesByInt16: new Map(),
-    stringValuesByFixedInt32: new Map(),
-    stringValuesByVarint32: new Map(),
-    stringValuesByFixedInt64: new Map(),
-    stringValuesByVarint64: new Map(),
-    stringValuesByTaggedInt64: new Map(),
-    stringValuesByUint8: new Map(),
-    stringValuesByUint16: new Map(),
-    stringValuesByFixedUint32: new Map(),
-    stringValuesByVarUint32: new Map(),
-    stringValuesByFixedUint64: new Map(),
-    stringValuesByVarUint64: new Map(),
-    stringValuesByTaggedUint64: new Map(),
-    stringValuesByString: new Map(),
-    stringValuesByTimestamp: new Map(),
-    stringValuesByDuration: new Map(),
-    stringValuesByEnum: new Map(),
-    float16ValuesByName: new Map(),
-    maybeFloat16ValuesByName: new Map(),
-    bfloat16ValuesByName: new Map(),
-    maybeBfloat16ValuesByName: new Map(),
-    bytesValuesByName: new Map(),
-    dateValuesByName: new Map(),
-    decimalValuesByName: new Map(),
-    messageValuesByName: new Map(),
-    unionValuesByName: new Map(),
-    uint8ArrayValuesByName: new Map([["bytes", new Uint8Array([9, 10])]]),
-    float32ArrayValuesByName: new Map([
-      ["floats", new Float32Array([3.5, 4.5])],
+    int8Array: new Int8Array([1, -2]),
+    int16Array: new Int16Array([100, -200]),
+    int32Array: new Int32Array([1000, -2000]),
+    int64Array: new BigInt64Array([10000n, -20000n]),
+    uint8Array: new Uint8Array([200, 250]),
+    uint16Array: new Uint16Array([50000, 60000]),
+    uint32Array: new Uint32Array([2000000000, 2100000000]),
+    uint64Array: new BigUint64Array([9000000000n, 12000000000n]),
+    float16Array: [1, 2],
+    bfloat16Array: [1, 2],
+    float32Array: new Float32Array([1.5, 2.5]),
+    float64Array: new Float64Array([3.5, 4.5]),
+    int32ArrayList: [new Int32Array([1, 2]), new Int32Array([3, 4])],
+    uint8ArrayList: [new Uint8Array([201, 202]), new Uint8Array([203])],
+    stringValuesByBool: new Map([[true, "bool"]]),
+    stringValuesByInt8: new Map([[-1, "int8"]]),
+    stringValuesByInt16: new Map([[-2, "int16"]]),
+    stringValuesByFixedInt32: new Map([[-3, "fixed-int32"]]),
+    stringValuesByVarint32: new Map([[4, "varint32"]]),
+    stringValuesByFixedInt64: new Map([[-5n, "fixed-int64"]]),
+    stringValuesByVarint64: new Map([[6n, "varint64"]]),
+    stringValuesByTaggedInt64: new Map([[7n, "tagged-int64"]]),
+    stringValuesByUint8: new Map([[200, "uint8"]]),
+    stringValuesByUint16: new Map([[60000, "uint16"]]),
+    stringValuesByFixedUint32: new Map([[1234567890, "fixed-uint32"]]),
+    stringValuesByVarUint32: new Map([[1234567891, "var-uint32"]]),
+    stringValuesByFixedUint64: new Map([[9876543210n, "fixed-uint64"]]),
+    stringValuesByVarUint64: new Map([[9876543211n, "var-uint64"]]),
+    stringValuesByTaggedUint64: new Map([[9876543212n, "tagged-uint64"]]),
+    stringValuesByString: new Map([["name", "value"]]),
+    stringValuesByTimestamp: new Map([[new Date("2024-03-04T05:06:07Z"), "time"]]),
+    stringValuesByDuration: new Map([[9000, "duration"]]),
+    stringValuesByEnum: new Map([[ExampleState.READY, "ready"]]),
+    float16ValuesByName: new Map([["f16", 1.25]]),
+    maybeFloat16ValuesByName: new Map([["maybe-f16", 1.5]]),
+    bfloat16ValuesByName: new Map([["bf16", 1.75]]),
+    maybeBfloat16ValuesByName: new Map([["maybe-bf16", 2.25]]),
+    bytesValuesByName: new Map([["bytes", new Uint8Array([8, 9])]]),
+    dateValuesByName: new Map([["date", buildLocalDate(2024, 5, 6)]]),
+    decimalValuesByName: new Map([["decimal", Decimal.from(9901n, 2)]]),
+    messageValuesByName: new Map([["leaf", leaf]]),
+    unionValuesByName: new Map([
+      ["union", { case: ExampleLeafUnionCase.CODE, value: 42 }],
     ]),
-    int32ArrayValuesByName: new Map([["ints", new Int32Array([11, -12])]]),
+    uint8ArrayValuesByName: new Map([["u8", new Uint8Array([201, 202])]]),
+    float32ArrayValuesByName: new Map([
+      ["f32", new Float32Array([1.25, 2.5])],
+    ]),
+    int32ArrayValuesByName: new Map([["i32", new Int32Array([101, 202])]]),
   };
 }
 
@@ -526,7 +516,7 @@ function buildOptionalHolder(): OptionalHolder {
     bytesValue: new Uint8Array([1, 2, 3]),
     dateValue: buildLocalDate(2024, 1, 2),
     timestampValue: new Date("2024-01-02T03:04:05Z"),
-    int32List: asGeneratedNumberArray(new Int32Array([1, 2, 3])),
+    int32List: [1, 2, 3],
     stringList: ["alpha", "beta"],
     int64Map: new Map([
       ["alpha", 10n],

@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
 from fory_compiler.ir.ast import (
+    ArrayType,
     Enum,
     Field,
     FieldType,
@@ -529,6 +530,17 @@ class CSharpGenerator(BaseGenerator):
                 return f"{list_type}?"
             return list_type
 
+        if isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                nullable=False,
+                parent_stack=parent_stack,
+            )
+            array_type = f"{element_type}[]"
+            if nullable:
+                return f"{array_type}?"
+            return array_type
+
         if isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -556,6 +568,14 @@ class CSharpGenerator(BaseGenerator):
         field_type = field.field_type
         if isinstance(field_type, ListType) or isinstance(field_type, MapType):
             return " = new();"
+
+        if isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                nullable=False,
+                parent_stack=parent_stack,
+            )
+            return f" = Array.Empty<{element_type}>();"
 
         if isinstance(field_type, PrimitiveType):
             if field_type.kind == PrimitiveKind.STRING:
@@ -586,6 +606,12 @@ class CSharpGenerator(BaseGenerator):
                 return None
             return f"S.List<{element_hint}>"
 
+        if isinstance(field_type, ArrayType):
+            element_hint = self._schema_type_hint(field_type.element_type, force=True)
+            if element_hint is None:
+                return None
+            return f"S.Array<{element_hint}>"
+
         if isinstance(field_type, MapType):
             key_hint = self._schema_type_hint(field_type.key_type, force=True)
             value_hint = self._schema_type_hint(field_type.value_type, force=True)
@@ -608,18 +634,18 @@ class CSharpGenerator(BaseGenerator):
             PrimitiveKind.BOOL: "S.Bool",
             PrimitiveKind.INT8: "S.Int8",
             PrimitiveKind.INT16: "S.Int16",
-            PrimitiveKind.INT32: "S.Int32",
-            PrimitiveKind.VARINT32: "S.VarInt32",
-            PrimitiveKind.INT64: "S.Int64",
-            PrimitiveKind.VARINT64: "S.VarInt64",
-            PrimitiveKind.TAGGED_INT64: "S.TaggedInt64",
+            PrimitiveKind.INT32: "S.Fixed<S.Int32>",
+            PrimitiveKind.VARINT32: "S.Int32",
+            PrimitiveKind.INT64: "S.Fixed<S.Int64>",
+            PrimitiveKind.VARINT64: "S.Int64",
+            PrimitiveKind.TAGGED_INT64: "S.Tagged<S.Int64>",
             PrimitiveKind.UINT8: "S.UInt8",
             PrimitiveKind.UINT16: "S.UInt16",
-            PrimitiveKind.UINT32: "S.UInt32",
-            PrimitiveKind.VAR_UINT32: "S.VarUInt32",
-            PrimitiveKind.UINT64: "S.UInt64",
-            PrimitiveKind.VAR_UINT64: "S.VarUInt64",
-            PrimitiveKind.TAGGED_UINT64: "S.TaggedUInt64",
+            PrimitiveKind.UINT32: "S.Fixed<S.UInt32>",
+            PrimitiveKind.VAR_UINT32: "S.UInt32",
+            PrimitiveKind.UINT64: "S.Fixed<S.UInt64>",
+            PrimitiveKind.VAR_UINT64: "S.UInt64",
+            PrimitiveKind.TAGGED_UINT64: "S.Tagged<S.UInt64>",
             PrimitiveKind.FLOAT16: "S.Float16",
             PrimitiveKind.BFLOAT16: "S.BFloat16",
             PrimitiveKind.FLOAT32: "S.Float32",

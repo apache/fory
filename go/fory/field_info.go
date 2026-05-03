@@ -152,6 +152,14 @@ func (g *FieldGroup) DebugPrint(typeName string) {
 func GroupFields(fields []FieldInfo) FieldGroup {
 	var g FieldGroup
 
+	if allFieldsHaveSortID(fields) {
+		g.RemainingFields = append(g.RemainingFields, fields...)
+		sort.SliceStable(g.RemainingFields, func(i, j int) bool {
+			return getFieldSortID(&g.RemainingFields[i]) < getFieldSortID(&g.RemainingFields[j])
+		})
+		return g
+	}
+
 	// Categorize fields
 	for i := range fields {
 		field := &fields[i]
@@ -247,6 +255,30 @@ func GroupFields(fields []FieldInfo) FieldGroup {
 	})
 
 	return g
+}
+
+func allFieldsHaveSortID(fields []FieldInfo) bool {
+	if len(fields) == 0 {
+		return false
+	}
+	for i := range fields {
+		if getFieldSortID(&fields[i]) < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func getFieldSortID(field *FieldInfo) int {
+	if field.Meta != nil {
+		if field.Meta.Spec != nil && field.Meta.Spec.TagID >= 0 {
+			return field.Meta.Spec.TagID
+		}
+		if field.Meta.FieldDef.tagID >= 0 {
+			return field.Meta.FieldDef.tagID
+		}
+	}
+	return -1
 }
 
 // fieldHasNonPrimitiveSerializer returns true if the field has a serializer with a non-primitive type ID.
@@ -545,7 +577,7 @@ type FieldFingerprintInfo struct {
 //
 //	Each field contributes:
 //	"<field_id_or_name>,<type_id>,<ref>,<nullable>[<nested_type_fingerprint>];"
-//	Fields are sorted by field_id_or_name (lexicographically as strings)
+//	Fields are sorted by numeric tag ID when tags are present, otherwise by field name.
 //
 // Field Components:
 //   - field_id_or_name: Tag ID as string if configured (e.g., "0", "1"), otherwise snake_case field name
@@ -561,23 +593,34 @@ type FieldFingerprintInfo struct {
 // Different nullable/ref settings will produce different fingerprints,
 // ensuring schema compatibility is properly validated.
 func ComputeStructFingerprint(fields []FieldFingerprintInfo) string {
-	// Sort fields by their identifier (field ID or name)
+	// Sort fields by their identifier (field ID or name).
 	type fieldWithKey struct {
-		field   FieldFingerprintInfo
-		sortKey string
+		field      FieldFingerprintInfo
+		sortKey    string
+		fieldID    int
+		hasFieldID bool
 	}
 	fieldsWithKeys := make([]fieldWithKey, 0, len(fields))
 	for _, field := range fields {
 		var sortKey string
+		hasFieldID := field.FieldID >= 0
 		if field.FieldID >= 0 {
 			sortKey = fmt.Sprintf("%d", field.FieldID)
 		} else {
 			sortKey = field.FieldName
 		}
-		fieldsWithKeys = append(fieldsWithKeys, fieldWithKey{field: field, sortKey: sortKey})
+		fieldsWithKeys = append(fieldsWithKeys, fieldWithKey{
+			field:      field,
+			sortKey:    sortKey,
+			fieldID:    field.FieldID,
+			hasFieldID: hasFieldID,
+		})
 	}
 
 	sort.Slice(fieldsWithKeys, func(i, j int) bool {
+		if fieldsWithKeys[i].hasFieldID && fieldsWithKeys[j].hasFieldID {
+			return fieldsWithKeys[i].fieldID < fieldsWithKeys[j].fieldID
+		}
 		return fieldsWithKeys[i].sortKey < fieldsWithKeys[j].sortKey
 	})
 

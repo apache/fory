@@ -159,8 +159,8 @@ print(f"Timestamp: {msg.timestamp}")
 | C++ Type                        | Java Type      | Python Type     | Go Type               | Rust Type       |
 | ------------------------------- | -------------- | --------------- | --------------------- | --------------- |
 | `std::vector<T>`                | `List<T>`      | `list`          | `[]T`                 | `Vec<T>`        |
-| `std::vector<fory::float16_t>`  | `Float16List`  | `float16array`  | `[]float16.Float16`   | `Vec<Float16>`  |
-| `std::vector<fory::bfloat16_t>` | `BFloat16List` | `bfloat16array` | `[]bfloat16.BFloat16` | `Vec<BFloat16>` |
+| `std::vector<fory::float16_t>`  | `Float16List`  | `Float16Array`  | `[]float16.Float16`   | `Vec<Float16>`  |
+| `std::vector<fory::bfloat16_t>` | `BFloat16List` | `BFloat16Array` | `[]bfloat16.BFloat16` | `Vec<BFloat16>` |
 | `std::set<T>`                   | `Set<T>`       | `set`           | `map[T]struct{}`      | `HashSet<T>`    |
 | `std::map<K,V>`                 | `Map<K,V>`     | `dict`          | `map[K]V`             | `HashMap<K,V>`  |
 

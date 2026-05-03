@@ -854,8 +854,9 @@ list<ref Node> nodes = 4;        // Elements tracked as references
 ```
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER ';'
 modifiers    := { 'optional' | 'ref' }
-field_type   := primitive_type | named_type | list_type | map_type
-list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
+field_type   := primitive_type | named_type | list_type | array_type | map_type
+list_type    := 'list' '<' { 'optional' | 'ref' | scalar_encoding } field_type '>'
+array_type   := 'array' '<' array_element_type '>'
 ```
 
 Modifiers apply to the field/collection. Use `list<...>` to describe element
@@ -1002,38 +1003,34 @@ message Example {
 ## Type System
 
 Fory IDL provides a cross-language type system for primitives, named types, and
-collections. Field modifiers (`optional`, `list`, `ref`) control nullability,
-collection behavior, and reference tracking (see
-[Field Modifiers](#field-modifiers)).
+collections. Field modifiers (`optional`, `ref`) control nullability and
+reference tracking, while `list<T>` and `array<T>` choose collection schema kind
+(see [Field Modifiers](#field-modifiers)).
 
 ### Primitive Types
 
-| Type            | Description                               | Size     |
-| --------------- | ----------------------------------------- | -------- |
-| `bool`          | Boolean value                             | 1 byte   |
-| `int8`          | Signed 8-bit integer                      | 1 byte   |
-| `int16`         | Signed 16-bit integer                     | 2 bytes  |
-| `int32`         | Signed 32-bit integer (varint encoding)   | 4 bytes  |
-| `int64`         | Signed 64-bit integer (varint encoding)   | 8 bytes  |
-| `uint8`         | Unsigned 8-bit integer                    | 1 byte   |
-| `uint16`        | Unsigned 16-bit integer                   | 2 bytes  |
-| `uint32`        | Unsigned 32-bit integer (varint encoding) | 4 bytes  |
-| `uint64`        | Unsigned 64-bit integer (varint encoding) | 8 bytes  |
-| `fixed_int32`   | Signed 32-bit integer (fixed encoding)    | 4 bytes  |
-| `fixed_int64`   | Signed 64-bit integer (fixed encoding)    | 8 bytes  |
-| `fixed_uint32`  | Unsigned 32-bit integer (fixed encoding)  | 4 bytes  |
-| `fixed_uint64`  | Unsigned 64-bit integer (fixed encoding)  | 8 bytes  |
-| `tagged_int64`  | Signed 64-bit integer (tagged encoding)   | 8 bytes  |
-| `tagged_uint64` | Unsigned 64-bit integer (tagged encoding) | 8 bytes  |
-| `float32`       | 32-bit floating point                     | 4 bytes  |
-| `float64`       | 64-bit floating point                     | 8 bytes  |
-| `string`        | UTF-8 string                              | Variable |
-| `bytes`         | Binary data                               | Variable |
-| `date`          | Calendar date                             | Variable |
-| `timestamp`     | Date and time with timezone               | Variable |
-| `duration`      | Duration                                  | Variable |
-| `decimal`       | Decimal value                             | Variable |
-| `any`           | Dynamic value (runtime type)              | Variable |
+| Type        | Description                                    | Size     |
+| ----------- | ---------------------------------------------- | -------- |
+| `bool`      | Boolean value                                  | 1 byte   |
+| `int8`      | Signed 8-bit integer                           | 1 byte   |
+| `int16`     | Signed 16-bit integer                          | 2 bytes  |
+| `int32`     | Signed 32-bit integer, varint by default       | 4 bytes  |
+| `int64`     | Signed 64-bit integer, PVL varint by default   | 8 bytes  |
+| `uint8`     | Unsigned 8-bit integer                         | 1 byte   |
+| `uint16`    | Unsigned 16-bit integer                        | 2 bytes  |
+| `uint32`    | Unsigned 32-bit integer, varint by default     | 4 bytes  |
+| `uint64`    | Unsigned 64-bit integer, PVL varint by default | 8 bytes  |
+| `float16`   | IEEE 754 binary16 floating point               | 2 bytes  |
+| `bfloat16`  | Brain floating point                           | 2 bytes  |
+| `float32`   | 32-bit floating point                          | 4 bytes  |
+| `float64`   | 64-bit floating point                          | 8 bytes  |
+| `string`    | UTF-8 string                                   | Variable |
+| `bytes`     | Binary data                                    | Variable |
+| `date`      | Calendar date                                  | Variable |
+| `timestamp` | Date and time with timezone                    | Variable |
+| `duration`  | Duration                                       | Variable |
+| `decimal`   | Decimal value                                  | Variable |
+| `any`       | Dynamic value (runtime type)                   | Variable |
 
 #### Boolean
 
@@ -1085,19 +1082,28 @@ Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit b
 | `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` | `number`           | `int`    |
 | `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` | `bigint \| number` | `Uint64` |
 
-#### Integer Encoding Variants
+#### Integer Encoding Modifiers
 
-For 32/64-bit integers, Fory IDL uses varint encoding by default. Use explicit types when
-you need fixed-width or tagged encoding:
+For 32/64-bit integers, Fory IDL uses varint/PVL encoding by default. Add a
+scalar encoding modifier when you need a different wire encoding:
 
-| Fory IDL Type   | Encoding | Notes                    |
-| --------------- | -------- | ------------------------ |
-| `fixed_int32`   | fixed    | Signed 32-bit            |
-| `fixed_int64`   | fixed    | Signed 64-bit            |
-| `fixed_uint32`  | fixed    | Unsigned 32-bit          |
-| `fixed_uint64`  | fixed    | Unsigned 64-bit          |
-| `tagged_int64`  | tagged   | Signed 64-bit (hybrid)   |
-| `tagged_uint64` | tagged   | Unsigned 64-bit (hybrid) |
+| Modifier | Valid types                          | Notes                         |
+| -------- | ------------------------------------ | ----------------------------- |
+| `varint` | `int32`, `int64`, `uint32`, `uint64` | Explicit spelling of default  |
+| `fixed`  | `int32`, `int64`, `uint32`, `uint64` | Fixed-width little-endian     |
+| `tagged` | `int64`, `uint64`                    | Hybrid tagged 64-bit encoding |
+
+Modifiers are part of the scalar type expression, so they can be used in nested
+list and map positions:
+
+```protobuf
+fixed int32 id = 1;
+list<fixed int32> offsets = 2;
+map<string, tagged uint64> counters = 3;
+```
+
+`fixed_int32`, `varint32`, `fixed_int64`, `tagged_int64`, and the matching
+unsigned names are not FDL 1.0 type names.
 
 #### Floating-Point Types
 
@@ -1108,10 +1114,12 @@ you need fixed-width or tagged encoding:
 
 **Language Mapping:**
 
-| Fory IDL  | Java     | Python           | Go        | Rust  | C++      | JavaScript | Dart      |
-| --------- | -------- | ---------------- | --------- | ----- | -------- | ---------- | --------- |
-| `float32` | `float`  | `pyfory.float32` | `float32` | `f32` | `float`  | `number`   | `Float32` |
-| `float64` | `double` | `pyfory.float64` | `float64` | `f64` | `double` | `number`   | `double`  |
+| Fory IDL   | Java       | Python annotation/value     | Go                  | Rust       | C++                | JavaScript | Dart       |
+| ---------- | ---------- | --------------------------- | ------------------- | ---------- | ------------------ | ---------- | ---------- |
+| `float16`  | `Float16`  | `pyfory.float16` / `float`  | `float16.Float16`   | `Float16`  | `fory::float16_t`  | `number`   | `Float16`  |
+| `bfloat16` | `BFloat16` | `pyfory.bfloat16` / `float` | `bfloat16.BFloat16` | `BFloat16` | `fory::bfloat16_t` | `BFloat16` | `BFloat16` |
+| `float32`  | `float`    | `pyfory.float32`            | `float32`           | `f32`      | `float`            | `number`   | `Float32`  |
+| `float64`  | `double`   | `pyfory.float64`            | `float64`           | `f64`      | `double`           | `number`   | `double`   |
 
 #### String Type
 
@@ -1242,6 +1250,24 @@ nested collection specs such as `list<list<...>>`, `list<map<...>>`, and
 `map<..., list<...>>`; targets that have not implemented nested field specs
 continue to reject them. Use a message wrapper when you need portable schemas
 across all targets.
+
+#### Array (`array`)
+
+Use `array<T>` for dynamic-length dense numeric data. `array<T>` is a distinct
+schema kind from `list<T>` and uses the packed primitive-array wire payload.
+
+```protobuf
+message Embedding {
+    array<int32> indices = 1;
+    array<float32> values = 2;
+    array<uint8> pixels = 3;
+}
+```
+
+`array<T>` accepts `bool`, integer, and floating-point element domains only. It
+does not accept `optional`, `ref`, named/object types, `string`, `bytes`, maps,
+or scalar integer encoding modifiers such as `array<fixed int32>`; array
+elements are always fixed-width by the array contract.
 
 #### Map
 
@@ -1469,19 +1495,19 @@ reserved_item := INTEGER | INTEGER 'to' INTEGER | INTEGER 'to' 'max' | STRING
 
 modifiers    := { 'optional' | 'ref' | 'repeated' }
 
-field_type   := primitive_type | named_type | list_type | map_type
+field_type   := [scalar_encoding] (primitive_type | named_type | list_type | array_type | map_type)
 primitive_type := 'bool'
                | 'int8' | 'int16' | 'int32' | 'int64'
                | 'uint8' | 'uint16' | 'uint32' | 'uint64'
-               | 'fixed_int32' | 'fixed_int64' | 'fixed_uint32' | 'fixed_uint64'
-               | 'tagged_int64' | 'tagged_uint64'
-               | 'float32' | 'float64'
+               | 'float16' | 'bfloat16' | 'float32' | 'float64'
                | 'string' | 'bytes'
                | 'date' | 'timestamp' | 'duration' | 'decimal'
                | 'any'
+scalar_encoding := 'varint' | 'fixed' | 'tagged'
 named_type   := qualified_name
 qualified_name := IDENTIFIER ('.' IDENTIFIER)*   // e.g., Parent.Child
-list_type    := 'list' '<' { 'optional' | 'ref' } field_type '>'
+list_type    := 'list' '<' { 'optional' | 'ref' | scalar_encoding } field_type '>'
+array_type   := 'array' '<' array_element_type '>'
 map_type     := 'map' '<' field_type ',' field_type '>'
 
 type_options := '[' type_option (',' type_option)* ']'

@@ -61,10 +61,10 @@ console.log(user);
 | `string`         | `Type.string()`                                                   |                                           |
 | `Uint8Array`     | `Type.binary()`                                                   | Binary blob                               |
 | `Date`           | `Type.timestamp()` / `Type.date()`                                |                                           |
-| `Array`          | `Type.array(Type.T())`                                            |                                           |
+| `Array`          | `Type.list(Type.T())`                                             | Ordered collection                        |
 | `Map`            | `Type.map(Type.K(), Type.V())`                                    |                                           |
 | `Set`            | `Type.set(Type.T())`                                              |                                           |
-| Typed arrays     | `Type.int32Array()` / `float64Array()` / ...                      | Maps to native typed arrays               |
+| Typed arrays     | `Type.array(Type.int32())` / `Type.array(Type.float64())` / ...   | Dense numeric or bool arrays              |
 
 ## Define Schemas
 
@@ -102,7 +102,8 @@ const personType = Type.struct("example.person", {
 
 ```ts
 const inventoryType = Type.struct("example.inventory", {
-  tags: Type.array(Type.string()),
+  tags: Type.list(Type.string()),
+  sampleIds: Type.array(Type.int32()),
   counts: Type.map(Type.string(), Type.int32()),
   labels: Type.set(Type.string()),
 });

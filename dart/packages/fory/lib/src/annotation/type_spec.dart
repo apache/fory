@@ -62,10 +62,10 @@ final class Int16Type extends ScalarTypeSpec {
 }
 
 final class Int32Type extends ScalarTypeSpec {
-  final Encoding encoding;
+  final Encoding? encoding;
 
   const Int32Type({
-    this.encoding = Encoding.varint,
+    this.encoding,
     super.nullable,
     super.ref,
     super.dynamic,
@@ -73,10 +73,10 @@ final class Int32Type extends ScalarTypeSpec {
 }
 
 final class Int64Type extends ScalarTypeSpec {
-  final Encoding encoding;
+  final Encoding? encoding;
 
   const Int64Type({
-    this.encoding = Encoding.varint,
+    this.encoding,
     super.nullable,
     super.ref,
     super.dynamic,
@@ -92,10 +92,10 @@ final class Uint16Type extends ScalarTypeSpec {
 }
 
 final class Uint32Type extends ScalarTypeSpec {
-  final Encoding encoding;
+  final Encoding? encoding;
 
   const Uint32Type({
-    this.encoding = Encoding.varint,
+    this.encoding,
     super.nullable,
     super.ref,
     super.dynamic,
@@ -103,10 +103,10 @@ final class Uint32Type extends ScalarTypeSpec {
 }
 
 final class Uint64Type extends ScalarTypeSpec {
-  final Encoding encoding;
+  final Encoding? encoding;
 
   const Uint64Type({
-    this.encoding = Encoding.varint,
+    this.encoding,
     super.nullable,
     super.ref,
     super.dynamic,
@@ -158,6 +158,17 @@ final class ListType extends TypeSpec {
 
   const ListType({
     this.element,
+    super.nullable,
+    super.ref,
+    super.dynamic,
+  });
+}
+
+final class ArrayType extends TypeSpec {
+  final TypeSpec element;
+
+  const ArrayType({
+    required this.element,
     super.nullable,
     super.ref,
     super.dynamic,

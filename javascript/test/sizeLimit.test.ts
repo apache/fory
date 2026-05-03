@@ -138,7 +138,7 @@ describe('size-limit guardrails', () => {
   describe('list deserialization with maxCollectionSize', () => {
     test('should deserialize list within limit', () => {
       const fory = new Fory({ maxCollectionSize: 10 });
-      const { serialize, deserialize } = fory.register(Type.array(Type.int32()));
+      const { serialize, deserialize } = fory.register(Type.list(Type.int32()));
       const data = [1, 2, 3];
       const result = deserialize(serialize(data));
       expect(result).toEqual(data);
@@ -146,17 +146,17 @@ describe('size-limit guardrails', () => {
 
     test('should throw when list exceeds maxCollectionSize', () => {
       const serializeFory = new Fory();
-      const { serialize } = serializeFory.register(Type.array(Type.int32()));
+      const { serialize } = serializeFory.register(Type.list(Type.int32()));
       const bytes = serialize([1, 2, 3, 4, 5]);
 
       const deserializeFory = new Fory({ maxCollectionSize: 3 });
-      const { deserialize } = deserializeFory.register(Type.array(Type.int32()));
+      const { deserialize } = deserializeFory.register(Type.list(Type.int32()));
       expect(() => deserialize(bytes)).toThrow('exceeds maxCollectionSize');
     });
 
     test('should deserialize list at exact limit', () => {
       const fory = new Fory({ maxCollectionSize: 3 });
-      const { serialize, deserialize } = fory.register(Type.array(Type.int32()));
+      const { serialize, deserialize } = fory.register(Type.list(Type.int32()));
       const data = [1, 2, 3];
       const result = deserialize(serialize(data));
       expect(result).toEqual(data);
@@ -240,7 +240,7 @@ describe('size-limit guardrails', () => {
   describe('default limits allow normal payloads', () => {
     test('should allow large collections within default limit', () => {
       const fory = new Fory({ ref: true });
-      const { serialize, deserialize } = fory.register(Type.array(Type.int32()));
+      const { serialize, deserialize } = fory.register(Type.list(Type.int32()));
       const bigArray = Array.from({ length: 1000 }, (_, i) => i);
       const result = deserialize(serialize(bigArray));
       expect(result).toEqual(bigArray);

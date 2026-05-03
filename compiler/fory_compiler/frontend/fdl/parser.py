@@ -34,10 +34,11 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     SourceLocation,
 )
-from fory_compiler.ir.types import PRIMITIVE_TYPES
+from fory_compiler.ir.types import PRIMITIVE_TYPES, PrimitiveKind
 from fory_compiler.frontend.fdl.lexer import Lexer, Token, TokenType
 
 # Known file-level options
@@ -1023,18 +1024,32 @@ class Parser:
         return options
 
     def parse_type(self) -> FieldType:
-        """Parse a type: int32, string, list<T>, map<K, V>, Parent.Child, or a named type."""
+        """Parse a type: int32, fixed int32, list<T>, array<T>, map<K, V>, or named type."""
         if self.check(TokenType.MAP):
             return self.parse_map_type()
         if self.check(TokenType.LIST):
             return self.parse_list_type()
+        if self.check(TokenType.ARRAY):
+            return self.parse_array_type()
 
         if not self.check(TokenType.IDENT):
             raise self.error(f"Expected type name, got {self.current().type.name}")
 
+        encoding_modifier = None
+        if self.current().value in ("fixed", "varint", "tagged"):
+            encoding_modifier = self.advance().value
+            if not self.check(TokenType.IDENT):
+                raise self.error(f"Expected integer type after '{encoding_modifier}'")
+
         type_token = self.consume(TokenType.IDENT)
         type_name = type_token.value
         type_location = self.make_location(type_token)
+
+        if encoding_modifier is not None:
+            kind = self.resolve_integer_encoding(type_name, encoding_modifier)
+            return PrimitiveType(
+                kind, encoding_modifier=encoding_modifier, location=type_location
+            )
 
         # Check if it's a primitive type
         if type_name in PRIMITIVE_TYPES:
@@ -1049,6 +1064,27 @@ class Parser:
 
         # It's a named type (reference to message or enum)
         return NamedType(type_name, location=type_location)
+
+    def resolve_integer_encoding(self, type_name: str, modifier: str) -> PrimitiveKind:
+        """Resolve keyword scalar encoding modifiers to internal primitive kinds."""
+        table = {
+            ("fixed", "int32"): PrimitiveKind.INT32,
+            ("fixed", "int64"): PrimitiveKind.INT64,
+            ("fixed", "uint32"): PrimitiveKind.UINT32,
+            ("fixed", "uint64"): PrimitiveKind.UINT64,
+            ("varint", "int32"): PrimitiveKind.VARINT32,
+            ("varint", "int64"): PrimitiveKind.VARINT64,
+            ("varint", "uint32"): PrimitiveKind.VAR_UINT32,
+            ("varint", "uint64"): PrimitiveKind.VAR_UINT64,
+            ("tagged", "int64"): PrimitiveKind.TAGGED_INT64,
+            ("tagged", "uint64"): PrimitiveKind.TAGGED_UINT64,
+        }
+        kind = table.get((modifier, type_name))
+        if kind is None:
+            raise self.error(
+                f"'{modifier}' encoding is only valid for int32/int64/uint32/uint64 scalar types"
+            )
+        return kind
 
     def parse_list_type(self) -> ListType:
         """Parse a list type: list<ElementType>."""
@@ -1078,6 +1114,19 @@ class Parser:
             element_ref_options=element_ref_options,
             location=self.make_location(start),
         )
+
+    def parse_array_type(self) -> ArrayType:
+        """Parse an array type: array<ElementType>."""
+        start = self.consume(TokenType.ARRAY)
+        self.consume(TokenType.LANGLE, "Expected '<' after 'array'")
+
+        if self.check(TokenType.OPTIONAL) or self.check(TokenType.REF):
+            raise self.error("array elements do not support optional/ref modifiers")
+
+        element_type = self.parse_type()
+        self.consume(TokenType.RANGLE, "Expected '>' after array element type")
+
+        return ArrayType(element_type, location=self.make_location(start))
 
     def parse_map_type(self) -> MapType:
         """Parse a map type: map<KeyType, ValueType>"""

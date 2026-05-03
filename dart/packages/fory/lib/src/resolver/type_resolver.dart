@@ -376,9 +376,6 @@ final class TypeResolver {
     if (value is Float64List) {
       return _builtin(Float64List, TypeIds.float64Array);
     }
-    if (value is List<bool>) {
-      return _builtin(List<bool>, TypeIds.boolArray);
-    }
     if (value is List) {
       return _builtin(List, TypeIds.list);
     }

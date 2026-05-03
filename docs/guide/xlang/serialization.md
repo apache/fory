@@ -30,7 +30,7 @@ Reduced-precision floating-point values are also part of the built-in xlang type
 - `float16` and `float16_array`
 - `bfloat16` and `bfloat16_array`
 
-Use the language-specific carrier types documented in the type mapping reference. Python exposes the Cython-only `float16`, `float16array`, `bfloat16`, and `bfloat16array` names from `pyfory.serialization`; the Python array carriers are constructed from Python numeric values, while `from_buffer(...)` is reserved for packed raw storage. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `Float16List` / `BFloat16List` for xlang `*_array` payloads, while `Float16[]` / `BFloat16[]` stay on the general `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
+Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.float16` and `pyfory.bfloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `Float16List` / `BFloat16List` for xlang `*_array` payloads, while `Float16[]` / `BFloat16[]` stay on the general `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
 
 ### Java
 

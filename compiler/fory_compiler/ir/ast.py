@@ -38,9 +38,12 @@ class PrimitiveType:
     """A primitive type like int32, string, etc."""
 
     kind: PrimitiveKind
+    encoding_modifier: Optional[str] = None
     location: Optional[SourceLocation] = None
 
     def __repr__(self) -> str:
+        if self.encoding_modifier:
+            return f"PrimitiveType({self.encoding_modifier} {self.kind.value})"
         return f"PrimitiveType({self.kind.value})"
 
 
@@ -77,6 +80,17 @@ class ListType:
 
 
 @dataclass
+class ArrayType:
+    """A dense numeric array type."""
+
+    element_type: "FieldType"
+    location: Optional[SourceLocation] = None
+
+    def __repr__(self) -> str:
+        return f"ArrayType({self.element_type})"
+
+
+@dataclass
 class MapType:
     """A map type with key and value types."""
 
@@ -99,7 +113,7 @@ class MapType:
 
 
 # Union of all field types
-FieldType = TypingUnion[PrimitiveType, NamedType, ListType, MapType]
+FieldType = TypingUnion[PrimitiveType, NamedType, ListType, ArrayType, MapType]
 
 
 @dataclass

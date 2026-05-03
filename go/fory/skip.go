@@ -641,6 +641,9 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 	case TIMESTAMP:
 		_ = ctx.buffer.ReadInt64(err)
 		_ = ctx.buffer.ReadUint32(err)
+	case DURATION:
+		_ = ctx.buffer.ReadVarint64(err)
+		_ = ctx.buffer.ReadInt32(err)
 
 	// Container types
 	case LIST, SET:

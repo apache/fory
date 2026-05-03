@@ -73,7 +73,7 @@ func TestParseFieldSpecNestedTypeHints(t *testing.T) {
 		Values []*int32            `fory:"id=1,type=list(element=int32(encoding=fixed))"`
 		Data   map[int32]*int32    `fory:"id=2,type=map(value=int32(encoding=fixed))"`
 		Nested map[string][]*int32 `fory:"id=3,type=map(value=list(element=int32(encoding=fixed)))"`
-		Packed map[string][]int32  `fory:"id=4,type=map(value=_(element=int32(encoding=fixed)))"`
+		Packed map[string][]int32  `fory:"id=4,type=map(value=array(element=int32))"`
 		Ptrs   []*int32            `fory:"id=5"`
 	}
 
@@ -115,26 +115,30 @@ func TestParseFieldSpecNestedTypeHints(t *testing.T) {
 
 func TestFieldSpecSerializerSelection(t *testing.T) {
 	type Example struct {
-		Packed      []int32  `fory:"id=0"`
-		PackedFixed []int32  `fory:"id=1,type=_(element=int32(encoding=fixed))"`
+		DefaultList []int32  `fory:"id=0"`
+		Dense       []int32  `fory:"id=1,type=array(element=int32)"`
 		Explicit    []int32  `fory:"id=2,type=list(element=int32(encoding=fixed))"`
 		Ptrs        []*int32 `fory:"id=3"`
-		U8Packed    []uint8  `fory:"id=4"`
-		Bytes       []byte   `fory:"id=5,type=bytes"`
+		U8List      []uint8  `fory:"id=4"`
+		U8Dense     []uint8  `fory:"id=5,type=array(element=uint8)"`
+		Bytes       []byte   `fory:"id=6,type=bytes"`
 	}
 
 	f := New(WithXlang(true))
 	typ := reflect.TypeOf(Example{})
 
-	packedSpec := mustParseFieldSpec(t, typ.Field(0))
-	packedSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(0).Type, packedSpec.Type)
+	defaultListSpec := mustParseFieldSpec(t, typ.Field(0))
+	defaultListSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(0).Type, defaultListSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, int32SliceSerializer{}, packedSerializer)
+	require.IsType(t, &sliceSerializer{}, defaultListSerializer)
+	require.EqualValues(t, LIST, defaultListSpec.Type.TypeId())
+	require.EqualValues(t, VARINT32, defaultListSpec.Type.Element.TypeId())
 
-	packedFixedSpec := mustParseFieldSpec(t, typ.Field(1))
-	packedFixedSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(1).Type, packedFixedSpec.Type)
+	denseSpec := mustParseFieldSpec(t, typ.Field(1))
+	denseSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(1).Type, denseSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, int32SliceSerializer{}, packedFixedSerializer)
+	require.IsType(t, int32SliceSerializer{}, denseSerializer)
+	require.EqualValues(t, INT32_ARRAY, denseSpec.Type.TypeId())
 
 	explicitSpec := mustParseFieldSpec(t, typ.Field(2))
 	explicitSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(2).Type, explicitSpec.Type)
@@ -148,17 +152,59 @@ func TestFieldSpecSerializerSelection(t *testing.T) {
 	require.IsType(t, &sliceSerializer{}, ptrsSerializer)
 	require.EqualValues(t, LIST, ptrsSpec.Type.TypeId())
 
-	u8PackedSpec := mustParseFieldSpec(t, typ.Field(4))
-	u8PackedSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(4).Type, u8PackedSpec.Type)
+	u8ListSpec := mustParseFieldSpec(t, typ.Field(4))
+	u8ListSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(4).Type, u8ListSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, encodedByteSliceSerializer{}, u8PackedSerializer)
-	require.EqualValues(t, UINT8_ARRAY, u8PackedSpec.Type.TypeId())
+	require.IsType(t, &sliceSerializer{}, u8ListSerializer)
+	require.EqualValues(t, LIST, u8ListSpec.Type.TypeId())
+	require.EqualValues(t, UINT8, u8ListSpec.Type.Element.TypeId())
 
-	bytesSpec := mustParseFieldSpec(t, typ.Field(5))
-	bytesSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(5).Type, bytesSpec.Type)
+	u8DenseSpec := mustParseFieldSpec(t, typ.Field(5))
+	u8DenseSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(5).Type, u8DenseSpec.Type)
+	require.NoError(t, err)
+	require.IsType(t, encodedByteSliceSerializer{}, u8DenseSerializer)
+	require.EqualValues(t, UINT8_ARRAY, u8DenseSpec.Type.TypeId())
+
+	bytesSpec := mustParseFieldSpec(t, typ.Field(6))
+	bytesSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(6).Type, bytesSpec.Type)
 	require.NoError(t, err)
 	require.IsType(t, encodedByteSliceSerializer{}, bytesSerializer)
 	require.EqualValues(t, BINARY, bytesSpec.Type.TypeId())
+}
+
+func TestGroupFieldsUsesFlatOrderForFullyTaggedStructs(t *testing.T) {
+	fields := []FieldInfo{
+		{
+			DispatchId: PrimitiveInt64DispatchId,
+			Meta: &FieldMeta{
+				Name: "long_value",
+				Spec: &FieldSpec{TagID: 3},
+			},
+		},
+		{
+			DispatchId: PrimitiveBoolDispatchId,
+			Meta: &FieldMeta{
+				Name: "bool_value",
+				Spec: &FieldSpec{TagID: 1},
+			},
+		},
+		{
+			DispatchId: StringDispatchId,
+			Meta: &FieldMeta{
+				Name: "string_value",
+				Spec: &FieldSpec{TagID: 2},
+			},
+		},
+	}
+
+	group := GroupFields(fields)
+
+	require.Empty(t, group.FixedFields)
+	require.Empty(t, group.VarintFields)
+	require.Len(t, group.RemainingFields, 3)
+	require.Equal(t, "bool_value", group.RemainingFields[0].Meta.Name)
+	require.Equal(t, "string_value", group.RemainingFields[1].Meta.Name)
+	require.Equal(t, "long_value", group.RemainingFields[2].Meta.Name)
 }
 
 func TestParseFieldSpecRejectsInvalidTags(t *testing.T) {
@@ -183,8 +229,17 @@ func TestParseFieldSpecRejectsInvalidTags(t *testing.T) {
 	type Conflict struct {
 		Value int32 `fory:"encoding=fixed,type=int32"`
 	}
-	type InvalidPackedOverride struct {
-		Value []int32 `fory:"type=_(element=int32(encoding=varint))"`
+	type InvalidArrayEncoding struct {
+		Value []int32 `fory:"type=array(element=int32(encoding=varint))"`
+	}
+	type InvalidArrayElement struct {
+		Value []string `fory:"type=array(element=string)"`
+	}
+	type InvalidArrayKey struct {
+		Value map[[2]int32]string `fory:"type=map(key=array(element=int32))"`
+	}
+	type InvalidArrayNullableElement struct {
+		Value []*int32 `fory:"type=array(element=int32(nullable=true))"`
 	}
 
 	tests := []struct {
@@ -198,7 +253,10 @@ func TestParseFieldSpecRejectsInvalidTags(t *testing.T) {
 		{name: "bad dsl", typ: reflect.TypeOf(BadDSL{})},
 		{name: "impossible override", typ: reflect.TypeOf(ImpossibleOverride{})},
 		{name: "encoding conflict", typ: reflect.TypeOf(Conflict{})},
-		{name: "invalid packed override", typ: reflect.TypeOf(InvalidPackedOverride{})},
+		{name: "invalid array encoding", typ: reflect.TypeOf(InvalidArrayEncoding{})},
+		{name: "invalid array element", typ: reflect.TypeOf(InvalidArrayElement{})},
+		{name: "invalid array key", typ: reflect.TypeOf(InvalidArrayKey{})},
+		{name: "invalid array nullable element", typ: reflect.TypeOf(InvalidArrayNullableElement{})},
 	}
 
 	for _, tc := range tests {

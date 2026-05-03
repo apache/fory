@@ -103,6 +103,19 @@ struct NamespaceConfigStruct {
 FORY_STRUCT(NamespaceConfigStruct, (id, fory::F(3).varint()),
             (timestamp, fory::F(4).tagged()));
 
+struct BaseConfigStruct {
+  uint32_t base_id;
+
+  FORY_STRUCT(BaseConfigStruct, (base_id, fory::F(10).varint()));
+};
+
+struct DerivedConfigStruct : BaseConfigStruct {
+  uint64_t derived_id;
+
+  FORY_STRUCT(DerivedConfigStruct, FORY_BASE(BaseConfigStruct),
+              (derived_id, fory::F(11).tagged()));
+};
+
 TEST(FieldConfig, NameModeEntries) {
   static_assert(detail::has_field_config_v<NameModeStruct>);
   static_assert(!detail::GetFieldConfigEntry<NameModeStruct, 0>::has_id);
@@ -136,6 +149,20 @@ TEST(FieldConfig, NamespaceScopeEntries) {
   static_assert(detail::GetFieldConfigEntry<NamespaceConfigStruct, 1>::id == 4);
   static_assert(detail::GetFieldConfigEntry<NamespaceConfigStruct, 1>::spec
                     .encoding_[0] == Encoding::Tagged);
+}
+
+TEST(FieldConfig, BaseEntries) {
+  static_assert(detail::has_field_config_v<DerivedConfigStruct>);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 0>::has_entry);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 0>::has_id);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 0>::id == 10);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 0>::encoding ==
+                Encoding::Varint);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 1>::has_entry);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 1>::has_id);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 1>::id == 11);
+  static_assert(detail::GetFieldConfigEntry<DerivedConfigStruct, 1>::encoding ==
+                Encoding::Tagged);
 }
 
 } // namespace fory::test

@@ -36,6 +36,7 @@ from fory_compiler.ir.ast import (
     EnumValue,
     Field,
     Import,
+    ArrayType,
     ListType,
     Message,
     NamedType,
@@ -65,6 +66,31 @@ class FbsTranslator:
         "double": PrimitiveKind.FLOAT64,
         "bool": PrimitiveKind.BOOL,
         "string": PrimitiveKind.STRING,
+    }
+
+    ARRAY_ELEMENT_KINDS = {
+        PrimitiveKind.BOOL,
+        PrimitiveKind.INT8,
+        PrimitiveKind.INT16,
+        PrimitiveKind.INT32,
+        PrimitiveKind.VARINT32,
+        PrimitiveKind.INT64,
+        PrimitiveKind.VARINT64,
+        PrimitiveKind.UINT8,
+        PrimitiveKind.UINT16,
+        PrimitiveKind.UINT32,
+        PrimitiveKind.VAR_UINT32,
+        PrimitiveKind.UINT64,
+        PrimitiveKind.VAR_UINT64,
+        PrimitiveKind.FLOAT32,
+        PrimitiveKind.FLOAT64,
+    }
+
+    ARRAY_ELEMENT_CANONICAL_KINDS = {
+        PrimitiveKind.VARINT32: PrimitiveKind.INT32,
+        PrimitiveKind.VARINT64: PrimitiveKind.INT64,
+        PrimitiveKind.VAR_UINT32: PrimitiveKind.UINT32,
+        PrimitiveKind.VAR_UINT64: PrimitiveKind.UINT64,
     }
 
     def __init__(self, schema: FbsSchema):
@@ -270,6 +296,20 @@ class FbsTranslator:
     def _translate_type(self, fbs_type: FbsTypeRef):
         if isinstance(fbs_type, FbsVectorType):
             element_type = self._translate_type(fbs_type.element_type)
+            if (
+                isinstance(element_type, PrimitiveType)
+                and element_type.kind in self.ARRAY_ELEMENT_KINDS
+            ):
+                element_kind = self.ARRAY_ELEMENT_CANONICAL_KINDS.get(
+                    element_type.kind, element_type.kind
+                )
+                return ArrayType(
+                    PrimitiveType(
+                        element_kind,
+                        location=self._location(fbs_type.line, fbs_type.column),
+                    ),
+                    location=self._location(fbs_type.line, fbs_type.column),
+                )
             return ListType(
                 element_type, location=self._location(fbs_type.line, fbs_type.column)
             )

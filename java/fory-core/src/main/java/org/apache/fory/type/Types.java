@@ -21,6 +21,7 @@ package org.apache.fory.type;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import org.apache.fory.annotation.ArrayType;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
@@ -382,8 +383,17 @@ public class Types {
   }
 
   public static int getDescriptorTypeId(TypeResolver resolver, Field field) {
+    if (TypeAnnotationUtils.isBoxedListArrayType(field)) {
+      return TypeAnnotationUtils.getBoxedListArrayTypeId(field);
+    }
     Annotation annotation = Descriptor.getAnnotation(field);
     Class<?> rawType = field.getType();
+    if (TypeUtils.isPrimitiveListClass(rawType)) {
+      if (field.isAnnotationPresent(ArrayType.class)) {
+        return TypeAnnotationUtils.getPrimitiveListArrayTypeId(rawType);
+      }
+      return TypeAnnotationUtils.getPrimitiveListTypeId(annotation, rawType);
+    }
     if (annotation != null) {
       int primitiveListTypeId = TypeAnnotationUtils.getPrimitiveListTypeId(annotation, rawType);
       if (primitiveListTypeId != Types.UNKNOWN) {
@@ -400,6 +410,9 @@ public class Types {
   }
 
   public static int getDescriptorTypeId(TypeResolver resolver, Descriptor d) {
+    if (TypeAnnotationUtils.isBoxedListArrayType(d.getField())) {
+      return TypeAnnotationUtils.getBoxedListArrayTypeId(d.getField());
+    }
     TypeRef<?> typeRef = d.getTypeRef();
     TypeExtMeta extMeta = typeRef.getTypeExtMeta();
     if (extMeta != null) {
@@ -407,6 +420,12 @@ public class Types {
     } else {
       Class<?> rawType = typeRef.getRawType();
       Annotation typeAnnotation = d.getTypeAnnotation();
+      if (TypeUtils.isPrimitiveListClass(rawType)) {
+        if (TypeAnnotationUtils.isArrayType(d)) {
+          return TypeAnnotationUtils.getPrimitiveListArrayTypeId(rawType);
+        }
+        return TypeAnnotationUtils.getPrimitiveListTypeId(typeAnnotation, rawType);
+      }
       if (typeAnnotation != null) {
         int primitiveListTypeId =
             TypeAnnotationUtils.getPrimitiveListTypeId(typeAnnotation, rawType);

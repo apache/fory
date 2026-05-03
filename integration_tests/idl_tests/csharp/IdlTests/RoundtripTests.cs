@@ -112,6 +112,32 @@ public sealed class RoundtripTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
+    public void ExampleRoundTrip(bool compatible)
+    {
+        ForyRuntime fory = BuildFory(compatible, false);
+        example.ExampleForyRegistration.Register(fory);
+
+        example.ExampleMessage message = BuildExampleMessage();
+        example.ExampleMessage decoded = fory.Deserialize<example.ExampleMessage>(fory.Serialize(message));
+        AssertExampleMessage(message, decoded);
+
+        example.ExampleMessageUnion unionValue = BuildExampleMessageUnion();
+        example.ExampleMessageUnion unionDecoded =
+            fory.Deserialize<example.ExampleMessageUnion>(fory.Serialize(unionValue));
+        AssertExampleMessageUnion(unionValue, unionDecoded);
+
+        example.ExampleMessageUnion arrayListUnionValue = BuildExampleArrayListUnion();
+        example.ExampleMessageUnion arrayListUnionDecoded =
+            fory.Deserialize<example.ExampleMessageUnion>(fory.Serialize(arrayListUnionValue));
+        AssertExampleMessageUnion(arrayListUnionValue, arrayListUnionDecoded);
+
+        RoundTripFile(fory, "DATA_FILE_EXAMPLE", message, AssertExampleMessage);
+        RoundTripFile(fory, "DATA_FILE_EXAMPLE_UNION", unionValue, AssertExampleMessageUnion);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
     public void OptionalTypesRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
@@ -501,6 +527,92 @@ public sealed class RoundtripTests
         return collection.NumericCollectionArrayUnion.Uint16Values([1000, 2000, 3000]);
     }
 
+    private static example.ExampleMessage BuildExampleMessage()
+    {
+        example.ExampleLeaf leaf = new()
+        {
+            Label = "leaf",
+            Count = 7,
+        };
+
+        return new example.ExampleMessage
+        {
+            BoolValue = true,
+            Int8Value = -8,
+            Int16Value = -1234,
+            FixedInt32Value = 123456,
+            Varint32Value = -456,
+            FixedInt64Value = 123456789,
+            Varint64Value = -987654321,
+            TaggedInt64Value = -222222222,
+            Uint8Value = 200,
+            Uint16Value = 60000,
+            FixedUint32Value = 1234567890,
+            VarUint32Value = 42,
+            FixedUint64Value = 9876543210,
+            VarUint64Value = 12345678901,
+            TaggedUint64Value = 2222222222,
+            Float32Value = 2.5f,
+            Float64Value = 3.5,
+            StringValue = "example",
+            BytesValue = [1, 2, 3],
+            DateValue = new DateOnly(2024, 1, 2),
+            TimestampValue = DateTimeOffset.FromUnixTimeSeconds(1704164645),
+            DurationValue = TimeSpan.FromSeconds(5),
+            EnumValue = example.ExampleState.Ready,
+            MessageValue = leaf,
+            UnionValue = example.ExampleLeafUnion.Leaf(new example.ExampleLeaf
+            {
+                Label = "union-leaf",
+                Count = 8,
+            }),
+            BoolList = [true, false],
+            FixedInt32List = [1, -2, 3],
+            Varint32List = [4, -5],
+            StringList = ["alpha", "beta"],
+            MessageList = [leaf],
+            UnionList = [example.ExampleLeafUnion.Note("list-union")],
+            MaybeFixedInt32List = [null, 9, -10],
+            MaybeUint64List = [null, 11],
+            BoolArray = [true, false, true],
+            Int32Array = [10, -20, 30],
+            Uint8Array = [1, 2, 3],
+            Float32Array = [1.5f, 2.5f],
+            Int32ArrayList = [[1, 2], [-3, 4]],
+            Uint8ArrayList = [[4, 5], [6]],
+            StringValuesByString = new Dictionary<string, string>
+            {
+                ["k1"] = "v1",
+                ["k2"] = "v2",
+            },
+            Uint8ArrayValuesByName = new Dictionary<string, byte[]>
+            {
+                ["bytes"] = [1, 2, 3],
+            },
+            Float32ArrayValuesByName = new Dictionary<string, float[]>
+            {
+                ["floats"] = [1.5f, 2.5f],
+            },
+            Int32ArrayValuesByName = new Dictionary<string, int[]>
+            {
+                ["ints"] = [7, -8, 9],
+            },
+        };
+    }
+
+    private static example.ExampleMessageUnion BuildExampleMessageUnion()
+    {
+        return example.ExampleMessageUnion.Int32ArrayValuesByName(new Dictionary<string, int[]>
+        {
+            ["ints"] = [7, -8, 9],
+        });
+    }
+
+    private static example.ExampleMessageUnion BuildExampleArrayListUnion()
+    {
+        return example.ExampleMessageUnion.Uint8ArrayList([[4, 5], [6]]);
+    }
+
     private static optional_types.OptionalHolder BuildOptionalHolder()
     {
         DateOnly date = new(2024, 1, 2);
@@ -849,6 +961,125 @@ public sealed class RoundtripTests
         Assert.Equal(expected.CaseId(), actual.CaseId());
         Assert.True(actual.IsUint16Values);
         Assert.Equal(expected.Uint16ValuesValue(), actual.Uint16ValuesValue());
+    }
+
+    private static void AssertExampleMessage(example.ExampleMessage expected, example.ExampleMessage actual)
+    {
+        Assert.Equal(expected.BoolValue, actual.BoolValue);
+        Assert.Equal(expected.Int8Value, actual.Int8Value);
+        Assert.Equal(expected.Int16Value, actual.Int16Value);
+        Assert.Equal(expected.FixedInt32Value, actual.FixedInt32Value);
+        Assert.Equal(expected.Varint32Value, actual.Varint32Value);
+        Assert.Equal(expected.FixedInt64Value, actual.FixedInt64Value);
+        Assert.Equal(expected.Varint64Value, actual.Varint64Value);
+        Assert.Equal(expected.TaggedInt64Value, actual.TaggedInt64Value);
+        Assert.Equal(expected.Uint8Value, actual.Uint8Value);
+        Assert.Equal(expected.Uint16Value, actual.Uint16Value);
+        Assert.Equal(expected.FixedUint32Value, actual.FixedUint32Value);
+        Assert.Equal(expected.VarUint32Value, actual.VarUint32Value);
+        Assert.Equal(expected.FixedUint64Value, actual.FixedUint64Value);
+        Assert.Equal(expected.VarUint64Value, actual.VarUint64Value);
+        Assert.Equal(expected.TaggedUint64Value, actual.TaggedUint64Value);
+        Assert.Equal(expected.Float32Value, actual.Float32Value);
+        Assert.Equal(expected.Float64Value, actual.Float64Value);
+        Assert.Equal(expected.StringValue, actual.StringValue);
+        Assert.Equal(expected.BytesValue, actual.BytesValue);
+        Assert.Equal(expected.DateValue, actual.DateValue);
+        Assert.Equal(expected.TimestampValue, actual.TimestampValue);
+        Assert.Equal(expected.DurationValue, actual.DurationValue);
+        Assert.Equal(expected.EnumValue, actual.EnumValue);
+        AssertExampleLeaf(expected.MessageValue, actual.MessageValue);
+        AssertExampleLeafUnion(expected.UnionValue, actual.UnionValue);
+        Assert.Equal(expected.BoolList, actual.BoolList);
+        Assert.Equal(expected.FixedInt32List, actual.FixedInt32List);
+        Assert.Equal(expected.Varint32List, actual.Varint32List);
+        Assert.Equal(expected.StringList, actual.StringList);
+        Assert.Equal(expected.MessageList.Count, actual.MessageList.Count);
+        for (int i = 0; i < expected.MessageList.Count; i++)
+        {
+            AssertExampleLeaf(expected.MessageList[i], actual.MessageList[i]);
+        }
+
+        Assert.Equal(expected.UnionList.Count, actual.UnionList.Count);
+        for (int i = 0; i < expected.UnionList.Count; i++)
+        {
+            AssertExampleLeafUnion(expected.UnionList[i], actual.UnionList[i]);
+        }
+
+        Assert.Equal(expected.MaybeFixedInt32List, actual.MaybeFixedInt32List);
+        Assert.Equal(expected.MaybeUint64List, actual.MaybeUint64List);
+        Assert.Equal(expected.BoolArray, actual.BoolArray);
+        Assert.Equal(expected.Int32Array, actual.Int32Array);
+        Assert.Equal(expected.Uint8Array, actual.Uint8Array);
+        Assert.Equal(expected.Float32Array, actual.Float32Array);
+        AssertArrayList(expected.Int32ArrayList, actual.Int32ArrayList);
+        AssertArrayList(expected.Uint8ArrayList, actual.Uint8ArrayList);
+        AssertMap(expected.StringValuesByString, actual.StringValuesByString);
+        AssertArrayMap(expected.Uint8ArrayValuesByName, actual.Uint8ArrayValuesByName);
+        AssertArrayMap(expected.Float32ArrayValuesByName, actual.Float32ArrayValuesByName);
+        AssertArrayMap(expected.Int32ArrayValuesByName, actual.Int32ArrayValuesByName);
+    }
+
+    private static void AssertExampleLeaf(example.ExampleLeaf? expected, example.ExampleLeaf? actual)
+    {
+        Assert.NotNull(expected);
+        Assert.NotNull(actual);
+        Assert.Equal(expected.Label, actual.Label);
+        Assert.Equal(expected.Count, actual.Count);
+    }
+
+    private static void AssertExampleLeafUnion(
+        example.ExampleLeafUnion expected,
+        example.ExampleLeafUnion actual)
+    {
+        Assert.NotNull(expected);
+        Assert.NotNull(actual);
+        Assert.Equal(expected.CaseId(), actual.CaseId());
+        switch (expected.Case())
+        {
+            case example.ExampleLeafUnion.ExampleLeafUnionCase.Note:
+                Assert.True(actual.IsNote);
+                Assert.Equal(expected.NoteValue(), actual.NoteValue());
+                break;
+            case example.ExampleLeafUnion.ExampleLeafUnionCase.Code:
+                Assert.True(actual.IsCode);
+                Assert.Equal(expected.CodeValue(), actual.CodeValue());
+                break;
+            case example.ExampleLeafUnion.ExampleLeafUnionCase.Leaf:
+                Assert.True(actual.IsLeaf);
+                AssertExampleLeaf(expected.LeafValue(), actual.LeafValue());
+                break;
+            default:
+                Assert.Fail($"Unexpected ExampleLeafUnion case {expected.CaseId()}");
+                break;
+        }
+    }
+
+    private static void AssertExampleMessageUnion(
+        example.ExampleMessageUnion expected,
+        example.ExampleMessageUnion actual)
+    {
+        Assert.NotNull(expected);
+        Assert.NotNull(actual);
+        Assert.Equal(expected.CaseId(), actual.CaseId());
+        switch (expected.Case())
+        {
+            case example.ExampleMessageUnion.ExampleMessageUnionCase.Uint8ArrayList:
+                Assert.True(actual.IsUint8ArrayList);
+                AssertArrayList(expected.Uint8ArrayListValue(), actual.Uint8ArrayListValue());
+                break;
+            case example.ExampleMessageUnion.ExampleMessageUnionCase.Uint8ArrayValuesByName:
+                Assert.True(actual.IsUint8ArrayValuesByName);
+                AssertArrayMap(expected.Uint8ArrayValuesByNameValue(), actual.Uint8ArrayValuesByNameValue());
+                break;
+            case example.ExampleMessageUnion.ExampleMessageUnionCase.Int32ArrayValuesByName:
+                Assert.True(actual.IsInt32ArrayValuesByName);
+                AssertArrayMap(expected.Int32ArrayValuesByNameValue(), actual.Int32ArrayValuesByNameValue());
+                break;
+            default:
+                Assert.Fail($"Unexpected ExampleMessageUnion case {expected.CaseId()}");
+                break;
+        }
     }
 
     private static void AssertOptionalHolder(
@@ -1240,6 +1471,39 @@ public sealed class RoundtripTests
         {
             Assert.True(actual.TryGetValue(pair.Key, out TValue? value));
             Assert.Equal(pair.Value, value);
+        }
+    }
+
+    private static void AssertArrayList<TValue>(
+        IReadOnlyList<TValue[]> expected,
+        IReadOnlyList<TValue[]> actual)
+    {
+        Assert.Equal(expected.Count, actual.Count);
+        for (int i = 0; i < expected.Count; i++)
+        {
+            Assert.Equal(expected[i].Length, actual[i].Length);
+            for (int j = 0; j < expected[i].Length; j++)
+            {
+                Assert.Equal(expected[i][j], actual[i][j]);
+            }
+        }
+    }
+
+    private static void AssertArrayMap<TKey, TValue>(
+        IReadOnlyDictionary<TKey, TValue[]> expected,
+        IReadOnlyDictionary<TKey, TValue[]> actual)
+        where TKey : notnull
+    {
+        Assert.Equal(expected.Count, actual.Count);
+        foreach (KeyValuePair<TKey, TValue[]> pair in expected)
+        {
+            Assert.True(actual.TryGetValue(pair.Key, out TValue[]? value));
+            Assert.NotNull(value);
+            Assert.Equal(pair.Value.Length, value.Length);
+            for (int i = 0; i < pair.Value.Length; i++)
+            {
+                Assert.Equal(pair.Value[i], value[i]);
+            }
         }
     }
 

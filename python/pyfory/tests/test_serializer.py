@@ -23,6 +23,7 @@ import io
 import os
 import pickle
 import weakref
+from collections.abc import MutableSequence
 from enum import Enum, IntEnum
 from typing import Any, List, Dict, Optional
 
@@ -34,12 +35,13 @@ from dataclasses import dataclass
 import pytest
 
 import pyfory
-from pyfory.serialization import Buffer
+from pyfory.serialization import Buffer, _bfloat16_from_bits, _bfloat16_to_bits, _float16_from_bits, _float16_to_bits
 from pyfory import Fory, EnumSerializer
 from pyfory.serializer import (
     DecimalSerializer,
     TimestampSerializer,
     DateSerializer,
+    fory_array_serializer_type,
     PyArraySerializer,
     Numpy1DArraySerializer,
 )
@@ -174,130 +176,146 @@ def test_basic_serializer(xlang):
 
 def test_float16_round_trip():
     fory = Fory(xlang=True, ref=False)
-    value = pyfory.float16.from_bits(0x3C00)
     typeinfo = fory.type_resolver.get_type_info(pyfory.float16)
     assert isinstance(typeinfo.serializer, pyfory.Float16Serializer)
     assert typeinfo.type_id == TypeId.FLOAT16
-    decoded = ser_de(fory, value)
-    assert isinstance(decoded, pyfory.float16)
-    assert decoded.to_bits() == 0x3C00
+    decoded = ser_de(fory, _float16_from_bits(0x3C00))
+    assert isinstance(decoded, float)
+    assert _float16_to_bits(decoded) == 0x3C00
 
 
 def test_bfloat16_round_trip():
     fory = Fory(xlang=True, ref=False)
-    value = pyfory.bfloat16.from_bits(0x3FC0)
     typeinfo = fory.type_resolver.get_type_info(pyfory.bfloat16)
     assert isinstance(typeinfo.serializer, pyfory.BFloat16Serializer)
     assert typeinfo.type_id == TypeId.BFLOAT16
-    decoded = ser_de(fory, value)
-    assert isinstance(decoded, pyfory.bfloat16)
-    assert decoded.to_bits() == 0x3FC0
+    decoded = ser_de(fory, _bfloat16_from_bits(0x3FC0))
+    assert isinstance(decoded, float)
+    assert _bfloat16_to_bits(decoded) == 0x3FC0
 
 
-def test_float16_arithmetic():
-    value = pyfory.float16(1.5)
-    half = pyfory.float16(0.5)
-
-    assert isinstance(value + half, pyfory.float16)
-    assert (value + half).to_bits() == 0x4000
-    assert (value - half).to_bits() == 0x3C00
-    assert (value * 2).to_bits() == 0x4200
-    assert (3 + half).to_bits() == 0x4300
-    assert (value / half).to_bits() == 0x4200
-    with pytest.raises(ZeroDivisionError):
-        _ = value / 0.0
-    assert (-value).to_bits() == 0xBE00
-    assert (+value).to_bits() == value.to_bits()
-    assert abs(pyfory.float16(-1.5)).to_bits() == 0x3E00
-    assert pyfory.float16(1.5) < 2.0
-    assert pyfory.float16(1.5) <= pyfory.float16(1.5)
-    assert pyfory.float16(1.5) > 1.0
-    assert pyfory.float16(1.5) >= pyfory.float16(1.5)
-    assert not (pyfory.float16.from_bits(0x7E00) < 1.0)
-    with pytest.raises(TypeError):
-        _ = value + "x"
+def test_reduced_precision_markers_are_not_public_value_classes():
+    assert not isinstance(pyfory.float16, type)
+    assert not isinstance(pyfory.bfloat16, type)
 
 
-def test_bfloat16_arithmetic():
-    value = pyfory.bfloat16(1.5)
-    half = pyfory.bfloat16(0.5)
+@pytest.mark.parametrize(
+    "array_type,values",
+    [
+        (pyfory.BoolArray, [True, False, True]),
+        (pyfory.Int8Array, [-128, 0, 127]),
+        (pyfory.Int16Array, [-32768, 0, 32767]),
+        (pyfory.Int32Array, [-2147483648, 0, 2147483647]),
+        (pyfory.Int64Array, [-9223372036854775808, 0, 9223372036854775807]),
+        (pyfory.UInt8Array, [0, 1, 255]),
+        (pyfory.UInt16Array, [0, 1, 65535]),
+        (pyfory.UInt32Array, [0, 1, 4294967295]),
+        (pyfory.UInt64Array, [0, 1, 18446744073709551615]),
+        (pyfory.Float16Array, [0.0, 1.0, -2.0]),
+        (pyfory.BFloat16Array, [0.0, 1.0, -2.0]),
+        (pyfory.Float32Array, [0.0, 1.5, -2.0]),
+        (pyfory.Float64Array, [0.0, 1.5, -2.0]),
+    ],
+)
+def test_dense_array_carriers_support_pickle(array_type, values):
+    carrier = array_type.from_values(values)
+    decoded = pickle.loads(pickle.dumps(carrier))
 
-    assert isinstance(value + half, pyfory.bfloat16)
-    assert (value + half).to_bits() == 0x4000
-    assert (value - half).to_bits() == 0x3F80
-    assert (value * 2).to_bits() == 0x4040
-    assert (3 + half).to_bits() == 0x4060
-    assert (value / half).to_bits() == 0x4040
-    with pytest.raises(ZeroDivisionError):
-        _ = value / 0.0
-    assert (-value).to_bits() == 0xBFC0
-    assert (+value).to_bits() == value.to_bits()
-    assert abs(pyfory.bfloat16(-1.5)).to_bits() == 0x3FC0
-    assert pyfory.bfloat16(1.5) < 2.0
-    assert pyfory.bfloat16(1.5) <= pyfory.bfloat16(1.5)
-    assert pyfory.bfloat16(1.5) > 1.0
-    assert pyfory.bfloat16(1.5) >= pyfory.bfloat16(1.5)
-    assert not (pyfory.bfloat16.from_bits(0x7FC0) < 1.0)
-    with pytest.raises(TypeError):
-        _ = value + "x"
+    assert isinstance(decoded, array_type)
+    assert decoded == carrier
+    assert decoded == values
+
+
+@pytest.mark.parametrize(
+    "array_type,type_id",
+    [
+        (pyfory.BoolArray, TypeId.BOOL_ARRAY),
+        (pyfory.Int8Array, TypeId.INT8_ARRAY),
+        (pyfory.Int16Array, TypeId.INT16_ARRAY),
+        (pyfory.Int32Array, TypeId.INT32_ARRAY),
+        (pyfory.Int64Array, TypeId.INT64_ARRAY),
+        (pyfory.UInt8Array, TypeId.UINT8_ARRAY),
+        (pyfory.UInt16Array, TypeId.UINT16_ARRAY),
+        (pyfory.UInt32Array, TypeId.UINT32_ARRAY),
+        (pyfory.UInt64Array, TypeId.UINT64_ARRAY),
+        (pyfory.Float16Array, TypeId.FLOAT16_ARRAY),
+        (pyfory.BFloat16Array, TypeId.BFLOAT16_ARRAY),
+        (pyfory.Float32Array, TypeId.FLOAT32_ARRAY),
+        (pyfory.Float64Array, TypeId.FLOAT64_ARRAY),
+    ],
+)
+def test_dense_array_carriers_use_distinct_serializers(array_type, type_id):
+    fory = Fory(xlang=True, ref=False)
+    typeinfo = fory.type_resolver.get_type_info(array_type)
+
+    assert typeinfo.type_id == type_id
+    assert isinstance(typeinfo.serializer, fory_array_serializer_type(type_id))
 
 
 def test_float16_array_round_trip():
     fory = Fory(xlang=True, ref=False)
-    values = pyfory.float16array.from_values([0.0, 1.0, -2.0])
-    typeinfo = fory.type_resolver.get_type_info(pyfory.float16array)
-    assert isinstance(typeinfo.serializer, pyfory.Float16ArraySerializer)
+    values = pyfory.Float16Array.from_values([0.0, 1.0, -2.0])
+    typeinfo = fory.type_resolver.get_type_info(pyfory.Float16Array)
+    assert isinstance(typeinfo.serializer, fory_array_serializer_type(TypeId.FLOAT16_ARRAY))
     assert typeinfo.type_id == TypeId.FLOAT16_ARRAY
     decoded = ser_de(fory, values)
-    assert isinstance(decoded, pyfory.float16array)
+    assert isinstance(decoded, pyfory.Float16Array)
     assert list(decoded.to_buffer()) == [0x0000, 0x3C00, 0xC000]
 
 
 def test_float16_array_from_values():
-    values = pyfory.float16array.from_values([0.0, 1.0, -2.0])
+    values = pyfory.Float16Array.from_values([0.0, 1.0, -2.0])
     assert list(values.to_buffer()) == [0x0000, 0x3C00, 0xC000]
 
 
 def test_float16_array_from_buffer():
-    values = pyfory.float16array.from_buffer(memoryview(bytes.fromhex("0000003c00c0")))
+    values = pyfory.Float16Array.from_buffer(memoryview(bytes.fromhex("0000003c00c0")))
     assert list(values.to_buffer()) == [0x0000, 0x3C00, 0xC000]
 
 
-def test_float16_array_buffer_protocol():
-    values = pyfory.float16array.from_values([0.0, 1.0, -2.0])
-    view = memoryview(values)
-    assert view.format in ("H", "@H")
-    assert view.itemsize == 2
-    assert list(pyfory.float16array.from_buffer(view).to_buffer()) == [0x0000, 0x3C00, 0xC000]
+def test_float16_array_is_list_compatible():
+    values = pyfory.Float16Array.from_values([0.0, 1.0, -2.0])
+    assert isinstance(values, MutableSequence)
+    assert not isinstance(values, list)
+    assert values[1] == 1.0
+    values.append(3.0)
+    values[0] = -0.0
+    assert values[1:] == pyfory.Float16Array.from_values([1.0, -2.0, 3.0])
+    assert values.pop() == 3.0
+    assert values == [0.0, 1.0, -2.0]
 
 
 def test_bfloat16_array_round_trip():
     fory = Fory(xlang=True, ref=False)
-    values = pyfory.bfloat16array.from_values([0.0, 1.0, -2.0])
-    typeinfo = fory.type_resolver.get_type_info(pyfory.bfloat16array)
-    assert isinstance(typeinfo.serializer, pyfory.BFloat16ArraySerializer)
+    values = pyfory.BFloat16Array.from_values([0.0, 1.0, -2.0])
+    typeinfo = fory.type_resolver.get_type_info(pyfory.BFloat16Array)
+    assert isinstance(typeinfo.serializer, fory_array_serializer_type(TypeId.BFLOAT16_ARRAY))
     assert typeinfo.type_id == TypeId.BFLOAT16_ARRAY
     decoded = ser_de(fory, values)
-    assert isinstance(decoded, pyfory.bfloat16array)
+    assert isinstance(decoded, pyfory.BFloat16Array)
     assert list(decoded.to_buffer()) == [0x0000, 0x3F80, 0xC000]
 
 
 def test_bfloat16_array_from_values():
-    values = pyfory.bfloat16array.from_values([0.0, 1.0, -2.0])
+    values = pyfory.BFloat16Array.from_values([0.0, 1.0, -2.0])
     assert list(values.to_buffer()) == [0x0000, 0x3F80, 0xC000]
 
 
 def test_bfloat16_array_from_buffer():
-    values = pyfory.bfloat16array.from_buffer(memoryview(bytes.fromhex("0000803f00c0")))
+    values = pyfory.BFloat16Array.from_buffer(memoryview(bytes.fromhex("0000803f00c0")))
     assert list(values.to_buffer()) == [0x0000, 0x3F80, 0xC000]
 
 
-def test_bfloat16_array_buffer_protocol():
-    values = pyfory.bfloat16array.from_values([0.0, 1.0, -2.0])
-    view = memoryview(values)
-    assert view.format in ("H", "@H")
-    assert view.itemsize == 2
-    assert list(pyfory.bfloat16array.from_buffer(view).to_buffer()) == [0x0000, 0x3F80, 0xC000]
+def test_bfloat16_array_is_list_compatible():
+    values = pyfory.BFloat16Array.from_values([0.0, 1.0, -2.0])
+    assert isinstance(values, MutableSequence)
+    assert not isinstance(values, list)
+    assert values[1] == 1.0
+    values.append(3.0)
+    values[0] = -0.0
+    assert values[1:] == pyfory.BFloat16Array.from_values([1.0, -2.0, 3.0])
+    assert values.pop() == 3.0
+    assert values == [0.0, 1.0, -2.0]
 
 
 @pytest.mark.parametrize("xlang", [True, False])

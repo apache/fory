@@ -406,7 +406,7 @@ class ComplexObject1:
     f8: pyfory.int64 = None
     f9: pyfory.float32 = None
     f10: pyfory.float64 = None
-    f11: pyfory.int16_array = None
+    f11: pyfory.StdArray[pyfory.int16] = None
     f12: List[pyfory.int16] = None
 
 
@@ -766,7 +766,7 @@ def test_cross_language_meta_share_complex(data_file_path):
         f8: pyfory.int64
         f9: pyfory.float32
         f10: pyfory.float64
-        f11: pyfory.int16_array
+        f11: pyfory.StdArray[pyfory.int16]
         f12: List[pyfory.int16]
 
     fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")

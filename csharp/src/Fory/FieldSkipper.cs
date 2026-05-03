@@ -120,7 +120,7 @@ public static class FieldSkipper
                 _ = StringSerializer.ReadString(context);
                 return;
             case (uint)TypeId.Decimal:
-                _ = context.TypeResolver.GetSerializer<ForyDecimal>().ReadData(context);
+                _ = context.TypeResolver.GetSerializer<decimal>().ReadData(context);
                 return;
             case (uint)TypeId.Binary:
             case (uint)TypeId.BoolArray:

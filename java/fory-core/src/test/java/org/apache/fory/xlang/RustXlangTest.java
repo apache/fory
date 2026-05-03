@@ -341,4 +341,10 @@ public class RustXlangTest extends XlangTestBase {
   public void testUnsignedSchemaCompatible(boolean enableCodegen) throws java.io.IOException {
     super.testUnsignedSchemaCompatible(enableCodegen);
   }
+
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testManualSchemaKindStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testManualSchemaKindStruct(enableCodegen);
+  }
 }

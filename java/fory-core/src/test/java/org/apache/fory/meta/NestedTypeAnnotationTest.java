@@ -28,8 +28,12 @@ import java.util.Set;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ArrayType;
+import org.apache.fory.annotation.BFloat16Type;
+import org.apache.fory.annotation.Float16Type;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
+import org.apache.fory.annotation.Int8Type;
 import org.apache.fory.annotation.UInt32Elements;
 import org.apache.fory.annotation.UInt32Type;
 import org.apache.fory.annotation.UInt64Type;
@@ -43,6 +47,7 @@ import org.apache.fory.meta.FieldTypes.CollectionFieldType;
 import org.apache.fory.meta.FieldTypes.FieldType;
 import org.apache.fory.meta.FieldTypes.MapFieldType;
 import org.apache.fory.meta.FieldTypes.RegisteredFieldType;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -87,15 +92,64 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
 
   @Data
   public static class PrimitiveListOverrides {
-    public UInt32List packed;
+    public UInt32List values;
+
+    @ArrayType public UInt32List denseValues;
 
     @UInt32Type(encoding = Int32Encoding.FIXED)
-    public UInt32List fixedPacked;
-
-    @UInt32Type public UInt32List varCollection;
+    public UInt32List fixedValues;
 
     @UInt64Type(encoding = Int64Encoding.TAGGED)
-    public UInt64List taggedCollection;
+    public UInt64List taggedValues;
+  }
+
+  @Data
+  public static class ByteArraySchemaKinds {
+    public byte[] payload;
+
+    @Int8Type public byte[] signedValues;
+
+    @UInt8Type public byte[] unsignedValues;
+  }
+
+  @Data
+  public static class ReducedPrecisionShortArrays {
+    @Float16Type public short[] float16Values;
+
+    @BFloat16Type public short[] bfloat16Values;
+  }
+
+  @Data
+  public static class BoxedListArrayAdapters {
+    @ArrayType public List<Boolean> denseFlags;
+
+    @ArrayType public List<Integer> denseIds;
+
+    @ArrayType public List<@UInt32Type Long> denseUnsignedIds;
+
+    @ArrayType public List<Float> denseFloats;
+
+    @ArrayType public List<Float16> denseFloat16Values;
+  }
+
+  public static class BoxedUInt8ListArray {
+    @ArrayType public List<@UInt8Type Integer> values;
+  }
+
+  public static class InvalidArrayCollection {
+    @ArrayType public Set<Integer> values;
+  }
+
+  public static class InvalidArrayElement {
+    @ArrayType public List<String> values;
+  }
+
+  public static class InvalidArrayFixedEncoding {
+    @ArrayType public List<@Int32Type(encoding = Int32Encoding.FIXED) Integer> values;
+  }
+
+  public static class InvalidArrayTaggedEncoding {
+    @ArrayType public List<@UInt64Type(encoding = Int64Encoding.TAGGED) Long> values;
   }
 
   @Data
@@ -197,21 +251,112 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
     fory.register(PrimitiveListOverrides.class, 714);
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), PrimitiveListOverrides.class);
 
-    assertRegistered(fieldType(typeDef, "packed"), Types.UINT32_ARRAY);
-    assertRegistered(fieldType(typeDef, "fixedPacked"), Types.UINT32_ARRAY);
     assertRegistered(
-        assertCollection(fieldType(typeDef, "varCollection"), Types.LIST).getElementType(),
+        assertCollection(fieldType(typeDef, "values"), Types.LIST).getElementType(),
         Types.VAR_UINT32);
+    assertRegistered(fieldType(typeDef, "denseValues"), Types.UINT32_ARRAY);
     assertRegistered(
-        assertCollection(fieldType(typeDef, "taggedCollection"), Types.LIST).getElementType(),
+        assertCollection(fieldType(typeDef, "fixedValues"), Types.LIST).getElementType(),
+        Types.UINT32);
+    assertRegistered(
+        assertCollection(fieldType(typeDef, "taggedValues"), Types.LIST).getElementType(),
         Types.TAGGED_UINT64);
 
     PrimitiveListOverrides value = new PrimitiveListOverrides();
-    value.packed = uint32List(1L, 4_000_000_000L);
-    value.fixedPacked = uint32List(2L, 4_294_967_295L);
-    value.varCollection = uint32List(3L, 4_294_967_295L);
-    value.taggedCollection = uint64List(4L, Long.MAX_VALUE, -1L);
+    value.values = uint32List(1L, 4_000_000_000L);
+    value.denseValues = uint32List(2L, 4_294_967_295L);
+    value.fixedValues = uint32List(3L, 4_294_967_295L);
+    value.taggedValues = uint64List(4L, Long.MAX_VALUE, -1L);
     serDeCheck(fory, value);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void byteArraysDistinguishBinaryAndNumericArrays(boolean enableCodegen) {
+    Fory fory = xlangFory(false, enableCodegen);
+    fory.register(ByteArraySchemaKinds.class, 717);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), ByteArraySchemaKinds.class);
+
+    assertRegistered(fieldType(typeDef, "payload"), Types.BINARY);
+    assertRegistered(fieldType(typeDef, "signedValues"), Types.INT8_ARRAY);
+    assertRegistered(fieldType(typeDef, "unsignedValues"), Types.UINT8_ARRAY);
+
+    ByteArraySchemaKinds value = new ByteArraySchemaKinds();
+    value.payload = new byte[] {1, 2, 3};
+    value.signedValues = new byte[] {-1, 0, 1};
+    value.unsignedValues = new byte[] {(byte) 0xff, 0, 1};
+    serDeCheck(fory, value);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void reducedPrecisionShortArraysUseArrayMetadata(boolean enableCodegen) {
+    Fory fory = xlangFory(false, enableCodegen);
+    fory.register(ReducedPrecisionShortArrays.class, 718);
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(fory.getTypeResolver(), ReducedPrecisionShortArrays.class);
+
+    assertRegistered(fieldType(typeDef, "float16Values"), Types.FLOAT16_ARRAY);
+    assertRegistered(fieldType(typeDef, "bfloat16Values"), Types.BFLOAT16_ARRAY);
+
+    ReducedPrecisionShortArrays value = new ReducedPrecisionShortArrays();
+    value.float16Values = new short[] {(short) 0x0000, (short) 0x3C00, (short) 0xBC00};
+    value.bfloat16Values = new short[] {(short) 0x0000, (short) 0x3F80, (short) 0xBF80};
+    serDeCheck(fory, value);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void boxedListArrayAdaptersUseArrayMetadata(boolean enableCodegen) {
+    Fory fory = xlangFory(false, enableCodegen);
+    fory.register(BoxedListArrayAdapters.class, 719);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), BoxedListArrayAdapters.class);
+
+    assertRegistered(fieldType(typeDef, "denseFlags"), Types.BOOL_ARRAY);
+    assertRegistered(fieldType(typeDef, "denseIds"), Types.INT32_ARRAY);
+    assertRegistered(fieldType(typeDef, "denseUnsignedIds"), Types.UINT32_ARRAY);
+    assertRegistered(fieldType(typeDef, "denseFloats"), Types.FLOAT32_ARRAY);
+    assertRegistered(fieldType(typeDef, "denseFloat16Values"), Types.FLOAT16_ARRAY);
+
+    BoxedListArrayAdapters value = new BoxedListArrayAdapters();
+    value.denseFlags = Arrays.asList(true, false, true);
+    value.denseIds = Arrays.asList(1, -2, Integer.MAX_VALUE);
+    value.denseUnsignedIds = Arrays.asList(0L, 4_000_000_000L);
+    value.denseFloats = Arrays.asList(1.5f, -2.25f);
+    value.denseFloat16Values = Arrays.asList(Float16.fromBits((short) 0x3C00));
+    BoxedListArrayAdapters copy = serDe(fory, value);
+    Assert.assertEquals(copy.denseFlags, value.denseFlags);
+    assertIntegralListEquals(copy.denseIds, value.denseIds);
+    assertIntegralListEquals(copy.denseUnsignedIds, value.denseUnsignedIds);
+    Assert.assertEquals(copy.denseFloats, value.denseFloats);
+    Assert.assertEquals(copy.denseFloat16Values.size(), value.denseFloat16Values.size());
+    Assert.assertEquals(
+        copy.denseFloat16Values.get(0).toBits(), value.denseFloat16Values.get(0).toBits());
+  }
+
+  @Test
+  public void boxedListArrayAdaptersRejectInvalidForms() {
+    Fory fory = xlangFory(false, false);
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidArrayCollection.class));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidArrayElement.class));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidArrayFixedEncoding.class));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidArrayTaggedEncoding.class));
+
+    fory.register(BoxedUInt8ListArray.class, 720);
+    BoxedUInt8ListArray nullElement = new BoxedUInt8ListArray();
+    nullElement.values = Arrays.asList(1, null);
+    Assert.expectThrows(
+        org.apache.fory.exception.SerializationException.class, () -> fory.serialize(nullElement));
+
+    BoxedUInt8ListArray outOfRange = new BoxedUInt8ListArray();
+    outOfRange.values = Arrays.asList(256);
+    Assert.expectThrows(
+        org.apache.fory.exception.SerializationException.class, () -> fory.serialize(outOfRange));
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -256,6 +401,14 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
     value.dropped.put(4_000_000_000L, Arrays.asList(-1L, 1_073_741_824L, 42L));
     value.tail = "after skipped annotated field";
     return value;
+  }
+
+  private static void assertIntegralListEquals(
+      List<? extends Number> actual, List<? extends Number> expected) {
+    Assert.assertEquals(actual.size(), expected.size());
+    for (int i = 0; i < actual.size(); i++) {
+      Assert.assertEquals(actual.get(i).longValue(), expected.get(i).longValue());
+    }
   }
 
   private static UInt32List uint32List(long... values) {

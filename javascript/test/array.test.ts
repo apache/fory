@@ -18,17 +18,36 @@
  */
 
 import Fory, { Type, BFloat16Array } from '../packages/core/index';
+import { TypeId } from '../packages/core/lib/type';
 import { describe, expect, test } from '@jest/globals';
 import * as beautify from 'js-beautify';
 
 describe('array', () => {
+  test('should distinguish list and dense array schema builders', () => {
+    expect(Type.list(Type.int32()).typeId).toBe(TypeId.LIST);
+    expect(Type.array(Type.int32()).typeId).toBe(TypeId.INT32_ARRAY);
+    expect(Type.array(Type.uint8()).typeId).toBe(TypeId.UINT8_ARRAY);
+    expect(Type.array(Type.bool()).typeId).toBe(TypeId.BOOL_ARRAY);
+  });
+
+  test('should reject invalid dense array element types', () => {
+    expect(() => Type.array(Type.string())).toThrow('numeric or bool scalar');
+    expect(() => Type.array(Type.binary())).toThrow('numeric or bool scalar');
+    expect(() => Type.array(Type.int32({ encoding: "fixed" }))).toThrow('scalar encoding');
+    expect(() => Type.array(Type.int32({ encoding: "varint" }))).toThrow('scalar encoding');
+    expect(() => Type.array(Type.varInt32())).toThrow('scalar encoding');
+    expect(() => Type.array(Type.int64({ encoding: "tagged" }))).toThrow('scalar encoding');
+    expect(() => Type.array(Type.uint64({ encoding: "tagged" }))).toThrow('scalar encoding');
+    expect(() => Type.map(Type.array(Type.uint8()), Type.string())).toThrow('map key');
+  });
+
   test('should array work', () => {
 
 
     const typeinfo = Type.struct({
       typeName: "example.bar"
     }, {
-      c: Type.array(Type.struct({
+      c: Type.list(Type.struct({
         typeName: "example.foo"
       }, {
         a: Type.string()
@@ -47,11 +66,11 @@ describe('array', () => {
     const typeinfo = Type.struct({
       typeName: "example.foo",
     }, {
-      a: Type.boolArray(),
-      a2: Type.int16Array(),
-      a3: Type.int32Array(),
-      a4: Type.int64Array(),
-      a6: Type.float64Array()
+      a: Type.array(Type.bool()),
+      a2: Type.array(Type.int16()),
+      a3: Type.array(Type.int32()),
+      a4: Type.array(Type.int64()),
+      a6: Type.array(Type.float64())
     });
 
     const fory = new Fory({ ref: true }); 
@@ -80,7 +99,7 @@ describe('array', () => {
     const typeinfo = Type.struct({
       typeName: "example.foo"
     }, {
-      a5: Type.float32Array(),
+      a5: Type.array(Type.float32()),
     })
 
     const fory = new Fory({ ref: true }); const serialize = fory.register(typeinfo).serializer;
@@ -99,7 +118,7 @@ describe('array', () => {
     const typeinfo = Type.struct({
       typeName: "example.foo"
     }, {
-      a6: Type.float16Array(),
+      a6: Type.array(Type.float16()),
     })
 
     const fory = new Fory({ ref: true }); const serialize = fory.register(typeinfo).serializer;
@@ -118,7 +137,7 @@ describe('array', () => {
     const typeinfo = Type.struct({
       typeName: "example.foo"
     }, {
-      a7: Type.bfloat16Array(),
+      a7: Type.array(Type.bfloat16()),
     });
     const fory = new Fory({ ref: true });
     const serialize = fory.register(typeinfo).serializer;
@@ -136,7 +155,7 @@ describe('array', () => {
     const typeinfo = Type.struct({
       typeName: "example.foo"
     }, {
-      a7: Type.bfloat16Array(),
+      a7: Type.array(Type.bfloat16()),
     });
     const fory = new Fory({ ref: true });
     const serialize = fory.register(typeinfo).serializer;
@@ -149,4 +168,3 @@ describe('array', () => {
     expect(result.a7[2].toFloat32()).toBe(0);
   });
 });
-

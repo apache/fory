@@ -495,7 +495,7 @@ export class ReadContext {
           this.fieldInfoToTypeInfo(fieldInfo.options!.value!, fallbackTypeInfo?.options?.value)
         );
       case TypeId.LIST:
-        return Type.array(this.fieldInfoToTypeInfo(fieldInfo.options!.inner!, fallbackTypeInfo?.options?.inner));
+        return Type.list(this.fieldInfoToTypeInfo(fieldInfo.options!.inner!, fallbackTypeInfo?.options?.inner));
       case TypeId.SET:
         return Type.set(this.fieldInfoToTypeInfo(fieldInfo.options!.key!, fallbackTypeInfo?.options?.key));
       default: {

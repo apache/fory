@@ -56,12 +56,34 @@ class ScalarAndArrayEnvelope {
   Timestamp timestamp = _timestamp(0, 0);
 }
 
+@ForyStruct()
+class ExplicitArrayEnvelope {
+  ExplicitArrayEnvelope();
+
+  @ArrayField(element: BoolType())
+  List<bool> flags = <bool>[];
+
+  @ArrayField(element: Int32Type())
+  Int32List denseIds = Int32List(0);
+
+  @ForyField(type: ArrayType(element: Uint8Type()))
+  Uint8List pixels = Uint8List(0);
+
+  List<int> normalList = <int>[];
+}
+
 void _registerScalarTypes(Fory fory) {
   ScalarAndTypedArraySerializerTestFory.register(
     fory,
     ScalarAndArrayEnvelope,
     namespace: 'test',
     typeName: 'ScalarAndArrayEnvelope',
+  );
+  ScalarAndTypedArraySerializerTestFory.register(
+    fory,
+    ExplicitArrayEnvelope,
+    namespace: 'test',
+    typeName: 'ExplicitArrayEnvelope',
   );
 }
 
@@ -362,7 +384,7 @@ void main() {
         Float64List.fromList(<double>[-2.5, 0.0, 4.5]),
       );
       expect(
-        _roundTripRoot<List<bool>>(fory, <bool>[true, false, true]),
+        _roundTripRoot<Object?>(fory, <bool>[true, false, true]),
         orderedEquals(<bool>[true, false, true]),
       );
     });
@@ -375,7 +397,7 @@ void main() {
       expect(_roundTripRoot<Float16List>(fory, Float16List(0)), isEmpty);
       expect(_roundTripRoot<Bfloat16List>(fory, Bfloat16List(0)), isEmpty);
       expect(_roundTripRoot<Float32List>(fory, Float32List(0)), isEmpty);
-      expect(_roundTripRoot<List<bool>>(fory, <bool>[]), isEmpty);
+      expect(_roundTripRoot<Object?>(fory, <bool>[]), isEmpty);
     });
 
     test('Float16List and Bfloat16List expose contiguous typed-data views', () {
@@ -428,6 +450,36 @@ void main() {
       expect(roundTrip.single, equals(value.single));
       expect(roundTrip.date, equals(value.date));
       expect(roundTrip.timestamp, equals(value.timestamp));
+    });
+
+    test('separates normal list fields from explicit dense array fields', () {
+      final writer = Fory();
+      final reader = Fory();
+      _registerScalarTypes(writer);
+      _registerScalarTypes(reader);
+
+      final value = ExplicitArrayEnvelope()
+        ..flags = <bool>[true, false, true]
+        ..denseIds = Int32List.fromList(<int>[1, -2, 3])
+        ..pixels = Uint8List.fromList(<int>[1, 2, 255])
+        ..normalList = <int>[7, 8, 9];
+      final roundTrip = reader.deserialize<ExplicitArrayEnvelope>(
+        writer.serialize(value),
+      );
+
+      expect(roundTrip.flags, orderedEquals(value.flags));
+      _expectInt32ListEquals(roundTrip.denseIds, value.denseIds);
+      _expectUint8ListEquals(roundTrip.pixels, value.pixels);
+      expect(roundTrip.normalList, orderedEquals(value.normalList));
+
+      final fieldsByName = <String, int>{
+        for (final field in _explicitArrayEnvelopeForyFieldInfo)
+          field.identifier: field.fieldType.typeId,
+      };
+      expect(fieldsByName['flags'], equals(TypeIds.boolArray));
+      expect(fieldsByName['dense_ids'], equals(TypeIds.int32Array));
+      expect(fieldsByName['pixels'], equals(TypeIds.uint8Array));
+      expect(fieldsByName['normal_list'], equals(TypeIds.list));
     });
 
     test('enforces maxBinarySize on write and read', () {

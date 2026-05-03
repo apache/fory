@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import decimal
 import enum
 import inspect
 import logging
@@ -45,6 +46,8 @@ from pyfory.types import (
     uint64,
     fixed_uint64,
     tagged_uint64,
+    float16,
+    bfloat16,
     float32,
     float64,
     is_primitive_array_type,
@@ -64,12 +67,12 @@ from pyfory.type_util import (
     get_homogeneous_tuple_elem_type,
     is_subclass,
     get_type_hints,
+    unwrap_array,
     unwrap_optional,
     unwrap_ref,
 )
 from pyfory.serialization import Buffer
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
-from pyfory.serialization import bfloat16, float16
 from pyfory.error import TypeNotCompatibleError
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory.field import (
@@ -263,7 +266,15 @@ def _extract_field_infos(
             effective_nullable,
             runtime_ref,
         )
-        serializer = field_type.create_serializer(fory, field_types.get(field_name, None))
+        array_meta = unwrap_array(unwrapped_type)
+        if array_meta is not None:
+            serializer = StructFieldSerializerVisitor(fory).visit_array(
+                field_name,
+                array_meta.element_type,
+                array_meta.carrier,
+            )
+        else:
+            serializer = field_type.create_serializer(fory, field_types.get(field_name, None))
 
         type_id = field_type.type_id
 
@@ -549,10 +560,12 @@ class DataClassSerializer(Serializer):
 
     def _assign_read_field_value(self, obj, obj_dict, field_name, field_value, validation_field_type):
         if validation_field_type is not None:
-            from pyfory.meta.typedef import is_value_assignable
+            from pyfory.meta.typedef import coerce_assignable_value, is_value_assignable
 
             if not is_value_assignable(field_value, validation_field_type):
                 field_value = self._default_field_value(field_name)
+            else:
+                field_value = coerce_assignable_value(field_value, validation_field_type)
         interned_name = self._field_name_interned[field_name]
         if obj_dict is not None:
             obj_dict[interned_name] = field_value
@@ -737,7 +750,53 @@ basic_types = {
     datetime.datetime,
     datetime.date,
     datetime.time,
+    datetime.timedelta,
+    decimal.Decimal,
 }
+
+_ARRAY_ELEMENT_TYPE_IDS = {
+    bool: TypeId.BOOL_ARRAY,
+    int8: TypeId.INT8_ARRAY,
+    int16: TypeId.INT16_ARRAY,
+    int32: TypeId.INT32_ARRAY,
+    int64: TypeId.INT64_ARRAY,
+    uint8: TypeId.UINT8_ARRAY,
+    uint16: TypeId.UINT16_ARRAY,
+    uint32: TypeId.UINT32_ARRAY,
+    uint64: TypeId.UINT64_ARRAY,
+    float16: TypeId.FLOAT16_ARRAY,
+    bfloat16: TypeId.BFLOAT16_ARRAY,
+    float32: TypeId.FLOAT32_ARRAY,
+    float64: TypeId.FLOAT64_ARRAY,
+}
+
+_ARRAY_INVALID_SCALAR_MODIFIERS = {
+    fixed_int32,
+    fixed_int64,
+    fixed_uint32,
+    fixed_uint64,
+    tagged_int64,
+    tagged_uint64,
+}
+
+
+def _array_type_id(elem_type, carrier):
+    elem_type, ref_override = unwrap_ref(elem_type)
+    elem_type, elem_nullable = unwrap_optional(elem_type)
+    if elem_nullable:
+        raise TypeError("array<T> does not allow optional elements")
+    if ref_override is not None:
+        raise TypeError("array<T> does not allow ref-tracked elements")
+    if elem_type in _ARRAY_INVALID_SCALAR_MODIFIERS:
+        raise TypeError(f"array<T> does not allow scalar encoding modifier {elem_type}")
+    if carrier == "ndarray" and elem_type in (float16, bfloat16):
+        raise TypeError("pyfory.NDArray does not support reduced-precision float arrays")
+    if carrier == "stdarray" and elem_type in (bool, float16, bfloat16):
+        raise TypeError("pyfory.StdArray supports Python array.array numeric typecodes only")
+    type_id = _ARRAY_ELEMENT_TYPE_IDS.get(elem_type)
+    if type_id is None:
+        raise TypeError(f"array<T> element type must be a number or bool marker, got {elem_type}")
+    return type_id
 
 
 class StructFieldSerializerVisitor(TypeVisitor):
@@ -746,6 +805,34 @@ class StructFieldSerializerVisitor(TypeVisitor):
         type_resolver,
     ):
         self.type_resolver = type_resolver
+
+    def visit_array(self, field_name, elem_type, carrier, types_path=None):
+        type_id = _array_type_id(elem_type, carrier)
+        from pyfory.serializer import (
+            Numpy1DArraySerializer,
+            PyArraySerializer,
+            fory_array_serializer_type,
+            fory_array_wrapper_type,
+            typecode_dict,
+            typeid_code,
+        )
+
+        if carrier == "array":
+            wrapper_type = fory_array_wrapper_type(type_id)
+            serializer_type = fory_array_serializer_type(type_id)
+            return serializer_type(self.type_resolver, wrapper_type)
+        if carrier == "stdarray":
+            typecode = typeid_code.get(type_id)
+            if typecode is None:
+                raise TypeError(f"pyfory.StdArray does not support array type id {type_id}")
+            _itemsize, ftype, _type_id = typecode_dict[typecode]
+            return PyArraySerializer(self.type_resolver, ftype, type_id)
+        if carrier == "ndarray":
+            for dtype, (_itemsize, _format, ftype, dtype_type_id) in Numpy1DArraySerializer.dtypes_dict.items():
+                if dtype_type_id == type_id:
+                    return Numpy1DArraySerializer(self.type_resolver, ftype, dtype)
+            raise TypeError(f"pyfory.NDArray does not support array type id {type_id}")
+        raise TypeError(f"Unknown array carrier {carrier!r}")
 
     def visit_list(self, field_name, elem_type, types_path=None):
         from pyfory.serializer import ListSerializer  # Local import
@@ -823,11 +910,24 @@ def _sort_fields(type_resolver, field_names, serializers, nullable_map=None, fie
     return [t[2] for t in all_types], [t[1] for t in all_types]
 
 
+def _all_fields_have_tag_ids(field_names, field_infos_list=None):
+    if not field_names or not field_infos_list or len(field_infos_list) != len(field_names):
+        return False
+    return all(fi.tag_id >= 0 for fi in field_infos_list)
+
+
 def group_fields(type_resolver, field_names, serializers, nullable_map=None, field_infos_list=None):
     nullable_map = nullable_map or {}
     field_info_map = {}
     if field_infos_list:
         field_info_map = {fi.name: fi for fi in field_infos_list}
+    if _all_fields_have_tag_ids(field_names, field_infos_list):
+        flat_types = []
+        for field_name, serializer in zip(field_names, serializers):
+            fi = field_info_map[field_name]
+            type_id = _UNKNOWN_TYPE_ID if serializer is None else type_resolver.get_type_info(serializer.type_).type_id
+            flat_types.append((type_id, serializer, field_name, (0, fi.tag_id, "")))
+        return (sorted(flat_types, key=lambda item: item[3]), [], [], [], [], [], [])
     boxed_types = []
     nullable_boxed_types = []
     collection_types = []
@@ -840,7 +940,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
         fi = field_info_map.get(field_name)
         tag_id = fi.tag_id if fi else -1
         if tag_id >= 0:
-            sort_key = (0, str(tag_id), "")
+            sort_key = (0, tag_id, "")
         else:
             sort_key = (1, field_name, "")
         if serializer is None:
@@ -956,8 +1056,7 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
         # Determine field identifier for fingerprint
         if tag_id >= 0:
             field_id_or_name = str(tag_id)
-            # Sort by tag ID string (lexicographic) for tag ID fields
-            sort_key = (0, field_id_or_name, "")  # 0 = tag ID fields come first
+            sort_key = (0, tag_id, "")  # 0 = tag ID fields come first
         else:
             field_id_or_name = field_name
             # Sort by field name (lexicographic) for name-based fields
@@ -1024,6 +1123,11 @@ def _build_schema_fingerprint_type(type_resolver, type_hint, nullable, track_ref
 
     ref_flag = "1" if track_ref else "0"
     nullable_flag = "1" if include_nullable and nullable else "0"
+
+    array_meta = unwrap_array(unwrapped_type)
+    if array_meta is not None:
+        type_id = _array_type_id(array_meta.element_type, array_meta.carrier)
+        return f"{type_id},{ref_flag},{nullable_flag}"
 
     if args:
         if origin is list or origin == typing.List:
@@ -1138,6 +1242,9 @@ class StructTypeIdVisitor(TypeVisitor):
         self.type_resolver = type_resolver
         self.cls = cls
 
+    def visit_array(self, field_name, elem_type, carrier, types_path=None):
+        return [_array_type_id(elem_type, carrier)]
+
     def visit_list(self, field_name, elem_type, types_path=None):
         # Infer type recursively for type such as List[Dict[str, str]]
         elem_ids = infer_field("item", elem_type, self, types_path=types_path)
@@ -1179,6 +1286,9 @@ class StructTypeIdVisitor(TypeVisitor):
 class StructTypeVisitor(TypeVisitor):
     def __init__(self, cls):
         self.cls = cls
+
+    def visit_array(self, field_name, elem_type, carrier, types_path=None):
+        return [_array_type_id(elem_type, carrier)]
 
     def visit_list(self, field_name, elem_type, types_path=None):
         # Infer type recursively for type such as List[Dict[str, str]]

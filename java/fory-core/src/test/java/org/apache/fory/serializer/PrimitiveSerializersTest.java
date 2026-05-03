@@ -26,6 +26,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ArrayType;
 import org.apache.fory.annotation.Int8ArrayType;
 import org.apache.fory.annotation.UInt16Elements;
 import org.apache.fory.annotation.UInt32Elements;
@@ -176,14 +177,21 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   }
 
   public static class PrimitiveListStruct {
-    public Int8List int8Values;
-    public Int16List int16Values;
-    public Int32List int32Values;
-    public Int64List int64Values;
-    public UInt8List uint8Values;
-    public UInt16List uint16Values;
-    public UInt32List uint32Values;
-    public UInt64List uint64Values;
+    @ArrayType public Int8List int8Values;
+
+    @ArrayType public Int16List int16Values;
+
+    @ArrayType public Int32List int32Values;
+
+    @ArrayType public Int64List int64Values;
+
+    @ArrayType public UInt8List uint8Values;
+
+    @ArrayType public UInt16List uint16Values;
+
+    @ArrayType public UInt32List uint32Values;
+
+    @ArrayType public UInt64List uint64Values;
   }
 
   public static class PrimitiveCollectionFieldStruct {

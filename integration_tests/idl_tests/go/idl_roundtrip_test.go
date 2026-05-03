@@ -18,12 +18,15 @@
 package idl_test
 
 import (
+	"math/big"
 	"os"
 	"reflect"
 	"testing"
 	"time"
 
 	fory "github.com/apache/fory/go/fory"
+	"github.com/apache/fory/go/fory/bfloat16"
+	"github.com/apache/fory/go/fory/float16"
 	"github.com/apache/fory/go/fory/optional"
 	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook/generated"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example/generated"
@@ -33,6 +36,7 @@ import (
 	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb/generated"
 	evolving1 "github.com/apache/fory/integration_tests/idl_tests/go/evolving1/generated"
 	evolving2 "github.com/apache/fory/integration_tests/idl_tests/go/evolving2/generated"
+	example "github.com/apache/fory/integration_tests/idl_tests/go/example/generated"
 	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph/generated"
 	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster/generated"
 	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types/generated"
@@ -259,6 +263,9 @@ func runAddressBookRoundTrip(t *testing.T, compatible bool) {
 	if err := anyexample.RegisterTypes(f); err != nil {
 		t.Fatalf("register any example types: %v", err)
 	}
+	if err := example.RegisterTypes(f); err != nil {
+		t.Fatalf("register example types: %v", err)
+	}
 
 	book := buildAddressBook()
 	runLocalRoundTrip(t, f, book)
@@ -289,6 +296,11 @@ func runAddressBookRoundTrip(t *testing.T, compatible bool) {
 
 	anyHolder := buildAnyHolder()
 	runLocalAnyRoundTrip(t, f, anyHolder)
+
+	exampleMessage := buildExampleMessage()
+	exampleUnion := buildExampleUnion()
+	runLocalExampleRoundTrip(t, f, exampleMessage, exampleUnion)
+	runFileExampleRoundTrip(t, f, exampleMessage, exampleUnion)
 
 	refFory := fory.NewFory(
 		fory.WithXlang(true),
@@ -367,6 +379,269 @@ func buildAnyHolder() anyexample.AnyHolder {
 		UnionValue:     unionValue,
 		ListValue:      []string{"alpha", "beta"},
 		MapValue:       map[string]string{"k1": "v1", "k2": "v2"},
+	}
+}
+
+func decimalValue(unscaled int64, scale int32) fory.Decimal {
+	return fory.NewDecimal(big.NewInt(unscaled), scale)
+}
+
+func buildExampleMessage() example.ExampleMessage {
+	dateValue := fory.Date{Year: 2024, Month: time.February, Day: 3}
+	timestampValue := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC)
+	durationValue := 42*time.Second + 7*time.Microsecond
+	leaf := example.ExampleLeaf{Label: "leaf", Count: 7}
+	otherLeaf := example.ExampleLeaf{Label: "other", Count: 8}
+	maybeFloat16One := float16.Float16FromFloat32(1.0)
+	maybeFloat16Two := float16.Float16FromFloat32(2.0)
+	maybeBfloat16One := bfloat16.BFloat16FromFloat32(1.0)
+	maybeBfloat16Three := bfloat16.BFloat16FromFloat32(3.0)
+	maybeFloat16Map := float16.Float16FromFloat32(1.5)
+	maybeBfloat16Map := bfloat16.BFloat16FromFloat32(2.25)
+	maybeFixedInt32One := int32(1)
+	maybeFixedInt32Three := int32(3)
+	maybeUint64Ten := uint64(10)
+	maybeUint64Thirty := uint64(30)
+	message := example.ExampleMessage{
+		BoolValue:                true,
+		Int8Value:                -12,
+		Int16Value:               -1234,
+		FixedInt32Value:          -123456,
+		Varint32Value:            -12345,
+		FixedInt64Value:          -123456789,
+		Varint64Value:            -987654321,
+		TaggedInt64Value:         123456789,
+		Uint8Value:               200,
+		Uint16Value:              60000,
+		FixedUint32Value:         1234567890,
+		VarUint32Value:           1234567890,
+		FixedUint64Value:         9876543210,
+		VarUint64Value:           12345678901,
+		TaggedUint64Value:        2222222222,
+		Float16Value:             float16.Float16FromFloat32(1.5),
+		Bfloat16Value:            bfloat16.BFloat16FromFloat32(2.5),
+		Float32Value:             3.5,
+		Float64Value:             4.5,
+		StringValue:              "example",
+		BytesValue:               []byte{1, 2, 3},
+		DateValue:                dateValue,
+		TimestampValue:           timestampValue,
+		DurationValue:            durationValue,
+		DecimalValue:             decimalValue(12345, 2),
+		EnumValue:                example.ExampleStateReady,
+		MessageValue:             &leaf,
+		UnionValue:               example.LeafExampleLeafUnion(&otherLeaf),
+		BoolList:                 []bool{true, false, true},
+		Int8List:                 []int8{1, -2, 3},
+		Int16List:                []int16{100, -200, 300},
+		FixedInt32List:           []int32{1000, -2000, 3000},
+		Varint32List:             []int32{-10, 20, -30},
+		FixedInt64List:           []int64{10000, -20000},
+		Varint64List:             []int64{-40, 50},
+		TaggedInt64List:          []int64{60, 70},
+		Uint8List:                []uint8{200, 250},
+		Uint16List:               []uint16{50000, 60000},
+		FixedUint32List:          []uint32{2000000000, 2100000000},
+		VarUint32List:            []uint32{100, 200},
+		FixedUint64List:          []uint64{9000000000},
+		VarUint64List:            []uint64{12000000000},
+		TaggedUint64List:         []uint64{13000000000},
+		Float16List:              []float16.Float16{float16.Float16FromFloat32(1.0), float16.Float16FromFloat32(2.0)},
+		Bfloat16List:             []bfloat16.BFloat16{bfloat16.BFloat16FromFloat32(1.0), bfloat16.BFloat16FromFloat32(2.0)},
+		MaybeFloat16List:         []*float16.Float16{&maybeFloat16One, nil, &maybeFloat16Two},
+		MaybeBfloat16List:        []*bfloat16.BFloat16{&maybeBfloat16One, nil, &maybeBfloat16Three},
+		Float32List:              []float32{1.5, 2.5},
+		Float64List:              []float64{3.5, 4.5},
+		StringList:               []string{"alpha", "beta"},
+		BytesList:                [][]byte{{4, 5}, {6, 7}},
+		DateList:                 []fory.Date{{Year: 2024, Month: time.January, Day: 1}, {Year: 2024, Month: time.January, Day: 2}},
+		TimestampList:            []time.Time{time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)},
+		DurationList:             []time.Duration{time.Millisecond, 2 * time.Second},
+		DecimalList:              []fory.Decimal{decimalValue(125, 2), decimalValue(250, 2)},
+		EnumList:                 []example.ExampleState{example.ExampleStateUnknown, example.ExampleStateFailed},
+		MessageList:              []example.ExampleLeaf{leaf, otherLeaf},
+		UnionList:                []example.ExampleLeafUnion{example.NoteExampleLeafUnion("note"), example.LeafExampleLeafUnion(&otherLeaf)},
+		MaybeFixedInt32List:      []*int32{&maybeFixedInt32One, nil, &maybeFixedInt32Three},
+		MaybeUint64List:          []*uint64{&maybeUint64Ten, nil, &maybeUint64Thirty},
+		BoolArray:                []bool{true, false},
+		Int8Array:                []int8{1, -2},
+		Int16Array:               []int16{100, -200},
+		Int32Array:               []int32{1000, -2000},
+		Int64Array:               []int64{10000, -20000},
+		Uint8Array:               []uint8{200, 250},
+		Uint16Array:              []uint16{50000, 60000},
+		Uint32Array:              []uint32{2000000000, 2100000000},
+		Uint64Array:              []uint64{9000000000, 12000000000},
+		Float16Array:             []float16.Float16{float16.Float16FromFloat32(1.0), float16.Float16FromFloat32(2.0)},
+		Bfloat16Array:            []bfloat16.BFloat16{bfloat16.BFloat16FromFloat32(1.0), bfloat16.BFloat16FromFloat32(2.0)},
+		Float32Array:             []float32{1.5, 2.5},
+		Float64Array:             []float64{3.5, 4.5},
+		Int32ArrayList:           [][]int32{{1, 2}, {3, 4}},
+		Uint8ArrayList:           [][]uint8{{201, 202}, {203}},
+		StringValuesByBool:       map[bool]string{true: "bool"},
+		StringValuesByInt8:       map[int8]string{-1: "int8"},
+		StringValuesByInt16:      map[int16]string{-2: "int16"},
+		StringValuesByFixedInt32: map[int32]string{-3: "fixed-int32"},
+		StringValuesByVarint32:   map[int32]string{4: "varint32"},
+		StringValuesByFixedInt64: map[int64]string{-5: "fixed-int64"},
+		StringValuesByVarint64:   map[int64]string{6: "varint64"},
+		StringValuesByTaggedInt64: map[int64]string{
+			7: "tagged-int64",
+		},
+		StringValuesByUint8:        map[uint8]string{200: "uint8"},
+		StringValuesByUint16:       map[uint16]string{60000: "uint16"},
+		StringValuesByFixedUint32:  map[uint32]string{1234567890: "fixed-uint32"},
+		StringValuesByVarUint32:    map[uint32]string{1234567891: "var-uint32"},
+		StringValuesByFixedUint64:  map[uint64]string{9876543210: "fixed-uint64"},
+		StringValuesByVarUint64:    map[uint64]string{9876543211: "var-uint64"},
+		StringValuesByTaggedUint64: map[uint64]string{9876543212: "tagged-uint64"},
+		StringValuesByString:       map[string]string{"name": "value"},
+		StringValuesByTimestamp:    map[time.Time]string{time.Date(2024, 3, 4, 5, 6, 7, 0, time.UTC): "time"},
+		StringValuesByDuration:     map[time.Duration]string{9 * time.Second: "duration"},
+		StringValuesByEnum:         map[example.ExampleState]string{example.ExampleStateReady: "ready"},
+		Float16ValuesByName:        map[string]float16.Float16{"f16": float16.Float16FromFloat32(1.25)},
+		MaybeFloat16ValuesByName:   map[string]*float16.Float16{"maybe-f16": &maybeFloat16Map},
+		Bfloat16ValuesByName:       map[string]bfloat16.BFloat16{"bf16": bfloat16.BFloat16FromFloat32(1.75)},
+		MaybeBfloat16ValuesByName: map[string]*bfloat16.BFloat16{
+			"maybe-bf16": &maybeBfloat16Map,
+		},
+		BytesValuesByName:        map[string][]byte{"bytes": {8, 9}},
+		DateValuesByName:         map[string]fory.Date{"date": {Year: 2024, Month: time.May, Day: 6}},
+		DecimalValuesByName:      map[string]fory.Decimal{"decimal": decimalValue(9901, 2)},
+		MessageValuesByName:      map[string]example.ExampleLeaf{"leaf": leaf},
+		UnionValuesByName:        map[string]example.ExampleLeafUnion{"union": example.CodeExampleLeafUnion(42)},
+		Uint8ArrayValuesByName:   map[string][]uint8{"u8": {201, 202}},
+		Float32ArrayValuesByName: map[string][]float32{"f32": {1.25, 2.5}},
+		Int32ArrayValuesByName:   map[string][]int32{"i32": {101, 202}},
+	}
+	setOptionalExampleMessageFields(&message)
+	return message
+}
+
+func setOptionalExampleMessageFields(message *example.ExampleMessage) {
+	value := reflect.ValueOf(message).Elem()
+	if field := value.FieldByName("Uint8ArrayList"); field.IsValid() && field.CanSet() {
+		field.Set(reflect.ValueOf([][]uint8{{201, 202}, {203}}))
+	}
+	if field := value.FieldByName("Int32ArrayValuesByName"); field.IsValid() && field.CanSet() {
+		field.Set(reflect.ValueOf(map[string][]int32{"i32": {101, 202}}))
+	}
+}
+
+func buildExampleUnion() example.ExampleMessageUnion {
+	return example.Int32ArrayListExampleMessageUnion([][]int32{{11, 12}, {13, 14}})
+}
+
+func runLocalExampleRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	message example.ExampleMessage,
+	unionValue example.ExampleMessageUnion,
+) {
+	data, err := f.Serialize(&message)
+	if err != nil {
+		t.Fatalf("serialize example message: %v", err)
+	}
+	var out example.ExampleMessage
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize example message: %v", err)
+	}
+	assertExampleMessageEqual(t, message, out)
+
+	unionData, err := f.Serialize(&unionValue)
+	if err != nil {
+		t.Fatalf("serialize example union: %v", err)
+	}
+	var unionOut example.ExampleMessageUnion
+	if err := f.Deserialize(unionData, &unionOut); err != nil {
+		t.Fatalf("deserialize example union: %v", err)
+	}
+	assertExampleUnionEqual(t, unionValue, unionOut)
+}
+
+func runFileExampleRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	message example.ExampleMessage,
+	unionValue example.ExampleMessageUnion,
+) {
+	if dataFile := os.Getenv("DATA_FILE_EXAMPLE"); dataFile != "" {
+		payload, err := os.ReadFile(dataFile)
+		if err != nil {
+			t.Fatalf("read example data file: %v", err)
+		}
+		var decoded example.ExampleMessage
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize example peer payload: %v", err)
+		}
+		assertExampleMessageEqual(t, message, decoded)
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize example peer payload: %v", err)
+		}
+		if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+			t.Fatalf("write example data file: %v", err)
+		}
+	}
+
+	if dataFile := os.Getenv("DATA_FILE_EXAMPLE_UNION"); dataFile != "" {
+		payload, err := os.ReadFile(dataFile)
+		if err != nil {
+			t.Fatalf("read example union data file: %v", err)
+		}
+		var decoded example.ExampleMessageUnion
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize example union peer payload: %v", err)
+		}
+		assertExampleUnionEqual(t, unionValue, decoded)
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize example union peer payload: %v", err)
+		}
+		if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+			t.Fatalf("write example union data file: %v", err)
+		}
+	}
+}
+
+func assertExampleMessageEqual(t *testing.T, expected, actual example.ExampleMessage) {
+	t.Helper()
+	expected = normalizeExampleMessageForCompare(expected)
+	actual = normalizeExampleMessageForCompare(actual)
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatalf("example message mismatch: %#v != %#v", expected, actual)
+	}
+}
+
+func normalizeExampleMessageForCompare(message example.ExampleMessage) example.ExampleMessage {
+	message.TimestampValue = message.TimestampValue.UTC()
+	if message.TimestampList != nil {
+		message.TimestampList = append([]time.Time(nil), message.TimestampList...)
+		for i := range message.TimestampList {
+			message.TimestampList[i] = message.TimestampList[i].UTC()
+		}
+	}
+	if message.StringValuesByTimestamp != nil {
+		normalized := make(map[time.Time]string, len(message.StringValuesByTimestamp))
+		for key, value := range message.StringValuesByTimestamp {
+			normalized[key.UTC()] = value
+		}
+		message.StringValuesByTimestamp = normalized
+	}
+	value := reflect.ValueOf(&message).Elem()
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		if field.Kind() == reflect.Map && field.Len() == 0 && !field.IsNil() && field.CanSet() {
+			field.Set(reflect.Zero(field.Type()))
+		}
+	}
+	return message
+}
+
+func assertExampleUnionEqual(t *testing.T, expected, actual example.ExampleMessageUnion) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatalf("example union mismatch: %#v != %#v", expected, actual)
 	}
 }
 

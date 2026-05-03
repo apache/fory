@@ -31,6 +31,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     Schema,
 )
@@ -60,13 +61,15 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "u64",
         PrimitiveKind.VAR_UINT64: "u64",
         PrimitiveKind.TAGGED_UINT64: "u64",
-        PrimitiveKind.FLOAT16: "f32",
+        PrimitiveKind.FLOAT16: "Float16",
+        PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "f32",
         PrimitiveKind.FLOAT64: "f64",
         PrimitiveKind.STRING: "String",
         PrimitiveKind.BYTES: "Vec<u8>",
         PrimitiveKind.DATE: "chrono::NaiveDate",
         PrimitiveKind.TIMESTAMP: "chrono::NaiveDateTime",
+        PrimitiveKind.DURATION: "chrono::Duration",
         PrimitiveKind.DECIMAL: "fory::Decimal",
         PrimitiveKind.ANY: "Box<dyn Any>",
     }
@@ -337,7 +340,7 @@ class RustGenerator(BaseGenerator):
         type_name = enum.name
 
         # Derive macros
-        lines.append("#[derive(ForyEnum, Debug, Clone, PartialEq, Default)]")
+        lines.append("#[derive(ForyEnum, Debug, Clone, PartialEq, Eq, Hash, Default)]")
         lines.append("#[repr(i32)]")
 
         lines.append(f"pub enum {type_name} {{")
@@ -459,6 +462,8 @@ class RustGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             return field_type.kind == PrimitiveKind.ANY
         if isinstance(field_type, ListType):
+            return self.field_type_has_any(field_type.element_type)
+        if isinstance(field_type, ArrayType):
             return self.field_type_has_any(field_type.element_type)
         if isinstance(field_type, MapType):
             return self.field_type_has_any(
@@ -658,6 +663,8 @@ class RustGenerator(BaseGenerator):
             if element_attrs:
                 return f"list(element({', '.join(element_attrs)}))"
             return None
+        if isinstance(field_type, ArrayType):
+            return "array"
         if isinstance(field_type, MapType):
             key_attrs = self.get_nested_value_attrs(field_type.key_type)
             value_attrs = self.get_nested_value_attrs(field_type.value_type)
@@ -747,6 +754,21 @@ class RustGenerator(BaseGenerator):
                 list_type = f"Option<{list_type}>"
             return list_type
 
+        elif isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                nullable=False,
+                ref=False,
+                parent_stack=parent_stack,
+                pointer_type=pointer_type,
+            )
+            array_type = f"Vec<{element_type}>"
+            if ref:
+                array_type = f"{pointer_type}<{array_type}>"
+            if nullable:
+                array_type = f"Option<{array_type}>"
+            return array_type
+
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -801,8 +823,16 @@ class RustGenerator(BaseGenerator):
     def collect_uses(self, field_type: FieldType, uses: Set[str]):
         """Collect required use statements for a field type."""
         if isinstance(field_type, PrimitiveType):
-            if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
+            if field_type.kind in (
+                PrimitiveKind.DATE,
+                PrimitiveKind.TIMESTAMP,
+                PrimitiveKind.DURATION,
+            ):
                 uses.add("use chrono")
+            if field_type.kind == PrimitiveKind.FLOAT16:
+                uses.add("use fory::Float16")
+            if field_type.kind == PrimitiveKind.BFLOAT16:
+                uses.add("use fory::BFloat16")
             if field_type.kind == PrimitiveKind.ANY:
                 uses.add("use std::any::Any")
 
@@ -810,6 +840,9 @@ class RustGenerator(BaseGenerator):
             pass  # No additional uses needed
 
         elif isinstance(field_type, ListType):
+            self.collect_uses(field_type.element_type, uses)
+
+        elif isinstance(field_type, ArrayType):
             self.collect_uses(field_type.element_type, uses)
 
         elif isinstance(field_type, MapType):

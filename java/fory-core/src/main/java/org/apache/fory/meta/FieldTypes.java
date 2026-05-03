@@ -32,6 +32,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.util.Objects;
+import org.apache.fory.annotation.ArrayType;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
@@ -56,7 +57,9 @@ import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.UnknownClass;
+import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
@@ -100,11 +103,27 @@ public class FieldTypes {
     // This supports unsigned types and field-configurable compression in both modes
     int typeId;
     Annotation typeAnnotation = field == null ? null : Descriptor.getAnnotation(field);
+    boolean primitiveList = TypeUtils.isPrimitiveListClass(rawType);
+    boolean primitiveListArray = field != null && field.isAnnotationPresent(ArrayType.class);
+    boolean boxedListArray =
+        isXlang
+            && field != null
+            && !primitiveList
+            && TypeAnnotationUtils.isBoxedListArrayType(field);
     int primitiveListElementTypeId =
-        TypeAnnotationUtils.getPrimitiveListElementTypeId(typeAnnotation, rawType);
+        primitiveList
+            ? TypeAnnotationUtils.getPrimitiveListElementTypeId(typeAnnotation, rawType, isXlang)
+            : Types.UNKNOWN;
     TypeExtMeta typeExtMeta = genericType.getTypeRef().getTypeExtMeta();
     if (typeExtMeta != null && typeExtMeta.typeId() != Types.UNKNOWN) {
       typeId = typeExtMeta.typeId();
+    } else if (isXlang && primitiveList) {
+      typeId =
+          primitiveListArray
+              ? TypeAnnotationUtils.getPrimitiveListArrayTypeId(rawType)
+              : Types.LIST;
+    } else if (boxedListArray) {
+      typeId = TypeAnnotationUtils.getBoxedListArrayTypeId(field);
     } else if (primitiveListElementTypeId != Types.UNKNOWN) {
       typeId = TypeAnnotationUtils.getPrimitiveListTypeId(typeAnnotation, rawType);
     } else if (TypeUtils.unwrap(rawType).isPrimitive()) {
@@ -117,6 +136,12 @@ public class FieldTypes {
       // For primitive arrays with type annotations, use getDescriptorTypeId to parse annotation
       // This allows @UInt8Elements etc. to override the default INT8_ARRAY type
       typeId = Types.getDescriptorTypeId(resolver, field);
+    } else if (typeAnnotation != null && rawType.isArray() && field != null) {
+      typeId = Types.getDescriptorTypeId(resolver, field);
+    } else if (isXlang && rawType == Float16[].class) {
+      typeId = Types.FLOAT16_ARRAY;
+    } else if (isXlang && rawType == BFloat16[].class) {
+      typeId = Types.BFLOAT16_ARRAY;
     } else {
       TypeInfo info =
           isXlang && rawType == Object.class ? null : resolver.getTypeInfo(rawType, false);
@@ -190,8 +215,7 @@ public class FieldTypes {
       return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
     }
 
-    if (primitiveListElementTypeId != Types.UNKNOWN
-        && TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(typeAnnotation, rawType)) {
+    if (isXlang && primitiveList && !primitiveListArray) {
       return new CollectionFieldType(
           Types.LIST,
           nullable,
@@ -673,9 +697,9 @@ public class FieldTypes {
       case Types.FLOAT32_ARRAY:
         return float[].class;
       case Types.FLOAT16_ARRAY:
-        return Float16List.class;
+        return short[].class;
       case Types.BFLOAT16_ARRAY:
-        return BFloat16List.class;
+        return short[].class;
       case Types.FLOAT64_ARRAY:
         return double[].class;
       default:

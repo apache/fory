@@ -90,6 +90,7 @@ import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.ScalaTypes;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.GraalvmSupport;
@@ -403,6 +404,12 @@ public abstract class TypeResolver {
   public boolean usesPrimitiveFieldOrdering(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
     return TypeUtils.isPrimitive(rawType) || TypeUtils.isBoxed(rawType);
+  }
+
+  public boolean isCollectionDescriptor(Descriptor descriptor) {
+    return isCollection(descriptor.getRawType())
+        || TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+            descriptor.getTypeAnnotation(), descriptor.getRawType());
   }
 
   public abstract boolean isMonomorphic(Descriptor descriptor);
@@ -1370,6 +1377,7 @@ public abstract class TypeResolver {
             DescriptorGrouper.createDescriptorGrouper(
                 this::usesPrimitiveFieldOrdering,
                 this::isBuildIn,
+                this::isCollectionDescriptor,
                 descriptors,
                 descriptorsGroupedOrdered,
                 descriptorUpdator,
@@ -1451,6 +1459,50 @@ public abstract class TypeResolver {
     return descriptor.getSnakeCaseName();
   }
 
+  protected static int compareFieldSortKey(Descriptor d1, Descriptor d2) {
+    Integer id1 = getFieldSortId(d1);
+    Integer id2 = getFieldSortId(d2);
+    int c;
+    if (id1 != null && id2 != null) {
+      c = Integer.compare(id1, id2);
+    } else {
+      c = getFieldSortKey(d1).compareTo(getFieldSortKey(d2));
+    }
+    if (c == 0) {
+      // Field name duplicate in super/child classes.
+      c = d1.getDeclaringClass().compareTo(d2.getDeclaringClass());
+      if (c == 0) {
+        // Final tie-breaker: use actual field name to distinguish fields with same tag ID.
+        // This ensures Comparator contract is satisfied (returns 0 only for same object).
+        c = d1.getName().compareTo(d2.getName());
+      }
+    }
+    return c;
+  }
+
+  protected static boolean hasFieldSortId(Descriptor descriptor) {
+    return getFieldSortId(descriptor) != null;
+  }
+
+  private static Integer getFieldSortId(Descriptor descriptor) {
+    ForyField foryField = descriptor.getForyField();
+    if (foryField != null && foryField.id() >= 0) {
+      return foryField.id();
+    }
+    String name = descriptor.getName();
+    if (name != null && name.startsWith("$tag")) {
+      String tagId = name.substring(4);
+      if (!tagId.isEmpty()) {
+        try {
+          return Integer.parseInt(tagId);
+        } catch (NumberFormatException ignored) {
+          // Fall back to string sorting for non-numeric synthetic tag names.
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * When compress disabled, sort primitive descriptors from largest to smallest, if size is the
    * same, sort by field name to fix order.
@@ -1470,7 +1522,7 @@ public abstract class TypeResolver {
           c = isCrossLanguage() ? typeId1 - typeId2 : typeId2 - typeId1;
           // noinspection Duplicates
           if (c == 0) {
-            c = getFieldSortKey(d1).compareTo(getFieldSortKey(d2));
+            c = compareFieldSortKey(d1, d2);
             if (c == 0) {
               // Field name duplicate in super/child classes.
               c = d1.getDeclaringClass().compareTo(d2.getDeclaringClass());

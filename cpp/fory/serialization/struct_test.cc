@@ -32,6 +32,7 @@
 #include "fory/serialization/fory.h"
 #include "fory/type/type.h"
 #include "gtest/gtest.h"
+#include <algorithm>
 #include <cfloat>
 #include <climits>
 #include <map>
@@ -90,6 +91,18 @@ struct FieldConfigTaggedStruct {
   }
   FORY_STRUCT(FieldConfigTaggedStruct, (a, fory::F(1)), (b, fory::F(2)),
               (c, fory::F(3)));
+};
+
+struct NumericTaggedOrderStruct {
+  std::string tag10;
+  int32_t tag2;
+  int64_t tag1;
+
+  bool operator==(const NumericTaggedOrderStruct &other) const {
+    return tag10 == other.tag10 && tag2 == other.tag2 && tag1 == other.tag1;
+  }
+  FORY_STRUCT(NumericTaggedOrderStruct, (tag10, fory::F(10)),
+              (tag2, fory::F(2)), (tag1, fory::F(1)));
 };
 
 class PrivateFieldsStruct {
@@ -304,6 +317,25 @@ struct OptionalNestedAnnotatedStruct {
               (values, fory::F().inner(T::list(T::varint()))));
 };
 
+struct ListArrayAnnotatedStruct {
+  std::vector<int32_t> numbers;
+  std::vector<int8_t> int8_values;
+  std::vector<uint8_t> uint8_values;
+  std::vector<int32_t> dense_numbers;
+  std::vector<uint8_t> pixels;
+
+  bool operator==(const ListArrayAnnotatedStruct &other) const {
+    return numbers == other.numbers && int8_values == other.int8_values &&
+           uint8_values == other.uint8_values &&
+           dense_numbers == other.dense_numbers && pixels == other.pixels;
+  }
+  FORY_STRUCT(ListArrayAnnotatedStruct, (numbers, fory::F(1).list(T::int32())),
+              (int8_values, fory::F(2).list(T::int8())),
+              (uint8_values, fory::F(3).list(T::uint8())),
+              (dense_numbers, fory::F(4).array(T::int32())),
+              (pixels, fory::F(5).array(T::uint8())));
+};
+
 // Optional fields
 struct OptionalFieldsStruct {
   std::string name;
@@ -460,6 +492,7 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<SingleFieldStruct>(type_id++);
   fory.register_struct<TwoFieldStruct>(type_id++);
   fory.register_struct<ManyFieldsStruct>(type_id++);
+  fory.register_struct<NumericTaggedOrderStruct>(type_id++);
   fory.register_struct<PrivateFieldsStruct>(type_id++);
   fory.register_struct<AllPrimitivesStruct>(type_id++);
   fory.register_struct<StringTestStruct>(type_id++);
@@ -475,6 +508,7 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<NestedAnnotatedStruct>(type_id++);
   fory.register_struct<PartialMapAnnotatedStruct>(type_id++);
   fory.register_struct<OptionalNestedAnnotatedStruct>(type_id++);
+  fory.register_struct<ListArrayAnnotatedStruct>(type_id++);
   fory.register_struct<OptionalFieldsStruct>(type_id++);
   fory.register_struct<EnumStruct>(type_id++);
   fory.register_struct<UserProfile>(type_id++);
@@ -720,6 +754,133 @@ TEST(StructComprehensiveTest, OptionalNestedAnnotation) {
   ASSERT_EQ(fields[0].field_type.generics.size(), 1);
   EXPECT_EQ(fields[0].field_type.generics[0].type_id,
             static_cast<uint32_t>(TypeId::VAR_UINT32));
+}
+
+TEST(StructComprehensiveTest, ListAndArrayAnnotationsUseDistinctTypeIds) {
+  ListArrayAnnotatedStruct obj{
+      {1, 2, 3},
+      {static_cast<int8_t>(1), static_cast<int8_t>(-2), static_cast<int8_t>(3)},
+      {static_cast<uint8_t>(200), static_cast<uint8_t>(250)},
+      {4, 5, 6},
+      {7, 8, 9}};
+  test_roundtrip(obj);
+
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<ListArrayAnnotatedStruct>(604).ok());
+  ASSERT_TRUE(fory.serialize(obj).ok());
+  TypeMeta meta =
+      fory.type_resolver().clone_struct_meta<ListArrayAnnotatedStruct>();
+  const auto &fields = meta.get_field_infos();
+  ASSERT_EQ(fields.size(), 5);
+
+  const FieldInfo *numbers = nullptr;
+  const FieldInfo *int8_values = nullptr;
+  const FieldInfo *uint8_values = nullptr;
+  const FieldInfo *dense_numbers = nullptr;
+  const FieldInfo *pixels = nullptr;
+  for (const auto &field : fields) {
+    if (field.field_id == 1) {
+      numbers = &field;
+    } else if (field.field_id == 2) {
+      int8_values = &field;
+    } else if (field.field_id == 3) {
+      uint8_values = &field;
+    } else if (field.field_id == 4) {
+      dense_numbers = &field;
+    } else if (field.field_id == 5) {
+      pixels = &field;
+    }
+  }
+
+  ASSERT_NE(numbers, nullptr);
+  ASSERT_EQ(numbers->field_type.type_id, static_cast<uint32_t>(TypeId::LIST));
+  ASSERT_EQ(numbers->field_type.generics.size(), 1);
+  EXPECT_EQ(numbers->field_type.generics[0].type_id,
+            static_cast<uint32_t>(TypeId::VARINT32));
+
+  ASSERT_NE(int8_values, nullptr);
+  EXPECT_EQ(int8_values->field_type.type_id,
+            static_cast<uint32_t>(TypeId::LIST));
+  ASSERT_EQ(int8_values->field_type.generics.size(), 1);
+  EXPECT_EQ(int8_values->field_type.generics[0].type_id,
+            static_cast<uint32_t>(TypeId::INT8));
+
+  ASSERT_NE(uint8_values, nullptr);
+  EXPECT_EQ(uint8_values->field_type.type_id,
+            static_cast<uint32_t>(TypeId::LIST));
+  ASSERT_EQ(uint8_values->field_type.generics.size(), 1);
+  EXPECT_EQ(uint8_values->field_type.generics[0].type_id,
+            static_cast<uint32_t>(TypeId::UINT8));
+
+  ASSERT_NE(dense_numbers, nullptr);
+  EXPECT_EQ(dense_numbers->field_type.type_id,
+            static_cast<uint32_t>(TypeId::INT32_ARRAY));
+
+  ASSERT_NE(pixels, nullptr);
+  EXPECT_EQ(pixels->field_type.type_id,
+            static_cast<uint32_t>(TypeId::UINT8_ARRAY));
+
+  auto schema_consistent = Fory::builder()
+                               .xlang(true)
+                               .compatible(false)
+                               .check_struct_version(false)
+                               .track_ref(false)
+                               .build();
+  ASSERT_TRUE(
+      schema_consistent.register_struct<ListArrayAnnotatedStruct>(604).ok());
+  auto serialized = schema_consistent.serialize(obj);
+  ASSERT_TRUE(serialized.ok());
+  const std::vector<uint8_t> int8_list_wire = {3, 0x0c, 1,
+                                               static_cast<uint8_t>(0xfe), 3};
+  const std::vector<uint8_t> uint8_list_wire = {
+      2, 0x0c, static_cast<uint8_t>(200), static_cast<uint8_t>(250)};
+  EXPECT_NE(std::search(serialized.value().begin(), serialized.value().end(),
+                        int8_list_wire.begin(), int8_list_wire.end()),
+            serialized.value().end());
+  EXPECT_NE(std::search(serialized.value().begin(), serialized.value().end(),
+                        uint8_list_wire.begin(), uint8_list_wire.end()),
+            serialized.value().end());
+}
+
+TEST(StructComprehensiveTest, FullyTaggedStructsUseNumericTagOrder) {
+  NumericTaggedOrderStruct obj{"ten", 2, 1};
+  test_roundtrip(obj);
+
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<NumericTaggedOrderStruct>(605).ok());
+  auto serialized = fory.serialize(obj);
+  ASSERT_TRUE(serialized.ok());
+  auto deserialized =
+      fory.deserialize<NumericTaggedOrderStruct>(serialized.value());
+  ASSERT_TRUE(deserialized.ok());
+  EXPECT_EQ(deserialized.value(), obj);
+  TypeMeta meta =
+      fory.type_resolver().clone_struct_meta<NumericTaggedOrderStruct>();
+  const auto &fields = meta.get_field_infos();
+  ASSERT_EQ(fields.size(), 3);
+  EXPECT_EQ(fields[0].field_id, 1);
+  EXPECT_EQ(fields[1].field_id, 2);
+  EXPECT_EQ(fields[2].field_id, 10);
+
+  std::map<int16_t, const FieldInfo *> fields_by_id;
+  for (const auto &field : fields) {
+    fields_by_id.emplace(field.field_id, &field);
+  }
+  ASSERT_NE(fields_by_id.find(1), fields_by_id.end());
+  ASSERT_NE(fields_by_id.find(2), fields_by_id.end());
+  ASSERT_NE(fields_by_id.find(10), fields_by_id.end());
+
+  auto fingerprint_part = [&](int16_t field_id) {
+    const FieldInfo &field = *fields_by_id[field_id];
+    return std::to_string(field_id) + "," +
+           std::to_string(field.field_type.type_id) + "," +
+           (field.field_type.track_ref ? "1" : "0") + "," +
+           (field.field_type.nullable ? "1" : "0") + ";";
+  };
+  EXPECT_EQ(TypeMeta::compute_struct_fingerprint(fields),
+            fingerprint_part(1) + fingerprint_part(2) + fingerprint_part(10));
 }
 
 TEST(StructComprehensiveTest,

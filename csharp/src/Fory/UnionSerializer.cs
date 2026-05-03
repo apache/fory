@@ -188,7 +188,12 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             return value;
         }
 
-        if (TryConvertListValue(value, targetType, out object? converted))
+        if (TryConvertMapValue(value, targetType, out object? converted))
+        {
+            return converted;
+        }
+
+        if (TryConvertListValue(value, targetType, out converted))
         {
             return converted;
         }
@@ -209,13 +214,75 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             return false;
         }
 
-        IList typedList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType!))!;
+        List<object?> items = [];
         foreach (object? item in source)
         {
-            typedList.Add(ConvertListElement(item, elementType!));
+            items.Add(ConvertCaseValue(item, elementType!));
+        }
+
+        if (targetType.IsArray)
+        {
+            Array typedArray = Array.CreateInstance(elementType!, items.Count);
+            for (int i = 0; i < items.Count; i++)
+            {
+                typedArray.SetValue(items[i], i);
+            }
+
+            converted = typedArray;
+            return true;
+        }
+
+        IList typedList = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elementType!))!;
+        foreach (object? item in items)
+        {
+            typedList.Add(item);
         }
 
         converted = typedList;
+        return true;
+    }
+
+    private static bool TryConvertMapValue(object value, Type targetType, out object? converted)
+    {
+        converted = null;
+        if (!TryGetMapTypes(targetType, out Type? keyType, out Type? valueType))
+        {
+            return false;
+        }
+
+        IDictionary typedMap =
+            (IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(keyType!, valueType!))!;
+        if (value is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                object key = ConvertCaseValue(entry.Key, keyType!) ??
+                             throw new InvalidDataException("union map key is null");
+                typedMap.Add(key, ConvertCaseValue(entry.Value, valueType!));
+            }
+
+            converted = typedMap;
+            return true;
+        }
+
+        if (value is not IEnumerable entries)
+        {
+            return false;
+        }
+
+        foreach (object? entry in entries)
+        {
+            if (entry is null || !TryGetKeyValue(entry, out object? key, out object? itemValue))
+            {
+                return false;
+            }
+
+            object convertedKey = ConvertCaseValue(key, keyType!) ??
+                                  throw new InvalidDataException("union map key is null");
+            typedMap.Add(convertedKey, ConvertCaseValue(itemValue, valueType!));
+        }
+
+        converted = typedMap;
         return true;
     }
 
@@ -252,11 +319,79 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
         return false;
     }
 
-    private static object? ConvertListElement(object? value, Type elementType)
+    private static bool TryGetMapTypes(Type targetType, out Type? keyType, out Type? valueType)
+    {
+        if (targetType.IsGenericType)
+        {
+            Type genericDef = targetType.GetGenericTypeDefinition();
+            if (genericDef == typeof(Dictionary<,>) ||
+                genericDef == typeof(IDictionary<,>) ||
+                genericDef == typeof(IReadOnlyDictionary<,>) ||
+                genericDef == typeof(SortedDictionary<,>) ||
+                genericDef == typeof(SortedList<,>) ||
+                genericDef == typeof(NullableKeyDictionary<,>))
+            {
+                Type[] args = targetType.GetGenericArguments();
+                keyType = args[0];
+                valueType = args[1];
+                return true;
+            }
+        }
+
+        foreach (Type iface in targetType.GetInterfaces())
+        {
+            if (!iface.IsGenericType)
+            {
+                continue;
+            }
+
+            Type genericDef = iface.GetGenericTypeDefinition();
+            if (genericDef == typeof(IDictionary<,>) || genericDef == typeof(IReadOnlyDictionary<,>))
+            {
+                Type[] args = iface.GetGenericArguments();
+                keyType = args[0];
+                valueType = args[1];
+                return true;
+            }
+        }
+
+        keyType = null;
+        valueType = null;
+        return false;
+    }
+
+    private static bool TryGetKeyValue(object entry, out object? key, out object? value)
+    {
+        Type entryType = entry.GetType();
+        PropertyInfo? keyProperty = entryType.GetProperty("Key");
+        PropertyInfo? valueProperty = entryType.GetProperty("Value");
+        if (keyProperty is null || valueProperty is null)
+        {
+            key = null;
+            value = null;
+            return false;
+        }
+
+        key = keyProperty.GetValue(entry);
+        value = valueProperty.GetValue(entry);
+        return true;
+    }
+
+    private static object? ConvertCaseValue(object? value, Type elementType)
     {
         if (value is null || elementType.IsInstanceOfType(value))
         {
             return value;
+        }
+
+        if (TryConvertMapValue(value, elementType, out object? convertedMap))
+        {
+            return convertedMap;
+        }
+
+        if (TryConvertListValue(value, elementType, out object? convertedList))
+        {
+            return convertedList;
         }
 
         Type target = Nullable.GetUnderlyingType(elementType) ?? elementType;

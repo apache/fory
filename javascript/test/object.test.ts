@@ -95,7 +95,7 @@ describe('object', () => {
 
   test('should object in array work', () => {
     const typeInfo = Type.struct('example.foo', {
-      a: Type.array(Type.struct('example.bar', {
+      a: Type.list(Type.struct('example.bar', {
         b: Type.string(),
         c: Type.bool(),
         d: Type.int32(),
@@ -162,7 +162,7 @@ describe('object', () => {
     const typeInfo = Type.struct("example.foo", {
       "+a": Type.struct("example.bar", {
         "delete": Type.string(),
-        c: Type.array(Type.struct("example.foo2", {
+        c: Type.list(Type.struct("example.foo2", {
           d: Type.string(),
         }))
       }),
@@ -182,7 +182,7 @@ describe('object', () => {
     const typeInfo = Type.struct("example.foo", {
       a: Type.struct("example\".bar", {
         b: Type.string(),
-        c: Type.array(Type.struct("example\\\".foo2", {
+        c: Type.list(Type.struct("example\\\".foo2", {
           d: Type.string(),
         }))
       }),

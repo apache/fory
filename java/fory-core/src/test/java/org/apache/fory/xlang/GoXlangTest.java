@@ -518,4 +518,10 @@ public class GoXlangTest extends XlangTestBase {
       throws java.io.IOException {
     super.testNestedAnnotatedContainerCompatible(enableCodegen);
   }
+
+  @Override
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testManualSchemaKindStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testManualSchemaKindStruct(enableCodegen);
+  }
 }

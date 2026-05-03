@@ -143,10 +143,10 @@ See [xlang_type_mapping.md](../../specification/xlang_type_mapping.md) for compl
 | `BFloat16`      | `BFloat16`     | `bfloat16`      |
 | `String`        | `String`       | `str`           |
 | `Vec<T>`        | `List<T>`      | `List[T]`       |
-| `Vec<Float16>`  | `Float16List`  | `float16array`  |
-| `Vec<BFloat16>` | `BFloat16List` | `bfloat16array` |
-| `[Float16; N]`  | `Float16List`  | `float16array`  |
-| `[BFloat16; N]` | `BFloat16List` | `bfloat16array` |
+| `Vec<Float16>`  | `Float16List`  | `Float16Array`  |
+| `Vec<BFloat16>` | `BFloat16List` | `BFloat16Array` |
+| `[Float16; N]`  | `Float16List`  | `Float16Array`  |
+| `[BFloat16; N]` | `BFloat16List` | `BFloat16Array` |
 | `HashMap<K,V>`  | `Map<K,V>`     | `Dict[K,V]`     |
 | `Option<T>`     | nullable `T`   | `Optional[T]`   |
 

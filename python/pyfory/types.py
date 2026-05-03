@@ -20,13 +20,81 @@ import array
 import typing
 from typing import TypeVar
 
-try:
-    from typing import Annotated as _Annotated
-except ImportError:
-    try:
-        from typing_extensions import Annotated as _Annotated
-    except ImportError:
-        _Annotated = None
+from pyfory.annotation import (
+    Ref,
+    RefMeta,
+    bfloat16,
+    fixed_int32,
+    fixed_int64,
+    fixed_uint32,
+    fixed_uint64,
+    float16,
+    float32,
+    float64,
+    int8,
+    int16,
+    int32,
+    int64,
+    tagged_int64,
+    tagged_uint64,
+    uint8,
+    uint16,
+    uint32,
+    uint64,
+)
+
+if typing.TYPE_CHECKING:
+    from pyfory.serialization import (
+        BFloat16Array,
+        BoolArray,
+        Float16Array,
+        Float32Array,
+        Float64Array,
+        Int16Array,
+        Int32Array,
+        Int64Array,
+        Int8Array,
+        UInt16Array,
+        UInt32Array,
+        UInt64Array,
+        UInt8Array,
+    )
+
+__all__ = [
+    "Ref",
+    "RefMeta",
+    "BoolArray",
+    "Int8Array",
+    "Int16Array",
+    "Int32Array",
+    "Int64Array",
+    "UInt8Array",
+    "UInt16Array",
+    "UInt32Array",
+    "UInt64Array",
+    "Float16Array",
+    "BFloat16Array",
+    "Float32Array",
+    "Float64Array",
+    "fixed_int32",
+    "fixed_int64",
+    "fixed_uint32",
+    "fixed_uint64",
+    "float16",
+    "float32",
+    "float64",
+    "bfloat16",
+    "int8",
+    "int16",
+    "int32",
+    "int64",
+    "tagged_int64",
+    "tagged_uint64",
+    "uint8",
+    "uint16",
+    "uint32",
+    "uint64",
+]
 
 try:
     import numpy as np
@@ -190,46 +258,6 @@ __TYPE_SHARE_META__ = {
     TypeId.NAMED_COMPATIBLE_STRUCT,
     TypeId.NAMED_UNION,
 }
-int8 = TypeVar("int8", bound=int)
-uint8 = TypeVar("uint8", bound=int)
-int16 = TypeVar("int16", bound=int)
-uint16 = TypeVar("uint16", bound=int)
-int32 = TypeVar("int32", bound=int)
-uint32 = TypeVar("uint32", bound=int)
-fixed_int32 = TypeVar("fixed_int32", bound=int)
-fixed_uint32 = TypeVar("fixed_uint32", bound=int)
-int64 = TypeVar("int64", bound=int)
-uint64 = TypeVar("uint64", bound=int)
-fixed_int64 = TypeVar("fixed_int64", bound=int)
-tagged_int64 = TypeVar("tagged_int64", bound=int)
-fixed_uint64 = TypeVar("fixed_uint64", bound=int)
-tagged_uint64 = TypeVar("tagged_uint64", bound=int)
-float32 = TypeVar("float32", bound=float)
-float64 = TypeVar("float64", bound=float)
-
-
-class RefMeta:
-    __slots__ = ("enable",)
-
-    def __init__(self, enable: bool = True):
-        self.enable = enable
-
-
-class Ref:
-    def __class_getitem__(cls, params):
-        if not isinstance(params, tuple):
-            params = (params,)
-        if len(params) == 0 or len(params) > 2:
-            raise TypeError("Ref expects Ref[T] or Ref[T, bool]")
-        target = params[0]
-        enable = True
-        if len(params) == 2:
-            enable = params[1]
-        if not isinstance(enable, bool):
-            raise TypeError("Ref enable must be a bool")
-        if _Annotated is None:
-            return target
-        return _Annotated[target, RefMeta(enable)]
 
 
 _primitive_types = {
@@ -239,15 +267,15 @@ _primitive_types = {
     int16,
     int32,
     int64,
+    float16,
+    bfloat16,
     float32,
     float64,
 }
 
 
 def _is_special_compiled_primitive_type(type_) -> bool:
-    from pyfory.serialization import bfloat16, float16
-
-    return type_ is float16 or type_ is bfloat16
+    return False
 
 
 _primitive_types_ids = {
@@ -380,12 +408,35 @@ _np_array_types = {
     Float64NDArrayType,
 }
 _primitive_array_types = _py_array_types.union(_np_array_types)
+_fory_array_types = None
+_FORY_ARRAY_TYPE_NAMES = {
+    "BoolArray",
+    "Int8Array",
+    "Int16Array",
+    "Int32Array",
+    "Int64Array",
+    "UInt8Array",
+    "UInt16Array",
+    "UInt32Array",
+    "UInt64Array",
+    "Float16Array",
+    "BFloat16Array",
+    "Float32Array",
+    "Float64Array",
+}
+
+
+def _get_fory_array_types():
+    global _fory_array_types
+    if _fory_array_types is None:
+        from pyfory import serialization
+
+        _fory_array_types = {getattr(serialization, name) for name in _FORY_ARRAY_TYPE_NAMES}
+    return _fory_array_types
 
 
 def _is_special_compiled_primitive_array_type(type_) -> bool:
-    from pyfory.serialization import bfloat16array, float16array
-
-    return type_ is float16array or type_ is bfloat16array
+    return False
 
 
 def is_py_array_type(type_) -> bool:
@@ -412,7 +463,17 @@ _primitive_array_type_ids = {
 def is_primitive_array_type(type_) -> bool:
     if type(type_) is int:
         return type_ in _primitive_array_type_ids
-    return type_ in _primitive_array_types or _is_special_compiled_primitive_array_type(type_)
+    return type_ in _primitive_array_types or type_ in _get_fory_array_types() or _is_special_compiled_primitive_array_type(type_)
+
+
+def __getattr__(name):
+    if name in _FORY_ARRAY_TYPE_NAMES:
+        from pyfory import serialization
+
+        value = getattr(serialization, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(name)
 
 
 def is_list_type(type_):

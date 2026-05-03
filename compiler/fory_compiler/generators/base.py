@@ -28,8 +28,10 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
 )
+from fory_compiler.ir.types import PrimitiveKind
 
 
 @dataclass
@@ -57,6 +59,26 @@ class BaseGenerator(ABC):
     # Override in subclasses
     language_name: str = "base"
     file_extension: str = ".txt"
+
+    ARRAY_ELEMENT_KINDS = {
+        PrimitiveKind.BOOL,
+        PrimitiveKind.INT8,
+        PrimitiveKind.INT16,
+        PrimitiveKind.INT32,
+        PrimitiveKind.VARINT32,
+        PrimitiveKind.INT64,
+        PrimitiveKind.VARINT64,
+        PrimitiveKind.UINT8,
+        PrimitiveKind.UINT16,
+        PrimitiveKind.UINT32,
+        PrimitiveKind.VAR_UINT32,
+        PrimitiveKind.UINT64,
+        PrimitiveKind.VAR_UINT64,
+        PrimitiveKind.FLOAT16,
+        PrimitiveKind.BFLOAT16,
+        PrimitiveKind.FLOAT32,
+        PrimitiveKind.FLOAT64,
+    }
 
     def __init__(self, schema: Schema, options: GeneratorOptions):
         self.schema = schema
@@ -227,12 +249,50 @@ class BaseGenerator(ABC):
     def format_idl_type(self, field_type: FieldType) -> str:
         """Return an IDL-style type name for display purposes."""
         if isinstance(field_type, PrimitiveType):
+            if field_type.encoding_modifier:
+                domain = {
+                    PrimitiveKind.INT32: "int32",
+                    PrimitiveKind.VARINT32: "int32",
+                    PrimitiveKind.INT64: "int64",
+                    PrimitiveKind.VARINT64: "int64",
+                    PrimitiveKind.TAGGED_INT64: "int64",
+                    PrimitiveKind.UINT32: "uint32",
+                    PrimitiveKind.VAR_UINT32: "uint32",
+                    PrimitiveKind.UINT64: "uint64",
+                    PrimitiveKind.VAR_UINT64: "uint64",
+                    PrimitiveKind.TAGGED_UINT64: "uint64",
+                }.get(field_type.kind)
+                if domain:
+                    return f"{field_type.encoding_modifier} {domain}"
+            if field_type.kind == PrimitiveKind.VARINT32:
+                return "int32"
+            if field_type.kind == PrimitiveKind.VARINT64:
+                return "int64"
+            if field_type.kind == PrimitiveKind.VAR_UINT32:
+                return "uint32"
+            if field_type.kind == PrimitiveKind.VAR_UINT64:
+                return "uint64"
+            if field_type.kind == PrimitiveKind.INT32:
+                return "fixed int32"
+            if field_type.kind == PrimitiveKind.INT64:
+                return "fixed int64"
+            if field_type.kind == PrimitiveKind.UINT32:
+                return "fixed uint32"
+            if field_type.kind == PrimitiveKind.UINT64:
+                return "fixed uint64"
+            if field_type.kind == PrimitiveKind.TAGGED_INT64:
+                return "tagged int64"
+            if field_type.kind == PrimitiveKind.TAGGED_UINT64:
+                return "tagged uint64"
             return field_type.kind.value
         if isinstance(field_type, NamedType):
             return field_type.name
         if isinstance(field_type, ListType):
             element = self.format_idl_type(field_type.element_type)
             return f"list<{element}>"
+        if isinstance(field_type, ArrayType):
+            element = self.format_idl_type(field_type.element_type)
+            return f"array<{element}>"
         if isinstance(field_type, MapType):
             key = self.format_idl_type(field_type.key_type)
             value = self.format_idl_type(field_type.value_type)

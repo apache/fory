@@ -121,23 +121,23 @@ void _registerRefs(Fory fory) {
 addressbook.AddressBook buildAddressBook() {
   final mobile = addressbook.Person_PhoneNumber()
     ..number = '555-0100'
-    ..phoneType = addressbook.Person_PhoneType.mobile;
+    ..phoneType = addressbook.Person_PhoneType.phoneTypeMobile;
   final work = addressbook.Person_PhoneNumber()
     ..number = '555-0111'
-    ..phoneType = addressbook.Person_PhoneType.work;
+    ..phoneType = addressbook.Person_PhoneType.phoneTypeWork;
 
   final pet = addressbook.Animal.cat(
     addressbook.Cat()
       ..name = 'Mimi'
-      ..lives = Int32(9),
+      ..lives = 9,
   );
 
   final person = addressbook.Person()
     ..name = 'Alice'
-    ..id = Int32(123)
+    ..id = 123
     ..email = 'alice@example.com'
     ..tags = <String>['friend', 'colleague']
-    ..scores = <String, Int32>{'math': Int32(100), 'science': Int32(98)}
+    ..scores = <String, int>{'math': 100, 'science': 98}
     ..salary = 120000.5
     ..phones = <addressbook.Person_PhoneNumber>[mobile, work]
     ..pet = pet;
@@ -148,7 +148,7 @@ addressbook.AddressBook buildAddressBook() {
 }
 
 auto_id.Envelope buildAutoIdEnvelope() {
-  final payload = auto_id.Envelope_Payload()..value = Int32(42);
+  final payload = auto_id.Envelope_Payload()..value = 42;
   return auto_id.Envelope()
     ..id = 'env-1'
     ..payload = payload
@@ -158,21 +158,28 @@ auto_id.Envelope buildAutoIdEnvelope() {
 
 collection.NumericCollections buildNumericCollections() {
   return collection.NumericCollections()
-    ..int8Values = Int8List.fromList(<int>[1, -2, 3])
-    ..int16Values = Int16List.fromList(<int>[100, -200, 300])
-    ..int32Values = Int32List.fromList(<int>[1000, -2000, 3000])
-    ..int64Values = Int64List.fromList(<int>[10000, -20000, 30000])
-    ..uint8Values = Uint8List.fromList(<int>[200, 250])
-    ..uint16Values = Uint16List.fromList(<int>[50000, 60000])
-    ..uint32Values = Uint32List.fromList(<int>[2000000000, 2100000000])
-    ..uint64Values = Uint64List.fromList(<int>[9000000000, 12000000000])
-    ..float32Values = Float32List.fromList(<double>[1.5, 2.5])
-    ..float64Values = Float64List.fromList(<double>[3.5, 4.5]);
+    ..int8Values = <int>[1, -2, 3]
+    ..int16Values = <int>[100, -200, 300]
+    ..int32Values = <int>[1000, -2000, 3000]
+    ..int64Values = <Int64>[
+      Int64(10000),
+      Int64(-20000),
+      Int64(30000),
+    ]
+    ..uint8Values = <int>[200, 250]
+    ..uint16Values = <int>[50000, 60000]
+    ..uint32Values = <int>[2000000000, 2100000000]
+    ..uint64Values = <Uint64>[
+      Uint64(9000000000),
+      Uint64(12000000000),
+    ]
+    ..float32Values = <Float32>[Float32(1.5), Float32(2.5)]
+    ..float64Values = <double>[3.5, 4.5];
 }
 
 collection.NumericCollectionUnion buildNumericCollectionUnion() {
   return collection.NumericCollectionUnion.int32Values(
-    Int32List.fromList(<int>[7, 8, 9]),
+    <int>[7, 8, 9],
   );
 }
 
@@ -199,33 +206,33 @@ collection.NumericCollectionArrayUnion buildNumericCollectionArrayUnion() {
 optional_types.OptionalHolder buildOptionalHolder() {
   final allTypes = optional_types.AllOptionalTypes()
     ..boolValue = true
-    ..int8Value = Int8(12)
-    ..int16Value = Int16(1234)
-    ..int32Value = Int32(-123456)
-    ..fixedInt32Value = Int32(-123456)
-    ..varint32Value = Int32(-12345)
-    ..int64Value = -123456789
-    ..fixedInt64Value = -123456789
-    ..varint64Value = -987654321
-    ..taggedInt64Value = 123456789
-    ..uint8Value = UInt8(200)
-    ..uint16Value = UInt16(60000)
-    ..uint32Value = UInt32(1234567890)
-    ..fixedUint32Value = UInt32(1234567890)
-    ..varUint32Value = UInt32(1234567890)
-    ..uint64Value = 9876543210
-    ..fixedUint64Value = 9876543210
-    ..varUint64Value = 12345678901
-    ..taggedUint64Value = 2222222222
+    ..int8Value = 12
+    ..int16Value = 1234
+    ..int32Value = -123456
+    ..fixedInt32Value = -123456
+    ..varint32Value = -12345
+    ..int64Value = Int64(-123456789)
+    ..fixedInt64Value = Int64(-123456789)
+    ..varint64Value = Int64(-987654321)
+    ..taggedInt64Value = Int64(123456789)
+    ..uint8Value = 200
+    ..uint16Value = 60000
+    ..uint32Value = 1234567890
+    ..fixedUint32Value = 1234567890
+    ..varUint32Value = 1234567890
+    ..uint64Value = Uint64(9876543210)
+    ..fixedUint64Value = Uint64(9876543210)
+    ..varUint64Value = Uint64(12345678901)
+    ..taggedUint64Value = Uint64(2222222222)
     ..float32Value = Float32(2.5)
     ..float64Value = 3.5
     ..stringValue = 'optional'
     ..bytesValue = Uint8List.fromList(<int>[1, 2, 3])
     ..dateValue = const LocalDate(2024, 1, 2)
     ..timestampValue = Timestamp.fromDateTime(DateTime.utc(2024, 1, 2, 3, 4, 5))
-    ..int32List = Int32List.fromList(<int>[1, 2, 3])
+    ..int32List = <int>[1, 2, 3]
     ..stringList = <String>['alpha', 'beta']
-    ..int64Map = <String, int>{'alpha': 10, 'beta': 20};
+    ..int64Map = <String, Int64>{'alpha': Int64(10), 'beta': Int64(20)};
 
   return optional_types.OptionalHolder()
     ..allTypes = allTypes

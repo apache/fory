@@ -388,7 +388,7 @@ func (s int16Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typ
 	s.Read(ctx, refMode, false, false, value)
 }
 
-// int32Serializer handles int32 type
+// int32Serializer handles int32 type with variable-length encoding (VARINT32)
 type int32Serializer struct{}
 
 var globalInt32Serializer = int32Serializer{}
@@ -402,7 +402,7 @@ func (s int32Serializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteUint8(uint8(INT32))
+		ctx.buffer.WriteUint8(uint8(VARINT32))
 	}
 	s.WriteData(ctx, value)
 }
@@ -432,7 +432,7 @@ func (s int32Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typ
 	s.Read(ctx, refMode, false, false, value)
 }
 
-// int64Serializer handles int64 type
+// int64Serializer handles int64 type with variable-length encoding (VARINT64)
 type int64Serializer struct{}
 
 var globalInt64Serializer = int64Serializer{}
@@ -446,7 +446,7 @@ func (s int64Serializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteUint8(uint8(INT64))
+		ctx.buffer.WriteUint8(uint8(VARINT64))
 	}
 	s.WriteData(ctx, value)
 }
@@ -476,7 +476,7 @@ func (s int64Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typ
 	s.Read(ctx, refMode, false, false, value)
 }
 
-// intSerializer handles int type
+// intSerializer handles int type with variable-length encoding (VARINT64)
 type intSerializer struct{}
 
 func (s intSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
@@ -488,7 +488,7 @@ func (s intSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool,
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteUint8(uint8(INT64))
+		ctx.buffer.WriteUint8(uint8(VARINT64))
 	}
 	s.WriteData(ctx, value)
 }

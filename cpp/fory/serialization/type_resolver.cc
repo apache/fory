@@ -860,6 +860,18 @@ bool is_final_type_for_grouping(uint32_t type_id) {
 
 std::vector<FieldInfo>
 TypeMeta::sort_field_infos(std::vector<FieldInfo> fields) {
+  if (std::all_of(fields.begin(), fields.end(),
+                  [](const FieldInfo &field) { return field.field_id >= 0; })) {
+    std::sort(fields.begin(), fields.end(),
+              [](const FieldInfo &a, const FieldInfo &b) {
+                if (a.field_id != b.field_id) {
+                  return a.field_id < b.field_id;
+                }
+                return a.field_name < b.field_name;
+              });
+    return fields;
+  }
+
   // Group fields according to xlang spec
   std::vector<FieldInfo> primitive_fields;
   std::vector<FieldInfo> nullable_primitive_fields;
@@ -1118,8 +1130,8 @@ std::string TypeMeta::compute_struct_fingerprint(
   //
   // Fingerprint Format:
   //   Each field contributes: <field_id_or_name>,<type_id>,<ref>,<nullable>;
-  //   Fields are sorted lexicographically by field identifier (tag ID string
-  //   if present, otherwise snake_case field name).
+  //   Tagged fields are sorted by numeric tag ID; untagged fields are sorted
+  //   lexicographically by snake_case field name.
   //
   // Field Components:
   //   - field_id_or_name: tag ID as string if configured, otherwise snake_case
@@ -1131,18 +1143,23 @@ std::string TypeMeta::compute_struct_fingerprint(
   //   - With tag IDs: "0,4,0,0;1,12,0,1;"
   //   - With field names: "age,4,0,0;name,12,0,1;"
 
-  // copy fields and sort lexicographically by field identifier for fingerprint
+  // Copy fields and sort by canonical field identifier for fingerprint.
   std::vector<FieldInfo> sorted_fields = field_infos;
-  std::sort(sorted_fields.begin(), sorted_fields.end(),
-            [](const FieldInfo &a, const FieldInfo &b) {
-              std::string a_id = a.field_id >= 0
-                                     ? std::to_string(a.field_id)
-                                     : normalize_field_name(a.field_name);
-              std::string b_id = b.field_id >= 0
-                                     ? std::to_string(b.field_id)
-                                     : normalize_field_name(b.field_name);
-              return a_id < b_id;
-            });
+  std::sort(
+      sorted_fields.begin(), sorted_fields.end(),
+      [](const FieldInfo &a, const FieldInfo &b) {
+        if (a.field_id >= 0 && b.field_id >= 0 && a.field_id != b.field_id) {
+          return a.field_id < b.field_id;
+        }
+        std::string a_id = a.field_id >= 0 ? std::to_string(a.field_id)
+                                           : normalize_field_name(a.field_name);
+        std::string b_id = b.field_id >= 0 ? std::to_string(b.field_id)
+                                           : normalize_field_name(b.field_name);
+        if (a_id != b_id) {
+          return a_id < b_id;
+        }
+        return a.field_name < b.field_name;
+      });
 
   std::string fingerprint;
   // reserve a rough estimate to avoid reallocations

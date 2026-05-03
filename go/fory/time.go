@@ -195,6 +195,91 @@ func (s dateSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, type
 type timeSerializer struct{}
 
 var timeReflectType = reflect.TypeFor[time.Time]()
+var durationReflectType = reflect.TypeFor[time.Duration]()
+
+const nanosPerSecond = int64(time.Second)
+const maxDurationNanos = int64(^uint64(0) >> 1)
+const minDurationNanos = -maxDurationNanos - 1
+
+type durationSerializer struct{}
+
+func durationWireParts(value time.Duration) (int64, int32) {
+	totalNanos := int64(value)
+	seconds := totalNanos / nanosPerSecond
+	nanos := totalNanos % nanosPerSecond
+	if nanos < 0 {
+		seconds--
+		nanos += nanosPerSecond
+	}
+	return seconds, int32(nanos)
+}
+
+func durationFromWire(seconds int64, nanos int32) (time.Duration, error) {
+	if nanos < 0 || nanos >= int32(nanosPerSecond) {
+		return 0, DeserializationErrorf("duration nanoseconds %d out of valid range [0, 999999999]", nanos)
+	}
+	maxSeconds := maxDurationNanos / nanosPerSecond
+	maxNanos := maxDurationNanos % nanosPerSecond
+	minSeconds := minDurationNanos / nanosPerSecond
+	if seconds > maxSeconds ||
+		(seconds == maxSeconds && int64(nanos) > maxNanos) ||
+		seconds < minSeconds {
+		return 0, DeserializationErrorf("duration seconds %d and nanoseconds %d overflow time.Duration", seconds, nanos)
+	}
+	total := seconds*nanosPerSecond + int64(nanos)
+	return time.Duration(total), nil
+}
+
+func (s durationSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	seconds, nanos := durationWireParts(value.Interface().(time.Duration))
+	ctx.buffer.WriteVarint64(seconds)
+	ctx.buffer.WriteInt32(nanos)
+}
+
+func (s durationSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	if refMode != RefModeNone {
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeType {
+		ctx.buffer.WriteUint8(uint8(DURATION))
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s durationSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	err := ctx.Err()
+	seconds := ctx.buffer.ReadVarint64(err)
+	nanos := ctx.buffer.ReadInt32(err)
+	if ctx.HasError() {
+		return
+	}
+	duration, convErr := durationFromWire(seconds, nanos)
+	if convErr != nil {
+		ctx.SetError(FromError(convErr))
+		return
+	}
+	value.Set(reflect.ValueOf(duration))
+}
+
+func (s durationSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	err := ctx.Err()
+	if refMode != RefModeNone {
+		if ctx.buffer.ReadInt8(err) == NullFlag {
+			return
+		}
+	}
+	if readType {
+		_ = ctx.buffer.ReadUint8(err)
+	}
+	if ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s durationSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
 
 func (s timeSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	seconds, nanos := GetUnixSecondsAndNanos(value.Interface().(time.Time))

@@ -1992,8 +1992,30 @@ private func compareFieldIdentifier(_ lhs: ParsedField, _ rhs: ParsedField) -> B
     return nil
 }
 
+private func compareTaggedFieldIdentifier(_ lhs: ParsedField, _ rhs: ParsedField) -> Bool? {
+    switch (lhs.fieldID, rhs.fieldID) {
+    case let (lhsID?, rhsID?):
+        if lhsID != rhsID {
+            return lhsID < rhsID
+        }
+        if lhs.fieldIdentifier != rhs.fieldIdentifier {
+            return lhs.fieldIdentifier < rhs.fieldIdentifier
+        }
+        return nil
+    case (_?, nil):
+        return true
+    case (nil, _?):
+        return false
+    case (nil, nil):
+        return nil
+    }
+}
+
 private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
     fields.sorted { lhs, rhs in
+        if let taggedOrder = compareTaggedFieldIdentifier(lhs, rhs) {
+            return taggedOrder
+        }
         if lhs.group != rhs.group {
             return lhs.group < rhs.group
         }
@@ -2093,6 +2115,9 @@ private func compatibleFieldIDExpr(_ field: ParsedField) -> String {
 private func buildSchemaFingerprint(fields: [ParsedField], trackRefExpression: String) throws -> String {
     let sortedFields = fields
         .sorted { lhs, rhs in
+            if let taggedOrder = compareTaggedFieldIdentifier(lhs, rhs) {
+                return taggedOrder
+            }
             if lhs.schemaIdentifier != rhs.schemaIdentifier {
                 return lhs.schemaIdentifier < rhs.schemaIdentifier
             }
@@ -2843,6 +2868,8 @@ private func classifyType(
         )
     case "LocalDate":
         return .init(typeID: 39, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
+    case "Duration":
+        return .init(typeID: 37, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     case "Decimal":
         return .init(typeID: 40, isPrimitive: false, isBuiltIn: true, isCollection: false, isMap: false, isCompressedNumeric: false, primitiveSize: 0)
     default:

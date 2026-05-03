@@ -29,6 +29,7 @@ type TypeSpecKind uint8
 const (
 	TypeSpecScalar TypeSpecKind = iota
 	TypeSpecList
+	TypeSpecArray
 	TypeSpecSet
 	TypeSpecMap
 	TypeSpecPlaceholder
@@ -216,6 +217,8 @@ func (t *TypeSpec) String() string {
 	}
 	switch t.Kind {
 	case TypeSpecList:
+		return fmt.Sprintf("TypeSpec{typeId=%d, nullable=%v, trackRef=%v, element=%s}", t.TypeID, t.Nullable, t.TrackRef, t.Element)
+	case TypeSpecArray:
 		return fmt.Sprintf("TypeSpec{typeId=%d, nullable=%v, trackRef=%v, element=%s}", t.TypeID, t.Nullable, t.TrackRef, t.Element)
 	case TypeSpecSet:
 		return fmt.Sprintf("TypeSpec{typeId=%d, nullable=%v, trackRef=%v, element=%s}", t.TypeID, t.Nullable, t.TrackRef, t.Element)
@@ -784,7 +787,7 @@ func inferFieldTypeSpec(goType reflect.Type, xlang bool, trackRef bool, isRoot b
 		nullable = true
 		baseType = baseType.Elem()
 	}
-	spec, err := inferBaseTypeSpec(baseType, xlang, trackRef, false)
+	spec, err := inferBaseTypeSpec(baseType, xlang, trackRef, true)
 	if err != nil {
 		return nil, err
 	}
@@ -881,7 +884,7 @@ func inferBaseTypeSpec(goType reflect.Type, xlang bool, trackRef bool, forceGene
 }
 
 func inferNestedTypeSpec(goType reflect.Type, xlang bool, trackRef bool) (*TypeSpec, error) {
-	spec, err := inferBaseTypeSpec(goType, xlang, trackRef, false)
+	spec, err := inferBaseTypeSpec(goType, xlang, trackRef, true)
 	if err != nil {
 		return nil, err
 	}
@@ -911,6 +914,9 @@ func inferPackedElementTypeSpec(goType reflect.Type) (*TypeSpec, bool) {
 	}
 	if goType.Kind() == reflect.Ptr {
 		return nil, false
+	}
+	if goType == durationType {
+		return NewSimpleTypeSpec(DURATION), true
 	}
 	switch goType.Kind() {
 	case reflect.Bool:
@@ -1095,7 +1101,76 @@ func inferPackedArrayTypeID(goType reflect.Type, elemSpec *TypeSpec) (TypeId, bo
 	}
 }
 
+func resolveArrayElementTypeSpec(goType reflect.Type, hint *parsedTypeHint) (*TypeSpec, error) {
+	if hint == nil {
+		return nil, fmt.Errorf("array type hint requires element=...")
+	}
+	if hint.kind != TypeSpecScalar {
+		return nil, fmt.Errorf("array element must be a number or bool scalar")
+	}
+	if hint.nullable != nil {
+		return nil, fmt.Errorf("array element cannot be nullable")
+	}
+	if hint.ref != nil {
+		return nil, fmt.Errorf("array element cannot use ref tracking")
+	}
+	if hint.encoding != nil {
+		return nil, fmt.Errorf("array element cannot use scalar encoding modifiers")
+	}
+	typeID, err := arrayElementTypeIDFromHintName(goType, hint.name)
+	if err != nil {
+		return nil, err
+	}
+	spec := NewSimpleTypeSpec(typeID)
+	spec.Nullable = false
+	spec.TrackRef = false
+	spec.GoType = goType
+	return spec, nil
+}
+
+func arrayElementTypeIDFromHintName(goType reflect.Type, name string) (TypeId, error) {
+	switch name {
+	case "bool":
+		return BOOL, nil
+	case "int8":
+		return INT8, nil
+	case "int16":
+		return INT16, nil
+	case "int32":
+		return INT32, nil
+	case "int64":
+		return INT64, nil
+	case "uint8":
+		return UINT8, nil
+	case "uint16":
+		if goType == float16Type {
+			return FLOAT16, nil
+		}
+		if goType == bfloat16Type {
+			return BFLOAT16, nil
+		}
+		return UINT16, nil
+	case "uint32":
+		return UINT32, nil
+	case "uint64":
+		return UINT64, nil
+	case "float16":
+		return FLOAT16, nil
+	case "bfloat16":
+		return BFLOAT16, nil
+	case "float32":
+		return FLOAT32, nil
+	case "float64":
+		return FLOAT64, nil
+	default:
+		return UNKNOWN, fmt.Errorf("array element %q is not a supported number or bool scalar", name)
+	}
+}
+
 func inferScalarTypeID(goType reflect.Type) (TypeId, error) {
+	if goType == durationType {
+		return DURATION, nil
+	}
 	switch goType.Kind() {
 	case reflect.Bool:
 		return BOOL, nil
@@ -1143,6 +1218,9 @@ func inferScalarTypeID(goType reflect.Type) (TypeId, error) {
 		}
 		if goType == dateType {
 			return DATE, nil
+		}
+		if goType == durationType {
+			return DURATION, nil
 		}
 		if goType == decimalType {
 			return DECIMAL, nil
@@ -1228,6 +1306,8 @@ func (p *typeHintParser) parseNode() (*parsedTypeHint, error) {
 		node.kind = TypeSpecPlaceholder
 	case "list":
 		node.kind = TypeSpecList
+	case "array":
+		node.kind = TypeSpecArray
 	case "set":
 		node.kind = TypeSpecSet
 	case "map":
@@ -1421,6 +1501,24 @@ func applyTypeHint(goType reflect.Type, inferred *TypeSpec, hint *parsedTypeHint
 		spec.TrackRef = inferred.TrackRef
 		spec.GoType = goType
 		return applyHintModifiers(goType, spec, hint, xlang, trackRef, isRoot)
+	case TypeSpecArray:
+		if baseType.Kind() != reflect.Slice && baseType.Kind() != reflect.Array {
+			return nil, fmt.Errorf("array type hint requires slice or array field, got %s", goType)
+		}
+		elemSpec, err := resolveArrayElementTypeSpec(baseType.Elem(), hint.element)
+		if err != nil {
+			return nil, err
+		}
+		typeID, ok := inferPackedArrayTypeID(baseType, elemSpec)
+		if !ok {
+			return nil, fmt.Errorf("array element %s is incompatible with %s", hint.element.name, goType)
+		}
+		spec := NewCollectionTypeSpec(typeID, elemSpec)
+		spec.Kind = TypeSpecArray
+		spec.Nullable = inferred.Nullable
+		spec.TrackRef = inferred.TrackRef
+		spec.GoType = goType
+		return applyHintModifiers(goType, spec, hint, xlang, trackRef, isRoot)
 	case TypeSpecSet:
 		if !isSetReflectType(baseType) {
 			return nil, fmt.Errorf("set type hint requires fory.Set/map[T]struct{} field, got %s", goType)
@@ -1454,6 +1552,9 @@ func applyTypeHint(goType reflect.Type, inferred *TypeSpec, hint *parsedTypeHint
 		keySpec, err := applyTypeHint(baseType.Key(), keyDefault, hint.key, xlang, trackRef, false)
 		if err != nil {
 			return nil, err
+		}
+		if keySpec != nil && keySpec.Kind == TypeSpecArray {
+			return nil, fmt.Errorf("array type hint is not valid for map keys")
 		}
 		valueSpec, err := applyTypeHint(baseType.Elem(), valueDefault, hint.value, xlang, trackRef, false)
 		if err != nil {
@@ -1618,6 +1719,8 @@ func typeIDFromHintName(goType reflect.Type, name string, encoding *string) (Typ
 		return TIMESTAMP, nil
 	case "date":
 		return DATE, nil
+	case "duration":
+		return DURATION, nil
 	case "decimal":
 		return DECIMAL, nil
 	}
@@ -1630,7 +1733,7 @@ func typeIDFromHintName(goType reflect.Type, name string, encoding *string) (Typ
 func isPrimitiveTypeName(name string) bool {
 	switch name {
 	case "bool", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64",
-		"float16", "bfloat16", "float32", "float64", "string", "bytes", "timestamp", "date", "decimal":
+		"float16", "bfloat16", "float32", "float64", "string", "bytes", "timestamp", "date", "duration", "decimal":
 		return true
 	default:
 		return false
@@ -1804,6 +1907,8 @@ func goTypeForTypeID(typeID TypeId, resolver *TypeResolver) (reflect.Type, bool)
 		return timestampType, true
 	case DATE:
 		return dateType, true
+	case DURATION:
+		return durationType, true
 	case DECIMAL:
 		return decimalType, true
 	case BINARY:

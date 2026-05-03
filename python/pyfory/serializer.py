@@ -40,7 +40,6 @@ from pyfory._fory import (
     NOT_NULL_INT64_FLAG,
     BufferObject,
 )
-from pyfory.serialization import bfloat16, bfloat16array, float16, float16array
 
 _WINDOWS = os.name == "nt"
 
@@ -155,10 +154,22 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
         Float32Serializer,
         Float64Serializer,
         Float16Serializer,
+        BoolArraySerializer,
+        Int8ArraySerializer,
+        Int16ArraySerializer,
+        Int32ArraySerializer,
+        Int64ArraySerializer,
+        UInt8ArraySerializer,
+        UInt16ArraySerializer,
+        UInt32ArraySerializer,
+        UInt64ArraySerializer,
         Float16ArraySerializer,
+        Float32ArraySerializer,
+        Float64ArraySerializer,
         StringSerializer,
         DateSerializer,
         TimestampSerializer,
+        DurationSerializer,
         CollectionSerializer,
         ListSerializer,
         TupleSerializer,
@@ -167,8 +178,6 @@ if ENABLE_FORY_CYTHON_SERIALIZATION:
         MapSerializer,
         EnumSerializer,
         SliceSerializer,
-        bfloat16,
-        bfloat16array,
         BFloat16Serializer,
         BFloat16ArraySerializer,
     )
@@ -196,12 +205,24 @@ else:
         Float32Serializer,
         Float64Serializer,
         Float16Serializer,
+        BoolArraySerializer,
+        Int8ArraySerializer,
+        Int16ArraySerializer,
+        Int32ArraySerializer,
+        Int64ArraySerializer,
+        UInt8ArraySerializer,
+        UInt16ArraySerializer,
+        UInt32ArraySerializer,
+        UInt64ArraySerializer,
         Float16ArraySerializer,
+        Float32ArraySerializer,
+        Float64ArraySerializer,
         BFloat16Serializer,
         BFloat16ArraySerializer,
         StringSerializer,
         DateSerializer,
         TimestampSerializer,
+        DurationSerializer,
         EnumSerializer,
         SliceSerializer,
     )
@@ -238,6 +259,21 @@ from pyfory.types import (
     Float32NDArrayType,
     Float64NDArrayType,
     TypeId,
+)
+from pyfory.annotation import (
+    BFloat16Array,
+    BoolArray,
+    Float16Array,
+    Float32Array,
+    Float64Array,
+    Int16Array,
+    Int32Array,
+    Int64Array,
+    Int8Array,
+    UInt16Array,
+    UInt32Array,
+    UInt64Array,
+    UInt8Array,
 )
 from pyfory.utils import is_little_endian
 
@@ -536,6 +572,47 @@ class PyArraySerializer(Serializer):
             # Swap bytes on big-endian machines for multi-byte types
             arr.byteswap()
         return arr
+
+
+FORY_ARRAY_WRAPPERS = {
+    TypeId.BOOL_ARRAY: BoolArray,
+    TypeId.INT8_ARRAY: Int8Array,
+    TypeId.INT16_ARRAY: Int16Array,
+    TypeId.INT32_ARRAY: Int32Array,
+    TypeId.INT64_ARRAY: Int64Array,
+    TypeId.UINT8_ARRAY: UInt8Array,
+    TypeId.UINT16_ARRAY: UInt16Array,
+    TypeId.UINT32_ARRAY: UInt32Array,
+    TypeId.UINT64_ARRAY: UInt64Array,
+    TypeId.FLOAT16_ARRAY: Float16Array,
+    TypeId.BFLOAT16_ARRAY: BFloat16Array,
+    TypeId.FLOAT32_ARRAY: Float32Array,
+    TypeId.FLOAT64_ARRAY: Float64Array,
+}
+
+FORY_ARRAY_SERIALIZERS = {
+    TypeId.BOOL_ARRAY: BoolArraySerializer,
+    TypeId.INT8_ARRAY: Int8ArraySerializer,
+    TypeId.INT16_ARRAY: Int16ArraySerializer,
+    TypeId.INT32_ARRAY: Int32ArraySerializer,
+    TypeId.INT64_ARRAY: Int64ArraySerializer,
+    TypeId.UINT8_ARRAY: UInt8ArraySerializer,
+    TypeId.UINT16_ARRAY: UInt16ArraySerializer,
+    TypeId.UINT32_ARRAY: UInt32ArraySerializer,
+    TypeId.UINT64_ARRAY: UInt64ArraySerializer,
+    TypeId.FLOAT16_ARRAY: Float16ArraySerializer,
+    TypeId.BFLOAT16_ARRAY: BFloat16ArraySerializer,
+    TypeId.FLOAT32_ARRAY: Float32ArraySerializer,
+    TypeId.FLOAT64_ARRAY: Float64ArraySerializer,
+}
+
+
+def fory_array_wrapper_type(type_id):
+    return FORY_ARRAY_WRAPPERS[type_id]
+
+
+def fory_array_serializer_type(type_id):
+    return FORY_ARRAY_SERIALIZERS[type_id]
 
 
 class DynamicPyArraySerializer(Serializer):
@@ -1566,19 +1643,27 @@ __all__ = [
     "Uint64Serializer",
     "VarUint64Serializer",
     "TaggedUint64Serializer",
-    "float16",
-    "float16array",
     "Float16Serializer",
+    "BoolArraySerializer",
+    "Int8ArraySerializer",
+    "Int16ArraySerializer",
+    "Int32ArraySerializer",
+    "Int64ArraySerializer",
+    "UInt8ArraySerializer",
+    "UInt16ArraySerializer",
+    "UInt32ArraySerializer",
+    "UInt64ArraySerializer",
     "Float16ArraySerializer",
+    "BFloat16ArraySerializer",
+    "Float32ArraySerializer",
+    "Float64ArraySerializer",
     "Float32Serializer",
     "Float64Serializer",
-    "bfloat16",
-    "bfloat16array",
     "BFloat16Serializer",
-    "BFloat16ArraySerializer",
     "StringSerializer",
     "DateSerializer",
     "TimestampSerializer",
+    "DurationSerializer",
     # Collection serializers (imported)
     "CollectionSerializer",
     "ListSerializer",
@@ -1595,6 +1680,10 @@ __all__ = [
     # Pandas serializers
     "PandasRangeIndexSerializer",
     # Array serializers
+    "FORY_ARRAY_SERIALIZERS",
+    "FORY_ARRAY_WRAPPERS",
+    "fory_array_serializer_type",
+    "fory_array_wrapper_type",
     "PyArraySerializer",
     "DynamicPyArraySerializer",
     "Numpy1DArraySerializer",

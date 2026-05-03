@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Union as TypingUnion
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
 from fory_compiler.ir.ast import (
+    ArrayType,
     Enum,
     Field,
     FieldType,
@@ -601,6 +602,17 @@ class SwiftGenerator(BaseGenerator):
                 return f"{result}?"
             return result
 
+        if isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type,
+                nullable=False,
+                parent_stack=parent_stack,
+            )
+            result = f"[{element_type}]"
+            if nullable:
+                return f"{result}?"
+            return result
+
         if isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -629,23 +641,31 @@ class SwiftGenerator(BaseGenerator):
             return ".tagged"
         return None
 
-    def type_hint_expression(self, field_type: FieldType) -> Optional[str]:
+    def type_hint_expression(
+        self, field_type: FieldType, nullable: bool = False
+    ) -> Optional[str]:
         if isinstance(field_type, PrimitiveType):
-            if field_type.kind in self.FIXED_ENCODING_KINDS:
-                return ".encoding(.fixed)"
-            if field_type.kind in self.TAGGED_ENCODING_KINDS:
-                return ".encoding(.tagged)"
-            return None
+            return self.scalar_type_hint_expression(field_type.kind, nullable=nullable)
 
         if isinstance(field_type, ListType):
-            element_hint = self.type_hint_expression(field_type.element_type)
+            element_hint = self.type_hint_expression(
+                field_type.element_type, nullable=field_type.element_optional
+            )
             if element_hint is None:
                 return None
             return f".list(element: {element_hint})"
 
+        if isinstance(field_type, ArrayType):
+            element_hint = self.type_hint_expression(field_type.element_type)
+            if element_hint is None:
+                return None
+            return f".array(element: {element_hint})"
+
         if isinstance(field_type, MapType):
             key_hint = self.type_hint_expression(field_type.key_type)
-            value_hint = self.type_hint_expression(field_type.value_type)
+            value_hint = self.type_hint_expression(
+                field_type.value_type, nullable=field_type.value_optional
+            )
             parts: List[str] = []
             if key_hint is not None:
                 parts.append(f"key: {key_hint}")
@@ -657,17 +677,77 @@ class SwiftGenerator(BaseGenerator):
 
         return None
 
+    def scalar_type_hint_expression(
+        self, kind: PrimitiveKind, nullable: bool = False
+    ) -> Optional[str]:
+        member_hints = {
+            PrimitiveKind.BOOL: "bool",
+            PrimitiveKind.INT8: "int8",
+            PrimitiveKind.INT16: "int16",
+            PrimitiveKind.UINT8: "uint8",
+            PrimitiveKind.UINT16: "uint16",
+            PrimitiveKind.FLOAT16: "float16",
+            PrimitiveKind.BFLOAT16: "bfloat16",
+            PrimitiveKind.FLOAT32: "float32",
+            PrimitiveKind.FLOAT64: "float64",
+            PrimitiveKind.STRING: "string",
+            PrimitiveKind.BYTES: "binary",
+            PrimitiveKind.DATE: "date",
+            PrimitiveKind.TIMESTAMP: "timestamp",
+            PrimitiveKind.DURATION: "duration",
+            PrimitiveKind.DECIMAL: "decimal",
+        }
+        member_hint = member_hints.get(kind)
+        if member_hint is not None:
+            return f".{member_hint}"
+
+        callable_hints = {
+            PrimitiveKind.INT32: ("int32", ".fixed"),
+            PrimitiveKind.VARINT32: ("int32", None),
+            PrimitiveKind.INT64: ("int64", ".fixed"),
+            PrimitiveKind.VARINT64: ("int64", None),
+            PrimitiveKind.TAGGED_INT64: ("int64", ".tagged"),
+            PrimitiveKind.UINT32: ("uint32", ".fixed"),
+            PrimitiveKind.VAR_UINT32: ("uint32", None),
+            PrimitiveKind.UINT64: ("uint64", ".fixed"),
+            PrimitiveKind.VAR_UINT64: ("uint64", None),
+            PrimitiveKind.TAGGED_UINT64: ("uint64", ".tagged"),
+        }
+        callable_hint = callable_hints.get(kind)
+        if callable_hint is None:
+            return None
+
+        name, encoding = callable_hint
+        args: List[str] = []
+        if nullable:
+            args.append("nullable: true")
+        if encoding is not None:
+            args.append(f"encoding: {encoding}")
+        if not args:
+            return f".{name}()"
+        return f".{name}({', '.join(args)})"
+
     def nested_field_attribute(self, field: Field) -> Optional[str]:
         field_type = field.field_type
         if isinstance(field_type, ListType):
-            element_hint = self.type_hint_expression(field_type.element_type)
+            element_hint = self.type_hint_expression(
+                field_type.element_type, nullable=field_type.element_optional
+            )
             if element_hint is None:
                 return None
             return f"@ListField(element: {element_hint})"
 
+        if isinstance(field_type, ArrayType):
+            element_hint = self.type_hint_expression(field_type.element_type)
+            if element_hint is None:
+                return None
+            return f"@ArrayField(element: {element_hint})"
+
         if isinstance(field_type, MapType):
             key_hint = self.type_hint_expression(field_type.key_type)
-            value_hint = self.type_hint_expression(field_type.value_type)
+            value_hint = self.type_hint_expression(
+                field_type.value_type, nullable=field_type.value_optional
+            )
             parts: List[str] = []
             if key_hint is not None:
                 parts.append(f"key: {key_hint}")
@@ -751,6 +831,8 @@ class SwiftGenerator(BaseGenerator):
 
         if isinstance(field_type, ListType):
             return "[]"
+        if isinstance(field_type, ArrayType):
+            return "[]"
         if isinstance(field_type, MapType):
             return "[:]"
 
@@ -767,6 +849,11 @@ class SwiftGenerator(BaseGenerator):
             return field_type.kind != PrimitiveKind.ANY
 
         if isinstance(field_type, ListType):
+            return self.type_supports_equatable(
+                field_type.element_type, parent_stack=parent_stack, visiting=visiting
+            )
+
+        if isinstance(field_type, ArrayType):
             return self.type_supports_equatable(
                 field_type.element_type, parent_stack=parent_stack, visiting=visiting
             )

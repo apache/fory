@@ -139,12 +139,14 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.GraalvmSupport;
@@ -505,8 +507,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             getOrCreateStringSerializer(), buffer, inputObject, config.compressString());
       }
       Expression action;
-      if (useCollectionSerialization(typeRef)) {
-        action = serializeForCollection(buffer, inputObject, typeRef, serializer, false);
+      if (useCollectionSerialization(descriptor)) {
+        TypeRef<?> elementType = null;
+        if (usesPrimitiveListCollectionProtocol(descriptor)) {
+          serializer = getPrimitiveListCollectionSerializer(clz);
+          elementType =
+              TypeAnnotationUtils.getPrimitiveListElementTypeRef(
+                  descriptor.getTypeAnnotation(), clz);
+        }
+        action =
+            serializeForCollection(buffer, inputObject, typeRef, serializer, false, elementType);
       } else if (useMapSerialization(typeRef)) {
         action = serializeForMap(buffer, inputObject, typeRef, serializer, false);
       } else {
@@ -776,6 +786,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
   protected boolean useCollectionSerialization(TypeRef<?> typeRef) {
     return useCollectionSerialization(TypeUtils.getRawType(typeRef));
+  }
+
+  protected boolean useCollectionSerialization(Descriptor descriptor) {
+    return typeResolver(r -> r.isCollectionDescriptor(descriptor));
   }
 
   protected boolean useCollectionSerialization(Class<?> type) {
@@ -1151,6 +1165,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       TypeRef<?> typeRef,
       Expression serializer,
       boolean generateNewMethod) {
+    return serializeForCollection(buffer, collection, typeRef, serializer, generateNewMethod, null);
+  }
+
+  protected Expression serializeForCollection(
+      Expression buffer,
+      Expression collection,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      boolean generateNewMethod,
+      TypeRef<?> elementTypeOverride) {
     // get serializer, write class info if necessary.
     if (serializer == null) {
       Class<?> clz = getRawType(typeRef);
@@ -1183,7 +1207,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     } else if (!TypeRef.of(CollectionLikeSerializer.class).isSupertypeOf(serializer.type())) {
       serializer = cast(serializer, TypeRef.of(CollectionLikeSerializer.class), "colSerializer");
     }
-    TypeRef<?> elementType = getElementType(typeRef);
+    TypeRef<?> elementType =
+        elementTypeOverride == null ? getElementType(typeRef) : elementTypeOverride;
     // write collection data.
     Expression ifExpr =
         new If(
@@ -1209,6 +1234,21 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       elementType = OBJECT_TYPE;
     }
     return elementType;
+  }
+
+  private boolean usesPrimitiveListCollectionProtocol(Descriptor descriptor) {
+    return TypeUtils.isPrimitiveListClass(descriptor.getRawType())
+        && typeResolver(r -> r.isCollectionDescriptor(descriptor));
+  }
+
+  private Expression getPrimitiveListCollectionSerializer(Class<?> cls) {
+    return getOrCreateField(
+        false,
+        CollectionLikeSerializer.class,
+        StringUtils.uncapitalize(cls.getSimpleName()) + "CollectionSerializer",
+        () ->
+            new Expression.NewInstance(
+                TypeRef.of(CollectionSerializer.class), typeResolverRef, getClassExpr(cls)));
   }
 
   protected Expression writeCollectionData(
@@ -2162,8 +2202,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             getOrCreateStringSerializer(), buffer, config.compressString());
       }
       Expression obj;
-      if (useCollectionSerialization(typeRef)) {
-        obj = deserializeForCollection(buffer, typeRef, serializer, null);
+      if (useCollectionSerialization(descriptor)) {
+        TypeRef<?> elementType = null;
+        if (usesPrimitiveListCollectionProtocol(descriptor)) {
+          serializer = getPrimitiveListCollectionSerializer(cls);
+          elementType =
+              TypeAnnotationUtils.getPrimitiveListElementTypeRef(
+                  descriptor.getTypeAnnotation(), cls);
+        }
+        obj = deserializeForCollection(buffer, typeRef, serializer, null, elementType);
       } else if (useMapSerialization(typeRef)) {
         obj = deserializeForMap(buffer, typeRef, serializer, null);
       } else {
@@ -2413,7 +2460,17 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    */
   protected Expression deserializeForCollection(
       Expression buffer, TypeRef<?> typeRef, Expression serializer, InvokeHint invokeHint) {
-    TypeRef<?> elementType = getElementType(typeRef);
+    return deserializeForCollection(buffer, typeRef, serializer, invokeHint, null);
+  }
+
+  protected Expression deserializeForCollection(
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      InvokeHint invokeHint,
+      TypeRef<?> elementTypeOverride) {
+    TypeRef<?> elementType =
+        elementTypeOverride == null ? getElementType(typeRef) : elementTypeOverride;
     if (serializer == null) {
       Class<?> cls = getRawType(typeRef);
       if (isMonomorphic(cls)) {

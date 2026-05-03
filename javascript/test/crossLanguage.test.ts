@@ -347,7 +347,7 @@ describe("bool", () => {
       f3: Type.struct(102),
       f4: Type.string(),
       f5: Type.enum(101, Color),
-      f6: Type.array(Type.string()),
+      f6: Type.list(Type.string()),
       f7: Type.varInt32(),
       f8: Type.varInt32(),
       last: Type.varInt32(),
@@ -415,7 +415,7 @@ describe("bool", () => {
         f3: Type.struct({ namespace: "demo", typeName: "item" }),
         f4: Type.string(),
         f5: Type.enum({ namespace: "demo", typeName: "color" }, Color),
-        f6: Type.array(Type.string()),
+        f6: Type.list(Type.string()),
         f7: Type.varInt32(),
         f8: Type.varInt32(),
         last: Type.varInt32(),
@@ -699,7 +699,7 @@ describe("bool", () => {
     });
 
     @Type.struct(201, {
-      items: Type.array(Type.string()),
+      items: Type.list(Type.string()),
     })
     class StructWithList {
       items: (string | null)[] = [];
@@ -796,7 +796,7 @@ describe("bool", () => {
     }
 
     @Type.struct(702, {
-      list_field: Type.array(Type701.setTrackingRef(true)),
+      list_field: Type.list(Type701.setTrackingRef(true)),
       set_field: Type.set(Type701.setTrackingRef(true)),
       map_field: Type.map(Type.string(), Type701.setTrackingRef(true)),
     })
@@ -862,7 +862,7 @@ describe("bool", () => {
     }
 
     @Type.struct(702, {
-      list_field: Type.array(Type701.setTrackingRef(true)),
+      list_field: Type.list(Type701.setTrackingRef(true)),
       set_field: Type.set(Type701.setTrackingRef(true)),
       map_field: Type.map(Type.string(), Type701.setTrackingRef(true)),
     })
@@ -1187,7 +1187,7 @@ describe("bool", () => {
     fory.register(Cat);
 
     @Type.struct(304, {
-      animals: Type.array(Type.any()), // Polymorphic array
+      animals: Type.list(Type.any()), // Polymorphic list
     })
     class AnimalListHolder {
       animals: (Dog | Cat)[] = [];
@@ -1586,7 +1586,7 @@ describe("bool", () => {
       // Base non-nullable reference fields
       @Type.string()
       stringField: string = "";
-      @Type.array(Type.string())
+      @Type.list(Type.string())
       listField: string[] = [];
       @Type.set(Type.string())
       setField: Set<string> = new Set();
@@ -1613,7 +1613,7 @@ describe("bool", () => {
       @(Type.string().setNullable(true))
       nullableString2: string | null = null;
 
-      @(Type.array(Type.string()).setNullable(true))
+      @(Type.list(Type.string()).setNullable(true))
       nullableList2: string[] | null = null;
 
       @(Type.set(Type.string()).setNullable(true))
@@ -1647,7 +1647,7 @@ describe("bool", () => {
       // Base non-nullable reference fields
       @Type.string()
       stringField: string = "";
-      @Type.array(Type.string())
+      @Type.list(Type.string())
       listField: string[] = [];
       @Type.set(Type.string())
       setField: Set<string> = new Set();
@@ -1674,7 +1674,7 @@ describe("bool", () => {
       @(Type.string().setNullable(true))
       nullableString: string | null = null;
 
-      @(Type.array(Type.string()).setNullable(true))
+      @(Type.list(Type.string()).setNullable(true))
       nullableList: string[] | null = null;
 
       @(Type.set(Type.string()).setNullable(true))

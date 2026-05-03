@@ -54,6 +54,12 @@ import evolving1.EvolvingSizeMessage;
 import evolving1.FixedMessage;
 import evolving1.FixedSizeMessage;
 import evolving2.Evolving2ForyRegistration;
+import example.ExampleForyRegistration;
+import example.ExampleLeaf;
+import example.ExampleLeafUnion;
+import example.ExampleMessage;
+import example.ExampleMessageUnion;
+import example.ExampleState;
 import graph.Edge;
 import graph.Graph;
 import graph.GraphForyRegistration;
@@ -73,9 +79,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -87,6 +95,11 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.BFloat16List;
+import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float16List;
+import org.apache.fory.collection.Float32List;
+import org.apache.fory.collection.Float64List;
 import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
@@ -95,6 +108,8 @@ import org.apache.fory.collection.UInt16List;
 import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
+import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.Float16;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -428,6 +443,59 @@ public class IdlRoundTripTest {
       byte[] peerArrayUnionBytes = Files.readAllBytes(arrayUnionFile);
       Object arrayUnionRoundTrip = fory.deserialize(peerArrayUnionBytes);
       assertNumericCollectionArrayUnion(arrayUnionRoundTrip, collectionArrayUnion);
+    }
+  }
+
+  @Test
+  public void testExampleRoundTripCompatible() throws Exception {
+    runExampleRoundTrip(true);
+  }
+
+  @Test
+  public void testExampleRoundTripSchemaConsistent() throws Exception {
+    runExampleRoundTrip(false);
+  }
+
+  private void runExampleRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
+    ExampleForyRegistration.register(fory);
+
+    ExampleMessage message = buildExampleMessage();
+    byte[] messageBytes = fory.serialize(message);
+    Object messageDecoded = fory.deserialize(messageBytes);
+    Assert.assertTrue(messageDecoded instanceof ExampleMessage);
+    Assert.assertEquals(messageDecoded, message);
+
+    ExampleMessageUnion union = buildExampleUnion();
+    byte[] unionBytes = fory.serialize(union);
+    Object unionDecoded = fory.deserialize(unionBytes);
+    Assert.assertTrue(unionDecoded instanceof ExampleMessageUnion);
+    Assert.assertEquals(unionDecoded, union);
+
+    for (String peer : resolvePeers()) {
+      Path messageFile = Files.createTempFile("idl-example-" + peer + "-", ".bin");
+      messageFile.toFile().deleteOnExit();
+      Files.write(messageFile, messageBytes);
+
+      Path unionFile = Files.createTempFile("idl-example-union-" + peer + "-", ".bin");
+      unionFile.toFile().deleteOnExit();
+      Files.write(unionFile, unionBytes);
+
+      Map<String, String> env = new HashMap<>();
+      env.put("DATA_FILE_EXAMPLE", messageFile.toAbsolutePath().toString());
+      env.put("DATA_FILE_EXAMPLE_UNION", unionFile.toAbsolutePath().toString());
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
+      runPeer(command, peer);
+
+      byte[] peerMessageBytes = Files.readAllBytes(messageFile);
+      Object messageRoundTrip = fory.deserialize(peerMessageBytes);
+      Assert.assertTrue(messageRoundTrip instanceof ExampleMessage);
+      Assert.assertEquals(messageRoundTrip, message);
+
+      byte[] peerUnionBytes = Files.readAllBytes(unionFile);
+      Object unionRoundTrip = fory.deserialize(peerUnionBytes);
+      Assert.assertTrue(unionRoundTrip instanceof ExampleMessageUnion);
+      Assert.assertEquals(unionRoundTrip, union);
     }
   }
 
@@ -904,8 +972,8 @@ public class IdlRoundTripTest {
     collections.setUint16Values(new UInt16List(new short[] {(short) 50000, (short) 60000}));
     collections.setUint32Values(new UInt32List(new int[] {2000000000, 2100000000}));
     collections.setUint64Values(new UInt64List(new long[] {9000000000L, 12000000000L}));
-    collections.setFloat32Values(new float[] {1.5f, 2.5f});
-    collections.setFloat64Values(new double[] {3.5d, 4.5d});
+    collections.setFloat32Values(new Float32List(new float[] {1.5f, 2.5f}));
+    collections.setFloat64Values(new Float64List(new double[] {3.5d, 4.5d}));
     return collections;
   }
 
@@ -930,6 +998,140 @@ public class IdlRoundTripTest {
 
   private NumericCollectionArrayUnion buildNumericCollectionArrayUnion() {
     return NumericCollectionArrayUnion.ofUint16Values(new short[] {1000, 2000, 3000});
+  }
+
+  private ExampleMessage buildExampleMessage() {
+    ExampleLeaf leaf = buildExampleLeaf("leaf", 7);
+    ExampleLeaf otherLeaf = buildExampleLeaf("other", 8);
+    ExampleLeafUnion leafUnion = ExampleLeafUnion.ofLeaf(otherLeaf);
+
+    ExampleMessage message = new ExampleMessage();
+    message.setBoolValue(true);
+    message.setInt8Value((byte) -12);
+    message.setInt16Value((short) -1234);
+    message.setFixedInt32Value(-123456);
+    message.setVarint32Value(-12345);
+    message.setFixedInt64Value(-123456789L);
+    message.setVarint64Value(-987654321L);
+    message.setTaggedInt64Value(123456789L);
+    message.setUint8Value(200);
+    message.setUint16Value(60000);
+    message.setFixedUint32Value(1234567890L);
+    message.setVarUint32Value(1234567890L);
+    message.setFixedUint64Value(9876543210L);
+    message.setVarUint64Value(12345678901L);
+    message.setTaggedUint64Value(2222222222L);
+    message.setFloat16Value(Float16.valueOf(1.5f));
+    message.setBfloat16Value(BFloat16.valueOf(2.5f));
+    message.setFloat32Value(3.5f);
+    message.setFloat64Value(4.5d);
+    message.setStringValue("example");
+    message.setBytesValue(new byte[] {1, 2, 3});
+    message.setDateValue(LocalDate.of(2024, 2, 3));
+    message.setTimestampValue(Instant.parse("2024-02-03T04:05:06Z"));
+    message.setDurationValue(Duration.ofSeconds(42, 7000));
+    message.setDecimalValue(new BigDecimal("123.45"));
+    message.setEnumValue(ExampleState.READY);
+    message.setMessageValue(leaf);
+    message.setUnionValue(leafUnion);
+
+    message.setBoolList(new BoolList(new boolean[] {true, false, true}));
+    message.setInt8List(new Int8List(new byte[] {1, -2, 3}));
+    message.setInt16List(new Int16List(new short[] {100, -200, 300}));
+    message.setFixedInt32List(new Int32List(new int[] {1000, -2000, 3000}));
+    message.setVarint32List(new Int32List(new int[] {-10, 20, -30}));
+    message.setFixedInt64List(new Int64List(new long[] {10000L, -20000L}));
+    message.setVarint64List(new Int64List(new long[] {-40L, 50L}));
+    message.setTaggedInt64List(new Int64List(new long[] {60L, 70L}));
+    message.setUint8List(new UInt8List(new byte[] {(byte) 200, (byte) 250}));
+    message.setUint16List(new UInt16List(new short[] {(short) 50000, (short) 60000}));
+    message.setFixedUint32List(new UInt32List(new int[] {2000000000, 2100000000}));
+    message.setVarUint32List(new UInt32List(new int[] {100, 200}));
+    message.setFixedUint64List(new UInt64List(new long[] {9000000000L}));
+    message.setVarUint64List(new UInt64List(new long[] {12000000000L}));
+    message.setTaggedUint64List(new UInt64List(new long[] {13000000000L}));
+    message.setFloat16List(new Float16List(new short[] {0x3C00, 0x4000}));
+    message.setBfloat16List(new BFloat16List(new short[] {0x3F80, 0x4000}));
+    message.setMaybeFloat16List(Arrays.asList(Float16.ONE, null, Float16.valueOf(2.0f)));
+    message.setMaybeBfloat16List(Arrays.asList(BFloat16.ONE, null, BFloat16.valueOf(3.0f)));
+    message.setFloat32List(new Float32List(new float[] {1.5f, 2.5f}));
+    message.setFloat64List(new Float64List(new double[] {3.5d, 4.5d}));
+    message.setStringList(Arrays.asList("alpha", "beta"));
+    message.setBytesList(Arrays.asList(new byte[] {4, 5}, new byte[] {6, 7}));
+    message.setDateList(Arrays.asList(LocalDate.of(2024, 1, 1), LocalDate.of(2024, 1, 2)));
+    message.setTimestampList(
+        Arrays.asList(
+            Instant.parse("2024-01-01T00:00:00Z"),
+            Instant.parse("2024-01-02T00:00:00Z")));
+    message.setDurationList(Arrays.asList(Duration.ofMillis(1), Duration.ofSeconds(2)));
+    message.setDecimalList(Arrays.asList(new BigDecimal("1.25"), new BigDecimal("2.50")));
+    message.setEnumList(Arrays.asList(ExampleState.UNKNOWN, ExampleState.FAILED));
+    message.setMessageList(Arrays.asList(leaf, otherLeaf));
+    message.setUnionList(Arrays.asList(ExampleLeafUnion.ofNote("note"), leafUnion));
+    message.setMaybeFixedInt32List(Arrays.asList(1, null, 3));
+    message.setMaybeUint64List(Arrays.asList(10L, null, 30L));
+
+    message.setBoolArray(new boolean[] {true, false});
+    message.setInt8Array(new byte[] {1, -2});
+    message.setInt16Array(new short[] {100, -200});
+    message.setInt32Array(new int[] {1000, -2000});
+    message.setInt64Array(new long[] {10000L, -20000L});
+    message.setUint8Array(new byte[] {(byte) 200, (byte) 250});
+    message.setUint16Array(new short[] {(short) 50000, (short) 60000});
+    message.setUint32Array(new int[] {2000000000, 2100000000});
+    message.setUint64Array(new long[] {9000000000L, 12000000000L});
+    message.setFloat16Array(new Float16[] {Float16.ONE, Float16.valueOf(2.0f)});
+    message.setBfloat16Array(new BFloat16[] {BFloat16.ONE, BFloat16.valueOf(2.0f)});
+    message.setFloat32Array(new float[] {1.5f, 2.5f});
+    message.setFloat64Array(new double[] {3.5d, 4.5d});
+    message.setInt32ArrayList(Arrays.asList(new int[] {1, 2}, new int[] {3, 4}));
+    message.setUint8ArrayList(
+        Arrays.asList(new byte[] {(byte) 201, (byte) 202}, new byte[] {(byte) 203}));
+
+    message.setStringValuesByBool(Map.of(Boolean.TRUE, "bool"));
+    message.setStringValuesByInt8(Map.of((byte) -1, "int8"));
+    message.setStringValuesByInt16(Map.of((short) -2, "int16"));
+    message.setStringValuesByFixedInt32(Map.of(-3, "fixed-int32"));
+    message.setStringValuesByVarint32(Map.of(4, "varint32"));
+    message.setStringValuesByFixedInt64(Map.of(-5L, "fixed-int64"));
+    message.setStringValuesByVarint64(Map.of(6L, "varint64"));
+    message.setStringValuesByTaggedInt64(Map.of(7L, "tagged-int64"));
+    message.setStringValuesByUint8(Map.of(200, "uint8"));
+    message.setStringValuesByUint16(Map.of(60000, "uint16"));
+    message.setStringValuesByFixedUint32(Map.of(1234567890L, "fixed-uint32"));
+    message.setStringValuesByVarUint32(Map.of(1234567891L, "var-uint32"));
+    message.setStringValuesByFixedUint64(Map.of(9876543210L, "fixed-uint64"));
+    message.setStringValuesByVarUint64(Map.of(9876543211L, "var-uint64"));
+    message.setStringValuesByTaggedUint64(Map.of(9876543212L, "tagged-uint64"));
+    message.setStringValuesByString(Map.of("name", "value"));
+    message.setStringValuesByTimestamp(Map.of(Instant.parse("2024-03-04T05:06:07Z"), "time"));
+    message.setStringValuesByDuration(Map.of(Duration.ofSeconds(9), "duration"));
+    message.setStringValuesByEnum(Map.of(ExampleState.READY, "ready"));
+    message.setFloat16ValuesByName(Map.of("f16", Float16.valueOf(1.25f)));
+    message.setMaybeFloat16ValuesByName(Map.of("maybe-f16", Float16.valueOf(1.5f)));
+    message.setBfloat16ValuesByName(Map.of("bf16", BFloat16.valueOf(1.75f)));
+    message.setMaybeBfloat16ValuesByName(Map.of("maybe-bf16", BFloat16.valueOf(2.25f)));
+    message.setBytesValuesByName(Map.of("bytes", new byte[] {8, 9}));
+    message.setDateValuesByName(Map.of("date", LocalDate.of(2024, 5, 6)));
+    message.setDecimalValuesByName(Map.of("decimal", new BigDecimal("99.01")));
+    message.setMessageValuesByName(Map.of("leaf", leaf));
+    message.setUnionValuesByName(Map.of("union", ExampleLeafUnion.ofCode(42)));
+    message.setUint8ArrayValuesByName(Map.of("u8", new byte[] {(byte) 201, (byte) 202}));
+    message.setFloat32ArrayValuesByName(Map.of("f32", new float[] {1.25f, 2.5f}));
+    message.setInt32ArrayValuesByName(Map.of("i32", new int[] {101, 202}));
+    return message;
+  }
+
+  private ExampleLeaf buildExampleLeaf(String label, int count) {
+    ExampleLeaf leaf = new ExampleLeaf();
+    leaf.setLabel(label);
+    leaf.setCount(count);
+    return leaf;
+  }
+
+  private ExampleMessageUnion buildExampleUnion() {
+    return ExampleMessageUnion.ofInt32ArrayList(
+        Arrays.asList(new int[] {11, 12}, new int[] {13, 14}));
   }
 
   private void assertNumericCollectionUnion(
@@ -976,7 +1178,7 @@ public class IdlRoundTripTest {
     monster.setHp((short) 80);
     monster.setName("Orc");
     monster.setFriendly(true);
-    monster.setInventory(new UInt8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
+    monster.setInventory(new byte[] {(byte) 1, (byte) 2, (byte) 3});
     monster.setColor(Color.Blue);
     return monster;
   }
@@ -1122,8 +1324,8 @@ public class IdlRoundTripTest {
     Container container = new Container();
     container.setId(9876543210L);
     container.setStatus(Status.STARTED);
-    container.setBytes(new Int8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
-    container.setNumbers(new Int32List(new int[] {10, 20, 30}));
+    container.setBytes(new byte[] {(byte) 1, (byte) 2, (byte) 3});
+    container.setNumbers(new int[] {10, 20, 30});
     container.setScalars(pack);
     container.setNames(Arrays.asList("alpha", "beta"));
     container.setFlags(new boolean[] {true, false});

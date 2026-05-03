@@ -889,19 +889,19 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 		f.writeCtx.buffer.WriteInt16(val)
 	case int32:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
-		f.writeCtx.WriteTypeId(INT32)
+		f.writeCtx.WriteTypeId(VARINT32)
 		f.writeCtx.buffer.WriteVarint32(val)
 	case int64:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
-		f.writeCtx.WriteTypeId(INT64)
+		f.writeCtx.WriteTypeId(VARINT64)
 		f.writeCtx.buffer.WriteVarint64(val)
 	case int:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		if strconv.IntSize == 64 {
-			f.writeCtx.WriteTypeId(INT64)
+			f.writeCtx.WriteTypeId(VARINT64)
 			f.writeCtx.buffer.WriteVarint64(int64(val))
 		} else {
-			f.writeCtx.WriteTypeId(INT32)
+			f.writeCtx.WriteTypeId(VARINT32)
 			f.writeCtx.buffer.WriteVarint32(int32(val))
 		}
 	case float32:

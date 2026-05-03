@@ -230,7 +230,7 @@ constexpr bool union_vector_primitive_array_spec() {
     } else {
       constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
       constexpr int8_t child = union_node_child<SpecProvider, NodeIndex, 0>();
-      if constexpr (kind != FieldNodeKind::List || child < 0) {
+      if constexpr (kind != FieldNodeKind::Array || child < 0) {
         return false;
       } else if constexpr (union_node_kind<SpecProvider, child>() !=
                                FieldNodeKind::Scalar ||
@@ -243,6 +243,31 @@ constexpr bool union_vector_primitive_array_spec() {
       } else {
         return union_node_scalar<SpecProvider, child>() ==
                FieldScalarKind::UInt8;
+      }
+    }
+  }
+}
+
+template <typename ValueType, typename SpecProvider, int8_t NodeIndex>
+constexpr uint32_t union_vector_array_type_id() {
+  if constexpr (!is_vector_v<ValueType>) {
+    return 0;
+  } else {
+    constexpr FieldNodeKind kind = union_node_kind<SpecProvider, NodeIndex>();
+    constexpr int8_t child = union_node_child<SpecProvider, NodeIndex, 0>();
+    if constexpr (kind != FieldNodeKind::Array || child < 0) {
+      return 0;
+    } else if constexpr (union_node_kind<SpecProvider, child>() !=
+                         FieldNodeKind::Scalar) {
+      return 0;
+    } else {
+      using Element = element_type_t<ValueType>;
+      constexpr FieldScalarKind scalar =
+          union_node_scalar<SpecProvider, child>();
+      if constexpr (!configured_scalar_kind_matches<Element, scalar>()) {
+        return 0;
+      } else {
+        return static_cast<uint32_t>(primitive_array_type_id<Element>());
       }
     }
   }
@@ -295,13 +320,22 @@ template <typename T, typename SpecProvider>
 constexpr uint32_t
 resolve_union_type_id_for_spec(const ::fory::FieldMeta &meta) {
   using Inner = union_unwrap_optional_inner_t<T>;
-  if constexpr (union_vector_primitive_array_spec<Inner, SpecProvider, 0>()) {
-    using Element = element_type_t<Inner>;
-    if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
-      return static_cast<uint32_t>(TypeId::INT8_ARRAY);
-    } else {
-      return static_cast<uint32_t>(TypeId::UINT8_ARRAY);
-    }
+  constexpr uint32_t array_tid =
+      union_vector_array_type_id<Inner, SpecProvider, 0>();
+  if constexpr (array_tid != 0) {
+    return array_tid;
+  } else if constexpr (union_node_kind<SpecProvider, 0>() ==
+                       FieldNodeKind::Array) {
+    return static_cast<uint32_t>(TypeId::ARRAY);
+  } else if constexpr (union_node_kind<SpecProvider, 0>() ==
+                       FieldNodeKind::List) {
+    return static_cast<uint32_t>(TypeId::LIST);
+  } else if constexpr (union_node_kind<SpecProvider, 0>() ==
+                       FieldNodeKind::Set) {
+    return static_cast<uint32_t>(TypeId::SET);
+  } else if constexpr (union_node_kind<SpecProvider, 0>() ==
+                       FieldNodeKind::Map) {
+    return static_cast<uint32_t>(TypeId::MAP);
   }
   return resolve_union_type_id<T>(meta);
 }
@@ -585,6 +619,10 @@ void write_union_configured_value(const ValueType &value, WriteContext &ctx,
         *value, ctx, RefMode::None, false, has_generics);
   } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
                         is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       kind == FieldNodeKind::Array) {
+    Serializer<ValueType>::write(value, ctx, ref_mode, false, has_generics);
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
                        (kind == FieldNodeKind::List ||
                         kind == FieldNodeKind::Set)) {
     if constexpr (union_vector_primitive_array_spec<ValueType, SpecProvider,
@@ -636,6 +674,10 @@ ValueType read_union_configured_value(ReadContext &ctx, RefMode ref_mode,
     Inner inner = read_union_configured_value<Inner, SpecProvider, child>(
         ctx, RefMode::None, false);
     return ValueType{std::move(inner)};
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       kind == FieldNodeKind::Array) {
+    return Serializer<ValueType>::read(ctx, ref_mode, false);
   } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
                         is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
                        (kind == FieldNodeKind::List ||

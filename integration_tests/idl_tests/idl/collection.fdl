@@ -44,27 +44,27 @@ union NumericCollectionUnion [id=211] {
 }
 
 message NumericCollectionsArray [id=212] {
-    list<int8> int8_values = 1 [java_array = true];
-    list<int16> int16_values = 2 [java_array = true];
-    list<int32> int32_values = 3 [java_array = true];
-    list<int64> int64_values = 4 [java_array = true];
-    list<uint8> uint8_values = 5 [java_array = true];
-    list<uint16> uint16_values = 6 [java_array = true];
-    list<uint32> uint32_values = 7 [java_array = true];
-    list<uint64> uint64_values = 8 [java_array = true];
-    list<float32> float32_values = 9 [java_array = true];
-    list<float64> float64_values = 10 [java_array = true];
+    array<int8> int8_values = 1;
+    array<int16> int16_values = 2;
+    array<int32> int32_values = 3;
+    array<int64> int64_values = 4;
+    array<uint8> uint8_values = 5;
+    array<uint16> uint16_values = 6;
+    array<uint32> uint32_values = 7;
+    array<uint64> uint64_values = 8;
+    array<float32> float32_values = 9;
+    array<float64> float64_values = 10;
 }
 
 union NumericCollectionArrayUnion [id=213] {
-    list<int8> int8_values = 1 [java_array = true];
-    list<int16> int16_values = 2 [java_array = true];
-    list<int32> int32_values = 3 [java_array = true];
-    list<int64> int64_values = 4 [java_array = true];
-    list<uint8> uint8_values = 5 [java_array = true];
-    list<uint16> uint16_values = 6 [java_array = true];
-    list<uint32> uint32_values = 7 [java_array = true];
-    list<uint64> uint64_values = 8 [java_array = true];
-    list<float32> float32_values = 9 [java_array = true];
-    list<float64> float64_values = 10 [java_array = true];
+    array<int8> int8_values = 1;
+    array<int16> int16_values = 2;
+    array<int32> int32_values = 3;
+    array<int64> int64_values = 4;
+    array<uint8> uint8_values = 5;
+    array<uint16> uint16_values = 6;
+    array<uint32> uint32_values = 7;
+    array<uint64> uint64_values = 8;
+    array<float32> float32_values = 9;
+    array<float64> float64_values = 10;
 }

@@ -45,12 +45,12 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
       ${this.builder.writer.writeVarInt32(scale)}
       if (${codec}.canUseSmallEncoding(${unscaled})) {
         ${this.builder.writer.writeVarUInt64(`(${codec}.encodeZigZag64(${unscaled}) << 1n)`)}
-        return;
+      } else {
+        const ${payload} = ${codec}.toCanonicalLittleEndianMagnitude(${unscaled});
+        const ${meta} = (BigInt(${payload}.length) << 1n) | (${unscaled} < 0n ? 1n : 0n);
+        ${this.builder.writer.writeVarUInt64(`((${meta} << 1n) | 1n)`)}
+        ${this.builder.writer.buffer(payload)}
       }
-      const ${payload} = ${codec}.toCanonicalLittleEndianMagnitude(${unscaled});
-      const ${meta} = (BigInt(${payload}.length) << 1n) | (${unscaled} < 0n ? 1n : 0n);
-      ${this.builder.writer.writeVarUInt64(`((${meta} << 1n) | 1n)`)}
-      ${this.builder.writer.buffer(payload)}
     `;
   }
 
@@ -69,23 +69,23 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
       const ${header} = ${this.builder.reader.readVarUInt64()};
       if ((${header} & 1n) === 0n) {
         ${accessor(`new ${decimal}(${codec}.decodeZigZag64(${header} >> 1n), ${scale})`)}
-        return;
+      } else {
+        const ${meta} = ${header} >> 1n;
+        const ${length} = Number(${meta} >> 1n);
+        if (${length} <= 0 || ${length} > 0x7fffffff) {
+          throw new Error(\`Invalid decimal magnitude length \${${length}}.\`);
+        }
+        const ${payload} = ${this.builder.reader.buffer(length)};
+        if (${payload}[${length} - 1] === 0) {
+          throw new Error("Non-canonical decimal payload: trailing zero byte.");
+        }
+        const ${magnitude} = ${codec}.fromCanonicalLittleEndianMagnitude(${payload});
+        if (${magnitude} === 0n) {
+          throw new Error("Big decimal encoding must not represent zero.");
+        }
+        const ${unscaled} = ((${meta} & 1n) === 0n) ? ${magnitude} : -${magnitude};
+        ${accessor(`new ${decimal}(${unscaled}, ${scale})`)}
       }
-      const ${meta} = ${header} >> 1n;
-      const ${length} = Number(${meta} >> 1n);
-      if (${length} <= 0 || ${length} > 0x7fffffff) {
-        throw new Error(\`Invalid decimal magnitude length \${${length}}.\`);
-      }
-      const ${payload} = ${this.builder.reader.buffer(length)};
-      if (${payload}[${length} - 1] === 0) {
-        throw new Error("Non-canonical decimal payload: trailing zero byte.");
-      }
-      const ${magnitude} = ${codec}.fromCanonicalLittleEndianMagnitude(${payload});
-      if (${magnitude} === 0n) {
-        throw new Error("Big decimal encoding must not represent zero.");
-      }
-      const ${unscaled} = ((${meta} & 1n) === 0n) ? ${magnitude} : -${magnitude};
-      ${accessor(`new ${decimal}(${unscaled}, ${scale})`)}
     `;
   }
 

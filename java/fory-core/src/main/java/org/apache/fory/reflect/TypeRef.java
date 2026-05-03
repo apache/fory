@@ -175,7 +175,8 @@ public class TypeRef<T> {
     } else if (annotatedType instanceof AnnotatedArrayType) {
       AnnotatedType annotatedComponent =
           ((AnnotatedArrayType) annotatedType).getAnnotatedGenericComponentType();
-      TypeRef<?> component = ofAnnotatedType(annotatedComponent, true);
+      Class<?> componentRawType = TypeUtils.getRawType(annotatedComponent.getType());
+      TypeRef<?> component = ofAnnotatedType(annotatedComponent, !componentRawType.isPrimitive());
       if (component != null && component.hasTypeExtMeta()) {
         componentType = component;
       }

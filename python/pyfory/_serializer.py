@@ -24,7 +24,25 @@ from abc import ABC
 
 from pyfory._fory import NOT_NULL_INT64_FLAG
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
-from pyfory.serialization import bfloat16, bfloat16array, float16, float16array
+from pyfory.serialization import (
+    BFloat16Array,
+    BoolArray,
+    Float16Array,
+    Float32Array,
+    Float64Array,
+    Int16Array,
+    Int32Array,
+    Int64Array,
+    Int8Array,
+    UInt16Array,
+    UInt32Array,
+    UInt64Array,
+    UInt8Array,
+    _bfloat16_from_bits,
+    _bfloat16_to_bits,
+    _float16_from_bits,
+    _float16_to_bits,
+)
 from pyfory.types import is_primitive_type
 from pyfory.utils import is_little_endian
 
@@ -243,15 +261,11 @@ class Float64Serializer(Serializer):
 
 
 def _coerce_float16_bits(value):
-    if isinstance(value, float16):
-        return value.to_bits()
-    return float16(value).to_bits()
+    return _float16_to_bits(value)
 
 
 def _coerce_bfloat16_bits(value):
-    if isinstance(value, bfloat16):
-        return value.to_bits()
-    return bfloat16(value).to_bits()
+    return _bfloat16_to_bits(value)
 
 
 class Float16Serializer(Serializer):
@@ -259,26 +273,103 @@ class Float16Serializer(Serializer):
         write_context.write_uint16(_coerce_float16_bits(value))
 
     def read(self, read_context):
-        return float16.from_bits(read_context.read_uint16())
+        return _float16_from_bits(read_context.read_uint16())
 
 
-class Float16ArraySerializer(Serializer):
+class _DenseArraySerializer(Serializer):
+    wrapper_type = None
+    typecode = None
+    reduced_precision = False
+
+    def __init__(self, type_resolver, type_):
+        super().__init__(type_resolver, type_)
+        self.need_to_write_ref = False
+
     def write(self, write_context, value):
-        safe = float16array() if value is None else value
+        if value is None:
+            raise TypeError(f"{self.wrapper_type.__name__} value must not be None")
+        safe = value
+        if not isinstance(safe, self.wrapper_type):
+            safe = self.wrapper_type(safe)
         buffer = safe.to_buffer()
-        write_context.write_var_uint32(len(buffer) * 2)
-        if is_little_endian:
-            write_context.buffer.write_buffer(buffer)
+        itemsize = 1 if isinstance(buffer, (bytes, bytearray)) else buffer.itemsize
+        write_context.write_var_uint32(len(buffer) * itemsize)
+        if itemsize == 1 or is_little_endian:
+            write_context.write_buffer(buffer)
         else:
-            swapped = array.array("H", buffer)
+            swapped = array.array(buffer.typecode, buffer)
             swapped.byteswap()
-            write_context.buffer.write_buffer(swapped)
+            write_context.write_buffer(swapped)
 
     def read(self, read_context):
         payload_size = read_context.read_var_uint32()
-        if payload_size & 1:
-            raise ValueError("float16 array payload size mismatch")
-        return float16array.from_buffer(read_context.read_bytes(payload_size))
+        data = read_context.read_bytes(payload_size)
+        if self.wrapper_type is BoolArray:
+            return BoolArray(bool(value) for value in data)
+        if self.reduced_precision:
+            if payload_size & 1:
+                raise ValueError(f"{self.wrapper_type.__name__} payload size mismatch")
+            raw = array.array("H")
+            raw.frombytes(data)
+            if not is_little_endian:
+                raw.byteswap()
+            return self.wrapper_type.from_buffer(raw.tobytes())
+        raw = array.array(self.typecode)
+        raw.frombytes(data)
+        if not is_little_endian and raw.itemsize > 1:
+            raw.byteswap()
+        return self.wrapper_type(raw)
+
+
+class BoolArraySerializer(_DenseArraySerializer):
+    wrapper_type = BoolArray
+    typecode = "B"
+
+
+class Int8ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Int8Array
+    typecode = "b"
+
+
+class Int16ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Int16Array
+    typecode = "h"
+
+
+class Int32ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Int32Array
+    typecode = "i"
+
+
+class Int64ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Int64Array
+    typecode = "q"
+
+
+class UInt8ArraySerializer(_DenseArraySerializer):
+    wrapper_type = UInt8Array
+    typecode = "B"
+
+
+class UInt16ArraySerializer(_DenseArraySerializer):
+    wrapper_type = UInt16Array
+    typecode = "H"
+
+
+class UInt32ArraySerializer(_DenseArraySerializer):
+    wrapper_type = UInt32Array
+    typecode = "I"
+
+
+class UInt64ArraySerializer(_DenseArraySerializer):
+    wrapper_type = UInt64Array
+    typecode = "Q"
+
+
+class Float16ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Float16Array
+    typecode = "H"
+    reduced_precision = True
 
 
 class BFloat16Serializer(Serializer):
@@ -286,26 +377,23 @@ class BFloat16Serializer(Serializer):
         write_context.write_uint16(_coerce_bfloat16_bits(value))
 
     def read(self, read_context):
-        return bfloat16.from_bits(read_context.read_uint16())
+        return _bfloat16_from_bits(read_context.read_uint16())
 
 
-class BFloat16ArraySerializer(Serializer):
-    def write(self, write_context, value):
-        safe = bfloat16array() if value is None else value
-        buffer = safe.to_buffer()
-        write_context.write_var_uint32(len(buffer) * 2)
-        if is_little_endian:
-            write_context.buffer.write_buffer(buffer)
-        else:
-            swapped = array.array("H", buffer)
-            swapped.byteswap()
-            write_context.buffer.write_buffer(swapped)
+class BFloat16ArraySerializer(_DenseArraySerializer):
+    wrapper_type = BFloat16Array
+    typecode = "H"
+    reduced_precision = True
 
-    def read(self, read_context):
-        payload_size = read_context.read_var_uint32()
-        if payload_size & 1:
-            raise ValueError("bfloat16 array payload size mismatch")
-        return bfloat16array.from_buffer(read_context.read_bytes(payload_size))
+
+class Float32ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Float32Array
+    typecode = "f"
+
+
+class Float64ArraySerializer(_DenseArraySerializer):
+    wrapper_type = Float64Array
+    typecode = "d"
 
 
 class StringSerializer(Serializer):
@@ -367,6 +455,23 @@ class TimestampSerializer(Serializer):
         nanos = read_context.read_uint32()
         ts = seconds + nanos / 1_000_000_000
         return datetime.datetime.fromtimestamp(ts, tz=datetime.timezone.utc)
+
+
+class DurationSerializer(Serializer):
+    def write(self, write_context, value: datetime.timedelta):
+        if not isinstance(value, datetime.timedelta):
+            raise TypeError("{} should be {} instead of {}".format(value, datetime.timedelta, type(value)))
+        total_micros = value.days * 86_400_000_000 + value.seconds * 1_000_000 + value.microseconds
+        seconds, micros = divmod(total_micros, 1_000_000)
+        write_context.write_varint64(seconds)
+        write_context.write_int32(micros * 1000)
+
+    def read(self, read_context):
+        seconds = read_context.read_varint64()
+        nanos = read_context.read_int32()
+        if nanos < 0 or nanos > 999_999_999:
+            raise ValueError(f"Duration nanoseconds {nanos} out of valid range [0, 999999999]")
+        return datetime.timedelta(seconds=seconds, microseconds=nanos // 1000)
 
 
 class EnumSerializer(Serializer):

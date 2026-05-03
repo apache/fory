@@ -48,6 +48,7 @@ interface TypeInfoOptions {
   inner?: TypeInfo;
   enumProps?: { [key: string]: number };
   cases?: { [caseIndex: number]: TypeInfo };
+  scalarEncoding?: ScalarEncoding;
 }
 
 /**
@@ -360,6 +361,121 @@ export enum Dynamic {
   AUTO = "AUTO"
 }
 
+type ScalarEncoding = "fixed" | "varint" | "tagged";
+
+type IntegerEncodingOptions = {
+  encoding?: ScalarEncoding;
+};
+
+const scalarTypeInfo = <T extends number>(
+  typeId: T,
+  scalarEncoding?: ScalarEncoding,
+) => {
+  const typeInfo = TypeInfo.fromNonParam<T>(typeId);
+  if (scalarEncoding !== undefined) {
+    typeInfo.options = { scalarEncoding };
+  }
+  return typeInfo;
+};
+
+const typeIdForInt32Encoding = (options?: IntegerEncodingOptions) => {
+  switch (options?.encoding ?? "varint") {
+    case "fixed":
+      return TypeId.INT32;
+    case "varint":
+      return TypeId.VARINT32;
+    default:
+      throw new Error("int32 supports only fixed or varint encoding");
+  }
+};
+
+const typeIdForInt64Encoding = (options?: IntegerEncodingOptions) => {
+  switch (options?.encoding ?? "varint") {
+    case "fixed":
+      return TypeId.INT64;
+    case "varint":
+      return TypeId.VARINT64;
+    case "tagged":
+      return TypeId.TAGGED_INT64;
+    default:
+      throw new Error("unsupported int64 encoding");
+  }
+};
+
+const typeIdForUInt32Encoding = (options?: IntegerEncodingOptions) => {
+  switch (options?.encoding ?? "varint") {
+    case "fixed":
+      return TypeId.UINT32;
+    case "varint":
+      return TypeId.VAR_UINT32;
+    default:
+      throw new Error("uint32 supports only fixed or varint encoding");
+  }
+};
+
+const typeIdForUInt64Encoding = (options?: IntegerEncodingOptions) => {
+  switch (options?.encoding ?? "varint") {
+    case "fixed":
+      return TypeId.UINT64;
+    case "varint":
+      return TypeId.VAR_UINT64;
+    case "tagged":
+      return TypeId.TAGGED_UINT64;
+    default:
+      throw new Error("unsupported uint64 encoding");
+  }
+};
+
+const denseArrayTypeIdForElement = (inner: TypeInfo) => {
+  if (inner.nullable) {
+    throw new Error("Type.array element type must be non-nullable");
+  }
+  if (inner.trackingRef === true || inner.dynamic === Dynamic.TRUE) {
+    throw new Error("Type.array element type must not use ref tracking or dynamic typing");
+  }
+  if (inner.options !== undefined && "scalarEncoding" in inner.options) {
+    throw new Error("Type.array element type must not use scalar encoding modifiers");
+  }
+  switch (inner.typeId) {
+    case TypeId.BOOL:
+      return TypeId.BOOL_ARRAY;
+    case TypeId.INT8:
+      return TypeId.INT8_ARRAY;
+    case TypeId.INT16:
+      return TypeId.INT16_ARRAY;
+    case TypeId.INT32:
+    case TypeId.VARINT32:
+      return TypeId.INT32_ARRAY;
+    case TypeId.INT64:
+    case TypeId.VARINT64:
+      return TypeId.INT64_ARRAY;
+    case TypeId.UINT8:
+      return TypeId.UINT8_ARRAY;
+    case TypeId.UINT16:
+      return TypeId.UINT16_ARRAY;
+    case TypeId.UINT32:
+    case TypeId.VAR_UINT32:
+      return TypeId.UINT32_ARRAY;
+    case TypeId.UINT64:
+    case TypeId.VAR_UINT64:
+      return TypeId.UINT64_ARRAY;
+    case TypeId.FLOAT16:
+      return TypeId.FLOAT16_ARRAY;
+    case TypeId.BFLOAT16:
+      return TypeId.BFLOAT16_ARRAY;
+    case TypeId.FLOAT32:
+      return TypeId.FLOAT32_ARRAY;
+    case TypeId.FLOAT64:
+      return TypeId.FLOAT64_ARRAY;
+    default:
+      throw new Error("Type.array requires a numeric or bool scalar element type");
+  }
+};
+
+const isDenseArrayTypeId = (typeId: number) => (
+  typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY
+);
+
 
 type Props<T> = T extends {
   options: {
@@ -566,15 +682,21 @@ export const Type = {
   any() {
     return TypeInfo.fromNonParam<typeof TypeId.UNKNOWN>(TypeId.UNKNOWN);
   },
-  array<T extends TypeInfo>(inner: T) {
+  list<T extends TypeInfo>(inner: T) {
     return TypeInfo.fromWithOptions<typeof TypeId.LIST, { inner: T }>(TypeId.LIST, {
       inner,
     });
+  },
+  array<T extends TypeInfo>(inner: T) {
+    return TypeInfo.fromNonParam(denseArrayTypeIdForElement(inner));
   },
   map<T1 extends TypeInfo, T2 extends TypeInfo>(
     key: T1,
     value: T2
   ) {
+    if (isDenseArrayTypeId(key.typeId)) {
+      throw new Error("Type.array is not valid as a map key type");
+    }
     return TypeInfo.fromWithOptions<typeof TypeId.MAP, {
       key: T1,
       value: T2
@@ -685,29 +807,17 @@ export const Type = {
 
     );
   },
-  int32() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT32>(
-      (TypeId.INT32),
-
-    );
+  int32(options?: IntegerEncodingOptions) {
+    return scalarTypeInfo(typeIdForInt32Encoding(options), options?.encoding);
   },
   varInt32() {
-    return TypeInfo.fromNonParam<typeof TypeId.VARINT32>(
-      (TypeId.VARINT32),
-
-    );
+    return scalarTypeInfo(TypeId.VARINT32, "varint");
   },
-  int64() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT64>(
-      (TypeId.INT64),
-
-    );
+  int64(options?: IntegerEncodingOptions) {
+    return scalarTypeInfo(typeIdForInt64Encoding(options), options?.encoding);
   },
   sliInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_INT64>(
-      (TypeId.TAGGED_INT64),
-
-    );
+    return scalarTypeInfo(TypeId.TAGGED_INT64, "tagged");
   },
   float16() {
     return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(
@@ -743,35 +853,23 @@ export const Type = {
       (TypeId.UINT16),
     );
   },
-  uint32() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT32>(
-      (TypeId.UINT32),
-    );
+  uint32(options?: IntegerEncodingOptions) {
+    return scalarTypeInfo(typeIdForUInt32Encoding(options), options?.encoding);
   },
   varUInt32() {
-    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT32>(
-      (TypeId.VAR_UINT32),
-    );
+    return scalarTypeInfo(TypeId.VAR_UINT32, "varint");
   },
-  uint64() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT64>(
-      (TypeId.UINT64),
-    );
+  uint64(options?: IntegerEncodingOptions) {
+    return scalarTypeInfo(typeIdForUInt64Encoding(options), options?.encoding);
   },
   varUInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT64>(
-      (TypeId.VAR_UINT64),
-    );
+    return scalarTypeInfo(TypeId.VAR_UINT64, "varint");
   },
   varInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(
-      (TypeId.VARINT64),
-    );
+    return scalarTypeInfo(TypeId.VARINT64, "varint");
   },
   taggedUInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_UINT64>(
-      (TypeId.TAGGED_UINT64),
-    );
+    return scalarTypeInfo(TypeId.TAGGED_UINT64, "tagged");
   },
   binary() {
     return TypeInfo.fromNonParam<typeof TypeId.BINARY>(

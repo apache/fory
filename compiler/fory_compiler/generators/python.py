@@ -32,6 +32,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     NamedType,
     ListType,
+    ArrayType,
     MapType,
     Schema,
 )
@@ -61,13 +62,15 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "pyfory.fixed_uint64",
         PrimitiveKind.VAR_UINT64: "pyfory.uint64",
         PrimitiveKind.TAGGED_UINT64: "pyfory.tagged_uint64",
-        PrimitiveKind.FLOAT16: "pyfory.float32",
+        PrimitiveKind.FLOAT16: "pyfory.float16",
+        PrimitiveKind.BFLOAT16: "pyfory.bfloat16",
         PrimitiveKind.FLOAT32: "pyfory.float32",
         PrimitiveKind.FLOAT64: "pyfory.float64",
         PrimitiveKind.STRING: "str",
         PrimitiveKind.BYTES: "bytes",
         PrimitiveKind.DATE: "datetime.date",
         PrimitiveKind.TIMESTAMP: "datetime.datetime",
+        PrimitiveKind.DURATION: "datetime.timedelta",
         PrimitiveKind.DECIMAL: "decimal.Decimal",
         PrimitiveKind.ANY: "Any",
     }
@@ -89,38 +92,10 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "np.uint64",
         PrimitiveKind.VAR_UINT64: "np.uint64",
         PrimitiveKind.TAGGED_UINT64: "np.uint64",
-        PrimitiveKind.FLOAT16: "np.float32",
+        PrimitiveKind.FLOAT16: "np.float16",
+        PrimitiveKind.BFLOAT16: "np.float16",
         PrimitiveKind.FLOAT32: "np.float32",
         PrimitiveKind.FLOAT64: "np.float64",
-    }
-
-    ARRAY_TYPE_HINTS = {
-        PrimitiveKind.BOOL: "pyfory.bool_ndarray",
-        PrimitiveKind.INT8: "pyfory.int8_ndarray",
-        PrimitiveKind.INT16: "pyfory.int16_ndarray",
-        PrimitiveKind.INT32: "pyfory.int32_ndarray",
-        PrimitiveKind.VARINT32: "pyfory.int32_ndarray",
-        PrimitiveKind.INT64: "pyfory.int64_ndarray",
-        PrimitiveKind.VARINT64: "pyfory.int64_ndarray",
-        PrimitiveKind.TAGGED_INT64: "pyfory.int64_ndarray",
-        PrimitiveKind.UINT8: "pyfory.uint8_ndarray",
-        PrimitiveKind.UINT16: "pyfory.uint16_ndarray",
-        PrimitiveKind.UINT32: "pyfory.uint32_ndarray",
-        PrimitiveKind.VAR_UINT32: "pyfory.uint32_ndarray",
-        PrimitiveKind.UINT64: "pyfory.uint64_ndarray",
-        PrimitiveKind.VAR_UINT64: "pyfory.uint64_ndarray",
-        PrimitiveKind.TAGGED_UINT64: "pyfory.uint64_ndarray",
-        PrimitiveKind.FLOAT16: "pyfory.float32_ndarray",
-        PrimitiveKind.FLOAT32: "pyfory.float32_ndarray",
-        PrimitiveKind.FLOAT64: "pyfory.float64_ndarray",
-    }
-    LIST_ELEMENT_SCHEMA_PRIMITIVES = {
-        PrimitiveKind.INT32,
-        PrimitiveKind.INT64,
-        PrimitiveKind.TAGGED_INT64,
-        PrimitiveKind.UINT32,
-        PrimitiveKind.UINT64,
-        PrimitiveKind.TAGGED_UINT64,
     }
 
     # Default values for primitive types
@@ -141,12 +116,14 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.VAR_UINT64: "0",
         PrimitiveKind.TAGGED_UINT64: "0",
         PrimitiveKind.FLOAT16: "0.0",
+        PrimitiveKind.BFLOAT16: "0.0",
         PrimitiveKind.FLOAT32: "0.0",
         PrimitiveKind.FLOAT64: "0.0",
         PrimitiveKind.STRING: '""',
         PrimitiveKind.BYTES: 'b""',
         PrimitiveKind.DATE: "None",
         PrimitiveKind.TIMESTAMP: "None",
+        PrimitiveKind.DURATION: "None",
         PrimitiveKind.DECIMAL: 'decimal.Decimal("0")',
         PrimitiveKind.ANY: "None",
     }
@@ -651,14 +628,7 @@ class PythonGenerator(BaseGenerator):
 
     def uses_numpy_array(self, field_type: ListType, element_optional: bool) -> bool:
         """Return True if a list should be represented as a numpy array."""
-        if not isinstance(field_type.element_type, PrimitiveType):
-            return False
-        if field_type.element_type.kind in self.LIST_ELEMENT_SCHEMA_PRIMITIVES:
-            return False
-        return (
-            field_type.element_type.kind in self.ARRAY_TYPE_HINTS
-            and not element_optional
-        )
+        return False
 
     def field_type_has_any(self, field_type: FieldType) -> bool:
         """Return True if field type or its children is any."""
@@ -751,68 +721,34 @@ class PythonGenerator(BaseGenerator):
             return type_name
 
         elif isinstance(field_type, ListType):
-            # Use numpy array for numeric primitive types
-            if isinstance(field_type.element_type, PrimitiveType):
-                if not element_optional:
-                    kind = field_type.element_type.kind
-                    if prefer_numpy_array and self.uses_numpy_array(
-                        field_type, element_optional
-                    ):
-                        list_type = self.ARRAY_TYPE_HINTS[kind]
-                    else:
-                        element_type = self.generate_type(
-                            field_type.element_type,
-                            False,
-                            False,
-                            False,
-                            parent_stack,
-                            False,
-                        )
-                        element_type = self.wrap_ref_type(
-                            field_type.element_type,
-                            element_type,
-                            element_ref=element_ref,
-                        )
-                        if element_optional:
-                            element_type = f"Optional[{element_type}]"
-                        list_type = f"List[{element_type}]"
-                else:
-                    element_type = self.generate_type(
-                        field_type.element_type,
-                        False,
-                        False,
-                        False,
-                        parent_stack,
-                        False,
-                    )
-                    element_type = self.wrap_ref_type(
-                        field_type.element_type,
-                        element_type,
-                        element_ref=element_ref,
-                    )
-                    if element_optional:
-                        element_type = f"Optional[{element_type}]"
-                    list_type = f"List[{element_type}]"
-            else:
-                element_type = self.generate_type(
-                    field_type.element_type,
-                    False,
-                    False,
-                    False,
-                    parent_stack,
-                    False,
-                )
-                element_type = self.wrap_ref_type(
-                    field_type.element_type,
-                    element_type,
-                    element_ref=element_ref,
-                )
-                if element_optional:
-                    element_type = f"Optional[{element_type}]"
-                list_type = f"List[{element_type}]"
+            element_type = self.generate_type(
+                field_type.element_type,
+                False,
+                False,
+                False,
+                parent_stack,
+                False,
+            )
+            element_type = self.wrap_ref_type(
+                field_type.element_type,
+                element_type,
+                element_ref=element_ref,
+            )
+            if element_optional:
+                element_type = f"Optional[{element_type}]"
+            list_type = f"List[{element_type}]"
             if nullable:
                 return f"Optional[{list_type}]"
             return list_type
+
+        elif isinstance(field_type, ArrayType):
+            element_type = self.generate_type(
+                field_type.element_type, False, False, False, parent_stack, False
+            )
+            array_type = f"pyfory.Array[{element_type}]"
+            if nullable:
+                return f"Optional[{array_type}]"
+            return array_type
 
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
@@ -958,10 +894,9 @@ class PythonGenerator(BaseGenerator):
             return "None"
 
         elif isinstance(field_type, ListType):
-            # Use numpy empty array for numeric types
-            if self.uses_numpy_array(field_type, element_optional=False):
-                dtype = self.NUMPY_DTYPE_MAP[field_type.element_type.kind]
-                return f"None  # Use np.array([], dtype={dtype}) to initialize"
+            return "None"
+
+        elif isinstance(field_type, ArrayType):
             return "None"
 
         elif isinstance(field_type, MapType):
@@ -977,7 +912,11 @@ class PythonGenerator(BaseGenerator):
     ):
         """Collect required imports for a field type."""
         if isinstance(field_type, PrimitiveType):
-            if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
+            if field_type.kind in (
+                PrimitiveKind.DATE,
+                PrimitiveKind.TIMESTAMP,
+                PrimitiveKind.DURATION,
+            ):
                 imports.add("import datetime")
             elif field_type.kind == PrimitiveKind.DECIMAL:
                 imports.add("import decimal")
@@ -985,10 +924,9 @@ class PythonGenerator(BaseGenerator):
                 imports.add("from typing import Any")
 
         elif isinstance(field_type, ListType):
-            # Add numpy import for primitive arrays
-            if self.uses_numpy_array(field_type, element_optional):
-                imports.add("import numpy as np")
-                return
+            self.collect_imports(field_type.element_type, imports)
+
+        elif isinstance(field_type, ArrayType):
             self.collect_imports(field_type.element_type, imports)
 
         elif isinstance(field_type, MapType):

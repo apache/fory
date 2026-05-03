@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import array
 from dataclasses import dataclass
 
 import pyfory
@@ -32,10 +33,21 @@ except ImportError:
 
 @dataclass
 class UnsignedArrays:
-    u8: pyfory.uint8_array = pyfory.field(0)
-    u16: pyfory.uint16_array = pyfory.field(1)
-    u32: pyfory.uint32_array = pyfory.field(2)
-    u64: pyfory.uint64_array = pyfory.field(3)
+    u8: pyfory.NDArray[pyfory.uint8] = pyfory.field(0)
+    u16: pyfory.NDArray[pyfory.uint16] = pyfory.field(1)
+    u32: pyfory.NDArray[pyfory.uint32] = pyfory.field(2)
+    u64: pyfory.NDArray[pyfory.uint64] = pyfory.field(3)
+
+
+@dataclass
+class DenseListArray:
+    values: pyfory.Array[pyfory.int32] = pyfory.field(0)
+    flags: pyfory.Array[bool] = pyfory.field(1)
+
+
+@dataclass
+class StdDenseArray:
+    values: pyfory.StdArray[pyfory.int32] = pyfory.field(0)
 
 
 def test_unsigned_array_typedef_type_ids():
@@ -67,6 +79,32 @@ def test_unsigned_array_fingerprint_type_ids():
 
     expected = f"0,{TypeId.UINT8_ARRAY},0,0;1,{TypeId.UINT16_ARRAY},0,0;2,{TypeId.UINT32_ARRAY},0,0;3,{TypeId.UINT64_ARRAY},0,0;"
     assert fingerprint == expected
+
+
+def test_array_typehint_roundtrips_public_dense_wrappers():
+    fory = Fory(xlang=True)
+    fory.register_type(DenseListArray, namespace="test", typename="DenseListArray")
+    obj = DenseListArray(values=[1, -2, 3], flags=[True, False, True])
+
+    out = fory.deserialize(fory.serialize(obj))
+
+    assert isinstance(out.values, pyfory.Int32Array)
+    assert isinstance(out.flags, pyfory.BoolArray)
+    out.values.append(4)
+    assert out.values.pop() == 4
+    assert out.values == [1, -2, 3]
+    assert out.flags == [True, False, True]
+
+
+def test_stdarray_typehint_roundtrips_python_array_carrier():
+    fory = Fory(xlang=True)
+    fory.register_type(StdDenseArray, namespace="test", typename="StdDenseArray")
+    obj = StdDenseArray(values=array.array("i", [1, -2, 3]))
+
+    out = fory.deserialize(fory.serialize(obj))
+
+    assert isinstance(out.values, array.array)
+    assert out.values.tolist() == [1, -2, 3]
 
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")

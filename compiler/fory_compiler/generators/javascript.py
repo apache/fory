@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
 from fory_compiler.ir.ast import (
+    ArrayType,
     Enum,
     Field,
     FieldType,
@@ -156,18 +157,18 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.BOOL: "Type.bool()",
         PrimitiveKind.INT8: "Type.int8()",
         PrimitiveKind.INT16: "Type.int16()",
-        PrimitiveKind.INT32: "Type.int32()",
-        PrimitiveKind.VARINT32: "Type.varInt32()",
-        PrimitiveKind.INT64: "Type.int64()",
-        PrimitiveKind.VARINT64: "Type.varInt64()",
-        PrimitiveKind.TAGGED_INT64: "Type.sliInt64()",
+        PrimitiveKind.INT32: 'Type.int32({ encoding: "fixed" })',
+        PrimitiveKind.VARINT32: "Type.int32()",
+        PrimitiveKind.INT64: 'Type.int64({ encoding: "fixed" })',
+        PrimitiveKind.VARINT64: "Type.int64()",
+        PrimitiveKind.TAGGED_INT64: 'Type.int64({ encoding: "tagged" })',
         PrimitiveKind.UINT8: "Type.uint8()",
         PrimitiveKind.UINT16: "Type.uint16()",
-        PrimitiveKind.UINT32: "Type.uint32()",
-        PrimitiveKind.VAR_UINT32: "Type.varUInt32()",
-        PrimitiveKind.UINT64: "Type.uint64()",
-        PrimitiveKind.VAR_UINT64: "Type.varUInt64()",
-        PrimitiveKind.TAGGED_UINT64: "Type.taggedUInt64()",
+        PrimitiveKind.UINT32: 'Type.uint32({ encoding: "fixed" })',
+        PrimitiveKind.VAR_UINT32: "Type.uint32()",
+        PrimitiveKind.UINT64: 'Type.uint64({ encoding: "fixed" })',
+        PrimitiveKind.VAR_UINT64: "Type.uint64()",
+        PrimitiveKind.TAGGED_UINT64: 'Type.uint64({ encoding: "tagged" })',
         PrimitiveKind.FLOAT16: "Type.float16()",
         PrimitiveKind.BFLOAT16: "Type.bfloat16()",
         PrimitiveKind.FLOAT32: "Type.float32()",
@@ -202,6 +203,26 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
         PrimitiveKind.FLOAT32: "Type.float32Array()",
         PrimitiveKind.FLOAT64: "Type.float64Array()",
+    }
+
+    PRIMITIVE_ARRAY_TS_MAP = {
+        PrimitiveKind.BOOL: "boolean[]",
+        PrimitiveKind.INT8: "Int8Array",
+        PrimitiveKind.INT16: "Int16Array",
+        PrimitiveKind.INT32: "Int32Array",
+        PrimitiveKind.VARINT32: "Int32Array",
+        PrimitiveKind.INT64: "BigInt64Array | bigint[] | number[]",
+        PrimitiveKind.VARINT64: "BigInt64Array | bigint[] | number[]",
+        PrimitiveKind.UINT8: "Uint8Array",
+        PrimitiveKind.UINT16: "Uint16Array",
+        PrimitiveKind.UINT32: "Uint32Array",
+        PrimitiveKind.VAR_UINT32: "Uint32Array",
+        PrimitiveKind.UINT64: "BigUint64Array | bigint[] | number[]",
+        PrimitiveKind.VAR_UINT64: "BigUint64Array | bigint[] | number[]",
+        PrimitiveKind.FLOAT16: "number[]",
+        PrimitiveKind.BFLOAT16: "number[]",
+        PrimitiveKind.FLOAT32: "Float32Array",
+        PrimitiveKind.FLOAT64: "Float64Array",
     }
 
     def __init__(self, schema: Schema, options):
@@ -506,6 +527,8 @@ class JavaScriptGenerator(BaseGenerator):
                 type_str = f"({element_type})[]"
             else:
                 type_str = f"{element_type}[]"
+        elif isinstance(field_type, ArrayType):
+            type_str = self.PRIMITIVE_ARRAY_TS_MAP[field_type.element_type.kind]
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
                 field_type.key_type,
@@ -916,29 +939,9 @@ class JavaScriptGenerator(BaseGenerator):
             # Unresolved — fall back to any
             return "Type.any()"
         elif isinstance(field_type, ListType):
-            if isinstance(field_type.element_type, PrimitiveType):
-                array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(
-                    field_type.element_type.kind
-                )
-                if array_expr:
-                    return array_expr
-            elif isinstance(field_type.element_type, NamedType):
-                lower = field_type.element_type.name.lower()
-                shorthand_map = {
-                    "float": PrimitiveKind.FLOAT32,
-                    "double": PrimitiveKind.FLOAT64,
-                }
-                found_kind = shorthand_map.get(lower)
-                if not found_kind:
-                    for pk in PrimitiveKind:
-                        if pk.value == lower:
-                            found_kind = pk
-                            break
-                if found_kind:
-                    array_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(found_kind)
-                    if array_expr:
-                        return array_expr
-
+            inner = self._field_type_expr(field_type.element_type, parent_stack)
+            return f"Type.list({inner})"
+        elif isinstance(field_type, ArrayType):
             inner = self._field_type_expr(field_type.element_type, parent_stack)
             return f"Type.array({inner})"
         elif isinstance(field_type, MapType):
@@ -1041,6 +1044,8 @@ class JavaScriptGenerator(BaseGenerator):
                     seen.add(id(resolved))
                     deps.append(resolved)
             elif isinstance(ft, ListType):
+                visit(ft.element_type)
+            elif isinstance(ft, ArrayType):
                 visit(ft.element_type)
             elif isinstance(ft, MapType):
                 visit(ft.key_type)

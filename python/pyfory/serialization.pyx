@@ -44,7 +44,6 @@ from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.meta.metastring import MetaStringDecoder
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
-from pyfory.types import is_primitive_type
 from pyfory.includes.libserialization cimport (
     TypeId,
     TypeRegistrationKind,
@@ -80,6 +79,36 @@ ENABLE_FORY_CYTHON_SERIALIZATION = os.environ.get(
 cdef int32_t NOT_NULL_BOOL_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.BOOL << 8)
 cdef int32_t NOT_NULL_STRING_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.STRING << 8)
 cdef int32_t NOT_NULL_FLOAT64_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.FLOAT64 << 8)
+
+_PRIMITIVE_TYPEVAR_NAMES = frozenset(
+    {
+        "int8",
+        "uint8",
+        "int16",
+        "uint16",
+        "int32",
+        "uint32",
+        "fixed_int32",
+        "fixed_uint32",
+        "int64",
+        "uint64",
+        "fixed_int64",
+        "tagged_int64",
+        "fixed_uint64",
+        "tagged_uint64",
+        "float16",
+        "bfloat16",
+        "float32",
+        "float64",
+    }
+)
+_PRIMITIVE_TYPE_IDS = frozenset(range(1, 21)) - {16}
+
+
+def _is_primitive_type(type_):
+    if type(type_) is int:
+        return type_ in _PRIMITIVE_TYPE_IDS
+    return type_ in (bool, int, float) or getattr(type_, "__name__", None) in _PRIMITIVE_TYPEVAR_NAMES
 
 
 @cython.final
@@ -591,7 +620,7 @@ cdef class Serializer:
         """
         self.type_resolver = type_resolver
         self.type_ = type_
-        self.need_to_write_ref = self.type_resolver.track_ref and not is_primitive_type(type_)
+        self.need_to_write_ref = self.type_resolver.track_ref and not _is_primitive_type(type_)
 
     cpdef write(self, WriteContext write_context, value):
         raise NotImplementedError(f"write method not implemented in {type(self)}")
@@ -1056,8 +1085,7 @@ cdef class Fory:
         self.reset_read()
 
 include "primitive.pxi"
-include "float16.pxi"
-include "bfloat16.pxi"
+include "number.pxi"
 include "collection.pxi"
 include "struct.pxi"
 

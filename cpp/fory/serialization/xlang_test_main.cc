@@ -304,7 +304,8 @@ struct ReducedPrecisionFloatStruct {
            bfloat16_array == other.bfloat16_array;
   }
   FORY_STRUCT(ReducedPrecisionFloatStruct, float16_value, bfloat16_value,
-              float16_array, bfloat16_array);
+              (float16_array, fory::F().list(fory::T::float16())),
+              (bfloat16_array, fory::F().list(fory::T::bfloat16())));
 };
 
 enum class TestEnum : int32_t { VALUE_A = 0, VALUE_B = 1, VALUE_C = 2 };

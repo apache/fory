@@ -18,7 +18,7 @@
 """Tests for the FlatBuffers frontend translation."""
 
 from fory_compiler.frontend.fbs import FBSFrontend
-from fory_compiler.ir.ast import ListType, PrimitiveType
+from fory_compiler.ir.ast import ArrayType, PrimitiveType
 from fory_compiler.ir.types import PrimitiveKind
 
 
@@ -57,7 +57,7 @@ def test_fbs_type_mapping_and_options():
     fields = {f.name: f for f in messages["Monster"].fields}
     assert isinstance(fields["mana"].field_type, PrimitiveType)
     assert fields["mana"].field_type.kind == PrimitiveKind.INT16
-    assert isinstance(fields["inventory"].field_type, ListType)
+    assert isinstance(fields["inventory"].field_type, ArrayType)
     assert fields["inventory"].field_type.element_type.kind == PrimitiveKind.UINT8
     assert fields["friendly"].options["deprecated"] is True
     assert fields["friendly"].options["priority"] == 1
@@ -69,6 +69,26 @@ def test_fbs_type_mapping_and_options():
     enum_values = {v.name: v.value for v in schema.enums[0].values}
     assert enum_values["Green"] == 1
     assert enum_values["Blue"] == 2
+
+
+def test_fbs_numeric_vectors_use_array_element_domains_without_scalar_encodings():
+    source = """
+    namespace demo;
+    table Vectors {
+      ints: [int];
+      uints: [uint];
+      longs: [long];
+      ulongs: [ulong];
+    }
+    """
+
+    schema = FBSFrontend().parse(source)
+    fields = {f.name: f for f in schema.messages[0].fields}
+
+    assert fields["ints"].field_type.element_type.kind == PrimitiveKind.INT32
+    assert fields["uints"].field_type.element_type.kind == PrimitiveKind.UINT32
+    assert fields["longs"].field_type.element_type.kind == PrimitiveKind.INT64
+    assert fields["ulongs"].field_type.element_type.kind == PrimitiveKind.UINT64
 
 
 def test_fbs_union_translation():

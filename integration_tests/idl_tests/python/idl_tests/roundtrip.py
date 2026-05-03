@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import datetime
+import decimal
 import os
 from pathlib import Path
 
@@ -29,6 +30,7 @@ import complex_pb
 import collection
 import evolving1
 import evolving2
+import example
 import monster
 import optional_types
 import graph
@@ -396,6 +398,241 @@ def build_any_holder() -> "any_example.AnyHolder":
         list_value=["alpha", "beta"],
         map_value={"k1": "v1", "k2": "v2"},
     )
+
+
+def build_example_message() -> "example.ExampleMessage":
+    leaf = example.ExampleLeaf(label="leaf", count=7)
+    other_leaf = example.ExampleLeaf(label="other", count=8)
+    timestamp_value = datetime.datetime(
+        2024, 2, 3, 4, 5, 6, tzinfo=datetime.timezone.utc
+    )
+    values = dict(
+        bool_value=True,
+        int8_value=-12,
+        int16_value=-1234,
+        fixed_int32_value=-123456,
+        varint32_value=-12345,
+        fixed_int64_value=-123456789,
+        varint64_value=-987654321,
+        tagged_int64_value=123456789,
+        uint8_value=200,
+        uint16_value=60000,
+        fixed_uint32_value=1234567890,
+        var_uint32_value=1234567890,
+        fixed_uint64_value=9876543210,
+        var_uint64_value=12345678901,
+        tagged_uint64_value=2222222222,
+        float16_value=1.5,
+        bfloat16_value=2.5,
+        float32_value=3.5,
+        float64_value=4.5,
+        string_value="example",
+        bytes_value=b"\x01\x02\x03",
+        date_value=datetime.date(2024, 2, 3),
+        timestamp_value=timestamp_value,
+        duration_value=datetime.timedelta(seconds=42, microseconds=7),
+        decimal_value=decimal.Decimal("123.45"),
+        enum_value=example.ExampleState.READY,
+        message_value=leaf,
+        union_value=example.ExampleLeafUnion.leaf(other_leaf),
+        bool_list=[True, False, True],
+        int8_list=[1, -2, 3],
+        int16_list=[100, -200, 300],
+        fixed_int32_list=[1000, -2000, 3000],
+        varint32_list=[-10, 20, -30],
+        fixed_int64_list=[10000, -20000],
+        varint64_list=[-40, 50],
+        tagged_int64_list=[60, 70],
+        uint8_list=[200, 250],
+        uint16_list=[50000, 60000],
+        fixed_uint32_list=[2000000000, 2100000000],
+        var_uint32_list=[100, 200],
+        fixed_uint64_list=[9000000000],
+        var_uint64_list=[12000000000],
+        tagged_uint64_list=[13000000000],
+        float16_list=[1.0, 2.0],
+        bfloat16_list=[1.0, 2.0],
+        maybe_float16_list=[1.0, None, 2.0],
+        maybe_bfloat16_list=[1.0, None, 3.0],
+        float32_list=[1.5, 2.5],
+        float64_list=[3.5, 4.5],
+        string_list=["alpha", "beta"],
+        bytes_list=[b"\x04\x05", b"\x06\x07"],
+        date_list=[datetime.date(2024, 1, 1), datetime.date(2024, 1, 2)],
+        timestamp_list=[
+            datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+            datetime.datetime(2024, 1, 2, tzinfo=datetime.timezone.utc),
+        ],
+        duration_list=[
+            datetime.timedelta(milliseconds=1),
+            datetime.timedelta(seconds=2),
+        ],
+        decimal_list=[decimal.Decimal("1.25"), decimal.Decimal("2.50")],
+        enum_list=[example.ExampleState.UNKNOWN, example.ExampleState.FAILED],
+        message_list=[leaf, other_leaf],
+        union_list=[
+            example.ExampleLeafUnion.note("note"),
+            example.ExampleLeafUnion.leaf(other_leaf),
+        ],
+        maybe_fixed_int32_list=[1, None, 3],
+        maybe_uint64_list=[10, None, 30],
+        bool_array=np.array([True, False], dtype=np.bool_),
+        int8_array=np.array([1, -2], dtype=np.int8),
+        int16_array=np.array([100, -200], dtype=np.int16),
+        int32_array=np.array([1000, -2000], dtype=np.int32),
+        int64_array=np.array([10000, -20000], dtype=np.int64),
+        uint8_array=np.array([200, 250], dtype=np.uint8),
+        uint16_array=np.array([50000, 60000], dtype=np.uint16),
+        uint32_array=np.array([2000000000, 2100000000], dtype=np.uint32),
+        uint64_array=np.array([9000000000, 12000000000], dtype=np.uint64),
+        float16_array=pyfory.Float16Array.from_values([1.0, 2.0]),
+        bfloat16_array=pyfory.BFloat16Array.from_values([1.0, 2.0]),
+        float32_array=np.array([1.5, 2.5], dtype=np.float32),
+        float64_array=np.array([3.5, 4.5], dtype=np.float64),
+        int32_array_list=[
+            np.array([1, 2], dtype=np.int32),
+            np.array([3, 4], dtype=np.int32),
+        ],
+        string_values_by_bool={True: "bool"},
+        string_values_by_int8={-1: "int8"},
+        string_values_by_int16={-2: "int16"},
+        string_values_by_fixed_int32={-3: "fixed-int32"},
+        string_values_by_varint32={4: "varint32"},
+        string_values_by_fixed_int64={-5: "fixed-int64"},
+        string_values_by_varint64={6: "varint64"},
+        string_values_by_tagged_int64={7: "tagged-int64"},
+        string_values_by_uint8={200: "uint8"},
+        string_values_by_uint16={60000: "uint16"},
+        string_values_by_fixed_uint32={1234567890: "fixed-uint32"},
+        string_values_by_var_uint32={1234567891: "var-uint32"},
+        string_values_by_fixed_uint64={9876543210: "fixed-uint64"},
+        string_values_by_var_uint64={9876543211: "var-uint64"},
+        string_values_by_tagged_uint64={9876543212: "tagged-uint64"},
+        string_values_by_string={"name": "value"},
+        string_values_by_timestamp={
+            datetime.datetime(2024, 3, 4, 5, 6, 7, tzinfo=datetime.timezone.utc): "time"
+        },
+        string_values_by_duration={datetime.timedelta(seconds=9): "duration"},
+        string_values_by_enum={example.ExampleState.READY: "ready"},
+        float16_values_by_name={"f16": 1.25},
+        maybe_float16_values_by_name={"maybe-f16": 1.5},
+        bfloat16_values_by_name={"bf16": 1.75},
+        maybe_bfloat16_values_by_name={"maybe-bf16": 2.25},
+        bytes_values_by_name={"bytes": b"\x08\x09"},
+        date_values_by_name={"date": datetime.date(2024, 5, 6)},
+        decimal_values_by_name={"decimal": decimal.Decimal("99.01")},
+        message_values_by_name={"leaf": leaf},
+        union_values_by_name={"union": example.ExampleLeafUnion.code(42)},
+        uint8_array_values_by_name={"u8": np.array([201, 202], dtype=np.uint8)},
+        float32_array_values_by_name={"f32": np.array([1.25, 2.5], dtype=np.float32)},
+    )
+    fields = example.ExampleMessage.__dataclass_fields__
+    if "uint8_array_list" in fields:
+        values["uint8_array_list"] = [
+            np.array([201, 202], dtype=np.uint8),
+            np.array([203], dtype=np.uint8),
+        ]
+    if "int32_array_values_by_name" in fields:
+        values["int32_array_values_by_name"] = {
+            "i32": np.array([101, 202], dtype=np.int32)
+        }
+    return example.ExampleMessage(**values)
+
+
+def build_example_union() -> "example.ExampleMessageUnion":
+    return example.ExampleMessageUnion.int32_array_list(
+        [
+            np.array([11, 12], dtype=np.int32),
+            np.array([13, 14], dtype=np.int32),
+        ]
+    )
+
+
+def assert_example_value_equal(decoded: object, expected: object) -> None:
+    if isinstance(expected, np.ndarray):
+        np.testing.assert_array_equal(decoded, expected)
+        return
+    if isinstance(expected, (pyfory.Float16Array, pyfory.BFloat16Array)):
+        assert type(decoded) is type(expected)
+        assert list(decoded.to_buffer()) == list(expected.to_buffer())
+        return
+    if isinstance(expected, list):
+        assert isinstance(decoded, list)
+        assert len(decoded) == len(expected)
+        for decoded_item, expected_item in zip(decoded, expected):
+            assert_example_value_equal(decoded_item, expected_item)
+        return
+    if isinstance(expected, dict):
+        assert isinstance(decoded, dict)
+        assert decoded.keys() == expected.keys()
+        for key, expected_value in expected.items():
+            assert_example_value_equal(decoded[key], expected_value)
+        return
+    if isinstance(expected, example.ExampleMessage):
+        assert isinstance(decoded, example.ExampleMessage)
+        for field_name in expected.__dataclass_fields__:
+            assert_example_value_equal(
+                getattr(decoded, field_name), getattr(expected, field_name)
+            )
+        return
+    if isinstance(expected, example.ExampleMessageUnion):
+        assert isinstance(decoded, example.ExampleMessageUnion)
+        assert decoded.case() == expected.case()
+        uint8_array_list_case = getattr(
+            example.ExampleMessageUnionCase, "UINT8_ARRAY_LIST", None
+        )
+        if (
+            uint8_array_list_case is not None
+            and expected.case() == uint8_array_list_case
+        ):
+            assert_example_value_equal(
+                decoded.uint8_array_list_value(), expected.uint8_array_list_value()
+            )
+            return
+        if expected.case() == example.ExampleMessageUnionCase.INT32_ARRAY_LIST:
+            assert_example_value_equal(
+                decoded.int32_array_list_value(), expected.int32_array_list_value()
+            )
+            return
+        assert decoded == expected
+        return
+    assert decoded == expected
+
+
+def local_roundtrip_example(
+    fory: pyfory.Fory,
+    message: "example.ExampleMessage",
+    union_value: "example.ExampleMessageUnion",
+) -> None:
+    decoded = fory.deserialize(fory.serialize(message))
+    assert isinstance(decoded, example.ExampleMessage)
+    assert_example_value_equal(decoded, message)
+
+    decoded_union = fory.deserialize(fory.serialize(union_value))
+    assert isinstance(decoded_union, example.ExampleMessageUnion)
+    assert_example_value_equal(decoded_union, union_value)
+
+
+def file_roundtrip_example(
+    fory: pyfory.Fory,
+    message: "example.ExampleMessage",
+    union_value: "example.ExampleMessageUnion",
+) -> None:
+    data_file = os.environ.get("DATA_FILE_EXAMPLE")
+    if data_file:
+        payload = Path(data_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, example.ExampleMessage)
+        assert_example_value_equal(decoded, message)
+        Path(data_file).write_bytes(fory.serialize(decoded))
+
+    union_file = os.environ.get("DATA_FILE_EXAMPLE_UNION")
+    if union_file:
+        payload = Path(union_file).read_bytes()
+        decoded = fory.deserialize(payload)
+        assert isinstance(decoded, example.ExampleMessageUnion)
+        assert_example_value_equal(decoded, union_value)
+        Path(union_file).write_bytes(fory.serialize(decoded))
 
 
 def local_roundtrip_any(fory: pyfory.Fory, holder: "any_example.AnyHolder") -> None:
@@ -769,6 +1006,7 @@ def run_roundtrip(compatible: bool) -> None:
     collection.register_collection_types(fory)
     optional_types.register_optional_types_types(fory)
     any_example.register_any_example_types(fory)
+    example.register_example_types(fory)
 
     book = build_address_book()
     bytes_roundtrip_addressbook(book)
@@ -811,6 +1049,11 @@ def run_roundtrip(compatible: bool) -> None:
 
     any_holder = build_any_holder()
     local_roundtrip_any(fory, any_holder)
+
+    example_message = build_example_message()
+    example_union = build_example_union()
+    local_roundtrip_example(fory, example_message, example_union)
+    file_roundtrip_example(fory, example_message, example_union)
 
     ref_fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     tree.register_tree_types(ref_fory)

@@ -25,6 +25,7 @@ Data file path is passed via DATA_FILE environment variable.
 
 import enum
 import logging
+import math
 import os
 import decimal
 from dataclasses import dataclass
@@ -191,8 +192,8 @@ class TwoStringFieldStruct:
 class ReducedPrecisionFloatStruct:
     float16_value: pyfory.float16 = None
     bfloat16_value: pyfory.bfloat16 = None
-    float16_array: pyfory.float16array = None
-    bfloat16_array: pyfory.bfloat16array = None
+    float16_array: List[pyfory.float16] = None
+    bfloat16_array: List[pyfory.bfloat16] = None
 
 
 class TestEnum(enum.Enum):
@@ -840,10 +841,10 @@ def test_schema_evolution_compatible_reverse():
 
 
 def _assert_reduced_precision_float_struct(obj: ReducedPrecisionFloatStruct):
-    assert obj.float16_value.to_bits() == 0x3E00, f"float16_value bits: {obj.float16_value.to_bits():#06x}"
-    assert obj.bfloat16_value.to_bits() == 0x3FC0, f"bfloat16_value bits: {obj.bfloat16_value.to_bits():#06x}"
-    assert list(obj.float16_array.to_buffer()) == [0x0000, 0x3C00, 0xBC00], f"float16_array bits: {list(obj.float16_array.to_buffer())}"
-    assert list(obj.bfloat16_array.to_buffer()) == [0x0000, 0x3F80, 0xBF80], f"bfloat16_array bits: {list(obj.bfloat16_array.to_buffer())}"
+    assert math.isclose(obj.float16_value, 1.5)
+    assert math.isclose(obj.bfloat16_value, 1.5)
+    assert all(math.isclose(actual, expected) for actual, expected in zip(obj.float16_array, [0.0, 1.0, -1.0]))
+    assert all(math.isclose(actual, expected) for actual, expected in zip(obj.bfloat16_array, [0.0, 1.0, -1.0]))
 
 
 def test_reduced_precision_float_struct():

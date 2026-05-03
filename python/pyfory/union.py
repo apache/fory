@@ -102,8 +102,30 @@ class UnionSerializer(Serializer):
         if self._typing_union:
             return self._read_typing_union(read_context)
         case_id = read_context.read_var_uint32()
-        value = read_context.read_ref()
+        typeinfo = self._get_case_type_info(case_id)
+        serializer = typeinfo.serializer
+        if serializer.need_to_write_ref:
+            ref_id = read_context.try_preserve_ref_id()
+            if ref_id < NOT_NULL_VALUE_FLAG:
+                value = read_context.get_read_ref()
+                return self._build_union(case_id, value)
+            self.type_resolver.read_type_info(read_context)
+            value = self._read_case_payload(read_context, serializer)
+            read_context.set_read_ref(ref_id, value)
+        else:
+            if read_context.read_int8() == NULL_FLAG:
+                value = None
+            else:
+                self.type_resolver.read_type_info(read_context)
+                value = self._read_case_payload(read_context, serializer)
         return self._build_union(case_id, value)
+
+    def _read_case_payload(self, read_context, serializer):
+        read_context.increase_depth()
+        try:
+            return serializer.read(read_context)
+        finally:
+            read_context.decrease_depth()
 
     def _get_case_type_info(self, case_id: int):
         typeinfo = self._case_type_infos.get(case_id)
@@ -111,7 +133,31 @@ class UnionSerializer(Serializer):
             case_type = self._case_types.get(case_id)
             if case_type is None:
                 raise ValueError(f"unknown union case id: {case_id}")
-            typeinfo = self.type_resolver.get_type_info(case_type)
+            try:
+                typeinfo = self.type_resolver.get_type_info(case_type)
+            except (AttributeError, TypeError):
+                from pyfory.registry import TypeInfo
+                from pyfory.struct import StructFieldSerializerVisitor
+                from pyfory.type_util import infer_field
+
+                serializer = infer_field(
+                    "union_case",
+                    case_type,
+                    StructFieldSerializerVisitor(self.type_resolver),
+                )
+                if serializer is None:
+                    raise TypeError(f"union case type {case_type} is not registered")
+                declared_typeinfo = self.type_resolver.get_type_info(serializer.type_)
+                typeinfo = TypeInfo(
+                    case_type,
+                    declared_typeinfo.type_id,
+                    declared_typeinfo.user_type_id,
+                    serializer,
+                    declared_typeinfo.namespace_bytes,
+                    declared_typeinfo.typename_bytes,
+                    declared_typeinfo.dynamic_type,
+                    declared_typeinfo.type_def,
+                )
             self._case_type_infos[case_id] = typeinfo
         return typeinfo
 

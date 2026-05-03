@@ -2034,7 +2034,7 @@ public class ClassResolver extends TypeResolver {
       int c = getNormalizedTypeName(d1).compareTo(getNormalizedTypeName(d2));
       // noinspection Duplicates
       if (c == 0) {
-        c = getFieldSortKey(d1).compareTo(getFieldSortKey(d2));
+        c = compareFieldSortKey(d1, d2);
         if (c == 0) {
           // Field name duplicate in super/child classes.
           c = d1.getDeclaringClass().compareTo(d2.getDeclaringClass());

@@ -72,7 +72,7 @@ include-package-data = true
 zip-safe = false
 
 [tool.setuptools.package-data]
-"pyfory" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
+"pyfory" = ["**/*.pxd", "**/*.pyx", "**/*.pxi", "*.so", "*.dylib", "*.dll", "*.pyd"]
 "pyfory.format" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
 "pyfory.lib.mmh3" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
 

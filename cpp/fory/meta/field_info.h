@@ -39,7 +39,8 @@ enum class FieldNodeKind {
   List = 2,
   Set = 3,
   Map = 4,
-  Inner = 5
+  Inner = 5,
+  Array = 6
 };
 
 enum class FieldScalarKind {
@@ -126,6 +127,16 @@ struct FieldNodeSpec {
     auto copy = *this;
     copy.size_ = 1;
     copy.kind_[0] = FieldNodeKind::List;
+    copy.child0_[0] = copy.append_tree(elem);
+    copy.child1_[0] = -1;
+    copy.encoding_[0] = Encoding::Default;
+    return copy;
+  }
+
+  constexpr FieldNodeSpec array(FieldNodeSpec elem) const {
+    auto copy = *this;
+    copy.size_ = 1;
+    copy.kind_[0] = FieldNodeKind::Array;
     copy.child0_[0] = copy.append_tree(elem);
     copy.child1_[0] = -1;
     copy.encoding_[0] = Encoding::Default;
@@ -225,6 +236,9 @@ struct FieldMeta {
   constexpr FieldMeta list(FieldNodeSpec elem) const {
     return with_spec(spec_.list(elem));
   }
+  constexpr FieldMeta array(FieldNodeSpec elem) const {
+    return with_spec(spec_.array(elem));
+  }
   constexpr FieldMeta set(FieldNodeSpec elem) const {
     return with_spec(spec_.set(elem));
   }
@@ -257,6 +271,9 @@ constexpr FieldNodeSpec varint() { return scalar().varint(); }
 constexpr FieldNodeSpec tagged() { return scalar().tagged(); }
 constexpr FieldNodeSpec list(FieldNodeSpec elem) {
   return FieldNodeSpec{}.list(elem);
+}
+constexpr FieldNodeSpec array(FieldNodeSpec elem) {
+  return FieldNodeSpec{}.array(elem);
 }
 constexpr FieldNodeSpec set(FieldNodeSpec elem) {
   return FieldNodeSpec{}.set(elem);
@@ -535,6 +552,13 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
   fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(      \
       std::declval<FORY_BASE_TYPE(arg)>()))::ptrs()),
 
+#define FORY_BASE_CONFIG_ARG(arg)                                              \
+  FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
+  (FORY_BASE_CONFIG_ARG_IMPL(arg), FORY_PP_EMPTY())
+#define FORY_BASE_CONFIG_ARG_IMPL(arg)                                         \
+  fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(      \
+      std::declval<FORY_BASE_TYPE(arg)>()))::entries),
+
 #define FORY_BASE_SIZE_ADD(arg)                                                \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
   (+decltype(::fory::meta::fory_field_info(                                    \
@@ -565,10 +589,14 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     static inline constexpr std::array<std::string_view, FieldSize>            \
         FieldNames = {                                                         \
             FORY_PP_FOREACH(FORY_FIELD_INFO_NAMES_FUNC, __VA_ARGS__)};         \
+    static inline constexpr auto BaseConfigEntries =                           \
+        fory::meta::concat_tuples_from_tuple(                                  \
+            std::tuple{FORY_PP_FOREACH(FORY_BASE_CONFIG_ARG, __VA_ARGS__)});   \
     static inline constexpr auto FieldConfigEntries =                          \
         std::tuple{FORY_PP_FOREACH(FORY_FIELD_INFO_CONFIG_FUNC, __VA_ARGS__)}; \
     static constexpr bool has_config = true;                                   \
-    static inline constexpr auto entries = FieldConfigEntries;                 \
+    static inline constexpr auto entries =                                     \
+        fory::meta::concat_tuples(BaseConfigEntries, FieldConfigEntries);      \
     using FieldConfigEntriesType = std::decay_t<decltype(entries)>;            \
     [[maybe_unused]] static constexpr size_t field_count =                     \
         std::tuple_size_v<FieldConfigEntriesType>;                             \

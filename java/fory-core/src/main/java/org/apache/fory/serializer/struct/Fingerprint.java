@@ -56,7 +56,8 @@ public class Fingerprint {
    * <p>Each field contributes: {@code
    * <field_id_or_name>,<type_id>,<ref>,<nullable>[<nested_type_fingerprint>];}
    *
-   * <p>Fields are sorted by their identifier (field ID or name) lexicographically as strings.
+   * <p>Fields with tag IDs are sorted numerically by tag ID. Fields without tag IDs are sorted by
+   * snake_case name.
    *
    * <p><b>Field Components:</b>
    *
@@ -90,7 +91,7 @@ public class Fingerprint {
   public static String computeStructFingerprint(
       TypeResolver resolver, List<Descriptor> descriptors) {
     // Build fingerprint info for each field
-    List<String[]> fieldInfos = new ArrayList<>(descriptors.size());
+    List<FingerprintField> fieldInfos = new ArrayList<>(descriptors.size());
     for (Descriptor descriptor : descriptors) {
       Class<?> rawType = descriptor.getTypeRef().getRawType();
       FieldTypes.FieldType fieldType =
@@ -102,9 +103,11 @@ public class Fingerprint {
 
       // Get field identifier: tag ID if configured, otherwise snake_case name
       String fieldIdentifier;
+      int fieldId = -1;
       ForyField foryField = descriptor.getForyField();
       if (foryField != null && foryField.id() >= 0) {
-        fieldIdentifier = String.valueOf(foryField.id());
+        fieldId = foryField.id();
+        fieldIdentifier = String.valueOf(fieldId);
       } else {
         fieldIdentifier = descriptor.getSnakeCaseName();
       }
@@ -140,16 +143,15 @@ public class Fingerprint {
       if (fieldType != null) {
         appendNestedFingerprint(fieldFingerprint, fieldType);
       }
-      fieldInfos.add(new String[] {fieldIdentifier, fieldFingerprint.toString()});
+      fieldInfos.add(new FingerprintField(fieldIdentifier, fieldId, fieldFingerprint.toString()));
     }
 
-    // Sort by field identifier (lexicographically as strings)
-    fieldInfos.sort((a, b) -> a[0].compareTo(b[0]));
+    fieldInfos.sort(FingerprintField::compareTo);
 
     // Build fingerprint string
     StringBuilder builder = new StringBuilder();
-    for (String[] info : fieldInfos) {
-      builder.append(info[0]).append(',').append(info[1]).append(';');
+    for (FingerprintField info : fieldInfos) {
+      builder.append(info.identifier).append(',').append(info.fingerprint).append(';');
     }
     String fingerprint = builder.toString();
     if (Utils.DEBUG_OUTPUT_ENABLED) {
@@ -157,6 +159,37 @@ public class Fingerprint {
           "Fingerprint string for {} is: {}", Descriptor.getDeclareClass(descriptors), fingerprint);
     }
     return fingerprint;
+  }
+
+  private static final class FingerprintField {
+    private final String identifier;
+    private final int fieldId;
+    private final String fingerprint;
+
+    private FingerprintField(String identifier, int fieldId, String fingerprint) {
+      this.identifier = identifier;
+      this.fieldId = fieldId;
+      this.fingerprint = fingerprint;
+    }
+
+    private static int compareTo(FingerprintField left, FingerprintField right) {
+      boolean leftTagged = left.fieldId >= 0;
+      boolean rightTagged = right.fieldId >= 0;
+      if (leftTagged && rightTagged) {
+        int result = Integer.compare(left.fieldId, right.fieldId);
+        if (result != 0) {
+          return result;
+        }
+        return left.identifier.compareTo(right.identifier);
+      }
+      if (leftTagged) {
+        return -1;
+      }
+      if (rightTagged) {
+        return 1;
+      }
+      return left.identifier.compareTo(right.identifier);
+    }
   }
 
   private static void appendNestedFingerprint(

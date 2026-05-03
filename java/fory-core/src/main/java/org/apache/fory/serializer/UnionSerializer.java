@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -35,8 +36,13 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.collection.CollectionSerializer;
+import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeAnnotationUtils;
+import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
@@ -77,8 +83,10 @@ public class UnionSerializer extends Serializer<Union> {
       };
 
   private final BiFunction<Integer, Object, Union> factory;
-  private final Map<Integer, Class<?>> caseValueTypes;
+  private final Map<Integer, TypeRef<?>> caseValueTypes;
   private final LongMap<TypeInfo> finalCaseTypeInfo;
+  private final LongMap<Serializer> finalCaseSerializers;
+  private final LongMap<GenericType> finalCaseGenericTypes;
   private boolean finalCaseSerializersResolved;
   private final TypeResolver resolver;
 
@@ -91,6 +99,8 @@ public class UnionSerializer extends Serializer<Union> {
       this.factory = createFactory(cls);
     }
     finalCaseTypeInfo = new LongMap<>(1);
+    finalCaseSerializers = new LongMap<>(1);
+    finalCaseGenericTypes = new LongMap<>(1);
     this.caseValueTypes = resolveCaseValueTypes(cls);
     resolver = typeResolver;
   }
@@ -165,7 +175,9 @@ public class UnionSerializer extends Serializer<Union> {
       TypeInfo declared = getFinalCaseTypeInfo(index);
       TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
       if (declared != null) {
-        caseValue = Serializers.read(readContext, declared.getSerializer());
+        Serializer serializer = getCaseSerializer(index, readTypeInfo.getTypeId(), declared);
+        GenericType genericType = getCaseGenericType(index, readTypeInfo.getTypeId());
+        caseValue = readCaseValue(readContext, serializer, genericType);
       } else {
         caseValue = Serializers.read(readContext, readTypeInfo.getSerializer());
       }
@@ -206,7 +218,7 @@ public class UnionSerializer extends Serializer<Union> {
       }
     }
     Preconditions.checkArgument(typeInfo != null);
-    serializer = typeInfo.getSerializer();
+    serializer = getCaseSerializer(caseId, typeId, typeInfo);
     if (serializer != null && serializer.needToWriteRef()) {
       if (writeContext.writeRefOrNull(value)) {
         return;
@@ -219,11 +231,31 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       resolver.writeTypeInfo(writeContext, typeInfo);
     }
-    writeValue(writeContext, value, typeId, serializer);
+    writeValue(writeContext, value, typeId, serializer, getCaseGenericType(caseId, typeId));
+  }
+
+  private void writeCaseValue(
+      WriteContext writeContext, Serializer serializer, GenericType genericType, Object value) {
+    if (genericType == null) {
+      Serializers.write(writeContext, serializer, value);
+      return;
+    }
+    writeContext.getGenerics().pushGenericType(genericType, writeContext.getDepth());
+    writeContext.increaseDepth();
+    try {
+      Serializers.write(writeContext, serializer, value);
+    } finally {
+      writeContext.decreaseDepth();
+      writeContext.getGenerics().popGenericType(writeContext.getDepth());
+    }
   }
 
   private void writeValue(
-      WriteContext writeContext, Object value, int typeId, Serializer serializer) {
+      WriteContext writeContext,
+      Object value,
+      int typeId,
+      Serializer serializer,
+      GenericType genericType) {
     MemoryBuffer buffer = writeContext.getBuffer();
     int internalTypeId = typeId;
     switch (internalTypeId) {
@@ -280,10 +312,40 @@ public class UnionSerializer extends Serializer<Union> {
         break;
     }
     if (serializer != null) {
-      Serializers.write(writeContext, serializer, value);
+      writeCaseValue(writeContext, serializer, genericType, value);
       return;
     }
     throw new IllegalStateException("Missing serializer for union type id " + typeId);
+  }
+
+  private Object readCaseValue(
+      ReadContext readContext, Serializer serializer, GenericType genericType) {
+    if (genericType == null) {
+      return Serializers.read(readContext, serializer);
+    }
+    readContext.getGenerics().pushGenericType(genericType, readContext.getDepth());
+    readContext.increaseDepth();
+    try {
+      return Serializers.read(readContext, serializer);
+    } finally {
+      readContext.decreaseDepth();
+      readContext.getGenerics().popGenericType(readContext.getDepth());
+    }
+  }
+
+  private Serializer getCaseSerializer(int caseId, int typeId, TypeInfo fallbackTypeInfo) {
+    Serializer serializer = finalCaseSerializers.get(caseId);
+    if (serializer != null && typeId == Types.LIST) {
+      return serializer;
+    }
+    return fallbackTypeInfo.getSerializer();
+  }
+
+  private GenericType getCaseGenericType(int caseId, int typeId) {
+    if (typeId != Types.LIST && typeId != Types.MAP) {
+      return null;
+    }
+    return finalCaseGenericTypes.get(caseId);
   }
 
   private TypeInfo getFinalCaseTypeInfo(int caseId) {
@@ -295,9 +357,12 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void resolveFinalCaseTypeInfo() {
-    for (Map.Entry<Integer, Class<?>> entry : caseValueTypes.entrySet()) {
-      Class<?> expectedType = entry.getValue();
-      if (!isFinalCaseType(expectedType)) {
+    for (Map.Entry<Integer, TypeRef<?>> entry : caseValueTypes.entrySet()) {
+      TypeRef<?> expectedTypeRef = entry.getValue();
+      Class<?> expectedType = expectedTypeRef.getRawType();
+      boolean containerCaseType =
+          TypeUtils.isCollection(expectedType) || TypeUtils.isMap(expectedType);
+      if (!containerCaseType && !isFinalCaseType(expectedType)) {
         continue;
       }
       if (expectedType.isPrimitive()) {
@@ -305,6 +370,20 @@ public class UnionSerializer extends Serializer<Union> {
       }
       TypeInfo typeInfo = resolver.getTypeInfo(expectedType);
       finalCaseTypeInfo.put(entry.getKey(), typeInfo);
+      if (TypeUtils.isPrimitiveListClass(expectedType)) {
+        TypeRef<?> elementTypeRef =
+            TypeAnnotationUtils.getPrimitiveListElementTypeRef(null, expectedType);
+        if (elementTypeRef != null) {
+          finalCaseSerializers.put(
+              entry.getKey(), new CollectionSerializer(resolver, expectedType));
+          finalCaseGenericTypes.put(
+              entry.getKey(),
+              new GenericType(
+                  TypeRef.of(expectedType), true, resolver.buildGenericType(elementTypeRef)));
+        }
+      } else if (typeInfo.getTypeId() == Types.LIST || typeInfo.getTypeId() == Types.MAP) {
+        finalCaseGenericTypes.put(entry.getKey(), resolver.buildGenericType(expectedTypeRef));
+      }
     }
   }
 
@@ -312,8 +391,8 @@ public class UnionSerializer extends Serializer<Union> {
     return expectedType.isArray() || Modifier.isFinal(expectedType.getModifiers());
   }
 
-  private Map<Integer, Class<?>> resolveCaseValueTypes(Class<? extends Union> unionClass) {
-    Map<Integer, Class<?>> mapping = new HashMap<>();
+  private Map<Integer, TypeRef<?>> resolveCaseValueTypes(Class<? extends Union> unionClass) {
+    Map<Integer, TypeRef<?>> mapping = new HashMap<>();
     Class<? extends Enum<?>> caseEnum = null;
     Field idField = null;
     for (Class<?> nested : unionClass.getDeclaredClasses()) {
@@ -344,7 +423,7 @@ public class UnionSerializer extends Serializer<Union> {
         continue;
       }
       String suffix = toPascalCase(constant.name());
-      Class<?> expected = findCaseValueType(unionClass, suffix);
+      TypeRef<?> expected = findCaseValueType(unionClass, suffix);
       if (expected != null) {
         mapping.put(caseId, expected);
       }
@@ -352,14 +431,15 @@ public class UnionSerializer extends Serializer<Union> {
     return mapping;
   }
 
-  private static Class<?> findCaseValueType(Class<? extends Union> unionClass, String suffix) {
+  private static TypeRef<?> findCaseValueType(Class<? extends Union> unionClass, String suffix) {
     String setterName = "set" + suffix;
     for (Method method : unionClass.getMethods()) {
       if (!Modifier.isPublic(method.getModifiers())) {
         continue;
       }
       if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
-        return method.getParameterTypes()[0];
+        AnnotatedType[] parameterTypes = method.getAnnotatedParameterTypes();
+        return TypeRef.of(parameterTypes[0]);
       }
     }
     String getterName = "get" + suffix;
@@ -370,7 +450,7 @@ public class UnionSerializer extends Serializer<Union> {
       if (method.getName().equals(getterName) && method.getParameterCount() == 0) {
         Class<?> returnType = method.getReturnType();
         if (returnType != void.class) {
-          return returnType;
+          return TypeRef.of(method.getAnnotatedReturnType());
         }
       }
     }

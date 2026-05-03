@@ -18,6 +18,7 @@
 import dataclasses
 from dataclasses import dataclass
 import datetime
+import decimal
 import enum
 from typing import Dict, Any, List, Set, Optional, Tuple
 
@@ -295,6 +296,37 @@ def test_sort_fields():
     # 6. Map types by type_id, then name: dict => f3, f9
     # 7. Other types (polymorphic/any) by name: any => f8
     assert serializer._field_names == ["f13", "f5", "f7", "f11", "f12", "f1", "f4", "f15", "f6", "f10", "f2", "f14", "f3", "f9", "f8"]
+
+
+def test_tagged_fields_use_flat_tag_order():
+    @dataclass
+    class TaggedClass:
+        later_int: pyfory.int32 = pyfory.field(id=20, default=0)
+        early_string: str = pyfory.field(id=10, default="")
+        middle_map: Dict[str, pyfory.int64] = pyfory.field(id=15, default_factory=dict)
+        first_bool: bool = pyfory.field(id=1, default=False)
+
+    fory = Fory(xlang=True, ref=True)
+    serializer = DataClassSerializer(fory.type_resolver, TaggedClass)
+    assert serializer._field_names == [
+        "first_bool",
+        "early_string",
+        "middle_map",
+        "later_int",
+    ]
+
+
+def test_duration_and_decimal_fields_use_declared_serializers():
+    @dataclass
+    class TemporalNumberClass:
+        duration: datetime.timedelta = pyfory.field(id=1, default=None)
+        decimal_value: decimal.Decimal = pyfory.field(id=2, default=decimal.Decimal("0"))
+
+    fory = Fory(xlang=True, ref=True)
+    serializer = DataClassSerializer(fory.type_resolver, TemporalNumberClass)
+    serializers = dict(zip(serializer._field_names, serializer._serializers))
+    assert serializers["duration"].type_ is datetime.timedelta
+    assert serializers["decimal_value"].type_ is decimal.Decimal
 
 
 @pytest.mark.parametrize(

@@ -5,10 +5,10 @@ The FDL compiler generates cross-language serialization code from schema definit
 ## Features
 
 - **Multi-language code generation**: Java, Python, Go, Rust, C++, C#, JavaScript, and Swift
-- **Rich type system**: Primitives, enums, messages, lists, maps
+- **Rich type system**: Primitives, enums, messages, lists, dense arrays, maps
 - **Cross-language serialization**: Generated code works seamlessly with Apache Fory
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
-- **Field modifiers**: Optional fields, reference tracking, list fields
+- **Field modifiers**: Optional fields, reference tracking, list fields, scalar encoding modifiers
 - **File imports**: Modular schemas with import support
 
 ## Documentation
@@ -192,6 +192,8 @@ message Config { ... }  // Registered as "package.Config"
 | `int16`     | `short`     | `pyfory.int16`      | `int16`     | `i16`                   | `int16_t`              | `short`          | `number`           |
 | `int32`     | `int`       | `pyfory.int32`      | `int32`     | `i32`                   | `int32_t`              | `int`            | `number`           |
 | `int64`     | `long`      | `pyfory.int64`      | `int64`     | `i64`                   | `int64_t`              | `long`           | `bigint \| number` |
+| `float16`   | `Float16`   | `pyfory.float16`    | `float16`   | `Float16`               | `fory::float16_t`      | `Half`           | `number`           |
+| `bfloat16`  | `BFloat16`  | `pyfory.bfloat16`   | `bfloat16`  | `BFloat16`              | `fory::bfloat16_t`     | `BFloat16`       | `BFloat16`         |
 | `float32`   | `float`     | `pyfory.float32`    | `float32`   | `f32`                   | `float`                | `float`          | `number`           |
 | `float64`   | `double`    | `pyfory.float64`    | `float64`   | `f64`                   | `double`               | `double`         | `number`           |
 | `string`    | `String`    | `str`               | `string`    | `String`                | `std::string`          | `string`         | `string`           |
@@ -202,21 +204,25 @@ message Config { ... }  // Registered as "package.Config"
 ### Collection Types
 
 ```fdl
-list<string> tags = 1;          // List<String>
-map<string, int32> scores = 2;  // Map<String, Integer>
+list<string> tags = 1;               // List<String>
+array<int32> dense_numbers = 2;      // Packed dense int32 array
+map<string, fixed int32> scores = 3; // Map<String, fixed-width Integer>
 ```
 
 ### Field Modifiers
 
 - **`optional`**: Field can be null/None
 - **`ref`**: Enable reference tracking for shared/circular references
-- **`list`**: Field is a list/array (alias: `repeated`)
+- **`list<T>`**: Ordered collection schema (alias: `repeated T`)
+- **`array<T>`**: Dense numeric/vector schema
 
 ```fdl
 message Example {
     optional string nullable_field = 1;
     ref OtherMessage shared_ref = 2;
     list<int32> numbers = 3;
+    list<fixed int32> offsets = 4;
+    array<float32> embedding = 5;
 }
 ```
 

@@ -954,7 +954,7 @@ final class Animal {
 
 Nested types use flat underscore naming (e.g., `Person_PhoneNumber`, `Person_PhoneType`).
 
-Non-optional, non-ref lists of primitive types use typed arrays for zero-copy performance (e.g., `list<int32>` → `Int32List`).
+`list<T>` fields generate ordered collection carriers. `array<T>` fields generate dense numeric carriers such as Dart typed-data lists (for example, `array<int32>` -> `Int32List`).
 
 Reference tracking on list elements or map values uses the container sugar annotations:
 

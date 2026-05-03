@@ -58,6 +58,34 @@ func TestFloat16PrimitiveSliceDirect(t *testing.T) {
 	require.Equal(t, slice, resSlice)
 }
 
+func TestSignedIntegerDynamicTypeIDsUseVarintEncoding(t *testing.T) {
+	f := New(WithXlang(true))
+
+	data, err := f.Serialize(int32(-12))
+	require.NoError(t, err)
+	requireRootTypeID(t, data, VARINT32)
+
+	data, err = Serialize(f, int32(-12))
+	require.NoError(t, err)
+	requireRootTypeID(t, data, VARINT32)
+
+	data, err = f.Serialize(int64(-123456789))
+	require.NoError(t, err)
+	requireRootTypeID(t, data, VARINT64)
+
+	data, err = Serialize(f, int64(-123456789))
+	require.NoError(t, err)
+	requireRootTypeID(t, data, VARINT64)
+}
+
+func requireRootTypeID(t *testing.T, data []byte, typeID TypeId) {
+	t.Helper()
+	buf := NewByteBuffer(data)
+	require.Equal(t, byte(XLangFlag), buf.ReadByte(nil))
+	require.Equal(t, int8(NotNullValueFlag), buf.ReadInt8(nil))
+	require.Equal(t, uint8(typeID), buf.ReadUint8(nil))
+}
+
 func TestBFloat16Primitive(t *testing.T) {
 	f := New(WithXlang(true))
 	bf16 := bfloat16.BFloat16FromFloat32(3.14)

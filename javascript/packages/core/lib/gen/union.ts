@@ -19,7 +19,7 @@
 
 import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
-import { BaseSerializerGenerator } from "./serializer";
+import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { RefFlags, TypeId } from "../type";
 import { Scope } from "./scope";
@@ -31,6 +31,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
   detectedSerializer: string;
   writerSerializer: string;
   caseTypesVar: string;
+  caseGenerators = new Map<string, SerializerGenerator>();
 
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
@@ -47,6 +48,10 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         const isNamed = TypeId.isNamedType(ti._typeId);
         const named = isNamed ? `"${ti.named}"` : "null";
         caseEntries.push(`${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1}, named: ${named} }`);
+        this.caseGenerators.set(
+          caseIdx,
+          CodegenRegistry.newGeneratorByTypeInfo(ti, this.builder, this.scope),
+        );
       }
       this.caseTypesVar = this.scope.declareVar("caseTypes", `{ ${caseEntries.join(", ")} }`);
     } else {
@@ -56,6 +61,76 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
 
   needToWriteRef(): boolean {
     return false;
+  }
+
+  private writeCaseValue(caseGenerator: SerializerGenerator, unionValue: string) {
+    const existsId = this.scope.uniqueName("existsId");
+    const caseWriter = caseGenerator.writeEmbed();
+    if (caseGenerator.needToWriteRef()) {
+      return `
+        const ${existsId} = ${this.builder.referenceResolver.getWrittenRefId(unionValue)};
+        if (typeof ${existsId} === "number") {
+          ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
+          ${this.builder.writer.writeVarUInt32(existsId)}
+        } else {
+          ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)}
+          ${this.builder.referenceResolver.writeRef(unionValue)}
+          ${caseWriter.writeNoRef(unionValue)}
+        }
+      `;
+    }
+    return `
+      ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)}
+      ${caseWriter.writeNoRef(unionValue)}
+    `;
+  }
+
+  private writeDynamicCaseValue(unionValue: string, caseInfo: string) {
+    return `
+      if (${caseInfo}) {
+        ${this.writerSerializer} = ${caseInfo}.named ? ${this.builder.getTypeResolverName()}.getSerializerByName(${caseInfo}.named) : ${this.builder.getTypeResolverName()}.getSerializerById(${caseInfo}.typeId, ${caseInfo}.userTypeId);
+      } else {
+        ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getWriteContextName()}, ${unionValue});
+      }
+      if (${this.writerSerializer}.needToWriteRef()) {
+        const existsId = ${this.builder.referenceResolver.getWrittenRefId(unionValue)};
+        if (typeof existsId === "number") {
+          ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
+          ${this.builder.writer.writeVarUInt32("existsId")}
+        } else {
+          ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)}
+          ${this.builder.referenceResolver.writeRef(unionValue)}
+          ${this.writerSerializer}.writeTypeInfo();
+          ${this.writerSerializer}.write(${unionValue});
+        }
+      } else {
+        ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)}
+        ${this.writerSerializer}.writeTypeInfo();
+        ${this.writerSerializer}.write(${unionValue});
+      }
+    `;
+  }
+
+  private writeDeclaredCases(caseIndex: string, unionValue: string, caseInfo: string) {
+    if (this.caseGenerators.size === 0) {
+      return this.writeDynamicCaseValue(unionValue, caseInfo);
+    }
+    const caseStatements = Array.from(this.caseGenerators.entries()).map(([caseIdx, caseGenerator]) => `
+      case ${caseIdx}:
+        ${this.writeCaseValue(caseGenerator, unionValue)}
+        break;
+    `);
+    return `
+      if (${caseInfo}) {
+        switch (${caseIndex}) {
+          ${caseStatements.join("\n")}
+          default:
+            ${this.writeDynamicCaseValue(unionValue, caseInfo)}
+        }
+      } else {
+        ${this.writeDynamicCaseValue(unionValue, caseInfo)}
+      }
+    `;
   }
 
   write(accessor: string): string {
@@ -70,27 +145,39 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         ${this.builder.writer.writeInt8(RefFlags.NullFlag)}
       } else {
         const ${caseInfo} = ${this.caseTypesVar} ? ${this.caseTypesVar}[${caseIndex}] : null;
-        if (${caseInfo}) {
-          ${this.writerSerializer} = ${caseInfo}.named ? ${this.builder.getTypeResolverName()}.getSerializerByName(${caseInfo}.named) : ${this.builder.getTypeResolverName()}.getSerializerById(${caseInfo}.typeId, ${caseInfo}.userTypeId);
-        } else {
-          ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getWriteContextName()}, ${unionValue});
+        ${this.writeDeclaredCases(caseIndex, unionValue, caseInfo)}
+      }
+    `;
+  }
+
+  private readDynamicCaseValue(unionValue: string, refFlag: string) {
+    return `
+      ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getReadContextName()});
+      ${this.builder.getReadContextName()}.incReadDepth();
+      ${unionValue} = ${this.detectedSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag});
+      ${this.builder.getReadContextName()}.decReadDepth();
+    `;
+  }
+
+  private readDeclaredCases(caseIndex: string, unionValue: string, refFlag: string, caseInfo: string) {
+    if (this.caseGenerators.size === 0) {
+      return this.readDynamicCaseValue(unionValue, refFlag);
+    }
+    const caseStatements = Array.from(this.caseGenerators.entries()).map(([caseIdx, caseGenerator]) => `
+      case ${caseIdx}:
+        ${caseGenerator.readEmbed().readNoRef((v: string) => `${unionValue} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
+        break;
+    `);
+    return `
+      const ${caseInfo} = ${this.caseTypesVar} ? ${this.caseTypesVar}[${caseIndex}] : null;
+      if (${caseInfo}) {
+        switch (${caseIndex}) {
+          ${caseStatements.join("\n")}
+          default:
+            ${this.readDynamicCaseValue(unionValue, refFlag)}
         }
-        if (${this.writerSerializer}.needToWriteRef()) {
-          const existsId = ${this.builder.referenceResolver.getWrittenRefId(unionValue)};
-          if (typeof existsId === "number") {
-            ${this.builder.writer.writeInt8(RefFlags.RefFlag)}
-            ${this.builder.writer.writeVarUInt32("existsId")}
-          } else {
-            ${this.builder.writer.writeInt8(RefFlags.RefValueFlag)}
-            ${this.builder.referenceResolver.writeRef(unionValue)}
-            ${this.writerSerializer}.writeTypeInfo();
-            ${this.writerSerializer}.write(${unionValue});
-          }
-        } else {
-          ${this.builder.writer.writeInt8(RefFlags.NotNullValueFlag)}
-          ${this.writerSerializer}.writeTypeInfo();
-          ${this.writerSerializer}.write(${unionValue});
-        }
+      } else {
+        ${this.readDynamicCaseValue(unionValue, refFlag)}
       }
     `;
   }
@@ -100,6 +187,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
     const caseIndex = this.scope.uniqueName("caseIndex");
     const refFlag = this.scope.uniqueName("refFlag");
     const unionValue = this.scope.uniqueName("unionValue");
+    const caseInfo = this.scope.uniqueName("caseInfo");
     const result = this.scope.uniqueName("result");
     return `
       const ${caseIndex} = ${this.builder.reader.readVarUInt32()};
@@ -110,10 +198,7 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
       } else if (${refFlag} === ${RefFlags.RefFlag}) {
         ${unionValue} = ${this.builder.referenceResolver.getReadRef(this.builder.reader.readVarUInt32())};
       } else {
-        ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getReadContextName()});
-        ${this.builder.getReadContextName()}.incReadDepth();
-        ${unionValue} = ${this.detectedSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag});
-        ${this.builder.getReadContextName()}.decReadDepth();
+        ${this.readDeclaredCases(caseIndex, unionValue, refFlag, caseInfo)}
       }
       const ${result} = { case: ${caseIndex}, value: ${unionValue} };
       ${assignStmt(result)}

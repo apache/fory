@@ -1754,11 +1754,19 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 			if field.RefMode == RefModeTracking {
 				break
 			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
+			}
 			*(*map[string]string)(fieldPtr) = ctx.ReadStringStringMap(field.RefMode, false)
 			return
 		case StringInt64MapDispatchId:
 			if field.RefMode == RefModeTracking {
 				break
+			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
 			}
 			*(*map[string]int64)(fieldPtr) = ctx.ReadStringInt64Map(field.RefMode, false)
 			return
@@ -1766,17 +1774,29 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 			if field.RefMode == RefModeTracking {
 				break
 			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
+			}
 			*(*map[string]int32)(fieldPtr) = ctx.ReadStringInt32Map(field.RefMode, false)
 			return
 		case StringIntMapDispatchId:
 			if field.RefMode == RefModeTracking {
 				break
 			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
+			}
 			*(*map[string]int)(fieldPtr) = ctx.ReadStringIntMap(field.RefMode, false)
 			return
 		case StringFloat64MapDispatchId:
 			if field.RefMode == RefModeTracking {
 				break
+			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
 			}
 			*(*map[string]float64)(fieldPtr) = ctx.ReadStringFloat64Map(field.RefMode, false)
 			return
@@ -1786,11 +1806,19 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 			if field.RefMode == RefModeTracking {
 				break
 			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
+			}
 			*(*map[string]bool)(fieldPtr) = ctx.ReadStringBoolMap(field.RefMode, false)
 			return
 		case IntIntMapDispatchId:
 			if field.RefMode == RefModeTracking {
 				break
+			}
+			if field.Meta.HasGenerics && field.Serializer != nil {
+				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, value.Field(field.Meta.FieldIndex))
+				return
 			}
 			*(*map[int]int)(fieldPtr) = ctx.ReadIntIntMap(field.RefMode, false)
 			return

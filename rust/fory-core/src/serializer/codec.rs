@@ -25,7 +25,7 @@ use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::meta::FieldType;
 use crate::resolver::{RefFlag, RefMode, TypeResolver};
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::{primitive_list, ForyDefault, Serializer};
 use crate::type_id::{self, need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE, UNKNOWN};
 use std::any::Any;
 use std::collections::HashMap;
@@ -1501,6 +1501,153 @@ where
     #[inline(always)]
     fn static_type_id() -> TypeId {
         TypeId::LIST
+    }
+}
+
+pub struct PrimitiveArrayVecCodec<T, const TYPE_ID: u8, const NULLABLE: bool, const TRACK_REF: bool>(
+    PhantomData<T>,
+);
+
+impl<T, const TYPE_ID: u8, const NULLABLE: bool, const TRACK_REF: bool> Codec<Vec<T>>
+    for PrimitiveArrayVecCodec<T, TYPE_ID, NULLABLE, TRACK_REF>
+where
+    T: Serializer + ForyDefault,
+{
+    #[inline(always)]
+    fn field_type(_: &TypeResolver) -> Result<FieldType, Error> {
+        Ok(FieldType::new_with_ref(
+            TYPE_ID as u32,
+            NULLABLE,
+            TRACK_REF,
+            Vec::new(),
+        ))
+    }
+
+    #[inline(always)]
+    fn reserved_space() -> usize {
+        primitive_list::fory_reserved_space::<T>() + SIZE_OF_REF_AND_TYPE
+    }
+
+    #[inline(always)]
+    fn write_field(value: &Vec<T>, context: &mut WriteContext) -> Result<(), Error> {
+        Self::write_with_mode(
+            value,
+            context,
+            array_ref_mode::<NULLABLE, TRACK_REF>(),
+            need_to_write_type_for_field(Self::static_type_id()),
+            false,
+        )
+    }
+
+    #[inline(always)]
+    fn read_field(context: &mut ReadContext) -> Result<Vec<T>, Error> {
+        Self::read_with_mode(
+            context,
+            array_ref_mode::<NULLABLE, TRACK_REF>(),
+            crate::serializer::util::field_need_read_type_info(TYPE_ID as u32),
+        )
+    }
+
+    #[inline(always)]
+    fn write_data(value: &Vec<T>, context: &mut WriteContext) -> Result<(), Error> {
+        primitive_list::fory_write_data(value, context)
+    }
+
+    #[inline(always)]
+    fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
+        primitive_list::fory_read_data(context)
+    }
+
+    #[inline(always)]
+    fn read_field_with_type(
+        context: &mut ReadContext,
+        remote_field_type: &FieldType,
+    ) -> Result<Vec<T>, Error> {
+        Self::read_with_mode(
+            context,
+            field_ref_mode(remote_field_type),
+            crate::serializer::util::field_need_read_type_info(remote_field_type.type_id),
+        )
+    }
+
+    #[inline(always)]
+    fn write_with_mode(
+        value: &Vec<T>,
+        context: &mut WriteContext,
+        ref_mode: RefMode,
+        write_type_info: bool,
+        _has_generics: bool,
+    ) -> Result<(), Error> {
+        if ref_mode != RefMode::None {
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
+        }
+        if write_type_info {
+            Self::write_type_info(context)?;
+        }
+        Self::write_data(value, context)
+    }
+
+    #[inline(always)]
+    fn read_with_mode(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        read_type_info: bool,
+    ) -> Result<Vec<T>, Error> {
+        if ref_mode != RefMode::None {
+            let ref_flag = context.reader.read_i8()?;
+            if ref_flag == RefFlag::Null as i8 {
+                return Ok(Vec::new());
+            }
+        }
+        if read_type_info {
+            Self::read_type_info(context)?;
+        }
+        Self::read_data(context)
+    }
+
+    #[inline(always)]
+    fn read_with_type_info(
+        context: &mut ReadContext,
+        ref_mode: RefMode,
+        _type_info: std::rc::Rc<crate::TypeInfo>,
+    ) -> Result<Vec<T>, Error> {
+        Self::read_with_mode(context, ref_mode, false)
+    }
+
+    #[inline(always)]
+    fn default_value() -> Vec<T> {
+        Vec::new()
+    }
+
+    #[inline(always)]
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_u8(TYPE_ID);
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        let remote = context.reader.read_u8()?;
+        if remote != TYPE_ID {
+            return Err(Error::type_mismatch(TYPE_ID as u32, remote as u32));
+        }
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn static_type_id() -> TypeId {
+        TypeId::try_from(TYPE_ID).unwrap_or(TypeId::UNKNOWN)
+    }
+}
+
+#[inline(always)]
+fn array_ref_mode<const NULLABLE: bool, const TRACK_REF: bool>() -> RefMode {
+    if TRACK_REF {
+        RefMode::Tracking
+    } else if NULLABLE {
+        RefMode::NullOnly
+    } else {
+        RefMode::None
     }
 }
 

@@ -16,6 +16,7 @@
 # under the License.
 
 import enum
+import array
 import typing
 from typing import List
 from pyfory.types import TypeId, is_polymorphic_type, is_union_type
@@ -495,6 +496,12 @@ def _requires_nullable_validation(remote_field_type: FieldType, local_field_type
     return remote_field_type.is_nullable and not local_field_type.is_nullable
 
 
+def _is_bytes_uint8_array_pair(remote_type_id: int, local_type_id: int) -> bool:
+    return (remote_type_id == TypeId.BINARY and local_type_id == TypeId.UINT8_ARRAY) or (
+        remote_type_id == TypeId.UINT8_ARRAY and local_type_id == TypeId.BINARY
+    )
+
+
 def _field_type_assignment(remote_field_type: FieldType, local_field_type: FieldType) -> typing.Tuple[bool, bool]:
     if local_field_type is None:
         return False, False
@@ -525,6 +532,8 @@ def _field_type_assignment(remote_field_type: FieldType, local_field_type: Field
             local_field_type.value_type,
         )
         return key_assignable and value_assignable, needs_validation or key_needs_validation or value_needs_validation
+    if _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
+        return True, True
     remote_int_domain = _INT_TYPE_DOMAINS.get(remote_type_id)
     local_int_domain = _INT_TYPE_DOMAINS.get(local_type_id)
     if remote_int_domain is not None or local_int_domain is not None:
@@ -559,6 +568,50 @@ def _validate_int_value(value, type_id: int) -> bool:
     return min_value <= value <= max_value
 
 
+def _numpy_uint8_type():
+    try:
+        import numpy as np
+
+        return np, np.ndarray, np.dtype(np.uint8)
+    except ImportError:
+        return None, None, None
+
+
+def _is_bytes_like(value) -> bool:
+    return isinstance(value, (bytes, bytearray, memoryview))
+
+
+def _is_uint8_array_like(value) -> bool:
+    if isinstance(value, array.array):
+        return value.typecode == "B"
+    np, ndarray, uint8_dtype = _numpy_uint8_type()
+    return np is not None and isinstance(value, ndarray) and value.ndim == 1 and value.dtype == uint8_dtype
+
+
+def _bytes_from_uint8_value(value) -> bytes:
+    if isinstance(value, bytes):
+        return value
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, memoryview):
+        return value.tobytes()
+    if isinstance(value, array.array) and value.typecode == "B":
+        return value.tobytes()
+    if _is_uint8_array_like(value):
+        return value.tobytes()
+    raise TypeError(f"Expected bytes or array<uint8> compatible value, got {type(value)!r}")
+
+
+def _uint8_array_from_bytes(value):
+    data = _bytes_from_uint8_value(value)
+    np, _, _ = _numpy_uint8_type()
+    if np is not None:
+        return np.frombuffer(data, dtype=np.uint8).copy()
+    result = array.array("B")
+    result.frombytes(data)
+    return result
+
+
 def is_value_assignable(value, local_field_type: FieldType) -> bool:
     if value is None:
         return local_field_type.is_nullable
@@ -578,6 +631,10 @@ def is_value_assignable(value, local_field_type: FieldType) -> bool:
         )
     if type_id in _INT_TYPE_DOMAINS:
         return _validate_int_value(value, type_id)
+    if type_id == TypeId.BINARY:
+        return _is_bytes_like(value) or _is_uint8_array_like(value)
+    if type_id == TypeId.UINT8_ARRAY:
+        return _is_bytes_like(value) or _is_uint8_array_like(value)
     if type_id == TypeId.BOOL:
         return type(value) is bool
     if type_id in (TypeId.FLOAT32, TypeId.FLOAT64):
@@ -585,6 +642,26 @@ def is_value_assignable(value, local_field_type: FieldType) -> bool:
     if type_id == TypeId.STRING:
         return type(value) is str
     return True
+
+
+def coerce_assignable_value(value, local_field_type: FieldType):
+    if value is None:
+        return None
+    type_id = local_field_type.type_id
+    if type_id == TypeId.BINARY:
+        return _bytes_from_uint8_value(value)
+    if type_id == TypeId.UINT8_ARRAY and _is_bytes_like(value):
+        return _uint8_array_from_bytes(value)
+    if type_id == TypeId.LIST:
+        return [coerce_assignable_value(element, local_field_type.element_type) for element in value]
+    if type_id == TypeId.SET:
+        return {coerce_assignable_value(element, local_field_type.element_type) for element in value}
+    if type_id == TypeId.MAP:
+        return {
+            coerce_assignable_value(key, local_field_type.key_type): coerce_assignable_value(map_value, local_field_type.value_type)
+            for key, map_value in value.items()
+        }
+    return value
 
 
 def build_field_infos(type_resolver, cls):
@@ -627,9 +704,10 @@ def build_field_infos(type_resolver, cls):
             # Skip ignored fields
             continue
 
-        # Determine nullable: use explicit metadata or fallback to type inference
+        # Determine nullable: Optional[T] stays nullable even when field metadata
+        # exists only to carry a tag id or default.
         if fory_meta is not None:
-            is_nullable = fory_meta.nullable
+            is_nullable = fory_meta.nullable or is_optional or field_nullable
         else:
             # Default behavior: Optional[T] fields are nullable. Global field_nullable
             # can force nullable for all fields.

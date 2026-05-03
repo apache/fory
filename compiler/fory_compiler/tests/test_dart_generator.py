@@ -46,9 +46,9 @@ def test_dart_generator_emits_annotated_structs_and_generated_part_registration(
         package demo;
 
         message Scalar [id=100] {
-            fixed_int32 fixed_value = 1;
+            fixed int32 fixed_value = 1;
             int32 varint_value = 2;
-            tagged_uint64 tagged_value = 3;
+            tagged uint64 tagged_value = 3;
         }
         """
     )
@@ -121,14 +121,20 @@ def test_dart_generator_keeps_union_serializers_direct_and_marks_union_types():
         "final class _AnimalForySerializer extends UnionSerializer<Animal>"
         in file.content
     )
-    assert "context.writeVarUint32(value.caseId);" in file.content
+    assert "int caseId(Animal value) => value.caseId;" in file.content
+    assert "Object? caseValue(Animal value) => value.value;" in file.content
+    assert "Animal buildValue(int caseId, Object? value) {" in file.content
+    assert "if (caseId == 3) return Animal.node(value as Node);" in file.content
+    assert "if (caseId == 7) return Animal.note(value as String);" in file.content
+    assert "void write(" not in file.content
+    assert "Animal read(" not in file.content
     assert (
         "fory.registerSerializer(Animal, const _AnimalForySerializer(), id: registrationMode.id, namespace: registrationMode.namespace, typeName: registrationMode.typeName);"
         in file.content
     )
 
 
-def test_dart_generator_uses_typed_lists_for_non_nullable_primitive_lists():
+def test_dart_generator_distinguishes_lists_from_dense_arrays():
     file = generate_dart(
         """
         package demo;
@@ -137,21 +143,24 @@ def test_dart_generator_uses_typed_lists_for_non_nullable_primitive_lists():
             list<int32> ints = 1;
             list<optional int32> nullable_ints = 2;
             optional list<int32> maybe_ints = 3;
+            array<int32> dense_ints = 4;
         }
 
         union ValueUnion {
-            list<uint32> values = 1;
+            array<uint32> values = 1;
         }
         """
     )
 
-    assert "Int32List ints = Int32List(0);" in file.content
+    assert "List<int> ints = <int>[];" in file.content
     assert (
         "@ForyField(type: ListType(element: Int32Type(encoding: Encoding.varint)), id: 2)"
         in file.content
     )
     assert "List<int?> nullableInts = <int?>[];" in file.content
-    assert "Int32List? maybeInts = null;" in file.content
+    assert "List<int>? maybeInts = null;" in file.content
+    assert "Int32List denseInts = Int32List(0);" in file.content
+    assert "@ForyField(type: ArrayType(element: Int32Type()), id: 4)" in file.content
     assert "factory ValueUnion.values(Uint32List value)" in file.content
 
 
@@ -171,7 +180,7 @@ def test_dart_generator_supports_decimal_fields_and_unions():
         """
     )
 
-    assert "Decimal amount = const Decimal.zero();" in file.content
+    assert "Decimal amount = Decimal.zero();" in file.content
     assert "factory ValueUnion.amount(Decimal value)" in file.content
 
 

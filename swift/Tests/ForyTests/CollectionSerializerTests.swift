@@ -458,7 +458,7 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
         trackRef: false
     )
     do {
-        let _: [Int16] = try [Int16].foryReadData(int16Context)
+        let _: [Int16] = try ArrayFieldCodec<Int16Codec>.readPayload(int16Context)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("payload size mismatch"))
@@ -473,7 +473,7 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
         trackRef: false
     )
     do {
-        let _: [Double] = try [Double].foryReadData(float64Context)
+        let _: [Double] = try ArrayFieldCodec<DoubleCodec>.readPayload(float64Context)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("payload size mismatch"))

@@ -223,9 +223,22 @@ inline bool collection_type_allows_empty_generic_fallback(uint32_t type_id) {
          type_id == static_cast<uint32_t>(TypeId::MAP);
 }
 
+inline bool union_type_ids_compatible(uint32_t local_type_id,
+                                      uint32_t remote_type_id) {
+  auto is_union = [](uint32_t type_id) {
+    TypeId tid = static_cast<TypeId>(type_id);
+    return tid == TypeId::UNION || tid == TypeId::TYPED_UNION ||
+           tid == TypeId::NAMED_UNION;
+  };
+  return is_union(local_type_id) && is_union(remote_type_id);
+}
+
 inline bool field_types_compatible(const FieldType &local,
                                    const FieldType &remote) {
   if (local.compatible_fingerprint == remote.compatible_fingerprint) {
+    return true;
+  }
+  if (union_type_ids_compatible(local.type_id, remote.type_id)) {
     return true;
   }
   return local.type_id == remote.type_id &&
@@ -332,8 +345,8 @@ public:
   ///
   /// Fingerprint Format:
   ///   Each field contributes: `<field_id_or_name>,<type_id>,<ref>,<nullable>;`
-  ///   Fields are sorted lexicographically by field identifier (tag ID string
-  ///   if present, otherwise snake_case field name).
+  ///   Tagged fields are sorted by numeric tag ID; untagged fields are sorted
+  ///   lexicographically by snake_case field name.
   ///
   /// Field Components:
   ///   - field_id_or_name: tag ID as string if configured, otherwise snake_case
@@ -607,27 +620,59 @@ inline bool field_node_has_override(const FieldNodeSpec &spec,
           spec.scalar_[node_index] != FieldScalarKind::Inferred);
 }
 
+template <typename Element> constexpr TypeId primitive_array_type_id() {
+  using Decayed = decay_t<Element>;
+  if constexpr (std::is_same_v<Decayed, bool>) {
+    return TypeId::BOOL_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, int8_t>) {
+    return TypeId::INT8_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, int16_t>) {
+    return TypeId::INT16_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, int32_t> ||
+                       std::is_same_v<Decayed, int>) {
+    return TypeId::INT32_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, int64_t> ||
+                       std::is_same_v<Decayed, long long>) {
+    return TypeId::INT64_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, uint8_t>) {
+    return TypeId::UINT8_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, uint16_t>) {
+    return TypeId::UINT16_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, uint32_t> ||
+                       std::is_same_v<Decayed, unsigned int>) {
+    return TypeId::UINT32_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, uint64_t> ||
+                       std::is_same_v<Decayed, unsigned long long>) {
+    return TypeId::UINT64_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, float16_t>) {
+    return TypeId::FLOAT16_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, bfloat16_t>) {
+    return TypeId::BFLOAT16_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, float>) {
+    return TypeId::FLOAT32_ARRAY;
+  } else if constexpr (std::is_same_v<Decayed, double>) {
+    return TypeId::FLOAT64_ARRAY;
+  }
+  return TypeId::ARRAY;
+}
+
 template <typename Element>
 TypeId vector_type_id_for_spec(const FieldNodeSpec &spec, int8_t node_index,
                                TypeId default_type_id) {
-  if (node_index < 0 || spec.kind_[node_index] != FieldNodeKind::List) {
+  if (node_index < 0) {
+    return default_type_id;
+  }
+  if (spec.kind_[node_index] == FieldNodeKind::List) {
+    return TypeId::LIST;
+  }
+  if (spec.kind_[node_index] != FieldNodeKind::Array) {
     return default_type_id;
   }
   const int8_t child = spec.child0_[node_index];
-  if (child < 0 || spec.kind_[child] != FieldNodeKind::Scalar ||
-      spec.encoding_[child] != Encoding::Default) {
-    return TypeId::LIST;
+  if (child < 0 || spec.kind_[child] != FieldNodeKind::Scalar) {
+    return TypeId::ARRAY;
   }
-  if constexpr (std::is_same_v<decay_t<Element>, int8_t>) {
-    if (spec.scalar_[child] == FieldScalarKind::Int8) {
-      return TypeId::INT8_ARRAY;
-    }
-  } else if constexpr (std::is_same_v<decay_t<Element>, uint8_t>) {
-    if (spec.scalar_[child] == FieldScalarKind::UInt8) {
-      return TypeId::UINT8_ARRAY;
-    }
-  }
-  return TypeId::LIST;
+  return primitive_array_type_id<Element>();
 }
 
 template <typename FieldT>

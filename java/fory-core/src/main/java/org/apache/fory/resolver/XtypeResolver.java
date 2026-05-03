@@ -113,6 +113,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
@@ -526,6 +527,12 @@ public class XtypeResolver extends TypeResolver {
     if (type == BFloat16.class) {
       return Types.BFLOAT16;
     }
+    if (type == Float16[].class) {
+      return Types.FLOAT16_ARRAY;
+    }
+    if (type == BFloat16[].class) {
+      return Types.BFLOAT16_ARRAY;
+    }
     if (type == Float16List.class) {
       return Types.FLOAT16_ARRAY;
     }
@@ -682,14 +689,22 @@ public class XtypeResolver extends TypeResolver {
   public boolean isBuildIn(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
     if (TypeUtils.isPrimitiveListClass(rawType)) {
-      return !org.apache.fory.type.TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
-          descriptor.getTypeAnnotation(), rawType);
+      return TypeAnnotationUtils.isArrayType(descriptor);
     }
     byte typeIdByte = getInternalTypeId(descriptor);
     if (UnknownClass.class.isAssignableFrom(rawType)) {
       return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
+  }
+
+  @Override
+  public boolean isCollectionDescriptor(Descriptor descriptor) {
+    Class<?> rawType = descriptor.getRawType();
+    if (TypeUtils.isPrimitiveListClass(rawType)) {
+      return !TypeAnnotationUtils.isArrayType(descriptor);
+    }
+    return super.isCollectionDescriptor(descriptor);
   }
 
   @Override
@@ -1015,9 +1030,13 @@ public class XtypeResolver extends TypeResolver {
         Float16List.class,
         new PrimitiveListSerializers.Float16ListSerializer(this));
     registerType(
+        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(this));
+    registerType(
         Types.BFLOAT16_ARRAY,
         BFloat16List.class,
         new PrimitiveListSerializers.BFloat16ListSerializer(this));
+    registerType(
+        Types.BFLOAT16_ARRAY, BFloat16[].class, new ArraySerializers.BFloat16ArraySerializer(this));
 
     // Collections
     registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(this));
@@ -1252,7 +1271,7 @@ public class XtypeResolver extends TypeResolver {
       int typeId1 = getInternalTypeId(o1);
       int typeId2 = getInternalTypeId(o2);
       if (typeId1 == typeId2) {
-        return getFieldSortKey(o1).compareTo(getFieldSortKey(o2));
+        return compareFieldSortKey(o1, o2);
       } else {
         return typeId1 - typeId2;
       }
@@ -1261,8 +1280,9 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   protected DescriptorGrouper configureDescriptorGrouper(DescriptorGrouper descriptorGrouper) {
-    return descriptorGrouper.setOtherDescriptorComparator(
-        Comparator.comparing(TypeResolver::getFieldSortKey));
+    return descriptorGrouper
+        .setOtherDescriptorComparator(TypeResolver::compareFieldSortKey)
+        .setSortTogetherComparator(TypeResolver::compareFieldSortKey, TypeResolver::hasFieldSortId);
   }
 
   @Override
@@ -1275,7 +1295,16 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private byte getInternalTypeId(Descriptor descriptor) {
+    if (TypeAnnotationUtils.isBoxedListArrayType(descriptor.getField())) {
+      return (byte) TypeAnnotationUtils.getBoxedListArrayTypeId(descriptor.getField());
+    }
     Class<?> cls = descriptor.getRawType();
+    if (TypeUtils.isPrimitiveListClass(cls)
+        && !TypeAnnotationUtils.isArrayType(descriptor)
+        && TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
+            descriptor.getTypeAnnotation(), cls)) {
+      return Types.LIST;
+    }
     if (cls.isArray() && cls.getComponentType().isPrimitive()) {
       return (byte) Types.getDescriptorTypeId(this, descriptor);
     }
@@ -1291,6 +1320,12 @@ public class XtypeResolver extends TypeResolver {
     }
     if (isCollection(cls)) {
       return Types.LIST;
+    }
+    if (cls == Float16[].class) {
+      return Types.FLOAT16_ARRAY;
+    }
+    if (cls == BFloat16[].class) {
+      return Types.BFLOAT16_ARRAY;
     }
     if (cls.isArray() && !cls.getComponentType().isPrimitive()) {
       return Types.LIST;

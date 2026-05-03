@@ -39,9 +39,6 @@ SCHEMAS = [
     IDL_DIR / "idl" / "monster.fbs",
     IDL_DIR / "idl" / "complex_fbs.fbs",
     IDL_DIR / "idl" / "auto_id.fdl",
-]
-
-SWIFT_SCHEMAS = [
     IDL_DIR / "idl" / "example.fdl",
 ]
 
@@ -74,6 +71,7 @@ GO_OUTPUT_OVERRIDES = {
     "any_example.proto": IDL_DIR / "go" / "any_example_pb" / "generated",
     "complex_pb.proto": IDL_DIR / "go" / "complex_pb" / "generated",
     "auto_id.fdl": IDL_DIR / "go" / "auto_id" / "generated",
+    "example.fdl": IDL_DIR / "go" / "example" / "generated",
 }
 
 
@@ -146,21 +144,6 @@ def main() -> int:
 
         subprocess.check_call(cmd, env=env)
 
-    if "swift" in langs:
-        for schema in SWIFT_SCHEMAS:
-            out_dir = LANG_OUTPUTS["swift"]
-            out_dir.mkdir(parents=True, exist_ok=True)
-            subprocess.check_call(
-                [
-                    sys.executable,
-                    "-m",
-                    "fory_compiler",
-                    "compile",
-                    str(schema),
-                    f"--swift_out={out_dir}",
-                ],
-                env=env,
-            )
     return 0
 
 

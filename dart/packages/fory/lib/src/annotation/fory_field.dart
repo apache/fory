@@ -55,6 +55,24 @@ final class ListField {
   });
 }
 
+final class ArrayField {
+  final bool skip;
+  final int? id;
+  final bool? nullable;
+  final bool ref;
+  final bool? dynamic;
+  final TypeSpec element;
+
+  const ArrayField({
+    this.skip = false,
+    this.id,
+    this.nullable,
+    this.ref = false,
+    this.dynamic,
+    required this.element,
+  });
+}
+
 final class SetField {
   final bool skip;
   final int? id;

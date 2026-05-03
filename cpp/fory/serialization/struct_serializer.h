@@ -563,6 +563,33 @@ constexpr int8_t configured_node_child() {
 }
 
 template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
+constexpr uint32_t configured_vector_array_type_id() {
+  if constexpr (!is_vector_v<ValueType>) {
+    return 0;
+  } else {
+    constexpr FieldNodeKind kind =
+        configured_node_kind<StructT, Index, NodeIndex>();
+    constexpr int8_t child =
+        configured_node_child<StructT, Index, NodeIndex, 0>();
+    if constexpr (kind != FieldNodeKind::Array || child < 0) {
+      return 0;
+    } else if constexpr (configured_node_kind<StructT, Index, child>() !=
+                         FieldNodeKind::Scalar) {
+      return 0;
+    } else {
+      using Element = element_type_t<ValueType>;
+      constexpr FieldScalarKind scalar =
+          configured_node_scalar<StructT, Index, child>();
+      if constexpr (!configured_scalar_kind_matches<Element, scalar>()) {
+        return 0;
+      } else {
+        return static_cast<uint32_t>(primitive_array_type_id<Element>());
+      }
+    }
+  }
+}
+
+template <typename ValueType, typename StructT, size_t Index, int8_t NodeIndex>
 constexpr bool configured_vector_primitive_array_spec() {
   if constexpr (!is_vector_v<ValueType>) {
     return false;
@@ -576,7 +603,7 @@ constexpr bool configured_vector_primitive_array_spec() {
           configured_node_kind<StructT, Index, NodeIndex>();
       constexpr int8_t child =
           configured_node_child<StructT, Index, NodeIndex, 0>();
-      if constexpr (kind != FieldNodeKind::List || child < 0) {
+      if constexpr (kind != FieldNodeKind::Array || child < 0) {
         return false;
       } else if constexpr (configured_node_kind<StructT, Index, child>() !=
                                FieldNodeKind::Scalar ||
@@ -681,7 +708,13 @@ constexpr uint32_t configured_effective_type_id() {
     constexpr uint32_t vector_array_tid =
         configured_vector_primitive_array_type_id<FieldType, StructT, Index,
                                                   NodeIndex>();
-    if constexpr (vector_array_tid != 0) {
+    constexpr uint32_t array_tid =
+        configured_vector_array_type_id<FieldType, StructT, Index, NodeIndex>();
+    if constexpr (array_tid != 0) {
+      return array_tid;
+    } else if constexpr (kind == FieldNodeKind::Array) {
+      return static_cast<uint32_t>(TypeId::ARRAY);
+    } else if constexpr (vector_array_tid != 0) {
       return vector_array_tid;
     } else if constexpr (kind == FieldNodeKind::List) {
       return static_cast<uint32_t>(TypeId::LIST);
@@ -799,13 +832,27 @@ void write_configured_list_data(const Container &coll, WriteContext &ctx) {
   if (coll.empty()) {
     return;
   }
-  ctx.write_uint8(COLL_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE);
+  uint8_t header = COLL_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE;
+  bool has_null = false;
+  if constexpr (is_nullable_v<Elem>) {
+    for (const auto &elem : coll) {
+      if (is_null_value(elem)) {
+        has_null = true;
+        break;
+      }
+    }
+    if (has_null) {
+      header |= COLL_HAS_NULL;
+    }
+  }
+  ctx.write_uint8(header);
+  const RefMode elem_ref_mode = has_null ? RefMode::NullOnly : RefMode::None;
   for (const auto &elem : coll) {
     if constexpr (ElemNode >= 0) {
       write_configured_value<Elem, StructT, Index, ElemNode>(
-          elem, ctx, RefMode::None, false, true);
+          elem, ctx, elem_ref_mode, false, true);
     } else {
-      Serializer<Elem>::write_data(elem, ctx);
+      Serializer<Elem>::write(elem, ctx, elem_ref_mode, false);
     }
   }
 }
@@ -828,19 +875,24 @@ Container read_configured_list_data(ReadContext &ctx) {
   }
   const bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
   const bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
+  const bool track_ref = (bitmap & COLL_TRACKING_REF) != 0;
+  const bool has_null = (bitmap & COLL_HAS_NULL) != 0;
   if (is_same_type && !is_decl_type) {
     (void)ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
   }
+  const RefMode elem_ref_mode =
+      track_ref ? RefMode::Tracking
+                : (has_null ? RefMode::NullOnly : RefMode::None);
   for (uint32_t i = 0; i < length; ++i) {
     if constexpr (ElemNode >= 0) {
       auto elem = read_configured_value<Elem, StructT, Index, ElemNode>(
-          ctx, RefMode::None, false);
+          ctx, elem_ref_mode, false);
       collection_insert(result, std::move(elem));
     } else {
-      auto elem = Serializer<Elem>::read_data(ctx);
+      auto elem = Serializer<Elem>::read(ctx, elem_ref_mode, false);
       collection_insert(result, std::move(elem));
     }
   }
@@ -928,6 +980,9 @@ MapType read_configured_map_data(ReadContext &ctx) {
           return Serializer<Key>::read_data(ctx);
         }
       }();
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return result;
+      }
       Value value = [&]() {
         if constexpr (ValueNode >= 0) {
           return read_configured_value<Value, StructT, Index, ValueNode>(
@@ -936,6 +991,9 @@ MapType read_configured_map_data(ReadContext &ctx) {
           return Serializer<Value>::read_data(ctx);
         }
       }();
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return result;
+      }
       result.emplace(std::move(key), std::move(value));
       ++read_count;
     }
@@ -968,6 +1026,10 @@ void write_configured_value(const ValueType &value, WriteContext &ctx,
             : NodeIndex;
     write_configured_value<Inner, StructT, Index, child>(
         *value, ctx, RefMode::None, false, has_generics);
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       kind == FieldNodeKind::Array) {
+    Serializer<ValueType>::write(value, ctx, ref_mode, false, has_generics);
   } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
                         is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
                        (kind == FieldNodeKind::List ||
@@ -1022,6 +1084,10 @@ ValueType read_configured_value(ReadContext &ctx, RefMode ref_mode,
     Inner inner = read_configured_value<Inner, StructT, Index, child>(
         ctx, RefMode::None, false);
     return ValueType{std::move(inner)};
+  } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
+                        is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
+                       kind == FieldNodeKind::Array) {
+    return Serializer<ValueType>::read(ctx, ref_mode, false);
   } else if constexpr ((is_vector_v<ValueType> || is_list_v<ValueType> ||
                         is_deque_v<ValueType> || is_set_like_v<ValueType>) &&
                        (kind == FieldNodeKind::List ||
@@ -1779,6 +1845,13 @@ template <typename T> struct CompileTimeFieldHelpers {
     if constexpr (FieldCount == 0) {
       return false;
     } else {
+      if constexpr (all_id_mode_fields) {
+        if (field_ids[a] != field_ids[b]) {
+          return field_ids[a] < field_ids[b];
+        }
+        return Names[a] < Names[b];
+      }
+
       int ga = group_rank(a);
       int gb = group_rank(b);
       if (ga != gb)

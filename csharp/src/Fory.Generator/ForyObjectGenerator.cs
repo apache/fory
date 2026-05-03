@@ -2435,6 +2435,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return true;
         }
 
+        if (unwrapped.IsValueType)
+        {
+            return false;
+        }
+
         TypeClassification c = ClassifyType(unwrapped);
         return !c.IsPrimitive;
     }
@@ -2507,6 +2512,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             if (named.TypeArguments.Length != 1 ||
                 TryParseSchemaType(named.TypeArguments[0]) is not SchemaTypeModel element ||
+                element.HasExplicitScalarEncoding ||
                 TryResolveArrayTypeIdForElement(element.TypeId) is not uint arrayTypeId)
             {
                 return null;
@@ -2524,7 +2530,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 return null;
             }
 
-            return new SchemaTypeModel(fixedTypeId, SchemaTypeKind.Scalar, ImmutableArray<SchemaTypeModel>.Empty);
+            return new SchemaTypeModel(
+                fixedTypeId,
+                SchemaTypeKind.Scalar,
+                ImmutableArray<SchemaTypeModel>.Empty,
+                hasExplicitScalarEncoding: true);
         }
 
         if (fullName == "Apache.Fory.Schema.Types.Tagged<TScalar>")
@@ -2536,7 +2546,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
                 return null;
             }
 
-            return new SchemaTypeModel(taggedTypeId, SchemaTypeKind.Scalar, ImmutableArray<SchemaTypeModel>.Empty);
+            return new SchemaTypeModel(
+                taggedTypeId,
+                SchemaTypeKind.Scalar,
+                ImmutableArray<SchemaTypeModel>.Empty,
+                hasExplicitScalarEncoding: true);
         }
 
         if (fullName == "Apache.Fory.Schema.Types.Set<TElement>")
@@ -2665,12 +2679,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             1 => 43,
             2 => 44,
             3 => 45,
-            4 or 5 => 46,
-            6 or 7 => 47,
+            5 => 46,
+            7 => 47,
             9 => 48,
             10 => 49,
-            11 or 12 => 50,
-            13 or 14 => 51,
+            12 => 50,
+            14 => 51,
             17 => 53,
             18 => 54,
             19 => 55,
@@ -3132,16 +3146,19 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         public SchemaTypeModel(
             uint typeId,
             SchemaTypeKind kind,
-            ImmutableArray<SchemaTypeModel> generics)
+            ImmutableArray<SchemaTypeModel> generics,
+            bool hasExplicitScalarEncoding = false)
         {
             TypeId = typeId;
             Kind = kind;
             Generics = generics;
+            HasExplicitScalarEncoding = hasExplicitScalarEncoding;
         }
 
         public uint TypeId { get; }
         public SchemaTypeKind Kind { get; }
         public ImmutableArray<SchemaTypeModel> Generics { get; }
+        public bool HasExplicitScalarEncoding { get; }
     }
 
     private sealed class FieldCodecModel

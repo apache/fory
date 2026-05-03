@@ -245,26 +245,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "NaiveDateTime" => return TypeId::TIMESTAMP as u32,
         "Duration" => return TypeId::DURATION as u32,
         "Decimal" => return TypeId::DECIMAL as u32,
-        "Vec<u8>" | "bytes" => return TypeId::BINARY as u32,
-        _ => {}
-    }
-
-    // Check primitive arrays (Vec)
-    match ty {
-        "Vec<bool>" => return TypeId::BOOL_ARRAY as u32,
-        "Vec<i8>" => return TypeId::INT8_ARRAY as u32,
-        "Vec<i16>" => return TypeId::INT16_ARRAY as u32,
-        "Vec<i32>" => return TypeId::INT32_ARRAY as u32,
-        "Vec<i64>" => return TypeId::INT64_ARRAY as u32,
-        "Vec<i128>" => return TypeId::INT128_ARRAY as u32,
-        "Vec<float16>" | "Vec<Float16>" => return TypeId::FLOAT16_ARRAY as u32,
-        "Vec<bfloat16>" | "Vec<BFloat16>" => return TypeId::BFLOAT16_ARRAY as u32,
-        "Vec<f32>" => return TypeId::FLOAT32_ARRAY as u32,
-        "Vec<f64>" => return TypeId::FLOAT64_ARRAY as u32,
-        "Vec<u16>" => return TypeId::UINT16_ARRAY as u32,
-        "Vec<u32>" => return TypeId::UINT32_ARRAY as u32,
-        "Vec<u64>" => return TypeId::UINT64_ARRAY as u32,
-        "Vec<u128>" => return TypeId::U128_ARRAY as u32,
+        "bytes" => return TypeId::BINARY as u32,
         _ => {}
     }
 
@@ -446,9 +427,12 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         // Closure to group non-option fields, considering encoding attributes
         let mut group_field =
             |ident: String, sort_key: String, ty_str: &str, is_primitive: bool| {
-                let base_type_id = get_type_id_by_name(ty_str);
-                // Adjust type ID based on encoding attributes for u32/u64 fields
-                let type_id = adjust_type_id_for_encoding(base_type_id, &meta);
+                let type_id = if meta.array {
+                    array_type_id_for_vec_name(ty_str).unwrap_or(TypeId::UNKNOWN as u32)
+                } else {
+                    // Adjust type ID based on encoding attributes for u32/u64 fields.
+                    adjust_type_id_for_encoding(get_type_id_by_name(ty_str), &meta)
+                };
 
                 // Categorize based on type_id
                 if is_primitive {
@@ -610,6 +594,26 @@ fn adjust_type_id_for_encoding(base_type_id: u32, meta: &super::field_meta::Fory
     }
 }
 
+fn array_type_id_for_vec_name(ty: &str) -> Option<u32> {
+    let elem = ty.strip_prefix("Vec<")?.strip_suffix('>')?;
+    match elem {
+        "bool" => Some(TypeId::BOOL_ARRAY as u32),
+        "i8" => Some(TypeId::INT8_ARRAY as u32),
+        "i16" => Some(TypeId::INT16_ARRAY as u32),
+        "i32" => Some(TypeId::INT32_ARRAY as u32),
+        "i64" => Some(TypeId::INT64_ARRAY as u32),
+        "u8" => Some(TypeId::UINT8_ARRAY as u32),
+        "u16" => Some(TypeId::UINT16_ARRAY as u32),
+        "u32" => Some(TypeId::UINT32_ARRAY as u32),
+        "u64" => Some(TypeId::UINT64_ARRAY as u32),
+        "float16" | "Float16" => Some(TypeId::FLOAT16_ARRAY as u32),
+        "bfloat16" | "BFloat16" => Some(TypeId::BFLOAT16_ARRAY as u32),
+        "f32" => Some(TypeId::FLOAT32_ARRAY as u32),
+        "f64" => Some(TypeId::FLOAT64_ARRAY as u32),
+        _ => None,
+    }
+}
+
 fn fingerprint_type_id(type_id: u32) -> u32 {
     if type_id == TypeId::UNKNOWN as u32
         || type_id == TypeId::UNION as u32
@@ -668,10 +672,18 @@ fn build_type_fingerprint(
     let type_class = classify_field_type(ty);
     let nullable = meta.effective_nullable(type_class) || is_option_type(ty);
     let track_ref = include_ref && meta.effective_ref(type_class);
-    let type_id = fingerprint_type_id(adjust_type_id_for_encoding(
-        get_type_id_by_type_ast(ty),
-        meta,
-    ));
+    let container_ty = extract_option_inner_type(ty).unwrap_or_else(|| ty.clone());
+    let container_ty_str = container_ty
+        .to_token_stream()
+        .to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>();
+    let type_id = fingerprint_type_id(if meta.array {
+        array_type_id_for_vec_name(&container_ty_str).unwrap_or(TypeId::UNKNOWN as u32)
+    } else {
+        adjust_type_id_for_encoding(get_type_id_by_name(&container_ty_str), meta)
+    });
 
     let mut fingerprint = format!(
         "{},{},{}",
@@ -679,8 +691,6 @@ fn build_type_fingerprint(
         if track_ref { 1 } else { 0 },
         if include_nullable && nullable { 1 } else { 0 }
     );
-
-    let container_ty = extract_option_inner_type(ty).unwrap_or_else(|| ty.clone());
 
     if let Type::Array(array) = &container_ty {
         if type_id == TypeId::LIST as u32 {

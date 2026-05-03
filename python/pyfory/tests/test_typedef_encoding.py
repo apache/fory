@@ -19,8 +19,12 @@
 Tests for xlang TypeDef implementation.
 """
 
+import array
 from dataclasses import dataclass
 from typing import List, Dict
+
+import pytest
+
 import pyfory
 from pyfory.serialization import Buffer
 from pyfory.meta.typedef import (
@@ -35,6 +39,11 @@ from pyfory.meta.typedef_encoder import encode_typedef
 from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.types import TypeId
 from pyfory import Fory
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 
 @dataclass
@@ -59,6 +68,32 @@ class NestedEncodingTypeDef:
     """TypeDef with nested primitive encoding overrides."""
 
     values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]]
+
+
+@dataclass
+class PythonArrayTypeHints:
+    """TypeDef with list and explicit array schema markers."""
+
+    values: List[pyfory.int32]
+    dense_values: pyfory.Array[pyfory.int32]
+    numpy_values: pyfory.NDArray[pyfory.uint8]
+    std_values: pyfory.StdArray[pyfory.float64]
+    payload: bytes
+
+
+@dataclass
+class InvalidArrayModifierTypeDef:
+    values: pyfory.Array[pyfory.fixed_int32]
+
+
+@dataclass
+class BytesPayload:
+    payload: bytes
+
+
+@dataclass
+class UInt8ArrayPayload:
+    payload: pyfory.Array[pyfory.uint8]
 
 
 def test_collection_field_type():
@@ -171,6 +206,79 @@ def test_nested_container_typedef_preserves_declared_encoding():
     assert decoded_values_field.field_type.key_type.type_id == TypeId.INT32
     assert decoded_values_field.field_type.value_type.type_id == TypeId.LIST
     assert decoded_values_field.field_type.value_type.element_type.type_id == TypeId.TAGGED_INT64
+
+
+def test_python_array_typehint_lowering_keeps_list_schema_distinct():
+    fory = Fory(xlang=True)
+    fory.register(PythonArrayTypeHints, namespace="example", typename="PythonArrayTypeHints")
+
+    typedef = encode_typedef(fory.type_resolver, PythonArrayTypeHints)
+    fields = {field.name: field.field_type for field in typedef.fields}
+
+    assert fields["values"].type_id == TypeId.LIST
+    assert fields["values"].element_type.type_id == TypeId.VARINT32
+    assert fields["dense_values"].type_id == TypeId.INT32_ARRAY
+    assert fields["numpy_values"].type_id == TypeId.UINT8_ARRAY
+    assert fields["std_values"].type_id == TypeId.FLOAT64_ARRAY
+    assert fields["payload"].type_id == TypeId.BINARY
+
+    decoded_typedef = decode_typedef(Buffer(typedef.encoded), fory.type_resolver)
+    decoded_fields = {field.name: field.field_type for field in decoded_typedef.fields}
+    assert decoded_fields["values"].type_id == TypeId.LIST
+    assert decoded_fields["values"].element_type.type_id == TypeId.VARINT32
+    assert decoded_fields["dense_values"].type_id == TypeId.INT32_ARRAY
+
+
+def test_python_array_typehint_rejects_scalar_encoding_modifier():
+    fory = Fory(xlang=True)
+    fory.register(InvalidArrayModifierTypeDef, namespace="example", typename="InvalidArrayModifierTypeDef")
+    with pytest.raises(TypeError, match="array<T> does not allow scalar encoding modifier"):
+        encode_typedef(fory.type_resolver, InvalidArrayModifierTypeDef)
+
+
+def _register_byte_sequence(fory, cls):
+    fory.register(cls, namespace="example", typename="ByteSequence")
+
+
+def _uint8_array_value(values):
+    if np is not None:
+        return np.array(values, dtype=np.uint8)
+    return array.array("B", values)
+
+
+def _assert_uint8_array_value(value, expected):
+    if np is not None:
+        assert isinstance(value, np.ndarray)
+        assert value.dtype == np.dtype(np.uint8)
+        assert value.tolist() == expected
+    else:
+        assert isinstance(value, array.array)
+        assert value.typecode == "B"
+        assert list(value) == expected
+
+
+def test_compatible_bytes_assigns_to_uint8_array():
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    _register_byte_sequence(writer, BytesPayload)
+    _register_byte_sequence(reader, UInt8ArrayPayload)
+
+    decoded = reader.deserialize(writer.serialize(BytesPayload(payload=b"\x01\x02\xff")))
+
+    assert isinstance(decoded, UInt8ArrayPayload)
+    _assert_uint8_array_value(decoded.payload, [1, 2, 255])
+
+
+def test_compatible_uint8_array_assigns_to_bytes():
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    _register_byte_sequence(writer, UInt8ArrayPayload)
+    _register_byte_sequence(reader, BytesPayload)
+
+    decoded = reader.deserialize(writer.serialize(UInt8ArrayPayload(payload=_uint8_array_value([1, 2, 255]))))
+
+    assert isinstance(decoded, BytesPayload)
+    assert decoded.payload == b"\x01\x02\xff"
 
 
 if __name__ == "__main__":

@@ -161,6 +161,9 @@ def infer_schema(clz, types_path=None) -> Schema:
 
 
 class ForyTypeVisitor(TypeVisitor):
+    def visit_array(self, field_name, elem_type, carrier, types_path=None):
+        raise TypeError(f"Row format does not support pyfory.{carrier} array annotations")
+
     def visit_list(self, field_name, elem_type, types_path=None):
         # Infer type recursively for type such as List[Dict[str, str]]
         elem_field = infer_field("item", elem_type, self, types_path=types_path)
