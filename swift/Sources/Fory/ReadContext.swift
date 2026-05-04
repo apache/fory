@@ -451,32 +451,34 @@ public final class ReadContext {
             value = try LocalDate.foryRead(self, refMode: .none, readTypeInfo: false)
         case .decimal:
             value = try Decimal.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .binary, .uint8Array:
+        case .binary:
             value = try Data.foryRead(self, refMode: .none, readTypeInfo: false)
         case .boolArray:
-            value = try [Bool].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Bool]
         case .int8Array:
-            value = try [Int8].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Int8]
         case .int16Array:
-            value = try [Int16].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Int16]
         case .int32Array:
-            value = try [Int32].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Int32]
         case .int64Array:
-            value = try [Int64].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Int64]
+        case .uint8Array:
+            value = try readPrimitiveArray(self) as [UInt8]
         case .uint16Array:
-            value = try [UInt16].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [UInt16]
         case .uint32Array:
-            value = try [UInt32].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [UInt32]
         case .uint64Array:
-            value = try [UInt64].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [UInt64]
         case .float16Array:
-            value = try [Float16].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Float16]
         case .bfloat16Array:
-            value = try [BFloat16].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [BFloat16]
         case .float32Array:
-            value = try [Float].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Float]
         case .float64Array:
-            value = try [Double].foryRead(self, refMode: .none, readTypeInfo: false)
+            value = try readPrimitiveArray(self) as [Double]
         case .array, .list:
             value = try readListOfAny(refMode: .none) ?? []
         case .set:

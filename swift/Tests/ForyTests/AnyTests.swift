@@ -358,6 +358,11 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
     #expect(anyListDecoded[1] as? String == "list")
     #expect(anyListDecoded[2] as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "list-obj", score: 5))
 
+    let primitiveArrayValue: Any = [Int32(14), Int32(15)] as [Int32]
+    let primitiveArrayData = try fory.serialize(primitiveArrayValue)
+    let primitiveArrayDecoded: Any = try fory.deserialize(primitiveArrayData)
+    #expect(primitiveArrayDecoded as? [Int32] == [Int32(14), Int32(15)])
+
     let stringAnyMapValue: [String: Any] = [
         "a": Int32(6),
         "b": AnyHashableDynamicValue(label: "map-a", score: 7)

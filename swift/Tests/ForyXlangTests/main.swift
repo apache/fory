@@ -546,6 +546,18 @@ private func roundTripStream(
     return [UInt8](out)
 }
 
+private func readDynamicArray<Element>(
+    _ fory: Fory,
+    from buffer: ByteBuffer,
+    as _: Element.Type
+) throws -> [Element] {
+    let value = try fory.deserialize(from: buffer, as: Any.self)
+    guard let array = value as? [Element] else {
+        throw ForyError.invalidData("expected dynamic array \(Element.self), got \(type(of: value))")
+    }
+    return array
+}
+
 private func handleMurmurHash(_ bytes: [UInt8]) throws -> [UInt8] {
     let inputBuffer = ByteBuffer(bytes: bytes)
     let outputBuffer = ByteBuffer(capacity: bytes.count)
@@ -598,13 +610,13 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         let str: String = try fory.deserialize(from: buffer)
         let day: LocalDate = try fory.deserialize(from: buffer)
         let ts: Date = try fory.deserialize(from: buffer)
-        let boolArray: [Bool] = try fory.deserialize(from: buffer)
-        let byteArray: [UInt8] = try fory.deserialize(from: buffer)
-        let shortArray: [Int16] = try fory.deserialize(from: buffer)
-        let intArray: [Int32] = try fory.deserialize(from: buffer)
-        let longArray: [Int64] = try fory.deserialize(from: buffer)
-        let floatArray: [Float] = try fory.deserialize(from: buffer)
-        let doubleArray: [Double] = try fory.deserialize(from: buffer)
+        let boolArray = try readDynamicArray(fory, from: buffer, as: Bool.self)
+        let byteArray: Data = try fory.deserialize(from: buffer)
+        let shortArray = try readDynamicArray(fory, from: buffer, as: Int16.self)
+        let intArray = try readDynamicArray(fory, from: buffer, as: Int32.self)
+        let longArray = try readDynamicArray(fory, from: buffer, as: Int64.self)
+        let floatArray = try readDynamicArray(fory, from: buffer, as: Float.self)
+        let doubleArray = try readDynamicArray(fory, from: buffer, as: Double.self)
         let list: [String] = try fory.deserialize(from: buffer)
         let set: Set<String> = try fory.deserialize(from: buffer)
         let map: [String: String] = try fory.deserialize(from: buffer)
@@ -626,13 +638,13 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         try fory.serialize(str, to: &out)
         try fory.serialize(day, to: &out)
         try fory.serialize(ts, to: &out)
-        try fory.serialize(boolArray, to: &out)
+        try fory.serialize(boolArray as Any, to: &out)
         try fory.serialize(byteArray, to: &out)
-        try fory.serialize(shortArray, to: &out)
-        try fory.serialize(intArray, to: &out)
-        try fory.serialize(longArray, to: &out)
-        try fory.serialize(floatArray, to: &out)
-        try fory.serialize(doubleArray, to: &out)
+        try fory.serialize(shortArray as Any, to: &out)
+        try fory.serialize(intArray as Any, to: &out)
+        try fory.serialize(longArray as Any, to: &out)
+        try fory.serialize(floatArray as Any, to: &out)
+        try fory.serialize(doubleArray as Any, to: &out)
         try fory.serialize(list, to: &out)
         try fory.serialize(set, to: &out)
         try fory.serialize(map, to: &out)

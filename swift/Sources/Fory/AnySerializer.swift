@@ -307,7 +307,127 @@ private func toAnyHashableKey(_ value: Any) throws -> AnyHashable {
     return AnyHashable(hashableValue)
 }
 
+private func hasExactRuntimeType<T>(_ value: Any, _: T.Type) -> Bool {
+    Swift.type(of: value) == T.self
+}
+
+private func writePrimitiveArrayAnyTypeInfo(_ value: Any, context: WriteContext) -> Bool {
+    if hasExactRuntimeType(value, [Bool].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.boolArray.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Int8].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.int8Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Int16].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.int16Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Int32].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.int32Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Int64].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.int64Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt8].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.uint8Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt16].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.uint16Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt32].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.uint32Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt64].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.uint64Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Float16].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.float16Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [BFloat16].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.bfloat16Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Float].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.float32Array.rawValue))
+        return true
+    }
+    if hasExactRuntimeType(value, [Double].self) {
+        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.float64Array.rawValue))
+        return true
+    }
+    return false
+}
+
+private func writePrimitiveArrayAnyPayload(_ value: Any, context: WriteContext) -> Bool {
+    if hasExactRuntimeType(value, [Bool].self), let array = value as? [Bool] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Int8].self), let array = value as? [Int8] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Int16].self), let array = value as? [Int16] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Int32].self), let array = value as? [Int32] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Int64].self), let array = value as? [Int64] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt8].self), let array = value as? [UInt8] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt16].self), let array = value as? [UInt16] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt32].self), let array = value as? [UInt32] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [UInt64].self), let array = value as? [UInt64] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Float16].self), let array = value as? [Float16] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [BFloat16].self), let array = value as? [BFloat16] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Float].self), let array = value as? [Float] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    if hasExactRuntimeType(value, [Double].self), let array = value as? [Double] {
+        writePrimitiveArray(array, context: context)
+        return true
+    }
+    return false
+}
+
 private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
+    if writePrimitiveArrayAnyTypeInfo(value, context: context) {
+        return
+    }
+
     if let serializer = value as? any Serializer {
         try serializer.foryWriteTypeInfo(context)
         return
@@ -328,6 +448,10 @@ private func writeAnyTypeInfo(_ value: Any, context: WriteContext) throws {
 private func writeAnyPayload(_ value: Any, context: WriteContext, hasGenerics: Bool) throws {
     try context.enterDynamicAnyDepth()
     defer { context.leaveDynamicAnyDepth() }
+
+    if writePrimitiveArrayAnyPayload(value, context: context) {
+        return
+    }
 
     if let serializer = value as? any Serializer {
         if type(of: serializer).isRefType {
