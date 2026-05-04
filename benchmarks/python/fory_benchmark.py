@@ -207,7 +207,7 @@ class Struct1:
     f8: pyfory.Int64 = None
     f9: pyfory.Float32 = None
     f10: pyfory.Float64 = None
-    f11: pyfory.Array[pyfory.Int16] = None
+    f11: pyfory.PyArray[pyfory.Int16] = None
     f12: List[pyfory.Int16] = None
 
 
@@ -230,7 +230,7 @@ class SlotsStruct:
     f8: pyfory.Int64 = None
     f9: pyfory.Float32 = None
     f10: pyfory.Float64 = None
-    f11: pyfory.Array[pyfory.Int16] = None
+    f11: pyfory.PyArray[pyfory.Int16] = None
     f12: List[pyfory.Int16] = None
 
 

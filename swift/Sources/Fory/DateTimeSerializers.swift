@@ -68,36 +68,31 @@ private func localDateComponents(_ epochDay: Int32) -> DateComponents {
     localDateCalendar.dateComponents([.year, .month, .day], from: localDateFromEpochDay(epochDay))
 }
 
-private struct ScalarWriteOptions {
-    let context: WriteContext
-    let refMode: RefMode
-    let writeTypeInfo: Bool
-    let typeID: TypeId
-}
-
 @inline(__always)
 private func writeScalarValue<T>(
     _ value: T?,
-    options: ScalarWriteOptions,
+    context: WriteContext,
+    refMode: RefMode,
+    typeInfo: (write: Bool, id: TypeId),
     writePayload: (T) throws -> Void
 ) throws {
-    switch options.refMode {
+    switch refMode {
     case .none:
         guard let value else {
             throw ForyError.encodingError("nil value requires nullable ref mode")
         }
-        if options.writeTypeInfo {
-            options.context.writeStaticTypeInfo(options.typeID)
+        if typeInfo.write {
+            context.writeStaticTypeInfo(typeInfo.id)
         }
         try writePayload(value)
     case .nullOnly, .tracking:
         guard let value else {
-            options.context.buffer.writeInt8(RefFlag.null.rawValue)
+            context.buffer.writeInt8(RefFlag.null.rawValue)
             return
         }
-        options.context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
-        if options.writeTypeInfo {
-            options.context.writeStaticTypeInfo(options.typeID)
+        context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+        if typeInfo.write {
+            context.writeStaticTypeInfo(typeInfo.id)
         }
         try writePayload(value)
     }
@@ -278,12 +273,9 @@ public extension WriteContext {
     ) throws {
         try writeScalarValue(
             value,
-            options: ScalarWriteOptions(
-                context: self,
-                refMode: refMode,
-                writeTypeInfo: writeTypeInfo,
-                typeID: .timestamp
-            ),
+            context: self,
+            refMode: refMode,
+            typeInfo: (write: writeTypeInfo, id: .timestamp),
             writePayload: { try self.writeTimestamp($0) }
         )
     }
@@ -296,12 +288,9 @@ public extension WriteContext {
     ) throws {
         try writeScalarValue(
             value,
-            options: ScalarWriteOptions(
-                context: self,
-                refMode: refMode,
-                writeTypeInfo: writeTypeInfo,
-                typeID: .date
-            ),
+            context: self,
+            refMode: refMode,
+            typeInfo: (write: writeTypeInfo, id: .date),
             writePayload: { try self.writeLocalDate($0) }
         )
     }

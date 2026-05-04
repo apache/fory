@@ -74,6 +74,11 @@ final class BoolList extends ListBase<bool> {
     return BoolList._(Int8List.view(buffer, offsetInBytes, length), true);
   }
 
+  /// Creates an array-schema carrier over existing contiguous storage.
+  factory BoolList.arrayStorage(Int8List storage) {
+    return BoolList._(storage, true);
+  }
+
   /// True when this value came from a dynamic `array<bool>` payload.
   bool get preservesArraySchema => _arraySchema;
 

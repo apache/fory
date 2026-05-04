@@ -329,23 +329,14 @@ private func buildPrimitiveFastReadBlock(
     }
     var readSections: [String] = []
     if readLayout.fixedPrefixBytes > 0 {
-        readSections.append("try UnsafeUtil.checkReadable(__bytes, index: 0, need: \(readLayout.fixedPrefixBytes))")
-    }
-    readSections.append(
-        """
-        guard let __base = __bytes.baseAddress else {
-            throw ForyError.outOfBounds(cursor: 0, need: \(max(readLayout.fixedPrefixBytes, 1)), length: __bytes.count)
-        }
-        """
-    )
-    if readLayout.consumedExpr == "__readerIndex" {
-        readSections.append("let __length = __bytes.count")
+        readSections.append("try UnsafeUtil.checkReadable(length: __length, index: 0, need: \(readLayout.fixedPrefixBytes))")
     }
     readSections.append(contentsOf: readLayout.statements)
     readSections.append("return \(readLayout.consumedExpr)")
     let readBody = readSections.joined(separator: "\n            ")
+    let lengthArgument = readLayout.consumedExpr == "__readerIndex" || readLayout.fixedPrefixBytes > 0 ? "__length" : "_"
     return """
-    try UnsafeUtil.readRegion(buffer: __buffer) { __bytes in
+    try UnsafeUtil.readRegion(buffer: __buffer) { __base, \(lengthArgument) in
         \(readBody)
     }
     """

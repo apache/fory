@@ -623,88 +623,6 @@ public enum UnsafeUtil {
 
     @inlinable
     @inline(__always)
-    public static func readBool(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> Bool {
-        try readUInt8(from: base, length: length, index: &index) != 0
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readInt8(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> Int8 {
-        Int8(bitPattern: try readUInt8(from: base, length: length, index: &index))
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readUInt8(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> UInt8 {
-        try checkReadable(length: length, index: index, need: 1)
-        let value = readUInt8Unchecked(from: base, index: index)
-        index += 1
-        return value
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readInt16(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> Int16 {
-        Int16(bitPattern: try readUInt16(from: base, length: length, index: &index))
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readUInt16(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> UInt16 {
-        try checkReadable(length: length, index: index, need: 2)
-        let value = readUInt16Unchecked(from: base, index: index)
-        index += 2
-        return value
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readFloat32(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> Float {
-        try checkReadable(length: length, index: index, need: 4)
-        let value = readFloat32Unchecked(from: base, index: index)
-        index += 4
-        return value
-    }
-
-    @inlinable
-    @inline(__always)
-    public static func readFloat64(
-        from base: UnsafePointer<UInt8>,
-        length: Int,
-        index: inout Int
-    ) throws -> Double {
-        try checkReadable(length: length, index: index, need: 8)
-        let value = readFloat64Unchecked(from: base, index: index)
-        index += 8
-        return value
-    }
-
-    @inlinable
-    @inline(__always)
     public static func readVarUInt32(
         from bytes: UnsafeBufferPointer<UInt8>,
         index: inout Int
@@ -1406,7 +1324,7 @@ public enum UnsafeUtil {
     @inline(__always)
     public static func readRegion(
         buffer: ByteBuffer,
-        _ body: (UnsafeBufferPointer<UInt8>) throws -> Int
+        _ body: (UnsafePointer<UInt8>, Int) throws -> Int
     ) throws {
         let startIndex = buffer.cursor
         let readableCount = buffer.count
@@ -1419,9 +1337,10 @@ public enum UnsafeUtil {
         }
         let available = readableCount - startIndex
         let consumed = try buffer.storage.withUnsafeBufferPointer { bytes -> Int in
-            let start = bytes.baseAddress.map { $0.advanced(by: startIndex) }
-            let region = UnsafeBufferPointer(start: start, count: available)
-            return try body(region)
+            guard let base = bytes.baseAddress else {
+                throw ForyError.outOfBounds(cursor: startIndex, need: 1, length: readableCount)
+            }
+            return try body(base.advanced(by: startIndex), available)
         }
         if consumed < 0 || consumed > available {
             throw ForyError.outOfBounds(cursor: startIndex, need: consumed, length: readableCount)

@@ -39,6 +39,21 @@ import root
 import numpy as np
 import pyfory
 
+_NDARRAY_DTYPE_WRAPPERS = {
+    np.dtype(np.bool_): pyfory.BoolArray,
+    np.dtype(np.int8): pyfory.Int8Array,
+    np.dtype(np.int16): pyfory.Int16Array,
+    np.dtype(np.int32): pyfory.Int32Array,
+    np.dtype(np.int64): pyfory.Int64Array,
+    np.dtype(np.uint8): pyfory.UInt8Array,
+    np.dtype(np.uint16): pyfory.UInt16Array,
+    np.dtype(np.uint32): pyfory.UInt32Array,
+    np.dtype(np.uint64): pyfory.UInt64Array,
+    np.dtype(np.float16): pyfory.Float16Array,
+    np.dtype(np.float32): pyfory.Float32Array,
+    np.dtype(np.float64): pyfory.Float64Array,
+}
+
 
 def build_address_book() -> "addressbook.AddressBook":
     mobile = addressbook.Person.PhoneNumber(
@@ -550,7 +565,11 @@ def build_example_union() -> "example.ExampleMessageUnion":
 
 def assert_example_value_equal(decoded: object, expected: object) -> None:
     if isinstance(expected, np.ndarray):
-        np.testing.assert_array_equal(decoded, expected)
+        wrapper_type = _NDARRAY_DTYPE_WRAPPERS[expected.dtype]
+        assert isinstance(decoded, wrapper_type)
+        np.testing.assert_array_equal(
+            np.asarray(list(decoded), dtype=expected.dtype), expected
+        )
         return
     if isinstance(expected, (pyfory.Float16Array, pyfory.BFloat16Array)):
         assert type(decoded) is type(expected)

@@ -97,12 +97,7 @@ final class BoolArraySerializer extends Serializer<BoolList> {
   @override
   BoolList read(ReadContext context) {
     final size = context.buffer.readVarUint32();
-    final bytes = context.buffer.readBytes(size);
-    return BoolList.arrayView(
-      bytes.buffer,
-      bytes.offsetInBytes,
-      bytes.lengthInBytes,
-    );
+    return BoolList.arrayStorage(context.buffer.readInt8Bytes(size));
   }
 }
 

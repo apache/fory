@@ -136,7 +136,7 @@ class Sample {
   @ForyField(id: 20)
   final Int32List charArray;
   @ArrayField(id: 21, element: BoolType())
-  final List<bool> booleanArray;
+  final BoolList booleanArray;
   @ForyField(id: 22)
   final String string;
 }
@@ -356,7 +356,7 @@ Sample createSample() {
       'D'.codeUnitAt(0),
       'F'.codeUnitAt(0),
     ]),
-    booleanArray: <bool>[true, false, false, true],
+    booleanArray: BoolList.fromList(<bool>[true, false, false, true]),
     string: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
   );
 }

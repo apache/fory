@@ -227,6 +227,17 @@ mixin _BufferMixin {
     return result;
   }
 
+  /// Returns an Int8 view of the next [length] bytes and advances the reader index.
+  Int8List readInt8Bytes(int length) {
+    final result = Int8List.sublistView(
+      _bytes,
+      _readerIndex,
+      _readerIndex + length,
+    );
+    _readerIndex += length;
+    return result;
+  }
+
   /// Copies the next [length] bytes into a new array.
   Uint8List copyBytes(int length) => Uint8List.fromList(readBytes(length));
 

@@ -307,10 +307,12 @@ private func toAnyHashableKey(_ value: Any) throws -> AnyHashable {
     return AnyHashable(hashableValue)
 }
 
+@inline(never)
 private func hasExactRuntimeType<T>(_ value: Any, _: T.Type) -> Bool {
     Swift.type(of: value) == T.self
 }
 
+@inline(never)
 private func writePrimitiveArrayAnyTypeInfo(_ value: Any, context: WriteContext) -> Bool {
     if hasExactRuntimeType(value, [Bool].self) {
         context.buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.boolArray.rawValue))
@@ -367,6 +369,7 @@ private func writePrimitiveArrayAnyTypeInfo(_ value: Any, context: WriteContext)
     return false
 }
 
+@inline(never)
 private func writePrimitiveArrayAnyPayload(_ value: Any, context: WriteContext) -> Bool {
     if hasExactRuntimeType(value, [Bool].self), let array = value as? [Bool] {
         writePrimitiveArray(array, context: context)

@@ -87,7 +87,7 @@ pb.Sample toPbSample(Sample value) {
     doubleArray: value.doubleArray,
     shortArray: value.shortArray,
     charArray: value.charArray,
-    booleanArray: value.booleanArray,
+    booleanArray: value.booleanArray.toList(growable: false),
     string: value.string,
   );
 }
@@ -116,7 +116,7 @@ Sample fromPbSample(pb.Sample value) {
     doubleArray: Float64List.fromList(value.doubleArray),
     shortArray: Int32List.fromList(value.shortArray),
     charArray: Int32List.fromList(value.charArray),
-    booleanArray: value.booleanArray.toList(growable: false),
+    booleanArray: BoolList.fromList(value.booleanArray),
     string: value.string,
   );
 }
@@ -215,9 +215,8 @@ pb.MediaContentList toPbMediaContentList(MediaContentList value) {
 
 MediaContentList fromPbMediaContentList(pb.MediaContentList value) {
   return MediaContentList(
-    mediaContentList: value.mediaContentList
-        .map(fromPbMediaContent)
-        .toList(growable: false),
+    mediaContentList:
+        value.mediaContentList.map(fromPbMediaContent).toList(growable: false),
   );
 }
 

@@ -1498,6 +1498,8 @@ class JavaGenerator(BaseGenerator):
             return "@UInt64Type(encoding = Int64Encoding.VARINT)"
         if kind == PrimitiveKind.UINT64 and field_type.encoding_modifier == "tagged":
             return "@UInt64Type(encoding = Int64Encoding.TAGGED)"
+        if kind == PrimitiveKind.UINT64:
+            return "@UInt64Type"
         return None
 
     def get_primitive_list_annotation(self, field: Field) -> Optional[str]:

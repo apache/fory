@@ -361,13 +361,19 @@ public final class TypeInfo: @unchecked Sendable {
     }
 
     @inline(__always)
-    fileprivate func matches(_ identity: TypeRegistrationIdentity) -> Bool {
-        typeID == identity.typeID &&
-            userTypeID == identity.userTypeID &&
-            registerByName == identity.registerByName &&
-            evolving == identity.evolving &&
-            namespace.value == identity.namespace &&
-            typeName.value == identity.typeName
+    func matches(
+        typeID: TypeId,
+        userTypeID: UInt32?,
+        registerByName: Bool,
+        evolving: Bool,
+        typeName: (namespace: String, name: String)
+    ) -> Bool {
+        self.typeID == typeID &&
+            self.userTypeID == userTypeID &&
+            self.registerByName == registerByName &&
+            self.evolving == evolving &&
+            self.namespace.value == typeName.namespace &&
+            self.typeName.value == typeName.name
     }
 
     @inline(__always)
@@ -389,15 +395,6 @@ public final class TypeInfo: @unchecked Sendable {
         }
         return try reader(context)
     }
-}
-
-private struct TypeRegistrationIdentity {
-    let typeID: TypeId
-    let userTypeID: UInt32?
-    let registerByName: Bool
-    let evolving: Bool
-    let namespace: String
-    let typeName: String
 }
 
 private struct TypeNameKey: Hashable {
@@ -463,14 +460,13 @@ final class TypeResolver {
         )
 
         if let existing = bySwiftType.value(for: UInt64(UInt(bitPattern: swiftTypeID))),
-           existing.matches(TypeRegistrationIdentity(
+           existing.matches(
                typeID: T.staticTypeId,
                userTypeID: id,
                registerByName: false,
                evolving: evolving,
-               namespace: "",
-               typeName: ""
-           )) {
+               typeName: (namespace: "", name: "")
+           ) {
             return
         }
 
@@ -514,14 +510,13 @@ final class TypeResolver {
         )
 
         if let existing = bySwiftType.value(for: UInt64(UInt(bitPattern: swiftTypeID))),
-           existing.matches(TypeRegistrationIdentity(
+           existing.matches(
                typeID: T.staticTypeId,
                userTypeID: nil,
                registerByName: true,
                evolving: evolving,
-               namespace: namespace,
-               typeName: typeName
-           )) {
+               typeName: (namespace: namespace, name: typeName)
+           ) {
             return
         }
 

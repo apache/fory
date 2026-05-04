@@ -275,12 +275,16 @@ int generatedCheckedUint32(int value) => checkedUint32(value);
 
 @internal
 void writeGeneratedBoolArrayValue(WriteContext context, BoolList value) {
-  const BoolArraySerializer().write(context, value);
+  final buffer = context.buffer;
+  buffer.writeVarUint32(value.length);
+  buffer.writeBytes(value.asUint8List());
 }
 
 @internal
 BoolList readGeneratedBoolArrayValue(ReadContext context) {
-  return const BoolArraySerializer().read(context);
+  final buffer = context.buffer;
+  final size = buffer.readVarUint32();
+  return BoolList.arrayStorage(buffer.readInt8Bytes(size));
 }
 
 @internal
