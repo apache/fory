@@ -322,8 +322,7 @@ Set<RefOverrideElement> _readRefOverrideContainerSetField(
       : Set<RefOverrideElement>.of(
           (value as Set).map(
             (item) => item == null
-                ? (throw StateError(
-                    'Received null for non-nullable set item.'))
+                ? (throw StateError('Received null for non-nullable set item.'))
                 : item as RefOverrideElement,
           ),
         );

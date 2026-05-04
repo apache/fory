@@ -272,13 +272,12 @@ def test_compatible_ndarray_field_reads_as_pyarray_carrier():
     writer.register_type(CompatibleNDArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
     reader.register_type(CompatiblePyArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
 
-    out = reader.deserialize(
-        writer.serialize(CompatibleNDArrayCarrier(values=np.array([4, 5, 6], dtype=np.int32)))
-    )
+    out = reader.deserialize(writer.serialize(CompatibleNDArrayCarrier(values=np.array([4, 5, 6], dtype=np.int32))))
 
     assert isinstance(out, CompatiblePyArrayCarrier)
     assert isinstance(out.values, array.array)
-    assert out.values.typecode == "i"
+    assert out.values.itemsize == 4
+    assert PyArraySerializer.typecode_dict[out.values.typecode][2] == TypeId.INT32_ARRAY
     assert out.values.tolist() == [4, 5, 6]
 
 

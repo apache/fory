@@ -61,7 +61,8 @@ public class PrimitiveListSerializers {
       this(typeResolver, cls, false);
     }
 
-    private PrimitiveListSerializer(TypeResolver typeResolver, Class<T> cls, boolean denseArrayPayload) {
+    private PrimitiveListSerializer(
+        TypeResolver typeResolver, Class<T> cls, boolean denseArrayPayload) {
       super(typeResolver, cls, false, false);
       this.denseArrayPayload = denseArrayPayload;
     }

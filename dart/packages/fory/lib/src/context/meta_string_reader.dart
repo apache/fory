@@ -24,8 +24,13 @@ import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/types/int64.dart';
 
-typedef _MetaStringWords =
-    ({int length, int word0, int word1, int word2, int word3});
+typedef _MetaStringWords = ({
+  int length,
+  int word0,
+  int word1,
+  int word2,
+  int word3
+});
 
 /// Read-side state for meta-string references in one deserialization stream.
 final class MetaStringReader {

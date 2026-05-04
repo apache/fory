@@ -507,7 +507,11 @@ class TypeResolver:
                 type_id=type_id,
                 serializer=serializer_type(self._actual_type_resolver, wrapper),
             )
+        pyarray_ftypes = set()
         for itemsize, ftype, typeid in PyArraySerializer.typecode_dict.values():
+            if ftype in pyarray_ftypes:
+                continue
+            pyarray_ftypes.add(ftype)
             register(
                 ftype,
                 type_id=typeid,
