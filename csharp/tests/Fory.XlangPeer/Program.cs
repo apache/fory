@@ -798,13 +798,13 @@ internal static class Program
         Ensure(BitConverter.HalfToUInt16Bits(value.Float16Value) == 0x3E00, "float16_value mismatch");
         Ensure(value.BFloat16Value.Bits == 0x3FC0, "bfloat16_value mismatch");
         Ensure(
-            value.Float16Array is { Length: 3 }
+            value.Float16Array is { Count: 3 }
             && BitConverter.HalfToUInt16Bits(value.Float16Array[0]) == 0x0000
             && BitConverter.HalfToUInt16Bits(value.Float16Array[1]) == 0x3C00
             && BitConverter.HalfToUInt16Bits(value.Float16Array[2]) == 0xBC00,
             "float16_array mismatch");
         Ensure(
-            value.BFloat16Array is { Length: 3 }
+            value.BFloat16Array is { Count: 3 }
             && value.BFloat16Array[0].Bits == 0x0000
             && value.BFloat16Array[1].Bits == 0x3F80
             && value.BFloat16Array[2].Bits == 0xBF80,
@@ -1275,8 +1275,8 @@ public sealed class ReducedPrecisionFloatStruct
 {
     public Half Float16Value { get; set; }
     public BFloat16 BFloat16Value { get; set; }
-    public Half[] Float16Array { get; set; } = [];
-    public BFloat16[] BFloat16Array { get; set; } = [];
+    public List<Half> Float16Array { get; set; } = [];
+    public List<BFloat16> BFloat16Array { get; set; } = [];
 }
 
 [ForyObject]
