@@ -31,7 +31,17 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 ## Formatting Commands
 
 - Markdown: `prettier --write <file>`
+- Python code, including `compiler/`, `benchmarks/`, `integration_tests/`, and `python/`:
+  `python -m ruff format <changed-python-files>` and
+  `python -m ruff check --fix <changed-python-files>`
 - Repo-wide format and lint sweep: `bash ci/format.sh --all`
+
+When code changes touch `compiler/` or `benchmarks/`, format those changed source files with the
+same language formatter used by CI. These directories are not documentation-only surfaces; compiler
+generators, compiler tests, benchmark harnesses, and benchmark scripts are CI formatter-owned code.
+Do not fix only the first formatter diff from a truncated CI log. Extract the full changed-file
+surface or run the formatter over every changed file of that language, then verify that no formatter
+diff remains.
 
 ## Documentation Expectations
 

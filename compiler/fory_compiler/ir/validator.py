@@ -548,7 +548,9 @@ class SchemaValidator:
         def check_type(field_type: FieldType, field: Field, in_map_key: bool = False):
             if isinstance(field_type, ArrayType):
                 if in_map_key:
-                    self._error("array<T> is not valid as a map key type", field.location)
+                    self._error(
+                        "array<T> is not valid as a map key type", field.location
+                    )
                 element_type = field_type.element_type
                 if not isinstance(element_type, PrimitiveType):
                     self._error(

@@ -795,7 +795,9 @@ class GoGenerator(BaseGenerator):
         if not flags:
             return expr
         assignments = "; ".join(flags)
-        return f"func() *fory.TypeSpec {{ spec := {expr}; {assignments}; return spec }}()"
+        return (
+            f"func() *fory.TypeSpec {{ spec := {expr}; {assignments}; return spec }}()"
+        )
 
     def get_type_id_expr(
         self, field_type: FieldType, parent_stack: Optional[List[Message]]
@@ -1094,7 +1096,9 @@ class GoGenerator(BaseGenerator):
                 return None
             return self.render_type_hint("list", [f"element={element_hint}"])
         if isinstance(field.field_type, ArrayType):
-            element_hint = self.build_array_element_type_hint(field.field_type.element_type)
+            element_hint = self.build_array_element_type_hint(
+                field.field_type.element_type
+            )
             if element_hint is None:
                 return None
             return self.render_type_hint("array", [f"element={element_hint}"])
@@ -1215,13 +1219,10 @@ class GoGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ) -> List[str]:
         params: List[str] = []
-        if (
-            nullable != self.infers_nullable_from_go(field_type, nullable, ref)
-            and not (
-                isinstance(field_type, PrimitiveType)
-                and field_type.kind == PrimitiveKind.BYTES
-                and not nullable
-            )
+        if nullable != self.infers_nullable_from_go(field_type, nullable, ref) and not (
+            isinstance(field_type, PrimitiveType)
+            and field_type.kind == PrimitiveKind.BYTES
+            and not nullable
         ):
             params.append(f"nullable={str(nullable).lower()}")
         if ref:

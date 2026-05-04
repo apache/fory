@@ -893,7 +893,9 @@ class DartGenerator(BaseGenerator):
                     "",
                 ]
             )
-        case_fields_name = f"_{self.safe_identifier(self.to_camel_case(name))}ForyCaseFieldInfo"
+        case_fields_name = (
+            f"_{self.safe_identifier(self.to_camel_case(name))}ForyCaseFieldInfo"
+        )
         case_runtime_fields_name = (
             f"_{self.safe_identifier(self.to_camel_case(name))}ForyCaseFields"
         )

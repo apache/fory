@@ -422,7 +422,9 @@ class RustGenerator(BaseGenerator):
             lines.append(f"    #[fory(id = {field.number})]")
             payload_attr = self.get_payload_field_attr(field)
             if payload_attr:
-                lines.append(f"    {variant_name}(#[fory({payload_attr})] {variant_type}),")
+                lines.append(
+                    f"    {variant_name}(#[fory({payload_attr})] {variant_type}),"
+                )
             else:
                 lines.append(f"    {variant_name}({variant_type}),")
 

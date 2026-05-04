@@ -100,14 +100,22 @@ def test_swift_generator_emits_nested_field_encoding_hints():
     assert "bfloatValue: BFloat16 = BFloat16.foryDefault()" in content
     assert "public var denseValues: [Int32] = []" in content
     assert "public var bytesByName: [String: [UInt8]] = [:]" in content
-    assert "@MapField(key: .int32(encoding: .fixed), value: .uint64(encoding: .tagged))" in content
+    assert (
+        "@MapField(key: .int32(encoding: .fixed), value: .uint64(encoding: .tagged))"
+        in content
+    )
     assert "@MapField(key: .string, value: .float16)" in content
     assert "@ArrayField(element: .int32())" in content
     assert "@MapField(key: .string, value: .array(element: .uint8))" in content
     assert "@ForyUnion" in content
     assert "@ForyCase(id: 1, payload: .uint64(encoding: .fixed))" in content
-    assert "@ForyCase(id: 2, payload: .list(element: .int32(encoding: .fixed)))" in content
-    assert "@ForyCase(id: 3, payload: .map(key: .int32(encoding: .fixed), value: .string))" in content
+    assert (
+        "@ForyCase(id: 2, payload: .list(element: .int32(encoding: .fixed)))" in content
+    )
+    assert (
+        "@ForyCase(id: 3, payload: .map(key: .int32(encoding: .fixed), value: .string))"
+        in content
+    )
     assert "@ForyCase(id: 4, payload: .array(element: .int32()))" in content
 
 
