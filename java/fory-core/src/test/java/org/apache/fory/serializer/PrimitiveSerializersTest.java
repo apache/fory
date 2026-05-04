@@ -166,14 +166,14 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   }
 
   public static class PrimitiveArrayStruct {
-    @Int8Type public byte[] int8Values;
+    public @Int8Type byte[] int8Values;
     public short[] int16Values;
     public int[] int32Values;
     public long[] int64Values;
-    @UInt8Type public byte[] uint8Values;
-    @UInt16Type public short[] uint16Values;
-    @UInt32Type public int[] uint32Values;
-    @UInt64Type public long[] uint64Values;
+    public @UInt8Type byte[] uint8Values;
+    public @UInt16Type short[] uint16Values;
+    public @UInt32Type int[] uint32Values;
+    public @UInt64Type long[] uint64Values;
   }
 
   public static class PrimitiveListStruct {

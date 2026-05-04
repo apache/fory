@@ -1059,10 +1059,10 @@ Fory IDL provides fixed-width signed integers (varint encoding for 32/64-bit by 
 
 | Fory IDL | Java    | Python         | Go      | Rust  | C++       | JavaScript         | Dart    |
 | -------- | ------- | -------------- | ------- | ----- | --------- | ------------------ | ------- |
-| `int8`   | `byte`  | `pyfory.int8`  | `int8`  | `i8`  | `int8_t`  | `number`           | `int`   |
-| `int16`  | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` | `number`           | `int`   |
-| `int32`  | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` | `number`           | `int`   |
-| `int64`  | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` | `bigint \| number` | `Int64` |
+| `int8`   | `byte`  | `pyfory.Int8`  | `int8`  | `i8`  | `int8_t`  | `number`           | `int`   |
+| `int16`  | `short` | `pyfory.Int16` | `int16` | `i16` | `int16_t` | `number`           | `int`   |
+| `int32`  | `int`   | `pyfory.Int32` | `int32` | `i32` | `int32_t` | `number`           | `int`   |
+| `int64`  | `long`  | `pyfory.Int64` | `int64` | `i64` | `int64_t` | `bigint \| number` | `Int64` |
 
 Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit by default):
 
@@ -1077,21 +1077,21 @@ Fory IDL provides fixed-width unsigned integers (varint encoding for 32/64-bit b
 
 | Fory IDL | Java    | Python          | Go       | Rust  | C++        | JavaScript         | Dart     |
 | -------- | ------- | --------------- | -------- | ----- | ---------- | ------------------ | -------- |
-| `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  | `number`           | `int`    |
-| `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` | `number`           | `int`    |
-| `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` | `number`           | `int`    |
-| `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` | `bigint \| number` | `Uint64` |
+| `uint8`  | `short` | `pyfory.UInt8`  | `uint8`  | `u8`  | `uint8_t`  | `number`           | `int`    |
+| `uint16` | `int`   | `pyfory.UInt16` | `uint16` | `u16` | `uint16_t` | `number`           | `int`    |
+| `uint32` | `long`  | `pyfory.UInt32` | `uint32` | `u32` | `uint32_t` | `number`           | `int`    |
+| `uint64` | `long`  | `pyfory.UInt64` | `uint64` | `u64` | `uint64_t` | `bigint \| number` | `Uint64` |
 
 #### Integer Encoding Modifiers
 
-For 32/64-bit integers, Fory IDL uses varint/PVL encoding by default. Add a
+For 32/64-bit integers, Fory IDL uses variable-length encoding by default. Add a
 scalar encoding modifier when you need a different wire encoding:
 
-| Modifier | Valid types                          | Notes                         |
-| -------- | ------------------------------------ | ----------------------------- |
-| `varint` | `int32`, `int64`, `uint32`, `uint64` | Explicit spelling of default  |
-| `fixed`  | `int32`, `int64`, `uint32`, `uint64` | Fixed-width little-endian     |
-| `tagged` | `int64`, `uint64`                    | Hybrid tagged 64-bit encoding |
+| Modifier | Valid types                          | Notes                        |
+| -------- | ------------------------------------ | ---------------------------- |
+| `varint` | `int32`, `int64`, `uint32`, `uint64` | Explicit spelling of default |
+| `fixed`  | `int32`, `int64`, `uint32`, `uint64` | Fixed-width little-endian    |
+| `tagged` | `int64`, `uint64`                    | Tagged 64-bit encoding       |
 
 Modifiers are part of the scalar type expression, so they can be used in nested
 list and map positions:
@@ -1102,8 +1102,7 @@ list<fixed int32> offsets = 2;
 map<string, tagged uint64> counters = 3;
 ```
 
-`fixed_int32`, `varint32`, `fixed_int64`, `tagged_int64`, and the matching
-unsigned names are not FDL 1.0 type names.
+Underscore spellings for integer encoding are not FDL type names.
 
 #### Floating-Point Types
 
@@ -1116,10 +1115,10 @@ unsigned names are not FDL 1.0 type names.
 
 | Fory IDL   | Java       | Python annotation/value     | Go                  | Rust       | C++                | JavaScript | Dart       |
 | ---------- | ---------- | --------------------------- | ------------------- | ---------- | ------------------ | ---------- | ---------- |
-| `float16`  | `Float16`  | `pyfory.float16` / `float`  | `float16.Float16`   | `Float16`  | `fory::float16_t`  | `number`   | `Float16`  |
-| `bfloat16` | `BFloat16` | `pyfory.bfloat16` / `float` | `bfloat16.BFloat16` | `BFloat16` | `fory::bfloat16_t` | `BFloat16` | `BFloat16` |
-| `float32`  | `float`    | `pyfory.float32`            | `float32`           | `f32`      | `float`            | `number`   | `Float32`  |
-| `float64`  | `double`   | `pyfory.float64`            | `float64`           | `f64`      | `double`           | `number`   | `double`   |
+| `float16`  | `Float16`  | `pyfory.Float16` / `float`  | `float16.Float16`   | `Float16`  | `fory::float16_t`  | `number`   | `Float16`  |
+| `bfloat16` | `BFloat16` | `pyfory.BFloat16` / `float` | `bfloat16.BFloat16` | `BFloat16` | `fory::bfloat16_t` | `BFloat16` | `BFloat16` |
+| `float32`  | `float`    | `pyfory.Float32`            | `float32`           | `f32`      | `float`            | `number`   | `Float32`  |
+| `float64`  | `double`   | `pyfory.Float64`            | `float64`           | `f64`      | `double`           | `number`   | `double`   |
 
 #### String Type
 
@@ -1268,6 +1267,32 @@ message Embedding {
 does not accept `optional`, `ref`, named/object types, `string`, `bytes`, maps,
 or scalar integer encoding modifiers such as `array<fixed int32>`; array
 elements are always fixed-width by the array contract.
+
+Generated carriers are language-specific, but the schema kind is not:
+
+| IDL schema        | Java default                 | Python default         | Dart default   | JavaScript/TypeScript    |
+| ----------------- | ---------------------------- | ---------------------- | -------------- | ------------------------ |
+| `list<bool>`      | `BoolList` / `List<Boolean>` | `List[bool]`           | `List<bool>`   | `Type.list(Type.bool())` |
+| `array<bool>`     | `boolean[]`                  | `pyfory.BoolArray`     | `BoolList`     | `Type.boolArray()`       |
+| `array<int8>`     | `byte[]`                     | `pyfory.Int8Array`     | `Int8List`     | `Type.int8Array()`       |
+| `array<int16>`    | `short[]`                    | `pyfory.Int16Array`    | `Int16List`    | `Type.int16Array()`      |
+| `array<int32>`    | `int[]`                      | `pyfory.Int32Array`    | `Int32List`    | `Type.int32Array()`      |
+| `array<int64>`    | `long[]`                     | `pyfory.Int64Array`    | `Int64List`    | `Type.int64Array()`      |
+| `array<uint8>`    | `@UInt8Type byte[]`          | `pyfory.UInt8Array`    | `Uint8List`    | `Type.uint8Array()`      |
+| `array<uint16>`   | `@UInt16Type short[]`        | `pyfory.UInt16Array`   | `Uint16List`   | `Type.uint16Array()`     |
+| `array<uint32>`   | `@UInt32Type int[]`          | `pyfory.UInt32Array`   | `Uint32List`   | `Type.uint32Array()`     |
+| `array<uint64>`   | `@UInt64Type long[]`         | `pyfory.UInt64Array`   | `Uint64List`   | `Type.uint64Array()`     |
+| `array<float16>`  | `Float16Array`               | `pyfory.Float16Array`  | `Float16List`  | `Type.float16Array()`    |
+| `array<bfloat16>` | `BFloat16Array`              | `pyfory.BFloat16Array` | `Bfloat16List` | `Type.bfloat16Array()`   |
+| `array<float32>`  | `float[]`                    | `pyfory.Float32Array`  | `Float32List`  | `Type.float32Array()`    |
+| `array<float64>`  | `double[]`                   | `pyfory.Float64Array`  | `Float64List`  | `Type.float64Array()`    |
+
+For handwritten Dart models, `array<bool>` requires `BoolList` plus
+`@ArrayField(element: BoolType())` or
+`@ForyField(type: ArrayType(element: BoolType()))`; `List<bool>` remains
+`list<bool>`. For handwritten Java models, unsigned primitive arrays use
+type-use annotations on the element type, for example
+`private @UInt32Type int[] ids;`.
 
 #### Map
 

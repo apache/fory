@@ -24,7 +24,7 @@ from dataclasses import dataclass, fields
 from typing import Optional, List, Dict
 
 import pyfory
-from pyfory import Fory, int32, float64
+from pyfory import Fory, Float64, Int32
 from pyfory.field import (
     ForyFieldMeta,
     extract_field_meta,
@@ -40,7 +40,7 @@ class TestFieldFunction:
         @dataclass
         class TestClass:
             name: str = pyfory.field(0)
-            age: int32 = pyfory.field(1)
+            age: Int32 = pyfory.field(1)
 
         # Check that fields have metadata
         for f in fields(TestClass):
@@ -54,7 +54,7 @@ class TestFieldFunction:
         @dataclass
         class TestClass:
             name: str = pyfory.field(0, default="default_name")
-            count: int32 = pyfory.field(1, default=0)
+            count: Int32 = pyfory.field(1, default=0)
 
         obj = TestClass()
         assert obj.name == "default_name"
@@ -89,8 +89,8 @@ class TestFieldFunction:
         @dataclass
         class TestClass:
             name: str = pyfory.field(0)
-            age: int32 = pyfory.field(5)
-            score: float64 = pyfory.field(100)
+            age: Int32 = pyfory.field(5)
+            score: Float64 = pyfory.field(100)
 
         for f in fields(TestClass):
             meta = extract_field_meta(f)
@@ -157,7 +157,7 @@ class TestValidation:
         @dataclass
         class TestClass:
             field1: str = pyfory.field(0)
-            field2: int32 = pyfory.field(0)  # Duplicate ID
+            field2: Int32 = pyfory.field(0)  # Duplicate ID
 
         fory = Fory(xlang=True)
         fory.register_type(TestClass, typename="test.TestClass")
@@ -200,7 +200,7 @@ class TestSerialization:
 
         @dataclass
         class User:
-            id: int32 = pyfory.field(0)
+            id: Int32 = pyfory.field(0)
             name: str = pyfory.field(1)
 
         fory = Fory(xlang=True, ref=True)
@@ -241,7 +241,7 @@ class TestSerialization:
 
         @dataclass
         class CachedData:
-            value: int32 = pyfory.field(0)
+            value: Int32 = pyfory.field(0)
             _cache: dict = pyfory.field(-1, ignore=True, default_factory=dict)
 
         fory = Fory(xlang=True, ref=True)
@@ -286,7 +286,7 @@ class TestSerialization:
         @dataclass
         class MixedClass:
             # Explicit tag ID
-            id: int32 = pyfory.field(0)
+            id: Int32 = pyfory.field(0)
             # Field name encoding
             description: str = pyfory.field(-1)
             # No pyfory.field() - uses defaults
@@ -316,7 +316,7 @@ class TestInheritance:
 
         @dataclass
         class Child(Parent):
-            child_field: int32 = pyfory.field(1)
+            child_field: Int32 = pyfory.field(1)
 
         fory = Fory(xlang=True, ref=True)
         fory.register_type(Child, typename="test.Child")
@@ -397,9 +397,9 @@ class TestTypeDefEncoding:
 
         @dataclass
         class TestClass:
-            field0: int32 = pyfory.field(0)
+            field0: Int32 = pyfory.field(0)
             field1: str = pyfory.field(5)
-            field2: float64 = pyfory.field(15)  # Overflow threshold
+            field2: Float64 = pyfory.field(15)  # Overflow threshold
 
         fory = Fory(xlang=True, compatible=True)
         fory.register_type(TestClass, typename="test.TestClass")
@@ -417,7 +417,7 @@ class TestTypeDefEncoding:
 
         @dataclass
         class TestClass:
-            field: int32 = pyfory.field(100)
+            field: Int32 = pyfory.field(100)
 
         fory = Fory(xlang=True, compatible=True)
         fory.register_type(TestClass, typename="test.TestClass")

@@ -78,7 +78,7 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
   }
 
   public static class UInt8OnByte {
-    @UInt8Type public byte value;
+    public @UInt8Type byte value;
   }
 
   public static class NestedUInt32OnInteger {
@@ -86,7 +86,7 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
   }
 
   public static class UInt32ArrayStruct {
-    @UInt32Type public int[] ids;
+    public @UInt32Type int[] ids;
   }
 
   @Data
@@ -95,27 +95,40 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
 
     @ArrayType public UInt32List denseValues;
 
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    public UInt32List fixedValues;
+    public @UInt32Type(encoding = Int32Encoding.FIXED) UInt32List fixedValues;
 
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    public UInt64List taggedValues;
+    public @UInt64Type(encoding = Int64Encoding.TAGGED) UInt64List taggedValues;
   }
 
   @Data
   public static class ByteArraySchemaKinds {
     public byte[] payload;
 
-    @Int8Type public byte[] signedValues;
+    public @Int8Type byte[] signedValues;
 
-    @UInt8Type public byte[] unsignedValues;
+    public @UInt8Type byte[] unsignedValues;
+  }
+
+  @Data
+  public static class NestedPrimitiveArrayAnnotations {
+    public List<@Int8Type byte[]> int8ArrayList;
+
+    public List<@UInt8Type byte[]> uint8ArrayList;
+
+    public Map<String, @UInt8Type byte[]> uint8ArrayValuesByName;
+
+    public Map<String, @UInt32Type int[]> uint32ArrayValuesByName;
+
+    public List<@Float16Type short[]> float16ArrayBitsList;
+
+    public List<@BFloat16Type short[]> bfloat16ArrayBitsList;
   }
 
   @Data
   public static class ReducedPrecisionShortArrays {
-    @Float16Type public short[] float16Values;
+    public @Float16Type short[] float16Values;
 
-    @BFloat16Type public short[] bfloat16Values;
+    public @BFloat16Type short[] bfloat16Values;
   }
 
   @Data
@@ -152,13 +165,11 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
   }
 
   public static class InvalidUInt32ArrayEncoding {
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    public int[] values;
+    public @UInt32Type(encoding = Int32Encoding.FIXED) int[] values;
   }
 
   public static class InvalidUInt64ArrayEncoding {
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    public long[] values;
+    public @UInt64Type(encoding = Int64Encoding.TAGGED) long[] values;
   }
 
   @Data
@@ -294,6 +305,33 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
     value.signedValues = new byte[] {-1, 0, 1};
     value.unsignedValues = new byte[] {(byte) 0xff, 0, 1};
     serDeCheck(fory, value);
+  }
+
+  @Test
+  public void nestedPrimitiveArrayAnnotationsUseArrayMetadata() {
+    Fory fory = xlangFory(false, false);
+    fory.register(NestedPrimitiveArrayAnnotations.class, 721);
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(fory.getTypeResolver(), NestedPrimitiveArrayAnnotations.class);
+
+    assertRegistered(
+        assertCollection(fieldType(typeDef, "int8ArrayList"), Types.LIST).getElementType(),
+        Types.INT8_ARRAY);
+    assertRegistered(
+        assertCollection(fieldType(typeDef, "uint8ArrayList"), Types.LIST).getElementType(),
+        Types.UINT8_ARRAY);
+    assertRegistered(
+        assertMap(fieldType(typeDef, "uint8ArrayValuesByName"), Types.MAP).getValueType(),
+        Types.UINT8_ARRAY);
+    assertRegistered(
+        assertMap(fieldType(typeDef, "uint32ArrayValuesByName"), Types.MAP).getValueType(),
+        Types.UINT32_ARRAY);
+    assertRegistered(
+        assertCollection(fieldType(typeDef, "float16ArrayBitsList"), Types.LIST).getElementType(),
+        Types.FLOAT16_ARRAY);
+    assertRegistered(
+        assertCollection(fieldType(typeDef, "bfloat16ArrayBitsList"), Types.LIST).getElementType(),
+        Types.BFLOAT16_ARRAY);
   }
 
   @Test(dataProvider = "enableCodegen")

@@ -1145,9 +1145,9 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     public byte[] payload;
 
-    @Int8Type public byte[] signedBytes;
+    public @Int8Type byte[] signedBytes;
 
-    @UInt8Type public byte[] unsignedBytes;
+    public @UInt8Type byte[] unsignedBytes;
   }
 
   protected void testManualSchemaKindStruct(boolean enableCodegen) throws java.io.IOException {
@@ -2977,56 +2977,43 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @UInt32Type long u32VarField;
 
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    long u32FixedField;
+    @UInt32Type(encoding = Int32Encoding.FIXED) long u32FixedField;
 
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    long u64VarField;
+    @UInt64Type(encoding = Int64Encoding.VARINT) long u64VarField;
 
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    long u64FixedField;
+    @UInt64Type(encoding = Int64Encoding.FIXED) long u64FixedField;
 
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    long u64TaggedField;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) long u64TaggedField;
 
     // Boxed nullable unsigned fields
     @ForyField(nullable = true)
-    @UInt8Type
-    Integer u8NullableField;
+    @UInt8Type Integer u8NullableField;
 
     @ForyField(nullable = true)
-    @UInt16Type
-    Integer u16NullableField;
+    @UInt16Type Integer u16NullableField;
 
     @ForyField(nullable = true)
-    @UInt32Type
-    Long u32VarNullableField;
+    @UInt32Type Long u32VarNullableField;
 
     @ForyField(nullable = true)
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    Long u32FixedNullableField;
+    @UInt32Type(encoding = Int32Encoding.FIXED) Long u32FixedNullableField;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    Long u64VarNullableField;
+    @UInt64Type(encoding = Int64Encoding.VARINT) Long u64VarNullableField;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    Long u64FixedNullableField;
+    @UInt64Type(encoding = Int64Encoding.FIXED) Long u64FixedNullableField;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    Long u64TaggedNullableField;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) Long u64TaggedNullableField;
   }
 
   @Data
   static class UnsignedSchemaConsistentSimple {
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    long u64Tagged;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) long u64Tagged;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    Long u64TaggedNullable;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) Long u64TaggedNullable;
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
@@ -3121,46 +3108,35 @@ public abstract class XlangTestBase extends ForyTestBase {
 
     @UInt32Type long u32VarField1;
 
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    long u32FixedField1;
+    @UInt32Type(encoding = Int32Encoding.FIXED) long u32FixedField1;
 
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    long u64VarField1;
+    @UInt64Type(encoding = Int64Encoding.VARINT) long u64VarField1;
 
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    long u64FixedField1;
+    @UInt64Type(encoding = Int64Encoding.FIXED) long u64FixedField1;
 
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    long u64TaggedField1;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) long u64TaggedField1;
 
     // Group 2: Nullable boxed fields (nullable in Java, non-Optional in other languages)
     @ForyField(nullable = true)
-    @UInt8Type
-    Integer u8Field2;
+    @UInt8Type Integer u8Field2;
 
     @ForyField(nullable = true)
-    @UInt16Type
-    Integer u16Field2;
+    @UInt16Type Integer u16Field2;
 
     @ForyField(nullable = true)
-    @UInt32Type
-    Long u32VarField2;
+    @UInt32Type Long u32VarField2;
 
     @ForyField(nullable = true)
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    Long u32FixedField2;
+    @UInt32Type(encoding = Int32Encoding.FIXED) Long u32FixedField2;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    Long u64VarField2;
+    @UInt64Type(encoding = Int64Encoding.VARINT) Long u64VarField2;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    Long u64FixedField2;
+    @UInt64Type(encoding = Int64Encoding.FIXED) Long u64FixedField2;
 
     @ForyField(nullable = true)
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    Long u64TaggedField2;
+    @UInt64Type(encoding = Int64Encoding.TAGGED) Long u64TaggedField2;
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")

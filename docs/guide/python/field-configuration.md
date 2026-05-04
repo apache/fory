@@ -50,7 +50,7 @@ import pyfory
 @dataclass
 class Person:
     name: str = pyfory.field(id=0)
-    age: pyfory.int32 = pyfory.field(id=1, default=0)
+    age: pyfory.Int32 = pyfory.field(id=1, default=0)
     nickname: Optional[str] = pyfory.field(id=2, nullable=True, default=None)
 ```
 
@@ -61,7 +61,7 @@ Use `pyfory.field()` to configure field-level metadata:
 ```python
 @dataclass
 class User:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
     email: Optional[str] = pyfory.field(id=2, nullable=True, default=None)
     friends: List["User"] = pyfory.field(id=3, ref=True, default_factory=list)
@@ -87,9 +87,9 @@ Assigns a numeric ID to a field to minimize struct field meta size overhead:
 ```python
 @dataclass
 class User:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
-    age: pyfory.int32 = pyfory.field(id=2, default=0)
+    age: pyfory.Int32 = pyfory.field(id=2, default=0)
 ```
 
 **Benefits**:
@@ -111,7 +111,7 @@ class User:
 ```python
 @dataclass
 class User:
-    id: pyfory.int64 = 0
+    id: pyfory.Int64 = 0
     name: str = ""
 ```
 
@@ -128,7 +128,7 @@ class Record:
     optional_name: Optional[str] = pyfory.field(id=0, nullable=True, default=None)
 
     # Nullable integer field
-    optional_count: Optional[pyfory.int32] = pyfory.field(id=1, nullable=True, default=None)
+    optional_count: Optional[pyfory.Int32] = pyfory.field(id=1, nullable=True, default=None)
 ```
 
 **Notes**:
@@ -172,7 +172,7 @@ Exclude fields from serialization:
 ```python
 @dataclass
 class User:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
     # Not serialized
     _cache: dict = pyfory.field(ignore=True, default_factory=dict)
@@ -234,10 +234,10 @@ Fory provides type annotations to control integer encoding:
 ```python
 @dataclass
 class SignedIntegers:
-    byte_val: pyfory.int8 = 0      # 8-bit signed
-    short_val: pyfory.int16 = 0    # 16-bit signed
-    int_val: pyfory.int32 = 0      # 32-bit signed (varint encoding)
-    long_val: pyfory.int64 = 0     # 64-bit signed (varint encoding)
+    byte_val: pyfory.Int8 = 0      # 8-bit signed
+    short_val: pyfory.Int16 = 0    # 16-bit signed
+    int_val: pyfory.Int32 = 0      # 32-bit signed (varint encoding)
+    long_val: pyfory.Int64 = 0     # 64-bit signed (varint encoding)
 ```
 
 ### Unsigned Integers
@@ -246,19 +246,19 @@ class SignedIntegers:
 @dataclass
 class UnsignedIntegers:
     # Fixed-size encoding
-    u8_val: pyfory.uint8 = 0       # 8-bit unsigned (fixed)
-    u16_val: pyfory.uint16 = 0     # 16-bit unsigned (fixed)
+    u8_val: pyfory.UInt8 = 0       # 8-bit unsigned (fixed)
+    u16_val: pyfory.UInt16 = 0     # 16-bit unsigned (fixed)
 
     # Variable-length encoding (default for u32/u64)
-    u32_var: pyfory.uint32 = 0     # 32-bit unsigned (varint)
-    u64_var: pyfory.uint64 = 0     # 64-bit unsigned (varint)
+    u32_var: pyfory.UInt32 = 0     # 32-bit unsigned (varint)
+    u64_var: pyfory.UInt64 = 0     # 64-bit unsigned (varint)
 
     # Explicit fixed-size encoding
-    u32_fixed: pyfory.fixed_uint32 = 0   # 32-bit unsigned (fixed 4 bytes)
-    u64_fixed: pyfory.fixed_uint64 = 0   # 64-bit unsigned (fixed 8 bytes)
+    u32_fixed: pyfory.FixedUInt32 = 0   # 32-bit unsigned (fixed 4 bytes)
+    u64_fixed: pyfory.FixedUInt64 = 0   # 64-bit unsigned (fixed 8 bytes)
 
     # Tagged encoding (includes type tag)
-    u64_tagged: pyfory.tagged_uint64 = 0  # 64-bit unsigned (tagged)
+    u64_tagged: pyfory.TaggedUInt64 = 0  # 64-bit unsigned (tagged)
 ```
 
 ### Floating Point
@@ -266,30 +266,30 @@ class UnsignedIntegers:
 ```python
 @dataclass
 class FloatingPoint:
-    float_val: pyfory.float32 = 0.0   # 32-bit float
-    double_val: pyfory.float64 = 0.0  # 64-bit double
+    float_val: pyfory.Float32 = 0.0   # 32-bit float
+    double_val: pyfory.Float64 = 0.0  # 64-bit double
 ```
 
 ### Encoding Summary
 
-| Type                   | Encoding | Size       |
-| ---------------------- | -------- | ---------- |
-| `pyfory.int8`          | fixed    | 1 byte     |
-| `pyfory.int16`         | fixed    | 2 bytes    |
-| `pyfory.int32`         | varint   | 1-5 bytes  |
-| `pyfory.int64`         | varint   | 1-10 bytes |
-| `pyfory.fixed_int32`   | fixed    | 4 bytes    |
-| `pyfory.fixed_int64`   | fixed    | 8 bytes    |
-| `pyfory.tagged_int64`  | tagged   | 1-9 bytes  |
-| `pyfory.uint8`         | fixed    | 1 byte     |
-| `pyfory.uint16`        | fixed    | 2 bytes    |
-| `pyfory.uint32`        | varint   | 1-5 bytes  |
-| `pyfory.uint64`        | varint   | 1-10 bytes |
-| `pyfory.fixed_uint32`  | fixed    | 4 bytes    |
-| `pyfory.fixed_uint64`  | fixed    | 8 bytes    |
-| `pyfory.tagged_uint64` | tagged   | 1-9 bytes  |
-| `pyfory.float32`       | fixed    | 4 bytes    |
-| `pyfory.float64`       | fixed    | 8 bytes    |
+| Type                  | Encoding | Size       |
+| --------------------- | -------- | ---------- |
+| `pyfory.Int8`         | fixed    | 1 byte     |
+| `pyfory.Int16`        | fixed    | 2 bytes    |
+| `pyfory.Int32`        | varint   | 1-5 bytes  |
+| `pyfory.Int64`        | varint   | 1-10 bytes |
+| `pyfory.FixedInt32`   | fixed    | 4 bytes    |
+| `pyfory.FixedInt64`   | fixed    | 8 bytes    |
+| `pyfory.TaggedInt64`  | tagged   | 1-9 bytes  |
+| `pyfory.UInt8`        | fixed    | 1 byte     |
+| `pyfory.UInt16`       | fixed    | 2 bytes    |
+| `pyfory.UInt32`       | varint   | 1-5 bytes  |
+| `pyfory.UInt64`       | varint   | 1-10 bytes |
+| `pyfory.FixedUInt32`  | fixed    | 4 bytes    |
+| `pyfory.FixedUInt64`  | fixed    | 8 bytes    |
+| `pyfory.TaggedUInt64` | tagged   | 1-9 bytes  |
+| `pyfory.Float32`      | fixed    | 4 bytes    |
+| `pyfory.Float64`      | fixed    | 8 bytes    |
 
 **When to Use**:
 
@@ -310,7 +310,7 @@ import pyfory
 
 @dataclass
 class Counters:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = field(default_factory=dict)
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = field(default_factory=dict)
 ```
 
 For `values`, map keys are written as fixed-width int32 values and each nested list element is
@@ -334,7 +334,7 @@ import pyfory
 class Document:
     # Fields with tag IDs (recommended for compatible mode)
     title: str = pyfory.field(id=0, default="")
-    version: pyfory.int32 = pyfory.field(id=1, default=0)
+    version: pyfory.Int32 = pyfory.field(id=1, default=0)
 
     # Nullable field
     description: Optional[str] = pyfory.field(id=2, nullable=True, default=None)
@@ -345,9 +345,9 @@ class Document:
     categories: Set[str] = pyfory.field(id=5, default_factory=set)
 
     # Unsigned integers with different encodings
-    view_count: pyfory.uint64 = pyfory.field(id=6, default=0)           # varint encoding
-    file_size: pyfory.fixed_uint64 = pyfory.field(id=7, default=0)      # fixed encoding
-    checksum: pyfory.tagged_uint64 = pyfory.field(id=8, default=0)      # tagged encoding
+    view_count: pyfory.UInt64 = pyfory.field(id=6, default=0)           # varint encoding
+    file_size: pyfory.FixedUInt64 = pyfory.field(id=7, default=0)       # fixed encoding
+    checksum: pyfory.TaggedUInt64 = pyfory.field(id=8, default=0)       # tagged encoding
 
     # Reference-tracked field for shared/circular references
     parent: Optional["Document"] = pyfory.field(id=9, ref=True, nullable=True, default=None)
@@ -394,9 +394,9 @@ When serializing data to be read by other languages (Java, Rust, C++, Go), use f
 @dataclass
 class CrossLangData:
     # Use field IDs for cross-language compatibility
-    int_var: pyfory.int32 = pyfory.field(id=0, default=0)
-    long_fixed: pyfory.fixed_uint64 = pyfory.field(id=1, default=0)
-    long_tagged: pyfory.tagged_uint64 = pyfory.field(id=2, default=0)
+    int_var: pyfory.Int32 = pyfory.field(id=0, default=0)
+    long_fixed: pyfory.FixedUInt64 = pyfory.field(id=1, default=0)
+    long_tagged: pyfory.TaggedUInt64 = pyfory.field(id=2, default=0)
     optional_value: Optional[str] = pyfory.field(id=3, nullable=True, default=None)
 ```
 
@@ -408,14 +408,14 @@ Compatible mode supports schema evolution. It is recommended to configure field 
 # Version 1
 @dataclass
 class DataV1:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
 
 
 # Version 2: Added new field
 @dataclass
 class DataV2:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
     email: Optional[str] = pyfory.field(id=2, nullable=True, default=None)  # New field
 ```
@@ -427,7 +427,7 @@ Alternatively, field IDs can be omitted (field names will be used in metadata wi
 ```python
 @dataclass
 class Data:
-    id: pyfory.int64 = 0
+    id: pyfory.Int64 = 0
     name: str = ""
 ```
 
@@ -474,7 +474,7 @@ In xlang mode, you **need to configure fields** when:
 # Xlang mode: explicit configuration required for nullable/ref fields
 @dataclass
 class User:
-    id: pyfory.int64 = pyfory.field(id=0, default=0)
+    id: pyfory.Int64 = pyfory.field(id=0, default=0)
     name: str = pyfory.field(id=1, default="")
     email: Optional[str] = pyfory.field(id=2, nullable=True, default=None)  # Must declare nullable
     friend: Optional["User"] = pyfory.field(id=3, ref=True, nullable=True, default=None)  # Must declare ref
@@ -499,21 +499,21 @@ class User:
 
 ## Options Reference
 
-| Configuration                                | Description                          |
-| -------------------------------------------- | ------------------------------------ |
-| `pyfory.field(id=N)`                         | Field tag ID to reduce metadata size |
-| `pyfory.field(nullable=True)`                | Mark field as nullable               |
-| `pyfory.field(ref=True)`                     | Enable reference tracking            |
-| `pyfory.field(ignore=True)`                  | Exclude field from serialization     |
-| `pyfory.field(dynamic=True)`                 | Force type info to be written        |
-| `pyfory.field(dynamic=False)`                | Skip type info (use declared type)   |
-| `Optional[T]`                                | Type hint for nullable fields        |
-| `pyfory.int32`, `pyfory.int64`               | Signed integers (varint encoding)    |
-| `pyfory.fixed_int32`, `pyfory.fixed_int64`   | Fixed-size signed                    |
-| `pyfory.tagged_int64`                        | Tagged encoding for int64            |
-| `pyfory.uint32`, `pyfory.uint64`             | Unsigned integers (varint encoding)  |
-| `pyfory.fixed_uint32`, `pyfory.fixed_uint64` | Fixed-size unsigned                  |
-| `pyfory.tagged_uint64`                       | Tagged encoding for uint64           |
+| Configuration                              | Description                          |
+| ------------------------------------------ | ------------------------------------ |
+| `pyfory.field(id=N)`                       | Field tag ID to reduce metadata size |
+| `pyfory.field(nullable=True)`              | Mark field as nullable               |
+| `pyfory.field(ref=True)`                   | Enable reference tracking            |
+| `pyfory.field(ignore=True)`                | Exclude field from serialization     |
+| `pyfory.field(dynamic=True)`               | Force type info to be written        |
+| `pyfory.field(dynamic=False)`              | Skip type info (use declared type)   |
+| `Optional[T]`                              | Type hint for nullable fields        |
+| `pyfory.Int32`, `pyfory.Int64`             | Signed integers (varint encoding)    |
+| `pyfory.FixedInt32`, `pyfory.FixedInt64`   | Fixed-size signed                    |
+| `pyfory.TaggedInt64`                       | Tagged encoding for int64            |
+| `pyfory.UInt32`, `pyfory.UInt64`           | Unsigned integers (varint encoding)  |
+| `pyfory.FixedUInt32`, `pyfory.FixedUInt64` | Fixed-size unsigned                  |
+| `pyfory.TaggedUInt64`                      | Tagged encoding for uint64           |
 
 ## Related Topics
 

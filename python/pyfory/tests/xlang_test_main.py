@@ -90,15 +90,15 @@ class Item:
 
 @dataclass
 class SimpleStruct:
-    f1: Dict[pyfory.int32, pyfory.float64] = None
-    f2: pyfory.int32 = 0
+    f1: Dict[pyfory.Int32, pyfory.Float64] = None
+    f2: pyfory.Int32 = 0
     f3: Item = None
     f4: str = ""
     f5: Color = None
     f6: List[str] = None
-    f7: pyfory.int32 = 0
-    f8: pyfory.int32 = 0
-    last: pyfory.int32 = 0
+    f7: pyfory.Int32 = 0
+    f8: pyfory.Int32 = 0
+    last: pyfory.Int32 = 0
 
 
 @pyfory.dataclass
@@ -113,21 +113,21 @@ class FixedOverrideStruct:
 
 @dataclass
 class VersionCheckStruct:
-    f1: pyfory.int32 = 0
+    f1: pyfory.Int32 = 0
     f2: Optional[str] = None
-    f3: pyfory.float64 = 0.0
+    f3: pyfory.Float64 = 0.0
 
 
 @dataclass
 class Dog:
-    age: pyfory.int32 = 0
+    age: pyfory.Int32 = 0
     name: Optional[str] = None
 
 
 @dataclass
 class Cat:
-    age: pyfory.int32 = 0
-    lives: pyfory.int32 = 0
+    age: pyfory.Int32 = 0
+    lives: pyfory.Int32 = 0
 
 
 @dataclass
@@ -142,12 +142,12 @@ class AnimalMapHolder:
 
 @dataclass
 class MyStruct:
-    id: pyfory.int32 = 0
+    id: pyfory.Int32 = 0
 
 
 @dataclass
 class MyExt:
-    id: pyfory.int32 = 0
+    id: pyfory.Int32 = 0
 
 
 class MyExtSerializer(pyfory.serializer.Serializer):
@@ -190,10 +190,10 @@ class TwoStringFieldStruct:
 
 @dataclass
 class ReducedPrecisionFloatStruct:
-    float16_value: pyfory.float16 = None
-    bfloat16_value: pyfory.bfloat16 = None
-    float16_array: List[pyfory.float16] = None
-    bfloat16_array: List[pyfory.bfloat16] = None
+    float16_value: pyfory.Float16 = None
+    bfloat16_value: pyfory.BFloat16 = None
+    float16_array: List[pyfory.Float16] = None
+    bfloat16_array: List[pyfory.BFloat16] = None
 
 
 class TestEnum(enum.Enum):
@@ -220,7 +220,7 @@ class TwoEnumFieldStruct:
 
 @dataclass(eq=False)
 class RefOverrideElement:
-    id: pyfory.int32 = 0
+    id: pyfory.Int32 = 0
     name: str = ""
 
 
@@ -233,22 +233,22 @@ class RefOverrideContainer:
 
 @dataclass
 class SignedNestedAnnotatedContainerSchemaConsistent:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = None
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = None
 
 
 @dataclass
 class SignedNestedAnnotatedContainerCompatible:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = None
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = None
 
 
 @dataclass
 class NestedAnnotatedContainerSchemaConsistent:
-    values: Dict[pyfory.fixed_uint32, List[pyfory.tagged_uint64]] = None
+    values: Dict[pyfory.FixedUInt32, List[pyfory.TaggedUInt64]] = None
 
 
 @dataclass
 class NestedAnnotatedContainerCompatible:
-    values: Dict[pyfory.fixed_uint32, List[pyfory.tagged_uint64]] = None
+    values: Dict[pyfory.FixedUInt32, List[pyfory.TaggedUInt64]] = None
 
 
 # ============================================================================
@@ -268,12 +268,12 @@ class NullableComprehensiveSchemaConsistent:
     """
 
     # Base non-nullable primitive fields
-    byte_field: pyfory.int8 = 0
-    short_field: pyfory.int16 = 0
-    int_field: pyfory.int32 = 0
-    long_field: pyfory.int64 = 0
-    float_field: pyfory.float32 = 0.0
-    double_field: pyfory.float64 = 0.0
+    byte_field: pyfory.Int8 = 0
+    short_field: pyfory.Int16 = 0
+    int_field: pyfory.Int32 = 0
+    long_field: pyfory.Int64 = 0
+    float_field: pyfory.Float32 = 0.0
+    double_field: pyfory.Float64 = 0.0
     bool_field: bool = False
 
     # Base non-nullable reference fields
@@ -283,12 +283,12 @@ class NullableComprehensiveSchemaConsistent:
     map_field: Dict[str, str] = None
 
     # Nullable fields - first half (boxed types)
-    nullable_int: Optional[pyfory.int32] = None
-    nullable_long: Optional[pyfory.int64] = None
-    nullable_float: Optional[pyfory.float32] = None
+    nullable_int: Optional[pyfory.Int32] = None
+    nullable_long: Optional[pyfory.Int64] = None
+    nullable_float: Optional[pyfory.Float32] = None
 
     # Nullable fields - second half
-    nullable_double: Optional[pyfory.float64] = None
+    nullable_double: Optional[pyfory.Float64] = None
     nullable_bool: Optional[bool] = None
     nullable_string: Optional[str] = None
     nullable_list: Optional[List[str]] = None
@@ -305,7 +305,7 @@ class NullableComprehensiveSchemaConsistent:
 class RefInnerSchemaConsistent:
     """Inner struct for reference tracking test (SCHEMA_CONSISTENT mode)."""
 
-    id: pyfory.int32 = 0
+    id: pyfory.Int32 = 0
     name: str = ""
 
 
@@ -321,7 +321,7 @@ class RefOuterSchemaConsistent:
 class RefInnerCompatible:
     """Inner struct for reference tracking test (COMPATIBLE mode)."""
 
-    id: pyfory.int32 = 0
+    id: pyfory.Int32 = 0
     name: str = ""
 
 
@@ -347,19 +347,19 @@ class NullableComprehensiveCompatible:
 
     # Group 1: Nullable in Python (Optional), Non-nullable in Java
     # Primitive fields
-    byte_field: Optional[pyfory.int8] = None
-    short_field: Optional[pyfory.int16] = None
-    int_field: Optional[pyfory.int32] = None
-    long_field: Optional[pyfory.int64] = None
-    float_field: Optional[pyfory.float32] = None
-    double_field: Optional[pyfory.float64] = None
+    byte_field: Optional[pyfory.Int8] = None
+    short_field: Optional[pyfory.Int16] = None
+    int_field: Optional[pyfory.Int32] = None
+    long_field: Optional[pyfory.Int64] = None
+    float_field: Optional[pyfory.Float32] = None
+    double_field: Optional[pyfory.Float64] = None
     bool_field: Optional[bool] = None
 
     # Boxed fields - also nullable in Python
-    boxed_int: Optional[pyfory.int32] = None
-    boxed_long: Optional[pyfory.int64] = None
-    boxed_float: Optional[pyfory.float32] = None
-    boxed_double: Optional[pyfory.float64] = None
+    boxed_int: Optional[pyfory.Int32] = None
+    boxed_long: Optional[pyfory.Int64] = None
+    boxed_float: Optional[pyfory.Float32] = None
+    boxed_double: Optional[pyfory.Float64] = None
     boxed_bool: Optional[bool] = None
 
     # Reference fields - also nullable in Python
@@ -371,10 +371,10 @@ class NullableComprehensiveCompatible:
     # Group 2: Also Nullable in Python (must match Java's nullable annotation)
     # When Java sends null for these fields, Python must be able to receive and re-serialize None.
     # Boxed types - use Optional to handle None from Java
-    nullable_int1: Optional[pyfory.int32] = None
-    nullable_long1: Optional[pyfory.int64] = None
-    nullable_float1: Optional[pyfory.float32] = None
-    nullable_double1: Optional[pyfory.float64] = None
+    nullable_int1: Optional[pyfory.Int32] = None
+    nullable_long1: Optional[pyfory.Int64] = None
+    nullable_float1: Optional[pyfory.Float32] = None
+    nullable_double1: Optional[pyfory.Float64] = None
     nullable_bool1: Optional[bool] = None
 
     # Reference types - also Optional
@@ -1601,22 +1601,22 @@ class UnsignedSchemaConsistent:
     """
 
     # Primitive unsigned fields (non-nullable)
-    u8_field: pyfory.uint8 = 0
-    u16_field: pyfory.uint16 = 0
-    u32_var_field: pyfory.uint32 = 0  # VAR_UINT32 encoding
-    u32_fixed_field: pyfory.fixed_uint32 = 0  # Fixed 4-byte encoding
-    u64_var_field: pyfory.uint64 = 0  # VAR_UINT64 encoding
-    u64_fixed_field: pyfory.fixed_uint64 = 0  # Fixed 8-byte encoding
-    u64_tagged_field: pyfory.tagged_uint64 = 0  # Tagged encoding
+    u8_field: pyfory.UInt8 = 0
+    u16_field: pyfory.UInt16 = 0
+    u32_var_field: pyfory.UInt32 = 0  # VAR_UINT32 encoding
+    u32_fixed_field: pyfory.FixedUInt32 = 0  # Fixed 4-byte encoding
+    u64_var_field: pyfory.UInt64 = 0  # VAR_UINT64 encoding
+    u64_fixed_field: pyfory.FixedUInt64 = 0  # Fixed 8-byte encoding
+    u64_tagged_field: pyfory.TaggedUInt64 = 0  # Tagged encoding
 
     # Boxed nullable unsigned fields (using Optional)
-    u8_nullable_field: Optional[pyfory.uint8] = None
-    u16_nullable_field: Optional[pyfory.uint16] = None
-    u32_var_nullable_field: Optional[pyfory.uint32] = None
-    u32_fixed_nullable_field: Optional[pyfory.fixed_uint32] = None
-    u64_var_nullable_field: Optional[pyfory.uint64] = None
-    u64_fixed_nullable_field: Optional[pyfory.fixed_uint64] = None
-    u64_tagged_nullable_field: Optional[pyfory.tagged_uint64] = None
+    u8_nullable_field: Optional[pyfory.UInt8] = None
+    u16_nullable_field: Optional[pyfory.UInt16] = None
+    u32_var_nullable_field: Optional[pyfory.UInt32] = None
+    u32_fixed_nullable_field: Optional[pyfory.FixedUInt32] = None
+    u64_var_nullable_field: Optional[pyfory.UInt64] = None
+    u64_fixed_nullable_field: Optional[pyfory.FixedUInt64] = None
+    u64_tagged_nullable_field: Optional[pyfory.TaggedUInt64] = None
 
 
 @dataclass
@@ -1630,33 +1630,33 @@ class UnsignedSchemaCompatible:
     """
 
     # Group 1: Optional unsigned fields (nullable in Python, non-nullable in Java)
-    u8_field1: Optional[pyfory.uint8] = None
-    u16_field1: Optional[pyfory.uint16] = None
-    u32_var_field1: Optional[pyfory.uint32] = None  # VAR_UINT32 encoding
-    u32_fixed_field1: Optional[pyfory.fixed_uint32] = None  # Fixed 4-byte encoding
-    u64_var_field1: Optional[pyfory.uint64] = None  # VAR_UINT64 encoding
-    u64_fixed_field1: Optional[pyfory.fixed_uint64] = None  # Fixed 8-byte encoding
-    u64_tagged_field1: Optional[pyfory.tagged_uint64] = None  # Tagged encoding
+    u8_field1: Optional[pyfory.UInt8] = None
+    u16_field1: Optional[pyfory.UInt16] = None
+    u32_var_field1: Optional[pyfory.UInt32] = None  # VAR_UINT32 encoding
+    u32_fixed_field1: Optional[pyfory.FixedUInt32] = None  # Fixed 4-byte encoding
+    u64_var_field1: Optional[pyfory.UInt64] = None  # VAR_UINT64 encoding
+    u64_fixed_field1: Optional[pyfory.FixedUInt64] = None  # Fixed 8-byte encoding
+    u64_tagged_field1: Optional[pyfory.TaggedUInt64] = None  # Tagged encoding
 
     # Group 2: Non-Optional unsigned fields (non-nullable in Python, nullable in Java)
-    u8_field2: pyfory.uint8 = 0
-    u16_field2: pyfory.uint16 = 0
-    u32_var_field2: pyfory.uint32 = 0
-    u32_fixed_field2: pyfory.fixed_uint32 = 0
-    u64_var_field2: pyfory.uint64 = 0
-    u64_fixed_field2: pyfory.fixed_uint64 = 0
-    u64_tagged_field2: pyfory.tagged_uint64 = 0
+    u8_field2: pyfory.UInt8 = 0
+    u16_field2: pyfory.UInt16 = 0
+    u32_var_field2: pyfory.UInt32 = 0
+    u32_fixed_field2: pyfory.FixedUInt32 = 0
+    u64_var_field2: pyfory.UInt64 = 0
+    u64_fixed_field2: pyfory.FixedUInt64 = 0
+    u64_tagged_field2: pyfory.TaggedUInt64 = 0
 
 
 @dataclass
 class UnsignedSchemaConsistentSimple:
     """
-    Simple test struct for tagged uint64 in schema consistent mode.
+    Simple test struct for tagged UInt64 in schema consistent mode.
     Must match Java UnsignedSchemaConsistentSimple (type id 1).
     """
 
-    u64_tagged: pyfory.tagged_uint64 = 0
-    u64_tagged_nullable: Optional[pyfory.tagged_uint64] = None
+    u64_tagged: pyfory.TaggedUInt64 = 0
+    u64_tagged_nullable: Optional[pyfory.TaggedUInt64] = None
 
 
 # ============================================================================
@@ -1665,7 +1665,7 @@ class UnsignedSchemaConsistentSimple:
 
 
 def test_unsigned_schema_consistent_simple():
-    """Test simple tagged uint64 in schema consistent mode."""
+    """Test simple tagged UInt64 in schema consistent mode."""
     data_file = get_data_file()
     with open(data_file, "rb") as f:
         data_bytes = f.read()

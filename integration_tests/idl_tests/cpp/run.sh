@@ -27,7 +27,9 @@ if [[ "${FORY_CPP_IDL_SKIP_BUILD:-}" == "1" && -x "${BUILD_DIR}/idl_roundtrip" ]
   exit 0
 fi
 
-python -m pip install --quiet cmake
+if ! command -v cmake >/dev/null 2>&1; then
+  python -m pip install --quiet cmake
+fi
 
 cmake -S "${SCRIPT_DIR}" -B "${BUILD_DIR}" -DCMAKE_BUILD_TYPE=Release
 cmake --build "${BUILD_DIR}" --parallel

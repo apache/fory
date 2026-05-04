@@ -61,7 +61,7 @@ class ExplicitArrayEnvelope {
   ExplicitArrayEnvelope();
 
   @ArrayField(element: BoolType())
-  List<bool> flags = <bool>[];
+  BoolList flags = BoolList(0);
 
   @ArrayField(element: Int32Type())
   Int32List denseIds = Int32List(0);
@@ -459,7 +459,7 @@ void main() {
       _registerScalarTypes(reader);
 
       final value = ExplicitArrayEnvelope()
-        ..flags = <bool>[true, false, true]
+        ..flags = BoolList.fromList(<bool>[true, false, true])
         ..denseIds = Int32List.fromList(<int>[1, -2, 3])
         ..pixels = Uint8List.fromList(<int>[1, 2, 255])
         ..normalList = <int>[7, 8, 9];
@@ -468,6 +468,7 @@ void main() {
       );
 
       expect(roundTrip.flags, orderedEquals(value.flags));
+      expect(roundTrip.flags, isA<BoolList>());
       _expectInt32ListEquals(roundTrip.denseIds, value.denseIds);
       _expectUint8ListEquals(roundTrip.pixels, value.pixels);
       expect(roundTrip.normalList, orderedEquals(value.normalList));

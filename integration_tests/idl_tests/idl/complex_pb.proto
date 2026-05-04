@@ -30,17 +30,17 @@ message PrimitiveTypes {
   int8 int8_value = 2;
   int16 int16_value = 3;
   sfixed32 int32_value = 4;
-  sint32 varint32_value = 5;
+  sint32 varint_i32_value = 5;
   sfixed64 int64_value = 6;
-  sint64 varint64_value = 7;
-  int64 tagged_int64_value = 8 [ (fory).type = "tagged_int64" ];
+  sint64 varint_i64_value = 7;
+  int64 tagged_i64_value = 8 [ (fory).type = "tagged int64" ];
   uint8 uint8_value = 9;
   uint16 uint16_value = 10;
   fixed32 uint32_value = 11;
-  uint32 var_uint32_value = 12;
+  uint32 varint_u32_value = 12;
   fixed64 uint64_value = 13;
-  uint64 var_uint64_value = 14;
-  uint64 tagged_uint64_value = 15 [ (fory).type = "tagged_uint64" ];
+  uint64 varint_u64_value = 14;
+  uint64 tagged_u64_value = 15 [ (fory).type = "tagged uint64" ];
   float float32_value = 17;
   double float64_value = 18;
 

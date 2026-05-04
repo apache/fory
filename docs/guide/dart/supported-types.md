@@ -139,7 +139,8 @@ also be serializable types. Avoid using mutable objects as map keys.
 Generic `List<int>` with primitive element metadata still uses `list<T>` schema.
 Dedicated dense array schema comes from dedicated carriers:
 
-- `List<bool>` for `array<bool>`
+- `BoolList` plus `@ArrayField(element: BoolType())` for `array<bool>`.
+  Plain `List<bool>` maps to `list<bool>`.
 - `Int8List`, `Int16List`, `Int32List`, `Int64List`
 - `Uint8List`, `Uint16List`, `Uint32List`, `Uint64List`
 - `Float16List`, `Bfloat16List`, `Float32List`, `Float64List`

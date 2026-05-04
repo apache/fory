@@ -259,6 +259,8 @@ public class User {
 ## Integer Type Annotations
 
 Fory provides annotations to control integer encoding for cross-language compatibility.
+Integer schema annotations are Java type-use annotations. Put them on the field type, after any
+field modifiers and alongside `@ForyField` when both are present.
 
 ### Signed 32-bit Integer (`@Int32Type`)
 
@@ -268,12 +270,10 @@ import org.apache.fory.config.Int32Encoding;
 
 public class MyStruct {
     // Variable-length encoding (default) - compact for small values
-    @Int32Type(encoding = Int32Encoding.VARINT)
-    private int compactId;
+    private @Int32Type(encoding = Int32Encoding.VARINT) int compactId;
 
     // Fixed 4-byte encoding - consistent size
-    @Int32Type(encoding = Int32Encoding.FIXED)
-    private int fixedId;
+    private @Int32Type(encoding = Int32Encoding.FIXED) int fixedId;
 }
 ```
 
@@ -285,16 +285,13 @@ import org.apache.fory.config.Int64Encoding;
 
 public class MyStruct {
     // Variable-length encoding (default)
-    @Int64Type(encoding = Int64Encoding.VARINT)
-    private long compactId;
+    private @Int64Type(encoding = Int64Encoding.VARINT) long compactId;
 
     // Fixed 8-byte encoding
-    @Int64Type(encoding = Int64Encoding.FIXED)
-    private long fixedTimestamp;
+    private @Int64Type(encoding = Int64Encoding.FIXED) long fixedTimestamp;
 
     // Tagged encoding (4 bytes for small values, 9 bytes otherwise)
-    @Int64Type(encoding = Int64Encoding.TAGGED)
-    private long taggedValue;
+    private @Int64Type(encoding = Int64Encoding.TAGGED) long taggedValue;
 }
 ```
 
@@ -310,30 +307,23 @@ import org.apache.fory.config.Int64Encoding;
 
 public class UnsignedStruct {
     // Unsigned 8-bit [0, 255]
-    @UInt8Type
-    private int flags;
+    private @UInt8Type int flags;
 
     // Unsigned 16-bit [0, 65535]
-    @UInt16Type
-    private int port;
+    private @UInt16Type int port;
 
     // Unsigned 32-bit with varint encoding (default)
-    @UInt32Type(encoding = Int32Encoding.VARINT)
-    private long compactCount;
+    private @UInt32Type(encoding = Int32Encoding.VARINT) long compactCount;
 
     // Unsigned 32-bit with fixed encoding
-    @UInt32Type(encoding = Int32Encoding.FIXED)
-    private long fixedCount;
+    private @UInt32Type(encoding = Int32Encoding.FIXED) long fixedCount;
 
     // Unsigned 64-bit with various encodings
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    private long varintU64;
+    private @UInt64Type(encoding = Int64Encoding.VARINT) long varintU64;
 
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    private long fixedU64;
+    private @UInt64Type(encoding = Int64Encoding.FIXED) long fixedU64;
 
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    private long taggedU64;
+    private @UInt64Type(encoding = Int64Encoding.TAGGED) long taggedU64;
 }
 ```
 
@@ -395,8 +385,7 @@ Primitive unsigned arrays can use scalar element annotations for dense
 import org.apache.fory.annotation.UInt32Type;
 
 public class IdBatch {
-    @UInt32Type
-    private int[] ids;
+    private @UInt32Type int[] ids;
 }
 ```
 
@@ -438,16 +427,13 @@ public class Document {
 
     // Integer with different encodings
     @ForyField(id = 6)
-    @UInt64Type(encoding = Int64Encoding.VARINT)
-    private long viewCount;  // varint encoding
+    private @UInt64Type(encoding = Int64Encoding.VARINT) long viewCount;  // varint encoding
 
     @ForyField(id = 7)
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    private long fileSize;   // fixed encoding
+    private @UInt64Type(encoding = Int64Encoding.FIXED) long fileSize;   // fixed encoding
 
     @ForyField(id = 8)
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    private long checksum;   // tagged encoding
+    private @UInt64Type(encoding = Int64Encoding.TAGGED) long checksum;   // tagged encoding
 
     // Reference-tracked field for shared/circular references
     @ForyField(id = 9, ref = true, nullable = true)
@@ -492,16 +478,13 @@ When serializing data to be read by other languages (Python, Rust, C++, Go), use
 public class CrossLangData {
     // Use field IDs for cross-language compatibility
     @ForyField(id = 0)
-    @Int32Type(encoding = Int32Encoding.VARINT)
-    private int intVar;
+    private @Int32Type(encoding = Int32Encoding.VARINT) int intVar;
 
     @ForyField(id = 1)
-    @UInt64Type(encoding = Int64Encoding.FIXED)
-    private long longFixed;
+    private @UInt64Type(encoding = Int64Encoding.FIXED) long longFixed;
 
     @ForyField(id = 2)
-    @UInt64Type(encoding = Int64Encoding.TAGGED)
-    private long longTagged;
+    private @UInt64Type(encoding = Int64Encoding.TAGGED) long longTagged;
 
     @ForyField(id = 3, nullable = true)
     private String optionalValue;

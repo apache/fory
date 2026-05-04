@@ -28,21 +28,19 @@ import org.apache.fory.config.Int64Encoding;
 
 /** Test class with both unsigned integer scalar and array fields. */
 public class AllUnsignedFields {
-  @UInt8Type public int u8;
+  public @UInt8Type int u8;
 
-  @UInt16Type public int u16;
+  public @UInt16Type int u16;
 
-  @UInt32Type(encoding = Int32Encoding.FIXED)
-  public long u32;
+  public @UInt32Type(encoding = Int32Encoding.FIXED) long u32;
 
-  @UInt64Type(encoding = Int64Encoding.FIXED)
-  public long u64;
+  public @UInt64Type(encoding = Int64Encoding.FIXED) long u64;
 
-  @UInt8Type public byte[] u8Array;
+  public @UInt8Type byte[] u8Array;
 
-  @UInt16Type public short[] u16Array;
+  public @UInt16Type short[] u16Array;
 
-  @UInt32Type public int[] u32Array;
+  public @UInt32Type int[] u32Array;
 
-  @UInt64Type public long[] u64Array;
+  public @UInt64Type long[] u64Array;
 }

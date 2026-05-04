@@ -179,8 +179,8 @@ def test_generated_code_integer_encoding_variants_equivalent():
             sfixed64 fi64 = 2;
             fixed32 fu32 = 3;
             fixed64 fu64 = 4;
-            int64 ti64 = 5 [(fory).type = "tagged_int64"];
-            uint64 tu64 = 6 [(fory).type = "tagged_uint64"];
+            int64 ti64 = 5 [(fory).type = "tagged int64"];
+            uint64 tu64 = 6 [(fory).type = "tagged uint64"];
         }
         """
     )
@@ -191,8 +191,8 @@ def test_generated_code_integer_encoding_variants_equivalent():
     assert_all_languages_equal(schemas)
 
     python_output = render_files(generate_files(schemas["fdl"], PythonGenerator))
-    assert "pyfory.tagged_int64" in python_output
-    assert "pyfory.tagged_uint64" in python_output
+    assert "pyfory.TaggedInt64" in python_output
+    assert "pyfory.TaggedUInt64" in python_output
 
 
 def test_generated_code_list_modifier_aliases_equivalent():
@@ -309,10 +309,10 @@ def test_generated_code_flatbuffers_primitive_vectors_are_arrays():
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "private boolean[] flags;" in java_output
     assert "private int[] i32s;" in java_output
-    assert "private int[] u32s;" in java_output
+    assert "private @UInt32Type int[] u32s;" in java_output
 
     dart_output = render_files(generate_files(schema, DartGenerator))
-    assert "List<bool> flags = <bool>[];" in dart_output
+    assert "BoolList flags = BoolList(0);" in dart_output
     assert "Int32List i32s = Int32List(0);" in dart_output
     assert "Uint32List u32s = Uint32List(0);" in dart_output
 
@@ -565,7 +565,10 @@ def test_java_nested_array_values_use_deep_equals_hash_generation():
         )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
-    assert "private static boolean deepValueEquals(Object left, Object right)" in java_output
+    assert (
+        "private static boolean deepValueEquals(Object left, Object right)"
+        in java_output
+    )
     assert "deepValueEquals(groups, that.groups)" in java_output
     assert "deepValueEquals(bytesByName, that.bytesByName)" in java_output
     assert "deepValueHashCode(groups)" in java_output
@@ -593,16 +596,16 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.config.Int32Encoding;" in java_output
-    assert "@UInt8Type\n    private int u8;" in java_output
-    assert "@UInt16Type\n    private int u16;" in java_output
+    assert "private @UInt8Type int u8;" in java_output
+    assert "private @UInt16Type int u16;" in java_output
     assert (
-        "@UInt32Type(encoding = Int32Encoding.FIXED)\n    private long fixedU32;"
+        "private @UInt32Type(encoding = Int32Encoding.FIXED) long fixedU32;"
         in java_output
     )
-    assert "@UInt32Type\n    private long varU32;" in java_output
-    assert "@UInt32Type\n    private Long maybeU32;" in java_output
+    assert "private @UInt32Type long varU32;" in java_output
+    assert "private @UInt32Type Long maybeU32;" in java_output
     assert (
-        "@Int32Type(encoding = Int32Encoding.FIXED)\n    private int fixedI32;"
+        "private @Int32Type(encoding = Int32Encoding.FIXED) int fixedI32;"
         in java_output
     )
 
@@ -648,11 +651,11 @@ def test_python_nested_integer_schema_aliases_in_generic_containers():
     )
     python_output = render_files(generate_files(schema, PythonGenerator))
     assert (
-        "signed_values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]]"
+        "signed_values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]]"
         in python_output
     )
     assert (
-        "unsigned_values: Dict[pyfory.fixed_uint32, List[pyfory.tagged_uint64]]"
+        "unsigned_values: Dict[pyfory.FixedUInt32, List[pyfory.TaggedUInt64]]"
         in python_output
     )
 

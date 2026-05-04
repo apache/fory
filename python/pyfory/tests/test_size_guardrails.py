@@ -106,7 +106,7 @@ class TestCollectionSizeLimit:
     def test_dataclass_list_field_exceeds_limit(self):
         @dataclass
         class Container:
-            items: List[pyfory.int32]
+            items: List[pyfory.Int32]
 
         writer = Fory(xlang=True)
         writer.register(Container)

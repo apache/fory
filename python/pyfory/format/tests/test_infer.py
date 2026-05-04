@@ -20,10 +20,17 @@ import pyfory
 import pytest
 
 from dataclasses import dataclass
-from pyfory.format.infer import infer_schema, infer_field, ForyTypeVisitor
+from pyfory.format.infer import (
+    ForyTypeVisitor,
+    from_arrow_schema,
+    infer_field,
+    infer_schema,
+    to_arrow_schema,
+)
 from pyfory.format import (
     TypeId,
 )
+from pyfory.tests.core import require_pyarrow
 from typing import Dict, List, Tuple
 
 
@@ -101,12 +108,38 @@ def test_infer_class_schema_with_tuple_fields():
     class TupleFoo:
         f1: Tuple[str, ...]
         f2: List[Tuple[int, int]]
-        f3: Dict[str, Tuple[pyfory.int32, ...]]
+        f3: Dict[str, Tuple[pyfory.Int32, ...]]
 
     schema = infer_schema(TupleFoo)
     assert schema.field(0).type.id == TypeId.LIST
     assert schema.field(1).type.id == TypeId.LIST
     assert schema.field(2).type.id == TypeId.MAP
+
+
+@require_pyarrow
+def test_pyarrow_schema_fields_roundtrip_through_row_format_schema():
+    import pyarrow as pa
+
+    arrow_schema = pa.schema(
+        [
+            pa.field("id", pa.int32(), nullable=False),
+            pa.field("scores", pa.list_(pa.float64()), nullable=True),
+            pa.field("attrs", pa.map_(pa.string(), pa.int64()), nullable=True),
+        ]
+    )
+
+    fory_schema = from_arrow_schema(arrow_schema)
+    roundtrip_arrow_schema = to_arrow_schema(fory_schema)
+
+    assert fory_schema.field(0).type.id == TypeId.INT32
+    assert fory_schema.field(1).type.id == TypeId.LIST
+    assert fory_schema.field(2).type.id == TypeId.MAP
+    assert roundtrip_arrow_schema == arrow_schema
+
+
+def test_row_format_rejects_xlang_array_carrier_annotations():
+    with pytest.raises(TypeError, match="Row format does not support pyfory.array array annotations"):
+        _infer_field("values", pyfory.Array[pyfory.Int32])
 
 
 if __name__ == "__main__":

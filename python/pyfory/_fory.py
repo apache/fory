@@ -102,7 +102,7 @@ class Fory:
         >>> @dataclass
         >>> class Person:
         ...     name: str
-        ...     age: pyfory.int32
+        ...     age: pyfory.Int32
         >>>
         >>> # Python-native mode
         >>> fory = pyfory.Fory()

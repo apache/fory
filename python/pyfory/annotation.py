@@ -45,24 +45,25 @@ except ImportError:
         _Annotated = None
 
 
-int8 = TypeVar("int8", bound=int)
-uint8 = TypeVar("uint8", bound=int)
-int16 = TypeVar("int16", bound=int)
-uint16 = TypeVar("uint16", bound=int)
-int32 = TypeVar("int32", bound=int)
-uint32 = TypeVar("uint32", bound=int)
-fixed_int32 = TypeVar("fixed_int32", bound=int)
-fixed_uint32 = TypeVar("fixed_uint32", bound=int)
-int64 = TypeVar("int64", bound=int)
-uint64 = TypeVar("uint64", bound=int)
-fixed_int64 = TypeVar("fixed_int64", bound=int)
-tagged_int64 = TypeVar("tagged_int64", bound=int)
-fixed_uint64 = TypeVar("fixed_uint64", bound=int)
-tagged_uint64 = TypeVar("tagged_uint64", bound=int)
-float32 = TypeVar("float32", bound=float)
-float64 = TypeVar("float64", bound=float)
-float16 = TypeVar("float16", bound=float)
-bfloat16 = TypeVar("bfloat16", bound=float)
+Bool = bool
+Int8 = TypeVar("Int8", bound=int)
+UInt8 = TypeVar("UInt8", bound=int)
+Int16 = TypeVar("Int16", bound=int)
+UInt16 = TypeVar("UInt16", bound=int)
+Int32 = TypeVar("Int32", bound=int)
+UInt32 = TypeVar("UInt32", bound=int)
+FixedInt32 = TypeVar("FixedInt32", bound=int)
+FixedUInt32 = TypeVar("FixedUInt32", bound=int)
+Int64 = TypeVar("Int64", bound=int)
+UInt64 = TypeVar("UInt64", bound=int)
+FixedInt64 = TypeVar("FixedInt64", bound=int)
+TaggedInt64 = TypeVar("TaggedInt64", bound=int)
+FixedUInt64 = TypeVar("FixedUInt64", bound=int)
+TaggedUInt64 = TypeVar("TaggedUInt64", bound=int)
+Float16 = TypeVar("Float16", bound=float)
+BFloat16 = TypeVar("BFloat16", bound=float)
+Float32 = TypeVar("Float32", bound=float)
+Float64 = TypeVar("Float64", bound=float)
 
 _ARRAY_EXPORTS = {
     "BoolArray",
@@ -188,10 +189,10 @@ class NDArray(_ArrayHint):
         return object
 
 
-class StdArray(_ArrayHint):
+class PyArray(_ArrayHint):
     """Dense Fory ``array<T>`` schema with a Python ``array.array`` carrier contract."""
 
-    _carrier = "stdarray"
+    _carrier = "pyarray"
 
     @classmethod
     def _base_type(cls, element_type):
@@ -202,38 +203,39 @@ __all__ = [
     "Array",
     "ArrayMeta",
     "BFloat16Array",
+    "BFloat16",
+    "Bool",
     "BoolArray",
+    "Float16",
     "Float16Array",
+    "Float32",
     "Float32Array",
+    "Float64",
     "Float64Array",
+    "FixedInt32",
+    "FixedInt64",
+    "FixedUInt32",
+    "FixedUInt64",
+    "Int16",
     "Int16Array",
+    "Int32",
     "Int32Array",
+    "Int64",
     "Int64Array",
+    "Int8",
     "Int8Array",
     "NDArray",
     "Ref",
     "RefMeta",
-    "StdArray",
+    "PyArray",
+    "TaggedInt64",
+    "TaggedUInt64",
+    "UInt16",
     "UInt16Array",
+    "UInt32",
     "UInt32Array",
+    "UInt64",
     "UInt64Array",
+    "UInt8",
     "UInt8Array",
-    "bfloat16",
-    "fixed_int32",
-    "fixed_int64",
-    "fixed_uint32",
-    "fixed_uint64",
-    "float16",
-    "float32",
-    "float64",
-    "int8",
-    "int16",
-    "int32",
-    "int64",
-    "tagged_int64",
-    "tagged_uint64",
-    "uint8",
-    "uint16",
-    "uint32",
-    "uint64",
 ]

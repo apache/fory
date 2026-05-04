@@ -189,8 +189,8 @@ Protobuf imports are supported. Common well-known types map directly:
 | `map<K, V>`                              | `map<K, V>`                              |
 | `optional T`                             | `optional T`                             |
 | `oneof`                                  | `union` + optional union reference field |
-| `int64 [(fory).type = "tagged_int64"]`   | `tagged int64` encoding                  |
-| `uint64 [(fory).type = "tagged_uint64"]` | `tagged uint64` encoding                 |
+| `int64 [(fory).type = "tagged int64"]`   | `tagged int64` encoding                  |
+| `uint64 [(fory).type = "tagged uint64"]` | `tagged uint64` encoding                 |
 
 ## Fory Extension Options (Protobuf)
 

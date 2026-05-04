@@ -188,14 +188,14 @@ message Config { ... }  // Registered as "package.Config"
 | FDL Type    | Java        | Python              | Go          | Rust                    | C++                    | C#               | JavaScript         |
 | ----------- | ----------- | ------------------- | ----------- | ----------------------- | ---------------------- | ---------------- | ------------------ |
 | `bool`      | `boolean`   | `bool`              | `bool`      | `bool`                  | `bool`                 | `bool`           | `boolean`          |
-| `int8`      | `byte`      | `pyfory.int8`       | `int8`      | `i8`                    | `int8_t`               | `sbyte`          | `number`           |
-| `int16`     | `short`     | `pyfory.int16`      | `int16`     | `i16`                   | `int16_t`              | `short`          | `number`           |
-| `int32`     | `int`       | `pyfory.int32`      | `int32`     | `i32`                   | `int32_t`              | `int`            | `number`           |
-| `int64`     | `long`      | `pyfory.int64`      | `int64`     | `i64`                   | `int64_t`              | `long`           | `bigint \| number` |
-| `float16`   | `Float16`   | `pyfory.float16`    | `float16`   | `Float16`               | `fory::float16_t`      | `Half`           | `number`           |
-| `bfloat16`  | `BFloat16`  | `pyfory.bfloat16`   | `bfloat16`  | `BFloat16`              | `fory::bfloat16_t`     | `BFloat16`       | `BFloat16`         |
-| `float32`   | `float`     | `pyfory.float32`    | `float32`   | `f32`                   | `float`                | `float`          | `number`           |
-| `float64`   | `double`    | `pyfory.float64`    | `float64`   | `f64`                   | `double`               | `double`         | `number`           |
+| `int8`      | `byte`      | `pyfory.Int8`       | `int8`      | `i8`                    | `int8_t`               | `sbyte`          | `number`           |
+| `int16`     | `short`     | `pyfory.Int16`      | `int16`     | `i16`                   | `int16_t`              | `short`          | `number`           |
+| `int32`     | `int`       | `pyfory.Int32`      | `int32`     | `i32`                   | `int32_t`              | `int`            | `number`           |
+| `int64`     | `long`      | `pyfory.Int64`      | `int64`     | `i64`                   | `int64_t`              | `long`           | `bigint \| number` |
+| `float16`   | `Float16`   | `pyfory.Float16`    | `float16`   | `Float16`               | `fory::float16_t`      | `Half`           | `number`           |
+| `bfloat16`  | `BFloat16`  | `pyfory.BFloat16`   | `bfloat16`  | `BFloat16`              | `fory::bfloat16_t`     | `BFloat16`       | `BFloat16`         |
+| `float32`   | `float`     | `pyfory.Float32`    | `float32`   | `f32`                   | `float`                | `float`          | `number`           |
+| `float64`   | `double`    | `pyfory.Float64`    | `float64`   | `f64`                   | `double`               | `double`         | `number`           |
 | `string`    | `String`    | `str`               | `string`    | `String`                | `std::string`          | `string`         | `string`           |
 | `bytes`     | `byte[]`    | `bytes`             | `[]byte`    | `Vec<u8>`               | `std::vector<uint8_t>` | `byte[]`         | `Uint8Array`       |
 | `date`      | `LocalDate` | `datetime.date`     | `time.Time` | `chrono::NaiveDate`     | `fory::Date`           | `DateOnly`       | `Date`             |

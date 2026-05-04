@@ -33,13 +33,13 @@ enum class TypeId : uint8_t {
   INT16 = 3,
   // a 32-bit signed integer.
   INT32 = 4,
-  // a 32-bit signed integer which uses fory var_int32 encoding.
+  // A 32-bit signed integer using variable-length encoding.
   VARINT32 = 5,
   // a 64-bit signed integer.
   INT64 = 6,
-  // a 64-bit signed integer which uses fory PVL encoding.
+  // A 64-bit signed integer using variable-length encoding.
   VARINT64 = 7,
-  // a 64-bit signed integer which uses fory hybrid encoding.
+  // A 64-bit signed integer using tagged encoding.
   TAGGED_INT64 = 8,
   // an 8-bit unsigned integer.
   UINT8 = 9,
@@ -47,13 +47,13 @@ enum class TypeId : uint8_t {
   UINT16 = 10,
   // a 32-bit unsigned integer.
   UINT32 = 11,
-  // a 32-bit unsigned integer which uses fory var_uint32 encoding.
+  // A 32-bit unsigned integer using variable-length encoding.
   VAR_UINT32 = 12,
   // a 64-bit unsigned integer.
   UINT64 = 13,
-  // a 64-bit unsigned integer which uses fory var_uint64 encoding.
+  // A 64-bit unsigned integer using variable-length encoding.
   VAR_UINT64 = 14,
-  // a 64-bit unsigned integer which uses fory hybrid encoding.
+  // A 64-bit unsigned integer using tagged encoding.
   TAGGED_UINT64 = 15,
   // an 8-bit floating point number.
   FLOAT8 = 16,

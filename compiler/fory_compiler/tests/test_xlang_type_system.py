@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Tests for xlang type-system 1.0 syntax and validation."""
+"""Tests for xlang type-system syntax and validation."""
 
 import pytest
 
@@ -69,22 +69,6 @@ def test_keyword_integer_modifiers_parse_and_emit():
     assert "varint int64 var_i64 = 2;" in emitted
     assert "tagged uint64 tagged_u64 = 4;" in emitted
     assert "list<optional fixed int32> maybe_fixed = 5;" in emitted
-
-
-def test_old_idl_integer_type_names_are_not_public_types():
-    _schema, validator, ok = validate_schema(
-        """
-        message LegacyNames {
-            fixed_int32 old_fixed = 1;
-            tagged_uint64 old_tagged = 2;
-        }
-        """
-    )
-
-    assert not ok
-    messages = [err.message for err in validator.errors]
-    assert any("Unknown type 'fixed_int32'" in message for message in messages)
-    assert any("Unknown type 'tagged_uint64'" in message for message in messages)
 
 
 def test_array_type_is_distinct_from_list_type():

@@ -25,6 +25,7 @@ import 'package:fory/fory.dart';
 export 'package:fory/src/codegen/generated_cursor.dart';
 
 import 'package:fory/src/codegen/generated_registry.dart';
+import 'package:fory/src/context/ref_writer.dart';
 import 'package:fory/src/meta/field_info.dart' as meta;
 import 'package:fory/src/meta/field_type.dart' as meta_types;
 import 'package:fory/src/resolver/type_resolver.dart' as resolver;
@@ -273,12 +274,12 @@ int generatedCheckedUint16(int value) => checkedUint16(value);
 int generatedCheckedUint32(int value) => checkedUint32(value);
 
 @internal
-void writeGeneratedBoolArrayValue(WriteContext context, List<bool> value) {
+void writeGeneratedBoolArrayValue(WriteContext context, BoolList value) {
   const BoolArraySerializer().write(context, value);
 }
 
 @internal
-List<bool> readGeneratedBoolArrayValue(ReadContext context) {
+BoolList readGeneratedBoolArrayValue(ReadContext context) {
   return const BoolArraySerializer().read(context);
 }
 
@@ -395,6 +396,79 @@ List<GeneratedStructFieldInfo> buildGeneratedStructFieldInfos(
       .resolvedRegisteredType(registration.type)
       .structSerializer!
       .localFields;
+}
+
+@internal
+List<GeneratedStructFieldInfo> buildGeneratedUnionCaseFieldInfos(
+  List<GeneratedFieldInfo> fields,
+) {
+  return List<GeneratedStructFieldInfo>.generate(
+    fields.length,
+    (index) => GeneratedStructFieldInfo(
+      field: fields[index].toFieldInfo(),
+      slot: index,
+    ),
+    growable: false,
+  );
+}
+
+@internal
+void writeGeneratedUnionCaseValue(
+  WriteContext context,
+  GeneratedStructFieldInfo field,
+  Object? value,
+) {
+  if (value == null) {
+    context.buffer.writeByte(RefWriter.nullFlag);
+    return;
+  }
+  final fieldType = field.fieldType;
+  final declared = fieldDeclaredTypeInfo(context.typeResolver, field) ??
+      (!fieldType.isDynamic
+          ? context.typeResolver.resolveFieldType(fieldType)
+          : null);
+  final resolved = declared ?? context.typeResolver.resolveValue(value);
+  if (context.refWriter.writeRefOrNull(
+    context.buffer,
+    value,
+    trackRef: resolved.supportsRef,
+  )) {
+    return;
+  }
+  context.writeTypeMetaValue(resolved, value);
+  context.writeResolvedValue(resolved, value, fieldType);
+}
+
+@internal
+Object? readGeneratedUnionCaseValue(
+  ReadContext context,
+  GeneratedStructFieldInfo field,
+) {
+  final flag = context.refReader.tryPreserveRefId(context.buffer);
+  final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
+  if (flag == RefWriter.nullFlag) {
+    return null;
+  }
+  if (flag == RefWriter.refFlag) {
+    return context.getReadRef();
+  }
+  final fieldType = field.fieldType;
+  final declared = fieldDeclaredTypeInfo(context.typeResolver, field) ??
+      (!fieldType.isDynamic
+          ? context.typeResolver.resolveFieldType(fieldType)
+          : null);
+  final resolved = context.readTypeMetaValue(declared);
+  final value = context.readResolvedValue(
+    resolved,
+    fieldType,
+    hasPreservedRef: preservedRefId != null,
+  );
+  if (preservedRefId != null &&
+      resolved.supportsRef &&
+      context.refReader.readRefAt(preservedRefId) == null) {
+    context.setReadRef(preservedRefId, value);
+  }
+  return value;
 }
 
 @internal

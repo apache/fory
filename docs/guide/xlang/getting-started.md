@@ -270,7 +270,7 @@ from dataclasses import dataclass
 @dataclass
 class Person:
     name: str
-    age: pyfory.Int32Type
+    age: pyfory.Int32
 
 fory = pyfory.Fory(xlang=True)
 fory.register_type(Person, typename="example.Person")
@@ -288,7 +288,7 @@ print(f"Name: {person.name}, Age: {person.age}")
 1. **Use consistent type names**: Ensure all languages use the same type name or ID
 2. **Enable reference tracking**: If your data has circular or shared references
 3. **Reuse Fory instances**: Creating Fory is expensive; reuse instances
-4. **Use type annotations**: In Python, use `pyfory.Int32Type` etc. for precise type mapping
+4. **Use type annotations**: In Python, use markers such as `pyfory.Int32` for precise type mapping
 5. **Test cross-language**: Verify serialization works across all target languages
 
 ## Next Steps

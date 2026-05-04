@@ -35,13 +35,13 @@ const (
 	INT16 = 3
 	// INT32 Signed 32-bit little-endian integer
 	INT32 = 4
-	// VARINT32 a 32-bit signed integer which uses fory var_int32 encoding
+	// VARINT32 signed 32-bit integer using variable-length encoding
 	VARINT32 = 5
 	// INT64 Signed 64-bit little-endian integer
 	INT64 = 6
-	// VARINT64 a 64-bit signed integer which uses fory PVL encoding
+	// VARINT64 signed 64-bit integer using variable-length encoding
 	VARINT64 = 7
-	// TAGGED_INT64 a 64-bit signed integer which uses fory hybrid encoding
+	// TAGGED_INT64 signed 64-bit integer using tagged encoding
 	TAGGED_INT64 = 8
 	// UINT8 Unsigned 8-bit little-endian integer
 	UINT8 = 9
@@ -49,13 +49,13 @@ const (
 	UINT16 = 10
 	// UINT32 Unsigned 32-bit little-endian integer
 	UINT32 = 11
-	// VAR_UINT32 a 32-bit unsigned integer which uses fory var_uint32 encoding
+	// VAR_UINT32 unsigned 32-bit integer using variable-length encoding
 	VAR_UINT32 = 12
 	// UINT64 Unsigned 64-bit little-endian integer
 	UINT64 = 13
-	// VAR_UINT64 a 64-bit unsigned integer which uses fory var_uint64 encoding
+	// VAR_UINT64 unsigned 64-bit integer using variable-length encoding
 	VAR_UINT64 = 14
-	// TAGGED_UINT64 a 64-bit unsigned integer which uses fory hybrid encoding
+	// TAGGED_UINT64 unsigned 64-bit integer using tagged encoding
 	TAGGED_UINT64 = 15
 	// FLOAT8 1-byte floating point value
 	FLOAT8 = 16

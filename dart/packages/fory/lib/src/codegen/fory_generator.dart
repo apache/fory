@@ -215,18 +215,50 @@ final class ForyGenerator extends Generator {
       final specDynamic = typeSpec.dynamic;
       if (specDynamic != null) dynamic = specDynamic;
     }
+    if (_isBoolList(type)) {
+      if (typeSpec?.typeId != null && typeSpec!.typeId != TypeIds.list) {
+        if (typeSpec.typeId != TypeIds.boolArray) {
+          throw InvalidGenerationSourceError(
+            'Type override ${_typeSpecName(typeSpec.typeId!)} does not match the declared BoolList carrier.',
+            element: errorElement,
+          );
+        }
+        return _GeneratedFieldTypeSpec(
+          typeLiteral: _typeReferenceLiteral(type),
+          declaredTypeName: _typeReferenceLiteral(type),
+          typeId: TypeIds.boolArray,
+          nullable: nullable,
+          ref: ref,
+          dynamic: dynamic,
+          arguments: const <_GeneratedFieldTypeSpec>[],
+        );
+      }
+      final child = _GeneratedFieldTypeSpec(
+        typeLiteral: 'bool',
+        declaredTypeName: 'bool',
+        typeId: TypeIds.boolType,
+        nullable: false,
+        ref: false,
+        dynamic: null,
+        arguments: const <_GeneratedFieldTypeSpec>[],
+      );
+      return _GeneratedFieldTypeSpec(
+        typeLiteral: _typeReferenceLiteral(type),
+        declaredTypeName: _typeReferenceLiteral(type),
+        typeId: TypeIds.list,
+        nullable: nullable,
+        ref: ref,
+        dynamic: dynamic,
+        arguments: <_GeneratedFieldTypeSpec>[child],
+      );
+    }
     if (_isList(type) || _isSet(type)) {
       final expectedTypeId = _isSet(type) ? TypeIds.set : TypeIds.list;
       if (_isList(type) &&
           typeSpec?.typeId != null &&
           _isDenseArrayTypeId(typeSpec!.typeId!)) {
         return _fieldTypeForArrayListCarrier(
-          type,
-          typeSpec.typeId!,
-          nullable: nullable,
-          ref: ref,
-          dynamic: dynamic,
-          errorElement: errorElement,
+          errorElement,
         );
       }
       if (typeSpec?.typeId != null && typeSpec!.typeId != expectedTypeId) {
@@ -397,10 +429,10 @@ final class ForyGenerator extends Generator {
   void _writeEnum(StringBuffer output, _GeneratedEnumSpec enumSpec) {
     final serializerClassName = '_${enumSpec.name}ForySerializer';
     final writeExpression = enumSpec.usesRawValue
-        ? 'context.writeVarInt32(value.rawValue);'
+        ? 'context.writeVarUint32(value.rawValue);'
         : 'context.writeVarUint32(value.index);';
     final readExpression = enumSpec.usesRawValue
-        ? 'return ${enumSpec.name}.fromRawValue(context.readVarInt32());'
+        ? 'return ${enumSpec.name}.fromRawValue(context.readVarUint32());'
         : 'return ${enumSpec.name}.values[context.readVarUint32()];';
     output
       ..writeln(
@@ -1045,6 +1077,12 @@ GeneratedFieldType(
       );
       return 'List<${_typeCodeString(elementType)}>.of((($valueExpression as List)).map((item) => $convertedElement))';
     }
+    if (_isBoolList(type)) {
+      if (fieldType.typeId == TypeIds.boolArray) {
+        return '$valueExpression as BoolList';
+      }
+      return 'BoolList.fromList(($valueExpression as List).cast<bool>())';
+    }
     if (_isSet(type)) {
       if (fieldType.typeId != TypeIds.set) {
         return '$valueExpression as ${_typeCodeString(type)}';
@@ -1177,6 +1215,9 @@ GeneratedFieldType(
         field.fieldType.dynamic == true) {
       return false;
     }
+    if (_isBoolList(field.type)) {
+      return false;
+    }
     return field.fieldType.typeId == TypeIds.list ||
         field.fieldType.typeId == TypeIds.set ||
         field.fieldType.typeId == TypeIds.map;
@@ -1188,6 +1229,9 @@ GeneratedFieldType(
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
         field.fieldType.dynamic == true) {
+      return false;
+    }
+    if (_isBoolList(field.type)) {
       return false;
     }
     final typeId = field.fieldType.typeId;
@@ -1893,7 +1937,7 @@ GeneratedFieldType(
     if (typeCompare != 0) {
       return typeCompare;
     }
-    final keyCompare = left.sortKey.compareTo(right.sortKey);
+    final keyCompare = _compareFieldIdentity(left, right);
     if (keyCompare != 0) {
       return keyCompare;
     }
@@ -1908,7 +1952,7 @@ GeneratedFieldType(
     if (typeCompare != 0) {
       return typeCompare;
     }
-    final keyCompare = left.sortKey.compareTo(right.sortKey);
+    final keyCompare = _compareFieldIdentity(left, right);
     if (keyCompare != 0) {
       return keyCompare;
     }
@@ -1916,11 +1960,30 @@ GeneratedFieldType(
   }
 
   int _compareOtherFields(_GeneratedFieldSpec left, _GeneratedFieldSpec right) {
-    final keyCompare = left.sortKey.compareTo(right.sortKey);
+    final keyCompare = _compareFieldIdentity(left, right);
     if (keyCompare != 0) {
       return keyCompare;
     }
     return left.name.compareTo(right.name);
+  }
+
+  int _compareFieldIdentity(
+    _GeneratedFieldSpec left,
+    _GeneratedFieldSpec right,
+  ) {
+    final leftId = left.id;
+    final rightId = right.id;
+    if (leftId != null && leftId >= 0 && rightId != null && rightId >= 0) {
+      final idCompare = leftId.compareTo(rightId);
+      if (idCompare != 0) {
+        return idCompare;
+      }
+    }
+    final keyCompare = left.identifier.compareTo(right.identifier);
+    if (keyCompare != 0) {
+      return keyCompare;
+    }
+    return 0;
   }
 
   int _primitiveSize(int typeId) {
@@ -1932,6 +1995,7 @@ GeneratedFieldType(
       case TypeIds.int16:
       case TypeIds.uint16:
       case TypeIds.float16:
+      case TypeIds.bfloat16:
         return 2;
       case TypeIds.int32:
       case TypeIds.varInt32:
@@ -2441,36 +2505,10 @@ GeneratedFieldType(
     };
   }
 
-  _GeneratedFieldTypeSpec _fieldTypeForArrayListCarrier(
-    DartType type,
-    int typeId, {
-    required bool nullable,
-    required bool ref,
-    required bool? dynamic,
-    required Element errorElement,
-  }) {
-    if (typeId != TypeIds.boolArray) {
-      throw InvalidGenerationSourceError(
-        'ArrayType ${_typeSpecName(typeId)} is not valid for declared Dart type ${_typeCodeString(type)}.',
-        element: errorElement,
-      );
-    }
-    final argument = (type as InterfaceType).typeArguments.single;
-    if (_isNullable(argument) ||
-        !_withoutNullability(argument).isDartCoreBool) {
-      throw InvalidGenerationSourceError(
-        'ArrayType(BoolType) requires a non-nullable List<bool> carrier.',
-        element: errorElement,
-      );
-    }
-    return _GeneratedFieldTypeSpec(
-      typeLiteral: _typeReferenceLiteral(type),
-      declaredTypeName: _typeReferenceLiteral(type),
-      typeId: typeId,
-      nullable: nullable,
-      ref: ref,
-      dynamic: dynamic,
-      arguments: const <_GeneratedFieldTypeSpec>[],
+  Never _fieldTypeForArrayListCarrier(Element errorElement) {
+    throw InvalidGenerationSourceError(
+      'ArrayType(BoolType) requires a BoolList carrier. List<bool> maps to list<bool>.',
+      element: errorElement,
     );
   }
 
@@ -2512,6 +2550,7 @@ GeneratedFieldType(
       'Timestamp' || 'DateTime' => typeId == TypeIds.timestamp,
       'LocalDate' => typeId == TypeIds.date,
       'Duration' => typeId == TypeIds.duration,
+      'BoolList' => typeId == TypeIds.boolArray || typeId == TypeIds.list,
       'Uint8List' => typeId == TypeIds.binary || typeId == TypeIds.uint8Array,
       'Int8List' => typeId == TypeIds.int8Array,
       'Int16List' => typeId == TypeIds.int16Array,
@@ -2682,6 +2721,8 @@ GeneratedFieldType(
     }
     final display = nonNullable.getDisplayString().replaceAll('?', '');
     switch (display) {
+      case 'BoolList':
+        return TypeIds.list;
       case 'Uint8List':
         return TypeIds.binary;
       case 'Int8List':
@@ -2777,7 +2818,7 @@ GeneratedFieldType(
 
   String _enumWriteExpression(DartType type, String valueExpression) {
     if (_enumUsesRawValue(type)) {
-      return 'buffer.writeVarInt32($valueExpression.rawValue)';
+      return 'buffer.writeVarUint32($valueExpression.rawValue)';
     }
     return 'buffer.writeVarUint32($valueExpression.index)';
   }
@@ -2788,7 +2829,7 @@ GeneratedFieldType(
     String valueExpression,
   ) {
     if (_enumUsesRawValue(type)) {
-      return '$cursorExpression.writeVarInt32($valueExpression.rawValue)';
+      return '$cursorExpression.writeVarUint32($valueExpression.rawValue)';
     }
     return '$cursorExpression.writeVarUint32($valueExpression.index)';
   }
@@ -2796,7 +2837,7 @@ GeneratedFieldType(
   String _enumReadExpression(DartType type, String contextExpression) {
     final typeDisplay = _typeReferenceLiteral(type);
     if (_enumUsesRawValue(type)) {
-      return '$typeDisplay.fromRawValue($contextExpression.readVarInt32())';
+      return '$typeDisplay.fromRawValue($contextExpression.readVarUint32())';
     }
     return '$typeDisplay.values[$contextExpression.readVarUint32()]';
   }
@@ -2804,7 +2845,7 @@ GeneratedFieldType(
   String _enumCursorReadExpression(DartType type, String cursorExpression) {
     final typeDisplay = _typeReferenceLiteral(type);
     if (_enumUsesRawValue(type)) {
-      return '$typeDisplay.fromRawValue($cursorExpression.readVarInt32())';
+      return '$typeDisplay.fromRawValue($cursorExpression.readVarUint32())';
     }
     return '$typeDisplay.values[$cursorExpression.readVarUint32()]';
   }
@@ -2866,6 +2907,9 @@ GeneratedFieldType(
   }
 
   bool _isList(DartType type) => type.isDartCoreList;
+
+  bool _isBoolList(DartType type) =>
+      _typeLiteral(_withoutNullability(type)) == 'BoolList';
 
   bool _isSet(DartType type) =>
       type is InterfaceType && type.element.name == 'Set';
@@ -2981,9 +3025,6 @@ final class _GeneratedFieldSpec {
     required this.writable,
     required this.fieldType,
   });
-
-  String get sortKey => id != null && id! >= 0 ? '$id' : identifier;
-
   String readerFunctionName(String structName) {
     final fieldName = '${name[0].toUpperCase()}${name.substring(1)}';
     return '_read$structName$fieldName';

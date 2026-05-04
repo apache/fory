@@ -298,7 +298,7 @@ import pyfory
 @dataclass
 class Person:
     name: str
-    age: pyfory.int32
+    age: pyfory.Int32
 
 # Create Fory instance - should be reused across serializations
 fory = pyfory.Fory()
@@ -311,7 +311,7 @@ print(result.name, result.age)  # Output: chaokunyang 28
 ```
 
 Python schema aliases also apply inside declared containers, such as
-`Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]]`, so nested keys and values use the requested
+`Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]]`, so nested keys and values use the requested
 wire encoding in both pure Python and Cython modes.
 
 For detailed Python usage including type hints, compatibility modes, and advanced features, see [Python Guide](docs/guide/python).

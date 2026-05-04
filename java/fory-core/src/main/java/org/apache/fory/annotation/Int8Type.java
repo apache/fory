@@ -26,5 +26,5 @@ import java.lang.annotation.Target;
 
 /** Marks a byte scalar or byte array as signed 8-bit numeric schema. */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+@Target(ElementType.TYPE_USE)
 public @interface Int8Type {}

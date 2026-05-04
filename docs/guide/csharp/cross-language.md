@@ -95,6 +95,28 @@ See [xlang guide](../xlang/index.md) for complete mapping.
 
 For reduced-precision numeric payloads, use `Half` / `Half[]` or `List<Half>` for xlang `float16`, and `BFloat16` / `BFloat16[]` or `List<BFloat16>` for xlang `bfloat16`.
 
+## Lists and Dense Arrays
+
+C# `List<T>` maps to Fory `list<T>`. Use the schema marker
+`Apache.Fory.Schema.Types.Array<T>` when a field is dense `array<T>`.
+
+| Fory schema       | C# schema marker sketch |
+| ----------------- | ----------------------- |
+| `list<int32>`     | `S.List<S.Int32>`       |
+| `array<bool>`     | `S.Array<S.Bool>`       |
+| `array<int8>`     | `S.Array<S.Int8>`       |
+| `array<int16>`    | `S.Array<S.Int16>`      |
+| `array<int32>`    | `S.Array<S.Int32>`      |
+| `array<int64>`    | `S.Array<S.Int64>`      |
+| `array<uint8>`    | `S.Array<S.UInt8>`      |
+| `array<uint16>`   | `S.Array<S.UInt16>`     |
+| `array<uint32>`   | `S.Array<S.UInt32>`     |
+| `array<uint64>`   | `S.Array<S.UInt64>`     |
+| `array<float16>`  | `S.Array<S.Float16>`    |
+| `array<bfloat16>` | `S.Array<S.BFloat16>`   |
+| `array<float32>`  | `S.Array<S.Float32>`    |
+| `array<float64>`  | `S.Array<S.Float64>`    |
+
 ## Best Practices
 
 1. Keep type IDs stable and documented.

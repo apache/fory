@@ -47,21 +47,21 @@ def compat_ser_de(remote_cls, local_cls, value, type_id):
 
 @dataclass
 class SimpleObject:
-    f1: Optional[Dict[pyfory.int32, pyfory.float64]] = None
+    f1: Optional[Dict[pyfory.Int32, pyfory.Float64]] = None
 
 
 @dataclass
 class ComplexObject:
     f1: Optional[Any] = None
     f2: Optional[Any] = None
-    f3: pyfory.int8 = 0
-    f4: pyfory.int16 = 0
-    f5: pyfory.int32 = 0
-    f6: pyfory.int64 = 0
-    f7: pyfory.float32 = 0
-    f8: pyfory.float64 = 0
-    f9: Optional[List[pyfory.int16]] = None
-    f10: Optional[Dict[pyfory.int32, pyfory.float64]] = None
+    f3: pyfory.Int8 = 0
+    f4: pyfory.Int16 = 0
+    f5: pyfory.Int32 = 0
+    f6: pyfory.Int64 = 0
+    f7: pyfory.Float32 = 0
+    f8: pyfory.Float64 = 0
+    f9: Optional[List[pyfory.Int16]] = None
+    f10: Optional[Dict[pyfory.Int32, pyfory.Float64]] = None
 
 
 def test_struct():
@@ -98,8 +98,8 @@ def test_struct():
 
 @dataclass
 class NestedDeclaredEncodingObject:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = dataclasses.field(default_factory=dict)
-    flags: Set[pyfory.fixed_uint32] = dataclasses.field(default_factory=set)
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = dataclasses.field(default_factory=dict)
+    flags: Set[pyfory.FixedUInt32] = dataclasses.field(default_factory=set)
 
 
 def test_nested_declared_field_type_drives_local_roundtrip():
@@ -121,32 +121,32 @@ def test_nested_declared_field_type_drives_local_roundtrip():
 
 @dataclass
 class RemoteNestedFixedTagged:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = dataclasses.field(default_factory=dict)
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = dataclasses.field(default_factory=dict)
 
 
 @dataclass
 class LocalNestedVarint:
-    values: Dict[pyfory.int32, List[pyfory.int64]] = dataclasses.field(default_factory=dict)
+    values: Dict[pyfory.Int32, List[pyfory.Int64]] = dataclasses.field(default_factory=dict)
 
 
 @dataclass
 class RemoteNestedWide:
-    values: Dict[pyfory.fixed_int64, List[pyfory.tagged_int64]] = dataclasses.field(default_factory=dict)
+    values: Dict[pyfory.FixedInt64, List[pyfory.TaggedInt64]] = dataclasses.field(default_factory=dict)
 
 
 @dataclass
 class LocalNestedNarrow:
-    values: Dict[pyfory.fixed_int32, List[pyfory.int32]] = dataclasses.field(default_factory=lambda: {7: [8]})
+    values: Dict[pyfory.FixedInt32, List[pyfory.Int32]] = dataclasses.field(default_factory=lambda: {7: [8]})
 
 
 @dataclass
 class RemoteNestedUnsigned:
-    values: Dict[pyfory.fixed_uint32, List[pyfory.tagged_uint64]] = dataclasses.field(default_factory=dict)
+    values: Dict[pyfory.FixedUInt32, List[pyfory.TaggedUInt64]] = dataclasses.field(default_factory=dict)
 
 
 @dataclass
 class LocalNestedSignedDefault:
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]] = dataclasses.field(default_factory=lambda: {-1: [-1]})
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = dataclasses.field(default_factory=lambda: {-1: [-1]})
 
 
 def test_compatible_read_accepts_nested_same_domain_integer_encoding():
@@ -190,12 +190,12 @@ def test_compatible_read_skips_nested_signed_unsigned_mismatch():
 @dataclass
 class SuperClass1:
     f1: Optional[Any] = None
-    f2: pyfory.int8 = 0
+    f2: pyfory.Int8 = 0
 
 
 @dataclass
 class ChildClass1(SuperClass1):
-    f3: Optional[Dict[str, pyfory.float64]] = None
+    f3: Optional[Dict[str, pyfory.Float64]] = None
 
 
 def test_strict():
@@ -267,29 +267,29 @@ class XlangNestedTupleObject:
 def test_sort_fields():
     @dataclass
     class TestClass:
-        f1: pyfory.int32
-        f2: List[pyfory.int16]
-        f3: Dict[str, pyfory.float64]
+        f1: pyfory.Int32
+        f2: List[pyfory.Int16]
+        f3: Dict[str, pyfory.Float64]
         f4: str
-        f5: pyfory.float32
+        f5: pyfory.Float32
         f6: bytes
         f7: bool
         f8: Any
-        f9: Dict[pyfory.int32, pyfory.float64]
+        f9: Dict[pyfory.Int32, pyfory.Float64]
         f10: List[str]
-        f11: pyfory.int8
-        f12: pyfory.int64
-        f13: pyfory.float64
-        f14: Set[pyfory.int32]
+        f11: pyfory.Int8
+        f12: pyfory.Int64
+        f13: pyfory.Float64
+        f14: Set[pyfory.Int32]
         f15: datetime.datetime
 
     fory = Fory(xlang=True, ref=True)
     serializer = DataClassSerializer(fory.type_resolver, TestClass)
     # Sorting order:
     # 1. Non-compressed primitives (compress=0) by -size, then ascending type_id, then name:
-    #    float64(8), float32(4), bool(1), int8(1) => f13, f5, f7, f11
+    #    Float64(8), Float32(4), bool(1), Int8(1) => f13, f5, f7, f11
     # 2. Compressed primitives (compress=1) by -size, then name:
-    #    int64(8), int32(4) => f12, f1
+    #    Int64(8), Int32(4) => f12, f1
     # 3. Internal types by type_id, then name: str, datetime, bytes => f4, f15, f6
     # 4. Collection types by type_id, then name: list => f10, f2
     # 5. Set types by type_id, then name: set => f14
@@ -301,9 +301,9 @@ def test_sort_fields():
 def test_tagged_fields_keep_grouped_payload_order():
     @dataclass
     class TaggedClass:
-        later_int: pyfory.int32 = pyfory.field(id=20, default=0)
+        later_int: pyfory.Int32 = pyfory.field(id=20, default=0)
         early_string: str = pyfory.field(id=10, default="")
-        middle_map: Dict[str, pyfory.int64] = pyfory.field(id=15, default_factory=dict)
+        middle_map: Dict[str, pyfory.Int64] = pyfory.field(id=15, default_factory=dict)
         first_bool: bool = pyfory.field(id=1, default=False)
 
     fory = Fory(xlang=True, ref=True)
@@ -356,22 +356,22 @@ def test_bool_field_coercion_numpy_bool():
 @pytest.mark.parametrize(
     "numeric_type",
     [
-        pyfory.int8,
-        pyfory.int16,
-        pyfory.int32,
-        pyfory.fixed_int32,
-        pyfory.int64,
-        pyfory.fixed_int64,
-        pyfory.tagged_int64,
-        pyfory.uint8,
-        pyfory.uint16,
-        pyfory.uint32,
-        pyfory.fixed_uint32,
-        pyfory.uint64,
-        pyfory.fixed_uint64,
-        pyfory.tagged_uint64,
-        pyfory.float32,
-        pyfory.float64,
+        pyfory.Int8,
+        pyfory.Int16,
+        pyfory.Int32,
+        pyfory.FixedInt32,
+        pyfory.Int64,
+        pyfory.FixedInt64,
+        pyfory.TaggedInt64,
+        pyfory.UInt8,
+        pyfory.UInt16,
+        pyfory.UInt32,
+        pyfory.FixedUInt32,
+        pyfory.UInt64,
+        pyfory.FixedUInt64,
+        pyfory.TaggedUInt64,
+        pyfory.Float32,
+        pyfory.Float64,
     ],
 )
 def test_numeric_serializer_need_to_write_ref_disabled(numeric_type):
@@ -479,11 +479,11 @@ def test_xlang_nested_tuple_container_fields(track_ref):
 def test_struct_evolving_override():
     @pyfory.dataclass
     class EvolvingStruct:
-        f1: pyfory.int32 = 0
+        f1: pyfory.Int32 = 0
 
     @pyfory.dataclass(evolving=False)
     class FixedStruct:
-        f1: pyfory.int32 = 0
+        f1: pyfory.Int32 = 0
 
     fory = Fory(xlang=True, compatible=True)
     fory.register_type(EvolvingStruct, namespace="test", typename="EvolvingStruct")

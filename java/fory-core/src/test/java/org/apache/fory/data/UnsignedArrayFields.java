@@ -26,11 +26,11 @@ import org.apache.fory.annotation.UInt8Type;
 
 /** Test class with all unsigned integer array fields. */
 public class UnsignedArrayFields {
-  @UInt8Type public byte[] u8Array;
+  public @UInt8Type byte[] u8Array;
 
-  @UInt16Type public short[] u16Array;
+  public @UInt16Type short[] u16Array;
 
-  @UInt32Type public int[] u32Array;
+  public @UInt32Type int[] u32Array;
 
-  @UInt64Type public long[] u64Array;
+  public @UInt64Type long[] u64Array;
 }

@@ -172,12 +172,20 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
     private static void WriteTypedCaseValue(WriteContext context, Type caseType, object? value)
     {
         object? normalized = NormalizeCaseValue(value, caseType);
-        DynamicAnyCodec.WriteAny(context, normalized, RefMode.Tracking, writeTypeInfo: true, hasGenerics: caseType.IsGenericType);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(caseType);
+        context.TypeResolver.WriteObject(
+            typeInfo,
+            context,
+            normalized,
+            RefMode.Tracking,
+            writeTypeInfo: true,
+            hasGenerics: caseType.IsGenericType);
     }
 
     private static object? ReadTypedCaseValue(ReadContext context, Type caseType)
     {
-        object? value = DynamicAnyCodec.ReadAny(context, RefMode.Tracking, readTypeInfo: true);
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(caseType);
+        object? value = context.TypeResolver.ReadObject(typeInfo, context, RefMode.Tracking, readTypeInfo: true);
         return NormalizeCaseValue(value, caseType);
     }
 

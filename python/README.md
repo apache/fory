@@ -25,7 +25,7 @@
 - **Polymorphism support** for customized types with automatic type dispatching
 - **Schema evolution** support for backward/forward compatibility when using dataclasses in cross-language mode
 - **Out-of-band buffer support** for zero-copy serialization of large data structures like NumPy arrays and Pandas DataFrames, compatible with pickle protocol 5
-- **Reduced-precision xlang types** use reserved `pyfory.float16` and `pyfory.bfloat16` annotations and native Python `float` values; dense array payloads use public wrappers such as `Float16Array` and `BFloat16Array`
+- **Reduced-precision xlang types** use reserved `pyfory.Float16` and `pyfory.BFloat16` annotations and native Python `float` values; dense array payloads use public wrappers such as `Float16Array` and `BFloat16Array`
 
 ### ⚡ **Blazing Fast Performance**
 
@@ -464,7 +464,7 @@ f = pyfory.Fory(xlang=True, ref=True)
 @dataclass
 class Person:
     name: str
-    age: pyfory.int32
+    age: pyfory.Int32
 
 f.register(Person, typename="example.Person")
 
@@ -473,9 +473,8 @@ binary_data = f.serialize(person)
 # binary_data can now be sent to Java, Go, etc.
 ```
 
-Nested collection aliases are declared schema. For example,
-`Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]]` writes map keys with fixed int32 encoding and
-nested list elements with tagged int64 encoding in both pure Python and Cython modes.
+Nested collection annotations are declared schema and are honored in both pure
+Python and Cython modes.
 
 **Java (Deserializer)**
 

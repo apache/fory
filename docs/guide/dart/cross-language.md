@@ -177,6 +177,28 @@ Because Dart `int` is not itself a promise about the exact xlang wire width, pre
 - `Float16List` and `Bfloat16List` for 16-bit floating-point array payloads
 - `Timestamp`, `LocalDate`, and `Duration` for explicit temporal semantics
 
+### Lists and Dense Arrays
+
+`List<T>` always represents Fory `list<T>` unless a field has explicit array
+metadata. Use `array<T>` only for dense one-dimensional bool or numeric data.
+
+| Fory schema       | Dart field carrier and annotation                   |
+| ----------------- | --------------------------------------------------- |
+| `list<bool>`      | `List<bool>`                                        |
+| `array<bool>`     | `@ArrayField(element: BoolType()) BoolList`         |
+| `array<int8>`     | `@ArrayField(element: Int8Type()) Int8List`         |
+| `array<int16>`    | `@ArrayField(element: Int16Type()) Int16List`       |
+| `array<int32>`    | `@ArrayField(element: Int32Type()) Int32List`       |
+| `array<int64>`    | `@ArrayField(element: Int64Type()) Int64List`       |
+| `array<uint8>`    | `@ArrayField(element: Uint8Type()) Uint8List`       |
+| `array<uint16>`   | `@ArrayField(element: Uint16Type()) Uint16List`     |
+| `array<uint32>`   | `@ArrayField(element: Uint32Type()) Uint32List`     |
+| `array<uint64>`   | `@ArrayField(element: Uint64Type()) Uint64List`     |
+| `array<float16>`  | `@ArrayField(element: Float16Type()) Float16List`   |
+| `array<bfloat16>` | `@ArrayField(element: Bfloat16Type()) Bfloat16List` |
+| `array<float32>`  | `@ArrayField(element: Float32Type()) Float32List`   |
+| `array<float64>`  | `@ArrayField(element: Float64Type()) Float64List`   |
+
 See [Supported Types](supported-types.md) and [xlang type mapping](../../specification/xlang_type_mapping.md).
 
 ## Validation

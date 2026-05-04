@@ -103,10 +103,25 @@ public class UnsignedSerializers {
   public static void registerDefaultSerializers(TypeResolver resolver) {
     // Note: Classes are already registered in ClassResolver.initialize()
     // We only need to register serializers here
+    registerSerializers(resolver, true);
+  }
+
+  public static void registerSerializers(TypeResolver resolver) {
+    registerSerializers(resolver, false);
+  }
+
+  private static void registerSerializers(TypeResolver resolver, boolean internal) {
     Config config = resolver.getConfig();
-    resolver.registerInternalSerializer(UInt8.class, new UInt8Serializer(config));
-    resolver.registerInternalSerializer(UInt16.class, new UInt16Serializer(config));
-    resolver.registerInternalSerializer(UInt32.class, new UInt32Serializer(config));
-    resolver.registerInternalSerializer(UInt64.class, new UInt64Serializer(config));
+    if (internal) {
+      resolver.registerInternalSerializer(UInt8.class, new UInt8Serializer(config));
+      resolver.registerInternalSerializer(UInt16.class, new UInt16Serializer(config));
+      resolver.registerInternalSerializer(UInt32.class, new UInt32Serializer(config));
+      resolver.registerInternalSerializer(UInt64.class, new UInt64Serializer(config));
+    } else {
+      resolver.registerSerializer(UInt8.class, new UInt8Serializer(config));
+      resolver.registerSerializer(UInt16.class, new UInt16Serializer(config));
+      resolver.registerSerializer(UInt32.class, new UInt32Serializer(config));
+      resolver.registerSerializer(UInt64.class, new UInt64Serializer(config));
+    }
   }
 }

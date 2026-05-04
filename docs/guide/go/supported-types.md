@@ -61,7 +61,12 @@ data, _ := f.Serialize(i64)  // Uses varint encoding
 
 ## Collection Types
 
-### Slices
+### Root And Dynamic Slices
+
+When a slice is serialized as a root or dynamic value, primitive slices use the
+dense array wire tags for compact transport. In struct fields, unannotated Go
+slices are logical `list<T>` fields; use `fory:"type=array(element=...)"` when a
+struct field is dense numeric `array<T>` data.
 
 | Go Type         | Fory TypeId   | Notes                 |
 | --------------- | ------------- | --------------------- |
@@ -79,7 +84,7 @@ data, _ := f.Serialize(i64)  // Uses varint encoding
 ```go
 f := fory.New()
 
-// Primitive slices (optimized)
+// Primitive root slice (optimized dense array payload)
 ints := []int32{1, 2, 3, 4, 5}
 data, _ := f.Serialize(ints)
 

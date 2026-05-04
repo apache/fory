@@ -2788,7 +2788,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
     // VARINT64 uses varint encoding
     return static_cast<TargetType>(ctx.read_var_int64(error));
   case TypeId::TAGGED_INT64:
-    // TAGGED_INT64 uses tagged encoding (special hybrid encoding)
+    // TAGGED_INT64 uses tagged encoding.
     return static_cast<TargetType>(ctx.read_tagged_int64(error));
   case TypeId::UINT64:
     // UINT64 uses fixed 8-byte encoding
@@ -2798,7 +2798,7 @@ FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
     // VAR_UINT64 uses varint encoding
     return static_cast<TargetType>(ctx.read_var_uint64(error));
   case TypeId::TAGGED_UINT64:
-    // TAGGED_UINT64 uses tagged encoding (special hybrid encoding)
+    // TAGGED_UINT64 uses tagged encoding.
     return static_cast<TargetType>(ctx.read_tagged_uint64(error));
   case TypeId::FLOAT16:
     return static_cast<TargetType>(ctx.read_f16(error).to_float());

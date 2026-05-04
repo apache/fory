@@ -87,7 +87,7 @@ type FieldInfo struct {
 // Fields are stored as values (not pointers) for better cache locality.
 // Each field belongs to exactly one category:
 // - FixedFields: non-nullable fixed-size primitives (bool, int8-64, uint8-64, float32/64)
-// - VarintFields: non-nullable varint primitives (varint32/64, var_uint32/64, tagged_int64/uint64)
+// - VarintFields: non-nullable integer primitives using variable-length or tagged encodings
 // - RemainingFields: all other fields (nullable primitives, strings, collections, structs, etc.)
 type FieldGroup struct {
 	// Primitive field slices - minimal data for fast iteration in hot loops

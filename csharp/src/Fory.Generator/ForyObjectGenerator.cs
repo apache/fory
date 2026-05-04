@@ -1024,6 +1024,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string lengthVar = $"__foryLength{id++}";
         string headerVar = $"__foryHeader{id++}";
         string hasNullVar = $"__foryHasNull{id++}";
+        string sameTypeVar = $"__forySameType{id++}";
+        string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
         if (isSet)
         {
@@ -1043,6 +1045,16 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string innerIndent = indent + "    ";
         sb.AppendLine($"{innerIndent}byte {headerVar} = context.Reader.ReadUInt8();");
         sb.AppendLine($"{innerIndent}bool {hasNullVar} = ({headerVar} & 0b0000_0010) != 0;");
+        sb.AppendLine($"{innerIndent}bool {declaredVar} = ({headerVar} & 0b0000_0100) != 0;");
+        sb.AppendLine($"{innerIndent}bool {sameTypeVar} = ({headerVar} & 0b0000_1000) != 0;");
+        sb.AppendLine($"{innerIndent}if (!{sameTypeVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        sb.AppendLine($"{innerIndent}    throw new global::Apache.Fory.InvalidDataException(\"generated collection fields require same-type element payloads\");");
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}if (!{declaredVar})");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitReadInlineTypeInfo(sb, NonNullableCodec(element), indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}}}");
         string collectionIndexVar = $"__foryIndex{id++}";
         sb.AppendLine($"{innerIndent}for (int {collectionIndexVar} = 0; {collectionIndexVar} < {lengthVar}; {collectionIndexVar}++)");
         sb.AppendLine($"{innerIndent}{{");
@@ -1123,18 +1135,28 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         string innerIndent = indent + "    ";
         sb.AppendLine($"{innerIndent}byte __foryHeader = context.Reader.ReadUInt8();");
         sb.AppendLine($"{innerIndent}bool __foryKeyNull = (__foryHeader & 0b0000_0010) != 0;");
+        sb.AppendLine($"{innerIndent}bool __foryKeyDeclared = (__foryHeader & 0b0000_0100) != 0;");
         sb.AppendLine($"{innerIndent}bool __foryValueNull = (__foryHeader & 0b0001_0000) != 0;");
+        sb.AppendLine($"{innerIndent}bool __foryValueDeclared = (__foryHeader & 0b0010_0000) != 0;");
         sb.AppendLine($"{innerIndent}if (__foryKeyNull || __foryValueNull)");
         sb.AppendLine($"{innerIndent}{{");
         sb.AppendLine($"{innerIndent}    {key.TypeName} __foryKey = ({key.TypeName})default!;");
         sb.AppendLine($"{innerIndent}    {value.TypeName} __foryValue = ({value.TypeName})default!;");
         sb.AppendLine($"{innerIndent}    if (!__foryKeyNull)");
         sb.AppendLine($"{innerIndent}    {{");
+        sb.AppendLine($"{innerIndent}        if (!__foryKeyDeclared)");
+        sb.AppendLine($"{innerIndent}        {{");
+        EmitReadInlineTypeInfo(sb, NonNullableCodec(key), indentLevel + 3, ref id);
+        sb.AppendLine($"{innerIndent}        }}");
         EmitReadPayload(sb, NonNullableCodec(key), "__foryReadKey", indentLevel + 2, ref id);
         sb.AppendLine($"{innerIndent}        __foryKey = __foryReadKey;");
         sb.AppendLine($"{innerIndent}    }}");
         sb.AppendLine($"{innerIndent}    if (!__foryValueNull)");
         sb.AppendLine($"{innerIndent}    {{");
+        sb.AppendLine($"{innerIndent}        if (!__foryValueDeclared)");
+        sb.AppendLine($"{innerIndent}        {{");
+        EmitReadInlineTypeInfo(sb, NonNullableCodec(value), indentLevel + 3, ref id);
+        sb.AppendLine($"{innerIndent}        }}");
         EmitReadPayload(sb, NonNullableCodec(value), "__foryReadValue", indentLevel + 2, ref id);
         sb.AppendLine($"{innerIndent}        __foryValue = __foryReadValue;");
         sb.AppendLine($"{innerIndent}    }}");
@@ -1154,6 +1176,14 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"{innerIndent}    continue;");
         sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{innerIndent}int __foryChunkSize = context.Reader.ReadUInt8();");
+        sb.AppendLine($"{innerIndent}if (!__foryKeyDeclared)");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitReadInlineTypeInfo(sb, NonNullableCodec(key), indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}}}");
+        sb.AppendLine($"{innerIndent}if (!__foryValueDeclared)");
+        sb.AppendLine($"{innerIndent}{{");
+        EmitReadInlineTypeInfo(sb, NonNullableCodec(value), indentLevel + 2, ref id);
+        sb.AppendLine($"{innerIndent}}}");
         string mapIndexVar = $"__foryIndex{id++}";
         sb.AppendLine($"{innerIndent}for (int {mapIndexVar} = 0; {mapIndexVar} < __foryChunkSize; {mapIndexVar}++)");
         sb.AppendLine($"{innerIndent}{{");
@@ -1163,6 +1193,33 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{innerIndent}__foryRead += __foryChunkSize;");
         sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitReadInlineTypeInfo(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        int indentLevel,
+        ref int id)
+    {
+        string indent = new(' ', indentLevel * 4);
+        if (!CanValidateInlineTypeInfo(codec.TypeId))
+        {
+            sb.AppendLine(
+                $"{indent}throw new global::Apache.Fory.InvalidDataException(\"generated field payload requires declared nested user type metadata\");");
+            return;
+        }
+
+        string typeIdVar = $"__foryWireTypeId{id++}";
+        sb.AppendLine($"{indent}uint {typeIdVar} = context.Reader.ReadUInt8();");
+        sb.AppendLine($"{indent}if ({typeIdVar} != {codec.TypeId}u)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    throw new global::Apache.Fory.TypeMismatchException({codec.TypeId}u, {typeIdVar});");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static bool CanValidateInlineTypeInfo(uint typeId)
+    {
+        return typeId is > 0 and <= 24 or >= 36 and <= 56;
     }
 
     private static FieldCodecModel NonNullableCodec(FieldCodecModel codec)
@@ -1655,7 +1712,9 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         IEnumerable<MemberModel> ordered = members
-            .OrderBy(m => m.FieldIdentifier, StringComparer.Ordinal)
+            .OrderBy(m => m.FieldId.HasValue ? 0 : 1)
+            .ThenBy(m => m.FieldId.GetValueOrDefault())
+            .ThenBy(m => m.FieldIdentifier, StringComparer.Ordinal)
             .ThenBy(m => m.OriginalIndex);
 
         StringBuilder sb = new();
@@ -1663,7 +1722,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         foreach (MemberModel member in ordered)
         {
             string piece =
-                $"\"{EscapeString(member.FieldIdentifier)},\" + {BuildSchemaFieldTypeFingerprintExpression(member.TypeMeta, "trackRef", includeNullable: true)} + \";\"";
+                $"\"{EscapeString(BuildSchemaFieldIdentifier(member))},\" + {BuildSchemaFieldTypeFingerprintExpression(member.TypeMeta, "trackRef", includeNullable: true)} + \";\"";
             if (!first)
             {
                 sb.Append(" + ");
@@ -1674,6 +1733,13 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         return sb.ToString().Replace("b_float16", "bfloat16");
+    }
+
+    private static string BuildSchemaFieldIdentifier(MemberModel member)
+    {
+        return member.FieldId.HasValue
+            ? member.FieldId.Value.ToString(CultureInfo.InvariantCulture)
+            : member.FieldIdentifier;
     }
 
     private static string BuildSchemaFieldTypeFingerprintExpression(
@@ -1769,7 +1835,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         {
             string generics = string.Join(
                 ", ",
-                model.Generics.Select(g => BuildTypeMetaExpression(g, "false")));
+                model.Generics.Select(g => BuildTypeMetaExpression(g, trackRefExpr)));
             return
                 $"new global::Apache.Fory.TypeMetaFieldType({model.TypeIdExpr}, {BoolLiteral(model.Nullable)}, {localTrackRefExpr}, new global::Apache.Fory.TypeMetaFieldType[] {{ {generics} }})";
         }
@@ -1957,20 +2023,15 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         }
 
         TypeClassification classification = resolution.Classification;
-        bool javaInternalReducedPrecisionScalar =
-            !isOptional &&
-            (classification.TypeId == 17 || classification.TypeId == 18);
-        int group = javaInternalReducedPrecisionScalar
-            ? 3
-            : classification.IsPrimitive
-                ? (isOptional ? 2 : 1)
-                : classification.IsMap
-                    ? 5
-                    : classification.IsCollection
-                        ? 4
-                        : classification.IsBuiltIn
-                            ? 3
-                            : 6;
+        int group = classification.IsPrimitive
+            ? (isOptional ? 2 : 1)
+            : classification.IsMap
+                ? 5
+                : classification.IsCollection
+                    ? 4
+                    : classification.IsBuiltIn
+                        ? 3
+                        : 6;
 
         int index = int.MaxValue;
         Location? sourceLocation = memberSymbol.Locations.FirstOrDefault(loc => loc.IsInSource);
@@ -2432,6 +2493,8 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
                 return 0;
             })
+            .ThenBy(m => m.FieldId.HasValue ? 0 : 1)
+            .ThenBy(m => m.FieldId.GetValueOrDefault())
             .ThenBy(m => m.FieldIdentifier, StringComparer.Ordinal)
             .ThenBy(m => m.Name, StringComparer.Ordinal)
             .ThenBy(m => m.OriginalIndex)
@@ -2719,8 +2782,7 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
 
         bool isPrimitive = schemaType.Kind == SchemaTypeKind.Scalar;
         bool isCollection = schemaType.Kind == SchemaTypeKind.List ||
-                            schemaType.Kind == SchemaTypeKind.Set ||
-                            schemaType.Kind == SchemaTypeKind.PackedArray;
+                            schemaType.Kind == SchemaTypeKind.Set;
         bool isMap = schemaType.Kind == SchemaTypeKind.Map;
         bool isCompressedNumeric = schemaType.TypeId is 5 or 7 or 8 or 12 or 14 or 15;
         int primitiveSize = schemaType.TypeId switch
@@ -2833,6 +2895,12 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
         if (IsDurationType(type))
         {
             return new TypeClassification(37, false, true, false, false, false, 0);
+        }
+
+        if (type.SpecialType == SpecialType.System_Decimal ||
+            string.Equals(type.ToDisplayString(), "Apache.Fory.ForyDecimal", StringComparison.Ordinal))
+        {
+            return new TypeClassification(40, false, true, false, false, false, 0);
         }
 
         if (type is IArrayTypeSymbol arrayType)

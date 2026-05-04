@@ -119,7 +119,7 @@ from dataclasses import dataclass
 @dataclass
 class Person:
     name: str
-    age: pyfory.int32
+    age: pyfory.Int32
 
 fory = pyfory.Fory(xlang=True, ref=True)
 fory.register_type(Person, type_id=100)  # Same ID as Rust
@@ -149,6 +149,28 @@ See [xlang_type_mapping.md](../../specification/xlang_type_mapping.md) for compl
 | `[BFloat16; N]` | `BFloat16List` | `BFloat16Array` |
 | `HashMap<K,V>`  | `Map<K,V>`     | `Dict[K,V]`     |
 | `Option<T>`     | nullable `T`   | `Optional[T]`   |
+
+### Lists and Dense Arrays
+
+Rust `Vec<T>` maps to Fory `list<T>` by default for manual structs. Use an
+explicit array field attribute when the schema is dense `array<T>`.
+
+| Fory schema       | Rust carrier and metadata      |
+| ----------------- | ------------------------------ |
+| `list<int32>`     | `Vec<i32>`                     |
+| `array<bool>`     | `#[fory(array)] Vec<bool>`     |
+| `array<int8>`     | `#[fory(array)] Vec<i8>`       |
+| `array<int16>`    | `#[fory(array)] Vec<i16>`      |
+| `array<int32>`    | `#[fory(array)] Vec<i32>`      |
+| `array<int64>`    | `#[fory(array)] Vec<i64>`      |
+| `array<uint8>`    | `#[fory(array)] Vec<u8>`       |
+| `array<uint16>`   | `#[fory(array)] Vec<u16>`      |
+| `array<uint32>`   | `#[fory(array)] Vec<u32>`      |
+| `array<uint64>`   | `#[fory(array)] Vec<u64>`      |
+| `array<float16>`  | `#[fory(array)] Vec<Float16>`  |
+| `array<bfloat16>` | `#[fory(array)] Vec<BFloat16>` |
+| `array<float32>`  | `#[fory(array)] Vec<f32>`      |
+| `array<float64>`  | `#[fory(array)] Vec<f64>`      |
 
 ## Best Practices
 

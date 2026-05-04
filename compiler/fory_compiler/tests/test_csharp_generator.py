@@ -101,8 +101,9 @@ def test_csharp_field_encoding_attributes():
         """
     )
 
-    assert "[ForyField(Type = typeof(S.Fixed<S.Int32>))]" in file.content
-    assert "[ForyField(Type = typeof(S.Tagged<S.UInt64>))]" in file.content
+    assert "[ForyField(1, Type = typeof(S.Fixed<S.Int32>))]" in file.content
+    assert "[ForyField(2, Type = typeof(S.Tagged<S.UInt64>))]" in file.content
+    assert "[ForyField(3)]" in file.content
     assert "public int Plain { get; set; }" in file.content
 
 
@@ -113,16 +114,21 @@ def test_csharp_nested_schema_type_attributes():
 
         message Nested {
             map<fixed uint32, list<optional tagged uint64>> values = 1;
+            map<string, optional float16> optional_halves = 2;
         }
         """
     )
 
     assert (
-        "[ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]"
+        "[ForyField(1, Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]"
         in file.content
     )
     assert (
         "public Dictionary<uint, List<ulong?>> Values { get; set; } = new();"
+        in file.content
+    )
+    assert (
+        "public Dictionary<string, Half?> OptionalHalves { get; set; } = new();"
         in file.content
     )
 

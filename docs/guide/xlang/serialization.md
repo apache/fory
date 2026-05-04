@@ -30,7 +30,7 @@ Reduced-precision floating-point values are also part of the built-in xlang type
 - `float16` and `array<float16>`
 - `bfloat16` and `array<bfloat16>`
 
-Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.float16` and `pyfory.bfloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `@ArrayType` on supported reduced-precision carriers for `array<float16>` / `array<bfloat16>` schema, while general object arrays stay on the `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
+Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.Float16` and `pyfory.BFloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `@ArrayType` on supported reduced-precision carriers for `array<float16>` / `array<bfloat16>` schema, while general object arrays stay on the `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
 
 ### Java
 
@@ -222,7 +222,7 @@ import pyfory, array
 @dataclass
 class SomeClass1:
     f1: Any
-    f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+    f2: Dict[pyfory.Int8, pyfory.Int32]
 
 
 @dataclass
@@ -230,18 +230,18 @@ class SomeClass2:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
-    f4: Dict[pyfory.Int8Type, pyfory.Int32Type] = None
-    f5: pyfory.Int8Type = None
-    f6: pyfory.Int16Type = None
-    f7: pyfory.Int32Type = None
-    # int type will be taken as `pyfory.Int64Type`.
-    # use `pyfory.Int32Type` for type hint if peer uses more narrow type.
+    f4: Dict[pyfory.Int8, pyfory.Int32] = None
+    f5: pyfory.Int8 = None
+    f6: pyfory.Int16 = None
+    f7: pyfory.Int32 = None
+    # int type will be taken as `pyfory.Int64`.
+    # use `pyfory.Int32` for type hint if peer uses more narrow type.
     f8: int = None
-    f9: pyfory.Float32Type = None
-    # float type will be taken as `pyfory.Float64Type`
+    f9: pyfory.Float32 = None
+    # float type will be taken as `pyfory.Float64`
     f10: float = None
-    f11: pyfory.Array[pyfory.int16] = None
-    f12: List[pyfory.Int16Type] = None
+    f11: pyfory.Array[pyfory.Int16] = None
+    f12: List[pyfory.Int16] = None
 
 
 if __name__ == "__main__":

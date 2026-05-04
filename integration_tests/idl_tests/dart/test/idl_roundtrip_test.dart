@@ -28,8 +28,13 @@ import 'package:idl_dart_tests/generated/addressbook/addressbook.dart'
 import 'package:idl_dart_tests/generated/auto_id/auto_id.dart' as auto_id;
 import 'package:idl_dart_tests/generated/collection/collection.dart'
     as collection;
+import 'package:idl_dart_tests/generated/complex_fbs/complex_fbs.dart'
+    as complex_fbs;
+import 'package:idl_dart_tests/generated/complex_pb/complex_pb.dart'
+    as complex_pb;
 import 'package:idl_dart_tests/generated/example/example.dart' as example;
 import 'package:idl_dart_tests/generated/graph/graph.dart' as graph;
+import 'package:idl_dart_tests/generated/monster/monster.dart' as monster;
 import 'package:idl_dart_tests/generated/optional_types/optional_types.dart'
     as optional_types;
 import 'package:idl_dart_tests/generated/root/root.dart' as root;
@@ -83,6 +88,9 @@ void _registerCommon(Fory fory) {
     id: 213,
   );
 
+  complex_pb.ForyRegistration.register(fory, complex_pb.PrimitiveTypes);
+  complex_pb.ForyRegistration.register(fory, complex_pb.PrimitiveTypes_Contact);
+
   optional_types.ForyRegistration.register(
     fory,
     optional_types.AllOptionalTypes,
@@ -108,6 +116,17 @@ void _registerCommon(Fory fory) {
     id: 1501,
   );
   example.ForyRegistration.register(fory, example.ExampleMessage, id: 1500);
+
+  monster.ForyRegistration.register(fory, monster.Color);
+  monster.ForyRegistration.register(fory, monster.Vec3);
+  monster.ForyRegistration.register(fory, monster.Monster);
+
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.Status);
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.Payload);
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.ScalarPack);
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.Note);
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.Metric);
+  complex_fbs.ForyRegistration.register(fory, complex_fbs.Container);
 }
 
 void _registerRefs(Fory fory) {
@@ -156,31 +175,44 @@ auto_id.Envelope buildAutoIdEnvelope() {
     ..status = auto_id.Status.ok;
 }
 
+complex_pb.PrimitiveTypes buildPrimitiveTypes() {
+  return complex_pb.PrimitiveTypes()
+    ..boolValue = true
+    ..int8Value = 12
+    ..int16Value = 1234
+    ..int32Value = -123456
+    ..varintI32Value = -12345
+    ..int64Value = Int64(-123456789)
+    ..varintI64Value = Int64(-987654321)
+    ..taggedI64Value = Int64(123456789)
+    ..uint8Value = 200
+    ..uint16Value = 60000
+    ..uint32Value = 1234567890
+    ..varintU32Value = 1234567890
+    ..uint64Value = Uint64(9876543210)
+    ..varintU64Value = Uint64(12345678901)
+    ..taggedU64Value = Uint64(2222222222)
+    ..float32Value = Float32(2.5)
+    ..float64Value = 3.5
+    ..contact = complex_pb.PrimitiveTypes_Contact.phone(12345);
+}
+
 collection.NumericCollections buildNumericCollections() {
   return collection.NumericCollections()
     ..int8Values = <int>[1, -2, 3]
     ..int16Values = <int>[100, -200, 300]
     ..int32Values = <int>[1000, -2000, 3000]
-    ..int64Values = <Int64>[
-      Int64(10000),
-      Int64(-20000),
-      Int64(30000),
-    ]
+    ..int64Values = <Int64>[Int64(10000), Int64(-20000), Int64(30000)]
     ..uint8Values = <int>[200, 250]
     ..uint16Values = <int>[50000, 60000]
     ..uint32Values = <int>[2000000000, 2100000000]
-    ..uint64Values = <Uint64>[
-      Uint64(9000000000),
-      Uint64(12000000000),
-    ]
+    ..uint64Values = <Uint64>[Uint64(9000000000), Uint64(12000000000)]
     ..float32Values = <Float32>[Float32(1.5), Float32(2.5)]
     ..float64Values = <double>[3.5, 4.5];
 }
 
 collection.NumericCollectionUnion buildNumericCollectionUnion() {
-  return collection.NumericCollectionUnion.int32Values(
-    <int>[7, 8, 9],
-  );
+  return collection.NumericCollectionUnion.int32Values(<int>[7, 8, 9]);
 }
 
 collection.NumericCollectionsArray buildNumericCollectionsArray() {
@@ -209,21 +241,21 @@ optional_types.OptionalHolder buildOptionalHolder() {
     ..int8Value = 12
     ..int16Value = 1234
     ..int32Value = -123456
-    ..fixedInt32Value = -123456
-    ..varint32Value = -12345
+    ..fixedI32Value = -123456
+    ..varintI32Value = -12345
     ..int64Value = Int64(-123456789)
-    ..fixedInt64Value = Int64(-123456789)
-    ..varint64Value = Int64(-987654321)
-    ..taggedInt64Value = Int64(123456789)
+    ..fixedI64Value = Int64(-123456789)
+    ..varintI64Value = Int64(-987654321)
+    ..taggedI64Value = Int64(123456789)
     ..uint8Value = 200
     ..uint16Value = 60000
     ..uint32Value = 1234567890
-    ..fixedUint32Value = 1234567890
-    ..varUint32Value = 1234567890
+    ..fixedU32Value = 1234567890
+    ..varintU32Value = 1234567890
     ..uint64Value = Uint64(9876543210)
-    ..fixedUint64Value = Uint64(9876543210)
-    ..varUint64Value = Uint64(12345678901)
-    ..taggedUint64Value = Uint64(2222222222)
+    ..fixedU64Value = Uint64(9876543210)
+    ..varintU64Value = Uint64(12345678901)
+    ..taggedU64Value = Uint64(2222222222)
     ..float32Value = Float32(2.5)
     ..float64Value = 3.5
     ..stringValue = 'optional'
@@ -239,73 +271,176 @@ optional_types.OptionalHolder buildOptionalHolder() {
     ..choice = optional_types.OptionalUnion.note('optional');
 }
 
-example.ExampleLeaf buildExampleLeaf() {
+example.ExampleLeaf buildExampleLeaf([String label = 'leaf', int count = 7]) {
   return example.ExampleLeaf()
-    ..label = 'leaf'
-    ..count = 7;
+    ..label = label
+    ..count = count;
 }
 
 example.ExampleMessage buildExampleMessage() {
   final leaf = buildExampleLeaf();
+  final otherLeaf = buildExampleLeaf('other', 8);
+  final leafUnion = example.ExampleLeafUnion.leaf(otherLeaf);
   return example.ExampleMessage()
     ..boolValue = true
-    ..int8Value = 12
-    ..int16Value = 1234
-    ..fixedInt32Value = -123456
-    ..varint32Value = -12345
-    ..fixedInt64Value = Int64(-123456789)
-    ..varint64Value = Int64(-987654321)
-    ..taggedInt64Value = Int64(123456789)
+    ..int8Value = -12
+    ..int16Value = -1234
+    ..fixedI32Value = -123456
+    ..varintI32Value = -12345
+    ..fixedI64Value = Int64(-123456789)
+    ..varintI64Value = Int64(-987654321)
+    ..taggedI64Value = Int64(123456789)
     ..uint8Value = 200
     ..uint16Value = 60000
-    ..fixedUint32Value = 1234567890
-    ..varUint32Value = 1234567890
-    ..fixedUint64Value = Uint64(9876543210)
-    ..varUint64Value = Uint64(12345678901)
-    ..taggedUint64Value = Uint64(2222222222)
+    ..fixedU32Value = 1234567890
+    ..varintU32Value = 1234567890
+    ..fixedU64Value = Uint64(9876543210)
+    ..varintU64Value = Uint64(12345678901)
+    ..taggedU64Value = Uint64(2222222222)
     ..float16Value = Float16(1.5)
     ..bfloat16Value = Bfloat16(2.5)
     ..float32Value = Float32(3.5)
     ..float64Value = 4.5
     ..stringValue = 'example'
     ..bytesValue = Uint8List.fromList(<int>[1, 2, 3])
-    ..dateValue = const LocalDate(2024, 1, 2)
-    ..timestampValue = Timestamp.fromDateTime(DateTime.utc(2024, 1, 2, 3, 4, 5))
-    ..durationValue = const Duration(seconds: 3)
+    ..dateValue = const LocalDate(2024, 2, 3)
+    ..timestampValue = Timestamp.fromDateTime(DateTime.utc(2024, 2, 3, 4, 5, 6))
+    ..durationValue = const Duration(seconds: 42, microseconds: 7)
     ..decimalValue = Decimal.fromInt(12345, scale: 2)
     ..enumValue = example.ExampleState.ready
     ..messageValue = leaf
-    ..unionValue = example.ExampleLeafUnion.leaf(leaf)
-    ..boolList = <bool>[true, false]
-    ..varint32List = <int>[1, -2, 3]
+    ..unionValue = leafUnion
+    ..boolList = <bool>[true, false, true]
+    ..int8List = <int>[1, -2, 3]
+    ..int16List = <int>[100, -200, 300]
+    ..fixedI32List = <int>[1000, -2000, 3000]
+    ..varintI32List = <int>[-10, 20, -30]
+    ..fixedI64List = <Int64>[Int64(10000), Int64(-20000)]
+    ..varintI64List = <Int64>[Int64(-40), Int64(50)]
+    ..taggedI64List = <Int64>[Int64(60), Int64(70)]
+    ..uint8List = <int>[200, 250]
+    ..uint16List = <int>[50000, 60000]
+    ..fixedU32List = <int>[2000000000, 2100000000]
+    ..varintU32List = <int>[100, 200]
+    ..fixedU64List = <Uint64>[Uint64(9000000000)]
+    ..varintU64List = <Uint64>[Uint64(12000000000)]
+    ..taggedU64List = <Uint64>[Uint64(13000000000)]
+    ..float16List = <Float16>[Float16(1.0), Float16(2.0)]
+    ..bfloat16List = <Bfloat16>[Bfloat16(1.0), Bfloat16(2.0)]
+    ..maybeFloat16List = <Float16?>[Float16(1.0), null, Float16(2.0)]
+    ..maybeBfloat16List = <Bfloat16?>[Bfloat16(1.0), null, Bfloat16(3.0)]
+    ..float32List = <Float32>[Float32(1.5), Float32(2.5)]
+    ..float64List = <double>[3.5, 4.5]
     ..stringList = <String>['alpha', 'beta']
     ..bytesList = <Uint8List>[
       Uint8List.fromList(<int>[4, 5]),
+      Uint8List.fromList(<int>[6, 7]),
     ]
-    ..messageList = <example.ExampleLeaf>[leaf]
+    ..dateList = <LocalDate>[
+      const LocalDate(2024, 1, 1),
+      const LocalDate(2024, 1, 2),
+    ]
+    ..timestampList = <Timestamp>[
+      Timestamp.fromDateTime(DateTime.utc(2024, 1, 1)),
+      Timestamp.fromDateTime(DateTime.utc(2024, 1, 2)),
+    ]
+    ..durationList = <Duration>[
+      const Duration(milliseconds: 1),
+      const Duration(seconds: 2),
+    ]
+    ..decimalList = <Decimal>[
+      Decimal.fromInt(125, scale: 2),
+      Decimal.fromInt(250, scale: 2),
+    ]
+    ..enumList = <example.ExampleState>[
+      example.ExampleState.unknown,
+      example.ExampleState.failed,
+    ]
+    ..messageList = <example.ExampleLeaf>[leaf, otherLeaf]
     ..unionList = <example.ExampleLeafUnion>[
       example.ExampleLeafUnion.note('note'),
+      leafUnion,
     ]
-    ..boolArray = <bool>[true, false]
-    ..int32Array = Int32List.fromList(<int>[10, -20, 30])
-    ..uint8Array = Uint8List.fromList(<int>[6, 7, 8])
-    ..float32Array = Float32List.fromList(<double>[1.25, 2.5])
+    ..maybeFixedI32List = <int?>[1, null, 3]
+    ..maybeUint64List = <Uint64?>[Uint64(10), null, Uint64(30)]
+    ..boolArray = BoolList.fromList(<bool>[true, false])
+    ..int8Array = Int8List.fromList(<int>[1, -2])
+    ..int16Array = Int16List.fromList(<int>[100, -200])
+    ..int32Array = Int32List.fromList(<int>[1000, -2000])
+    ..int64Array = Int64List.fromList(<int>[10000, -20000])
+    ..uint8Array = Uint8List.fromList(<int>[200, 250])
+    ..uint16Array = Uint16List.fromList(<int>[50000, 60000])
+    ..uint32Array = Uint32List.fromList(<int>[2000000000, 2100000000])
+    ..uint64Array = Uint64List.fromList(<int>[9000000000, 12000000000])
+    ..float16Array = Float16List.fromList(<Float16>[Float16(1.0), Float16(2.0)])
+    ..bfloat16Array =
+        Bfloat16List.fromList(<Bfloat16>[Bfloat16(1.0), Bfloat16(2.0)])
+    ..float32Array = Float32List.fromList(<double>[1.5, 2.5])
+    ..float64Array = Float64List.fromList(<double>[3.5, 4.5])
     ..int32ArrayList = <Int32List>[
       Int32List.fromList(<int>[1, 2]),
-      Int32List.fromList(<int>[-3]),
+      Int32List.fromList(<int>[3, 4]),
     ]
     ..uint8ArrayList = <Uint8List>[
-      Uint8List.fromList(<int>[1, 2]),
-      Uint8List.fromList(<int>[3]),
+      Uint8List.fromList(<int>[201, 202]),
+      Uint8List.fromList(<int>[203]),
     ]
+    ..stringValuesByBool = <bool, String>{true: 'bool'}
+    ..stringValuesByInt8 = <int, String>{-1: 'int8'}
+    ..stringValuesByInt16 = <int, String>{-2: 'int16'}
+    ..stringValuesByFixedI32 = <int, String>{-3: 'fixed-i32'}
+    ..stringValuesByVarintI32 = <int, String>{4: 'varint_i32'}
+    ..stringValuesByFixedI64 = <Int64, String>{Int64(-5): 'fixed-i64'}
+    ..stringValuesByVarintI64 = <Int64, String>{Int64(6): 'varint_i64'}
+    ..stringValuesByTaggedI64 = <Int64, String>{Int64(7): 'tagged-i64'}
+    ..stringValuesByUint8 = <int, String>{200: 'uint8'}
+    ..stringValuesByUint16 = <int, String>{60000: 'uint16'}
+    ..stringValuesByFixedU32 = <int, String>{1234567890: 'fixed-u32'}
+    ..stringValuesByVarintU32 = <int, String>{1234567891: 'varint-u32'}
+    ..stringValuesByFixedU64 = <Uint64, String>{Uint64(9876543210): 'fixed-u64'}
+    ..stringValuesByVarintU64 = <Uint64, String>{
+      Uint64(9876543211): 'varint-u64'
+    }
+    ..stringValuesByTaggedU64 = <Uint64, String>{
+      Uint64(9876543212): 'tagged-u64'
+    }
+    ..stringValuesByString = <String, String>{'name': 'value'}
+    ..stringValuesByTimestamp = <Timestamp, String>{
+      Timestamp.fromDateTime(DateTime.utc(2024, 3, 4, 5, 6, 7)): 'time',
+    }
+    ..stringValuesByDuration = <Duration, String>{
+      const Duration(seconds: 9): 'duration',
+    }
+    ..stringValuesByEnum = <example.ExampleState, String>{
+      example.ExampleState.ready: 'ready',
+    }
+    ..float16ValuesByName = <String, Float16>{'f16': Float16(1.25)}
+    ..maybeFloat16ValuesByName = <String, Float16?>{'maybe-f16': Float16(1.5)}
+    ..bfloat16ValuesByName = <String, Bfloat16>{'bf16': Bfloat16(1.75)}
+    ..maybeBfloat16ValuesByName = <String, Bfloat16?>{
+      'maybe-bf16': Bfloat16(2.25),
+    }
+    ..bytesValuesByName = <String, Uint8List>{
+      'bytes': Uint8List.fromList(<int>[8, 9]),
+    }
+    ..dateValuesByName = <String, LocalDate>{
+      'date': const LocalDate(2024, 5, 6),
+    }
+    ..decimalValuesByName = <String, Decimal>{
+      'decimal': Decimal.fromInt(9901, scale: 2),
+    }
+    ..messageValuesByName = <String, example.ExampleLeaf>{'leaf': leaf}
+    ..unionValuesByName = <String, example.ExampleLeafUnion>{
+      'union': example.ExampleLeafUnion.code(42),
+    }
     ..uint8ArrayValuesByName = <String, Uint8List>{
-      'bytes': Uint8List.fromList(<int>[9, 10]),
+      'u8': Uint8List.fromList(<int>[201, 202]),
     }
     ..float32ArrayValuesByName = <String, Float32List>{
-      'floats': Float32List.fromList(<double>[3.5, 4.5]),
+      'f32': Float32List.fromList(<double>[1.25, 2.5]),
     }
     ..int32ArrayValuesByName = <String, Int32List>{
-      'ints': Int32List.fromList(<int>[11, -12]),
+      'i32': Int32List.fromList(<int>[101, 202]),
     };
 }
 
@@ -314,6 +449,43 @@ example.ExampleMessageUnion buildExampleMessageUnion() {
     Int32List.fromList(<int>[11, 12]),
     Int32List.fromList(<int>[13, 14]),
   ]);
+}
+
+monster.Monster buildMonster() {
+  return monster.Monster()
+    ..pos = (monster.Vec3()
+      ..x = Float32(1.0)
+      ..y = Float32(2.0)
+      ..z = Float32(3.0))
+    ..mana = 200
+    ..hp = 80
+    ..name = 'Orc'
+    ..friendly = true
+    ..inventory = Uint8List.fromList(<int>[1, 2, 3])
+    ..color = monster.Color.blue;
+}
+
+complex_fbs.Container buildContainer() {
+  return complex_fbs.Container()
+    ..id = Uint64(9876543210)
+    ..status = complex_fbs.Status.started
+    ..bytes = Int8List.fromList(<int>[1, 2, 3])
+    ..numbers = Int32List.fromList(<int>[10, 20, 30])
+    ..scalars = (complex_fbs.ScalarPack()
+      ..b = -8
+      ..ub = 200
+      ..s = -1234
+      ..us = 40000
+      ..i = -123456
+      ..ui = 123456
+      ..l = Int64(-123456789)
+      ..ul = Uint64(987654321)
+      ..f = Float32(1.5)
+      ..d = 2.5
+      ..ok = true)
+    ..names = <String>['alpha', 'beta']
+    ..flags = BoolList.fromList(<bool>[true, false])
+    ..payload = complex_fbs.Payload.metric(complex_fbs.Metric()..value = 42.0);
 }
 
 tree.TreeNode buildTree() {
@@ -509,6 +681,38 @@ void _expectWrapperEquals(auto_id.Wrapper actual, auto_id.Wrapper expected) {
   }
 }
 
+void _expectPrimitiveTypesEquals(
+  complex_pb.PrimitiveTypes actual,
+  complex_pb.PrimitiveTypes expected,
+) {
+  expect(actual.boolValue, equals(expected.boolValue));
+  expect(actual.int8Value, equals(expected.int8Value));
+  expect(actual.int16Value, equals(expected.int16Value));
+  expect(actual.int32Value, equals(expected.int32Value));
+  expect(actual.varintI32Value, equals(expected.varintI32Value));
+  expect(actual.int64Value, equals(expected.int64Value));
+  expect(actual.varintI64Value, equals(expected.varintI64Value));
+  expect(actual.taggedI64Value, equals(expected.taggedI64Value));
+  expect(actual.uint8Value, equals(expected.uint8Value));
+  expect(actual.uint16Value, equals(expected.uint16Value));
+  expect(actual.uint32Value, equals(expected.uint32Value));
+  expect(actual.varintU32Value, equals(expected.varintU32Value));
+  expect(actual.uint64Value, equals(expected.uint64Value));
+  expect(actual.varintU64Value, equals(expected.varintU64Value));
+  expect(actual.taggedU64Value, equals(expected.taggedU64Value));
+  expect(actual.float32Value, equals(expected.float32Value));
+  expect(actual.float64Value, equals(expected.float64Value));
+  expect(actual.contact, isNotNull);
+  expect(expected.contact, isNotNull);
+  expect(actual.contact!.caseValue, equals(expected.contact!.caseValue));
+  switch (expected.contact!.caseValue) {
+    case complex_pb.PrimitiveTypes_ContactCase.email:
+      expect(actual.contact!.emailValue, equals(expected.contact!.emailValue));
+    case complex_pb.PrimitiveTypes_ContactCase.phone:
+      expect(actual.contact!.phoneValue, equals(expected.contact!.phoneValue));
+  }
+}
+
 void _expectNumericCollectionsEquals(
   collection.NumericCollections actual,
   collection.NumericCollections expected,
@@ -637,21 +841,21 @@ void _expectOptionalTypesEquals(
   expect(actual.int8Value, equals(expected.int8Value));
   expect(actual.int16Value, equals(expected.int16Value));
   expect(actual.int32Value, equals(expected.int32Value));
-  expect(actual.fixedInt32Value, equals(expected.fixedInt32Value));
-  expect(actual.varint32Value, equals(expected.varint32Value));
+  expect(actual.fixedI32Value, equals(expected.fixedI32Value));
+  expect(actual.varintI32Value, equals(expected.varintI32Value));
   expect(actual.int64Value, equals(expected.int64Value));
-  expect(actual.fixedInt64Value, equals(expected.fixedInt64Value));
-  expect(actual.varint64Value, equals(expected.varint64Value));
-  expect(actual.taggedInt64Value, equals(expected.taggedInt64Value));
+  expect(actual.fixedI64Value, equals(expected.fixedI64Value));
+  expect(actual.varintI64Value, equals(expected.varintI64Value));
+  expect(actual.taggedI64Value, equals(expected.taggedI64Value));
   expect(actual.uint8Value, equals(expected.uint8Value));
   expect(actual.uint16Value, equals(expected.uint16Value));
   expect(actual.uint32Value, equals(expected.uint32Value));
-  expect(actual.fixedUint32Value, equals(expected.fixedUint32Value));
-  expect(actual.varUint32Value, equals(expected.varUint32Value));
+  expect(actual.fixedU32Value, equals(expected.fixedU32Value));
+  expect(actual.varintU32Value, equals(expected.varintU32Value));
   expect(actual.uint64Value, equals(expected.uint64Value));
-  expect(actual.fixedUint64Value, equals(expected.fixedUint64Value));
-  expect(actual.varUint64Value, equals(expected.varUint64Value));
-  expect(actual.taggedUint64Value, equals(expected.taggedUint64Value));
+  expect(actual.fixedU64Value, equals(expected.fixedU64Value));
+  expect(actual.varintU64Value, equals(expected.varintU64Value));
+  expect(actual.taggedU64Value, equals(expected.taggedU64Value));
   expect(actual.float32Value, equals(expected.float32Value));
   expect(actual.float64Value, equals(expected.float64Value));
   expect(actual.stringValue, equals(expected.stringValue));
@@ -746,18 +950,18 @@ void _expectExampleMessageEquals(
   expect(actual.boolValue, equals(expected.boolValue));
   expect(actual.int8Value, equals(expected.int8Value));
   expect(actual.int16Value, equals(expected.int16Value));
-  expect(actual.fixedInt32Value, equals(expected.fixedInt32Value));
-  expect(actual.varint32Value, equals(expected.varint32Value));
-  expect(actual.fixedInt64Value, equals(expected.fixedInt64Value));
-  expect(actual.varint64Value, equals(expected.varint64Value));
-  expect(actual.taggedInt64Value, equals(expected.taggedInt64Value));
+  expect(actual.fixedI32Value, equals(expected.fixedI32Value));
+  expect(actual.varintI32Value, equals(expected.varintI32Value));
+  expect(actual.fixedI64Value, equals(expected.fixedI64Value));
+  expect(actual.varintI64Value, equals(expected.varintI64Value));
+  expect(actual.taggedI64Value, equals(expected.taggedI64Value));
   expect(actual.uint8Value, equals(expected.uint8Value));
   expect(actual.uint16Value, equals(expected.uint16Value));
-  expect(actual.fixedUint32Value, equals(expected.fixedUint32Value));
-  expect(actual.varUint32Value, equals(expected.varUint32Value));
-  expect(actual.fixedUint64Value, equals(expected.fixedUint64Value));
-  expect(actual.varUint64Value, equals(expected.varUint64Value));
-  expect(actual.taggedUint64Value, equals(expected.taggedUint64Value));
+  expect(actual.fixedU32Value, equals(expected.fixedU32Value));
+  expect(actual.varintU32Value, equals(expected.varintU32Value));
+  expect(actual.fixedU64Value, equals(expected.fixedU64Value));
+  expect(actual.varintU64Value, equals(expected.varintU64Value));
+  expect(actual.taggedU64Value, equals(expected.taggedU64Value));
   expect(actual.float16Value, equals(expected.float16Value));
   expect(actual.bfloat16Value, equals(expected.bfloat16Value));
   expect(actual.float32Value, equals(expected.float32Value));
@@ -774,12 +978,36 @@ void _expectExampleMessageEquals(
   _expectExampleLeafEquals(actual.messageValue!, expected.messageValue!);
   _expectExampleLeafUnionEquals(actual.unionValue, expected.unionValue);
   expect(actual.boolList, orderedEquals(expected.boolList));
-  expect(actual.varint32List, orderedEquals(expected.varint32List));
+  expect(actual.int8List, orderedEquals(expected.int8List));
+  expect(actual.int16List, orderedEquals(expected.int16List));
+  expect(actual.fixedI32List, orderedEquals(expected.fixedI32List));
+  expect(actual.varintI32List, orderedEquals(expected.varintI32List));
+  expect(actual.fixedI64List, orderedEquals(expected.fixedI64List));
+  expect(actual.varintI64List, orderedEquals(expected.varintI64List));
+  expect(actual.taggedI64List, orderedEquals(expected.taggedI64List));
+  expect(actual.uint8List, orderedEquals(expected.uint8List));
+  expect(actual.uint16List, orderedEquals(expected.uint16List));
+  expect(actual.fixedU32List, orderedEquals(expected.fixedU32List));
+  expect(actual.varintU32List, orderedEquals(expected.varintU32List));
+  expect(actual.fixedU64List, orderedEquals(expected.fixedU64List));
+  expect(actual.varintU64List, orderedEquals(expected.varintU64List));
+  expect(actual.taggedU64List, orderedEquals(expected.taggedU64List));
+  expect(actual.float16List, orderedEquals(expected.float16List));
+  expect(actual.bfloat16List, orderedEquals(expected.bfloat16List));
+  expect(actual.maybeFloat16List, orderedEquals(expected.maybeFloat16List));
+  expect(actual.maybeBfloat16List, orderedEquals(expected.maybeBfloat16List));
+  expect(actual.float32List, orderedEquals(expected.float32List));
+  expect(actual.float64List, orderedEquals(expected.float64List));
   expect(actual.stringList, orderedEquals(expected.stringList));
   _expectListOfListsEquals<int, Uint8List>(
     actual.bytesList,
     expected.bytesList,
   );
+  expect(actual.dateList, orderedEquals(expected.dateList));
+  expect(actual.timestampList, orderedEquals(expected.timestampList));
+  expect(actual.durationList, orderedEquals(expected.durationList));
+  expect(actual.decimalList, orderedEquals(expected.decimalList));
+  expect(actual.enumList, orderedEquals(expected.enumList));
   expect(actual.messageList.length, expected.messageList.length);
   for (var index = 0; index < expected.messageList.length; index += 1) {
     _expectExampleLeafEquals(
@@ -794,10 +1022,21 @@ void _expectExampleMessageEquals(
       expected.unionList[index],
     );
   }
+  expect(actual.maybeFixedI32List, orderedEquals(expected.maybeFixedI32List));
+  expect(actual.maybeUint64List, orderedEquals(expected.maybeUint64List));
   expect(actual.boolArray, orderedEquals(expected.boolArray));
+  expect(actual.int8Array, orderedEquals(expected.int8Array));
+  expect(actual.int16Array, orderedEquals(expected.int16Array));
   expect(actual.int32Array, orderedEquals(expected.int32Array));
+  expect(actual.int64Array, orderedEquals(expected.int64Array));
   expect(actual.uint8Array, orderedEquals(expected.uint8Array));
+  expect(actual.uint16Array, orderedEquals(expected.uint16Array));
+  expect(actual.uint32Array, orderedEquals(expected.uint32Array));
+  expect(actual.uint64Array, orderedEquals(expected.uint64Array));
+  expect(actual.float16Array, orderedEquals(expected.float16Array));
+  expect(actual.bfloat16Array, orderedEquals(expected.bfloat16Array));
   expect(actual.float32Array, orderedEquals(expected.float32Array));
+  expect(actual.float64Array, orderedEquals(expected.float64Array));
   _expectListOfListsEquals<int, Int32List>(
     actual.int32ArrayList,
     expected.int32ArrayList,
@@ -806,6 +1045,66 @@ void _expectExampleMessageEquals(
     actual.uint8ArrayList,
     expected.uint8ArrayList,
   );
+  _expectMapEquals(actual.stringValuesByBool, expected.stringValuesByBool);
+  _expectMapEquals(actual.stringValuesByInt8, expected.stringValuesByInt8);
+  _expectMapEquals(actual.stringValuesByInt16, expected.stringValuesByInt16);
+  _expectMapEquals(
+      actual.stringValuesByFixedI32, expected.stringValuesByFixedI32);
+  _expectMapEquals(
+      actual.stringValuesByVarintI32, expected.stringValuesByVarintI32);
+  _expectMapEquals(
+      actual.stringValuesByFixedI64, expected.stringValuesByFixedI64);
+  _expectMapEquals(
+      actual.stringValuesByVarintI64, expected.stringValuesByVarintI64);
+  _expectMapEquals(
+      actual.stringValuesByTaggedI64, expected.stringValuesByTaggedI64);
+  _expectMapEquals(actual.stringValuesByUint8, expected.stringValuesByUint8);
+  _expectMapEquals(actual.stringValuesByUint16, expected.stringValuesByUint16);
+  _expectMapEquals(
+      actual.stringValuesByFixedU32, expected.stringValuesByFixedU32);
+  _expectMapEquals(
+      actual.stringValuesByVarintU32, expected.stringValuesByVarintU32);
+  _expectMapEquals(
+      actual.stringValuesByFixedU64, expected.stringValuesByFixedU64);
+  _expectMapEquals(
+      actual.stringValuesByVarintU64, expected.stringValuesByVarintU64);
+  _expectMapEquals(
+      actual.stringValuesByTaggedU64, expected.stringValuesByTaggedU64);
+  _expectMapEquals(actual.stringValuesByString, expected.stringValuesByString);
+  _expectMapEquals(
+      actual.stringValuesByTimestamp, expected.stringValuesByTimestamp);
+  _expectMapEquals(
+      actual.stringValuesByDuration, expected.stringValuesByDuration);
+  _expectMapEquals(actual.stringValuesByEnum, expected.stringValuesByEnum);
+  _expectMapEquals(actual.float16ValuesByName, expected.float16ValuesByName);
+  _expectMapEquals(
+    actual.maybeFloat16ValuesByName,
+    expected.maybeFloat16ValuesByName,
+  );
+  _expectMapEquals(actual.bfloat16ValuesByName, expected.bfloat16ValuesByName);
+  _expectMapEquals(
+    actual.maybeBfloat16ValuesByName,
+    expected.maybeBfloat16ValuesByName,
+  );
+  _expectMapOfListsEquals<String, int, Uint8List>(
+    actual.bytesValuesByName,
+    expected.bytesValuesByName,
+  );
+  _expectMapEquals(actual.dateValuesByName, expected.dateValuesByName);
+  _expectMapEquals(actual.decimalValuesByName, expected.decimalValuesByName);
+  expect(
+      actual.messageValuesByName.length, expected.messageValuesByName.length);
+  for (final entry in expected.messageValuesByName.entries) {
+    final actualValue = actual.messageValuesByName[entry.key];
+    expect(actualValue, isNotNull);
+    _expectExampleLeafEquals(actualValue!, entry.value);
+  }
+  expect(actual.unionValuesByName.length, expected.unionValuesByName.length);
+  for (final entry in expected.unionValuesByName.entries) {
+    final actualValue = actual.unionValuesByName[entry.key];
+    expect(actualValue, isNotNull);
+    _expectExampleLeafUnionEquals(actualValue!, entry.value);
+  }
   _expectMapOfListsEquals<String, int, Uint8List>(
     actual.uint8ArrayValuesByName,
     expected.uint8ArrayValuesByName,
@@ -846,6 +1145,66 @@ void _expectExampleMessageUnionEquals(
     default:
       fail('Unexpected example union case ${expected.caseValue}');
   }
+}
+
+void _expectMonsterEquals(monster.Monster actual, monster.Monster expected) {
+  expect(actual.pos, isNotNull);
+  expect(expected.pos, isNotNull);
+  expect(actual.pos!.x, equals(expected.pos!.x));
+  expect(actual.pos!.y, equals(expected.pos!.y));
+  expect(actual.pos!.z, equals(expected.pos!.z));
+  expect(actual.mana, equals(expected.mana));
+  expect(actual.hp, equals(expected.hp));
+  expect(actual.name, equals(expected.name));
+  expect(actual.friendly, equals(expected.friendly));
+  expect(actual.inventory, orderedEquals(expected.inventory));
+  expect(actual.color, equals(expected.color));
+}
+
+void _expectScalarPackEquals(
+  complex_fbs.ScalarPack actual,
+  complex_fbs.ScalarPack expected,
+) {
+  expect(actual.b, equals(expected.b));
+  expect(actual.ub, equals(expected.ub));
+  expect(actual.s, equals(expected.s));
+  expect(actual.us, equals(expected.us));
+  expect(actual.i, equals(expected.i));
+  expect(actual.ui, equals(expected.ui));
+  expect(actual.l, equals(expected.l));
+  expect(actual.ul, equals(expected.ul));
+  expect(actual.f, equals(expected.f));
+  expect(actual.d, equals(expected.d));
+  expect(actual.ok, equals(expected.ok));
+}
+
+void _expectPayloadEquals(
+  complex_fbs.Payload actual,
+  complex_fbs.Payload expected,
+) {
+  expect(actual.caseValue, equals(expected.caseValue));
+  switch (expected.caseValue) {
+    case complex_fbs.PayloadCase.note:
+      expect(actual.noteValue.text, equals(expected.noteValue.text));
+    case complex_fbs.PayloadCase.metric:
+      expect(actual.metricValue.value, equals(expected.metricValue.value));
+  }
+}
+
+void _expectContainerEquals(
+  complex_fbs.Container actual,
+  complex_fbs.Container expected,
+) {
+  expect(actual.id, equals(expected.id));
+  expect(actual.status, equals(expected.status));
+  expect(actual.bytes, orderedEquals(expected.bytes));
+  expect(actual.numbers, orderedEquals(expected.numbers));
+  expect(actual.scalars, isNotNull);
+  expect(expected.scalars, isNotNull);
+  _expectScalarPackEquals(actual.scalars!, expected.scalars!);
+  expect(actual.names, orderedEquals(expected.names));
+  expect(actual.flags, orderedEquals(expected.flags));
+  _expectPayloadEquals(actual.payload, expected.payload);
 }
 
 void _expectTree(tree.TreeNode actual) {
@@ -909,6 +1268,13 @@ void main() {
           final wrapper = auto_id.Wrapper.envelope(envelope);
           final wrapperRoundTrip = _roundTrip<auto_id.Wrapper>(fory, wrapper);
           _expectWrapperEquals(wrapperRoundTrip, wrapper);
+
+          final primitiveTypes = buildPrimitiveTypes();
+          final primitiveRoundTrip = _roundTrip<complex_pb.PrimitiveTypes>(
+            fory,
+            primitiveTypes,
+          );
+          _expectPrimitiveTypesEquals(primitiveRoundTrip, primitiveTypes);
         }
       },
     );
@@ -961,6 +1327,18 @@ void main() {
         _roundTrip<example.ExampleMessageUnion>(fory, exampleUnion),
         exampleUnion,
       );
+
+      final monsterValue = buildMonster();
+      _expectMonsterEquals(
+        _roundTrip<monster.Monster>(fory, monsterValue),
+        monsterValue,
+      );
+
+      final container = buildContainer();
+      _expectContainerEquals(
+        _roundTrip<complex_fbs.Container>(fory, container),
+        container,
+      );
     });
 
     test('reference graphs and root helpers roundtrip', () {
@@ -991,7 +1369,9 @@ void main() {
     });
 
     test('interop file roundtrip hooks when env vars are set', () {
-      final fory = _newFory(compatible: true);
+      final compatible =
+          Platform.environment['IDL_COMPATIBLE']?.toLowerCase() != 'false';
+      final fory = _newFory(compatible: compatible);
       _registerCommon(fory);
       _registerRefs(fory);
 
@@ -1006,6 +1386,52 @@ void main() {
         fory,
         buildAutoIdEnvelope(),
         (actual) => _expectEnvelopeEquals(actual, buildAutoIdEnvelope()),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_PRIMITIVES'],
+        fory,
+        buildPrimitiveTypes(),
+        (actual) => _expectPrimitiveTypesEquals(actual, buildPrimitiveTypes()),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_COLLECTION'],
+        fory,
+        buildNumericCollections(),
+        (actual) =>
+            _expectNumericCollectionsEquals(actual, buildNumericCollections()),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_COLLECTION_UNION'],
+        fory,
+        buildNumericCollectionUnion(),
+        (actual) => _expectNumericCollectionUnionEquals(
+          actual,
+          buildNumericCollectionUnion(),
+        ),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_COLLECTION_ARRAY'],
+        fory,
+        buildNumericCollectionsArray(),
+        (actual) => _expectNumericCollectionsArrayEquals(
+          actual,
+          buildNumericCollectionsArray(),
+        ),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_COLLECTION_ARRAY_UNION'],
+        fory,
+        buildNumericCollectionArrayUnion(),
+        (actual) => _expectNumericCollectionArrayUnionEquals(
+          actual,
+          buildNumericCollectionArrayUnion(),
+        ),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_OPTIONAL_TYPES'],
+        fory,
+        buildOptionalHolder(),
+        (actual) => _expectOptionalHolderEquals(actual, buildOptionalHolder()),
       );
       _roundTripFile(
         Platform.environment['DATA_FILE_TREE'],
@@ -1035,6 +1461,18 @@ void main() {
           actual,
           buildExampleMessageUnion(),
         ),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_FLATBUFFERS_MONSTER'],
+        fory,
+        buildMonster(),
+        (actual) => _expectMonsterEquals(actual, buildMonster()),
+      );
+      _roundTripFile(
+        Platform.environment['DATA_FILE_FLATBUFFERS_TEST2'],
+        fory,
+        buildContainer(),
+        (actual) => _expectContainerEquals(actual, buildContainer()),
       );
     });
   });

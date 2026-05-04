@@ -25,12 +25,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.apache.fory.config.Int64Encoding;
 
-/**
- * Annotation to mark a {@code long}/{@link Long} field or nested type-use position as an unsigned
- * 64-bit integer.
- */
+/** Annotation to mark a {@code long}/{@link Long} type-use position as an unsigned 64-bit integer. */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+@Target(ElementType.TYPE_USE)
 public @interface UInt64Type {
   /** The encoding strategy to use for this uint64 value. */
   Int64Encoding encoding() default Int64Encoding.VARINT;

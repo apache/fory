@@ -90,7 +90,7 @@ fory.register_type(Address, type_id=101)
    ```python
    @dataclass
    class Data:
-       value: pyfory.Int32Type  # Not just 'int'
+       value: pyfory.Int32  # Not just 'int'
    ```
 
 2. Ensure integer ranges are compatible:
@@ -111,7 +111,7 @@ fory.register_type(Address, type_id=101)
    ```python
    @dataclass
    class Data:
-       value: pyfory.Float32Type  # Explicit 32-bit float
+       value: pyfory.Float32  # Explicit 32-bit float
    ```
 
 2. Be aware that Python's `float` maps to `float64` by default
@@ -159,7 +159,7 @@ public class Person {
 @dataclass
 class Person:
     name: str
-    age: pyfory.Int32Type
+    age: pyfory.Int32
     email: str
 ```
 
@@ -291,7 +291,7 @@ python deserializer.py data.bin
 1. **Not registering types**: Always register custom types before use
 2. **Inconsistent type names/IDs**: Use the same names/IDs across all languages
 3. **Forgetting xlang mode**: Use `.withXlang(true)` in Java
-4. **Wrong type annotations**: Use `pyfory.Int32Type` etc. in Python
+4. **Wrong type annotations**: Use markers such as `pyfory.Int32` in Python
 5. **Ignoring reference tracking**: Enable for circular/shared references
 
 ## See Also

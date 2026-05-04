@@ -1199,7 +1199,7 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Install Dart SDK
         run: |
-          DART_VERSION=3.6.1
+          DART_VERSION=3.10.7
           wget -q https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-x64-release.zip
           unzip -q dartsdk-linux-x64-release.zip
           echo "$PWD/dart-sdk/bin" >> $GITHUB_PATH
@@ -1237,7 +1237,7 @@ jobs:
       - name: Install Dart SDK
         run: |
           # Download and install Dart SDK
-          DART_VERSION=3.6.1
+          DART_VERSION=3.10.7
           wget -q https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-x64-release.zip
           unzip -q dartsdk-linux-x64-release.zip
           export PATH="$PATH:$PWD/dart-sdk/bin"

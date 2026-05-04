@@ -721,7 +721,7 @@ public class IdlRoundTripTest {
             .filter(value -> !value.isEmpty())
             .collect(Collectors.toList());
     if (peers.contains("all")) {
-      return Arrays.asList("python", "go", "rust", "cpp", "swift", "javascript");
+      return Arrays.asList("python", "go", "rust", "cpp", "swift", "javascript", "csharp", "dart");
     }
     return peers;
   }
@@ -784,6 +784,28 @@ public class IdlRoundTripTest {
       case "javascript":
         workDir = idlRoot.resolve("javascript");
         command = Arrays.asList("npx", "ts-node", "roundtrip.ts");
+        peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+        break;
+      case "csharp":
+        workDir = idlRoot.resolve("csharp").resolve("IdlTests");
+        command =
+            Arrays.asList(
+                "dotnet",
+                "test",
+                "-c",
+                "Release",
+                "--filter",
+                "FullyQualifiedName~Apache.Fory.IdlTests.RoundtripTests");
+        peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+        break;
+      case "dart":
+        workDir = idlRoot.resolve("dart");
+        command =
+            Arrays.asList(
+                "dart",
+                "test",
+                "--name",
+                "interop file roundtrip hooks when env vars are set");
         peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       default:
@@ -945,17 +967,17 @@ public class IdlRoundTripTest {
     types.setInt8Value((byte) 12);
     types.setInt16Value((short) 1234);
     types.setInt32Value(-123456);
-    types.setVarint32Value(-12345);
+    types.setVarintI32Value(-12345);
     types.setInt64Value(-123456789L);
-    types.setVarint64Value(-987654321L);
-    types.setTaggedInt64Value(123456789L);
+    types.setVarintI64Value(-987654321L);
+    types.setTaggedI64Value(123456789L);
     types.setUint8Value(200);
     types.setUint16Value(60000);
     types.setUint32Value(1234567890);
-    types.setVarUint32Value(1234567890);
+    types.setVarintU32Value(1234567890);
     types.setUint64Value(9876543210L);
-    types.setVarUint64Value(12345678901L);
-    types.setTaggedUint64Value(2222222222L);
+    types.setVarintU64Value(12345678901L);
+    types.setTaggedU64Value(2222222222L);
     types.setFloat32Value(2.5f);
     types.setFloat64Value(3.5d);
     PrimitiveTypes.Contact contact = PrimitiveTypes.Contact.ofEmail("alice@example.com");
@@ -1011,18 +1033,18 @@ public class IdlRoundTripTest {
     message.setBoolValue(true);
     message.setInt8Value((byte) -12);
     message.setInt16Value((short) -1234);
-    message.setFixedInt32Value(-123456);
-    message.setVarint32Value(-12345);
-    message.setFixedInt64Value(-123456789L);
-    message.setVarint64Value(-987654321L);
-    message.setTaggedInt64Value(123456789L);
+    message.setFixedI32Value(-123456);
+    message.setVarintI32Value(-12345);
+    message.setFixedI64Value(-123456789L);
+    message.setVarintI64Value(-987654321L);
+    message.setTaggedI64Value(123456789L);
     message.setUint8Value(200);
     message.setUint16Value(60000);
-    message.setFixedUint32Value(1234567890L);
-    message.setVarUint32Value(1234567890L);
-    message.setFixedUint64Value(9876543210L);
-    message.setVarUint64Value(12345678901L);
-    message.setTaggedUint64Value(2222222222L);
+    message.setFixedU32Value(1234567890L);
+    message.setVarintU32Value(1234567890L);
+    message.setFixedU64Value(9876543210L);
+    message.setVarintU64Value(12345678901L);
+    message.setTaggedU64Value(2222222222L);
     message.setFloat16Value(Float16.valueOf(1.5f));
     message.setBfloat16Value(BFloat16.valueOf(2.5f));
     message.setFloat32Value(3.5f);
@@ -1040,18 +1062,18 @@ public class IdlRoundTripTest {
     message.setBoolList(new BoolList(new boolean[] {true, false, true}));
     message.setInt8List(new Int8List(new byte[] {1, -2, 3}));
     message.setInt16List(new Int16List(new short[] {100, -200, 300}));
-    message.setFixedInt32List(new Int32List(new int[] {1000, -2000, 3000}));
-    message.setVarint32List(new Int32List(new int[] {-10, 20, -30}));
-    message.setFixedInt64List(new Int64List(new long[] {10000L, -20000L}));
-    message.setVarint64List(new Int64List(new long[] {-40L, 50L}));
-    message.setTaggedInt64List(new Int64List(new long[] {60L, 70L}));
+    message.setFixedI32List(new Int32List(new int[] {1000, -2000, 3000}));
+    message.setVarintI32List(new Int32List(new int[] {-10, 20, -30}));
+    message.setFixedI64List(new Int64List(new long[] {10000L, -20000L}));
+    message.setVarintI64List(new Int64List(new long[] {-40L, 50L}));
+    message.setTaggedI64List(new Int64List(new long[] {60L, 70L}));
     message.setUint8List(new UInt8List(new byte[] {(byte) 200, (byte) 250}));
     message.setUint16List(new UInt16List(new short[] {(short) 50000, (short) 60000}));
-    message.setFixedUint32List(new UInt32List(new int[] {2000000000, 2100000000}));
-    message.setVarUint32List(new UInt32List(new int[] {100, 200}));
-    message.setFixedUint64List(new UInt64List(new long[] {9000000000L}));
-    message.setVarUint64List(new UInt64List(new long[] {12000000000L}));
-    message.setTaggedUint64List(new UInt64List(new long[] {13000000000L}));
+    message.setFixedU32List(new UInt32List(new int[] {2000000000, 2100000000}));
+    message.setVarintU32List(new UInt32List(new int[] {100, 200}));
+    message.setFixedU64List(new UInt64List(new long[] {9000000000L}));
+    message.setVarintU64List(new UInt64List(new long[] {12000000000L}));
+    message.setTaggedU64List(new UInt64List(new long[] {13000000000L}));
     message.setFloat16List(new Float16List(new short[] {0x3C00, 0x4000}));
     message.setBfloat16List(new BFloat16List(new short[] {0x3F80, 0x4000}));
     message.setMaybeFloat16List(Arrays.asList(Float16.ONE, null, Float16.valueOf(2.0f)));
@@ -1070,7 +1092,7 @@ public class IdlRoundTripTest {
     message.setEnumList(Arrays.asList(ExampleState.UNKNOWN, ExampleState.FAILED));
     message.setMessageList(Arrays.asList(leaf, otherLeaf));
     message.setUnionList(Arrays.asList(ExampleLeafUnion.ofNote("note"), leafUnion));
-    message.setMaybeFixedInt32List(Arrays.asList(1, null, 3));
+    message.setMaybeFixedI32List(Arrays.asList(1, null, 3));
     message.setMaybeUint64List(Arrays.asList(10L, null, 30L));
 
     message.setBoolArray(new boolean[] {true, false});
@@ -1094,18 +1116,18 @@ public class IdlRoundTripTest {
     message.setStringValuesByBool(Map.of(Boolean.TRUE, "bool"));
     message.setStringValuesByInt8(Map.of((byte) -1, "int8"));
     message.setStringValuesByInt16(Map.of((short) -2, "int16"));
-    message.setStringValuesByFixedInt32(Map.of(-3, "fixed-int32"));
-    message.setStringValuesByVarint32(Map.of(4, "varint32"));
-    message.setStringValuesByFixedInt64(Map.of(-5L, "fixed-int64"));
-    message.setStringValuesByVarint64(Map.of(6L, "varint64"));
-    message.setStringValuesByTaggedInt64(Map.of(7L, "tagged-int64"));
+    message.setStringValuesByFixedI32(Map.of(-3, "fixed-i32"));
+    message.setStringValuesByVarintI32(Map.of(4, "varint_i32"));
+    message.setStringValuesByFixedI64(Map.of(-5L, "fixed-i64"));
+    message.setStringValuesByVarintI64(Map.of(6L, "varint_i64"));
+    message.setStringValuesByTaggedI64(Map.of(7L, "tagged-i64"));
     message.setStringValuesByUint8(Map.of(200, "uint8"));
     message.setStringValuesByUint16(Map.of(60000, "uint16"));
-    message.setStringValuesByFixedUint32(Map.of(1234567890L, "fixed-uint32"));
-    message.setStringValuesByVarUint32(Map.of(1234567891L, "var-uint32"));
-    message.setStringValuesByFixedUint64(Map.of(9876543210L, "fixed-uint64"));
-    message.setStringValuesByVarUint64(Map.of(9876543211L, "var-uint64"));
-    message.setStringValuesByTaggedUint64(Map.of(9876543212L, "tagged-uint64"));
+    message.setStringValuesByFixedU32(Map.of(1234567890L, "fixed-u32"));
+    message.setStringValuesByVarintU32(Map.of(1234567891L, "varint-u32"));
+    message.setStringValuesByFixedU64(Map.of(9876543210L, "fixed-u64"));
+    message.setStringValuesByVarintU64(Map.of(9876543211L, "varint-u64"));
+    message.setStringValuesByTaggedU64(Map.of(9876543212L, "tagged-u64"));
     message.setStringValuesByString(Map.of("name", "value"));
     message.setStringValuesByTimestamp(Map.of(Instant.parse("2024-03-04T05:06:07Z"), "time"));
     message.setStringValuesByDuration(Map.of(Duration.ofSeconds(9), "duration"));
@@ -1192,21 +1214,21 @@ public class IdlRoundTripTest {
     allTypes.setInt8Value((byte) 12);
     allTypes.setInt16Value((short) 1234);
     allTypes.setInt32Value(-123456);
-    allTypes.setFixedInt32Value(-123456);
-    allTypes.setVarint32Value(-12345);
+    allTypes.setFixedI32Value(-123456);
+    allTypes.setVarintI32Value(-12345);
     allTypes.setInt64Value(-123456789L);
-    allTypes.setFixedInt64Value(-123456789L);
-    allTypes.setVarint64Value(-987654321L);
-    allTypes.setTaggedInt64Value(123456789L);
+    allTypes.setFixedI64Value(-123456789L);
+    allTypes.setVarintI64Value(-987654321L);
+    allTypes.setTaggedI64Value(123456789L);
     allTypes.setUint8Value(200);
     allTypes.setUint16Value(60000);
     allTypes.setUint32Value(1234567890L);
-    allTypes.setFixedUint32Value(1234567890L);
-    allTypes.setVarUint32Value(1234567890L);
+    allTypes.setFixedU32Value(1234567890L);
+    allTypes.setVarintU32Value(1234567890L);
     allTypes.setUint64Value(9876543210L);
-    allTypes.setFixedUint64Value(9876543210L);
-    allTypes.setVarUint64Value(12345678901L);
-    allTypes.setTaggedUint64Value(2222222222L);
+    allTypes.setFixedU64Value(9876543210L);
+    allTypes.setVarintU64Value(12345678901L);
+    allTypes.setTaggedU64Value(2222222222L);
     allTypes.setFloat32Value(2.5f);
     allTypes.setFloat64Value(3.5);
     allTypes.setStringValue("optional");

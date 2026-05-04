@@ -67,23 +67,23 @@ class SimpleTypeDef:
 class NestedEncodingTypeDef:
     """TypeDef with nested primitive encoding overrides."""
 
-    values: Dict[pyfory.fixed_int32, List[pyfory.tagged_int64]]
+    values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]]
 
 
 @dataclass
 class PythonArrayTypeHints:
     """TypeDef with list and explicit array schema markers."""
 
-    values: List[pyfory.int32]
-    dense_values: pyfory.Array[pyfory.int32]
-    numpy_values: pyfory.NDArray[pyfory.uint8]
-    std_values: pyfory.StdArray[pyfory.float64]
+    values: List[pyfory.Int32]
+    dense_values: pyfory.Array[pyfory.Int32]
+    numpy_values: pyfory.NDArray[pyfory.UInt8]
+    py_values: pyfory.PyArray[pyfory.Float64]
     payload: bytes
 
 
 @dataclass
 class InvalidArrayModifierTypeDef:
-    values: pyfory.Array[pyfory.fixed_int32]
+    values: pyfory.Array[pyfory.FixedInt32]
 
 
 @dataclass
@@ -93,7 +93,7 @@ class BytesPayload:
 
 @dataclass
 class UInt8ArrayPayload:
-    payload: pyfory.Array[pyfory.uint8]
+    payload: pyfory.Array[pyfory.UInt8]
 
 
 def test_collection_field_type():
@@ -219,7 +219,7 @@ def test_python_array_typehint_lowering_keeps_list_schema_distinct():
     assert fields["values"].element_type.type_id == TypeId.VARINT32
     assert fields["dense_values"].type_id == TypeId.INT32_ARRAY
     assert fields["numpy_values"].type_id == TypeId.UINT8_ARRAY
-    assert fields["std_values"].type_id == TypeId.FLOAT64_ARRAY
+    assert fields["py_values"].type_id == TypeId.FLOAT64_ARRAY
     assert fields["payload"].type_id == TypeId.BINARY
 
     decoded_typedef = decode_typedef(Buffer(typedef.encoded), fory.type_resolver)

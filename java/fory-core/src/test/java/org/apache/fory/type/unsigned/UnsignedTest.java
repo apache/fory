@@ -33,6 +33,7 @@ import org.apache.fory.annotation.UInt32Type;
 import org.apache.fory.annotation.UInt64Type;
 import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.serializer.UnsignedSerializers;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -185,13 +186,13 @@ public class UnsignedTest {
   @NoArgsConstructor
   @AllArgsConstructor
   public static class PrimitiveUIntPojo {
-    @UInt8Type private int uInt8Field;
+    private @UInt8Type int uInt8Field;
 
-    @UInt16Type private int uInt16Field;
+    private @UInt16Type int uInt16Field;
 
-    @UInt32Type private long uInt32Field;
+    private @UInt32Type long uInt32Field;
 
-    @UInt64Type private long uInt64Field;
+    private @UInt64Type long uInt64Field;
   }
 
   // POJO3: Using boxed types with UInt annotations and non-nullable
@@ -199,21 +200,17 @@ public class UnsignedTest {
   @NoArgsConstructor
   @AllArgsConstructor
   public static class BoxedUIntPojo {
-    @UInt8Type
     @ForyField(nullable = false)
-    private Integer uInt8Field;
+    private @UInt8Type Integer uInt8Field;
 
-    @UInt16Type
     @ForyField(nullable = false)
-    private Integer uInt16Field;
+    private @UInt16Type Integer uInt16Field;
 
-    @UInt32Type
     @ForyField(nullable = false)
-    private Long uInt32Field;
+    private @UInt32Type Long uInt32Field;
 
-    @UInt64Type
     @ForyField(nullable = false)
-    private Long uInt64Field;
+    private @UInt64Type Long uInt64Field;
   }
 
   @DataProvider(name = "configProvider")

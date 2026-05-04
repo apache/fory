@@ -25,7 +25,7 @@ Rust (`#[fory(...)]` attributes) and Go (`fory:"..."` struct tags).
 Example:
     @dataclass
     class User:
-        id: int32 = pyfory.field(id=0)                          # Tag ID 0
+        id: Int32 = pyfory.field(id=0)                          # Tag ID 0
         name: str = pyfory.field(id=1)                          # Tag ID 1
         email: Optional[str] = pyfory.field(id=2, nullable=True) # Tag ID 2, nullable
         friends: List["User"] = pyfory.field(id=3, ref=True)    # Tag ID 3, ref tracking

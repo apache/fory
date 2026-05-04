@@ -25,7 +25,10 @@ final class SerializationFieldInfo {
   final FieldInfo field;
   final int slot;
   TypeInfo? _declaredTypeInfo;
+  TypeResolver? _declaredTypeInfoResolver;
+  bool _hasDeclaredTypeInfo = false;
   bool? _usesDeclaredType;
+  TypeResolver? _usesDeclaredTypeResolver;
 
   SerializationFieldInfo({
     required this.field,
@@ -44,18 +47,21 @@ final class SerializationFieldInfo {
   FieldType get fieldType => field.fieldType;
 
   TypeInfo? declaredTypeInfo(TypeResolver resolver) {
-    final cached = _declaredTypeInfo;
-    if (cached != null) {
-      return cached;
+    if (_hasDeclaredTypeInfo &&
+        identical(_declaredTypeInfoResolver, resolver)) {
+      return _declaredTypeInfo;
     }
     final fieldType = field.fieldType;
     if (fieldType.isDynamic || (fieldType.isPrimitive && !fieldType.nullable)) {
+      _declaredTypeInfo = null;
+      _declaredTypeInfoResolver = resolver;
+      _hasDeclaredTypeInfo = true;
       return null;
     }
     final resolved = resolver.tryResolveFieldType(fieldType);
-    if (resolved != null) {
-      _declaredTypeInfo = resolved;
-    }
+    _declaredTypeInfo = resolved;
+    _declaredTypeInfoResolver = resolver;
+    _hasDeclaredTypeInfo = true;
     return resolved;
   }
 
@@ -69,7 +75,7 @@ final class SerializationFieldInfo {
       return false;
     }
     final cached = _usesDeclaredType;
-    if (cached != null) {
+    if (cached != null && identical(_usesDeclaredTypeResolver, resolver)) {
       return cached;
     }
     final uses = usesDeclaredTypeInfo(
@@ -78,6 +84,7 @@ final class SerializationFieldInfo {
       resolved,
     );
     _usesDeclaredType = uses;
+    _usesDeclaredTypeResolver = resolver;
     return uses;
   }
 }

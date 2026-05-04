@@ -54,6 +54,29 @@ try fory.register(Order.self, namespace: "com.example", name: "Order")
 - Use compatible mode when independently evolving schemas
 - Register all user-defined concrete types used by dynamic fields (`Any`, `any Serializer`)
 
+## Lists and Dense Arrays
+
+Swift `Array<T>` fields map to Fory `list<T>` unless field metadata explicitly
+requests dense `array<T>`. Use `array<T>` only for one-dimensional bool or
+numeric data.
+
+| Fory schema       | Swift field metadata sketch                                |
+| ----------------- | ---------------------------------------------------------- |
+| `list<int32>`     | `@ListField(element: .int32()) var ids: [Int32]`           |
+| `array<bool>`     | `@ArrayField(element: .bool()) var flags: [Bool]`          |
+| `array<int8>`     | `@ArrayField(element: .int8()) var values: [Int8]`         |
+| `array<int16>`    | `@ArrayField(element: .int16()) var values: [Int16]`       |
+| `array<int32>`    | `@ArrayField(element: .int32()) var values: [Int32]`       |
+| `array<int64>`    | `@ArrayField(element: .int64()) var values: [Int64]`       |
+| `array<uint8>`    | `@ArrayField(element: .uint8()) var values: [UInt8]`       |
+| `array<uint16>`   | `@ArrayField(element: .uint16()) var values: [UInt16]`     |
+| `array<uint32>`   | `@ArrayField(element: .uint32()) var values: [UInt32]`     |
+| `array<uint64>`   | `@ArrayField(element: .uint64()) var values: [UInt64]`     |
+| `array<float16>`  | `@ArrayField(element: .float16()) var values: [Float16]`   |
+| `array<bfloat16>` | `@ArrayField(element: .bfloat16()) var values: [BFloat16]` |
+| `array<float32>`  | `@ArrayField(element: .float32()) var values: [Float]`     |
+| `array<float64>`  | `@ArrayField(element: .float64()) var values: [Double]`    |
+
 ## Swift IDL Workflow
 
 Generate Swift models directly from Fory IDL/Proto/FBS inputs:

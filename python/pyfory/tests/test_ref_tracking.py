@@ -68,18 +68,18 @@ class RefOverrideEnabled:
 
 @dataclass
 class FixedUint64Pair:
-    a: pyfory.fixed_uint64 = None
-    b: pyfory.fixed_uint64 = None
+    a: pyfory.FixedUInt64 = None
+    b: pyfory.FixedUInt64 = None
 
 
 @dataclass
 class Holder:
-    values: List[pyfory.int64]
+    values: List[pyfory.Int64]
 
 
 @dataclass
 class CollectionRefOverrideItem:
-    value: pyfory.int32
+    value: pyfory.Int32
 
 
 @dataclass
@@ -332,7 +332,7 @@ def test_optional_fixed_uint64_roundtrip(xlang):
     else:
         fory.register(FixedUint64Pair)
 
-    serializer = fory.type_resolver.get_serializer(pyfory.fixed_uint64)
+    serializer = fory.type_resolver.get_serializer(pyfory.FixedUInt64)
     assert serializer.need_to_write_ref is False
     restored = _roundtrip(fory, FixedUint64Pair(value, value))
     assert restored.a == value

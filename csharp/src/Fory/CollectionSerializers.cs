@@ -31,11 +31,23 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
-    private static bool CanDeclareElementType<T>(TypeInfo typeInfo)
+    private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
+    {
+        return context.Compatible &&
+               typeInfo.UserTypeKind == UserTypeKind.Struct &&
+               typeInfo.Evolving;
+    }
+
+    private static bool CanDeclareElementType<T>(TypeInfo typeInfo, WriteContext context)
     {
         if (typeInfo.IsBuiltinType)
         {
             return true;
+        }
+
+        if (NeedsCompatibleElementTypeMeta(typeInfo, context))
+        {
+            return false;
         }
 
         if (!TypeResolver.NeedToWriteTypeInfoForField(typeInfo))
@@ -46,11 +58,15 @@ internal static class CollectionCodec
         return typeof(T).IsSealed;
     }
 
-    private static bool CanDeclareRuntimeElementType<T>(List<T> list, TypeInfo typeInfo)
+    private static bool CanDeclareRuntimeElementType<T>(
+        List<T> list,
+        TypeInfo typeInfo,
+        WriteContext context)
     {
         if (list.Count == 0 ||
             typeInfo.IsDynamicType ||
             typeInfo.IsBuiltinType ||
+            NeedsCompatibleElementTypeMeta(typeInfo, context) ||
             !TypeResolver.NeedToWriteTypeInfoForField(typeInfo) ||
             typeof(T).IsSealed)
         {
@@ -108,15 +124,9 @@ internal static class CollectionCodec
 
         bool trackRef = context.TrackRef && elementTypeInfo.IsRefType;
         bool declaredElementType = hasGenerics &&
-                                   (CanDeclareElementType<T>(elementTypeInfo) ||
-                                    CanDeclareRuntimeElementType(list, elementTypeInfo));
+                                   (CanDeclareElementType<T>(elementTypeInfo, context) ||
+                                    CanDeclareRuntimeElementType(list, elementTypeInfo, context));
         bool dynamicElementType = elementTypeInfo.IsDynamicType;
-        bool writeDeclaredTypeMeta =
-            context.Compatible &&
-            declaredElementType &&
-            !dynamicElementType &&
-            TypeResolver.NeedToWriteTypeInfoForField(elementTypeInfo);
-
         byte header = dynamicElementType ? (byte)0 : CollectionBits.SameType;
         if (trackRef)
         {
@@ -134,7 +144,7 @@ internal static class CollectionCodec
         }
 
         context.Writer.WriteUInt8(header);
-        if (!dynamicElementType && (!declaredElementType || writeDeclaredTypeMeta))
+        if (!dynamicElementType && !declaredElementType)
         {
             context.TypeResolver.WriteTypeInfo(elementSerializer, context);
         }
@@ -203,12 +213,6 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
-        bool readDeclaredTypeMeta =
-            context.Compatible &&
-            declared &&
-            !elementTypeInfo.IsDynamicType &&
-            TypeResolver.NeedToWriteTypeInfoForField(elementTypeInfo);
-
         List<T> values = new(length);
         if (!sameType)
         {
@@ -252,7 +256,7 @@ internal static class CollectionCodec
             return values;
         }
 
-        if (!declared || readDeclaredTypeMeta)
+        if (!declared)
         {
             context.TypeResolver.ReadTypeInfo(elementSerializer, context);
         }

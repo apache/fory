@@ -25,12 +25,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.apache.fory.config.Int32Encoding;
 
-/**
- * Annotation to specify encoding options for 32-bit signed integer fields or nested type-use
- * positions.
- */
+/** Annotation to specify encoding options for 32-bit signed integer type-use positions. */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+@Target(ElementType.TYPE_USE)
 public @interface Int32Type {
   /** The encoding strategy to use for this int32 value. */
   Int32Encoding encoding() default Int32Encoding.VARINT;

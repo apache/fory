@@ -123,7 +123,7 @@ import pyfory
 class Person:
     # Non-nullable by default
     name: str              # Must have a value
-    age: pyfory.int32      # Primitive
+    age: pyfory.Int32      # Primitive
     tags: List[str]        # Must not be None
 
     # Optional makes it nullable

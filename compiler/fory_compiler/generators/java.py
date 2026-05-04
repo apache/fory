@@ -638,7 +638,9 @@ class JavaGenerator(BaseGenerator):
         imports.add("org.apache.fory.type.union.Union")
         imports.add("org.apache.fory.type.Types")
         imports.add("java.util.Objects")
-        if any(self.field_type_contains_array(field.field_type) for field in union.fields):
+        if any(
+            self.field_type_contains_array(field.field_type) for field in union.fields
+        ):
             imports.add("java.util.Arrays")
         for field in union.fields:
             self.collect_type_imports(
@@ -841,7 +843,9 @@ class JavaGenerator(BaseGenerator):
             lines.append(f"{ind}    }}")
             lines.append("")
 
-        if any(self.field_type_contains_array(field.field_type) for field in union.fields):
+        if any(
+            self.field_type_contains_array(field.field_type) for field in union.fields
+        ):
             for line in self.generate_deep_value_helpers():
                 lines.append(f"{ind}    {line}")
 
@@ -854,7 +858,9 @@ class JavaGenerator(BaseGenerator):
         lines.append(f"{ind}            return false;")
         lines.append(f"{ind}        }}")
         lines.append(f"{ind}        {union.name} that = ({union.name}) o;")
-        if any(self.field_type_contains_array(field.field_type) for field in union.fields):
+        if any(
+            self.field_type_contains_array(field.field_type) for field in union.fields
+        ):
             lines.append(
                 f"{ind}        return index == that.index && deepValueEquals(value, that.value);"
             )
@@ -866,7 +872,9 @@ class JavaGenerator(BaseGenerator):
         lines.append("")
         lines.append(f"{ind}    @Override")
         lines.append(f"{ind}    public int hashCode() {{")
-        if any(self.field_type_contains_array(field.field_type) for field in union.fields):
+        if any(
+            self.field_type_contains_array(field.field_type) for field in union.fields
+        ):
             lines.append(
                 f"{ind}        return 31 * Integer.hashCode(index) + deepValueHashCode(value);"
             )
@@ -1134,17 +1142,18 @@ class JavaGenerator(BaseGenerator):
         if annotations:
             lines.append(f"@ForyField({', '.join(annotations)})")
 
+        use_array_type_use = self.field_uses_array_type_use(field)
         array_annotation = self.get_array_annotation(field)
-        if array_annotation:
+        if array_annotation and not use_array_type_use:
             lines.append(array_annotation)
 
         primitive_list_annotation = self.get_primitive_list_annotation(field)
-        if primitive_list_annotation:
-            lines.append(primitive_list_annotation)
-
         int_annotation = self.get_integer_annotation(field.field_type)
-        if int_annotation:
-            lines.append(int_annotation)
+        use_type_annotation = (
+            use_array_type_use
+            or primitive_list_annotation is not None
+            or int_annotation is not None
+        )
 
         # Field type
         java_type = self.generate_type(
@@ -1153,6 +1162,7 @@ class JavaGenerator(BaseGenerator):
             field.element_optional,
             field.element_ref,
             field,
+            type_use=use_type_annotation,
         )
 
         lines.append(f"private {java_type} {self.to_camel_case(field.name)};")
@@ -1229,9 +1239,25 @@ class JavaGenerator(BaseGenerator):
                 kind = field_type.element_type.kind
                 if not child_optional and not child_ref:
                     if kind in self.PRIMITIVE_LIST_MAP and not self.java_array(field):
-                        return self.PRIMITIVE_LIST_MAP[kind]
+                        java_type = self.PRIMITIVE_LIST_MAP[kind]
+                        if type_use:
+                            annotation = self.get_primitive_list_element_annotation(
+                                field_type.element_type
+                            )
+                            if annotation:
+                                return f"{annotation} {java_type}"
+                        return java_type
                     if kind in self.PRIMITIVE_ARRAY_MAP and self.java_array(field):
-                        return self.PRIMITIVE_ARRAY_MAP[kind]
+                        java_type = self.PRIMITIVE_ARRAY_MAP[kind]
+                        if type_use:
+                            annotation = self.get_array_element_type_use_annotation(
+                                field_type.element_type
+                            )
+                            if annotation:
+                                return self.apply_array_type_use_annotation(
+                                    java_type, annotation
+                                )
+                        return java_type
             element_type = self.generate_type(
                 field_type.element_type, True, type_use=True
             )
@@ -1299,7 +1325,9 @@ class JavaGenerator(BaseGenerator):
                         if self.get_primitive_list_element_annotation(
                             field_type.element_type
                         ):
-                            self.collect_integer_imports(field_type.element_type, imports)
+                            self.collect_integer_imports(
+                                field_type.element_type, imports
+                            )
                         return
                     if kind in self.PRIMITIVE_ARRAY_MAP and self.java_array(field):
                         if kind not in (
@@ -1514,9 +1542,15 @@ class JavaGenerator(BaseGenerator):
 
     def get_array_type_use_annotation(self, field_type: ArrayType) -> Optional[str]:
         """Return type-use annotation for nested primitive array metadata."""
-        if not isinstance(field_type.element_type, PrimitiveType):
+        return self.get_array_element_type_use_annotation(field_type.element_type)
+
+    def get_array_element_type_use_annotation(
+        self, element_type: FieldType
+    ) -> Optional[str]:
+        """Return the Java type-use annotation for a dense array element domain."""
+        if not isinstance(element_type, PrimitiveType):
             return None
-        kind = field_type.element_type.kind
+        kind = element_type.kind
         if kind == PrimitiveKind.INT8:
             return "@Int8Type"
         if kind == PrimitiveKind.UINT8:
@@ -1531,10 +1565,39 @@ class JavaGenerator(BaseGenerator):
             PrimitiveKind.TAGGED_UINT64,
         ):
             return "@UInt64Type"
+        if kind == PrimitiveKind.FLOAT16:
+            return "@Float16Type"
+        if kind == PrimitiveKind.BFLOAT16:
+            return "@BFloat16Type"
         return None
 
     def apply_array_type_use_annotation(self, java_type: str, annotation: str) -> str:
-        return java_type.replace("[]", f" {annotation} []", 1)
+        return f"{annotation} {java_type}"
+
+    def field_uses_array_type_use(self, field: Field) -> bool:
+        """Return true when dense-array element metadata belongs on the Java type."""
+        if isinstance(field.field_type, ArrayType):
+            java_type = (
+                self.PRIMITIVE_ARRAY_MAP[field.field_type.element_type.kind]
+                if self.java_array(field)
+                else self.DENSE_ARRAY_MAP[field.field_type.element_type.kind]
+            )
+            return java_type.endswith("[]") and (
+                self.get_array_type_use_annotation(field.field_type) is not None
+            )
+        if isinstance(field.field_type, ListType) and self.java_array(field):
+            if not isinstance(field.field_type.element_type, PrimitiveType):
+                return False
+            if field.element_optional or field.element_ref:
+                return False
+            java_type = self.PRIMITIVE_ARRAY_MAP.get(field.field_type.element_type.kind)
+            return java_type is not None and (
+                self.get_array_element_type_use_annotation(
+                    field.field_type.element_type
+                )
+                is not None
+            )
+        return False
 
     def get_array_annotation(self, field: Field) -> Optional[str]:
         """Return array type annotation for primitive list fields."""
@@ -1591,11 +1654,10 @@ class JavaGenerator(BaseGenerator):
         if isinstance(field.field_type, PrimitiveType):
             return field.field_type.kind == PrimitiveKind.BYTES
         if isinstance(field.field_type, ArrayType):
-            if (
-                field.field_type.element_type.kind
-                in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16)
-                and not self.java_array(field)
-            ):
+            if field.field_type.element_type.kind in (
+                PrimitiveKind.FLOAT16,
+                PrimitiveKind.BFLOAT16,
+            ) and not self.java_array(field):
                 return False
             return True
         if isinstance(field.field_type, ListType):

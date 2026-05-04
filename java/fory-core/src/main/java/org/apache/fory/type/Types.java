@@ -47,16 +47,16 @@ public class Types {
   /** int32: a 32-bit signed integer. */
   public static final int INT32 = 4;
 
-  /** varint32: a 32-bit signed integer which uses fory var_int32 encoding. */
+  /** A 32-bit signed integer using variable-length encoding. */
   public static final int VARINT32 = 5;
 
   /** int64: a 64-bit signed integer. */
   public static final int INT64 = 6;
 
-  /** varint64: a 64-bit signed integer which uses fory PVL encoding. */
+  /** A 64-bit signed integer using variable-length encoding. */
   public static final int VARINT64 = 7;
 
-  /** tagged_int64: a 64-bit signed integer which uses fory tagged encoding. */
+  /** A 64-bit signed integer using tagged encoding. */
   public static final int TAGGED_INT64 = 8;
 
   /** uint8: an 8-bit unsigned integer. */
@@ -68,16 +68,16 @@ public class Types {
   /** uint32: a 32-bit unsigned integer. */
   public static final int UINT32 = 11;
 
-  /** var_uint32: a 32-bit unsigned integer which uses fory var_uint32 encoding. */
+  /** A 32-bit unsigned integer using variable-length encoding. */
   public static final int VAR_UINT32 = 12;
 
   /** uint64: a 64-bit unsigned integer. */
   public static final int UINT64 = 13;
 
-  /** var_uint64: a 64-bit unsigned integer which uses fory var_uint64 encoding. */
+  /** A 64-bit unsigned integer using variable-length encoding. */
   public static final int VAR_UINT64 = 14;
 
-  /** tagged_uint64: a 64-bit unsigned integer which uses fory tagged int64 encoding. */
+  /** A 64-bit unsigned integer using tagged encoding. */
   public static final int TAGGED_UINT64 = 15;
 
   /** float8: an 8-bit floating point number. */

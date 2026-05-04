@@ -158,7 +158,7 @@ Use `type=` to override inferred carrier semantics or nested value encoding:
 
 ```go
 type Foo struct {
-    // Force general LIST protocol instead of inferred packed INT32_ARRAY
+    // Force general list protocol.
     Values []int32 `fory:"type=list"`
 
     // Override inner integer encoding for a general list
@@ -167,17 +167,19 @@ type Foo struct {
     // Override nested map/list integer encoding
     Nested map[string][]*uint64 `fory:"type=map(value=list(element=uint64(encoding=tagged)))"`
 
-    // Preserve the inferred packed inner carrier and only override descendants
-    Packed map[string][]int32 `fory:"type=map(value=_(element=int32(encoding=fixed)))"`
+    // Declare dense numeric array schema explicitly.
+    Dense []int32 `fory:"type=array(element=int32)"`
+
+    // Use array schema inside a map value.
+    Packed map[string][]int32 `fory:"type=map(value=array(element=int32))"`
 }
 ```
 
 **Notes**:
 
-- `list(...)`, `set(...)`, and `map(...)` are explicit container overrides
-- `_` keeps the inferred Go branch at that position and only overrides nested descendants
-- There is no public `array(...)` tag. Packed primitive arrays are inferred from Go `[]T` / `[N]T` when the final element spec is packable
-- Explicit `type=list(...)` always stays general LIST protocol and never collapses into a packed primitive array
+- `list(...)`, `array(...)`, `set(...)`, and `map(...)` are explicit container overrides
+- `list(...)` always uses list schema and never collapses into dense array schema
+- `array(element=...)` requires a bool or numeric element domain and rejects nullable elements and scalar encoding modifiers
 
 ## Combining Tags
 

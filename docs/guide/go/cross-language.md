@@ -66,7 +66,7 @@ import pyfory
 
 @dataclass
 class User:
-    id: pyfory.Int64Type
+    id: pyfory.Int64
     name: str
 
 fory = pyfory.Fory(xlang=True)
@@ -157,9 +157,9 @@ import pyfory
 
 @dataclass
 class Message:
-    id: pyfory.Int64Type
+    id: pyfory.Int64
     content: str
-    timestamp: pyfory.Int64Type
+    timestamp: pyfory.Int64
 
 fory = pyfory.Fory(xlang=True)
 fory.register(Message, type_id=1)
@@ -188,6 +188,29 @@ fmt.Println(msg.Content)  // "Hello from Python"
 ### Nested Structures
 
 Cross-language nested structures require all types to be registered:
+
+## Lists and Dense Arrays
+
+Go slices are ordinary `list<T>` carriers unless a field tag explicitly requests
+the dense `array<T>` schema. Use `array<T>` only for one-dimensional bool or
+numeric data.
+
+| Fory schema       | Go carrier and tag sketch                              |
+| ----------------- | ------------------------------------------------------ |
+| `list<int32>`     | `[]int32` / `fory:"type=list(element=int32)"`          |
+| `array<bool>`     | `[]bool` / `fory:"type=array(element=bool)"`           |
+| `array<int8>`     | `[]int8` / `fory:"type=array(element=int8)"`           |
+| `array<int16>`    | `[]int16` / `fory:"type=array(element=int16)"`         |
+| `array<int32>`    | `[]int32` / `fory:"type=array(element=int32)"`         |
+| `array<int64>`    | `[]int64` / `fory:"type=array(element=int64)"`         |
+| `array<uint8>`    | `[]uint8` / `fory:"type=array(element=uint8)"`         |
+| `array<uint16>`   | `[]uint16` / `fory:"type=array(element=uint16)"`       |
+| `array<uint32>`   | `[]uint32` / `fory:"type=array(element=uint32)"`       |
+| `array<uint64>`   | `[]uint64` / `fory:"type=array(element=uint64)"`       |
+| `array<float16>`  | `[]float16.Float16` / `type=array(element=float16)`    |
+| `array<bfloat16>` | `[]bfloat16.BFloat16` / `type=array(element=bfloat16)` |
+| `array<float32>`  | `[]float32` / `fory:"type=array(element=float32)"`     |
+| `array<float64>`  | `[]float64` / `fory:"type=array(element=float64)"`     |
 
 **Go**:
 

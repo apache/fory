@@ -180,9 +180,8 @@ func getTypeID(t types.Type) string {
 		t = ptr.Elem()
 	}
 
-	// Check slice types. Unannotated Go slices are logical list<T> fields in
-	// the 1.0 schema model; explicit array(...) tags are handled by runtime
-	// field metadata rather than inferred from the carrier.
+	// Check slice types. Unannotated Go slices are logical list<T> fields;
+	// explicit array(...) tags are handled by runtime field metadata.
 	if _, ok := t.(*types.Slice); ok {
 		return "LIST"
 	}
@@ -437,8 +436,7 @@ const (
 
 // getFieldGroup categorizes a field into its sorting group
 func getFieldGroup(field *FieldInfo) int {
-	// Primitive fields (including nullable primitives)
-	// types: bool/int8/int16/int32/varint32/int64/varint64/sliint64/float16/float32/float64
+	// Primitive fields, including nullable primitives.
 	if field.IsPrimitive {
 		return groupPrimitive
 	}

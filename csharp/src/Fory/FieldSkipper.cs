@@ -24,8 +24,24 @@ public static class FieldSkipper
         SkipValue(context, fieldType, RefModeExtensions.From(fieldType.Nullable, fieldType.TrackRef));
     }
 
-    private static void SkipValue(ReadContext context, TypeMetaFieldType fieldType, RefMode refMode)
+    private static void SkipValue(
+        ReadContext context,
+        TypeMetaFieldType fieldType,
+        RefMode refMode,
+        TypeInfo? resolvedTypeInfo = null)
     {
+        if (resolvedTypeInfo is not null)
+        {
+            _ = ReadResolvedValue(context, resolvedTypeInfo, refMode);
+            return;
+        }
+
+        if (HasInlineTypeInfo(fieldType.TypeId))
+        {
+            _ = ReadInlineTypedValue(context, refMode);
+            return;
+        }
+
         switch (refMode)
         {
             case RefMode.None:
@@ -50,6 +66,141 @@ public static class FieldSkipper
             case RefMode.Tracking:
                 _ = ReadTrackedValue(context, fieldType);
                 return;
+            default:
+                throw new InvalidDataException($"unsupported ref mode {refMode}");
+        }
+    }
+
+    private static bool HasInlineTypeInfo(uint typeId)
+    {
+        if (typeId == (uint)TypeId.Unknown)
+        {
+            return true;
+        }
+
+        return typeId <= (uint)TypeId.Float64Array &&
+               TypeResolver.NeedToWriteTypeInfoForField((TypeId)typeId);
+    }
+
+    private static object? ReadInlineTypedValue(ReadContext context, RefMode refMode)
+    {
+        switch (refMode)
+        {
+            case RefMode.None:
+                return ReadInlineTypedPayload(context);
+            case RefMode.NullOnly:
+                {
+                    sbyte flag = context.Reader.ReadInt8();
+                    if (flag == (sbyte)RefFlag.Null)
+                    {
+                        return null;
+                    }
+
+                    if (flag != (sbyte)RefFlag.NotNullValue)
+                    {
+                        throw new InvalidDataException($"unexpected nullOnly flag {flag}");
+                    }
+
+                    return ReadInlineTypedPayload(context);
+                }
+            case RefMode.Tracking:
+                {
+                    RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+                    switch (flag)
+                    {
+                        case RefFlag.Null:
+                            return null;
+                        case RefFlag.Ref:
+                            {
+                                uint refId = context.RefReader.ReadRefId(context.Reader);
+                                return context.RefReader.GetRefValue(refId);
+                            }
+                        case RefFlag.RefValue:
+                            {
+                                uint reservedRefId = context.RefReader.ReserveRefId();
+                                context.SetReservedRefId(reservedRefId);
+                                try
+                                {
+                                    object? value = ReadInlineTypedPayload(context);
+                                    context.StoreRef(value);
+                                    return value;
+                                }
+                                finally
+                                {
+                                    context.ClearReservedRefId();
+                                }
+                            }
+                        case RefFlag.NotNullValue:
+                            return ReadInlineTypedPayload(context);
+                        default:
+                            throw new RefException($"invalid ref flag {(sbyte)flag}");
+                    }
+                }
+            default:
+                throw new InvalidDataException($"unsupported ref mode {refMode}");
+        }
+    }
+
+    private static object? ReadInlineTypedPayload(ReadContext context)
+    {
+        TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+        return context.TypeResolver.ReadAnyValue(typeInfo, context);
+    }
+
+    private static object? ReadResolvedValue(ReadContext context, TypeInfo typeInfo, RefMode refMode)
+    {
+        switch (refMode)
+        {
+            case RefMode.None:
+                return context.TypeResolver.ReadAnyValue(typeInfo, context);
+            case RefMode.NullOnly:
+                {
+                    sbyte flag = context.Reader.ReadInt8();
+                    if (flag == (sbyte)RefFlag.Null)
+                    {
+                        return null;
+                    }
+
+                    if (flag != (sbyte)RefFlag.NotNullValue)
+                    {
+                        throw new InvalidDataException($"unexpected nullOnly flag {flag}");
+                    }
+
+                    return context.TypeResolver.ReadAnyValue(typeInfo, context);
+                }
+            case RefMode.Tracking:
+                {
+                    RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+                    switch (flag)
+                    {
+                        case RefFlag.Null:
+                            return null;
+                        case RefFlag.Ref:
+                            {
+                                uint refId = context.RefReader.ReadRefId(context.Reader);
+                                return context.RefReader.GetRefValue(refId);
+                            }
+                        case RefFlag.RefValue:
+                            {
+                                uint reservedRefId = context.RefReader.ReserveRefId();
+                                context.SetReservedRefId(reservedRefId);
+                                try
+                                {
+                                    object? value = context.TypeResolver.ReadAnyValue(typeInfo, context);
+                                    context.StoreRef(value);
+                                    return value;
+                                }
+                                finally
+                                {
+                                    context.ClearReservedRefId();
+                                }
+                            }
+                        case RefFlag.NotNullValue:
+                            return context.TypeResolver.ReadAnyValue(typeInfo, context);
+                        default:
+                            throw new RefException($"invalid ref flag {(sbyte)flag}");
+                    }
+                }
             default:
                 throw new InvalidDataException($"unsupported ref mode {refMode}");
         }
@@ -184,20 +335,30 @@ public static class FieldSkipper
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
+        RefMode elementRefMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
         if (!sameType)
         {
-            throw new InvalidDataException("dynamic compatible list/set skip is not supported");
+            for (int i = 0; i < length; i++)
+            {
+                _ = ReadInlineTypedValue(context, elementRefMode);
+            }
+
+            return;
         }
 
+        TypeInfo? elementTypeInfo = null;
         if (!declared)
         {
-            _ = context.TypeResolver.ReadAnyTypeInfo(context);
+            elementTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+        }
+        else if (context.Compatible && HasInlineTypeInfo(elementType.TypeId))
+        {
+            elementTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
         }
 
-        RefMode elementRefMode = trackRef ? RefMode.Tracking : hasNull ? RefMode.NullOnly : RefMode.None;
         for (int i = 0; i < length; i++)
         {
-            SkipValue(context, elementType, elementRefMode);
+            SkipValue(context, elementType, elementRefMode, elementTypeInfo);
         }
     }
 
@@ -226,22 +387,32 @@ public static class FieldSkipper
             {
                 if (!keyNull)
                 {
+                    TypeInfo? keyTypeInfo = null;
                     if (!keyDeclared)
                     {
-                        _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                        keyTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+                    }
+                    else if (context.Compatible && HasInlineTypeInfo(keyType.TypeId))
+                    {
+                        keyTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
                     }
 
-                    SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None);
+                    SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None, keyTypeInfo);
                 }
 
                 if (!valueNull)
                 {
+                    TypeInfo? valueTypeInfo = null;
                     if (!valueDeclared)
                     {
-                        _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                        valueTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+                    }
+                    else if (context.Compatible && HasInlineTypeInfo(valueType.TypeId))
+                    {
+                        valueTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
                     }
 
-                    SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None);
+                    SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None, valueTypeInfo);
                 }
 
                 readCount++;
@@ -249,20 +420,30 @@ public static class FieldSkipper
             }
 
             int chunkSize = context.Reader.ReadUInt8();
+            TypeInfo? keyChunkTypeInfo = null;
             if (!keyDeclared)
             {
-                _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                keyChunkTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+            }
+            else if (context.Compatible && HasInlineTypeInfo(keyType.TypeId))
+            {
+                keyChunkTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
             }
 
+            TypeInfo? valueChunkTypeInfo = null;
             if (!valueDeclared)
             {
-                _ = context.TypeResolver.ReadAnyTypeInfo(context);
+                valueChunkTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+            }
+            else if (context.Compatible && HasInlineTypeInfo(valueType.TypeId))
+            {
+                valueChunkTypeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
             }
 
             for (int i = 0; i < chunkSize; i++)
             {
-                SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None);
-                SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None);
+                SkipValue(context, keyType, trackKeyRef ? RefMode.Tracking : RefMode.None, keyChunkTypeInfo);
+                SkipValue(context, valueType, trackValueRef ? RefMode.Tracking : RefMode.None, valueChunkTypeInfo);
             }
 
             readCount += chunkSize;

@@ -25,12 +25,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import org.apache.fory.config.Int64Encoding;
 
-/**
- * Annotation to specify encoding options for 64-bit signed integer fields or nested type-use
- * positions.
- */
+/** Annotation to specify encoding options for 64-bit signed integer type-use positions. */
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
+@Target(ElementType.TYPE_USE)
 public @interface Int64Type {
   /** The encoding strategy to use for this int64 value. */
   Int64Encoding encoding() default Int64Encoding.VARINT;

@@ -559,7 +559,7 @@ class DartGenerator(BaseGenerator):
 
     def _dense_array_type(self, field_type: ArrayType) -> str:
         array_map = {
-            PrimitiveKind.BOOL: "List<bool>",
+            PrimitiveKind.BOOL: "BoolList",
             PrimitiveKind.INT8: "Int8List",
             PrimitiveKind.INT16: "Int16List",
             PrimitiveKind.INT32: "Int32List",
@@ -622,7 +622,7 @@ class DartGenerator(BaseGenerator):
             return f"<{self.dart_type(t.element_type, t.element_optional, parent_stack)}>[]"
         if isinstance(t, ArrayType):
             if t.element_type.kind == PrimitiveKind.BOOL:
-                return "<bool>[]"
+                return "BoolList(0)"
             return f"{self._dense_array_type(t)}(0)"
         if isinstance(t, MapType):
             key_type = self.dart_type(t.key_type, parent_stack=parent_stack)
@@ -732,7 +732,9 @@ class DartGenerator(BaseGenerator):
                 return None
             return f"ListType(element: {element_spec})"
         if isinstance(field_type, ArrayType):
-            element_spec = self.array_element_type_spec_expression(field_type.element_type)
+            element_spec = self.array_element_type_spec_expression(
+                field_type.element_type
+            )
             if element_spec is None:
                 return None
             return f"ArrayType(element: {element_spec})"
@@ -753,7 +755,9 @@ class DartGenerator(BaseGenerator):
             return f"MapType({', '.join(args)})"
         return None
 
-    def array_element_type_spec_expression(self, field_type: FieldType) -> Optional[str]:
+    def array_element_type_spec_expression(
+        self, field_type: FieldType
+    ) -> Optional[str]:
         if not isinstance(field_type, PrimitiveType):
             return self.type_spec_expression(field_type)
         return {
@@ -889,6 +893,10 @@ class DartGenerator(BaseGenerator):
                     "",
                 ]
             )
+        case_fields_name = f"_{self.safe_identifier(self.to_camel_case(name))}ForyCaseFieldInfo"
+        case_runtime_fields_name = (
+            f"_{self.safe_identifier(self.to_camel_case(name))}ForyCaseFields"
+        )
         lines.extend(
             [
                 f"{self.indent_str * (indent + 1)}@override",
@@ -901,12 +909,48 @@ class DartGenerator(BaseGenerator):
                 f"{self.indent_str * (indent + 1)}static {full} fromBytes(Uint8List bytes) => ForyRegistration.getFory().deserialize<{full}>(bytes);",
                 f"{self.indent_str * indent}}}",
                 "",
+                f"{self.indent_str * indent}const List<GeneratedFieldInfo> {case_fields_name} = <GeneratedFieldInfo>[",
+            ]
+        )
+        for field in union.fields:
+            lines.extend(self._field_info_lines(field, indent + 1, parent_stack))
+            lines[-1] += ","
+        lines.extend(
+            [
+                f"{self.indent_str * indent}];",
+                "",
+                f"{self.indent_str * indent}final List<GeneratedStructFieldInfo> {case_runtime_fields_name} = buildGeneratedUnionCaseFieldInfos({case_fields_name});",
+                "",
                 f"{self.indent_str * indent}final class _{name}ForySerializer extends UnionSerializer<{full}> {{",
                 f"{self.indent_str * (indent + 1)}const _{name}ForySerializer();",
                 f"{self.indent_str * (indent + 1)}@override",
                 f"{self.indent_str * (indent + 1)}int caseId({full} value) => value.caseId;",
                 f"{self.indent_str * (indent + 1)}@override",
                 f"{self.indent_str * (indent + 1)}Object? caseValue({full} value) => value.value;",
+                f"{self.indent_str * (indent + 1)}@override",
+                f"{self.indent_str * (indent + 1)}void writeCasePayload(WriteContext context, int caseId, Object? value) {{",
+            ]
+        )
+        for index, field in enumerate(union.fields):
+            lines.append(
+                f"{self.indent_str * (indent + 2)}if (caseId == {field.number}) {{ writeGeneratedUnionCaseValue(context, {case_runtime_fields_name}[{index}], value); return; }}"
+            )
+        lines.extend(
+            [
+                f"{self.indent_str * (indent + 2)}throw StateError('Unknown {name} case id ${{caseId}}.');",
+                f"{self.indent_str * (indent + 1)}}}",
+                f"{self.indent_str * (indent + 1)}@override",
+                f"{self.indent_str * (indent + 1)}Object? readCasePayload(ReadContext context, int caseId) {{",
+            ]
+        )
+        for index, field in enumerate(union.fields):
+            lines.append(
+                f"{self.indent_str * (indent + 2)}if (caseId == {field.number}) return readGeneratedUnionCaseValue(context, {case_runtime_fields_name}[{index}]);"
+            )
+        lines.extend(
+            [
+                f"{self.indent_str * (indent + 2)}throw StateError('Unknown {name} case id ${{caseId}}.');",
+                f"{self.indent_str * (indent + 1)}}}",
                 f"{self.indent_str * (indent + 1)}@override",
                 f"{self.indent_str * (indent + 1)}{full} buildValue(int caseId, Object? value) {{",
             ]
@@ -1084,18 +1128,16 @@ class DartGenerator(BaseGenerator):
             + ",\n".join(args)
             + f"\n{self.indent_str * (indent + 1)}]"
         )
-        dynamic_literal = (
-            "null"
-            if isinstance(field_type, PrimitiveType)
-            else (
-                "false"
-                if isinstance(field_type, NamedType)
-                and isinstance(
-                    self.resolve_type(field_type.name, parent_stack), (Enum, Message)
-                )
-                else "true"
-            )
-        )
+        if isinstance(field_type, PrimitiveType):
+            dynamic_literal = "null"
+        elif isinstance(field_type, (ListType, ArrayType, MapType)):
+            dynamic_literal = "false"
+        elif isinstance(field_type, NamedType) and isinstance(
+            self.resolve_type(field_type.name, parent_stack), (Enum, Message, Union)
+        ):
+            dynamic_literal = "false"
+        else:
+            dynamic_literal = "true"
         return (
             "GeneratedFieldType(\n"
             f"{self.indent_str * (indent + 1)}type: {type_expr},\n"
@@ -1139,6 +1181,7 @@ class DartGenerator(BaseGenerator):
                 PrimitiveKind.DATE: ("LocalDate", "TypeIds.date"),
                 PrimitiveKind.TIMESTAMP: ("Timestamp", "TypeIds.timestamp"),
                 PrimitiveKind.DURATION: ("Duration", "TypeIds.duration"),
+                PrimitiveKind.DECIMAL: ("Decimal", "TypeIds.decimal"),
                 PrimitiveKind.ANY: ("Object", "TypeIds.unknown"),
             }[field_type.kind]
         if isinstance(field_type, ListType):
@@ -1146,7 +1189,7 @@ class DartGenerator(BaseGenerator):
         if isinstance(field_type, ArrayType):
             arr = self._dense_array_type(field_type)
             return arr, {
-                "List<bool>": "TypeIds.boolArray",
+                "BoolList": "TypeIds.boolArray",
                 "Int8List": "TypeIds.int8Array",
                 "Int16List": "TypeIds.int16Array",
                 "Int32List": "TypeIds.int32Array",

@@ -22,6 +22,8 @@ package org.apache.fory.type;
 import static org.apache.fory.util.Preconditions.checkArgument;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedArrayType;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
@@ -179,7 +181,8 @@ public class Descriptor {
     this.readMethod = readMethod;
     this.writeMethod = null;
     this.foryField = readMethod.getAnnotation(ForyField.class);
-    typeAnnotation = getAnnotation(readMethod.getDeclaredAnnotations(), readMethod.getName());
+    typeAnnotation =
+        getTypeUseAnnotation(readMethod.getAnnotatedReturnType(), readMethod.getName());
     if (!readMethod.getReturnType().isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
     }
@@ -696,7 +699,7 @@ public class Descriptor {
   }
 
   public static Annotation getAnnotation(Field field) {
-    return getAnnotation(field.getDeclaredAnnotations(), field.getName());
+    return getTypeUseAnnotation(field.getAnnotatedType(), field.getName());
   }
 
   public static Annotation getAnnotation(Annotation[] declaredAnnotations, String name) {
@@ -713,6 +716,20 @@ public class Descriptor {
       }
     }
     return typeAnnotation;
+  }
+
+  public static Annotation getTypeUseAnnotation(AnnotatedType annotatedType, String name) {
+    Annotation typeAnnotation = getAnnotation(annotatedType.getAnnotations(), name);
+    if (typeAnnotation != null || !(annotatedType instanceof AnnotatedArrayType)) {
+      return typeAnnotation;
+    }
+    AnnotatedType annotatedComponent =
+        ((AnnotatedArrayType) annotatedType).getAnnotatedGenericComponentType();
+    Class<?> componentRawType = TypeUtils.getRawType(annotatedComponent.getType());
+    if (!componentRawType.isPrimitive()) {
+      return null;
+    }
+    return getAnnotation(annotatedComponent.getAnnotations(), name);
   }
 
   public static Class<?> getDeclareClass(List<Descriptor> descriptors) {

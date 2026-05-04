@@ -38,21 +38,21 @@ Row format drastically reduces overhead when working with large objects where on
 ## Basic Usage
 
 ```python
-import pyfory
-import pyarrow as pa
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import Dict, List
+
+import pyfory
 
 @dataclass
 class Bar:
     f1: str
-    f2: List[pa.int64]
+    f2: List[pyfory.Int64]
 
 @dataclass
 class Foo:
-    f1: pa.int32
-    f2: List[pa.int32]
-    f3: Dict[str, pa.int32]
+    f1: pyfory.Int32
+    f2: List[pyfory.Int32]
+    f3: Dict[str, pyfory.Int32]
     f4: List[Bar]
 
 # Create encoder for row format
@@ -75,6 +75,30 @@ print(foo_row.f2[100000])              # Access 100,000th element directly
 print(foo_row.f4[100000].f1)           # Access nested field directly
 print(foo_row.f4[200000].f2[5])        # Access deeply nested field directly
 ```
+
+## PyArrow Schema Conversion
+
+Row format can convert PyArrow schemas through `pyfory.format` when the
+`format` optional dependency is installed:
+
+```python
+import pyarrow as pa
+from pyfory.format import from_arrow_schema, to_arrow_schema
+
+arrow_schema = pa.schema(
+    [
+        pa.field("id", pa.int32(), nullable=False),
+        pa.field("scores", pa.list_(pa.float64())),
+    ]
+)
+
+fory_schema = from_arrow_schema(arrow_schema)
+roundtrip_arrow_schema = to_arrow_schema(fory_schema)
+```
+
+This PyArrow conversion surface is separate from cross-language dense-array
+field annotations. In object serialization, `pyfory.PyArray[T]` means the
+standard-library Python `array.array` carrier, not PyArrow.
 
 ## Cross-Language Compatibility
 

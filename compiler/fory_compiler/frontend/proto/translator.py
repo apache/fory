@@ -82,8 +82,8 @@ class ProtoTranslator:
     }
 
     TYPE_OVERRIDES: Dict[str, PrimitiveKind] = {
-        "tagged_int64": PrimitiveKind.TAGGED_INT64,
-        "tagged_uint64": PrimitiveKind.TAGGED_UINT64,
+        "tagged int64": PrimitiveKind.TAGGED_INT64,
+        "tagged uint64": PrimitiveKind.TAGGED_UINT64,
     }
 
     def __init__(self, proto_schema: ProtoSchema):

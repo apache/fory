@@ -43,6 +43,7 @@ import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/serializer/union_serializer.dart';
 import 'package:fory/src/types/bfloat16.dart';
+import 'package:fory/src/types/bool_list.dart';
 import 'package:fory/src/types/decimal.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/float32.dart';
@@ -342,6 +343,9 @@ final class TypeResolver {
     }
     if (value is Uint8List) {
       return _builtin(Uint8List, TypeIds.binary);
+    }
+    if (value is BoolList && value.preservesArraySchema) {
+      return _builtin(BoolList, TypeIds.boolArray);
     }
     if (value is Int8List) {
       return _builtin(Int8List, TypeIds.int8Array);
@@ -1059,7 +1063,7 @@ final class TypeResolver {
       case TypeIds.timestamp:
         return _builtin(DateTime, TypeIds.timestamp);
       case TypeIds.boolArray:
-        return _builtin(List<bool>, TypeIds.boolArray);
+        return _builtin(BoolList, TypeIds.boolArray);
       case TypeIds.int8Array:
         return _builtin(Int8List, TypeIds.int8Array);
       case TypeIds.int16Array:
@@ -1249,6 +1253,9 @@ final class TypeResolver {
     }
     if (type == Bfloat16) {
       return TypeIds.bfloat16;
+    }
+    if (type == BoolList) {
+      return TypeIds.list;
     }
     if (type == Float32) {
       return TypeIds.float32;

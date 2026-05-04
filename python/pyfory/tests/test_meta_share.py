@@ -66,7 +66,7 @@ class NestedStructClassInconsistent:
 @dataclasses.dataclass
 class ListFieldsClass:
     name: str
-    int_list: List[pyfory.int32]
+    int_list: List[pyfory.Int32]
     str_list: List[str]
 
 
@@ -74,13 +74,13 @@ class ListFieldsClass:
 class ListFieldsClassInconsistent:
     name: str
     int_list: List[str]
-    str_list: List[pyfory.int32]
+    str_list: List[pyfory.Int32]
 
 
 @dataclasses.dataclass
 class DictFieldsClass:
     name: str
-    int_dict: Dict[str, pyfory.int32]
+    int_dict: Dict[str, pyfory.Int32]
     str_dict: Dict[str, str]
 
 
@@ -88,7 +88,7 @@ class DictFieldsClass:
 class DictFieldsClassInconsistent:
     name: str
     int_dict: Dict[str, str]
-    str_dict: Dict[str, pyfory.int32]
+    str_dict: Dict[str, pyfory.Int32]
 
 
 class TestMetaShareMode:

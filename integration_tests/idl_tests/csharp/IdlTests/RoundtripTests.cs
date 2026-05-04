@@ -375,9 +375,18 @@ public sealed class RoundtripTests
             return;
         }
 
-        string modeFile = dataFile +
-                          (fory.Config.Compatible ? ".compatible" : ".schema_consistent") +
-                          (fory.Config.TrackRef ? ".track_ref" : ".no_ref");
+        string? peerCompatible = Environment.GetEnvironmentVariable("IDL_COMPATIBLE");
+        bool peerMode = bool.TryParse(peerCompatible, out bool parsedCompatible);
+        if (peerMode && parsedCompatible != fory.Config.Compatible)
+        {
+            return;
+        }
+
+        string modeFile = peerMode
+            ? dataFile
+            : dataFile +
+              (fory.Config.Compatible ? ".compatible" : ".schema_consistent") +
+              (fory.Config.TrackRef ? ".track_ref" : ".no_ref");
 
         if (!File.Exists(modeFile) || new FileInfo(modeFile).Length == 0)
         {
@@ -466,17 +475,17 @@ public sealed class RoundtripTests
             Int8Value = 12,
             Int16Value = 1234,
             Int32Value = -123456,
-            Varint32Value = -12345,
+            VarintI32Value = -12345,
             Int64Value = -123456789,
-            Varint64Value = -987654321,
-            TaggedInt64Value = 123456789,
+            VarintI64Value = -987654321,
+            TaggedI64Value = 123456789,
             Uint8Value = 200,
             Uint16Value = 60000,
             Uint32Value = 1234567890,
-            VarUint32Value = 1234567890,
+            VarintU32Value = 1234567890,
             Uint64Value = 9876543210,
-            VarUint64Value = 12345678901,
-            TaggedUint64Value = 2222222222,
+            VarintU64Value = 12345678901,
+            TaggedU64Value = 2222222222,
             Float32Value = 2.5f,
             Float64Value = 3.5,
             ContactValue = complex_pb.PrimitiveTypes.Contact.Phone(12345),
@@ -534,78 +543,164 @@ public sealed class RoundtripTests
             Label = "leaf",
             Count = 7,
         };
+        example.ExampleLeaf otherLeaf = new()
+        {
+            Label = "other",
+            Count = 8,
+        };
+        example.ExampleLeafUnion leafUnion = example.ExampleLeafUnion.Leaf(otherLeaf);
 
         return new example.ExampleMessage
         {
             BoolValue = true,
-            Int8Value = -8,
+            Int8Value = -12,
             Int16Value = -1234,
-            FixedInt32Value = 123456,
-            Varint32Value = -456,
-            FixedInt64Value = 123456789,
-            Varint64Value = -987654321,
-            TaggedInt64Value = -222222222,
+            FixedI32Value = -123456,
+            VarintI32Value = -12345,
+            FixedI64Value = -123456789,
+            VarintI64Value = -987654321,
+            TaggedI64Value = 123456789,
             Uint8Value = 200,
             Uint16Value = 60000,
-            FixedUint32Value = 1234567890,
-            VarUint32Value = 42,
-            FixedUint64Value = 9876543210,
-            VarUint64Value = 12345678901,
-            TaggedUint64Value = 2222222222,
-            Float32Value = 2.5f,
-            Float64Value = 3.5,
+            FixedU32Value = 1234567890,
+            VarintU32Value = 1234567890,
+            FixedU64Value = 9876543210,
+            VarintU64Value = 12345678901,
+            TaggedU64Value = 2222222222,
+            Float16Value = (Half)1.5f,
+            Bfloat16Value = BFloat16.FromSingle(2.5f),
+            Float32Value = 3.5f,
+            Float64Value = 4.5,
             StringValue = "example",
             BytesValue = [1, 2, 3],
-            DateValue = new DateOnly(2024, 1, 2),
-            TimestampValue = DateTimeOffset.FromUnixTimeSeconds(1704164645),
-            DurationValue = TimeSpan.FromSeconds(5),
+            DateValue = new DateOnly(2024, 2, 3),
+            TimestampValue = DateTimeOffset.Parse(
+                "2024-02-03T04:05:06Z",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+            DurationValue = TimeSpan.FromSeconds(42) + TimeSpan.FromTicks(70),
+            DecimalValue = 123.45m,
             EnumValue = example.ExampleState.Ready,
             MessageValue = leaf,
-            UnionValue = example.ExampleLeafUnion.Leaf(new example.ExampleLeaf
-            {
-                Label = "union-leaf",
-                Count = 8,
-            }),
-            BoolList = [true, false],
-            FixedInt32List = [1, -2, 3],
-            Varint32List = [4, -5],
+            UnionValue = leafUnion,
+            BoolList = [true, false, true],
+            Int8List = [1, -2, 3],
+            Int16List = [100, -200, 300],
+            FixedI32List = [1000, -2000, 3000],
+            VarintI32List = [-10, 20, -30],
+            FixedI64List = [10000, -20000],
+            VarintI64List = [-40, 50],
+            TaggedI64List = [60, 70],
+            Uint8List = [200, 250],
+            Uint16List = [50000, 60000],
+            FixedU32List = [2000000000, 2100000000],
+            VarintU32List = [100, 200],
+            FixedU64List = [9000000000],
+            VarintU64List = [12000000000],
+            TaggedU64List = [13000000000],
+            Float16List = [(Half)1.0f, (Half)2.0f],
+            Bfloat16List = [BFloat16.FromSingle(1.0f), BFloat16.FromSingle(2.0f)],
+            MaybeFloat16List = [(Half)1.0f, null, (Half)2.0f],
+            MaybeBfloat16List = [BFloat16.FromSingle(1.0f), null, BFloat16.FromSingle(3.0f)],
+            Float32List = [1.5f, 2.5f],
+            Float64List = [3.5, 4.5],
             StringList = ["alpha", "beta"],
-            MessageList = [leaf],
-            UnionList = [example.ExampleLeafUnion.Note("list-union")],
-            MaybeFixedInt32List = [null, 9, -10],
-            MaybeUint64List = [null, 11],
-            BoolArray = [true, false, true],
-            Int32Array = [10, -20, 30],
-            Uint8Array = [1, 2, 3],
+            BytesList = [[4, 5], [6, 7]],
+            DateList = [new DateOnly(2024, 1, 1), new DateOnly(2024, 1, 2)],
+            TimestampList =
+            [
+                DateTimeOffset.Parse(
+                    "2024-01-01T00:00:00Z",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+                DateTimeOffset.Parse(
+                    "2024-01-02T00:00:00Z",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal),
+            ],
+            DurationList = [TimeSpan.FromMilliseconds(1), TimeSpan.FromSeconds(2)],
+            DecimalList = [1.25m, 2.50m],
+            EnumList = [example.ExampleState.Unknown, example.ExampleState.Failed],
+            MessageList = [leaf, otherLeaf],
+            UnionList = [example.ExampleLeafUnion.Note("note"), leafUnion],
+            MaybeFixedI32List = [1, null, 3],
+            MaybeUint64List = [10, null, 30],
+            BoolArray = [true, false],
+            Int8Array = [1, -2],
+            Int16Array = [100, -200],
+            Int32Array = [1000, -2000],
+            Int64Array = [10000, -20000],
+            Uint8Array = [200, 250],
+            Uint16Array = [50000, 60000],
+            Uint32Array = [2000000000, 2100000000],
+            Uint64Array = [9000000000, 12000000000],
+            Float16Array = [(Half)1.0f, (Half)2.0f],
+            Bfloat16Array = [BFloat16.FromSingle(1.0f), BFloat16.FromSingle(2.0f)],
             Float32Array = [1.5f, 2.5f],
-            Int32ArrayList = [[1, 2], [-3, 4]],
-            Uint8ArrayList = [[4, 5], [6]],
+            Float64Array = [3.5, 4.5],
+            Int32ArrayList = [[1, 2], [3, 4]],
+            Uint8ArrayList = [[201, 202], [203]],
+            StringValuesByBool = new Dictionary<bool, string> { [true] = "bool" },
+            StringValuesByInt8 = new Dictionary<sbyte, string> { [-1] = "int8" },
+            StringValuesByInt16 = new Dictionary<short, string> { [-2] = "int16" },
+            StringValuesByFixedI32 = new Dictionary<int, string> { [-3] = "fixed-i32" },
+            StringValuesByVarintI32 = new Dictionary<int, string> { [4] = "varint_i32" },
+            StringValuesByFixedI64 = new Dictionary<long, string> { [-5] = "fixed-i64" },
+            StringValuesByVarintI64 = new Dictionary<long, string> { [6] = "varint_i64" },
+            StringValuesByTaggedI64 = new Dictionary<long, string> { [7] = "tagged-i64" },
+            StringValuesByUint8 = new Dictionary<byte, string> { [200] = "uint8" },
+            StringValuesByUint16 = new Dictionary<ushort, string> { [60000] = "uint16" },
+            StringValuesByFixedU32 = new Dictionary<uint, string> { [1234567890] = "fixed-u32" },
+            StringValuesByVarintU32 = new Dictionary<uint, string> { [1234567891] = "varint-u32" },
+            StringValuesByFixedU64 = new Dictionary<ulong, string> { [9876543210] = "fixed-u64" },
+            StringValuesByVarintU64 = new Dictionary<ulong, string> { [9876543211] = "varint-u64" },
+            StringValuesByTaggedU64 = new Dictionary<ulong, string> { [9876543212] = "tagged-u64" },
             StringValuesByString = new Dictionary<string, string>
             {
-                ["k1"] = "v1",
-                ["k2"] = "v2",
+                ["name"] = "value",
+            },
+            StringValuesByTimestamp = new Dictionary<DateTimeOffset, string>
+            {
+                [DateTimeOffset.Parse(
+                    "2024-03-04T05:06:07Z",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal)] = "time",
+            },
+            StringValuesByDuration = new Dictionary<TimeSpan, string> { [TimeSpan.FromSeconds(9)] = "duration" },
+            StringValuesByEnum = new Dictionary<example.ExampleState, string> { [example.ExampleState.Ready] = "ready" },
+            Float16ValuesByName = new Dictionary<string, Half> { ["f16"] = (Half)1.25f },
+            MaybeFloat16ValuesByName = new Dictionary<string, Half?> { ["maybe-f16"] = (Half)1.5f },
+            Bfloat16ValuesByName = new Dictionary<string, BFloat16> { ["bf16"] = BFloat16.FromSingle(1.75f) },
+            MaybeBfloat16ValuesByName = new Dictionary<string, BFloat16?>
+            {
+                ["maybe-bf16"] = BFloat16.FromSingle(2.25f),
+            },
+            BytesValuesByName = new Dictionary<string, byte[]> { ["bytes"] = [8, 9] },
+            DateValuesByName = new Dictionary<string, DateOnly> { ["date"] = new DateOnly(2024, 5, 6) },
+            DecimalValuesByName = new Dictionary<string, decimal> { ["decimal"] = 99.01m },
+            MessageValuesByName = new Dictionary<string, example.ExampleLeaf> { ["leaf"] = leaf },
+            UnionValuesByName = new Dictionary<string, example.ExampleLeafUnion>
+            {
+                ["union"] = example.ExampleLeafUnion.Code(42),
             },
             Uint8ArrayValuesByName = new Dictionary<string, byte[]>
             {
-                ["bytes"] = [1, 2, 3],
+                ["u8"] = [201, 202],
             },
             Float32ArrayValuesByName = new Dictionary<string, float[]>
             {
-                ["floats"] = [1.5f, 2.5f],
+                ["f32"] = [1.25f, 2.5f],
             },
             Int32ArrayValuesByName = new Dictionary<string, int[]>
             {
-                ["ints"] = [7, -8, 9],
+                ["i32"] = [101, 202],
             },
         };
     }
 
     private static example.ExampleMessageUnion BuildExampleMessageUnion()
     {
-        return example.ExampleMessageUnion.Int32ArrayValuesByName(new Dictionary<string, int[]>
-        {
-            ["ints"] = [7, -8, 9],
-        });
+        return example.ExampleMessageUnion.Int32ArrayList([[11, 12], [13, 14]]);
     }
 
     private static example.ExampleMessageUnion BuildExampleArrayListUnion()
@@ -623,21 +718,21 @@ public sealed class RoundtripTests
             Int8Value = 12,
             Int16Value = 1234,
             Int32Value = -123456,
-            FixedInt32Value = -123456,
-            Varint32Value = -12345,
+            FixedI32Value = -123456,
+            VarintI32Value = -12345,
             Int64Value = -123456789,
-            FixedInt64Value = -123456789,
-            Varint64Value = -987654321,
-            TaggedInt64Value = 123456789,
+            FixedI64Value = -123456789,
+            VarintI64Value = -987654321,
+            TaggedI64Value = 123456789,
             Uint8Value = 200,
             Uint16Value = 60000,
             Uint32Value = 1234567890,
-            FixedUint32Value = 1234567890,
-            VarUint32Value = 1234567890,
+            FixedU32Value = 1234567890,
+            VarintU32Value = 1234567890,
             Uint64Value = 9876543210,
-            FixedUint64Value = 9876543210,
-            VarUint64Value = 12345678901,
-            TaggedUint64Value = 2222222222,
+            FixedU64Value = 9876543210,
+            VarintU64Value = 12345678901,
+            TaggedU64Value = 2222222222,
             Float32Value = 2.5f,
             Float64Value = 3.5,
             StringValue = "optional",
@@ -795,39 +890,32 @@ public sealed class RoundtripTests
 
     private static graph.Graph BuildGraph()
     {
-        graph.Node node1 = new()
+        graph.Node nodeA = new()
         {
-            Id = "n1",
+            Id = "node-a",
         };
-        graph.Node node2 = new()
+        graph.Node nodeB = new()
         {
-            Id = "n2",
+            Id = "node-b",
         };
 
-        graph.Edge edge12 = new()
+        graph.Edge edge = new()
         {
-            Id = "e12",
+            Id = "edge-1",
             Weight = 1.5f,
-            From = node1,
-            To = node2,
-        };
-        graph.Edge edge21 = new()
-        {
-            Id = "e21",
-            Weight = 2.5f,
-            From = node2,
-            To = node1,
+            From = nodeA,
+            To = nodeB,
         };
 
-        node1.OutEdges = [edge12];
-        node1.InEdges = [edge21];
-        node2.OutEdges = [edge21];
-        node2.InEdges = [edge12];
+        nodeA.OutEdges = [edge];
+        nodeA.InEdges = [edge];
+        nodeB.OutEdges = [];
+        nodeB.InEdges = [edge];
 
         return new graph.Graph
         {
-            Nodes = [node1, node2],
-            Edges = [edge12, edge21],
+            Nodes = [nodeA, nodeB],
+            Edges = [edge],
         };
     }
 
@@ -892,17 +980,17 @@ public sealed class RoundtripTests
         Assert.Equal(expected.Int8Value, actual.Int8Value);
         Assert.Equal(expected.Int16Value, actual.Int16Value);
         Assert.Equal(expected.Int32Value, actual.Int32Value);
-        Assert.Equal(expected.Varint32Value, actual.Varint32Value);
+        Assert.Equal(expected.VarintI32Value, actual.VarintI32Value);
         Assert.Equal(expected.Int64Value, actual.Int64Value);
-        Assert.Equal(expected.Varint64Value, actual.Varint64Value);
-        Assert.Equal(expected.TaggedInt64Value, actual.TaggedInt64Value);
+        Assert.Equal(expected.VarintI64Value, actual.VarintI64Value);
+        Assert.Equal(expected.TaggedI64Value, actual.TaggedI64Value);
         Assert.Equal(expected.Uint8Value, actual.Uint8Value);
         Assert.Equal(expected.Uint16Value, actual.Uint16Value);
         Assert.Equal(expected.Uint32Value, actual.Uint32Value);
-        Assert.Equal(expected.VarUint32Value, actual.VarUint32Value);
+        Assert.Equal(expected.VarintU32Value, actual.VarintU32Value);
         Assert.Equal(expected.Uint64Value, actual.Uint64Value);
-        Assert.Equal(expected.VarUint64Value, actual.VarUint64Value);
-        Assert.Equal(expected.TaggedUint64Value, actual.TaggedUint64Value);
+        Assert.Equal(expected.VarintU64Value, actual.VarintU64Value);
+        Assert.Equal(expected.TaggedU64Value, actual.TaggedU64Value);
         Assert.Equal(expected.Float32Value, actual.Float32Value);
         Assert.Equal(expected.Float64Value, actual.Float64Value);
 
@@ -968,18 +1056,18 @@ public sealed class RoundtripTests
         Assert.Equal(expected.BoolValue, actual.BoolValue);
         Assert.Equal(expected.Int8Value, actual.Int8Value);
         Assert.Equal(expected.Int16Value, actual.Int16Value);
-        Assert.Equal(expected.FixedInt32Value, actual.FixedInt32Value);
-        Assert.Equal(expected.Varint32Value, actual.Varint32Value);
-        Assert.Equal(expected.FixedInt64Value, actual.FixedInt64Value);
-        Assert.Equal(expected.Varint64Value, actual.Varint64Value);
-        Assert.Equal(expected.TaggedInt64Value, actual.TaggedInt64Value);
+        Assert.Equal(expected.FixedI32Value, actual.FixedI32Value);
+        Assert.Equal(expected.VarintI32Value, actual.VarintI32Value);
+        Assert.Equal(expected.FixedI64Value, actual.FixedI64Value);
+        Assert.Equal(expected.VarintI64Value, actual.VarintI64Value);
+        Assert.Equal(expected.TaggedI64Value, actual.TaggedI64Value);
         Assert.Equal(expected.Uint8Value, actual.Uint8Value);
         Assert.Equal(expected.Uint16Value, actual.Uint16Value);
-        Assert.Equal(expected.FixedUint32Value, actual.FixedUint32Value);
-        Assert.Equal(expected.VarUint32Value, actual.VarUint32Value);
-        Assert.Equal(expected.FixedUint64Value, actual.FixedUint64Value);
-        Assert.Equal(expected.VarUint64Value, actual.VarUint64Value);
-        Assert.Equal(expected.TaggedUint64Value, actual.TaggedUint64Value);
+        Assert.Equal(expected.FixedU32Value, actual.FixedU32Value);
+        Assert.Equal(expected.VarintU32Value, actual.VarintU32Value);
+        Assert.Equal(expected.FixedU64Value, actual.FixedU64Value);
+        Assert.Equal(expected.VarintU64Value, actual.VarintU64Value);
+        Assert.Equal(expected.TaggedU64Value, actual.TaggedU64Value);
         Assert.Equal(expected.Float32Value, actual.Float32Value);
         Assert.Equal(expected.Float64Value, actual.Float64Value);
         Assert.Equal(expected.StringValue, actual.StringValue);
@@ -991,8 +1079,8 @@ public sealed class RoundtripTests
         AssertExampleLeaf(expected.MessageValue, actual.MessageValue);
         AssertExampleLeafUnion(expected.UnionValue, actual.UnionValue);
         Assert.Equal(expected.BoolList, actual.BoolList);
-        Assert.Equal(expected.FixedInt32List, actual.FixedInt32List);
-        Assert.Equal(expected.Varint32List, actual.Varint32List);
+        Assert.Equal(expected.FixedI32List, actual.FixedI32List);
+        Assert.Equal(expected.VarintI32List, actual.VarintI32List);
         Assert.Equal(expected.StringList, actual.StringList);
         Assert.Equal(expected.MessageList.Count, actual.MessageList.Count);
         for (int i = 0; i < expected.MessageList.Count; i++)
@@ -1006,7 +1094,7 @@ public sealed class RoundtripTests
             AssertExampleLeafUnion(expected.UnionList[i], actual.UnionList[i]);
         }
 
-        Assert.Equal(expected.MaybeFixedInt32List, actual.MaybeFixedInt32List);
+        Assert.Equal(expected.MaybeFixedI32List, actual.MaybeFixedI32List);
         Assert.Equal(expected.MaybeUint64List, actual.MaybeUint64List);
         Assert.Equal(expected.BoolArray, actual.BoolArray);
         Assert.Equal(expected.Int32Array, actual.Int32Array);
@@ -1064,6 +1152,10 @@ public sealed class RoundtripTests
         Assert.Equal(expected.CaseId(), actual.CaseId());
         switch (expected.Case())
         {
+            case example.ExampleMessageUnion.ExampleMessageUnionCase.Int32ArrayList:
+                Assert.True(actual.IsInt32ArrayList);
+                AssertArrayList(expected.Int32ArrayListValue(), actual.Int32ArrayListValue());
+                break;
             case example.ExampleMessageUnion.ExampleMessageUnionCase.Uint8ArrayList:
                 Assert.True(actual.IsUint8ArrayList);
                 AssertArrayList(expected.Uint8ArrayListValue(), actual.Uint8ArrayListValue());
@@ -1096,21 +1188,21 @@ public sealed class RoundtripTests
         Assert.Equal(e.Int8Value, a.Int8Value);
         Assert.Equal(e.Int16Value, a.Int16Value);
         Assert.Equal(e.Int32Value, a.Int32Value);
-        Assert.Equal(e.FixedInt32Value, a.FixedInt32Value);
-        Assert.Equal(e.Varint32Value, a.Varint32Value);
+        Assert.Equal(e.FixedI32Value, a.FixedI32Value);
+        Assert.Equal(e.VarintI32Value, a.VarintI32Value);
         Assert.Equal(e.Int64Value, a.Int64Value);
-        Assert.Equal(e.FixedInt64Value, a.FixedInt64Value);
-        Assert.Equal(e.Varint64Value, a.Varint64Value);
-        Assert.Equal(e.TaggedInt64Value, a.TaggedInt64Value);
+        Assert.Equal(e.FixedI64Value, a.FixedI64Value);
+        Assert.Equal(e.VarintI64Value, a.VarintI64Value);
+        Assert.Equal(e.TaggedI64Value, a.TaggedI64Value);
         Assert.Equal(e.Uint8Value, a.Uint8Value);
         Assert.Equal(e.Uint16Value, a.Uint16Value);
         Assert.Equal(e.Uint32Value, a.Uint32Value);
-        Assert.Equal(e.FixedUint32Value, a.FixedUint32Value);
-        Assert.Equal(e.VarUint32Value, a.VarUint32Value);
+        Assert.Equal(e.FixedU32Value, a.FixedU32Value);
+        Assert.Equal(e.VarintU32Value, a.VarintU32Value);
         Assert.Equal(e.Uint64Value, a.Uint64Value);
-        Assert.Equal(e.FixedUint64Value, a.FixedUint64Value);
-        Assert.Equal(e.VarUint64Value, a.VarUint64Value);
-        Assert.Equal(e.TaggedUint64Value, a.TaggedUint64Value);
+        Assert.Equal(e.FixedU64Value, a.FixedU64Value);
+        Assert.Equal(e.VarintU64Value, a.VarintU64Value);
+        Assert.Equal(e.TaggedU64Value, a.TaggedU64Value);
         Assert.Equal(e.Float32Value, a.Float32Value);
         Assert.Equal(e.Float64Value, a.Float64Value);
         Assert.Equal(e.StringValue, a.StringValue);
@@ -1271,38 +1363,31 @@ public sealed class RoundtripTests
     private static void AssertGraph(graph.Graph graphValue)
     {
         Assert.Equal(2, graphValue.Nodes.Count);
-        Assert.Equal(2, graphValue.Edges.Count);
+        Assert.Single(graphValue.Edges);
 
         Dictionary<string, graph.Node> nodes = graphValue.Nodes.ToDictionary(n => n.Id, n => n);
         Dictionary<string, graph.Edge> edges = graphValue.Edges.ToDictionary(e => e.Id, e => e);
 
-        Assert.True(nodes.ContainsKey("n1"));
-        Assert.True(nodes.ContainsKey("n2"));
-        Assert.True(edges.ContainsKey("e12"));
-        Assert.True(edges.ContainsKey("e21"));
+        Assert.True(nodes.ContainsKey("node-a"));
+        Assert.True(nodes.ContainsKey("node-b"));
+        Assert.True(edges.ContainsKey("edge-1"));
 
-        graph.Edge edge12 = edges["e12"];
-        graph.Edge edge21 = edges["e21"];
+        graph.Edge edge = edges["edge-1"];
 
-        Assert.NotNull(edge12.From);
-        Assert.NotNull(edge12.To);
-        Assert.NotNull(edge21.From);
-        Assert.NotNull(edge21.To);
+        Assert.NotNull(edge.From);
+        Assert.NotNull(edge.To);
 
-        Assert.Same(nodes["n1"], edge12.From);
-        Assert.Same(nodes["n2"], edge12.To);
-        Assert.Same(nodes["n2"], edge21.From);
-        Assert.Same(nodes["n1"], edge21.To);
+        Assert.Same(nodes["node-a"], edge.From);
+        Assert.Same(nodes["node-b"], edge.To);
 
-        Assert.Single(nodes["n1"].OutEdges);
-        Assert.Single(nodes["n1"].InEdges);
-        Assert.Single(nodes["n2"].OutEdges);
-        Assert.Single(nodes["n2"].InEdges);
+        Assert.Single(nodes["node-a"].OutEdges);
+        Assert.Single(nodes["node-a"].InEdges);
+        Assert.Empty(nodes["node-b"].OutEdges);
+        Assert.Single(nodes["node-b"].InEdges);
 
-        Assert.Same(edge12, nodes["n1"].OutEdges[0]);
-        Assert.Same(edge21, nodes["n1"].InEdges[0]);
-        Assert.Same(edge21, nodes["n2"].OutEdges[0]);
-        Assert.Same(edge12, nodes["n2"].InEdges[0]);
+        Assert.Same(edge, nodes["node-a"].OutEdges[0]);
+        Assert.Same(edge, nodes["node-a"].InEdges[0]);
+        Assert.Same(edge, nodes["node-b"].InEdges[0]);
     }
 
     private static void AssertRootHolder(root.MultiHolder expected, root.MultiHolder actual)

@@ -38,6 +38,18 @@ abstract class UnionSerializer<T> extends Serializer<T> {
   /// Rebuilds a union value from a decoded [caseId] and [value].
   T buildValue(int caseId, Object? value);
 
+  /// Writes the active case payload. Generated union serializers override this
+  /// to use the declared case type for collection and array payloads.
+  void writeCasePayload(WriteContext context, int caseId, Object? value) {
+    context.writeRef(value);
+  }
+
+  /// Reads the active case payload. Generated union serializers override this
+  /// to use the declared case type for collection and array payloads.
+  Object? readCasePayload(ReadContext context, int caseId) {
+    return context.readRef();
+  }
+
   @nonVirtual
   @override
   void write(WriteContext context, T value) {
@@ -46,13 +58,13 @@ abstract class UnionSerializer<T> extends Serializer<T> {
       throw StateError('Union case id must be non-negative: $activeCaseId.');
     }
     context.buffer.writeVarUint32(activeCaseId);
-    context.writeRef(caseValue(value));
+    writeCasePayload(context, activeCaseId, caseValue(value));
   }
 
   @nonVirtual
   @override
   T read(ReadContext context) {
     final activeCaseId = context.buffer.readVarUint32();
-    return buildValue(activeCaseId, context.readRef());
+    return buildValue(activeCaseId, readCasePayload(context, activeCaseId));
   }
 }

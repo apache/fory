@@ -1352,7 +1352,7 @@ private:
         return result;
       }
     }
-    error.set_error(ErrorCode::InvalidData, "Invalid var_uint32 encoding");
+    error.set_error(ErrorCode::InvalidData, "Invalid variable-length uint32 encoding");
     return 0;
   }
 

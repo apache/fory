@@ -183,8 +183,7 @@ public class TypeRef<T> {
     }
     TypeExtMeta meta = null;
     if (includeRefMeta) {
-      Annotation typeAnnotation =
-          TypeAnnotationUtils.getTypeAnnotation(annotatedType.getAnnotations());
+      Annotation typeAnnotation = getTypeAnnotation(annotatedType);
       Ref ref = annotatedType.getAnnotation(Ref.class);
       if (typeAnnotation != null) {
         int typeId = TypeAnnotationUtils.getTypeId(typeAnnotation, TypeUtils.getRawType(type));
@@ -194,6 +193,21 @@ public class TypeRef<T> {
       }
     }
     return new TypeRef<>(type, meta, typeArguments, componentType);
+  }
+
+  private static Annotation getTypeAnnotation(AnnotatedType annotatedType) {
+    Annotation typeAnnotation =
+        TypeAnnotationUtils.getTypeAnnotation(annotatedType.getAnnotations());
+    if (typeAnnotation != null || !(annotatedType instanceof AnnotatedArrayType)) {
+      return typeAnnotation;
+    }
+    AnnotatedType annotatedComponent =
+        ((AnnotatedArrayType) annotatedType).getAnnotatedGenericComponentType();
+    Class<?> componentRawType = TypeUtils.getRawType(annotatedComponent.getType());
+    if (!componentRawType.isPrimitive()) {
+      return null;
+    }
+    return TypeAnnotationUtils.getTypeAnnotation(annotatedComponent.getAnnotations());
   }
 
   /** Returns the captured type. */

@@ -954,7 +954,33 @@ final class Animal {
 
 Nested types use flat underscore naming (e.g., `Person_PhoneNumber`, `Person_PhoneType`).
 
-`list<T>` fields generate ordered collection carriers. `array<T>` fields generate dense numeric carriers such as Dart typed-data lists (for example, `array<int32>` -> `Int32List`).
+`list<T>` fields generate ordered collection carriers and use the Fory list
+protocol. `array<T>` fields generate dense one-dimensional bool or numeric
+carriers and use the specialized dense-array protocol. Generated code must not
+choose `array<T>` only because a language has an optimized list-like carrier;
+the schema kind comes from the IDL.
+
+| IDL schema          | Dart generated carrier | Notes                                      |
+| ------------------- | ---------------------- | ------------------------------------------ |
+| `list<int32>`       | `List<int>`            | List protocol, varint element encoding     |
+| `list<fixed int32>` | `List<int>`            | List protocol, fixed-width element segment |
+| `array<bool>`       | `BoolList`             | One byte per bool                          |
+| `array<int8>`       | `Int8List`             | Dense signed bytes                         |
+| `array<int16>`      | `Int16List`            | Dense little-endian int16                  |
+| `array<int32>`      | `Int32List`            | Dense little-endian int32                  |
+| `array<int64>`      | `Int64List`            | Dense little-endian int64                  |
+| `array<uint8>`      | `Uint8List`            | Dense unsigned bytes                       |
+| `array<uint16>`     | `Uint16List`           | Dense little-endian uint16                 |
+| `array<uint32>`     | `Uint32List`           | Dense little-endian uint32                 |
+| `array<uint64>`     | `Uint64List`           | Dense little-endian uint64                 |
+| `array<float16>`    | `Float16List`          | Dense binary16 storage                     |
+| `array<bfloat16>`   | `Bfloat16List`         | Dense bfloat16 storage                     |
+| `array<float32>`    | `Float32List`          | Dense little-endian float32                |
+| `array<float64>`    | `Float64List`          | Dense little-endian float64                |
+
+Generated Dart fields that use `ArrayType(element: BoolType())` must use
+`BoolList`; plain `List<bool>` remains the generated and handwritten carrier
+for `list<bool>`.
 
 Reference tracking on list elements or map values uses the container sugar annotations:
 

@@ -549,7 +549,7 @@ class CSharpGenerator(BaseGenerator):
             )
             value_type = self.generate_type(
                 field_type.value_type,
-                nullable=False,
+                nullable=field_type.value_optional,
                 parent_stack=parent_stack,
             )
             map_type = f"Dictionary<{key_type}, {value_type}>"
@@ -858,8 +858,10 @@ class CSharpGenerator(BaseGenerator):
             schema_type = self._schema_type_hint(field.field_type)
             if schema_type:
                 lines.append(
-                    f"{ind}{self.indent_str}[ForyField(Type = typeof({schema_type}))]"
+                    f"{ind}{self.indent_str}[ForyField({field.number}, Type = typeof({schema_type}))]"
                 )
+            else:
+                lines.append(f"{ind}{self.indent_str}[ForyField({field.number})]")
             field_name = self._field_member_name(field, message, used_field_names)
             field_type = self.generate_type(
                 field.field_type,

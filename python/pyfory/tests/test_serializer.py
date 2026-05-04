@@ -176,7 +176,7 @@ def test_basic_serializer(xlang):
 
 def test_float16_round_trip():
     fory = Fory(xlang=True, ref=False)
-    typeinfo = fory.type_resolver.get_type_info(pyfory.float16)
+    typeinfo = fory.type_resolver.get_type_info(pyfory.Float16)
     assert isinstance(typeinfo.serializer, pyfory.Float16Serializer)
     assert typeinfo.type_id == TypeId.FLOAT16
     decoded = ser_de(fory, _float16_from_bits(0x3C00))
@@ -186,7 +186,7 @@ def test_float16_round_trip():
 
 def test_bfloat16_round_trip():
     fory = Fory(xlang=True, ref=False)
-    typeinfo = fory.type_resolver.get_type_info(pyfory.bfloat16)
+    typeinfo = fory.type_resolver.get_type_info(pyfory.BFloat16)
     assert isinstance(typeinfo.serializer, pyfory.BFloat16Serializer)
     assert typeinfo.type_id == TypeId.BFLOAT16
     decoded = ser_de(fory, _bfloat16_from_bits(0x3FC0))
@@ -195,8 +195,8 @@ def test_bfloat16_round_trip():
 
 
 def test_reduced_precision_markers_are_not_public_value_classes():
-    assert not isinstance(pyfory.float16, type)
-    assert not isinstance(pyfory.bfloat16, type)
+    assert not isinstance(pyfory.Float16, type)
+    assert not isinstance(pyfory.BFloat16, type)
 
 
 @pytest.mark.parametrize(
@@ -266,6 +266,15 @@ def test_float16_array_round_trip():
 def test_float16_array_from_values():
     values = pyfory.Float16Array.from_values([0.0, 1.0, -2.0])
     assert list(values.to_buffer()) == [0x0000, 0x3C00, 0xC000]
+
+
+def test_fory_array_constructor_accepts_iterable_values():
+    assert pyfory.BoolArray([True, False, True]) == [True, False, True]
+    assert pyfory.Int32Array([1, -2, 3]) == [1, -2, 3]
+    assert pyfory.UInt32Array([1, 2, 3]) == [1, 2, 3]
+    assert pyfory.Float32Array([1, 2, 3]) == [1.0, 2.0, 3.0]
+    assert list(pyfory.Float16Array([0.0, 1.0, -2.0]).to_buffer()) == [0x0000, 0x3C00, 0xC000]
+    assert list(pyfory.BFloat16Array([0.0, 1.0, -2.0]).to_buffer()) == [0x0000, 0x3F80, 0xC000]
 
 
 def test_float16_array_from_buffer():

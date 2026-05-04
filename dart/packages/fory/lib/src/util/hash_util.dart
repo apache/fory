@@ -183,22 +183,41 @@ int schemaHash(TypeDef typeDef) {
 String schemaFingerprint(TypeDef typeDef) {
   final parts = typeDef.fields
       .map(
-        (field) => StringBuffer()
-          ..write(field.identifier)
-          ..write(',')
-          ..write(
-            _fieldTypeFingerprint(
-              field.fieldType,
-              includeRef: true,
-              includeNullable: true,
-            ),
-          )
-          ..write(';'),
+        (field) => (
+          id: field.id,
+          identifier: field.identifier,
+          fingerprint: StringBuffer()
+            ..write(field.identifier)
+            ..write(',')
+            ..write(
+              _fieldTypeFingerprint(
+                field.fieldType,
+                includeRef: true,
+                includeNullable: true,
+              ),
+            )
+            ..write(';'),
+        ),
       )
-      .map((buffer) => buffer.toString())
       .toList(growable: false)
-    ..sort();
-  return parts.join();
+    ..sort((left, right) {
+      final leftId = left.id;
+      final rightId = right.id;
+      if (leftId != null && rightId != null) {
+        final result = leftId.compareTo(rightId);
+        return result == 0
+            ? left.identifier.compareTo(right.identifier)
+            : result;
+      }
+      if (leftId != null) {
+        return -1;
+      }
+      if (rightId != null) {
+        return 1;
+      }
+      return left.identifier.compareTo(right.identifier);
+    });
+  return parts.map((part) => part.fingerprint.toString()).join();
 }
 
 String _fieldTypeFingerprint(

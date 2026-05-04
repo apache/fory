@@ -145,8 +145,8 @@ print(f"Timestamp: {msg.timestamp}")
 | `int64_t`          | `long`     | `int`             | `int64`             | `i64`      |
 | `float`            | `float`    | `float`           | `float32`           | `f32`      |
 | `double`           | `double`   | `float`           | `float64`           | `f64`      |
-| `fory::float16_t`  | `Float16`  | `pyfory.float16`  | `float16.Float16`   | `Float16`  |
-| `fory::bfloat16_t` | `BFloat16` | `pyfory.bfloat16` | `bfloat16.BFloat16` | `BFloat16` |
+| `fory::float16_t`  | `Float16`  | `pyfory.Float16`  | `float16.Float16`   | `Float16`  |
+| `fory::bfloat16_t` | `BFloat16` | `pyfory.BFloat16` | `bfloat16.BFloat16` | `BFloat16` |
 
 ### String Types
 
@@ -163,6 +163,28 @@ print(f"Timestamp: {msg.timestamp}")
 | `std::vector<fory::bfloat16_t>` | `BFloat16List` | `BFloat16Array` | `[]bfloat16.BFloat16` | `Vec<BFloat16>` |
 | `std::set<T>`                   | `Set<T>`       | `set`           | `map[T]struct{}`      | `HashSet<T>`    |
 | `std::map<K,V>`                 | `Map<K,V>`     | `dict`          | `map[K]V`             | `HashMap<K,V>`  |
+
+### Lists and Dense Arrays
+
+`std::vector<T>` maps to Fory `list<T>` by default in handwritten C++ structs.
+Use the field metadata DSL's array node when the schema is dense `array<T>`.
+
+| Fory schema       | C++ metadata sketch                      |
+| ----------------- | ---------------------------------------- |
+| `list<int32>`     | `fory::F(id).list(fory::T::int32())`     |
+| `array<bool>`     | `fory::F(id).array(fory::T::bool_())`    |
+| `array<int8>`     | `fory::F(id).array(fory::T::int8())`     |
+| `array<int16>`    | `fory::F(id).array(fory::T::int16())`    |
+| `array<int32>`    | `fory::F(id).array(fory::T::int32())`    |
+| `array<int64>`    | `fory::F(id).array(fory::T::int64())`    |
+| `array<uint8>`    | `fory::F(id).array(fory::T::uint8())`    |
+| `array<uint16>`   | `fory::F(id).array(fory::T::uint16())`   |
+| `array<uint32>`   | `fory::F(id).array(fory::T::uint32())`   |
+| `array<uint64>`   | `fory::F(id).array(fory::T::uint64())`   |
+| `array<float16>`  | `fory::F(id).array(fory::T::float16())`  |
+| `array<bfloat16>` | `fory::F(id).array(fory::T::bfloat16())` |
+| `array<float32>`  | `fory::F(id).array(fory::T::float32())`  |
+| `array<float64>`  | `fory::F(id).array(fory::T::float64())`  |
 
 ### Temporal Types
 

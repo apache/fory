@@ -86,6 +86,29 @@ JavaScript `number` is a 64-bit float, which does not map cleanly to every integ
 - `Type.int64()` with `bigint` values for 64-bit integers (Java `long`, Go `int64`)
 - `Type.float32()` or `Type.float64()` for floating-point values
 
+## Lists and Dense Arrays
+
+Use `Type.list(T)` for ordinary JavaScript `Array<T>` values and Fory
+`list<T>` schema. Dense bool/numeric vectors use the explicit array builders
+listed below.
+
+| Fory schema       | JavaScript/TypeScript schema builder |
+| ----------------- | ------------------------------------ |
+| `list<int32>`     | `Type.list(Type.int32())`            |
+| `array<bool>`     | `Type.boolArray()`                   |
+| `array<int8>`     | `Type.int8Array()`                   |
+| `array<int16>`    | `Type.int16Array()`                  |
+| `array<int32>`    | `Type.int32Array()`                  |
+| `array<int64>`    | `Type.int64Array()`                  |
+| `array<uint8>`    | `Type.uint8Array()`                  |
+| `array<uint16>`   | `Type.uint16Array()`                 |
+| `array<uint32>`   | `Type.uint32Array()`                 |
+| `array<uint64>`   | `Type.uint64Array()`                 |
+| `array<float16>`  | `Type.float16Array()`                |
+| `array<bfloat16>` | `Type.bfloat16Array()`               |
+| `array<float32>`  | `Type.float32Array()`                |
+| `array<float64>`  | `Type.float64Array()`                |
+
 ## Date and Time
 
 - `Type.timestamp()` — a point in time; round-trips as a JavaScript `Date`

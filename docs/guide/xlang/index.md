@@ -89,7 +89,7 @@ from dataclasses import dataclass
 @dataclass
 class Person:
     name: str
-    age: pyfory.Int32Type
+    age: pyfory.Int32
 
 fory = pyfory.Fory(xlang=True)
 fory.register_type(Person, typename="example.Person")

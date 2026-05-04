@@ -200,21 +200,21 @@ class Struct1:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
-    f4: Dict[pyfory.int8, pyfory.int32] = None
-    f5: pyfory.int8 = None
-    f6: pyfory.int16 = None
-    f7: pyfory.int32 = None
-    f8: pyfory.int64 = None
-    f9: pyfory.float32 = None
-    f10: pyfory.float64 = None
-    f11: pyfory.Array[pyfory.int16] = None
-    f12: List[pyfory.int16] = None
+    f4: Dict[pyfory.Int8, pyfory.Int32] = None
+    f5: pyfory.Int8 = None
+    f6: pyfory.Int16 = None
+    f7: pyfory.Int32 = None
+    f8: pyfory.Int64 = None
+    f9: pyfory.Float32 = None
+    f10: pyfory.Float64 = None
+    f11: pyfory.Array[pyfory.Int16] = None
+    f12: List[pyfory.Int16] = None
 
 
 @dataclass
 class Struct2:
     f1: Any
-    f2: Dict[pyfory.int8, pyfory.int32]
+    f2: Dict[pyfory.Int8, pyfory.Int32]
 
 
 @pyfory.dataslots
@@ -223,15 +223,15 @@ class SlotsStruct:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
-    f4: Dict[pyfory.int8, pyfory.int32] = None
-    f5: pyfory.int8 = None
-    f6: pyfory.int16 = None
-    f7: pyfory.int32 = None
-    f8: pyfory.int64 = None
-    f9: pyfory.float32 = None
-    f10: pyfory.float64 = None
-    f11: pyfory.Array[pyfory.int16] = None
-    f12: List[pyfory.int16] = None
+    f4: Dict[pyfory.Int8, pyfory.Int32] = None
+    f5: pyfory.Int8 = None
+    f6: pyfory.Int16 = None
+    f7: pyfory.Int32 = None
+    f8: pyfory.Int64 = None
+    f9: pyfory.Float32 = None
+    f10: pyfory.Float64 = None
+    f11: pyfory.Array[pyfory.Int16] = None
+    f12: List[pyfory.Int16] = None
 
 
 STRUCT_OBJECT = Struct1(

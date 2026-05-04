@@ -119,13 +119,13 @@ public sealed class ExplicitArraySchema
 public sealed class SemanticScalarSchema
 {
     [ForyField(Type = typeof(S.Int32))]
-    public int DefaultInt32 { get; set; }
+    public int DefaultI32 { get; set; }
 
     [ForyField(Type = typeof(S.Fixed<S.Int32>))]
-    public int FixedInt32 { get; set; }
+    public int FixedI32 { get; set; }
 
     [ForyField(Type = typeof(S.Tagged<S.Int64>))]
-    public long TaggedInt64 { get; set; }
+    public long TaggedI64 { get; set; }
 }
 
 [ForyObject]
@@ -919,9 +919,9 @@ public sealed class ForyRuntimeTests
             .TypeMetaFields(false)
             .ToDictionary(f => f.FieldName, f => f.FieldType);
 
-        Assert.Equal((uint)TypeId.VarInt32, scalarFields["default_int32"].TypeId);
-        Assert.Equal((uint)TypeId.Int32, scalarFields["fixed_int32"].TypeId);
-        Assert.Equal((uint)TypeId.TaggedInt64, scalarFields["tagged_int64"].TypeId);
+        Assert.Equal((uint)TypeId.VarInt32, scalarFields["default_i32"].TypeId);
+        Assert.Equal((uint)TypeId.Int32, scalarFields["fixed_i32"].TypeId);
+        Assert.Equal((uint)TypeId.TaggedInt64, scalarFields["tagged_i64"].TypeId);
 
         resolver.GetTypeInfo<ExplicitArraySchema>();
         TypeMetaFieldInfo arrayField = Assert.Single(resolver.GetTypeInfo<ExplicitArraySchema>().TypeMetaFields(false));

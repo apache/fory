@@ -41,33 +41,48 @@ except ImportError:
 
 @dataclass
 class UnsignedArrays:
-    u8: pyfory.NDArray[pyfory.uint8] = pyfory.field(0)
-    u16: pyfory.NDArray[pyfory.uint16] = pyfory.field(1)
-    u32: pyfory.NDArray[pyfory.uint32] = pyfory.field(2)
-    u64: pyfory.NDArray[pyfory.uint64] = pyfory.field(3)
+    u8: pyfory.NDArray[pyfory.UInt8] = pyfory.field(0)
+    u16: pyfory.NDArray[pyfory.UInt16] = pyfory.field(1)
+    u32: pyfory.NDArray[pyfory.UInt32] = pyfory.field(2)
+    u64: pyfory.NDArray[pyfory.UInt64] = pyfory.field(3)
 
 
 @dataclass
 class DenseListArray:
-    values: pyfory.Array[pyfory.int32] = pyfory.field(0)
+    values: pyfory.Array[pyfory.Int32] = pyfory.field(0)
     flags: pyfory.Array[bool] = pyfory.field(1)
 
 
 @dataclass
 class ReducedPrecisionArrays:
-    halves: pyfory.NDArray[pyfory.float16] = pyfory.field(0)
-    dense_halves: pyfory.Array[pyfory.float16] = pyfory.field(1)
+    halves: pyfory.NDArray[pyfory.Float16] = pyfory.field(0)
+    dense_halves: pyfory.Array[pyfory.Float16] = pyfory.field(1)
 
 
 @dataclass
-class StdDenseArray:
-    values: pyfory.StdArray[pyfory.int32] = pyfory.field(0)
+class PyDenseArray:
+    values: pyfory.PyArray[pyfory.Int32] = pyfory.field(0)
+
+
+@dataclass
+class CompatibleArrayCarrier:
+    values: pyfory.Array[pyfory.Int32] = pyfory.field(0)
+
+
+@dataclass
+class CompatibleNDArrayCarrier:
+    values: pyfory.NDArray[pyfory.Int32] = pyfory.field(0)
+
+
+@dataclass
+class CompatiblePyArrayCarrier:
+    values: pyfory.PyArray[pyfory.Int32] = pyfory.field(0)
 
 
 @dataclass
 class NestedDenseArrays:
-    values: List[pyfory.Array[pyfory.int32]] = pyfory.field(0)
-    by_name: Dict[str, pyfory.Array[pyfory.uint8]] = pyfory.field(1)
+    values: List[pyfory.Array[pyfory.Int32]] = pyfory.field(0)
+    by_name: Dict[str, pyfory.Array[pyfory.UInt8]] = pyfory.field(1)
 
 
 def test_unsigned_array_typedef_type_ids():
@@ -224,15 +239,60 @@ def test_float16_ndarray_and_array_typehints_roundtrip():
     assert list(out.dense_halves.to_buffer()) == [0x0000, 0x3C00, 0xC000]
 
 
-def test_stdarray_typehint_roundtrips_python_array_carrier():
+def test_pyarray_typehint_roundtrips_python_array_carrier():
     fory = Fory(xlang=True)
-    fory.register_type(StdDenseArray, namespace="test", typename="StdDenseArray")
-    obj = StdDenseArray(values=array.array("i", [1, -2, 3]))
+    fory.register_type(PyDenseArray, namespace="test", typename="PyDenseArray")
+    obj = PyDenseArray(values=array.array("i", [1, -2, 3]))
 
     out = fory.deserialize(fory.serialize(obj))
 
     assert isinstance(out.values, array.array)
     assert out.values.tolist() == [1, -2, 3]
+
+
+@pytest.mark.skipif(np is None, reason="Requires numpy")
+def test_compatible_array_field_reads_as_ndarray_carrier():
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    writer.register_type(CompatibleArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+    reader.register_type(CompatibleNDArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+
+    out = reader.deserialize(writer.serialize(CompatibleArrayCarrier(values=pyfory.Int32Array([1, 2, 3]))))
+
+    assert isinstance(out, CompatibleNDArrayCarrier)
+    assert isinstance(out.values, np.ndarray)
+    assert out.values.dtype == np.dtype(np.int32)
+    np.testing.assert_array_equal(out.values, np.array([1, 2, 3], dtype=np.int32))
+
+
+@pytest.mark.skipif(np is None, reason="Requires numpy")
+def test_compatible_ndarray_field_reads_as_pyarray_carrier():
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    writer.register_type(CompatibleNDArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+    reader.register_type(CompatiblePyArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+
+    out = reader.deserialize(
+        writer.serialize(CompatibleNDArrayCarrier(values=np.array([4, 5, 6], dtype=np.int32)))
+    )
+
+    assert isinstance(out, CompatiblePyArrayCarrier)
+    assert isinstance(out.values, array.array)
+    assert out.values.typecode == "i"
+    assert out.values.tolist() == [4, 5, 6]
+
+
+def test_compatible_pyarray_field_reads_as_fory_array_carrier():
+    writer = Fory(xlang=True, compatible=True)
+    reader = Fory(xlang=True, compatible=True)
+    writer.register_type(CompatiblePyArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+    reader.register_type(CompatibleArrayCarrier, namespace="test", typename="CompatibleArrayCarrier")
+
+    out = reader.deserialize(writer.serialize(CompatiblePyArrayCarrier(values=array.array("i", [7, 8, 9]))))
+
+    assert isinstance(out, CompatibleArrayCarrier)
+    assert isinstance(out.values, pyfory.Int32Array)
+    assert out.values == [7, 8, 9]
 
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")

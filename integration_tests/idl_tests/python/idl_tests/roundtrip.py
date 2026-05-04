@@ -229,17 +229,17 @@ def build_primitive_types() -> "complex_pb.PrimitiveTypes":
         int8_value=12,
         int16_value=1234,
         int32_value=-123456,
-        varint32_value=-12345,
+        varint_i32_value=-12345,
         int64_value=-123456789,
-        varint64_value=-987654321,
-        tagged_int64_value=123456789,
+        varint_i64_value=-987654321,
+        tagged_i64_value=123456789,
         uint8_value=200,
         uint16_value=60000,
         uint32_value=1234567890,
-        var_uint32_value=1234567890,
+        varint_u32_value=1234567890,
         uint64_value=9876543210,
-        var_uint64_value=12345678901,
-        tagged_uint64_value=2222222222,
+        varint_u64_value=12345678901,
+        tagged_u64_value=2222222222,
         float32_value=2.5,
         float64_value=3.5,
         contact=contact,
@@ -352,21 +352,21 @@ def build_optional_holder() -> "optional_types.OptionalHolder":
         int8_value=12,
         int16_value=1234,
         int32_value=-123456,
-        fixed_int32_value=-123456,
-        varint32_value=-12345,
+        fixed_i32_value=-123456,
+        varint_i32_value=-12345,
         int64_value=-123456789,
-        fixed_int64_value=-123456789,
-        varint64_value=-987654321,
-        tagged_int64_value=123456789,
+        fixed_i64_value=-123456789,
+        varint_i64_value=-987654321,
+        tagged_i64_value=123456789,
         uint8_value=200,
         uint16_value=60000,
         uint32_value=1234567890,
-        fixed_uint32_value=1234567890,
-        var_uint32_value=1234567890,
+        fixed_u32_value=1234567890,
+        varint_u32_value=1234567890,
         uint64_value=9876543210,
-        fixed_uint64_value=9876543210,
-        var_uint64_value=12345678901,
-        tagged_uint64_value=2222222222,
+        fixed_u64_value=9876543210,
+        varint_u64_value=12345678901,
+        tagged_u64_value=2222222222,
         float32_value=2.5,
         float64_value=3.5,
         string_value="optional",
@@ -410,18 +410,18 @@ def build_example_message() -> "example.ExampleMessage":
         bool_value=True,
         int8_value=-12,
         int16_value=-1234,
-        fixed_int32_value=-123456,
-        varint32_value=-12345,
-        fixed_int64_value=-123456789,
-        varint64_value=-987654321,
-        tagged_int64_value=123456789,
+        fixed_i32_value=-123456,
+        varint_i32_value=-12345,
+        fixed_i64_value=-123456789,
+        varint_i64_value=-987654321,
+        tagged_i64_value=123456789,
         uint8_value=200,
         uint16_value=60000,
-        fixed_uint32_value=1234567890,
-        var_uint32_value=1234567890,
-        fixed_uint64_value=9876543210,
-        var_uint64_value=12345678901,
-        tagged_uint64_value=2222222222,
+        fixed_u32_value=1234567890,
+        varint_u32_value=1234567890,
+        fixed_u64_value=9876543210,
+        varint_u64_value=12345678901,
+        tagged_u64_value=2222222222,
         float16_value=1.5,
         bfloat16_value=2.5,
         float32_value=3.5,
@@ -438,18 +438,18 @@ def build_example_message() -> "example.ExampleMessage":
         bool_list=[True, False, True],
         int8_list=[1, -2, 3],
         int16_list=[100, -200, 300],
-        fixed_int32_list=[1000, -2000, 3000],
-        varint32_list=[-10, 20, -30],
-        fixed_int64_list=[10000, -20000],
-        varint64_list=[-40, 50],
-        tagged_int64_list=[60, 70],
+        fixed_i32_list=[1000, -2000, 3000],
+        varint_i32_list=[-10, 20, -30],
+        fixed_i64_list=[10000, -20000],
+        varint_i64_list=[-40, 50],
+        tagged_i64_list=[60, 70],
         uint8_list=[200, 250],
         uint16_list=[50000, 60000],
-        fixed_uint32_list=[2000000000, 2100000000],
-        var_uint32_list=[100, 200],
-        fixed_uint64_list=[9000000000],
-        var_uint64_list=[12000000000],
-        tagged_uint64_list=[13000000000],
+        fixed_u32_list=[2000000000, 2100000000],
+        varint_u32_list=[100, 200],
+        fixed_u64_list=[9000000000],
+        varint_u64_list=[12000000000],
+        tagged_u64_list=[13000000000],
         float16_list=[1.0, 2.0],
         bfloat16_list=[1.0, 2.0],
         maybe_float16_list=[1.0, None, 2.0],
@@ -474,7 +474,7 @@ def build_example_message() -> "example.ExampleMessage":
             example.ExampleLeafUnion.note("note"),
             example.ExampleLeafUnion.leaf(other_leaf),
         ],
-        maybe_fixed_int32_list=[1, None, 3],
+        maybe_fixed_i32_list=[1, None, 3],
         maybe_uint64_list=[10, None, 30],
         bool_array=np.array([True, False], dtype=np.bool_),
         int8_array=np.array([1, -2], dtype=np.int8),
@@ -496,18 +496,18 @@ def build_example_message() -> "example.ExampleMessage":
         string_values_by_bool={True: "bool"},
         string_values_by_int8={-1: "int8"},
         string_values_by_int16={-2: "int16"},
-        string_values_by_fixed_int32={-3: "fixed-int32"},
-        string_values_by_varint32={4: "varint32"},
-        string_values_by_fixed_int64={-5: "fixed-int64"},
-        string_values_by_varint64={6: "varint64"},
-        string_values_by_tagged_int64={7: "tagged-int64"},
+        string_values_by_fixed_i32={-3: "fixed-i32"},
+        string_values_by_varint_i32={4: "varint_i32"},
+        string_values_by_fixed_i64={-5: "fixed-i64"},
+        string_values_by_varint_i64={6: "varint_i64"},
+        string_values_by_tagged_i64={7: "tagged-i64"},
         string_values_by_uint8={200: "uint8"},
         string_values_by_uint16={60000: "uint16"},
-        string_values_by_fixed_uint32={1234567890: "fixed-uint32"},
-        string_values_by_var_uint32={1234567891: "var-uint32"},
-        string_values_by_fixed_uint64={9876543210: "fixed-uint64"},
-        string_values_by_var_uint64={9876543211: "var-uint64"},
-        string_values_by_tagged_uint64={9876543212: "tagged-uint64"},
+        string_values_by_fixed_u32={1234567890: "fixed-u32"},
+        string_values_by_varint_u32={1234567891: "varint-u32"},
+        string_values_by_fixed_u64={9876543210: "fixed-u64"},
+        string_values_by_varint_u64={9876543211: "varint-u64"},
+        string_values_by_tagged_u64={9876543212: "tagged-u64"},
         string_values_by_string={"name": "value"},
         string_values_by_timestamp={
             datetime.datetime(2024, 3, 4, 5, 6, 7, tzinfo=datetime.timezone.utc): "time"
@@ -844,21 +844,21 @@ def assert_optional_types_equal(
     assert decoded.int8_value == expected.int8_value
     assert decoded.int16_value == expected.int16_value
     assert decoded.int32_value == expected.int32_value
-    assert decoded.fixed_int32_value == expected.fixed_int32_value
-    assert decoded.varint32_value == expected.varint32_value
+    assert decoded.fixed_i32_value == expected.fixed_i32_value
+    assert decoded.varint_i32_value == expected.varint_i32_value
     assert decoded.int64_value == expected.int64_value
-    assert decoded.fixed_int64_value == expected.fixed_int64_value
-    assert decoded.varint64_value == expected.varint64_value
-    assert decoded.tagged_int64_value == expected.tagged_int64_value
+    assert decoded.fixed_i64_value == expected.fixed_i64_value
+    assert decoded.varint_i64_value == expected.varint_i64_value
+    assert decoded.tagged_i64_value == expected.tagged_i64_value
     assert decoded.uint8_value == expected.uint8_value
     assert decoded.uint16_value == expected.uint16_value
     assert decoded.uint32_value == expected.uint32_value
-    assert decoded.fixed_uint32_value == expected.fixed_uint32_value
-    assert decoded.var_uint32_value == expected.var_uint32_value
+    assert decoded.fixed_u32_value == expected.fixed_u32_value
+    assert decoded.varint_u32_value == expected.varint_u32_value
     assert decoded.uint64_value == expected.uint64_value
-    assert decoded.fixed_uint64_value == expected.fixed_uint64_value
-    assert decoded.var_uint64_value == expected.var_uint64_value
-    assert decoded.tagged_uint64_value == expected.tagged_uint64_value
+    assert decoded.fixed_u64_value == expected.fixed_u64_value
+    assert decoded.varint_u64_value == expected.varint_u64_value
+    assert decoded.tagged_u64_value == expected.tagged_u64_value
     assert decoded.float32_value == expected.float32_value
     assert decoded.float64_value == expected.float64_value
     assert decoded.string_value == expected.string_value

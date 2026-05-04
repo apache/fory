@@ -106,12 +106,12 @@ final class IdlRoundTripTests: XCTestCase {
         let maybeBFloat16Values: [String: BFloat16?] = ["none": nil, "one": BFloat16(rawValue: 0x3F80)]
 
         let message = Example.ExampleMessage(
-            fixedInt32List: [1, -2, Int32.max],
-            varint32List: [7, -8],
-            fixedInt64List: [3, -4, Int64.max],
-            fixedUint32List: [5, UInt32.max],
-            fixedUint64List: [6, UInt64.max],
-            maybeFixedInt32List: [nil, 11, -12],
+            fixedI32List: [1, -2, Int32.max],
+            varintI32List: [7, -8],
+            fixedI64List: [3, -4, Int64.max],
+            fixedU32List: [5, UInt32.max],
+            fixedU64List: [6, UInt64.max],
+            maybeFixedI32List: [nil, 11, -12],
             maybeUint64List: [nil, 13],
             maybeFloat16ValuesByName: maybeFloat16Values,
             maybeBfloat16ValuesByName: maybeBFloat16Values
@@ -124,13 +124,13 @@ final class IdlRoundTripTests: XCTestCase {
                 ($0.fieldName, $0.fieldType)
             }
         )
-        XCTAssertEqual(messageFields["fixedInt32List"]?.typeID, TypeId.list.rawValue)
-        XCTAssertEqual(messageFields["fixedInt64List"]?.typeID, TypeId.list.rawValue)
-        XCTAssertEqual(messageFields["fixedUint32List"]?.typeID, TypeId.list.rawValue)
-        XCTAssertEqual(messageFields["fixedUint64List"]?.typeID, TypeId.list.rawValue)
-        XCTAssertEqual(messageFields["maybeFixedInt32List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedI32List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedI64List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedU32List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["fixedU64List"]?.typeID, TypeId.list.rawValue)
+        XCTAssertEqual(messageFields["maybeFixedI32List"]?.typeID, TypeId.list.rawValue)
 
-        let event = Example.ExampleMessageUnion.maybeFixedInt32List([nil, 9, -10])
+        let event = Example.ExampleMessageUnion.maybeFixedI32List([nil, 9, -10])
         let decodedEvent: Example.ExampleMessageUnion = try roundTrip(fory, value: event)
         XCTAssertEqual(decodedEvent, event)
     }
@@ -406,17 +406,17 @@ final class IdlRoundTripTests: XCTestCase {
             int8Value: 12,
             int16Value: 1234,
             int32Value: -123456,
-            varint32Value: -12345,
+            varintI32Value: -12345,
             int64Value: -123456789,
-            varint64Value: -987654321,
-            taggedInt64Value: 123456789,
+            varintI64Value: -987654321,
+            taggedI64Value: 123456789,
             uint8Value: 200,
             uint16Value: 60000,
             uint32Value: 1234567890,
-            varUint32Value: 1234567890,
+            varintU32Value: 1234567890,
             uint64Value: 9876543210,
-            varUint64Value: 12345678901,
-            taggedUint64Value: 2222222222,
+            varintU64Value: 12345678901,
+            taggedU64Value: 2222222222,
             float32Value: 2.5,
             float64Value: 3.5,
             contact: contact
@@ -460,18 +460,18 @@ final class IdlRoundTripTests: XCTestCase {
             boolValue: true,
             int8Value: -12,
             int16Value: -1234,
-            fixedInt32Value: -123456,
-            varint32Value: -12345,
-            fixedInt64Value: -123456789,
-            varint64Value: -987654321,
-            taggedInt64Value: 123456789,
+            fixedI32Value: -123456,
+            varintI32Value: -12345,
+            fixedI64Value: -123456789,
+            varintI64Value: -987654321,
+            taggedI64Value: 123456789,
             uint8Value: 200,
             uint16Value: 60000,
-            fixedUint32Value: 1234567890,
-            varUint32Value: 1234567890,
-            fixedUint64Value: 9876543210,
-            varUint64Value: 12345678901,
-            taggedUint64Value: 2222222222,
+            fixedU32Value: 1234567890,
+            varintU32Value: 1234567890,
+            fixedU64Value: 9876543210,
+            varintU64Value: 12345678901,
+            taggedU64Value: 2222222222,
             float16Value: Float16(1.5),
             bfloat16Value: BFloat16(rawValue: 0x4020),
             float32Value: 3.5,
@@ -488,18 +488,18 @@ final class IdlRoundTripTests: XCTestCase {
             boolList: [true, false, true],
             int8List: [1, -2, 3],
             int16List: [100, -200, 300],
-            fixedInt32List: [1000, -2000, 3000],
-            varint32List: [-10, 20, -30],
-            fixedInt64List: [10000, -20000],
-            varint64List: [-40, 50],
-            taggedInt64List: [60, 70],
+            fixedI32List: [1000, -2000, 3000],
+            varintI32List: [-10, 20, -30],
+            fixedI64List: [10000, -20000],
+            varintI64List: [-40, 50],
+            taggedI64List: [60, 70],
             uint8List: [200, 250],
             uint16List: [50000, 60000],
-            fixedUint32List: [2000000000, 2100000000],
-            varUint32List: [100, 200],
-            fixedUint64List: [9000000000],
-            varUint64List: [12000000000],
-            taggedUint64List: [13000000000],
+            fixedU32List: [2000000000, 2100000000],
+            varintU32List: [100, 200],
+            fixedU64List: [9000000000],
+            varintU64List: [12000000000],
+            taggedU64List: [13000000000],
             float16List: [Float16(1), Float16(2)],
             bfloat16List: [BFloat16(rawValue: 0x3F80), BFloat16(rawValue: 0x4000)],
             maybeFloat16List: [Float16(1), nil, Float16(2)],
@@ -515,7 +515,7 @@ final class IdlRoundTripTests: XCTestCase {
             enumList: [.unknown, .failed],
             messageList: [leaf, otherLeaf],
             unionList: [.note("note"), .leaf(otherLeaf)],
-            maybeFixedInt32List: [1, nil, 3],
+            maybeFixedI32List: [1, nil, 3],
             maybeUint64List: [10, nil, 30],
             boolArray: [true, false],
             int8Array: [1, -2],
@@ -535,18 +535,18 @@ final class IdlRoundTripTests: XCTestCase {
             stringValuesByBool: [true: "bool"],
             stringValuesByInt8: [-1: "int8"],
             stringValuesByInt16: [-2: "int16"],
-            stringValuesByFixedInt32: [-3: "fixed-int32"],
-            stringValuesByVarint32: [4: "varint32"],
-            stringValuesByFixedInt64: [-5: "fixed-int64"],
-            stringValuesByVarint64: [6: "varint64"],
-            stringValuesByTaggedInt64: [7: "tagged-int64"],
+            stringValuesByFixedI32: [-3: "fixed-i32"],
+            stringValuesByVarintI32: [4: "varintI32"],
+            stringValuesByFixedI64: [-5: "fixed-i64"],
+            stringValuesByVarintI64: [6: "varintI64"],
+            stringValuesByTaggedI64: [7: "tagged-i64"],
             stringValuesByUint8: [200: "uint8"],
             stringValuesByUint16: [60000: "uint16"],
-            stringValuesByFixedUint32: [1234567890: "fixed-uint32"],
-            stringValuesByVarUint32: [1234567891: "var-uint32"],
-            stringValuesByFixedUint64: [9876543210: "fixed-uint64"],
-            stringValuesByVarUint64: [9876543211: "var-uint64"],
-            stringValuesByTaggedUint64: [9876543212: "tagged-uint64"],
+            stringValuesByFixedU32: [1234567890: "fixed-u32"],
+            stringValuesByVarintU32: [1234567891: "varint-u32"],
+            stringValuesByFixedU64: [9876543210: "fixed-u64"],
+            stringValuesByVarintU64: [9876543211: "varint-u64"],
+            stringValuesByTaggedU64: [9876543212: "tagged-u64"],
             stringValuesByString: ["name": "value"],
             stringValuesByTimestamp: [Date(timeIntervalSince1970: 1709528767): "time"],
             stringValuesByDuration: [.seconds(9): "duration"],
@@ -578,18 +578,18 @@ final class IdlRoundTripTests: XCTestCase {
         XCTAssertEqual(actual.boolValue, expected.boolValue)
         XCTAssertEqual(actual.int8Value, expected.int8Value)
         XCTAssertEqual(actual.int16Value, expected.int16Value)
-        XCTAssertEqual(actual.fixedInt32Value, expected.fixedInt32Value)
-        XCTAssertEqual(actual.varint32Value, expected.varint32Value)
-        XCTAssertEqual(actual.fixedInt64Value, expected.fixedInt64Value)
-        XCTAssertEqual(actual.varint64Value, expected.varint64Value)
-        XCTAssertEqual(actual.taggedInt64Value, expected.taggedInt64Value)
+        XCTAssertEqual(actual.fixedI32Value, expected.fixedI32Value)
+        XCTAssertEqual(actual.varintI32Value, expected.varintI32Value)
+        XCTAssertEqual(actual.fixedI64Value, expected.fixedI64Value)
+        XCTAssertEqual(actual.varintI64Value, expected.varintI64Value)
+        XCTAssertEqual(actual.taggedI64Value, expected.taggedI64Value)
         XCTAssertEqual(actual.uint8Value, expected.uint8Value)
         XCTAssertEqual(actual.uint16Value, expected.uint16Value)
-        XCTAssertEqual(actual.fixedUint32Value, expected.fixedUint32Value)
-        XCTAssertEqual(actual.varUint32Value, expected.varUint32Value)
-        XCTAssertEqual(actual.fixedUint64Value, expected.fixedUint64Value)
-        XCTAssertEqual(actual.varUint64Value, expected.varUint64Value)
-        XCTAssertEqual(actual.taggedUint64Value, expected.taggedUint64Value)
+        XCTAssertEqual(actual.fixedU32Value, expected.fixedU32Value)
+        XCTAssertEqual(actual.varintU32Value, expected.varintU32Value)
+        XCTAssertEqual(actual.fixedU64Value, expected.fixedU64Value)
+        XCTAssertEqual(actual.varintU64Value, expected.varintU64Value)
+        XCTAssertEqual(actual.taggedU64Value, expected.taggedU64Value)
         XCTAssertEqual(actual.float32Value, expected.float32Value)
         XCTAssertEqual(actual.float64Value, expected.float64Value)
         XCTAssertEqual(actual.stringValue, expected.stringValue)
@@ -601,12 +601,12 @@ final class IdlRoundTripTests: XCTestCase {
         XCTAssertEqual(actual.messageValue, expected.messageValue)
         XCTAssertEqual(actual.unionValue, expected.unionValue)
         XCTAssertEqual(actual.boolList, expected.boolList)
-        XCTAssertEqual(actual.fixedInt32List, expected.fixedInt32List)
-        XCTAssertEqual(actual.varint32List, expected.varint32List)
+        XCTAssertEqual(actual.fixedI32List, expected.fixedI32List)
+        XCTAssertEqual(actual.varintI32List, expected.varintI32List)
         XCTAssertEqual(actual.stringList, expected.stringList)
         XCTAssertEqual(actual.messageList, expected.messageList)
         XCTAssertEqual(actual.unionList, expected.unionList)
-        XCTAssertEqual(actual.maybeFixedInt32List, expected.maybeFixedInt32List)
+        XCTAssertEqual(actual.maybeFixedI32List, expected.maybeFixedI32List)
         XCTAssertEqual(actual.maybeUint64List, expected.maybeUint64List)
         XCTAssertEqual(actual.boolArray, expected.boolArray)
         XCTAssertEqual(actual.int32Array, expected.int32Array)
@@ -626,21 +626,21 @@ final class IdlRoundTripTests: XCTestCase {
             int8Value: 12,
             int16Value: 1234,
             int32Value: -123456,
-            fixedInt32Value: -123456,
-            varint32Value: -12345,
+            fixedI32Value: -123456,
+            varintI32Value: -12345,
             int64Value: -123456789,
-            fixedInt64Value: -123456789,
-            varint64Value: -987654321,
-            taggedInt64Value: 123456789,
+            fixedI64Value: -123456789,
+            varintI64Value: -987654321,
+            taggedI64Value: 123456789,
             uint8Value: 200,
             uint16Value: 60000,
             uint32Value: 1234567890,
-            fixedUint32Value: 1234567890,
-            varUint32Value: 1234567890,
+            fixedU32Value: 1234567890,
+            varintU32Value: 1234567890,
             uint64Value: 9876543210,
-            fixedUint64Value: 9876543210,
-            varUint64Value: 12345678901,
-            taggedUint64Value: 2222222222,
+            fixedU64Value: 9876543210,
+            varintU64Value: 12345678901,
+            taggedU64Value: 2222222222,
             float32Value: 2.5,
             float64Value: 3.5,
             stringValue: "optional",

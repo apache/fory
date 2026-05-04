@@ -39,6 +39,7 @@ import 'package:fory/src/serializer/struct_slots.dart';
 import 'package:fory/src/serializer/time_serializers.dart';
 import 'package:fory/src/serializer/typed_array_serializers.dart';
 import 'package:fory/src/types/bfloat16.dart';
+import 'package:fory/src/types/bool_list.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/local_date.dart';
@@ -313,7 +314,7 @@ final class WriteContext {
         BinarySerializer.writePayload(this, value as Uint8List);
         return;
       case TypeIds.boolArray:
-        boolArraySerializer.write(this, value as List<bool>);
+        boolArraySerializer.write(this, value as BoolList);
         return;
       case TypeIds.int8Array:
         int8ArraySerializer.write(this, value as Int8List);

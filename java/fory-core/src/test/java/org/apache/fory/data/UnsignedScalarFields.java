@@ -28,21 +28,17 @@ import org.apache.fory.config.Int64Encoding;
 
 /** Test class with all unsigned integer scalar fields. */
 public class UnsignedScalarFields {
-  @UInt8Type public int u8;
+  public @UInt8Type int u8;
 
-  @UInt16Type public int u16;
+  public @UInt16Type int u16;
 
-  @UInt32Type(encoding = Int32Encoding.FIXED)
-  public long u32;
+  public @UInt32Type(encoding = Int32Encoding.FIXED) long u32;
 
-  @UInt32Type public long u32Var;
+  public @UInt32Type long u32Var;
 
-  @UInt64Type(encoding = Int64Encoding.FIXED)
-  public long u64;
+  public @UInt64Type(encoding = Int64Encoding.FIXED) long u64;
 
-  @UInt64Type(encoding = Int64Encoding.VARINT)
-  public long u64Var;
+  public @UInt64Type(encoding = Int64Encoding.VARINT) long u64Var;
 
-  @UInt64Type(encoding = Int64Encoding.TAGGED)
-  public long u64Tagged;
+  public @UInt64Type(encoding = Int64Encoding.TAGGED) long u64Tagged;
 }

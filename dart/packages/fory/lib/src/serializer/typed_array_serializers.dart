@@ -24,6 +24,7 @@ import 'package:fory/src/context/write_context.dart';
 import 'package:fory/src/meta/type_ids.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/types/bfloat16.dart';
+import 'package:fory/src/types/bool_list.dart';
 import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
@@ -81,27 +82,26 @@ T readTypedArrayBytes<T>(
   return viewBuilder(bytes);
 }
 
-final class BoolArraySerializer extends Serializer<List<bool>> {
+final class BoolArraySerializer extends Serializer<BoolList> {
   const BoolArraySerializer();
 
   @override
   bool get supportsRef => false;
 
   @override
-  void write(WriteContext context, List<bool> value) {
+  void write(WriteContext context, BoolList value) {
     context.buffer.writeVarUint32(value.length);
-    for (final entry in value) {
-      context.buffer.writeBool(entry);
-    }
+    context.buffer.writeBytes(value.asUint8List());
   }
 
   @override
-  List<bool> read(ReadContext context) {
+  BoolList read(ReadContext context) {
     final size = context.buffer.readVarUint32();
-    return List<bool>.generate(
-      size,
-      (_) => context.buffer.readBool(),
-      growable: false,
+    final bytes = context.buffer.readBytes(size);
+    return BoolList.arrayView(
+      bytes.buffer,
+      bytes.offsetInBytes,
+      bytes.lengthInBytes,
     );
   }
 }

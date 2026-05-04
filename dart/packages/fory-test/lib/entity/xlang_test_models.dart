@@ -332,8 +332,8 @@ class ReducedPrecisionFloatStruct {
 
   Float16 float16Value = const Float16.fromBits(0);
   Bfloat16 bfloat16Value = const Bfloat16.fromBits(0);
-  Float16List float16Array = Float16List(0);
-  Bfloat16List bfloat16Array = Bfloat16List(0);
+  List<Float16> float16Array = <Float16>[];
+  List<Bfloat16> bfloat16Array = <Bfloat16>[];
 }
 
 @ForyStruct()

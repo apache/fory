@@ -18,82 +18,29 @@
 import typing
 
 from pyfory.annotation import (
-    NDArray,
-    Ref,
-    RefMeta,
-    StdArray,
-    bfloat16,
-    fixed_int32,
-    fixed_int64,
-    fixed_uint32,
-    fixed_uint64,
-    float16,
-    float32,
-    float64,
-    int8,
-    int16,
-    int32,
-    int64,
-    tagged_int64,
-    tagged_uint64,
-    uint8,
-    uint16,
-    uint32,
-    uint64,
+    BFloat16 as _BFloat16,
+    Float16 as _Float16,
+    Float32 as _Float32,
+    Float64 as _Float64,
+    FixedInt32 as _FixedInt32,
+    FixedInt64 as _FixedInt64,
+    FixedUInt32 as _FixedUInt32,
+    FixedUInt64 as _FixedUInt64,
+    Int8 as _Int8,
+    Int16 as _Int16,
+    Int32 as _Int32,
+    Int64 as _Int64,
+    NDArray as _NDArray,
+    PyArray as _PyArray,
+    TaggedInt64 as _TaggedInt64,
+    TaggedUInt64 as _TaggedUInt64,
+    UInt8 as _UInt8,
+    UInt16 as _UInt16,
+    UInt32 as _UInt32,
+    UInt64 as _UInt64,
 )
 
-if typing.TYPE_CHECKING:
-    from pyfory.serialization import (
-        BFloat16Array,
-        BoolArray,
-        Float16Array,
-        Float32Array,
-        Float64Array,
-        Int16Array,
-        Int32Array,
-        Int64Array,
-        Int8Array,
-        UInt16Array,
-        UInt32Array,
-        UInt64Array,
-        UInt8Array,
-    )
-
-__all__ = [
-    "Ref",
-    "RefMeta",
-    "BoolArray",
-    "Int8Array",
-    "Int16Array",
-    "Int32Array",
-    "Int64Array",
-    "UInt8Array",
-    "UInt16Array",
-    "UInt32Array",
-    "UInt64Array",
-    "Float16Array",
-    "BFloat16Array",
-    "Float32Array",
-    "Float64Array",
-    "fixed_int32",
-    "fixed_int64",
-    "fixed_uint32",
-    "fixed_uint64",
-    "float16",
-    "float32",
-    "float64",
-    "bfloat16",
-    "int8",
-    "int16",
-    "int32",
-    "int64",
-    "tagged_int64",
-    "tagged_uint64",
-    "uint8",
-    "uint16",
-    "uint32",
-    "uint64",
-]
+__all__ = ["TypeId"]
 
 
 class TypeId:
@@ -112,13 +59,13 @@ class TypeId:
     INT16 = 3
     # a 32-bit signed integer.
     INT32 = 4
-    # a 32-bit signed integer which uses fory var_int32 encoding.
+    # a 32-bit signed integer using variable-length encoding.
     VARINT32 = 5
     # a 64-bit signed integer.
     INT64 = 6
-    # a 64-bit signed integer which uses fory PVL encoding.
+    # a 64-bit signed integer using variable-length encoding.
     VARINT64 = 7
-    # a 64-bit signed integer which uses fory hybrid encoding.
+    # a 64-bit signed integer using tagged encoding.
     TAGGED_INT64 = 8
     # an 8-bit unsigned integer.
     UINT8 = 9
@@ -126,13 +73,13 @@ class TypeId:
     UINT16 = 10
     # a 32-bit unsigned integer.
     UINT32 = 11
-    # a 32-bit unsigned integer which uses fory var_uint32 encoding.
+    # a 32-bit unsigned integer using variable-length encoding.
     VAR_UINT32 = 12
     # a 64-bit unsigned integer.
     UINT64 = 13
-    # a 64-bit unsigned integer which uses fory var_uint64 encoding.
+    # a 64-bit unsigned integer using variable-length encoding.
     VAR_UINT64 = 14
-    # a 64-bit unsigned integer which uses fory hybrid encoding.
+    # a 64-bit unsigned integer using tagged encoding.
     TAGGED_UINT64 = 15
     # an 8-bit floating point number.
     FLOAT8 = 16
@@ -189,37 +136,35 @@ class TypeId:
     DECIMAL = 40
     # a variable-length array of bytes.
     BINARY = 41
-    # a multidimensional array which every sub-array can have different sizes but all have the same type.
-    # only allow numeric components. Other arrays will be taken as List. The implementation should support the
-    # interoperability between array and list.
+    # generic dense array descriptor, reserved for future shaped-array metadata.
     ARRAY = 42
     # one dimensional bool array.
     BOOL_ARRAY = 43
-    # one dimensional int8 array.
+    # one dimensional Int8 array.
     INT8_ARRAY = 44
-    # one dimensional int16 array.
+    # one dimensional Int16 array.
     INT16_ARRAY = 45
-    # one dimensional int32 array.
+    # one dimensional Int32 array.
     INT32_ARRAY = 46
-    # one dimensional int64 array.
+    # one dimensional Int64 array.
     INT64_ARRAY = 47
-    # one dimensional uint8 array.
+    # one dimensional UInt8 array.
     UINT8_ARRAY = 48
-    # one dimensional uint16 array.
+    # one dimensional UInt16 array.
     UINT16_ARRAY = 49
-    # one dimensional uint32 array.
+    # one dimensional UInt32 array.
     UINT32_ARRAY = 50
-    # one dimensional uint64 array.
+    # one dimensional UInt64 array.
     UINT64_ARRAY = 51
     # one dimensional float8 array.
     FLOAT8_ARRAY = 52
-    # one dimensional float16 array.
+    # one dimensional Float16 array.
     FLOAT16_ARRAY = 53
-    # one dimensional bfloat16 array.
+    # one dimensional BFloat16 array.
     BFLOAT16_ARRAY = 54
-    # one dimensional float32 array.
+    # one dimensional Float32 array.
     FLOAT32_ARRAY = 55
-    # one dimensional float64 array.
+    # one dimensional Float64 array.
     FLOAT64_ARRAY = 56
 
     # Bound value for range checks (types with id >= BOUND are not internal types).
@@ -255,14 +200,24 @@ __TYPE_SHARE_META__ = {
 _primitive_types = {
     int,
     float,
-    int8,
-    int16,
-    int32,
-    int64,
-    float16,
-    bfloat16,
-    float32,
-    float64,
+    _Int8,
+    _Int16,
+    _Int32,
+    _Int64,
+    _UInt8,
+    _UInt16,
+    _UInt32,
+    _UInt64,
+    _FixedInt32,
+    _FixedInt64,
+    _FixedUInt32,
+    _FixedUInt64,
+    _TaggedInt64,
+    _TaggedUInt64,
+    _Float16,
+    _BFloat16,
+    _Float32,
+    _Float64,
 }
 
 
@@ -338,30 +293,30 @@ def get_primitive_type_size(type_id) -> int:
 
 
 _py_array_types = {
-    StdArray[int8],
-    StdArray[uint8],
-    StdArray[int16],
-    StdArray[int32],
-    StdArray[int64],
-    StdArray[uint16],
-    StdArray[uint32],
-    StdArray[uint64],
-    StdArray[float32],
-    StdArray[float64],
+    _PyArray[_Int8],
+    _PyArray[_UInt8],
+    _PyArray[_Int16],
+    _PyArray[_Int32],
+    _PyArray[_Int64],
+    _PyArray[_UInt16],
+    _PyArray[_UInt32],
+    _PyArray[_UInt64],
+    _PyArray[_Float32],
+    _PyArray[_Float64],
 }
 _np_array_types = {
-    NDArray[bool],
-    NDArray[int8],
-    NDArray[uint8],
-    NDArray[int16],
-    NDArray[int32],
-    NDArray[int64],
-    NDArray[uint16],
-    NDArray[uint32],
-    NDArray[uint64],
-    NDArray[float16],
-    NDArray[float32],
-    NDArray[float64],
+    _NDArray[bool],
+    _NDArray[_Int8],
+    _NDArray[_UInt8],
+    _NDArray[_Int16],
+    _NDArray[_Int32],
+    _NDArray[_Int64],
+    _NDArray[_UInt16],
+    _NDArray[_UInt32],
+    _NDArray[_UInt64],
+    _NDArray[_Float16],
+    _NDArray[_Float32],
+    _NDArray[_Float64],
 }
 _primitive_array_types = _py_array_types.union(_np_array_types)
 _fory_array_types = None
@@ -420,16 +375,6 @@ def is_primitive_array_type(type_) -> bool:
     if type(type_) is int:
         return type_ in _primitive_array_type_ids
     return type_ in _primitive_array_types or type_ in _get_fory_array_types() or _is_special_compiled_primitive_array_type(type_)
-
-
-def __getattr__(name):
-    if name in _FORY_ARRAY_TYPE_NAMES:
-        from pyfory import serialization
-
-        value = getattr(serialization, name)
-        globals()[name] = value
-        return value
-    raise AttributeError(name)
 
 
 def is_list_type(type_):
