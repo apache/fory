@@ -29,8 +29,8 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.ArraySerializers.PrimitiveArrayBufferObject;
-import org.apache.fory.serializer.ArraySerializers.PrimitiveArraySerializer;
+import org.apache.fory.serializer.PrimitiveArraySerializers.PrimitiveArrayBufferObject;
+import org.apache.fory.serializer.PrimitiveArraySerializers.PrimitiveArraySerializer;
 import org.apache.fory.util.ArrayCompressionUtils;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
 

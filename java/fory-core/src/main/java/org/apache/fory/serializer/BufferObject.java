@@ -27,7 +27,8 @@ import org.apache.fory.memory.MemoryBuffer;
  * Fory serialized representation of an object. Note: This class is used for zero-copy out-of-band
  * serialization and shouldn't be used for any other cases.
  *
- * @see ByteBufferBufferObject // * @see Serializers.PrimitiveArrayBufferObject
+ * @see ByteBufferBufferObject
+ * @see PrimitiveArraySerializers.PrimitiveArrayBufferObject
  */
 public interface BufferObject {
 

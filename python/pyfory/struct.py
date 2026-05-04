@@ -160,12 +160,23 @@ def _is_abstract_type(type_hint: type) -> bool:
         return False
 
 
+def _is_dynamic_nullable_default(type_hint: type) -> bool:
+    if type_hint is typing.Any:
+        return True
+    origin = _get_origin(type_hint)
+    args = _get_args(type_hint)
+    if origin in (list, dict, set, tuple) and not args:
+        return True
+    return type_hint in (list, dict, set, tuple, typing.List, typing.Dict, typing.Set, typing.Tuple)
+
+
 def _default_field_meta(type_hint: type, field_nullable: bool = False) -> ForyFieldMeta:
     """Returns default field metadata for fields without pyfory.field().
 
     A field is considered nullable if:
     1. It's Optional[T], OR
-    2. Global field_nullable is True
+    2. Global field_nullable is True, OR
+    3. It is a dynamic Python-native field such as Any or a bare collection alias.
 
     For ref, defaults to False to preserve original serialization behavior.
     Non-nullable complex fields use write_no_ref (no ref header in buffer).
@@ -176,7 +187,7 @@ def _default_field_meta(type_hint: type, field_nullable: bool = False) -> ForyFi
     - Concrete types use type-id based dynamic detection
     """
     unwrapped_type, is_optional = unwrap_optional(type_hint)
-    nullable = is_optional or field_nullable
+    nullable = is_optional or field_nullable or _is_dynamic_nullable_default(unwrapped_type)
     # Default ref=False to preserve original serialization behavior where non-nullable
     # fields use write_no_ref. Users can explicitly set ref=True in pyfory.field()
     # to enable per-field ref tracking when fory.track_ref is enabled.
