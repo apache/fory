@@ -34,7 +34,7 @@ from fory_compiler.ir.ast import (
     MapType,
     SourceLocation,
 )
-from fory_compiler.ir.types import PrimitiveKind
+from fory_compiler.ir.types import ARRAY_ELEMENT_KINDS, PrimitiveKind
 from fory_compiler.ir.type_id import compute_registered_type_id
 
 
@@ -525,26 +525,6 @@ class SchemaValidator:
                 check_field(f, None)
 
     def _check_array_rules(self) -> None:
-        valid_array_elements = {
-            PrimitiveKind.BOOL,
-            PrimitiveKind.INT8,
-            PrimitiveKind.INT16,
-            PrimitiveKind.INT32,
-            PrimitiveKind.VARINT32,
-            PrimitiveKind.INT64,
-            PrimitiveKind.VARINT64,
-            PrimitiveKind.UINT8,
-            PrimitiveKind.UINT16,
-            PrimitiveKind.UINT32,
-            PrimitiveKind.VAR_UINT32,
-            PrimitiveKind.UINT64,
-            PrimitiveKind.VAR_UINT64,
-            PrimitiveKind.FLOAT16,
-            PrimitiveKind.BFLOAT16,
-            PrimitiveKind.FLOAT32,
-            PrimitiveKind.FLOAT64,
-        }
-
         def check_type(field_type: FieldType, field: Field, in_map_key: bool = False):
             if isinstance(field_type, ArrayType):
                 if in_map_key:
@@ -564,7 +544,7 @@ class SchemaValidator:
                         field.location,
                     )
                     return
-                if element_type.kind not in valid_array_elements:
+                if element_type.kind not in ARRAY_ELEMENT_KINDS:
                     self._error(
                         "array<T> elements must be number or bool scalar types",
                         field.location,

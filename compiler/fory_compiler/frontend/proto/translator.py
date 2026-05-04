@@ -52,27 +52,27 @@ from fory_compiler.ir.types import PrimitiveKind
 class ProtoTranslator:
     """Translate Proto AST to Fory IR."""
 
-    TYPE_MAPPING: Dict[str, PrimitiveKind] = {
-        "bool": PrimitiveKind.BOOL,
-        "int8": PrimitiveKind.INT8,
-        "int16": PrimitiveKind.INT16,
-        "int32": PrimitiveKind.VAR_UINT32,
-        "int64": PrimitiveKind.VAR_UINT64,
-        "sint32": PrimitiveKind.VARINT32,
-        "sint64": PrimitiveKind.VARINT64,
-        "uint8": PrimitiveKind.UINT8,
-        "uint16": PrimitiveKind.UINT16,
-        "uint32": PrimitiveKind.VAR_UINT32,
-        "uint64": PrimitiveKind.VAR_UINT64,
-        "fixed32": PrimitiveKind.UINT32,
-        "fixed64": PrimitiveKind.UINT64,
-        "sfixed32": PrimitiveKind.INT32,
-        "sfixed64": PrimitiveKind.INT64,
-        "float16": PrimitiveKind.FLOAT16,
-        "float": PrimitiveKind.FLOAT32,
-        "double": PrimitiveKind.FLOAT64,
-        "string": PrimitiveKind.STRING,
-        "bytes": PrimitiveKind.BYTES,
+    TYPE_MAPPING: Dict[str, Tuple[PrimitiveKind, Optional[str]]] = {
+        "bool": (PrimitiveKind.BOOL, None),
+        "int8": (PrimitiveKind.INT8, None),
+        "int16": (PrimitiveKind.INT16, None),
+        "int32": (PrimitiveKind.UINT32, None),
+        "int64": (PrimitiveKind.UINT64, None),
+        "sint32": (PrimitiveKind.INT32, None),
+        "sint64": (PrimitiveKind.INT64, None),
+        "uint8": (PrimitiveKind.UINT8, None),
+        "uint16": (PrimitiveKind.UINT16, None),
+        "uint32": (PrimitiveKind.UINT32, None),
+        "uint64": (PrimitiveKind.UINT64, None),
+        "fixed32": (PrimitiveKind.UINT32, "fixed"),
+        "fixed64": (PrimitiveKind.UINT64, "fixed"),
+        "sfixed32": (PrimitiveKind.INT32, "fixed"),
+        "sfixed64": (PrimitiveKind.INT64, "fixed"),
+        "float16": (PrimitiveKind.FLOAT16, None),
+        "float": (PrimitiveKind.FLOAT32, None),
+        "double": (PrimitiveKind.FLOAT64, None),
+        "string": (PrimitiveKind.STRING, None),
+        "bytes": (PrimitiveKind.BYTES, None),
     }
 
     WELL_KNOWN_TYPES: Dict[str, PrimitiveKind] = {
@@ -81,9 +81,9 @@ class ProtoTranslator:
         "google.protobuf.Any": PrimitiveKind.ANY,
     }
 
-    TYPE_OVERRIDES: Dict[str, PrimitiveKind] = {
-        "tagged int64": PrimitiveKind.TAGGED_INT64,
-        "tagged uint64": PrimitiveKind.TAGGED_UINT64,
+    TYPE_OVERRIDES: Dict[str, Tuple[PrimitiveKind, Optional[str]]] = {
+        "tagged int64": (PrimitiveKind.INT64, "tagged"),
+        "tagged uint64": (PrimitiveKind.UINT64, "tagged"),
     }
 
     def __init__(self, proto_schema: ProtoSchema):
@@ -327,8 +327,10 @@ class ProtoTranslator:
                 location=self._location(line, column),
             )
         if cleaned in self.TYPE_MAPPING:
+            kind, encoding = self.TYPE_MAPPING[cleaned]
             return PrimitiveType(
-                self.TYPE_MAPPING[cleaned],
+                kind,
+                encoding_modifier=encoding,
                 location=self._location(line, column),
             )
         return NamedType(cleaned, location=self._location(line, column))
@@ -349,11 +351,16 @@ class ProtoTranslator:
 
     def _translate_field_options(
         self, options: Dict[str, object]
-    ) -> Tuple[bool, bool, Dict[str, object], Optional[PrimitiveKind]]:
+    ) -> Tuple[
+        bool,
+        bool,
+        Dict[str, object],
+        Optional[Tuple[PrimitiveKind, Optional[str]]],
+    ]:
         ref = False
         nullable = False
         translated: Dict[str, object] = {}
-        type_override: Optional[PrimitiveKind] = None
+        type_override: Optional[Tuple[PrimitiveKind, Optional[str]]] = None
         for name, value in options.items():
             if name == "fory.ref" and value:
                 ref = True
@@ -383,12 +390,17 @@ class ProtoTranslator:
     def _apply_type_override(
         self,
         field_type: FieldType,
-        override: PrimitiveKind,
+        override: Tuple[PrimitiveKind, Optional[str]],
         line: int,
         column: int,
     ) -> FieldType:
         if isinstance(field_type, PrimitiveType):
-            return PrimitiveType(override, location=self._location(line, column))
+            kind, encoding = override
+            return PrimitiveType(
+                kind,
+                encoding_modifier=encoding,
+                location=self._location(line, column),
+            )
         raise ValueError("fory.type overrides are only supported for primitive fields")
 
     def _translate_service(self, proto_service: ProtoService) -> Service:

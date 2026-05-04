@@ -54,10 +54,11 @@ def test_keyword_integer_modifiers_parse_and_emit():
     fields = {field.name: field.field_type for field in schema.messages[0].fields}
     assert fields["fixed_i32"].kind == PrimitiveKind.INT32
     assert fields["fixed_i32"].encoding_modifier == "fixed"
-    assert fields["var_i64"].kind == PrimitiveKind.VARINT64
+    assert fields["var_i64"].kind == PrimitiveKind.INT64
     assert fields["var_i64"].encoding_modifier == "varint"
     assert fields["fixed_u32"].kind == PrimitiveKind.UINT32
-    assert fields["tagged_u64"].kind == PrimitiveKind.TAGGED_UINT64
+    assert fields["tagged_u64"].kind == PrimitiveKind.UINT64
+    assert fields["tagged_u64"].encoding_modifier == "tagged"
 
     maybe_fixed = fields["maybe_fixed"]
     assert isinstance(maybe_fixed, ListType)
@@ -86,7 +87,7 @@ def test_array_type_is_distinct_from_list_type():
     fields = {field.name: field.field_type for field in schema.messages[0].fields}
     assert isinstance(fields["numbers"], ListType)
     assert isinstance(fields["dense_numbers"], ArrayType)
-    assert fields["dense_numbers"].element_type.kind == PrimitiveKind.VARINT32
+    assert fields["dense_numbers"].element_type.kind == PrimitiveKind.INT32
     assert isinstance(fields["bytes_by_name"], MapType)
     assert isinstance(fields["bytes_by_name"].value_type, ArrayType)
 
@@ -180,4 +181,5 @@ def test_proto_repeated_fields_remain_list_type():
     field_type = schema.messages[0].fields[0].field_type
     assert isinstance(field_type, ListType)
     assert isinstance(field_type.element_type, PrimitiveType)
-    assert field_type.element_type.kind == PrimitiveKind.VAR_UINT32
+    assert field_type.element_type.kind == PrimitiveKind.UINT32
+    assert field_type.element_type.encoding_modifier is None

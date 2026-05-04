@@ -51,17 +51,11 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.INT8: "int8_t",
         PrimitiveKind.INT16: "int16_t",
         PrimitiveKind.INT32: "int32_t",
-        PrimitiveKind.VARINT32: "int32_t",
         PrimitiveKind.INT64: "int64_t",
-        PrimitiveKind.VARINT64: "int64_t",
-        PrimitiveKind.TAGGED_INT64: "int64_t",
         PrimitiveKind.UINT8: "uint8_t",
         PrimitiveKind.UINT16: "uint16_t",
         PrimitiveKind.UINT32: "uint32_t",
-        PrimitiveKind.VAR_UINT32: "uint32_t",
         PrimitiveKind.UINT64: "uint64_t",
-        PrimitiveKind.VAR_UINT64: "uint64_t",
-        PrimitiveKind.TAGGED_UINT64: "uint64_t",
         PrimitiveKind.FLOAT16: "fory::float16_t",
         PrimitiveKind.BFLOAT16: "fory::bfloat16_t",
         PrimitiveKind.FLOAT32: "float",
@@ -79,17 +73,11 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.INT8,
         PrimitiveKind.INT16,
         PrimitiveKind.INT32,
-        PrimitiveKind.VARINT32,
         PrimitiveKind.INT64,
-        PrimitiveKind.VARINT64,
-        PrimitiveKind.TAGGED_INT64,
         PrimitiveKind.UINT8,
         PrimitiveKind.UINT16,
         PrimitiveKind.UINT32,
-        PrimitiveKind.VAR_UINT32,
         PrimitiveKind.UINT64,
-        PrimitiveKind.VAR_UINT64,
-        PrimitiveKind.TAGGED_UINT64,
         PrimitiveKind.FLOAT16,
         PrimitiveKind.BFLOAT16,
         PrimitiveKind.FLOAT32,
@@ -1632,7 +1620,7 @@ class CppGenerator(BaseGenerator):
     ) -> str:
         """Return a recursive fory::T spec for generated C++ metadata."""
         if isinstance(field_type, PrimitiveType):
-            spec = self.get_primitive_type_spec(field_type.kind)
+            spec = self.get_primitive_type_spec(field_type)
         elif isinstance(field_type, ListType):
             element = self.get_type_spec(
                 field_type.element_type,
@@ -1677,15 +1665,11 @@ class CppGenerator(BaseGenerator):
             PrimitiveKind.INT8: "fory::T::int8()",
             PrimitiveKind.INT16: "fory::T::int16()",
             PrimitiveKind.INT32: "fory::T::int32()",
-            PrimitiveKind.VARINT32: "fory::T::int32()",
             PrimitiveKind.INT64: "fory::T::int64()",
-            PrimitiveKind.VARINT64: "fory::T::int64()",
             PrimitiveKind.UINT8: "fory::T::uint8()",
             PrimitiveKind.UINT16: "fory::T::uint16()",
             PrimitiveKind.UINT32: "fory::T::uint32()",
-            PrimitiveKind.VAR_UINT32: "fory::T::uint32()",
             PrimitiveKind.UINT64: "fory::T::uint64()",
-            PrimitiveKind.VAR_UINT64: "fory::T::uint64()",
             PrimitiveKind.FLOAT16: "fory::T::float16()",
             PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
             PrimitiveKind.FLOAT32: "fory::T::float32()",
@@ -1693,30 +1677,39 @@ class CppGenerator(BaseGenerator):
         }
         return typed.get(field_type.kind, "")
 
-    def get_primitive_type_spec(self, kind: PrimitiveKind) -> str:
+    def get_primitive_type_spec(self, field_type: PrimitiveType) -> str:
         """Return a scalar T-node spec for primitive encoding metadata."""
+        kind = field_type.kind
         typed = {
             PrimitiveKind.BOOL: "fory::T::boolean()",
             PrimitiveKind.INT8: "fory::T::int8()",
             PrimitiveKind.INT16: "fory::T::int16()",
-            PrimitiveKind.INT32: "fory::T::int32().fixed()",
-            PrimitiveKind.VARINT32: "fory::T::int32().varint()",
-            PrimitiveKind.INT64: "fory::T::int64().fixed()",
-            PrimitiveKind.VARINT64: "fory::T::int64().varint()",
-            PrimitiveKind.TAGGED_INT64: "fory::T::int64().tagged()",
             PrimitiveKind.UINT8: "fory::T::uint8()",
             PrimitiveKind.UINT16: "fory::T::uint16()",
-            PrimitiveKind.UINT32: "fory::T::uint32().fixed()",
-            PrimitiveKind.VAR_UINT32: "fory::T::uint32().varint()",
-            PrimitiveKind.UINT64: "fory::T::uint64().fixed()",
-            PrimitiveKind.VAR_UINT64: "fory::T::uint64().varint()",
-            PrimitiveKind.TAGGED_UINT64: "fory::T::uint64().tagged()",
             PrimitiveKind.FLOAT16: "fory::T::float16()",
             PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
             PrimitiveKind.FLOAT32: "fory::T::float32()",
             PrimitiveKind.FLOAT64: "fory::T::float64()",
             PrimitiveKind.STRING: "fory::T::string()",
         }
+        if kind in (
+            PrimitiveKind.INT32,
+            PrimitiveKind.INT64,
+            PrimitiveKind.UINT32,
+            PrimitiveKind.UINT64,
+        ):
+            base = {
+                PrimitiveKind.INT32: "fory::T::int32()",
+                PrimitiveKind.INT64: "fory::T::int64()",
+                PrimitiveKind.UINT32: "fory::T::uint32()",
+                PrimitiveKind.UINT64: "fory::T::uint64()",
+            }[kind]
+            encoding = field_type.encoding_modifier or "varint"
+            if encoding == "fixed":
+                return f"{base}.fixed()"
+            if encoding == "tagged":
+                return f"{base}.tagged()"
+            return f"{base}.varint()"
         return typed.get(kind, "")
 
     def generate_type(

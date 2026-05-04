@@ -28,16 +28,10 @@ class PrimitiveKind(PyEnum):
     INT16 = "int16"
     INT32 = "int32"
     INT64 = "int64"
-    VARINT32 = "varint32"
-    VARINT64 = "varint64"
-    TAGGED_INT64 = "tagged_int64"
     UINT8 = "uint8"
     UINT16 = "uint16"
     UINT32 = "uint32"
     UINT64 = "uint64"
-    VAR_UINT32 = "var_uint32"
-    VAR_UINT64 = "var_uint64"
-    TAGGED_UINT64 = "tagged_uint64"
     FLOAT16 = "float16"
     BFLOAT16 = "bfloat16"
     FLOAT32 = "float32"
@@ -55,12 +49,12 @@ PRIMITIVE_TYPES = {
     "bool": PrimitiveKind.BOOL,
     "int8": PrimitiveKind.INT8,
     "int16": PrimitiveKind.INT16,
-    "int32": PrimitiveKind.VARINT32,
-    "int64": PrimitiveKind.VARINT64,
+    "int32": PrimitiveKind.INT32,
+    "int64": PrimitiveKind.INT64,
     "uint8": PrimitiveKind.UINT8,
     "uint16": PrimitiveKind.UINT16,
-    "uint32": PrimitiveKind.VAR_UINT32,
-    "uint64": PrimitiveKind.VAR_UINT64,
+    "uint32": PrimitiveKind.UINT32,
+    "uint64": PrimitiveKind.UINT64,
     "float16": PrimitiveKind.FLOAT16,
     "bfloat16": PrimitiveKind.BFLOAT16,
     "float32": PrimitiveKind.FLOAT32,
@@ -75,4 +69,25 @@ PRIMITIVE_TYPES = {
 }
 
 
-__all__ = ["PrimitiveKind", "PRIMITIVE_TYPES"]
+ARRAY_ELEMENT_KINDS = {
+    PrimitiveKind.BOOL,
+    PrimitiveKind.INT8,
+    PrimitiveKind.INT16,
+    PrimitiveKind.INT32,
+    PrimitiveKind.INT64,
+    PrimitiveKind.UINT8,
+    PrimitiveKind.UINT16,
+    PrimitiveKind.UINT32,
+    PrimitiveKind.UINT64,
+    PrimitiveKind.FLOAT16,
+    PrimitiveKind.BFLOAT16,
+    PrimitiveKind.FLOAT32,
+    PrimitiveKind.FLOAT64,
+}
+
+
+__all__ = [
+    "ARRAY_ELEMENT_KINDS",
+    "PrimitiveKind",
+    "PRIMITIVE_TYPES",
+]

@@ -49,17 +49,11 @@ class SwiftGenerator(BaseGenerator):
         PrimitiveKind.INT8: "Int8",
         PrimitiveKind.INT16: "Int16",
         PrimitiveKind.INT32: "Int32",
-        PrimitiveKind.VARINT32: "Int32",
         PrimitiveKind.INT64: "Int64",
-        PrimitiveKind.VARINT64: "Int64",
-        PrimitiveKind.TAGGED_INT64: "Int64",
         PrimitiveKind.UINT8: "UInt8",
         PrimitiveKind.UINT16: "UInt16",
         PrimitiveKind.UINT32: "UInt32",
-        PrimitiveKind.VAR_UINT32: "UInt32",
         PrimitiveKind.UINT64: "UInt64",
-        PrimitiveKind.VAR_UINT64: "UInt64",
-        PrimitiveKind.TAGGED_UINT64: "UInt64",
         PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "Float",
@@ -71,18 +65,6 @@ class SwiftGenerator(BaseGenerator):
         PrimitiveKind.DURATION: "Duration",
         PrimitiveKind.DECIMAL: "Decimal",
         PrimitiveKind.ANY: "Any",
-    }
-
-    FIXED_ENCODING_KINDS = {
-        PrimitiveKind.INT32,
-        PrimitiveKind.INT64,
-        PrimitiveKind.UINT32,
-        PrimitiveKind.UINT64,
-    }
-
-    TAGGED_ENCODING_KINDS = {
-        PrimitiveKind.TAGGED_INT64,
-        PrimitiveKind.TAGGED_UINT64,
     }
 
     SWIFT_KEYWORDS = {
@@ -635,9 +617,9 @@ class SwiftGenerator(BaseGenerator):
         field_type = field.field_type
         if not isinstance(field_type, PrimitiveType):
             return None
-        if field_type.kind in self.FIXED_ENCODING_KINDS:
+        if field_type.encoding_modifier == "fixed":
             return ".fixed"
-        if field_type.kind in self.TAGGED_ENCODING_KINDS:
+        if field_type.encoding_modifier == "tagged":
             return ".tagged"
         return None
 
@@ -650,7 +632,7 @@ class SwiftGenerator(BaseGenerator):
     ) -> Optional[str]:
         if isinstance(field_type, PrimitiveType):
             return self.scalar_type_hint_expression(
-                field_type.kind,
+                field_type,
                 nullable=nullable,
                 include_integer_encoding=not array_element,
             )
@@ -690,11 +672,12 @@ class SwiftGenerator(BaseGenerator):
 
     def scalar_type_hint_expression(
         self,
-        kind: PrimitiveKind,
+        field_type: PrimitiveType,
         nullable: bool = False,
         *,
         include_integer_encoding: bool = True,
     ) -> Optional[str]:
+        kind = field_type.kind
         member_hints = {
             PrimitiveKind.BOOL: "bool",
             PrimitiveKind.INT8: "int8",
@@ -717,27 +700,22 @@ class SwiftGenerator(BaseGenerator):
             return f".{member_hint}"
 
         callable_hints = {
-            PrimitiveKind.INT32: ("int32", ".fixed"),
-            PrimitiveKind.VARINT32: ("int32", None),
-            PrimitiveKind.INT64: ("int64", ".fixed"),
-            PrimitiveKind.VARINT64: ("int64", None),
-            PrimitiveKind.TAGGED_INT64: ("int64", ".tagged"),
-            PrimitiveKind.UINT32: ("uint32", ".fixed"),
-            PrimitiveKind.VAR_UINT32: ("uint32", None),
-            PrimitiveKind.UINT64: ("uint64", ".fixed"),
-            PrimitiveKind.VAR_UINT64: ("uint64", None),
-            PrimitiveKind.TAGGED_UINT64: ("uint64", ".tagged"),
+            PrimitiveKind.INT32: "int32",
+            PrimitiveKind.INT64: "int64",
+            PrimitiveKind.UINT32: "uint32",
+            PrimitiveKind.UINT64: "uint64",
         }
         callable_hint = callable_hints.get(kind)
         if callable_hint is None:
             return None
 
-        name, encoding = callable_hint
+        name = callable_hint
+        encoding = field_type.encoding_modifier
         args: List[str] = []
         if nullable:
             args.append("nullable: true")
         if include_integer_encoding and encoding is not None:
-            args.append(f"encoding: {encoding}")
+            args.append(f"encoding: .{encoding}")
         if not args:
             return f".{name}()"
         return f".{name}({', '.join(args)})"
@@ -821,17 +799,11 @@ class SwiftGenerator(BaseGenerator):
                 PrimitiveKind.INT8,
                 PrimitiveKind.INT16,
                 PrimitiveKind.INT32,
-                PrimitiveKind.VARINT32,
                 PrimitiveKind.INT64,
-                PrimitiveKind.VARINT64,
-                PrimitiveKind.TAGGED_INT64,
                 PrimitiveKind.UINT8,
                 PrimitiveKind.UINT16,
                 PrimitiveKind.UINT32,
-                PrimitiveKind.VAR_UINT32,
                 PrimitiveKind.UINT64,
-                PrimitiveKind.VAR_UINT64,
-                PrimitiveKind.TAGGED_UINT64,
                 PrimitiveKind.FLOAT16,
                 PrimitiveKind.FLOAT32,
                 PrimitiveKind.FLOAT64,

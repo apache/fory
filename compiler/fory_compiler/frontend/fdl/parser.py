@@ -1066,25 +1066,17 @@ class Parser:
         return NamedType(type_name, location=type_location)
 
     def resolve_integer_encoding(self, type_name: str, modifier: str) -> PrimitiveKind:
-        """Resolve keyword scalar encoding modifiers to internal primitive kinds."""
-        table = {
-            ("fixed", "int32"): PrimitiveKind.INT32,
-            ("fixed", "int64"): PrimitiveKind.INT64,
-            ("fixed", "uint32"): PrimitiveKind.UINT32,
-            ("fixed", "uint64"): PrimitiveKind.UINT64,
-            ("varint", "int32"): PrimitiveKind.VARINT32,
-            ("varint", "int64"): PrimitiveKind.VARINT64,
-            ("varint", "uint32"): PrimitiveKind.VAR_UINT32,
-            ("varint", "uint64"): PrimitiveKind.VAR_UINT64,
-            ("tagged", "int64"): PrimitiveKind.TAGGED_INT64,
-            ("tagged", "uint64"): PrimitiveKind.TAGGED_UINT64,
+        """Resolve keyword scalar encoding modifiers to semantic integer domains."""
+        supported = {
+            "fixed": {"int32", "int64", "uint32", "uint64"},
+            "varint": {"int32", "int64", "uint32", "uint64"},
+            "tagged": {"int64", "uint64"},
         }
-        kind = table.get((modifier, type_name))
-        if kind is None:
+        if type_name not in supported.get(modifier, set()):
             raise self.error(
                 f"'{modifier}' encoding is only valid for int32/int64/uint32/uint64 scalar types"
             )
-        return kind
+        return PRIMITIVE_TYPES[type_name]
 
     def parse_list_type(self) -> ListType:
         """Parse a list type: list<ElementType>."""

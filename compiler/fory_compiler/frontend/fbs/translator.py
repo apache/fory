@@ -47,7 +47,7 @@ from fory_compiler.ir.ast import (
     SourceLocation,
     Union,
 )
-from fory_compiler.ir.types import PrimitiveKind
+from fory_compiler.ir.types import ARRAY_ELEMENT_KINDS, PrimitiveKind
 
 
 class FbsTranslator:
@@ -58,39 +58,19 @@ class FbsTranslator:
         "ubyte": PrimitiveKind.UINT8,
         "short": PrimitiveKind.INT16,
         "ushort": PrimitiveKind.UINT16,
-        "int": PrimitiveKind.VARINT32,
-        "uint": PrimitiveKind.VAR_UINT32,
-        "long": PrimitiveKind.VARINT64,
-        "ulong": PrimitiveKind.VAR_UINT64,
+        "int": PrimitiveKind.INT32,
+        "uint": PrimitiveKind.UINT32,
+        "long": PrimitiveKind.INT64,
+        "ulong": PrimitiveKind.UINT64,
         "float": PrimitiveKind.FLOAT32,
         "double": PrimitiveKind.FLOAT64,
         "bool": PrimitiveKind.BOOL,
         "string": PrimitiveKind.STRING,
     }
 
-    ARRAY_ELEMENT_KINDS = {
-        PrimitiveKind.BOOL,
-        PrimitiveKind.INT8,
-        PrimitiveKind.INT16,
-        PrimitiveKind.INT32,
-        PrimitiveKind.VARINT32,
-        PrimitiveKind.INT64,
-        PrimitiveKind.VARINT64,
-        PrimitiveKind.UINT8,
-        PrimitiveKind.UINT16,
-        PrimitiveKind.UINT32,
-        PrimitiveKind.VAR_UINT32,
-        PrimitiveKind.UINT64,
-        PrimitiveKind.VAR_UINT64,
-        PrimitiveKind.FLOAT32,
-        PrimitiveKind.FLOAT64,
-    }
-
-    ARRAY_ELEMENT_CANONICAL_KINDS = {
-        PrimitiveKind.VARINT32: PrimitiveKind.INT32,
-        PrimitiveKind.VARINT64: PrimitiveKind.INT64,
-        PrimitiveKind.VAR_UINT32: PrimitiveKind.UINT32,
-        PrimitiveKind.VAR_UINT64: PrimitiveKind.UINT64,
+    ARRAY_ELEMENT_KINDS = ARRAY_ELEMENT_KINDS - {
+        PrimitiveKind.FLOAT16,
+        PrimitiveKind.BFLOAT16,
     }
 
     def __init__(self, schema: FbsSchema):
@@ -300,12 +280,9 @@ class FbsTranslator:
                 isinstance(element_type, PrimitiveType)
                 and element_type.kind in self.ARRAY_ELEMENT_KINDS
             ):
-                element_kind = self.ARRAY_ELEMENT_CANONICAL_KINDS.get(
-                    element_type.kind, element_type.kind
-                )
                 return ArrayType(
                     PrimitiveType(
-                        element_kind,
+                        element_type.kind,
                         location=self._location(fbs_type.line, fbs_type.column),
                     ),
                     location=self._location(fbs_type.line, fbs_type.column),

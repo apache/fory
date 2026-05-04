@@ -216,17 +216,11 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.INT8: "byte",
         PrimitiveKind.INT16: "short",
         PrimitiveKind.INT32: "int",
-        PrimitiveKind.VARINT32: "int",
         PrimitiveKind.INT64: "long",
-        PrimitiveKind.VARINT64: "long",
-        PrimitiveKind.TAGGED_INT64: "long",
         PrimitiveKind.UINT8: "int",
         PrimitiveKind.UINT16: "int",
         PrimitiveKind.UINT32: "long",
-        PrimitiveKind.VAR_UINT32: "long",
         PrimitiveKind.UINT64: "long",
-        PrimitiveKind.VAR_UINT64: "long",
-        PrimitiveKind.TAGGED_UINT64: "long",
         PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "float",
@@ -246,17 +240,11 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.INT8: "Byte",
         PrimitiveKind.INT16: "Short",
         PrimitiveKind.INT32: "Integer",
-        PrimitiveKind.VARINT32: "Integer",
         PrimitiveKind.INT64: "Long",
-        PrimitiveKind.VARINT64: "Long",
-        PrimitiveKind.TAGGED_INT64: "Long",
         PrimitiveKind.UINT8: "Integer",
         PrimitiveKind.UINT16: "Integer",
         PrimitiveKind.UINT32: "Long",
-        PrimitiveKind.VAR_UINT32: "Long",
         PrimitiveKind.UINT64: "Long",
-        PrimitiveKind.VAR_UINT64: "Long",
-        PrimitiveKind.TAGGED_UINT64: "Long",
         PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "Float",
@@ -270,17 +258,11 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.INT8: "byte[]",
         PrimitiveKind.INT16: "short[]",
         PrimitiveKind.INT32: "int[]",
-        PrimitiveKind.VARINT32: "int[]",
         PrimitiveKind.INT64: "long[]",
-        PrimitiveKind.VARINT64: "long[]",
-        PrimitiveKind.TAGGED_INT64: "long[]",
         PrimitiveKind.UINT8: "byte[]",
         PrimitiveKind.UINT16: "short[]",
         PrimitiveKind.UINT32: "int[]",
-        PrimitiveKind.VAR_UINT32: "int[]",
         PrimitiveKind.UINT64: "long[]",
-        PrimitiveKind.VAR_UINT64: "long[]",
-        PrimitiveKind.TAGGED_UINT64: "long[]",
         PrimitiveKind.FLOAT16: "short[]",
         PrimitiveKind.BFLOAT16: "short[]",
         PrimitiveKind.FLOAT32: "float[]",
@@ -301,17 +283,11 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.INT8: "Int8List",
         PrimitiveKind.INT16: "Int16List",
         PrimitiveKind.INT32: "Int32List",
-        PrimitiveKind.VARINT32: "Int32List",
         PrimitiveKind.INT64: "Int64List",
-        PrimitiveKind.VARINT64: "Int64List",
-        PrimitiveKind.TAGGED_INT64: "Int64List",
         PrimitiveKind.UINT8: "UInt8List",
         PrimitiveKind.UINT16: "UInt16List",
         PrimitiveKind.UINT32: "UInt32List",
-        PrimitiveKind.VAR_UINT32: "UInt32List",
         PrimitiveKind.UINT64: "UInt64List",
-        PrimitiveKind.VAR_UINT64: "UInt64List",
-        PrimitiveKind.TAGGED_UINT64: "UInt64List",
         PrimitiveKind.FLOAT16: "Float16List",
         PrimitiveKind.BFLOAT16: "BFloat16List",
         PrimitiveKind.FLOAT32: "Float32List",
@@ -914,23 +890,16 @@ class JavaGenerator(BaseGenerator):
     ) -> str:
         """Return the Java expression for a union case value type id."""
         if isinstance(field.field_type, PrimitiveType):
+            scalar_type_id = self.get_scalar_type_id_expr(field.field_type)
+            if scalar_type_id is not None:
+                return scalar_type_id
             kind = field.field_type.kind
             primitive_type_ids = {
                 PrimitiveKind.BOOL: "Types.BOOL",
                 PrimitiveKind.INT8: "Types.INT8",
                 PrimitiveKind.INT16: "Types.INT16",
-                PrimitiveKind.INT32: "Types.INT32",
-                PrimitiveKind.VARINT32: "Types.VARINT32",
-                PrimitiveKind.INT64: "Types.INT64",
-                PrimitiveKind.VARINT64: "Types.VARINT64",
-                PrimitiveKind.TAGGED_INT64: "Types.TAGGED_INT64",
                 PrimitiveKind.UINT8: "Types.UINT8",
                 PrimitiveKind.UINT16: "Types.UINT16",
-                PrimitiveKind.UINT32: "Types.UINT32",
-                PrimitiveKind.VAR_UINT32: "Types.VAR_UINT32",
-                PrimitiveKind.UINT64: "Types.UINT64",
-                PrimitiveKind.VAR_UINT64: "Types.VAR_UINT64",
-                PrimitiveKind.TAGGED_UINT64: "Types.TAGGED_UINT64",
                 PrimitiveKind.FLOAT16: "Types.FLOAT16",
                 PrimitiveKind.BFLOAT16: "Types.BFLOAT16",
                 PrimitiveKind.FLOAT32: "Types.FLOAT32",
@@ -949,15 +918,11 @@ class JavaGenerator(BaseGenerator):
                 PrimitiveKind.INT8: "Types.INT8_ARRAY",
                 PrimitiveKind.INT16: "Types.INT16_ARRAY",
                 PrimitiveKind.INT32: "Types.INT32_ARRAY",
-                PrimitiveKind.VARINT32: "Types.INT32_ARRAY",
                 PrimitiveKind.INT64: "Types.INT64_ARRAY",
-                PrimitiveKind.VARINT64: "Types.INT64_ARRAY",
                 PrimitiveKind.UINT8: "Types.UINT8_ARRAY",
                 PrimitiveKind.UINT16: "Types.UINT16_ARRAY",
                 PrimitiveKind.UINT32: "Types.UINT32_ARRAY",
-                PrimitiveKind.VAR_UINT32: "Types.UINT32_ARRAY",
                 PrimitiveKind.UINT64: "Types.UINT64_ARRAY",
-                PrimitiveKind.VAR_UINT64: "Types.UINT64_ARRAY",
                 PrimitiveKind.FLOAT16: "Types.FLOAT16_ARRAY",
                 PrimitiveKind.BFLOAT16: "Types.BFLOAT16_ARRAY",
                 PrimitiveKind.FLOAT32: "Types.FLOAT32_ARRAY",
@@ -983,6 +948,32 @@ class JavaGenerator(BaseGenerator):
                     return "Types.NAMED_STRUCT"
                 return "Types.STRUCT"
         return "Types.UNKNOWN"
+
+    def get_scalar_type_id_expr(self, field_type: PrimitiveType) -> Optional[str]:
+        table = {
+            PrimitiveKind.INT32: ("Types.INT32", "Types.VARINT32", None),
+            PrimitiveKind.INT64: (
+                "Types.INT64",
+                "Types.VARINT64",
+                "Types.TAGGED_INT64",
+            ),
+            PrimitiveKind.UINT32: ("Types.UINT32", "Types.VAR_UINT32", None),
+            PrimitiveKind.UINT64: (
+                "Types.UINT64",
+                "Types.VAR_UINT64",
+                "Types.TAGGED_UINT64",
+            ),
+        }
+        entry = table.get(field_type.kind)
+        if entry is None:
+            return None
+        fixed_type_id, varint_type_id, tagged_type_id = entry
+        encoding = field_type.encoding_modifier or "varint"
+        if encoding == "fixed":
+            return fixed_type_id
+        if encoding == "tagged" and tagged_type_id is not None:
+            return tagged_type_id
+        return varint_type_id
 
     def resolve_named_type(
         self, name: str, parent_stack: Optional[List[Message]]
@@ -1441,13 +1432,9 @@ class JavaGenerator(BaseGenerator):
             imports.add("org.apache.fory.annotation.UInt8Type")
         elif kind == PrimitiveKind.UINT16:
             imports.add("org.apache.fory.annotation.UInt16Type")
-        elif kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
+        elif kind == PrimitiveKind.UINT32:
             imports.add("org.apache.fory.annotation.UInt32Type")
-        elif kind in (
-            PrimitiveKind.UINT64,
-            PrimitiveKind.VAR_UINT64,
-            PrimitiveKind.TAGGED_UINT64,
-        ):
+        elif kind == PrimitiveKind.UINT64:
             imports.add("org.apache.fory.annotation.UInt64Type")
         elif kind == PrimitiveKind.FLOAT16:
             imports.add("org.apache.fory.annotation.Float16Type")
@@ -1460,51 +1447,56 @@ class JavaGenerator(BaseGenerator):
             return
         kind = field_type.kind
         if kind in (PrimitiveKind.INT32,):
-            imports.add("org.apache.fory.annotation.Int32Type")
-            imports.add("org.apache.fory.config.Int32Encoding")
-        if kind in (PrimitiveKind.INT64, PrimitiveKind.TAGGED_INT64):
-            imports.add("org.apache.fory.annotation.Int64Type")
-            imports.add("org.apache.fory.config.Int64Encoding")
+            if field_type.encoding_modifier in ("fixed", "varint"):
+                imports.add("org.apache.fory.annotation.Int32Type")
+                imports.add("org.apache.fory.config.Int32Encoding")
+        if kind == PrimitiveKind.INT64:
+            if field_type.encoding_modifier in ("fixed", "varint", "tagged"):
+                imports.add("org.apache.fory.annotation.Int64Type")
+                imports.add("org.apache.fory.config.Int64Encoding")
         if kind in (PrimitiveKind.UINT8,):
             imports.add("org.apache.fory.annotation.UInt8Type")
         if kind in (PrimitiveKind.UINT16,):
             imports.add("org.apache.fory.annotation.UInt16Type")
-        if kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
+        if kind == PrimitiveKind.UINT32:
             imports.add("org.apache.fory.annotation.UInt32Type")
-            if kind == PrimitiveKind.UINT32:
+            if field_type.encoding_modifier in ("fixed", "varint"):
                 imports.add("org.apache.fory.config.Int32Encoding")
-        if kind in (
-            PrimitiveKind.UINT64,
-            PrimitiveKind.VAR_UINT64,
-            PrimitiveKind.TAGGED_UINT64,
-        ):
+        if kind == PrimitiveKind.UINT64:
             imports.add("org.apache.fory.annotation.UInt64Type")
-            imports.add("org.apache.fory.config.Int64Encoding")
+            if field_type.encoding_modifier in ("fixed", "varint", "tagged"):
+                imports.add("org.apache.fory.config.Int64Encoding")
 
     def get_integer_annotation(self, field_type: FieldType) -> Optional[str]:
         """Return integer encoding annotation for a field type."""
         if not isinstance(field_type, PrimitiveType):
             return None
         kind = field_type.kind
-        if kind == PrimitiveKind.INT32:
+        if kind == PrimitiveKind.INT32 and field_type.encoding_modifier == "fixed":
             return "@Int32Type(encoding = Int32Encoding.FIXED)"
-        if kind == PrimitiveKind.INT64:
+        if kind == PrimitiveKind.INT32 and field_type.encoding_modifier == "varint":
+            return "@Int32Type(encoding = Int32Encoding.VARINT)"
+        if kind == PrimitiveKind.INT64 and field_type.encoding_modifier == "fixed":
             return "@Int64Type(encoding = Int64Encoding.FIXED)"
-        if kind == PrimitiveKind.TAGGED_INT64:
+        if kind == PrimitiveKind.INT64 and field_type.encoding_modifier == "varint":
+            return "@Int64Type(encoding = Int64Encoding.VARINT)"
+        if kind == PrimitiveKind.INT64 and field_type.encoding_modifier == "tagged":
             return "@Int64Type(encoding = Int64Encoding.TAGGED)"
         if kind == PrimitiveKind.UINT8:
             return "@UInt8Type"
         if kind == PrimitiveKind.UINT16:
             return "@UInt16Type"
-        if kind == PrimitiveKind.UINT32:
+        if kind == PrimitiveKind.UINT32 and field_type.encoding_modifier == "fixed":
             return "@UInt32Type(encoding = Int32Encoding.FIXED)"
-        if kind == PrimitiveKind.VAR_UINT32:
+        if kind == PrimitiveKind.UINT32:
+            if field_type.encoding_modifier == "varint":
+                return "@UInt32Type(encoding = Int32Encoding.VARINT)"
             return "@UInt32Type"
-        if kind == PrimitiveKind.UINT64:
+        if kind == PrimitiveKind.UINT64 and field_type.encoding_modifier == "fixed":
             return "@UInt64Type(encoding = Int64Encoding.FIXED)"
-        if kind == PrimitiveKind.VAR_UINT64:
+        if kind == PrimitiveKind.UINT64 and field_type.encoding_modifier == "varint":
             return "@UInt64Type(encoding = Int64Encoding.VARINT)"
-        if kind == PrimitiveKind.TAGGED_UINT64:
+        if kind == PrimitiveKind.UINT64 and field_type.encoding_modifier == "tagged":
             return "@UInt64Type(encoding = Int64Encoding.TAGGED)"
         return None
 
@@ -1527,16 +1519,18 @@ class JavaGenerator(BaseGenerator):
     ) -> Optional[str]:
         if not isinstance(element_type, PrimitiveType):
             return None
-        kind = element_type.kind
-        default_kinds = {
-            PrimitiveKind.VARINT32,
-            PrimitiveKind.VARINT64,
-            PrimitiveKind.UINT8,
-            PrimitiveKind.UINT16,
-            PrimitiveKind.VAR_UINT32,
-            PrimitiveKind.VAR_UINT64,
-        }
-        if kind in default_kinds:
+        if (
+            element_type.kind
+            in {
+                PrimitiveKind.INT32,
+                PrimitiveKind.INT64,
+                PrimitiveKind.UINT8,
+                PrimitiveKind.UINT16,
+                PrimitiveKind.UINT32,
+                PrimitiveKind.UINT64,
+            }
+            and element_type.encoding_modifier is None
+        ):
             return None
         return self.get_integer_annotation(element_type)
 
@@ -1557,13 +1551,9 @@ class JavaGenerator(BaseGenerator):
             return "@UInt8Type"
         if kind == PrimitiveKind.UINT16:
             return "@UInt16Type"
-        if kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
+        if kind == PrimitiveKind.UINT32:
             return "@UInt32Type"
-        if kind in (
-            PrimitiveKind.UINT64,
-            PrimitiveKind.VAR_UINT64,
-            PrimitiveKind.TAGGED_UINT64,
-        ):
+        if kind == PrimitiveKind.UINT64:
             return "@UInt64Type"
         if kind == PrimitiveKind.FLOAT16:
             return "@Float16Type"
@@ -1626,13 +1616,9 @@ class JavaGenerator(BaseGenerator):
             return "@UInt8Type"
         if kind == PrimitiveKind.UINT16:
             return "@UInt16Type"
-        if kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
+        if kind == PrimitiveKind.UINT32:
             return "@UInt32Type"
-        if kind in (
-            PrimitiveKind.UINT64,
-            PrimitiveKind.VAR_UINT64,
-            PrimitiveKind.TAGGED_UINT64,
-        ):
+        if kind == PrimitiveKind.UINT64:
             return "@UInt64Type"
         if kind == PrimitiveKind.FLOAT16:
             return "@Float16Type"

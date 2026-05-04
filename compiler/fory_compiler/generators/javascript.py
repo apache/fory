@@ -128,17 +128,11 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.INT8: "number",
         PrimitiveKind.INT16: "number",
         PrimitiveKind.INT32: "number",
-        PrimitiveKind.VARINT32: "number",
         PrimitiveKind.INT64: "bigint | number",
-        PrimitiveKind.VARINT64: "bigint | number",
-        PrimitiveKind.TAGGED_INT64: "bigint | number",
         PrimitiveKind.UINT8: "number",
         PrimitiveKind.UINT16: "number",
         PrimitiveKind.UINT32: "number",
-        PrimitiveKind.VAR_UINT32: "number",
         PrimitiveKind.UINT64: "bigint | number",
-        PrimitiveKind.VAR_UINT64: "bigint | number",
-        PrimitiveKind.TAGGED_UINT64: "bigint | number",
         PrimitiveKind.FLOAT16: "number",
         PrimitiveKind.BFLOAT16: "number",
         PrimitiveKind.FLOAT32: "number",
@@ -157,18 +151,12 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.BOOL: "Type.bool()",
         PrimitiveKind.INT8: "Type.int8()",
         PrimitiveKind.INT16: "Type.int16()",
-        PrimitiveKind.INT32: 'Type.int32({ encoding: "fixed" })',
-        PrimitiveKind.VARINT32: "Type.int32()",
-        PrimitiveKind.INT64: 'Type.int64({ encoding: "fixed" })',
-        PrimitiveKind.VARINT64: "Type.int64()",
-        PrimitiveKind.TAGGED_INT64: 'Type.int64({ encoding: "tagged" })',
+        PrimitiveKind.INT32: "Type.int32()",
+        PrimitiveKind.INT64: "Type.int64()",
         PrimitiveKind.UINT8: "Type.uint8()",
         PrimitiveKind.UINT16: "Type.uint16()",
-        PrimitiveKind.UINT32: 'Type.uint32({ encoding: "fixed" })',
-        PrimitiveKind.VAR_UINT32: "Type.uint32()",
-        PrimitiveKind.UINT64: 'Type.uint64({ encoding: "fixed" })',
-        PrimitiveKind.VAR_UINT64: "Type.uint64()",
-        PrimitiveKind.TAGGED_UINT64: 'Type.uint64({ encoding: "tagged" })',
+        PrimitiveKind.UINT32: "Type.uint32()",
+        PrimitiveKind.UINT64: "Type.uint64()",
         PrimitiveKind.FLOAT16: "Type.float16()",
         PrimitiveKind.BFLOAT16: "Type.bfloat16()",
         PrimitiveKind.FLOAT32: "Type.float32()",
@@ -187,15 +175,11 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.INT8: "Int8Array",
         PrimitiveKind.INT16: "Int16Array",
         PrimitiveKind.INT32: "Int32Array",
-        PrimitiveKind.VARINT32: "Int32Array",
         PrimitiveKind.INT64: "BigInt64Array | bigint[] | number[]",
-        PrimitiveKind.VARINT64: "BigInt64Array | bigint[] | number[]",
         PrimitiveKind.UINT8: "Uint8Array",
         PrimitiveKind.UINT16: "Uint16Array",
         PrimitiveKind.UINT32: "Uint32Array",
-        PrimitiveKind.VAR_UINT32: "Uint32Array",
         PrimitiveKind.UINT64: "BigUint64Array | bigint[] | number[]",
-        PrimitiveKind.VAR_UINT64: "BigUint64Array | bigint[] | number[]",
         PrimitiveKind.FLOAT16: "number[]",
         PrimitiveKind.BFLOAT16: "number[]",
         PrimitiveKind.FLOAT32: "Float32Array",
@@ -207,15 +191,11 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.INT8: "Type.int8Array()",
         PrimitiveKind.INT16: "Type.int16Array()",
         PrimitiveKind.INT32: "Type.int32Array()",
-        PrimitiveKind.VARINT32: "Type.int32Array()",
         PrimitiveKind.INT64: "Type.int64Array()",
-        PrimitiveKind.VARINT64: "Type.int64Array()",
         PrimitiveKind.UINT8: "Type.uint8Array()",
         PrimitiveKind.UINT16: "Type.uint16Array()",
         PrimitiveKind.UINT32: "Type.uint32Array()",
-        PrimitiveKind.VAR_UINT32: "Type.uint32Array()",
         PrimitiveKind.UINT64: "Type.uint64Array()",
-        PrimitiveKind.VAR_UINT64: "Type.uint64Array()",
         PrimitiveKind.FLOAT16: "Type.float16Array()",
         PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
         PrimitiveKind.FLOAT32: "Type.float32Array()",
@@ -862,6 +842,9 @@ class JavaScriptGenerator(BaseGenerator):
         """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
+            integer_expr = self._integer_type_expr(field_type)
+            if integer_expr is not None:
+                return integer_expr
             expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
             if expr is None:
                 return "Type.any()"
@@ -951,6 +934,20 @@ class JavaScriptGenerator(BaseGenerator):
             value = self._field_type_expr(field_type.value_type, parent_stack)
             return f"Type.map({key}, {value})"
         return "Type.any()"
+
+    def _integer_type_expr(self, field_type: PrimitiveType) -> Optional[str]:
+        method = {
+            PrimitiveKind.INT32: "int32",
+            PrimitiveKind.INT64: "int64",
+            PrimitiveKind.UINT32: "uint32",
+            PrimitiveKind.UINT64: "uint64",
+        }.get(field_type.kind)
+        if method is None:
+            return None
+        encoding = field_type.encoding_modifier
+        if encoding in ("fixed", "tagged"):
+            return f'Type.{method}({{ encoding: "{encoding}" }})'
+        return f"Type.{method}()"
 
     def _register_type_line(
         self,

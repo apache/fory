@@ -50,18 +50,12 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.BOOL: "bool",
         PrimitiveKind.INT8: "pyfory.Int8",
         PrimitiveKind.INT16: "pyfory.Int16",
-        PrimitiveKind.INT32: "pyfory.FixedInt32",
-        PrimitiveKind.VARINT32: "pyfory.Int32",
-        PrimitiveKind.INT64: "pyfory.FixedInt64",
-        PrimitiveKind.VARINT64: "pyfory.Int64",
-        PrimitiveKind.TAGGED_INT64: "pyfory.TaggedInt64",
+        PrimitiveKind.INT32: "pyfory.Int32",
+        PrimitiveKind.INT64: "pyfory.Int64",
         PrimitiveKind.UINT8: "pyfory.UInt8",
         PrimitiveKind.UINT16: "pyfory.UInt16",
-        PrimitiveKind.UINT32: "pyfory.FixedUInt32",
-        PrimitiveKind.VAR_UINT32: "pyfory.UInt32",
-        PrimitiveKind.UINT64: "pyfory.FixedUInt64",
-        PrimitiveKind.VAR_UINT64: "pyfory.UInt64",
-        PrimitiveKind.TAGGED_UINT64: "pyfory.TaggedUInt64",
+        PrimitiveKind.UINT32: "pyfory.UInt32",
+        PrimitiveKind.UINT64: "pyfory.UInt64",
         PrimitiveKind.FLOAT16: "pyfory.Float16",
         PrimitiveKind.BFLOAT16: "pyfory.BFloat16",
         PrimitiveKind.FLOAT32: "pyfory.Float32",
@@ -80,17 +74,11 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.INT8: "pyfory.Int8",
         PrimitiveKind.INT16: "pyfory.Int16",
         PrimitiveKind.INT32: "pyfory.Int32",
-        PrimitiveKind.VARINT32: "pyfory.Int32",
         PrimitiveKind.INT64: "pyfory.Int64",
-        PrimitiveKind.VARINT64: "pyfory.Int64",
-        PrimitiveKind.TAGGED_INT64: "pyfory.Int64",
         PrimitiveKind.UINT8: "pyfory.UInt8",
         PrimitiveKind.UINT16: "pyfory.UInt16",
         PrimitiveKind.UINT32: "pyfory.UInt32",
-        PrimitiveKind.VAR_UINT32: "pyfory.UInt32",
         PrimitiveKind.UINT64: "pyfory.UInt64",
-        PrimitiveKind.VAR_UINT64: "pyfory.UInt64",
-        PrimitiveKind.TAGGED_UINT64: "pyfory.UInt64",
         PrimitiveKind.FLOAT16: "pyfory.Float16",
         PrimitiveKind.BFLOAT16: "pyfory.BFloat16",
         PrimitiveKind.FLOAT32: "pyfory.Float32",
@@ -103,17 +91,11 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.INT8: "np.int8",
         PrimitiveKind.INT16: "np.int16",
         PrimitiveKind.INT32: "np.int32",
-        PrimitiveKind.VARINT32: "np.int32",
         PrimitiveKind.INT64: "np.int64",
-        PrimitiveKind.VARINT64: "np.int64",
-        PrimitiveKind.TAGGED_INT64: "np.int64",
         PrimitiveKind.UINT8: "np.uint8",
         PrimitiveKind.UINT16: "np.uint16",
         PrimitiveKind.UINT32: "np.uint32",
-        PrimitiveKind.VAR_UINT32: "np.uint32",
         PrimitiveKind.UINT64: "np.uint64",
-        PrimitiveKind.VAR_UINT64: "np.uint64",
-        PrimitiveKind.TAGGED_UINT64: "np.uint64",
         PrimitiveKind.FLOAT16: "np.float16",
         PrimitiveKind.BFLOAT16: "np.float16",
         PrimitiveKind.FLOAT32: "np.float32",
@@ -126,17 +108,11 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.INT8: "0",
         PrimitiveKind.INT16: "0",
         PrimitiveKind.INT32: "0",
-        PrimitiveKind.VARINT32: "0",
         PrimitiveKind.INT64: "0",
-        PrimitiveKind.VARINT64: "0",
-        PrimitiveKind.TAGGED_INT64: "0",
         PrimitiveKind.UINT8: "0",
         PrimitiveKind.UINT16: "0",
         PrimitiveKind.UINT32: "0",
-        PrimitiveKind.VAR_UINT32: "0",
         PrimitiveKind.UINT64: "0",
-        PrimitiveKind.VAR_UINT64: "0",
-        PrimitiveKind.TAGGED_UINT64: "0",
         PrimitiveKind.FLOAT16: "0.0",
         PrimitiveKind.BFLOAT16: "0.0",
         PrimitiveKind.FLOAT32: "0.0",
@@ -148,6 +124,15 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.DURATION: "None",
         PrimitiveKind.DECIMAL: 'decimal.Decimal("0")',
         PrimitiveKind.ANY: "None",
+    }
+
+    INTEGER_ENCODING_MARKERS = {
+        (PrimitiveKind.INT32, "fixed"): "pyfory.FixedInt32",
+        (PrimitiveKind.INT64, "fixed"): "pyfory.FixedInt64",
+        (PrimitiveKind.INT64, "tagged"): "pyfory.TaggedInt64",
+        (PrimitiveKind.UINT32, "fixed"): "pyfory.FixedUInt32",
+        (PrimitiveKind.UINT64, "fixed"): "pyfory.FixedUInt64",
+        (PrimitiveKind.UINT64, "tagged"): "pyfory.TaggedUInt64",
     }
 
     def safe_name(self, name: str) -> str:
@@ -726,7 +711,7 @@ class PythonGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             if field_type.kind == PrimitiveKind.ANY:
                 return "Any"
-            base_type = self.PRIMITIVE_MAP[field_type.kind]
+            base_type = self.primitive_type_name(field_type)
             if nullable:
                 return f"Optional[{base_type}]"
             return base_type
@@ -851,6 +836,15 @@ class PythonGenerator(BaseGenerator):
             parent_stack=parent_stack,
         )
 
+    def primitive_type_name(self, field_type: PrimitiveType) -> str:
+        """Return the Python annotation marker for a primitive field."""
+        encoded = self.INTEGER_ENCODING_MARKERS.get(
+            (field_type.kind, field_type.encoding_modifier)
+        )
+        if encoded:
+            return encoded
+        return self.PRIMITIVE_MAP[field_type.kind]
+
     def get_union_case_check(
         self, field: Field, parent_stack: Optional[List[Message]] = None
     ) -> Optional[str]:
@@ -865,7 +859,7 @@ class PythonGenerator(BaseGenerator):
     ) -> Optional[str]:
         """Return an isinstance expression for a union case value expression."""
         if isinstance(field.field_type, PrimitiveType):
-            base = self.PRIMITIVE_MAP[field.field_type.kind]
+            base = self.primitive_type_name(field.field_type)
             if base.startswith("pyfory."):
                 if "float" in base:
                     return f"isinstance({value_expr}, float)"

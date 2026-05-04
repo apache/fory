@@ -33,7 +33,6 @@ from fory_compiler.ir.ast import (
     ArrayType,
     MapType,
 )
-from fory_compiler.ir.types import PrimitiveKind
 
 
 class FDLEmitter:
@@ -196,35 +195,8 @@ class FDLEmitter:
     def _emit_primitive_name(self, field_type: PrimitiveType) -> str:
         kind = field_type.kind
         modifier = field_type.encoding_modifier
-        if modifier == "varint":
-            if kind == PrimitiveKind.VARINT32:
-                return "varint int32"
-            if kind == PrimitiveKind.VARINT64:
-                return "varint int64"
-            if kind == PrimitiveKind.VAR_UINT32:
-                return "varint uint32"
-            if kind == PrimitiveKind.VAR_UINT64:
-                return "varint uint64"
-        if kind == PrimitiveKind.VARINT32:
-            return "int32"
-        if kind == PrimitiveKind.VARINT64:
-            return "int64"
-        if kind == PrimitiveKind.INT32:
-            return "fixed int32"
-        if kind == PrimitiveKind.INT64:
-            return "fixed int64"
-        if kind == PrimitiveKind.VAR_UINT32:
-            return "uint32"
-        if kind == PrimitiveKind.VAR_UINT64:
-            return "uint64"
-        if kind == PrimitiveKind.UINT32:
-            return "fixed uint32"
-        if kind == PrimitiveKind.UINT64:
-            return "fixed uint64"
-        if kind == PrimitiveKind.TAGGED_INT64:
-            return "tagged int64"
-        if kind == PrimitiveKind.TAGGED_UINT64:
-            return "tagged uint64"
+        if modifier:
+            return f"{modifier} {kind.value}"
         return kind.value
 
     def _emit_inline_options(self, options: Dict[str, object]) -> str:

@@ -50,17 +50,11 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.INT8: "i8",
         PrimitiveKind.INT16: "i16",
         PrimitiveKind.INT32: "i32",
-        PrimitiveKind.VARINT32: "i32",
         PrimitiveKind.INT64: "i64",
-        PrimitiveKind.VARINT64: "i64",
-        PrimitiveKind.TAGGED_INT64: "i64",
         PrimitiveKind.UINT8: "u8",
         PrimitiveKind.UINT16: "u16",
         PrimitiveKind.UINT32: "u32",
-        PrimitiveKind.VAR_UINT32: "u32",
         PrimitiveKind.UINT64: "u64",
-        PrimitiveKind.VAR_UINT64: "u64",
-        PrimitiveKind.TAGGED_UINT64: "u64",
         PrimitiveKind.FLOAT16: "Float16",
         PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "f32",
@@ -680,15 +674,9 @@ class RustGenerator(BaseGenerator):
         """Return an encoding attribute for integer primitives."""
         if not isinstance(field_type, PrimitiveType):
             return None
-        kind = field_type.kind
-        if kind in (
-            PrimitiveKind.INT32,
-            PrimitiveKind.INT64,
-            PrimitiveKind.UINT32,
-            PrimitiveKind.UINT64,
-        ):
+        if field_type.encoding_modifier == "fixed":
             return "encoding = fixed"
-        if kind in (PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64):
+        if field_type.encoding_modifier == "tagged":
             return "encoding = tagged"
         return None
 

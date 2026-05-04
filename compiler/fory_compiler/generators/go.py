@@ -179,17 +179,11 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.INT8: "int8",
         PrimitiveKind.INT16: "int16",
         PrimitiveKind.INT32: "int32",
-        PrimitiveKind.VARINT32: "int32",
         PrimitiveKind.INT64: "int64",
-        PrimitiveKind.VARINT64: "int64",
-        PrimitiveKind.TAGGED_INT64: "int64",
         PrimitiveKind.UINT8: "uint8",
         PrimitiveKind.UINT16: "uint16",
         PrimitiveKind.UINT32: "uint32",
-        PrimitiveKind.VAR_UINT32: "uint32",
         PrimitiveKind.UINT64: "uint64",
-        PrimitiveKind.VAR_UINT64: "uint64",
-        PrimitiveKind.TAGGED_UINT64: "uint64",
         PrimitiveKind.FLOAT16: "float16.Float16",
         PrimitiveKind.BFLOAT16: "bfloat16.BFloat16",
         PrimitiveKind.FLOAT32: "float32",
@@ -645,23 +639,16 @@ class GoGenerator(BaseGenerator):
     ) -> str:
         """Return the Go expression for a union case value type id."""
         if isinstance(field.field_type, PrimitiveType):
+            scalar_type_id = self.get_scalar_type_id_expr(field.field_type)
+            if scalar_type_id is not None:
+                return scalar_type_id
             kind = field.field_type.kind
             primitive_type_ids = {
                 PrimitiveKind.BOOL: "fory.BOOL",
                 PrimitiveKind.INT8: "fory.INT8",
                 PrimitiveKind.INT16: "fory.INT16",
-                PrimitiveKind.INT32: "fory.INT32",
-                PrimitiveKind.VARINT32: "fory.VARINT32",
-                PrimitiveKind.INT64: "fory.INT64",
-                PrimitiveKind.VARINT64: "fory.VARINT64",
-                PrimitiveKind.TAGGED_INT64: "fory.TAGGED_INT64",
                 PrimitiveKind.UINT8: "fory.UINT8",
                 PrimitiveKind.UINT16: "fory.UINT16",
-                PrimitiveKind.UINT32: "fory.UINT32",
-                PrimitiveKind.VAR_UINT32: "fory.VAR_UINT32",
-                PrimitiveKind.UINT64: "fory.UINT64",
-                PrimitiveKind.VAR_UINT64: "fory.VAR_UINT64",
-                PrimitiveKind.TAGGED_UINT64: "fory.TAGGED_UINT64",
                 PrimitiveKind.FLOAT16: "fory.FLOAT16",
                 PrimitiveKind.BFLOAT16: "fory.BFLOAT16",
                 PrimitiveKind.FLOAT32: "fory.FLOAT32",
@@ -682,15 +669,11 @@ class GoGenerator(BaseGenerator):
                 PrimitiveKind.INT8: "fory.INT8_ARRAY",
                 PrimitiveKind.INT16: "fory.INT16_ARRAY",
                 PrimitiveKind.INT32: "fory.INT32_ARRAY",
-                PrimitiveKind.VARINT32: "fory.INT32_ARRAY",
                 PrimitiveKind.INT64: "fory.INT64_ARRAY",
-                PrimitiveKind.VARINT64: "fory.INT64_ARRAY",
                 PrimitiveKind.UINT8: "fory.UINT8_ARRAY",
                 PrimitiveKind.UINT16: "fory.UINT16_ARRAY",
                 PrimitiveKind.UINT32: "fory.UINT32_ARRAY",
-                PrimitiveKind.VAR_UINT32: "fory.UINT32_ARRAY",
                 PrimitiveKind.UINT64: "fory.UINT64_ARRAY",
-                PrimitiveKind.VAR_UINT64: "fory.UINT64_ARRAY",
                 PrimitiveKind.FLOAT16: "fory.FLOAT16_ARRAY",
                 PrimitiveKind.BFLOAT16: "fory.BFLOAT16_ARRAY",
                 PrimitiveKind.FLOAT32: "fory.FLOAT32_ARRAY",
@@ -803,23 +786,16 @@ class GoGenerator(BaseGenerator):
         self, field_type: FieldType, parent_stack: Optional[List[Message]]
     ) -> str:
         if isinstance(field_type, PrimitiveType):
+            scalar_type_id = self.get_scalar_type_id_expr(field_type)
+            if scalar_type_id is not None:
+                return scalar_type_id
             kind = field_type.kind
             primitive_type_ids = {
                 PrimitiveKind.BOOL: "fory.BOOL",
                 PrimitiveKind.INT8: "fory.INT8",
                 PrimitiveKind.INT16: "fory.INT16",
-                PrimitiveKind.INT32: "fory.INT32",
-                PrimitiveKind.VARINT32: "fory.VARINT32",
-                PrimitiveKind.INT64: "fory.INT64",
-                PrimitiveKind.VARINT64: "fory.VARINT64",
-                PrimitiveKind.TAGGED_INT64: "fory.TAGGED_INT64",
                 PrimitiveKind.UINT8: "fory.UINT8",
                 PrimitiveKind.UINT16: "fory.UINT16",
-                PrimitiveKind.UINT32: "fory.UINT32",
-                PrimitiveKind.VAR_UINT32: "fory.VAR_UINT32",
-                PrimitiveKind.UINT64: "fory.UINT64",
-                PrimitiveKind.VAR_UINT64: "fory.VAR_UINT64",
-                PrimitiveKind.TAGGED_UINT64: "fory.TAGGED_UINT64",
                 PrimitiveKind.FLOAT16: "fory.FLOAT16",
                 PrimitiveKind.BFLOAT16: "fory.BFLOAT16",
                 PrimitiveKind.FLOAT32: "fory.FLOAT32",
@@ -840,15 +816,11 @@ class GoGenerator(BaseGenerator):
                 PrimitiveKind.INT8: "fory.INT8_ARRAY",
                 PrimitiveKind.INT16: "fory.INT16_ARRAY",
                 PrimitiveKind.INT32: "fory.INT32_ARRAY",
-                PrimitiveKind.VARINT32: "fory.INT32_ARRAY",
                 PrimitiveKind.INT64: "fory.INT64_ARRAY",
-                PrimitiveKind.VARINT64: "fory.INT64_ARRAY",
                 PrimitiveKind.UINT8: "fory.UINT8_ARRAY",
                 PrimitiveKind.UINT16: "fory.UINT16_ARRAY",
                 PrimitiveKind.UINT32: "fory.UINT32_ARRAY",
-                PrimitiveKind.VAR_UINT32: "fory.UINT32_ARRAY",
                 PrimitiveKind.UINT64: "fory.UINT64_ARRAY",
-                PrimitiveKind.VAR_UINT64: "fory.UINT64_ARRAY",
                 PrimitiveKind.FLOAT16: "fory.FLOAT16_ARRAY",
                 PrimitiveKind.BFLOAT16: "fory.BFLOAT16_ARRAY",
                 PrimitiveKind.FLOAT32: "fory.FLOAT32_ARRAY",
@@ -879,6 +851,28 @@ class GoGenerator(BaseGenerator):
                     return "fory.COMPATIBLE_STRUCT"
                 return "fory.STRUCT"
         return "fory.UNKNOWN"
+
+    def get_scalar_type_id_expr(self, field_type: PrimitiveType) -> Optional[str]:
+        table = {
+            PrimitiveKind.INT32: ("fory.INT32", "fory.VARINT32", None),
+            PrimitiveKind.INT64: ("fory.INT64", "fory.VARINT64", "fory.TAGGED_INT64"),
+            PrimitiveKind.UINT32: ("fory.UINT32", "fory.VAR_UINT32", None),
+            PrimitiveKind.UINT64: (
+                "fory.UINT64",
+                "fory.VAR_UINT64",
+                "fory.TAGGED_UINT64",
+            ),
+        }
+        entry = table.get(field_type.kind)
+        if entry is None:
+            return None
+        fixed_type_id, varint_type_id, tagged_type_id = entry
+        encoding = field_type.encoding_modifier or "varint"
+        if encoding == "fixed":
+            return fixed_type_id
+        if encoding == "tagged" and tagged_type_id is not None:
+            return tagged_type_id
+        return varint_type_id
 
     def resolve_named_type(
         self, name: str, parent_stack: Optional[List[Message]]
@@ -1060,13 +1054,8 @@ class GoGenerator(BaseGenerator):
         """Return encoding tag for integer primitives."""
         if not isinstance(field_type, PrimitiveType):
             return None
-        kind = field_type.kind
-        if kind in (PrimitiveKind.INT32, PrimitiveKind.UINT32):
-            return "encoding=fixed"
-        if kind in (PrimitiveKind.INT64, PrimitiveKind.UINT64):
-            return "encoding=fixed"
-        if kind in (PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64):
-            return "encoding=tagged"
+        if field_type.encoding_modifier in ("fixed", "tagged"):
+            return f"encoding={field_type.encoding_modifier}"
         return None
 
     def get_type_hint_tag(
@@ -1267,17 +1256,11 @@ class GoGenerator(BaseGenerator):
             PrimitiveKind.INT8: "int8",
             PrimitiveKind.INT16: "int16",
             PrimitiveKind.INT32: "int32",
-            PrimitiveKind.VARINT32: "int32",
             PrimitiveKind.INT64: "int64",
-            PrimitiveKind.VARINT64: "int64",
-            PrimitiveKind.TAGGED_INT64: "int64",
             PrimitiveKind.UINT8: "uint8",
             PrimitiveKind.UINT16: "uint16",
             PrimitiveKind.UINT32: "uint32",
-            PrimitiveKind.VAR_UINT32: "uint32",
             PrimitiveKind.UINT64: "uint64",
-            PrimitiveKind.VAR_UINT64: "uint64",
-            PrimitiveKind.TAGGED_UINT64: "uint64",
             PrimitiveKind.FLOAT16: "float16",
             PrimitiveKind.BFLOAT16: "bfloat16",
             PrimitiveKind.FLOAT32: "float32",
@@ -1297,14 +1280,7 @@ class GoGenerator(BaseGenerator):
         return self.get_type_hint_name(field_type)
 
     def get_type_hint_encoding(self, field_type: PrimitiveType) -> Optional[str]:
-        kind = field_type.kind
-        if kind in (PrimitiveKind.INT32, PrimitiveKind.UINT32):
-            return "fixed"
-        if kind in (PrimitiveKind.INT64, PrimitiveKind.UINT64):
-            return "fixed"
-        if kind in (PrimitiveKind.TAGGED_INT64, PrimitiveKind.TAGGED_UINT64):
-            return "tagged"
-        return None
+        return field_type.encoding_modifier
 
     def render_type_hint(self, name: str, params: List[str]) -> str:
         if not params:

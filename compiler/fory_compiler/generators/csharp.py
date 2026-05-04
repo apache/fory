@@ -49,17 +49,11 @@ class CSharpGenerator(BaseGenerator):
         PrimitiveKind.INT8: "sbyte",
         PrimitiveKind.INT16: "short",
         PrimitiveKind.INT32: "int",
-        PrimitiveKind.VARINT32: "int",
         PrimitiveKind.INT64: "long",
-        PrimitiveKind.VARINT64: "long",
-        PrimitiveKind.TAGGED_INT64: "long",
         PrimitiveKind.UINT8: "byte",
         PrimitiveKind.UINT16: "ushort",
         PrimitiveKind.UINT32: "uint",
-        PrimitiveKind.VAR_UINT32: "uint",
         PrimitiveKind.UINT64: "ulong",
-        PrimitiveKind.VAR_UINT64: "ulong",
-        PrimitiveKind.TAGGED_UINT64: "ulong",
         PrimitiveKind.FLOAT16: "Half",
         PrimitiveKind.BFLOAT16: "BFloat16",
         PrimitiveKind.FLOAT32: "float",
@@ -78,17 +72,11 @@ class CSharpGenerator(BaseGenerator):
         PrimitiveKind.INT8,
         PrimitiveKind.INT16,
         PrimitiveKind.INT32,
-        PrimitiveKind.VARINT32,
         PrimitiveKind.INT64,
-        PrimitiveKind.VARINT64,
-        PrimitiveKind.TAGGED_INT64,
         PrimitiveKind.UINT8,
         PrimitiveKind.UINT16,
         PrimitiveKind.UINT32,
-        PrimitiveKind.VAR_UINT32,
         PrimitiveKind.UINT64,
-        PrimitiveKind.VAR_UINT64,
-        PrimitiveKind.TAGGED_UINT64,
         PrimitiveKind.FLOAT16,
         PrimitiveKind.BFLOAT16,
         PrimitiveKind.FLOAT32,
@@ -598,7 +586,7 @@ class CSharpGenerator(BaseGenerator):
         self, field_type: FieldType, force: bool = False
     ) -> Optional[str]:
         if isinstance(field_type, PrimitiveType):
-            return self._primitive_schema_type_hint(field_type.kind, force)
+            return self._primitive_schema_type_hint(field_type, force)
 
         if isinstance(field_type, ListType):
             element_hint = self._schema_type_hint(field_type.element_type, force=True)
@@ -628,24 +616,36 @@ class CSharpGenerator(BaseGenerator):
         return None
 
     def _primitive_schema_type_hint(
-        self, kind: PrimitiveKind, force: bool
+        self, field_type: PrimitiveType, force: bool
     ) -> Optional[str]:
+        kind = field_type.kind
+        encoding = field_type.encoding_modifier
+        if kind in (
+            PrimitiveKind.INT32,
+            PrimitiveKind.INT64,
+            PrimitiveKind.UINT32,
+            PrimitiveKind.UINT64,
+        ):
+            base = {
+                PrimitiveKind.INT32: "S.Int32",
+                PrimitiveKind.INT64: "S.Int64",
+                PrimitiveKind.UINT32: "S.UInt32",
+                PrimitiveKind.UINT64: "S.UInt64",
+            }[kind]
+            if encoding == "fixed":
+                return f"S.Fixed<{base}>"
+            if encoding == "tagged":
+                return f"S.Tagged<{base}>"
+            if force or encoding == "varint":
+                return base
+            return None
+
         hints = {
             PrimitiveKind.BOOL: "S.Bool",
             PrimitiveKind.INT8: "S.Int8",
             PrimitiveKind.INT16: "S.Int16",
-            PrimitiveKind.INT32: "S.Fixed<S.Int32>",
-            PrimitiveKind.VARINT32: "S.Int32",
-            PrimitiveKind.INT64: "S.Fixed<S.Int64>",
-            PrimitiveKind.VARINT64: "S.Int64",
-            PrimitiveKind.TAGGED_INT64: "S.Tagged<S.Int64>",
             PrimitiveKind.UINT8: "S.UInt8",
             PrimitiveKind.UINT16: "S.UInt16",
-            PrimitiveKind.UINT32: "S.Fixed<S.UInt32>",
-            PrimitiveKind.VAR_UINT32: "S.UInt32",
-            PrimitiveKind.UINT64: "S.Fixed<S.UInt64>",
-            PrimitiveKind.VAR_UINT64: "S.UInt64",
-            PrimitiveKind.TAGGED_UINT64: "S.Tagged<S.UInt64>",
             PrimitiveKind.FLOAT16: "S.Float16",
             PrimitiveKind.BFLOAT16: "S.BFloat16",
             PrimitiveKind.FLOAT32: "S.Float32",
@@ -659,15 +659,6 @@ class CSharpGenerator(BaseGenerator):
         }
         if force:
             return hints.get(kind)
-        if kind in {
-            PrimitiveKind.INT32,
-            PrimitiveKind.INT64,
-            PrimitiveKind.UINT32,
-            PrimitiveKind.UINT64,
-            PrimitiveKind.TAGGED_INT64,
-            PrimitiveKind.TAGGED_UINT64,
-        }:
-            return hints[kind]
         return None
 
     def _type_reference_for_local(

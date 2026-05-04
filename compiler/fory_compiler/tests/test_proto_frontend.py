@@ -38,10 +38,14 @@ def test_proto_type_mapping():
     fields = {f.name: f.field_type for f in schema.messages[0].fields}
 
     assert isinstance(fields["age"], PrimitiveType)
-    assert fields["age"].kind == PrimitiveKind.VAR_UINT32
-    assert fields["score"].kind == PrimitiveKind.VARINT32
+    assert fields["age"].kind == PrimitiveKind.UINT32
+    assert fields["age"].encoding_modifier is None
+    assert fields["score"].kind == PrimitiveKind.INT32
+    assert fields["score"].encoding_modifier is None
     assert fields["id"].kind == PrimitiveKind.UINT32
+    assert fields["id"].encoding_modifier == "fixed"
     assert fields["balance"].kind == PrimitiveKind.INT64
+    assert fields["balance"].encoding_modifier == "fixed"
 
 
 def test_proto_oneof_translation():
