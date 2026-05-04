@@ -25,6 +25,7 @@
 //! - `encoding`: Integer wire encoding, one of `varint`, `fixed`, or `tagged`
 //! - `list(element(...))`: Nested list element configuration
 //! - `array`: Dense numeric/vector array schema for `Vec<T>`
+//! - `bytes`: Binary blob schema for `Vec<u8>`
 //! - `map(key(...), value(...))`: Nested map key/value configuration
 
 use quote::ToTokens;
@@ -49,6 +50,8 @@ pub struct ForyFieldMeta {
     pub list: Option<ForyListMeta>,
     /// Dense numeric/vector array schema.
     pub array: bool,
+    /// Binary blob schema for `Vec<u8>`.
+    pub bytes: bool,
     /// Nested map key/value configuration.
     pub map: Option<ForyMapMeta>,
 }
@@ -246,6 +249,20 @@ fn parse_meta_item(
             ));
         }
         meta.array = true;
+    } else if nested.path.is_ident("bytes") {
+        if meta.bytes {
+            return Err(syn::Error::new(
+                nested.path.span(),
+                "duplicate bytes config",
+            ));
+        }
+        if !nested.input.is_empty() && !nested.input.peek(syn::Token![,]) {
+            return Err(syn::Error::new(
+                nested.path.span(),
+                "bytes does not accept parameters; use #[fory(bytes)]",
+            ));
+        }
+        meta.bytes = true;
     } else if nested.path.is_ident("map") {
         if meta.map.is_some() {
             return Err(syn::Error::new(nested.path.span(), "duplicate map config"));
@@ -552,6 +569,16 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_bytes_attribute() {
+        let field: Field = parse_quote! {
+            #[fory(bytes)]
+            data: Vec<u8>
+        };
+        let meta = parse_field_meta(&field).unwrap();
+        assert!(meta.bytes);
+    }
+
+    #[test]
     fn test_parse_standalone_flags() {
         let field: Field = parse_quote! {
             #[fory(id = 2, nullable, ref)]
@@ -691,6 +718,7 @@ mod tests {
             encoding: None,
             list: None,
             array: false,
+            bytes: false,
             map: None,
         };
         assert!(meta.effective_nullable(FieldTypeClass::Primitive)); // Would be false by default
@@ -704,6 +732,7 @@ mod tests {
             encoding: None,
             list: None,
             array: false,
+            bytes: false,
             map: None,
         };
         assert!(!meta.effective_ref(FieldTypeClass::Rc)); // Would be true by default

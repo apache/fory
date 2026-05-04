@@ -103,7 +103,7 @@ func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
         Array(xlangWriteBuffer.copyToData()) == [
             UInt8(bitPattern: RefFlag.notNullValue.rawValue),
             UInt8(LocalDate.staticTypeId.rawValue),
-            0x01,
+            0x01
         ]
     )
 
@@ -158,7 +158,7 @@ func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
         0xFF,
         0xFF,
         0xFF,
-        0xFF,
+        0xFF
     ])
 
     let timestampBuffer = ByteBuffer()

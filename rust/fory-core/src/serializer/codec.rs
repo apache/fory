@@ -74,7 +74,7 @@ fn field_read_type_info<T: Serializer>(context: &ReadContext, field_type: &Field
 #[inline(always)]
 fn field_write_type_info<T: Serializer>(context: &WriteContext) -> bool {
     if context.is_compatible() {
-        need_to_write_type_for_field(T::fory_static_type_id())
+        crate::serializer::util::field_need_write_type_info(T::fory_static_type_id())
     } else {
         T::fory_is_polymorphic()
     }
@@ -162,7 +162,7 @@ where
     C: Codec<T>,
 {
     if context.is_compatible() {
-        need_to_write_type_for_field(C::static_type_id())
+        crate::serializer::util::field_need_write_type_info(C::static_type_id())
     } else {
         C::is_polymorphic()
     }
@@ -1530,22 +1530,21 @@ where
 
     #[inline(always)]
     fn write_field(value: &Vec<T>, context: &mut WriteContext) -> Result<(), Error> {
-        Self::write_with_mode(
-            value,
-            context,
-            array_ref_mode::<NULLABLE, TRACK_REF>(),
-            need_to_write_type_for_field(Self::static_type_id()),
-            false,
-        )
+        if TRACK_REF || NULLABLE {
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
+        }
+        Self::write_data(value, context)
     }
 
     #[inline(always)]
     fn read_field(context: &mut ReadContext) -> Result<Vec<T>, Error> {
-        Self::read_with_mode(
-            context,
-            array_ref_mode::<NULLABLE, TRACK_REF>(),
-            crate::serializer::util::field_need_read_type_info(TYPE_ID as u32),
-        )
+        if TRACK_REF || NULLABLE {
+            let ref_flag = context.reader.read_i8()?;
+            if ref_flag == RefFlag::Null as i8 {
+                return Ok(Vec::new());
+            }
+        }
+        Self::read_data(context)
     }
 
     #[inline(always)]
@@ -1637,17 +1636,6 @@ where
     #[inline(always)]
     fn static_type_id() -> TypeId {
         TypeId::try_from(TYPE_ID).unwrap_or(TypeId::UNKNOWN)
-    }
-}
-
-#[inline(always)]
-fn array_ref_mode<const NULLABLE: bool, const TRACK_REF: bool>() -> RefMode {
-    if TRACK_REF {
-        RefMode::Tracking
-    } else if NULLABLE {
-        RefMode::NullOnly
-    } else {
-        RefMode::None
     }
 }
 
@@ -2692,3 +2680,22 @@ macro_rules! any_codec {
 any_codec!(AnyBoxCodec, Box<dyn Any>);
 any_codec!(AnyRcCodec, Rc<dyn Any>);
 any_codec!(AnyArcCodec, Arc<dyn Any>);
+
+#[cfg(test)]
+mod tests {
+    use super::field_types_compatible;
+    use crate::meta::FieldType;
+    use crate::type_id;
+
+    #[test]
+    fn byte_sequence_compatibility_only_allows_uint8_array() {
+        let bytes = FieldType::new(type_id::BINARY, false, vec![]);
+        let uint8_array = FieldType::new(type_id::UINT8_ARRAY, false, vec![]);
+        let int8_array = FieldType::new(type_id::INT8_ARRAY, false, vec![]);
+
+        assert!(field_types_compatible(&bytes, &uint8_array));
+        assert!(field_types_compatible(&uint8_array, &bytes));
+        assert!(!field_types_compatible(&bytes, &int8_array));
+        assert!(!field_types_compatible(&int8_array, &bytes));
+    }
+}

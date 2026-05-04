@@ -642,10 +642,18 @@ class SwiftGenerator(BaseGenerator):
         return None
 
     def type_hint_expression(
-        self, field_type: FieldType, nullable: bool = False
+        self,
+        field_type: FieldType,
+        nullable: bool = False,
+        *,
+        array_element: bool = False,
     ) -> Optional[str]:
         if isinstance(field_type, PrimitiveType):
-            return self.scalar_type_hint_expression(field_type.kind, nullable=nullable)
+            return self.scalar_type_hint_expression(
+                field_type.kind,
+                nullable=nullable,
+                include_integer_encoding=not array_element,
+            )
 
         if isinstance(field_type, ListType):
             element_hint = self.type_hint_expression(
@@ -656,7 +664,10 @@ class SwiftGenerator(BaseGenerator):
             return f".list(element: {element_hint})"
 
         if isinstance(field_type, ArrayType):
-            element_hint = self.type_hint_expression(field_type.element_type)
+            element_hint = self.type_hint_expression(
+                field_type.element_type,
+                array_element=True,
+            )
             if element_hint is None:
                 return None
             return f".array(element: {element_hint})"
@@ -678,7 +689,11 @@ class SwiftGenerator(BaseGenerator):
         return None
 
     def scalar_type_hint_expression(
-        self, kind: PrimitiveKind, nullable: bool = False
+        self,
+        kind: PrimitiveKind,
+        nullable: bool = False,
+        *,
+        include_integer_encoding: bool = True,
     ) -> Optional[str]:
         member_hints = {
             PrimitiveKind.BOOL: "bool",
@@ -721,7 +736,7 @@ class SwiftGenerator(BaseGenerator):
         args: List[str] = []
         if nullable:
             args.append("nullable: true")
-        if encoding is not None:
+        if include_integer_encoding and encoding is not None:
             args.append(f"encoding: {encoding}")
         if not args:
             return f".{name}()"
@@ -738,7 +753,10 @@ class SwiftGenerator(BaseGenerator):
             return f"@ListField(element: {element_hint})"
 
         if isinstance(field_type, ArrayType):
-            element_hint = self.type_hint_expression(field_type.element_type)
+            element_hint = self.type_hint_expression(
+                field_type.element_type,
+                array_element=True,
+            )
             if element_hint is None:
                 return None
             return f"@ArrayField(element: {element_hint})"

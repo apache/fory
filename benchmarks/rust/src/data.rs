@@ -119,19 +119,19 @@ pub struct Sample {
     pub char_value_boxed: i32,
     #[fory(id = 14)]
     pub boolean_value_boxed: bool,
-    #[fory(id = 15)]
+    #[fory(id = 15, array)]
     pub int_array: Vec<i32>,
-    #[fory(id = 16)]
+    #[fory(id = 16, array)]
     pub long_array: Vec<i64>,
-    #[fory(id = 17)]
+    #[fory(id = 17, array)]
     pub float_array: Vec<f32>,
-    #[fory(id = 18)]
+    #[fory(id = 18, array)]
     pub double_array: Vec<f64>,
-    #[fory(id = 19)]
+    #[fory(id = 19, array)]
     pub short_array: Vec<i32>,
-    #[fory(id = 20)]
+    #[fory(id = 20, array)]
     pub char_array: Vec<i32>,
-    #[fory(id = 21)]
+    #[fory(id = 21, array)]
     pub boolean_array: Vec<bool>,
     #[fory(id = 22)]
     pub string: String,

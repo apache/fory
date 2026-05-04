@@ -172,8 +172,8 @@ final class OffsetSerializer extends Serializer<StorageExtent> {
 `List`, `Set`, `Map`, `Uint8List`, numeric typed arrays, `Int64List`, and
 `Uint64List` are supported on web. The `Int64List` and `Uint64List`
 implementations preserve 64-bit values without depending on JavaScript integer
-precision. Use the Fory wrapper list types when the wire type is `int64_array`
-or `uint64_array`.
+precision. Use the Fory wrapper list types when the schema is `array<int64>`
+or `array<uint64>`.
 
 ## Testing Browser Builds
 

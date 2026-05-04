@@ -997,7 +997,7 @@ public sealed class TypeResolver
             TypeId.Float32 => GetTypeInfo<float>().WithWireTypeInfo(wireTypeId),
             TypeId.Float64 => GetTypeInfo<double>().WithWireTypeInfo(wireTypeId),
             TypeId.String => GetTypeInfo<string>().WithWireTypeInfo(wireTypeId),
-            TypeId.Decimal => GetTypeInfo<decimal>().WithWireTypeInfo(wireTypeId),
+            TypeId.Decimal => GetTypeInfo<ForyDecimal>().WithWireTypeInfo(wireTypeId),
             TypeId.Date => GetTypeInfo<DateOnly>().WithWireTypeInfo(wireTypeId),
             TypeId.Timestamp => GetTypeInfo<DateTimeOffset>().WithWireTypeInfo(wireTypeId),
             TypeId.Duration => GetTypeInfo<TimeSpan>().WithWireTypeInfo(wireTypeId),

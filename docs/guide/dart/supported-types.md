@@ -86,8 +86,8 @@ floating-point values, use an explicit wrapper:
 - `Bfloat16` — brain floating point, useful when interoperating with ML-oriented payloads
 
 For contiguous 16-bit floating-point arrays, use `Float16List` and
-`Bfloat16List` rather than `Uint16List` when the wire type is `float16_array`
-or `bfloat16_array`.
+`Bfloat16List` rather than `Uint16List` when the schema is `array<float16>`
+or `array<bfloat16>`.
 
 ## Time and Date Types
 
@@ -136,10 +136,10 @@ See [Code Generation](code-generation.md).
 Fory supports `List<T>`, `Set<T>`, and `Map<K, V>`. Element and key types must
 also be serializable types. Avoid using mutable objects as map keys.
 
-Generic `List<int>` with primitive element metadata still uses the `list` wire
-type. Dedicated array wire kinds come from dedicated carriers:
+Generic `List<int>` with primitive element metadata still uses `list<T>` schema.
+Dedicated dense array schema comes from dedicated carriers:
 
-- `List<bool>` for `bool_array`
+- `List<bool>` for `array<bool>`
 - `Int8List`, `Int16List`, `Int32List`, `Int64List`
 - `Uint8List`, `Uint16List`, `Uint32List`, `Uint64List`
 - `Float16List`, `Bfloat16List`, `Float32List`, `Float64List`

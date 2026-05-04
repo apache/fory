@@ -75,7 +75,7 @@ console.log(user);
 | `Array`          | `Type.list(Type.T())`                                             | Ordered collection                        |
 | `Map`            | `Type.map(Type.K(), Type.V())`                                    |                                           |
 | `Set`            | `Type.set(Type.T())`                                              |                                           |
-| Typed arrays     | `Type.array(Type.int32())` / `Type.array(Type.float64())` / ...   | Dense numeric or bool arrays              |
+| Typed arrays     | `Type.int32Array()` / `Type.float64Array()` / ...                 | Dense numeric or bool arrays              |
 
 ## Cross-Language Serialization
 

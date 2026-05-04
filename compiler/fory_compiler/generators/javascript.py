@@ -182,29 +182,6 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.ANY: "Type.any()",
     }
 
-    # Mapping from FDL primitive types to Fory JS typed array Type.xxx() calls
-    PRIMITIVE_ARRAY_RUNTIME_MAP = {
-        PrimitiveKind.BOOL: "Type.boolArray()",
-        PrimitiveKind.INT8: "Type.int8Array()",
-        PrimitiveKind.INT16: "Type.int16Array()",
-        PrimitiveKind.INT32: "Type.int32Array()",
-        PrimitiveKind.VARINT32: "Type.int32Array()",
-        PrimitiveKind.INT64: "Type.int64Array()",
-        PrimitiveKind.VARINT64: "Type.int64Array()",
-        PrimitiveKind.TAGGED_INT64: "Type.int64Array()",
-        PrimitiveKind.UINT8: "Type.uint8Array()",
-        PrimitiveKind.UINT16: "Type.uint16Array()",
-        PrimitiveKind.UINT32: "Type.uint32Array()",
-        PrimitiveKind.VAR_UINT32: "Type.uint32Array()",
-        PrimitiveKind.UINT64: "Type.uint64Array()",
-        PrimitiveKind.VAR_UINT64: "Type.uint64Array()",
-        PrimitiveKind.TAGGED_UINT64: "Type.uint64Array()",
-        PrimitiveKind.FLOAT16: "Type.float16Array()",
-        PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
-        PrimitiveKind.FLOAT32: "Type.float32Array()",
-        PrimitiveKind.FLOAT64: "Type.float64Array()",
-    }
-
     PRIMITIVE_ARRAY_TS_MAP = {
         PrimitiveKind.BOOL: "boolean[]",
         PrimitiveKind.INT8: "Int8Array",
@@ -223,6 +200,26 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.BFLOAT16: "number[]",
         PrimitiveKind.FLOAT32: "Float32Array",
         PrimitiveKind.FLOAT64: "Float64Array",
+    }
+
+    PRIMITIVE_ARRAY_RUNTIME_MAP = {
+        PrimitiveKind.BOOL: "Type.boolArray()",
+        PrimitiveKind.INT8: "Type.int8Array()",
+        PrimitiveKind.INT16: "Type.int16Array()",
+        PrimitiveKind.INT32: "Type.int32Array()",
+        PrimitiveKind.VARINT32: "Type.int32Array()",
+        PrimitiveKind.INT64: "Type.int64Array()",
+        PrimitiveKind.VARINT64: "Type.int64Array()",
+        PrimitiveKind.UINT8: "Type.uint8Array()",
+        PrimitiveKind.UINT16: "Type.uint16Array()",
+        PrimitiveKind.UINT32: "Type.uint32Array()",
+        PrimitiveKind.VAR_UINT32: "Type.uint32Array()",
+        PrimitiveKind.UINT64: "Type.uint64Array()",
+        PrimitiveKind.VAR_UINT64: "Type.uint64Array()",
+        PrimitiveKind.FLOAT16: "Type.float16Array()",
+        PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
+        PrimitiveKind.FLOAT32: "Type.float32Array()",
+        PrimitiveKind.FLOAT64: "Type.float64Array()",
     }
 
     def __init__(self, schema: Schema, options):
@@ -942,8 +939,13 @@ class JavaScriptGenerator(BaseGenerator):
             inner = self._field_type_expr(field_type.element_type, parent_stack)
             return f"Type.list({inner})"
         elif isinstance(field_type, ArrayType):
-            inner = self._field_type_expr(field_type.element_type, parent_stack)
-            return f"Type.array({inner})"
+            if isinstance(field_type.element_type, PrimitiveType):
+                type_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(
+                    field_type.element_type.kind
+                )
+                if type_expr:
+                    return type_expr
+            return "Type.any()"
         elif isinstance(field_type, MapType):
             key = self._field_type_expr(field_type.key_type, parent_stack)
             value = self._field_type_expr(field_type.value_type, parent_stack)

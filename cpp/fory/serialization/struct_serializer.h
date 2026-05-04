@@ -1822,6 +1822,10 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   static constexpr int compare_identifier(size_t lhs, size_t rhs) {
+    if (field_ids[lhs] >= 0 && field_ids[rhs] >= 0 &&
+        field_ids[lhs] != field_ids[rhs]) {
+      return field_ids[lhs] < field_ids[rhs] ? -1 : 1;
+    }
     size_t lhs_len = identifier_lengths[lhs];
     size_t rhs_len = identifier_lengths[rhs];
     size_t min_len = lhs_len < rhs_len ? lhs_len : rhs_len;
@@ -1845,13 +1849,6 @@ template <typename T> struct CompileTimeFieldHelpers {
     if constexpr (FieldCount == 0) {
       return false;
     } else {
-      if constexpr (all_id_mode_fields) {
-        if (field_ids[a] != field_ids[b]) {
-          return field_ids[a] < field_ids[b];
-        }
-        return Names[a] < Names[b];
-      }
-
       int ga = group_rank(a);
       int gb = group_rank(b);
       if (ga != gb)

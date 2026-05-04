@@ -512,11 +512,6 @@ func generateSliceElementRead(buf *bytes.Buffer, elemType types.Type, elemAccess
 func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
 	elemType := sliceType.Elem()
 
-	// Check if element type is a primitive type that uses ARRAY protocol
-	if isPrimitiveSliceElemType(elemType) {
-		return generatePrimitiveSliceReadInline(buf, sliceType, fieldAccess)
-	}
-
 	// Check if element type is referencable (needs ref tracking)
 	elemIsReferencable := isReferencableType(elemType)
 
@@ -580,10 +575,6 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 		return nil
 	}
 
-	if isPrimitiveSliceElemType(elemType) {
-		return generatePrimitiveSliceReadInlineNoNull(buf, sliceType, fieldAccess, indent)
-	}
-
 	elemIsReferencable := isReferencableType(elemType)
 	fmt.Fprintf(buf, "%ssliceLen := ctx.ReadCollectionLength()\n", indent)
 	fmt.Fprintf(buf, "%sif sliceLen == 0 {\n", indent)
@@ -593,32 +584,6 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 		return err
 	}
 	fmt.Fprintf(buf, "%s}\n", indent)
-	return nil
-}
-
-func generatePrimitiveSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string, indent string) error {
-	elemType := sliceType.Elem()
-	basic := elemType.Underlying().(*types.Basic)
-	switch basic.Kind() {
-	case types.Bool:
-		fmt.Fprintf(buf, "%s%s = fory.ReadBoolSlice(buf, err)\n", indent, fieldAccess)
-	case types.Int8:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt8Slice(buf, err)\n", indent, fieldAccess)
-	case types.Uint8:
-		fmt.Fprintf(buf, "%s%s = fory.ReadByteSlice(buf, err)\n", indent, fieldAccess)
-	case types.Int16:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt16Slice(buf, err)\n", indent, fieldAccess)
-	case types.Int32:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt32Slice(buf, err)\n", indent, fieldAccess)
-	case types.Int64:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt64Slice(buf, err)\n", indent, fieldAccess)
-	case types.Float32:
-		fmt.Fprintf(buf, "%s%s = fory.ReadFloat32Slice(buf, err)\n", indent, fieldAccess)
-	case types.Float64:
-		fmt.Fprintf(buf, "%s%s = fory.ReadFloat64Slice(buf, err)\n", indent, fieldAccess)
-	default:
-		return fmt.Errorf("unsupported primitive type for ARRAY protocol: %s", basic.String())
-	}
 	return nil
 }
 
@@ -667,75 +632,6 @@ func writeSliceReadElements(buf *bytes.Buffer, sliceType *types.Slice, elemType 
 	fmt.Fprintf(buf, "%s\t}\n", indent)
 	fmt.Fprintf(buf, "%s}\n", indent)
 
-	return nil
-}
-
-// generatePrimitiveSliceReadInline generates inline deserialization code for primitive slices using ARRAY protocol
-func generatePrimitiveSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
-	elemType := sliceType.Elem()
-	basic := elemType.Underlying().(*types.Basic)
-
-	// In xlang mode, slices are NOT nullable by default (only pointer types are nullable).
-	// In native Go mode, slices can be nil and need null flags.
-	// Generate conditional code that respects the mode at runtime.
-
-	fmt.Fprintf(buf, "\t{\n")
-	fmt.Fprintf(buf, "\t\tisXlang := ctx.TypeResolver().IsXlang()\n")
-	fmt.Fprintf(buf, "\t\tif isXlang {\n")
-	fmt.Fprintf(buf, "\t\t\t// xlang mode: slices are not nullable, read directly without null flag\n")
-
-	// Read primitive slice in xlang mode
-	if err := writePrimitiveSliceReadCall(buf, basic, fieldAccess, "\t\t\t"); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(buf, "\t\t} else {\n")
-	fmt.Fprintf(buf, "\t\t\t// Native Go mode: slices are nullable, read null flag\n")
-	fmt.Fprintf(buf, "\t\t\tnullFlag := buf.ReadInt8(err)\n")
-	fmt.Fprintf(buf, "\t\t\tif nullFlag == -3 {\n") // NullFlag
-	fmt.Fprintf(buf, "\t\t\t\t%s = nil\n", fieldAccess)
-	fmt.Fprintf(buf, "\t\t\t} else {\n")
-
-	// Read primitive slice in native mode
-	if err := writePrimitiveSliceReadCall(buf, basic, fieldAccess, "\t\t\t\t"); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(buf, "\t\t\t}\n") // end else (not null)
-	fmt.Fprintf(buf, "\t\t}\n")   // end else (native mode)
-	fmt.Fprintf(buf, "\t}\n")     // end block scope
-	return nil
-}
-
-// writePrimitiveSliceReadCall writes the helper function call for reading a primitive slice
-func writePrimitiveSliceReadCall(buf *bytes.Buffer, basic *types.Basic, fieldAccess string, indent string) error {
-	switch basic.Kind() {
-	case types.Bool:
-		fmt.Fprintf(buf, "%s%s = fory.ReadBoolSlice(buf, err)\n", indent, fieldAccess)
-	case types.Int8:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt8Slice(buf, err)\n", indent, fieldAccess)
-	case types.Uint8:
-		fmt.Fprintf(buf, "%ssizeBytes := ctx.ReadBinaryLength()\n", indent)
-		fmt.Fprintf(buf, "%s%s = make([]uint8, sizeBytes)\n", indent, fieldAccess)
-		fmt.Fprintf(buf, "%sif sizeBytes > 0 {\n", indent)
-		fmt.Fprintf(buf, "%s\traw := buf.ReadBinary(sizeBytes, err)\n", indent)
-		fmt.Fprintf(buf, "%s\tif raw != nil {\n", indent)
-		fmt.Fprintf(buf, "%s\t\tcopy(%s, raw)\n", indent, fieldAccess)
-		fmt.Fprintf(buf, "%s\t}\n", indent)
-		fmt.Fprintf(buf, "%s}\n", indent)
-	case types.Int16:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt16Slice(buf, err)\n", indent, fieldAccess)
-	case types.Int32:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt32Slice(buf, err)\n", indent, fieldAccess)
-	case types.Int64:
-		fmt.Fprintf(buf, "%s%s = fory.ReadInt64Slice(buf, err)\n", indent, fieldAccess)
-	case types.Float32:
-		fmt.Fprintf(buf, "%s%s = fory.ReadFloat32Slice(buf, err)\n", indent, fieldAccess)
-	case types.Float64:
-		fmt.Fprintf(buf, "%s%s = fory.ReadFloat64Slice(buf, err)\n", indent, fieldAccess)
-	default:
-		return fmt.Errorf("unsupported primitive type for ARRAY protocol read: %s", basic.String())
-	}
 	return nil
 }
 

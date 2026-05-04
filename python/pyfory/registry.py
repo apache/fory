@@ -514,21 +514,17 @@ class TypeResolver:
                 serializer=PyArraySerializer(self._actual_type_resolver, ftype, typeid),
             )
         if np:
-            # overwrite pyarray  with same type id.
-            # if pyarray are needed, one must annotate that value with XXXArrayType
-            # as a field of a struct.
             for dtype, (
                 itemsize,
                 format,
                 ftype,
                 typeid,
             ) in Numpy1DArraySerializer.dtypes_dict.items():
-                typeinfo = register(
+                register(
                     ftype,
                     type_id=typeid,
                     serializer=Numpy1DArraySerializer(self._actual_type_resolver, ftype, dtype),
                 )
-                self._type_id_to_type_info[typeid] = typeinfo
         register(list, type_id=TypeId.LIST, serializer=ListSerializer)
         register(set, type_id=TypeId.SET, serializer=SetSerializer)
         register(dict, type_id=TypeId.MAP, serializer=MapSerializer)

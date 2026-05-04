@@ -130,13 +130,13 @@ class Sample:
     short_value_boxed: pyfory.int32 = pyfory.field(id=12)
     char_value_boxed: pyfory.int32 = pyfory.field(id=13)
     boolean_value_boxed: bool = pyfory.field(id=14)
-    int_array: pyfory.int32_ndarray = pyfory.field(id=15)
-    long_array: pyfory.int64_ndarray = pyfory.field(id=16)
-    float_array: pyfory.float32_ndarray = pyfory.field(id=17)
-    double_array: pyfory.float64_ndarray = pyfory.field(id=18)
-    short_array: pyfory.int32_ndarray = pyfory.field(id=19)
-    char_array: pyfory.int32_ndarray = pyfory.field(id=20)
-    boolean_array: pyfory.bool_ndarray = pyfory.field(id=21)
+    int_array: pyfory.NDArray[pyfory.int32] = pyfory.field(id=15)
+    long_array: pyfory.NDArray[pyfory.int64] = pyfory.field(id=16)
+    float_array: pyfory.NDArray[pyfory.float32] = pyfory.field(id=17)
+    double_array: pyfory.NDArray[pyfory.float64] = pyfory.field(id=18)
+    short_array: pyfory.NDArray[pyfory.int32] = pyfory.field(id=19)
+    char_array: pyfory.NDArray[pyfory.int32] = pyfory.field(id=20)
+    boolean_array: pyfory.NDArray[bool] = pyfory.field(id=21)
     string: str = pyfory.field(id=22)
 
 
@@ -216,15 +216,9 @@ def create_sample() -> Sample:
         char_value_boxed=ord("$"),
         boolean_value_boxed=False,
         int_array=int32_array([-1234, -123, -12, -1, 0, 1, 12, 123, 1234]),
-        long_array=int64_array(
-            [-123400, -12300, -1200, -100, 0, 100, 1200, 12300, 123400]
-        ),
-        float_array=float32_array(
-            [-12.34, -12.3, -12.0, -1.0, 0.0, 1.0, 12.0, 12.3, 12.34]
-        ),
-        double_array=float64_array(
-            [-1.234, -1.23, -12.0, -1.0, 0.0, 1.0, 12.0, 1.23, 1.234]
-        ),
+        long_array=int64_array([-123400, -12300, -1200, -100, 0, 100, 1200, 12300, 123400]),
+        float_array=float32_array([-12.34, -12.3, -12.0, -1.0, 0.0, 1.0, 12.0, 12.3, 12.34]),
+        double_array=float64_array([-1.234, -1.23, -12.0, -1.0, 0.0, 1.0, 12.0, 1.23, 1.234]),
         short_array=int32_array([-1234, -123, -12, -1, 0, 1, 12, 123, 1234]),
         char_array=int32_array([ord(c) for c in "asdfASDF"]),
         boolean_array=bool_array([True, False, False, True]),
@@ -282,9 +276,7 @@ def create_sample_list() -> SampleList:
 
 
 def create_media_content_list() -> MediaContentList:
-    return MediaContentList(
-        media_content_list=[create_media_content() for _ in range(LIST_SIZE)]
-    )
+    return MediaContentList(media_content_list=[create_media_content() for _ in range(LIST_SIZE)])
 
 
 def create_benchmark_data() -> Dict[str, Any]:
@@ -301,9 +293,7 @@ def create_benchmark_data() -> Dict[str, Any]:
 def load_bench_pb2(proto_dir: Path):
     bench_pb2_path = proto_dir / "bench_pb2.py"
     if not bench_pb2_path.exists():
-        raise FileNotFoundError(
-            f"{bench_pb2_path} does not exist. Run benchmarks/python/run.sh first to generate protobuf bindings."
-        )
+        raise FileNotFoundError(f"{bench_pb2_path} does not exist. Run benchmarks/python/run.sh first to generate protobuf bindings.")
     proto_dir_abs = str(proto_dir.resolve())
     if proto_dir_abs not in sys.path:
         sys.path.insert(0, proto_dir_abs)
@@ -495,11 +485,7 @@ def to_pb_mediacontentlist(bench_pb2, obj: MediaContentList):
 
 
 def from_pb_mediacontentlist(pb_obj) -> MediaContentList:
-    return MediaContentList(
-        media_content_list=[
-            from_pb_mediacontent(item) for item in pb_obj.media_content_list
-        ]
-    )
+    return MediaContentList(media_content_list=[from_pb_mediacontent(item) for item in pb_obj.media_content_list])
 
 
 PROTO_CONVERTERS = {
@@ -616,9 +602,7 @@ def build_case(
     if serializer == "pickle":
         if operation == "serialize":
             return pickle_serialize, (obj,)
-        return pickle_deserialize, (
-            pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL),
-        )
+        return pickle_deserialize, (pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL),)
 
     if serializer == "protobuf":
         if operation == "serialize":
@@ -643,9 +627,7 @@ def calculate_serialized_sizes(
         datatype_sizes: Dict[str, int] = {}
 
         datatype_sizes["fory"] = len(fory.serialize(obj))
-        datatype_sizes["pickle"] = len(
-            pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
-        )
+        datatype_sizes["pickle"] = len(pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL))
 
         to_pb, _, _ = PROTO_CONVERTERS[datatype]
         datatype_sizes["protobuf"] = len(to_pb(bench_pb2, obj).SerializeToString())
@@ -660,9 +642,7 @@ def parse_csv_list(value: str, allowed: Iterable[str], default: List[str]) -> Li
     selected = [item.strip().lower() for item in value.split(",") if item.strip()]
     invalid = [item for item in selected if item not in allowed]
     if invalid:
-        raise ValueError(
-            f"Invalid values: {', '.join(invalid)}. Allowed: {', '.join(sorted(allowed))}"
-        )
+        raise ValueError(f"Invalid values: {', '.join(invalid)}. Allowed: {', '.join(sorted(allowed))}")
     ordered = [item for item in default if item in selected]
     return ordered
 
@@ -680,9 +660,7 @@ def benchmark_number(base_number: int, datatype: str) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Comprehensive Fory/Pickle/Protobuf benchmark for Python"
-    )
+    parser = argparse.ArgumentParser(description="Comprehensive Fory/Pickle/Protobuf benchmark for Python")
     parser.add_argument(
         "--operation",
         default="all",
@@ -743,24 +721,14 @@ def main() -> int:
     bench_pb2 = load_bench_pb2(proto_dir)
 
     selected_datatypes = parse_csv_list(args.data, DATA_TYPE_ORDER, DATA_TYPE_ORDER)
-    selected_serializers = parse_csv_list(
-        args.serializer, SERIALIZER_ORDER, SERIALIZER_ORDER
-    )
-    selected_operations = (
-        OPERATION_ORDER if args.operation == "all" else [args.operation]
-    )
+    selected_serializers = parse_csv_list(args.serializer, SERIALIZER_ORDER, SERIALIZER_ORDER)
+    selected_operations = OPERATION_ORDER if args.operation == "all" else [args.operation]
 
     benchmark_data = create_benchmark_data()
     fory = build_fory()
 
-    print(
-        f"Benchmarking {len(selected_datatypes)} data type(s), "
-        f"{len(selected_serializers)} serializer(s), "
-        f"{len(selected_operations)} operation(s)"
-    )
-    print(
-        f"Warmup={args.warmup}, Iterations={args.iterations}, Repeat={args.repeat}, Number={args.number}"
-    )
+    print(f"Benchmarking {len(selected_datatypes)} data type(s), {len(selected_serializers)} serializer(s), {len(selected_operations)} operation(s)")
+    print(f"Warmup={args.warmup}, Iterations={args.iterations}, Repeat={args.repeat}, Number={args.number}")
     print("=" * 96)
 
     results = []

@@ -21,13 +21,15 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.*;
 
+import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Float16List;
-import org.apache.fory.exception.SerializationException;
+import org.apache.fory.type.BFloat16Array;
 import org.apache.fory.type.Float16;
+import org.apache.fory.type.Float16Array;
 import org.testng.annotations.Test;
 
 public class Float16SerializerTest extends ForyTestBase {
@@ -105,9 +107,33 @@ public class Float16SerializerTest extends ForyTestBase {
 
     Float16[] array =
         new Float16[] {Float16.ONE, null, Float16.valueOf(-2.5f), null, Float16.MIN_VALUE};
-    SerializationException ex =
-        expectThrows(SerializationException.class, () -> fory.serialize(array));
-    assertTrue(ex.getMessage().contains("Float16[] doesn't support null elements"));
+    Float16[] result = (Float16[]) fory.deserialize(fory.serialize(array));
+    assertEquals(result.length, array.length);
+    assertEquals(result[0].toBits(), array[0].toBits());
+    assertNull(result[1]);
+    assertEquals(result[2].toBits(), array[2].toBits());
+    assertNull(result[3]);
+    assertEquals(result[4].toBits(), array[4].toBits());
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testReducedPrecisionDenseArrayCarriers(boolean codegen) {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .withCodegen(codegen)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
+
+    Float16Array float16Array = Float16Array.of(0.0f, 1.0f, -2.5f, Float.NaN);
+    Float16Array float16Result = fory.deserialize(fory.serialize(float16Array), Float16Array.class);
+    assertEquals(float16Result, float16Array);
+
+    BFloat16Array bfloat16Array = BFloat16Array.of(0.0f, 1.0f, -2.5f, Float.NaN);
+    BFloat16Array bfloat16Result =
+        fory.deserialize(fory.serialize(bfloat16Array), BFloat16Array.class);
+    assertEquals(bfloat16Result, bfloat16Array);
   }
 
   @Test
@@ -236,8 +262,10 @@ public class Float16SerializerTest extends ForyTestBase {
 
     Float16List list = buildFloat16List();
     bytes = fory.serialize(list);
-    Float16List listResult = (Float16List) fory.deserialize(bytes);
+    List<?> listResult = (List<?>) fory.deserialize(bytes);
     assertFloat16ListBits(list, listResult);
+    Float16List typedListResult = fory.deserialize(bytes, Float16List.class);
+    assertFloat16ListBits(list, typedListResult);
   }
 
   @Test
@@ -363,6 +391,15 @@ public class Float16SerializerTest extends ForyTestBase {
     assertEquals(expected.size(), actual.size());
     for (int i = 0; i < expected.size(); i++) {
       assertEquals(expected.getShort(i), actual.getShort(i), "Index " + i + " should match");
+    }
+  }
+
+  private static void assertFloat16ListBits(Float16List expected, List<?> actual) {
+    assertEquals(expected.size(), actual.size());
+    for (int i = 0; i < expected.size(); i++) {
+      assertTrue(actual.get(i) instanceof Float16, "Index " + i + " should be Float16");
+      assertEquals(
+          expected.getShort(i), ((Float16) actual.get(i)).toBits(), "Index " + i + " should match");
     }
   }
 }

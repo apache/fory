@@ -109,7 +109,9 @@ import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
 import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.BFloat16Array;
 import org.apache.fory.type.Float16;
+import org.apache.fory.type.Float16Array;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -1080,8 +1082,9 @@ public class IdlRoundTripTest {
     message.setUint16Array(new short[] {(short) 50000, (short) 60000});
     message.setUint32Array(new int[] {2000000000, 2100000000});
     message.setUint64Array(new long[] {9000000000L, 12000000000L});
-    message.setFloat16Array(new Float16[] {Float16.ONE, Float16.valueOf(2.0f)});
-    message.setBfloat16Array(new BFloat16[] {BFloat16.ONE, BFloat16.valueOf(2.0f)});
+    message.setFloat16Array(new Float16Array(new Float16[] {Float16.ONE, Float16.valueOf(2.0f)}));
+    message.setBfloat16Array(
+        new BFloat16Array(new BFloat16[] {BFloat16.ONE, BFloat16.valueOf(2.0f)}));
     message.setFloat32Array(new float[] {1.5f, 2.5f});
     message.setFloat64Array(new double[] {3.5d, 4.5d});
     message.setInt32ArrayList(Arrays.asList(new int[] {1, 2}, new int[] {3, 4}));

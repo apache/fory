@@ -203,7 +203,21 @@ class RustGenerator(BaseGenerator):
         uses: Set[str] = set()
 
         # Collect uses (including from nested types)
-        uses.add("use fory::{Fory, ForyEnum, ForyStruct, ForyUnion}")
+        uses.add("use fory::Fory")
+        if any(not self.is_imported_type(message) for message in self.schema.messages):
+            uses.add("use fory::ForyStruct")
+        if any(not self.is_imported_type(enum) for enum in self.schema.enums) or any(
+            self.message_has_nested_enum(message)
+            for message in self.schema.messages
+            if not self.is_imported_type(message)
+        ):
+            uses.add("use fory::ForyEnum")
+        if any(not self.is_imported_type(union) for union in self.schema.unions) or any(
+            self.message_has_nested_union(message)
+            for message in self.schema.messages
+            if not self.is_imported_type(message)
+        ):
+            uses.add("use fory::ForyUnion")
         uses.add("use std::sync::OnceLock")
 
         for message in self.schema.messages:
@@ -273,6 +287,22 @@ class RustGenerator(BaseGenerator):
             self.collect_message_uses(nested_msg, uses)
         for nested_union in message.nested_unions:
             self.collect_union_uses(nested_union, uses)
+
+    def message_has_nested_enum(self, message: Message) -> bool:
+        if message.nested_enums:
+            return True
+        return any(
+            self.message_has_nested_enum(nested_msg)
+            for nested_msg in message.nested_messages
+        )
+
+    def message_has_nested_union(self, message: Message) -> bool:
+        if message.nested_unions:
+            return True
+        return any(
+            self.message_has_nested_union(nested_msg)
+            for nested_msg in message.nested_messages
+        )
 
     def collect_union_uses(self, union: Union, uses: Set[str]):
         """Collect uses for a union and its cases."""
@@ -390,7 +420,11 @@ class RustGenerator(BaseGenerator):
                 pointer_type="Arc",
             )
             lines.append(f"    #[fory(id = {field.number})]")
-            lines.append(f"    {variant_name}({variant_type}),")
+            payload_attr = self.get_payload_field_attr(field)
+            if payload_attr:
+                lines.append(f"    {variant_name}(#[fory({payload_attr})] {variant_type}),")
+            else:
+                lines.append(f"    {variant_name}({variant_type}),")
 
         lines.append("}")
         lines.append("")
@@ -658,6 +692,11 @@ class RustGenerator(BaseGenerator):
 
     def get_nested_field_attr(self, field_type: FieldType) -> Optional[str]:
         """Return nested list/map field configuration."""
+        if (
+            isinstance(field_type, PrimitiveType)
+            and field_type.kind == PrimitiveKind.BYTES
+        ):
+            return "bytes"
         if isinstance(field_type, ListType):
             element_attrs = self.get_nested_value_attrs(field_type.element_type)
             if element_attrs:
@@ -678,6 +717,22 @@ class RustGenerator(BaseGenerator):
             if parts:
                 return f"map({', '.join(parts)})"
         return None
+
+    def get_payload_field_attr(self, field: Field) -> Optional[str]:
+        """Return Rust derive metadata for a union payload field."""
+        attrs: List[str] = []
+        nested_attr = self.get_nested_field_attr(field.field_type)
+        if nested_attr:
+            attrs.append(nested_attr)
+        else:
+            encoding = self.get_encoding_attr(field.field_type)
+            if encoding:
+                attrs.append(encoding)
+        if field.optional:
+            attrs.append("nullable = true")
+        if field.ref:
+            attrs.append("ref = true")
+        return ", ".join(attrs) if attrs else None
 
     def get_nested_value_attrs(self, field_type: FieldType) -> List[str]:
         attrs: List[str] = []
@@ -740,10 +795,12 @@ class RustGenerator(BaseGenerator):
             return type_name
 
         elif isinstance(field_type, ListType):
+            effective_element_optional = element_optional or field_type.element_optional
+            effective_element_ref = element_ref or field_type.element_ref
             element_type = self.generate_type(
                 field_type.element_type,
-                nullable=element_optional,
-                ref=element_ref,
+                nullable=effective_element_optional,
+                ref=effective_element_ref,
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )

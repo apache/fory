@@ -384,18 +384,18 @@ public class NestedStruct {
 }
 ```
 
-Specialized unsigned list carriers still use packed-array wire types when the
-field or nested element encoding is fixed. If a `UInt32List` or `UInt64List`
-field is annotated with a variable or tagged encoding, Fory serializes it with
-the collection protocol so the element type metadata is preserved.
+Specialized unsigned list carriers use the `list<T>` schema by default, so
+their element annotations are preserved in list metadata. Add `@ArrayType` only
+when the field should use dense `array<T>` schema.
 
-Primitive unsigned arrays can use element annotations for packed-array metadata:
+Primitive unsigned arrays can use scalar element annotations for dense
+`array<T>` metadata:
 
 ```java
-import org.apache.fory.annotation.UInt32Elements;
+import org.apache.fory.annotation.UInt32Type;
 
 public class IdBatch {
-    @UInt32Elements
+    @UInt32Type
     private int[] ids;
 }
 ```

@@ -76,20 +76,19 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - date: a naive date without timezone, encoded as a signed varint64 count of days since the Unix epoch.
 - decimal: an exact decimal value encoded as a signed `scale` and an exact `unscaled` integer.
 - binary: an variable-length array of bytes.
-- array: in current xlang, only one-dimensional primitive/numeric arrays have dedicated wire types. Other arrays are
-  taken as `list`, and implementations should support interoperability between array and list carriers. Internal type
-  ID `ARRAY (42)` is reserved for a future dedicated multi-dimensional array encoding and is not emitted by the current
-  xlang format.
-  - bool_array: one dimensional bool array.
-  - int8_array: one dimensional int8 array.
-  - int16_array: one dimensional int16 array.
-  - int32_array: one dimensional int32 array.
-  - int64_array: one dimensional int64 array.
-  - float8_array: one dimensional float8 array.
-  - float16_array: one dimensional half_float_16 array.
-  - bfloat16_array: one dimensional bfloat16 array.
-  - float32_array: one dimensional float32 array.
-  - float64_array: one dimensional float64 array.
+- array: `array<T>` is dense one-dimensional bool or numeric data. Current xlang emits the canonical specialized
+  `*_ARRAY` type IDs for each supported element domain. `ARRAY (42)` is reserved for a future generic array encoding and
+  is not emitted by the current xlang format. `list<T>` remains a separate schema kind.
+  - bool_array: canonical wire tag for `array<bool>`.
+  - int8_array: canonical wire tag for `array<int8>`.
+  - int16_array: canonical wire tag for `array<int16>`.
+  - int32_array: canonical wire tag for `array<int32>`.
+  - int64_array: canonical wire tag for `array<int64>`.
+  - float8_array: reserved canonical wire tag for `array<float8>`.
+  - float16_array: canonical wire tag for `array<float16>`.
+  - bfloat16_array: canonical wire tag for `array<bfloat16>`.
+  - float32_array: canonical wire tag for `array<float32>`.
+  - float64_array: canonical wire tag for `array<float64>`.
 - union: a tagged union type that can hold one of several alternative types. The active alternative is identified by an index.
 - typed_union: a union value with registered numeric union type ID.
 - named_union: a union value with embedded union type name or shared TypeDef.
@@ -128,9 +127,8 @@ class Foo2 {
 }
 ```
 
-`intArray` has an `int32_array` type. But both `objects` and `objectList` fields in the serialize data have `list` data
-type. When deserializing, the implementation will create an `Object` array for `objects`, but create a `ArrayList`
-for `objectList` to populate its elements. And the serialized data of `Foo` can be deserialized into `Foo2` too.
+`intArray` has `array<int32>` schema and uses the `int32_array` wire tag. Both `objects` and `objectList` have `list`
+schema. These schema kinds are distinct; implementations must not treat general object arrays as dense numeric arrays.
 
 Users can also provide meta hints for fields of a type, or the type whole. Here is an example in java which use
 annotation to provide such information.

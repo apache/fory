@@ -399,14 +399,15 @@ fn skip_value(
             || type_id_num == types::NAMED_COMPATIBLE_STRUCT
         {
             return skip_struct(context, type_id_num, type_info);
-        } else if type_id_num == types::ENUM
-            || type_id_num == types::NAMED_ENUM
-            || type_id_num == types::UNION
+        } else if type_id_num == types::ENUM || type_id_num == types::NAMED_ENUM {
+            let _ordinal = context.reader.read_var_u32()?;
+            return Ok(());
+        } else if type_id_num == types::UNION
             || type_id_num == types::TYPED_UNION
             || type_id_num == types::NAMED_UNION
         {
             let _ordinal = context.reader.read_var_u32()?;
-            return Ok(());
+            return skip_any_value(context, true);
         } else if type_id_num == types::EXT || type_id_num == types::NAMED_EXT {
             return skip_ext(context, type_id_num, type_info);
         } else {

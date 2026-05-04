@@ -47,13 +47,13 @@ type Sample struct {
 	ShortValueBoxed   int32     `msgpack:"12" fory:"id=12"`
 	CharValueBoxed    int32     `msgpack:"13" fory:"id=13"`
 	BooleanValueBoxed bool      `msgpack:"14" fory:"id=14"`
-	IntArray          []int32   `msgpack:"15" fory:"id=15"`
-	LongArray         []int64   `msgpack:"16" fory:"id=16"`
-	FloatArray        []float32 `msgpack:"17" fory:"id=17"`
-	DoubleArray       []float64 `msgpack:"18" fory:"id=18"`
-	ShortArray        []int32   `msgpack:"19" fory:"id=19"`
-	CharArray         []int32   `msgpack:"20" fory:"id=20"`
-	BooleanArray      []bool    `msgpack:"21" fory:"id=21"`
+	IntArray          []int32   `msgpack:"15" fory:"id=15,type=array(element=int32)"`
+	LongArray         []int64   `msgpack:"16" fory:"id=16,type=array(element=int64)"`
+	FloatArray        []float32 `msgpack:"17" fory:"id=17,type=array(element=float32)"`
+	DoubleArray       []float64 `msgpack:"18" fory:"id=18,type=array(element=float64)"`
+	ShortArray        []int32   `msgpack:"19" fory:"id=19,type=array(element=int32)"`
+	CharArray         []int32   `msgpack:"20" fory:"id=20,type=array(element=int32)"`
+	BooleanArray      []bool    `msgpack:"21" fory:"id=21,type=array(element=bool)"`
 	String            string    `msgpack:"22" fory:"id=22"`
 }
 

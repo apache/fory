@@ -72,7 +72,7 @@ assert(text == decoded);
 
 `std::vector<T>` for any serializable element type:
 
-`std::vector<fory::bfloat16_t>` is the dense array carrier for xlang `bfloat16_array`.
+`std::vector<fory::bfloat16_t>` can be used as the dense carrier when the field metadata declares `array<bfloat16>` schema.
 
 ```cpp
 std::vector<int32_t> numbers{1, 2, 3, 4, 5};

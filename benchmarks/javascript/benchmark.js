@@ -107,11 +107,11 @@ Options:
 }
 
 function int32Field(id) {
-  return Type.varInt32().setId(id);
+  return Type.int32().setId(id);
 }
 
 function int64Field(id) {
-  return Type.varInt64().setId(id);
+  return Type.int64().setId(id);
 }
 
 function float32Field(id) {
@@ -130,8 +130,8 @@ function stringField(id) {
   return Type.string().setId(id);
 }
 
-function arrayField(id, inner) {
-  return Type.array(inner).setId(id);
+function listField(id, inner) {
+  return Type.list(inner).setId(id);
 }
 
 function boolArrayField(id) {
@@ -208,7 +208,7 @@ function createSchemas() {
       size: int64Field(7),
       bitrate: int32Field(8),
       has_bitrate: boolField(9),
-      persons: arrayField(10, Type.string()),
+      persons: listField(10, Type.string()),
       player: enumField(11, 101, PLAYER_ENUM),
       copyright: stringField(12),
     }),
@@ -221,16 +221,16 @@ function createSchemas() {
     }),
     MediaContent: Type.struct(5, {
       media: structField(1, 3),
-      images: arrayField(2, Type.struct(4)),
+      images: listField(2, Type.struct(4)),
     }),
     StructList: Type.struct(6, {
-      struct_list: arrayField(1, Type.struct(1)),
+      struct_list: listField(1, Type.struct(1)),
     }),
     SampleList: Type.struct(7, {
-      sample_list: arrayField(1, Type.struct(2)),
+      sample_list: listField(1, Type.struct(2)),
     }),
     MediaContentList: Type.struct(8, {
-      media_content_list: arrayField(1, Type.struct(5)),
+      media_content_list: listField(1, Type.struct(5)),
     }),
   };
 }

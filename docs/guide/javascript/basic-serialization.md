@@ -123,7 +123,7 @@ Dynamic root serialization (calling `fory.serialize(someNumber)` without a schem
 
 ```ts
 const inventoryType = Type.struct("example.inventory", {
-  tags: Type.array(Type.string()),
+  tags: Type.list(Type.string()),
   counts: Type.map(Type.string(), Type.int32()),
   labels: Type.set(Type.string()),
 });

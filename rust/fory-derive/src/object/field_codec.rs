@@ -102,7 +102,7 @@ impl<'a> ResolvedField<'a> {
                     let ref_mode = serializer_ref_mode_for_field(self.source.field);
                     quote! {
                         let write_type_info = if context.is_compatible() {
-                            fory_core::type_id::need_to_write_type_for_field(
+                            fory_core::serializer::util::field_need_write_type_info(
                                 <#ty as fory_core::Serializer>::fory_static_type_id()
                             )
                         } else {
@@ -377,6 +377,15 @@ fn field_dispatch_for(
     nullable: bool,
     track_ref: bool,
 ) -> syn::Result<FieldDispatch> {
+    if meta.array {
+        let codec_ty = codec_type_for(ty, meta, nullable, track_ref)?;
+        return Ok(FieldDispatch::Serializer {
+            field_type: quote! {
+                <#codec_ty as fory_core::serializer::codec::Codec<#ty>>::field_type(type_resolver)?
+            },
+            has_generics: true,
+        });
+    }
     if meta.encoding.is_none()
         && meta.list.is_none()
         && !meta.array
@@ -429,6 +438,20 @@ pub(crate) fn codec_type_for(
                 ));
             }
             let elem_ty = single_type_arg(args, ty, "Vec")?;
+            if meta.bytes {
+                if meta.array || meta.list.is_some() {
+                    return Err(syn::Error::new_spanned(
+                        ty,
+                        "bytes cannot be combined with array or list(...) config",
+                    ));
+                }
+                if vec_element_type_name(elem_ty).as_deref() != Some("u8") {
+                    return Err(syn::Error::new_spanned(ty, "bytes schema requires Vec<u8>"));
+                }
+                return Ok(quote! {
+                    fory_core::serializer::codec::SerializerCodec<#ty, #nullable, #track_ref>
+                });
+            }
             if meta.array {
                 if meta.list.is_some() {
                     return Err(syn::Error::new_spanned(
@@ -485,6 +508,12 @@ pub(crate) fn codec_type_for(
                 return Err(syn::Error::new_spanned(
                     ty,
                     "array config is only valid for Vec fields",
+                ));
+            }
+            if meta.bytes {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "bytes config is only valid for Vec<u8> fields",
                 ));
             }
             let (key_ty, value_ty) = two_type_args(args, ty, "HashMap")?;
@@ -575,6 +604,12 @@ pub(crate) fn codec_type_for(
                 return Err(syn::Error::new_spanned(
                     ty,
                     "array config is only valid for Vec fields",
+                ));
+            }
+            if meta.bytes {
+                return Err(syn::Error::new_spanned(
+                    ty,
+                    "bytes config is only valid for Vec<u8> fields",
                 ));
             }
             let elem_ty = single_type_arg(args, ty, "HashSet")?;
@@ -678,6 +713,12 @@ pub(crate) fn codec_type_for(
                 "array config is only valid for Vec fields",
             ));
         }
+        if meta.bytes {
+            return Err(syn::Error::new_spanned(
+                ty,
+                "bytes config is only valid for Vec<u8> fields",
+            ));
+        }
         if !is_primitive_array_type(ty) {
             let elem_ty = array.elem.as_ref();
             let elem_meta = ForyFieldMeta::default();
@@ -740,6 +781,12 @@ pub(crate) fn codec_type_for(
         return Err(syn::Error::new_spanned(
             ty,
             "array config is only valid for Vec fields",
+        ));
+    }
+    if meta.bytes {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "bytes config is only valid for Vec<u8> fields",
         ));
     }
 
@@ -841,6 +888,10 @@ fn type_name_and_args(
         return Some((seg.ident.to_string(), None));
     };
     Some((seg.ident.to_string(), Some(&args.args)))
+}
+
+fn vec_element_type_name(ty: &Type) -> Option<String> {
+    Some(ty.to_token_stream().to_string().replace(' ', ""))
 }
 
 fn single_type_arg<'a>(
@@ -1149,6 +1200,12 @@ fn validate_serializer_backed_collection_meta(
             format!("array config is only valid for Vec fields, not {name}"),
         ));
     }
+    if meta.bytes {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!("bytes config is only valid for Vec<u8> fields, not {name}"),
+        ));
+    }
     Ok(())
 }
 
@@ -1185,7 +1242,64 @@ fn validate_serializer_backed_map_meta(
             format!("array config is only valid for Vec fields, not {name}"),
         ));
     }
+    if meta.bytes {
+        return Err(syn::Error::new_spanned(
+            ty,
+            format!("bytes config is only valid for Vec<u8> fields, not {name}"),
+        ));
+    }
     Ok(())
+}
+
+fn is_exact_any(ty: &Type, owner: &str) -> bool {
+    let Some((name, Some(args))) = type_name_and_args(ty) else {
+        return false;
+    };
+    if name != owner {
+        return false;
+    }
+    let Some(GenericArgument::Type(Type::TraitObject(trait_obj))) = args.first() else {
+        return false;
+    };
+    trait_obj.bounds.iter().any(|bound| {
+        if let syn::TypeParamBound::Trait(trait_bound) = bound {
+            trait_bound
+                .path
+                .segments
+                .last()
+                .is_some_and(|seg| seg.ident == "Any")
+        } else {
+            false
+        }
+    })
+}
+
+fn is_primitive_array_type(ty: &Type) -> bool {
+    fory_core::type_id::PRIMITIVE_ARRAY_TYPES.contains(&get_type_id_by_type_ast(ty))
+}
+
+pub(crate) fn default_expr_for_type(ty: &Type) -> TokenStream {
+    if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
+        let wrapper_ty = format_ident!("{}Rc", trait_name);
+        let trait_ident = format_ident!("{}", trait_name);
+        return quote! {
+            {
+                let wrapper = <#wrapper_ty as fory_core::ForyDefault>::fory_default();
+                std::rc::Rc::<dyn #trait_ident>::from(wrapper)
+            }
+        };
+    }
+    if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
+        let wrapper_ty = format_ident!("{}Arc", trait_name);
+        let trait_ident = format_ident!("{}", trait_name);
+        return quote! {
+            {
+                let wrapper = <#wrapper_ty as fory_core::ForyDefault>::fory_default();
+                std::sync::Arc::<dyn #trait_ident>::from(wrapper)
+            }
+        };
+    }
+    quote! { <#ty as fory_core::ForyDefault>::fory_default() }
 }
 
 #[cfg(test)]
@@ -1251,55 +1365,27 @@ mod tests {
             .to_string()
             .contains("array schema is not valid for map keys"));
     }
-}
 
-fn is_exact_any(ty: &Type, owner: &str) -> bool {
-    let Some((name, Some(args))) = type_name_and_args(ty) else {
-        return false;
-    };
-    if name != owner {
-        return false;
-    }
-    let Some(GenericArgument::Type(Type::TraitObject(trait_obj))) = args.first() else {
-        return false;
-    };
-    trait_obj.bounds.iter().any(|bound| {
-        if let syn::TypeParamBound::Trait(trait_bound) = bound {
-            trait_bound
-                .path
-                .segments
-                .last()
-                .is_some_and(|seg| seg.ident == "Any")
-        } else {
-            false
-        }
-    })
-}
-
-fn is_primitive_array_type(ty: &Type) -> bool {
-    fory_core::type_id::PRIMITIVE_ARRAY_TYPES.contains(&get_type_id_by_type_ast(ty))
-}
-
-pub(crate) fn default_expr_for_type(ty: &Type) -> TokenStream {
-    if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
-        let wrapper_ty = format_ident!("{}Rc", trait_name);
-        let trait_ident = format_ident!("{}", trait_name);
-        return quote! {
-            {
-                let wrapper = <#wrapper_ty as fory_core::ForyDefault>::fory_default();
-                std::rc::Rc::<dyn #trait_ident>::from(wrapper)
-            }
+    #[test]
+    fn bytes_codec_accepts_vec_u8() {
+        let ty: Type = parse_quote! { Vec<u8> };
+        let meta = ForyFieldMeta {
+            bytes: true,
+            ..Default::default()
         };
+
+        assert!(codec_type_for(&ty, &meta, false, false).is_ok());
     }
-    if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
-        let wrapper_ty = format_ident!("{}Arc", trait_name);
-        let trait_ident = format_ident!("{}", trait_name);
-        return quote! {
-            {
-                let wrapper = <#wrapper_ty as fory_core::ForyDefault>::fory_default();
-                std::sync::Arc::<dyn #trait_ident>::from(wrapper)
-            }
+
+    #[test]
+    fn bytes_codec_rejects_non_u8_vec() {
+        let ty: Type = parse_quote! { Vec<i32> };
+        let meta = ForyFieldMeta {
+            bytes: true,
+            ..Default::default()
         };
+
+        let err = codec_type_for(&ty, &meta, false, false).unwrap_err();
+        assert!(err.to_string().contains("bytes schema requires Vec<u8>"));
     }
-    quote! { <#ty as fory_core::ForyDefault>::fory_default() }
 }

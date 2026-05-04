@@ -105,6 +105,18 @@ struct NumericTaggedOrderStruct {
               (tag2, fory::F(2)), (tag1, fory::F(1)));
 };
 
+struct TaggedGroupedOrderStruct {
+  std::string string_value;
+  int32_t int_value;
+
+  bool operator==(const TaggedGroupedOrderStruct &other) const {
+    return string_value == other.string_value && int_value == other.int_value;
+  }
+
+  FORY_STRUCT(TaggedGroupedOrderStruct, (string_value, fory::F(1)),
+              (int_value, fory::F(10).varint()));
+};
+
 class PrivateFieldsStruct {
 public:
   PrivateFieldsStruct() = default;
@@ -493,6 +505,7 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<TwoFieldStruct>(type_id++);
   fory.register_struct<ManyFieldsStruct>(type_id++);
   fory.register_struct<NumericTaggedOrderStruct>(type_id++);
+  fory.register_struct<TaggedGroupedOrderStruct>(type_id++);
   fory.register_struct<PrivateFieldsStruct>(type_id++);
   fory.register_struct<AllPrimitivesStruct>(type_id++);
   fory.register_struct<StringTestStruct>(type_id++);
@@ -881,6 +894,22 @@ TEST(StructComprehensiveTest, FullyTaggedStructsUseNumericTagOrder) {
   };
   EXPECT_EQ(TypeMeta::compute_struct_fingerprint(fields),
             fingerprint_part(1) + fingerprint_part(2) + fingerprint_part(10));
+}
+
+TEST(StructComprehensiveTest, TaggedFieldsKeepGroupedPayloadOrder) {
+  TaggedGroupedOrderStruct obj{"first", 10};
+  test_roundtrip(obj);
+
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<TaggedGroupedOrderStruct>(606).ok());
+  ASSERT_TRUE(fory.serialize(obj).ok());
+  TypeMeta meta =
+      fory.type_resolver().clone_struct_meta<TaggedGroupedOrderStruct>();
+  const auto &fields = meta.get_field_infos();
+  ASSERT_EQ(fields.size(), 2);
+  EXPECT_EQ(fields[0].field_id, 10);
+  EXPECT_EQ(fields[1].field_id, 1);
 }
 
 TEST(StructComprehensiveTest,

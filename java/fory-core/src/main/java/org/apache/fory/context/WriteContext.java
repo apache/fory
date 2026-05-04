@@ -28,9 +28,9 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.BufferObject;
+import org.apache.fory.serializer.PrimitiveArraySerializers;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StringSerializer;
@@ -662,7 +662,7 @@ public final class WriteContext {
   }
 
   /** Specialized variant of {@link #writeBufferObject(BufferObject)} for primitive arrays. */
-  public void writeBufferObject(ArraySerializers.PrimitiveArrayBufferObject bufferObject) {
+  public void writeBufferObject(PrimitiveArraySerializers.PrimitiveArrayBufferObject bufferObject) {
     MemoryBuffer buffer = this.buffer;
     if (bufferCallback == null || bufferCallback.apply(bufferObject)) {
       buffer.writeBoolean(true);

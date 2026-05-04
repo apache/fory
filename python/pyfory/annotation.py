@@ -122,6 +122,12 @@ class ArrayMeta:
         self.element_type = element_type
         self.carrier = carrier
 
+    def __eq__(self, other):
+        return type(other) is ArrayMeta and self.element_type == other.element_type and self.carrier == other.carrier
+
+    def __hash__(self):
+        return hash((self.element_type, self.carrier))
+
     def __repr__(self):
         return f"ArrayMeta(element_type={self.element_type!r}, carrier={self.carrier!r})"
 
@@ -136,6 +142,17 @@ class _ArrayTypeHint:
 
     def __repr__(self):
         return f"{self.__origin__.__name__}[{self.__args__[0]!r}]"
+
+    def __eq__(self, other):
+        return (
+            type(other) is _ArrayTypeHint
+            and self.__origin__ is other.__origin__
+            and self.__args__ == other.__args__
+            and self.__fory_array_meta__ == other.__fory_array_meta__
+        )
+
+    def __hash__(self):
+        return hash((self.__origin__, self.__args__, self.__fory_array_meta__))
 
 
 class _ArrayHint:

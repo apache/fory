@@ -653,6 +653,91 @@ public enum ArrayFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
         }
         throw ForyError.invalidData("unsupported array field element codec \(ElementCodec.self)")
     }
+
+    public static func write(
+        _ value: Value,
+        _ context: WriteContext,
+        refMode: RefMode,
+        writeTypeInfo: Bool
+    ) throws {
+        if refMode == .none, !writeTypeInfo {
+            try writePayload(value, context)
+            return
+        }
+        if refMode != .none {
+            context.buffer.writeInt8(RefFlag.notNullValue.rawValue)
+        }
+        if writeTypeInfo {
+            try writeStaticTypeInfo(context)
+        }
+        try writePayload(value, context)
+    }
+
+    public static func read(
+        _ context: ReadContext,
+        refMode: RefMode,
+        readTypeInfo: Bool
+    ) throws -> Value {
+        switch refMode {
+        case .none:
+            return try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+        case .nullOnly:
+            let rawFlag = try context.buffer.readInt8()
+            switch rawFlag {
+            case RefFlag.null.rawValue:
+                return defaultValue
+            case RefFlag.notNullValue.rawValue:
+                return try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+            case RefFlag.refValue.rawValue:
+                if context.trackRef {
+                    let reservedRefID = context.refReader.reserveRefID()
+                    let value = try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+                    context.refReader.storeRef(value, at: reservedRefID)
+                    return value
+                }
+                return try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+            case RefFlag.ref.rawValue:
+                let refID = try context.buffer.readVarUInt32()
+                return try context.refReader.readRef(refID, as: Value.self)
+            default:
+                throw ForyError.refError("invalid ref flag \(rawFlag)")
+            }
+        case .tracking:
+            let rawFlag = try context.buffer.readInt8()
+            guard let flag = RefFlag(rawValue: rawFlag) else {
+                throw ForyError.refError("invalid ref flag \(rawFlag)")
+            }
+            switch flag {
+            case .null:
+                return defaultValue
+            case .ref:
+                let refID = try context.buffer.readVarUInt32()
+                return try context.refReader.readRef(refID, as: Value.self)
+            case .refValue:
+                let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
+                let value = try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+                if let reservedRefID {
+                    context.refReader.storeRef(value, at: reservedRefID)
+                }
+                return value
+            case .notNullValue:
+                return try readPayloadAfterTypeInfo(context, readTypeInfo: readTypeInfo)
+            }
+        }
+    }
+
+    private static func readPayloadAfterTypeInfo(
+        _ context: ReadContext,
+        readTypeInfo: Bool
+    ) throws -> Value {
+        if readTypeInfo {
+            let typeInfo = try Self.readTypeInfo(context)
+            return try withTypeInfo(typeInfo, context) {
+                try readPayload(context)
+            }
+        }
+        return try readPayload(context)
+    }
 }
 
 public enum SetFieldCodec<ElementCodec: FieldCodec>: FieldCodec where ElementCodec.Value: Hashable {

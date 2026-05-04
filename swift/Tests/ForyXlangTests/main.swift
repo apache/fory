@@ -482,7 +482,7 @@ private func decimalValues() throws -> [Decimal] {
         decimal("9223372036854775808", scale: 0),
         decimal("-9223372036854775809", scale: 0),
         decimal("123456789012345678901234567890123456789", scale: 37),
-        decimal("-123456789012345678901234567890123456789", scale: -17),
+        decimal("-123456789012345678901234567890123456789", scale: -17)
     ]
 }
 
@@ -996,7 +996,7 @@ private func handleCollectionElementRefOverride(_ bytes: [UInt8]) throws -> [UIn
     output.setField = [shared]
     output.mapField = [
         "k1": shared,
-        "k2": shared,
+        "k2": shared
     ]
     return [UInt8](try fory.serialize(output))
 }
@@ -1020,7 +1020,7 @@ private func handleCollectionElementRefRemoteTracking(_ bytes: [UInt8]) throws -
     output.setField = [shared]
     output.mapField = [
         "k1": shared,
-        "k2": shared,
+        "k2": shared
     ]
     return [UInt8](try fory.serialize(output))
 }

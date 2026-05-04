@@ -70,13 +70,9 @@ int main() {
   auto row = encoder.get_writer().to_row();
 
   // Random access to fields
-  int32_t id = row->get_int32(0);
-  std::string name = row->get_string(1);
-  float score = row->get_float(2);
-
-  assert(id == 1);
-  assert(name == "Alice");
-  assert(score == 95.5f);
+  assert(row->get_int32(0) == 1);
+  assert(row->get_string(1) == "Alice");
+  assert(row->get_float(2) == 95.5f);
 
   return 0;
 }

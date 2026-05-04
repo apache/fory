@@ -41,7 +41,7 @@ export const data2TypeInfo = (
     if (!item) {
       throw new Error("empty array can't convert");
     }
-    return Type.array(item);
+    return Type.list(item);
   }
   if (data instanceof Date) {
     return Type.timestamp();

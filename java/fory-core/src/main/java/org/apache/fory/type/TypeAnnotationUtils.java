@@ -28,15 +28,10 @@ import org.apache.fory.annotation.BFloat16Type;
 import org.apache.fory.annotation.Float16Type;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
-import org.apache.fory.annotation.Int8ArrayType;
 import org.apache.fory.annotation.Int8Type;
-import org.apache.fory.annotation.UInt16Elements;
 import org.apache.fory.annotation.UInt16Type;
-import org.apache.fory.annotation.UInt32Elements;
 import org.apache.fory.annotation.UInt32Type;
-import org.apache.fory.annotation.UInt64Elements;
 import org.apache.fory.annotation.UInt64Type;
-import org.apache.fory.annotation.UInt8Elements;
 import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
@@ -51,6 +46,8 @@ import org.apache.fory.collection.UInt16List;
 import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
+import org.apache.fory.config.Int32Encoding;
+import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.TypeRef;
 
@@ -86,6 +83,10 @@ public class TypeAnnotationUtils {
     } else if (typeAnnotation instanceof UInt32Type) {
       checkFieldType(fieldType, "@UInt32Type", long.class, Long.class, int[].class);
       if (fieldType == int[].class) {
+        UInt32Type uint32Type = (UInt32Type) typeAnnotation;
+        if (uint32Type.encoding() != Int32Encoding.VARINT) {
+          checkArrayElementTypeIdHasNoEncodingModifier(Types.UINT32);
+        }
         return Types.UINT32_ARRAY;
       }
       UInt32Type uint32Type = (UInt32Type) typeAnnotation;
@@ -100,6 +101,11 @@ public class TypeAnnotationUtils {
     } else if (typeAnnotation instanceof UInt64Type) {
       checkFieldType(fieldType, "@UInt64Type", long.class, Long.class, long[].class);
       if (fieldType == long[].class) {
+        UInt64Type uint64Type = (UInt64Type) typeAnnotation;
+        if (uint64Type.encoding() != Int64Encoding.VARINT) {
+          checkArrayElementTypeIdHasNoEncodingModifier(
+              uint64Type.encoding() == Int64Encoding.FIXED ? Types.UINT64 : Types.TAGGED_UINT64);
+        }
         return Types.UINT64_ARRAY;
       }
       UInt64Type uint64Type = (UInt64Type) typeAnnotation;
@@ -137,29 +143,12 @@ public class TypeAnnotationUtils {
         default:
           throw new IllegalArgumentException("Unsupported encoding: " + int64Type.encoding());
       }
-    } else if (typeAnnotation instanceof Int8ArrayType) {
-      checkFieldType(fieldType, "@Int8ArrayType", byte[].class);
-      return Types.INT8_ARRAY;
     } else if (typeAnnotation instanceof Float16Type) {
-      checkFieldType(
-          fieldType, "@Float16Type", short[].class, org.apache.fory.type.Float16[].class);
+      checkFieldType(fieldType, "@Float16Type", short[].class);
       return Types.FLOAT16_ARRAY;
     } else if (typeAnnotation instanceof BFloat16Type) {
-      checkFieldType(
-          fieldType, "@BFloat16Type", short[].class, org.apache.fory.type.BFloat16[].class);
+      checkFieldType(fieldType, "@BFloat16Type", short[].class);
       return Types.BFLOAT16_ARRAY;
-    } else if (typeAnnotation instanceof UInt8Elements) {
-      checkFieldType(fieldType, "@UInt8Elements", byte[].class);
-      return Types.UINT8_ARRAY;
-    } else if (typeAnnotation instanceof UInt16Elements) {
-      checkFieldType(fieldType, "@UInt16Elements", short[].class);
-      return Types.UINT16_ARRAY;
-    } else if (typeAnnotation instanceof UInt32Elements) {
-      checkFieldType(fieldType, "@UInt32Elements", int[].class);
-      return Types.UINT32_ARRAY;
-    } else if (typeAnnotation instanceof UInt64Elements) {
-      checkFieldType(fieldType, "@UInt64Elements", long[].class);
-      return Types.UINT64_ARRAY;
     }
     throw new IllegalArgumentException("Unsupported type annotation: " + typeAnnotation.getClass());
   }
@@ -392,7 +381,7 @@ public class TypeAnnotationUtils {
       case Types.UINT64:
       case Types.TAGGED_UINT64:
         throw new IllegalArgumentException(
-            "@ArrayType element type must not use scalar encoding modifiers");
+            "array<T> element type must not use scalar encoding modifiers");
       default:
         break;
     }
@@ -539,13 +528,8 @@ public class TypeAnnotationUtils {
         || annotation instanceof UInt64Type
         || annotation instanceof Int32Type
         || annotation instanceof Int64Type
-        || annotation instanceof Int8ArrayType
         || annotation instanceof Float16Type
-        || annotation instanceof BFloat16Type
-        || annotation instanceof UInt8Elements
-        || annotation instanceof UInt16Elements
-        || annotation instanceof UInt32Elements
-        || annotation instanceof UInt64Elements;
+        || annotation instanceof BFloat16Type;
   }
 
   private static void checkFieldType(

@@ -24,7 +24,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/** Marks a {@code short[]} or {@code BFloat16[]} field as dense {@code array<bfloat16>} schema. */
+/** Marks a {@code short[]} field as dense {@code array<bfloat16>} schema. */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
 public @interface BFloat16Type {}

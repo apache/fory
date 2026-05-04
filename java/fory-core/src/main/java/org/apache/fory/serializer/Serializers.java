@@ -167,7 +167,7 @@ public class Serializers {
       return new ObjectSerializer(typeResolver, type);
     }
     if (serializerClass == ArraySerializers.ObjectArraySerializer.class) {
-      return new ArraySerializers.ObjectArraySerializer(typeResolver, type);
+      return (Serializer<T>) new ArraySerializers.ObjectArraySerializer(typeResolver, type);
     }
     if (serializerClass == ObjectStreamSerializer.class) {
       return new ObjectStreamSerializer(typeResolver, type);

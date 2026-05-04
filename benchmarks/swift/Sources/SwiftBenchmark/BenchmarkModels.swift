@@ -113,19 +113,19 @@ struct Sample: Codable, Equatable {
     var charValueBoxed: Int32 = 0
     @ForyField(id: 14)
     var booleanValueBoxed: Bool = false
-    @ForyField(id: 15)
+    @ForyField(id: 15, type: .array(element: .int32()))
     var intArray: [Int32] = []
-    @ForyField(id: 16)
+    @ForyField(id: 16, type: .array(element: .int64()))
     var longArray: [Int64] = []
-    @ForyField(id: 17)
+    @ForyField(id: 17, type: .array(element: .float32))
     var floatArray: [Float] = []
-    @ForyField(id: 18)
+    @ForyField(id: 18, type: .array(element: .float64))
     var doubleArray: [Double] = []
-    @ForyField(id: 19)
+    @ForyField(id: 19, type: .array(element: .int32()))
     var shortArray: [Int32] = []
-    @ForyField(id: 20)
+    @ForyField(id: 20, type: .array(element: .int32()))
     var charArray: [Int32] = []
-    @ForyField(id: 21)
+    @ForyField(id: 21, type: .array(element: .bool))
     var booleanArray: [Bool] = []
     @ForyField(id: 22)
     var string: String = ""

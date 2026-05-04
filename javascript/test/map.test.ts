@@ -35,7 +35,7 @@ describe('map', () => {
     
     const fory = new Fory({ ref: true });  
     const { serialize, deserialize } = fory.register(Type.struct("class.foo", {
-      f1: Type.map(Type.string(), Type.varInt32())
+      f1: Type.map(Type.string(), Type.int32())
     }))  
     const bin = serialize({
       f1: new Map([["hello", 123], ["world", 456]]),

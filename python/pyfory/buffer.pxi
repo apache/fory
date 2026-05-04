@@ -1,6 +1,6 @@
 cimport cython
 from cpython.object cimport PyObject
-from cpython.buffer cimport Py_buffer
+from cpython.buffer cimport Py_buffer, PyObject_GetBuffer, PyBuffer_Release, PyBUF_SIMPLE
 from cpython.unicode cimport (
     PyUnicode_GET_LENGTH,
     PyUnicode_KIND,
@@ -383,6 +383,7 @@ cdef class Buffer:
         self.c_buffer.write_double(value)
 
     cpdef put_buffer(self, uint32_t offset, v, int32_t src_index, int32_t length):
+        cdef Py_buffer py_buffer
         if length == 0:  # access an emtpy buffer may raise out-of-bound exception.
             return
         view = memoryview(v)
@@ -391,8 +392,12 @@ cdef class Buffer:
         size = (length - src_index) * itemsize
         self.check_bound(offset, size)
         src_offset = src_index * itemsize
-        cdef uint8_t* ptr = get_address(v)
-        self.c_buffer.copy_from(offset, ptr, src_offset, size)
+        if PyObject_GetBuffer(v, &py_buffer, PyBUF_SIMPLE) != 0:
+            raise BufferError(f"Cannot access buffer for {type(v)!r}")
+        try:
+            self.c_buffer.copy_from(offset, <uint8_t*>py_buffer.buf, src_offset, size)
+        finally:
+            PyBuffer_Release(&py_buffer)
 
     cpdef inline write_bytes_and_size(self, bytes value):
         cdef const unsigned char[:] data = value

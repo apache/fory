@@ -179,6 +179,9 @@ public class FieldGroups {
       this.type = descriptor.getRawType();
       this.typeRef = d.getTypeRef();
       this.dispatchId = DispatchId.getDispatchId(resolver, d);
+      boolean primitiveListArray =
+          TypeUtils.isPrimitiveListClass(typeRef.getRawType())
+              && TypeAnnotationUtils.isArrayType(d);
       boolean primitiveListCollection =
           TypeUtils.isPrimitiveListClass(typeRef.getRawType())
               && resolver.isCollectionDescriptor(d);
@@ -253,7 +256,11 @@ public class FieldGroups {
         classInfoHolder = null;
       }
       isArray = cls.isArray();
-      if (primitiveListCollection) {
+      if (primitiveListArray) {
+        containerSerializerOverride =
+            org.apache.fory.serializer.collection.PrimitiveListSerializers.createArraySerializer(
+                resolver, type);
+      } else if (primitiveListCollection) {
         containerSerializerOverride = new CollectionSerializer(resolver, (Class) type);
       } else if (TypeAnnotationUtils.isBoxedListArrayType(descriptor.getField())) {
         containerSerializerOverride =

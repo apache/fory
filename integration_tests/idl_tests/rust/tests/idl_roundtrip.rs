@@ -142,20 +142,17 @@ fn test_to_bytes_from_bytes() {
     };
     let animal = Animal::Dog(dog);
     let animal_bytes = animal.to_bytes().expect("serialize animal");
-    let decoded_animal =
-        Animal::from_bytes(&animal_bytes).expect("deserialize animal");
+    let decoded_animal = Animal::from_bytes(&animal_bytes).expect("deserialize animal");
     assert_eq!(decoded_animal, animal);
 
     let multi = build_root_holder();
     let multi_bytes = multi.to_bytes().expect("serialize root");
-    let decoded_multi =
-        root::MultiHolder::from_bytes(&multi_bytes).expect("deserialize root");
+    let decoded_multi = root::MultiHolder::from_bytes(&multi_bytes).expect("deserialize root");
     assert_eq!(decoded_multi, multi);
 }
 
 fn build_primitive_types() -> PrimitiveTypes {
-    let mut contact =
-        complex_pb::primitive_types::Contact::Email("alice@example.com".to_string());
+    let mut contact = complex_pb::primitive_types::Contact::Email("alice@example.com".to_string());
     contact = complex_pb::primitive_types::Contact::Phone(12345);
 
     PrimitiveTypes {
@@ -300,7 +297,10 @@ fn build_optional_holder() -> OptionalHolder {
         ),
         int32_list: Some(vec![1, 2, 3]),
         string_list: Some(vec!["alpha".to_string(), "beta".to_string()]),
-        int64_map: Some(HashMap::from([("alpha".to_string(), 10), ("beta".to_string(), 20)])),
+        int64_map: Some(HashMap::from([
+            ("alpha".to_string(), 10),
+            ("beta".to_string(), 20),
+        ])),
     };
 
     OptionalHolder {
@@ -357,17 +357,21 @@ fn decimal_value(unscaled: i64, scale: i32) -> fory::Decimal {
 }
 
 fn build_example_message() -> ExampleMessage {
-    let date = NaiveDate::from_ymd_opt(2024, 1, 2).unwrap();
-    let timestamp = date.and_hms_opt(3, 4, 5).expect("timestamp");
-    let duration = chrono::Duration::seconds(5);
+    let date = NaiveDate::from_ymd_opt(2024, 2, 3).unwrap();
+    let timestamp = date.and_hms_opt(4, 5, 6).expect("timestamp");
+    let duration = chrono::Duration::seconds(42) + chrono::Duration::nanoseconds(7000);
     let leaf = ExampleLeaf {
         label: "leaf".to_string(),
         count: 7,
     };
+    let other_leaf = ExampleLeaf {
+        label: "other".to_string(),
+        count: 8,
+    };
     ExampleMessage {
         bool_value: true,
-        int8_value: -8,
-        int16_value: 1234,
+        int8_value: -12,
+        int16_value: -1234,
         fixed_int32_value: -123456,
         varint32_value: -12345,
         fixed_int64_value: -123456789,
@@ -381,7 +385,7 @@ fn build_example_message() -> ExampleMessage {
         var_uint64_value: 12345678901,
         tagged_uint64_value: 2222222222,
         float16_value: Float16::from_f32(1.5),
-        bfloat16_value: BFloat16::from_f32(2.0),
+        bfloat16_value: BFloat16::from_f32(2.5),
         float32_value: 3.5,
         float64_value: 4.5,
         string_value: "example".to_string(),
@@ -389,66 +393,132 @@ fn build_example_message() -> ExampleMessage {
         date_value: date,
         timestamp_value: timestamp,
         duration_value: duration,
-        decimal_value: decimal_value(1234, 2),
+        decimal_value: decimal_value(12345, 2),
         enum_value: ExampleState::Ready,
         message_value: Some(leaf.clone()),
-        union_value: ExampleLeafUnion::Note("union".to_string()),
-        bool_list: vec![true, false],
-        int8_list: vec![-1, 2],
-        int16_list: vec![100, -200],
-        fixed_int32_list: vec![1000, -2000],
-        varint32_list: vec![7, 8, 9],
+        union_value: ExampleLeafUnion::Leaf(other_leaf.clone()),
+        bool_list: vec![true, false, true],
+        int8_list: vec![1, -2, 3],
+        int16_list: vec![100, -200, 300],
+        fixed_int32_list: vec![1000, -2000, 3000],
+        varint32_list: vec![-10, 20, -30],
         fixed_int64_list: vec![10000, -20000],
-        varint64_list: vec![30000, 40000],
-        tagged_int64_list: vec![-5, 6],
-        uint8_list: vec![1, 2],
-        uint16_list: vec![1000, 2000],
-        fixed_uint32_list: vec![3000, 4000],
-        var_uint32_list: vec![5000, 6000],
-        fixed_uint64_list: vec![7000, 8000],
-        var_uint64_list: vec![9000, 10000],
-        tagged_uint64_list: vec![11000, 12000],
+        varint64_list: vec![-40, 50],
+        tagged_int64_list: vec![60, 70],
+        uint8_list: vec![200, 250],
+        uint16_list: vec![50000, 60000],
+        fixed_uint32_list: vec![2000000000, 2100000000],
+        var_uint32_list: vec![100, 200],
+        fixed_uint64_list: vec![9000000000],
+        var_uint64_list: vec![12000000000],
+        tagged_uint64_list: vec![13000000000],
         float16_list: vec![Float16::from_f32(1.0), Float16::from_f32(2.0)],
-        bfloat16_list: vec![BFloat16::from_f32(3.0), BFloat16::from_f32(4.0)],
-        maybe_float16_list: vec![Some(Float16::from_f32(1.0)), None],
-        maybe_bfloat16_list: vec![Some(BFloat16::from_f32(2.0)), None],
+        bfloat16_list: vec![BFloat16::from_f32(1.0), BFloat16::from_f32(2.0)],
+        maybe_float16_list: vec![
+            Some(Float16::from_f32(1.0)),
+            None,
+            Some(Float16::from_f32(2.0)),
+        ],
+        maybe_bfloat16_list: vec![
+            Some(BFloat16::from_f32(1.0)),
+            None,
+            Some(BFloat16::from_f32(3.0)),
+        ],
         float32_list: vec![1.5, 2.5],
         float64_list: vec![3.5, 4.5],
         string_list: vec!["alpha".to_string(), "beta".to_string()],
-        bytes_list: vec![vec![b'a'], vec![b'b']],
-        date_list: vec![date],
-        timestamp_list: vec![timestamp],
-        duration_list: vec![duration],
-        decimal_list: vec![decimal_value(125, 2)],
-        enum_list: vec![ExampleState::Ready, ExampleState::Failed],
-        message_list: vec![
-            leaf.clone(),
-            ExampleLeaf {
-                label: "other".to_string(),
-                count: 8,
-            },
+        bytes_list: vec![vec![4, 5], vec![6, 7]],
+        date_list: vec![
+            NaiveDate::from_ymd_opt(2024, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2024, 1, 2).unwrap(),
         ],
-        union_list: vec![ExampleLeafUnion::Code(12)],
-        maybe_fixed_int32_list: vec![Some(9), None],
-        maybe_uint64_list: vec![Some(10), None],
+        timestamp_list: vec![
+            NaiveDate::from_ymd_opt(2024, 1, 1)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap(),
+        ],
+        duration_list: vec![
+            chrono::Duration::milliseconds(1),
+            chrono::Duration::seconds(2),
+        ],
+        decimal_list: vec![decimal_value(125, 2), decimal_value(250, 2)],
+        enum_list: vec![ExampleState::Unknown, ExampleState::Failed],
+        message_list: vec![leaf.clone(), other_leaf.clone()],
+        union_list: vec![
+            ExampleLeafUnion::Note("note".to_string()),
+            ExampleLeafUnion::Leaf(other_leaf.clone()),
+        ],
+        maybe_fixed_int32_list: vec![Some(1), None, Some(3)],
+        maybe_uint64_list: vec![Some(10), None, Some(30)],
         bool_array: vec![true, false],
-        int8_array: vec![-1, 2],
+        int8_array: vec![1, -2],
         int16_array: vec![100, -200],
         int32_array: vec![1000, -2000],
         int64_array: vec![10000, -20000],
-        uint8_array: vec![1, 2, 3],
-        uint16_array: vec![1000, 2000],
-        uint32_array: vec![3000, 4000],
-        uint64_array: vec![5000, 6000],
+        uint8_array: vec![200, 250],
+        uint16_array: vec![50000, 60000],
+        uint32_array: vec![2000000000, 2100000000],
+        uint64_array: vec![9000000000, 12000000000],
         float16_array: vec![Float16::from_f32(1.0), Float16::from_f32(2.0)],
-        bfloat16_array: vec![BFloat16::from_f32(3.0), BFloat16::from_f32(4.0)],
+        bfloat16_array: vec![BFloat16::from_f32(1.0), BFloat16::from_f32(2.0)],
         float32_array: vec![1.5, 2.5],
         float64_array: vec![3.5, 4.5],
         int32_array_list: vec![vec![1, 2], vec![3, 4]],
+        uint8_array_list: vec![vec![201, 202], vec![203]],
+        string_values_by_bool: HashMap::from([(true, "bool".to_string())]),
+        string_values_by_int8: HashMap::from([(-1, "int8".to_string())]),
+        string_values_by_int16: HashMap::from([(-2, "int16".to_string())]),
+        string_values_by_fixed_int32: HashMap::from([(-3, "fixed-int32".to_string())]),
+        string_values_by_varint32: HashMap::from([(4, "varint32".to_string())]),
+        string_values_by_fixed_int64: HashMap::from([(-5, "fixed-int64".to_string())]),
+        string_values_by_varint64: HashMap::from([(6, "varint64".to_string())]),
+        string_values_by_tagged_int64: HashMap::from([(7, "tagged-int64".to_string())]),
+        string_values_by_uint8: HashMap::from([(200, "uint8".to_string())]),
+        string_values_by_uint16: HashMap::from([(60000, "uint16".to_string())]),
+        string_values_by_fixed_uint32: HashMap::from([(1234567890, "fixed-uint32".to_string())]),
+        string_values_by_var_uint32: HashMap::from([(1234567891, "var-uint32".to_string())]),
+        string_values_by_fixed_uint64: HashMap::from([(9876543210, "fixed-uint64".to_string())]),
+        string_values_by_var_uint64: HashMap::from([(9876543211, "var-uint64".to_string())]),
+        string_values_by_tagged_uint64: HashMap::from([(9876543212, "tagged-uint64".to_string())]),
         string_values_by_string: HashMap::from([("name".to_string(), "value".to_string())]),
+        string_values_by_timestamp: HashMap::from([(
+            NaiveDate::from_ymd_opt(2024, 3, 4)
+                .unwrap()
+                .and_hms_opt(5, 6, 7)
+                .unwrap(),
+            "time".to_string(),
+        )]),
+        string_values_by_duration: HashMap::from([(
+            chrono::Duration::seconds(9),
+            "duration".to_string(),
+        )]),
+        string_values_by_enum: HashMap::from([(ExampleState::Ready, "ready".to_string())]),
+        float16_values_by_name: HashMap::from([("f16".to_string(), Float16::from_f32(1.25))]),
+        maybe_float16_values_by_name: HashMap::from([(
+            "maybe-f16".to_string(),
+            Float16::from_f32(1.5),
+        )]),
+        bfloat16_values_by_name: HashMap::from([("bf16".to_string(), BFloat16::from_f32(1.75))]),
+        maybe_bfloat16_values_by_name: HashMap::from([(
+            "maybe-bf16".to_string(),
+            BFloat16::from_f32(2.25),
+        )]),
+        bytes_values_by_name: HashMap::from([("bytes".to_string(), vec![8, 9])]),
+        date_values_by_name: HashMap::from([(
+            "date".to_string(),
+            NaiveDate::from_ymd_opt(2024, 5, 6).unwrap(),
+        )]),
+        decimal_values_by_name: HashMap::from([("decimal".to_string(), decimal_value(9901, 2))]),
+        message_values_by_name: HashMap::from([("leaf".to_string(), leaf.clone())]),
+        union_values_by_name: HashMap::from([("union".to_string(), ExampleLeafUnion::Code(42))]),
         uint8_array_values_by_name: HashMap::from([("u8".to_string(), vec![201, 202])]),
         float32_array_values_by_name: HashMap::from([("f32".to_string(), vec![1.25, 2.5])]),
-        ..Default::default()
+        int32_array_values_by_name: HashMap::from([("i32".to_string(), vec![101, 202])]),
     }
 }
 
@@ -558,17 +628,17 @@ fn build_tree() -> tree::TreeNode {
 
     let child_a_weak = ArcWeak::from(&child_a);
     let child_b_weak = ArcWeak::from(&child_b);
-    Arc::get_mut(&mut child_a)
-        .expect("child a unique")
-        .parent = Some(child_b_weak);
-    Arc::get_mut(&mut child_b)
-        .expect("child b unique")
-        .parent = Some(child_a_weak);
+    Arc::get_mut(&mut child_a).expect("child a unique").parent = Some(child_b_weak);
+    Arc::get_mut(&mut child_b).expect("child b unique").parent = Some(child_a_weak);
 
     tree::TreeNode {
         id: "root".to_string(),
         name: "root".to_string(),
-        children: vec![Arc::clone(&child_a), Arc::clone(&child_a), Arc::clone(&child_b)],
+        children: vec![
+            Arc::clone(&child_a),
+            Arc::clone(&child_a),
+            Arc::clone(&child_b),
+        ],
         parent: None,
     }
 }
@@ -612,15 +682,9 @@ fn build_graph() -> graph::Graph {
         to: Some(ArcWeak::from(&node_b)),
     });
 
-    Arc::get_mut(&mut node_a)
-        .expect("node a unique")
-        .out_edges = vec![Arc::clone(&edge)];
-    Arc::get_mut(&mut node_a)
-        .expect("node a unique")
-        .in_edges = vec![Arc::clone(&edge)];
-    Arc::get_mut(&mut node_b)
-        .expect("node b unique")
-        .in_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_a).expect("node a unique").out_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_a).expect("node a unique").in_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_b).expect("node b unique").in_edges = vec![Arc::clone(&edge)];
 
     graph::Graph {
         nodes: vec![Arc::clone(&node_a), Arc::clone(&node_b)],
@@ -695,9 +759,7 @@ fn test_evolving_roundtrip() {
         score: 90,
         note: "note".to_string(),
     };
-    let fixed_bytes = fory_v1
-        .serialize(&fixed_v1)
-        .expect("serialize fixed v1");
+    let fixed_bytes = fory_v1.serialize(&fixed_v1).expect("serialize fixed v1");
     let fixed_v2 = fory_v2.deserialize::<evolving2::FixedMessage>(&fixed_bytes);
     match fixed_v2 {
         Err(_) => return,
@@ -714,10 +776,7 @@ fn test_evolving_roundtrip() {
 }
 
 fn run_address_book_roundtrip(compatible: bool) {
-    let mut fory = Fory::builder()
-        .xlang(true)
-        .compatible(compatible)
-        .build();
+    let mut fory = Fory::builder().xlang(true).compatible(compatible).build();
     complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
     auto_id::register_types(&mut fory).expect("register auto_id types");
@@ -744,8 +803,9 @@ fn run_address_book_roundtrip(compatible: bool) {
     let wrapper_bytes = fory
         .serialize(&auto_wrapper)
         .expect("serialize auto_id wrapper");
-    let wrapper_roundtrip: auto_id::Wrapper =
-        fory.deserialize(&wrapper_bytes).expect("deserialize auto_id wrapper");
+    let wrapper_roundtrip: auto_id::Wrapper = fory
+        .deserialize(&wrapper_bytes)
+        .expect("deserialize auto_id wrapper");
     assert_eq!(auto_wrapper, wrapper_roundtrip);
 
     let example_message = build_example_message();
@@ -771,7 +831,9 @@ fn run_address_book_roundtrip(compatible: bool) {
             .deserialize(&payload)
             .expect("deserialize auto_id peer payload");
         assert_eq!(auto_env, peer_env);
-        let encoded = fory.serialize(&peer_env).expect("serialize auto_id payload");
+        let encoded = fory
+            .serialize(&peer_env)
+            .expect("serialize auto_id payload");
         fs::write(data_file, encoded).expect("write auto_id data file");
     }
 
@@ -822,9 +884,7 @@ fn run_address_book_roundtrip(compatible: bool) {
             .deserialize(&payload)
             .expect("deserialize peer payload");
         assert_eq!(collection_union, peer_union);
-        let encoded = fory
-            .serialize(&peer_union)
-            .expect("serialize peer payload");
+        let encoded = fory.serialize(&peer_union).expect("serialize peer payload");
         fs::write(data_file, encoded).expect("write data file");
     }
 
@@ -841,9 +901,7 @@ fn run_address_book_roundtrip(compatible: bool) {
             .deserialize(&payload)
             .expect("deserialize peer payload");
         assert_eq!(collections_array, peer_array);
-        let encoded = fory
-            .serialize(&peer_array)
-            .expect("serialize peer payload");
+        let encoded = fory.serialize(&peer_array).expect("serialize peer payload");
         fs::write(data_file, encoded).expect("write data file");
     }
 
@@ -851,8 +909,7 @@ fn run_address_book_roundtrip(compatible: bool) {
     let bytes = fory
         .serialize(&collection_array_union)
         .expect("serialize collection array union");
-    let roundtrip: NumericCollectionArrayUnion =
-        fory.deserialize(&bytes).expect("deserialize");
+    let roundtrip: NumericCollectionArrayUnion = fory.deserialize(&bytes).expect("deserialize");
     assert_eq!(collection_array_union, roundtrip);
 
     if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_ARRAY_UNION") {
@@ -861,9 +918,7 @@ fn run_address_book_roundtrip(compatible: bool) {
             .deserialize(&payload)
             .expect("deserialize peer payload");
         assert_eq!(collection_array_union, peer_union);
-        let encoded = fory
-            .serialize(&peer_union)
-            .expect("serialize peer payload");
+        let encoded = fory.serialize(&peer_union).expect("serialize peer payload");
         fs::write(data_file, encoded).expect("write data file");
     }
 

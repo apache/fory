@@ -57,9 +57,9 @@ import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.UnknownClass;
-import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.BFloat16Array;
 import org.apache.fory.type.Descriptor;
-import org.apache.fory.type.Float16;
+import org.apache.fory.type.Float16Array;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
@@ -133,15 +133,11 @@ public class FieldTypes {
         typeId = Types.getTypeId(resolver, rawType);
       }
     } else if (rawType.isArray() && rawType.getComponentType().isPrimitive() && field != null) {
-      // For primitive arrays with type annotations, use getDescriptorTypeId to parse annotation
-      // This allows @UInt8Elements etc. to override the default INT8_ARRAY type
+      // For primitive arrays with type annotations, use getDescriptorTypeId to parse annotation.
+      // This allows @UInt8Type etc. to override the default byte[] bytes schema.
       typeId = Types.getDescriptorTypeId(resolver, field);
     } else if (typeAnnotation != null && rawType.isArray() && field != null) {
       typeId = Types.getDescriptorTypeId(resolver, field);
-    } else if (isXlang && rawType == Float16[].class) {
-      typeId = Types.FLOAT16_ARRAY;
-    } else if (isXlang && rawType == BFloat16[].class) {
-      typeId = Types.BFLOAT16_ARRAY;
     } else {
       TypeInfo info =
           isXlang && rawType == Object.class ? null : resolver.getTypeInfo(rawType, false);
@@ -265,7 +261,7 @@ public class FieldTypes {
         if (isXlang) {
           if (elemType.isPrimitive()) {
             // For xlang mode, use the typeId we already computed above
-            // which respects @UInt8Elements etc. annotations
+            // which respects @UInt8Type etc. annotations.
             return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
           }
           return new CollectionFieldType(
@@ -697,9 +693,9 @@ public class FieldTypes {
       case Types.FLOAT32_ARRAY:
         return float[].class;
       case Types.FLOAT16_ARRAY:
-        return short[].class;
+        return Float16Array.class;
       case Types.BFLOAT16_ARRAY:
-        return short[].class;
+        return BFloat16Array.class;
       case Types.FLOAT64_ARRAY:
         return double[].class;
       default:

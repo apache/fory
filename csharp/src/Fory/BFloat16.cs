@@ -32,9 +32,9 @@ namespace Apache.Fory;
 /// numeric conversion.
 /// </para>
 /// <para>
-/// For xlang <c>bfloat16_array</c> payloads, use <c>BFloat16[]</c> or <c>List&lt;BFloat16&gt;</c>.
-/// Both carriers map to the packed 16-bit array wire format, so a dedicated list wrapper is not
-/// required.
+/// For <c>array&lt;bfloat16&gt;</c> schema, use a dense <c>BFloat16[]</c> carrier or declare
+/// <c>S.Array&lt;S.BFloat16&gt;</c> in schema metadata. General <c>List&lt;BFloat16&gt;</c> fields keep
+/// list schema.
 /// </para>
 /// </remarks>
 public readonly struct BFloat16 : IEquatable<BFloat16>, IComparable<BFloat16>

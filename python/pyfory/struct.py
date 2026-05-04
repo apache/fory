@@ -28,6 +28,7 @@ import sys
 import typing
 from typing import List, Dict
 
+from pyfory.annotation import ArrayMeta
 from pyfory.lib.mmh3 import hash_buffer
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.types import (
@@ -789,8 +790,8 @@ def _array_type_id(elem_type, carrier):
         raise TypeError("array<T> does not allow ref-tracked elements")
     if elem_type in _ARRAY_INVALID_SCALAR_MODIFIERS:
         raise TypeError(f"array<T> does not allow scalar encoding modifier {elem_type}")
-    if carrier == "ndarray" and elem_type in (float16, bfloat16):
-        raise TypeError("pyfory.NDArray does not support reduced-precision float arrays")
+    if carrier == "ndarray" and elem_type is bfloat16:
+        raise TypeError("pyfory.NDArray does not support bfloat16 arrays")
     if carrier == "stdarray" and elem_type in (bool, float16, bfloat16):
         raise TypeError("pyfory.StdArray supports Python array.array numeric typecodes only")
     type_id = _ARRAY_ELEMENT_TYPE_IDS.get(elem_type)
@@ -809,9 +810,9 @@ class StructFieldSerializerVisitor(TypeVisitor):
     def visit_array(self, field_name, elem_type, carrier, types_path=None):
         type_id = _array_type_id(elem_type, carrier)
         from pyfory.serializer import (
+            ForyArrayFieldSerializer,
             Numpy1DArraySerializer,
             PyArraySerializer,
-            fory_array_serializer_type,
             fory_array_wrapper_type,
             typecode_dict,
             typeid_code,
@@ -819,8 +820,7 @@ class StructFieldSerializerVisitor(TypeVisitor):
 
         if carrier == "array":
             wrapper_type = fory_array_wrapper_type(type_id)
-            serializer_type = fory_array_serializer_type(type_id)
-            return serializer_type(self.type_resolver, wrapper_type)
+            return ForyArrayFieldSerializer(self.type_resolver, wrapper_type, type_id, field_name)
         if carrier == "stdarray":
             typecode = typeid_code.get(type_id)
             if typecode is None:
@@ -910,24 +910,11 @@ def _sort_fields(type_resolver, field_names, serializers, nullable_map=None, fie
     return [t[2] for t in all_types], [t[1] for t in all_types]
 
 
-def _all_fields_have_tag_ids(field_names, field_infos_list=None):
-    if not field_names or not field_infos_list or len(field_infos_list) != len(field_names):
-        return False
-    return all(fi.tag_id >= 0 for fi in field_infos_list)
-
-
 def group_fields(type_resolver, field_names, serializers, nullable_map=None, field_infos_list=None):
     nullable_map = nullable_map or {}
     field_info_map = {}
     if field_infos_list:
         field_info_map = {fi.name: fi for fi in field_infos_list}
-    if _all_fields_have_tag_ids(field_names, field_infos_list):
-        flat_types = []
-        for field_name, serializer in zip(field_names, serializers):
-            fi = field_info_map[field_name]
-            type_id = _UNKNOWN_TYPE_ID if serializer is None else type_resolver.get_type_info(serializer.type_).type_id
-            flat_types.append((type_id, serializer, field_name, (0, fi.tag_id, "")))
-        return (sorted(flat_types, key=lambda item: item[3]), [], [], [], [], [], [])
     boxed_types = []
     nullable_boxed_types = []
     collection_types = []
@@ -1288,7 +1275,8 @@ class StructTypeVisitor(TypeVisitor):
         self.cls = cls
 
     def visit_array(self, field_name, elem_type, carrier, types_path=None):
-        return [_array_type_id(elem_type, carrier)]
+        _array_type_id(elem_type, carrier)
+        return ArrayMeta(elem_type, carrier)
 
     def visit_list(self, field_name, elem_type, types_path=None):
         # Infer type recursively for type such as List[Dict[str, str]]

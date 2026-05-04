@@ -281,10 +281,18 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.UINT64: "long[]",
         PrimitiveKind.VAR_UINT64: "long[]",
         PrimitiveKind.TAGGED_UINT64: "long[]",
-        PrimitiveKind.FLOAT16: "Float16[]",
-        PrimitiveKind.BFLOAT16: "BFloat16[]",
+        PrimitiveKind.FLOAT16: "short[]",
+        PrimitiveKind.BFLOAT16: "short[]",
         PrimitiveKind.FLOAT32: "float[]",
         PrimitiveKind.FLOAT64: "double[]",
+    }
+
+    # Default generated Java carriers for IDL array<T>. Float16/bfloat16 use dense bit-backed
+    # wrapper carriers because Java has no native primitive half-float array.
+    DENSE_ARRAY_MAP = {
+        **PRIMITIVE_ARRAY_MAP,
+        PrimitiveKind.FLOAT16: "Float16Array",
+        PrimitiveKind.BFLOAT16: "BFloat16Array",
     }
 
     # Primitive list types for repeated fields when Java should use compact specialized storage.
@@ -1233,7 +1241,10 @@ class JavaGenerator(BaseGenerator):
             return f"List<{element_type}>"
 
         elif isinstance(field_type, ArrayType):
-            java_type = self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
+            if self.java_array(field):
+                java_type = self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
+            else:
+                java_type = self.DENSE_ARRAY_MAP[field_type.element_type.kind]
             if type_use:
                 annotation = self.get_array_type_use_annotation(field_type)
                 if annotation:
@@ -1291,7 +1302,11 @@ class JavaGenerator(BaseGenerator):
                             self.collect_integer_imports(field_type.element_type, imports)
                         return
                     if kind in self.PRIMITIVE_ARRAY_MAP and self.java_array(field):
-                        self.collect_type_imports(field_type.element_type, imports)
+                        if kind not in (
+                            PrimitiveKind.FLOAT16,
+                            PrimitiveKind.BFLOAT16,
+                        ):
+                            self.collect_type_imports(field_type.element_type, imports)
                         return
             imports.add("java.util.List")
             if self.is_ref_target_type(field_type.element_type):
@@ -1299,8 +1314,18 @@ class JavaGenerator(BaseGenerator):
             self.collect_type_imports(field_type.element_type, imports, type_use=True)
 
         elif isinstance(field_type, ArrayType):
+            kind = field_type.element_type.kind
+            if kind == PrimitiveKind.FLOAT16 and not self.java_array(field):
+                imports.add("org.apache.fory.type.Float16Array")
+                return
+            if kind == PrimitiveKind.BFLOAT16 and not self.java_array(field):
+                imports.add("org.apache.fory.type.BFloat16Array")
+                return
             self.collect_array_type_use_imports(field_type, imports, type_use)
-            self.collect_type_imports(field_type.element_type, imports, type_use=True)
+            if kind not in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16):
+                self.collect_type_imports(
+                    field_type.element_type, imports, type_use=True
+                )
 
         elif isinstance(field_type, MapType):
             imports.add("java.util.Map")
@@ -1376,20 +1401,30 @@ class JavaGenerator(BaseGenerator):
         if not isinstance(element_type, PrimitiveType):
             return
         kind = element_type.kind
+        if isinstance(field.field_type, ArrayType) and not self.java_array(field):
+            if kind in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16):
+                return
+        if isinstance(field.field_type, ListType) and not self.java_array(field):
+            if kind in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16):
+                return
         if kind == PrimitiveKind.INT8:
-            imports.add("org.apache.fory.annotation.Int8ArrayType")
+            imports.add("org.apache.fory.annotation.Int8Type")
         elif kind == PrimitiveKind.UINT8:
-            imports.add("org.apache.fory.annotation.UInt8Elements")
+            imports.add("org.apache.fory.annotation.UInt8Type")
         elif kind == PrimitiveKind.UINT16:
-            imports.add("org.apache.fory.annotation.UInt16Elements")
+            imports.add("org.apache.fory.annotation.UInt16Type")
         elif kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
-            imports.add("org.apache.fory.annotation.UInt32Elements")
+            imports.add("org.apache.fory.annotation.UInt32Type")
         elif kind in (
             PrimitiveKind.UINT64,
             PrimitiveKind.VAR_UINT64,
             PrimitiveKind.TAGGED_UINT64,
         ):
-            imports.add("org.apache.fory.annotation.UInt64Elements")
+            imports.add("org.apache.fory.annotation.UInt64Type")
+        elif kind == PrimitiveKind.FLOAT16:
+            imports.add("org.apache.fory.annotation.Float16Type")
+        elif kind == PrimitiveKind.BFLOAT16:
+            imports.add("org.apache.fory.annotation.BFloat16Type")
 
     def collect_integer_imports(self, field_type: FieldType, imports: Set[str]) -> None:
         """Collect imports for integer encoding annotations."""
@@ -1516,20 +1551,30 @@ class JavaGenerator(BaseGenerator):
         if not isinstance(element_type, PrimitiveType):
             return None
         kind = element_type.kind
+        if isinstance(field.field_type, ArrayType) and not self.java_array(field):
+            if kind in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16):
+                return None
+        if isinstance(field.field_type, ListType) and not self.java_array(field):
+            if kind in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16):
+                return None
         if kind == PrimitiveKind.INT8:
-            return "@Int8ArrayType"
+            return "@Int8Type"
         if kind == PrimitiveKind.UINT8:
-            return "@UInt8Elements"
+            return "@UInt8Type"
         if kind == PrimitiveKind.UINT16:
-            return "@UInt16Elements"
+            return "@UInt16Type"
         if kind in (PrimitiveKind.UINT32, PrimitiveKind.VAR_UINT32):
-            return "@UInt32Elements"
+            return "@UInt32Type"
         if kind in (
             PrimitiveKind.UINT64,
             PrimitiveKind.VAR_UINT64,
             PrimitiveKind.TAGGED_UINT64,
         ):
-            return "@UInt64Elements"
+            return "@UInt64Type"
+        if kind == PrimitiveKind.FLOAT16:
+            return "@Float16Type"
+        if kind == PrimitiveKind.BFLOAT16:
+            return "@BFloat16Type"
         return None
 
     def has_array_field(self, message: Message) -> bool:
@@ -1546,6 +1591,12 @@ class JavaGenerator(BaseGenerator):
         if isinstance(field.field_type, PrimitiveType):
             return field.field_type.kind == PrimitiveKind.BYTES
         if isinstance(field.field_type, ArrayType):
+            if (
+                field.field_type.element_type.kind
+                in (PrimitiveKind.FLOAT16, PrimitiveKind.BFLOAT16)
+                and not self.java_array(field)
+            ):
+                return False
             return True
         if isinstance(field.field_type, ListType):
             if isinstance(field.field_type.element_type, PrimitiveType):

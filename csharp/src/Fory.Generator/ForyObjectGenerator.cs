@@ -2023,6 +2023,17 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             return BuildSchemaTypeMetaFieldTypeModel(memberType, nullable, schemaType);
         }
 
+        if (unwrapped is IArrayTypeSymbol &&
+            ClassifyType(unwrapped) is { TypeId: not 22 } arrayClassification &&
+            IsPackedArrayTypeId(arrayClassification.TypeId))
+        {
+            return new TypeMetaFieldTypeModel(
+                $"(uint){arrayClassification.TypeId}",
+                nullable,
+                false,
+                ImmutableArray<TypeMetaFieldTypeModel>.Empty);
+        }
+
         if (TryGetListElementType(unwrapped, out ITypeSymbol? listElementType))
         {
             bool elementNullable = GenericNullable(listElementType!);
@@ -2691,6 +2702,11 @@ public sealed class ForyObjectGenerator : IIncrementalGenerator
             20 => 56,
             _ => null,
         };
+    }
+
+    private static bool IsPackedArrayTypeId(uint typeId)
+    {
+        return typeId is 41 or 43 or 44 or 45 or 46 or 47 or 48 or 49 or 50 or 51 or 53 or 54 or 55 or 56;
     }
 
     private static TypeResolution ResolveTypeResolution(ITypeSymbol type, SchemaTypeModel? schemaType)

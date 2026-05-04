@@ -141,6 +141,7 @@ import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
+import org.apache.fory.serializer.collection.PrimitiveListSerializers;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DispatchId;
@@ -507,7 +508,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             getOrCreateStringSerializer(), buffer, inputObject, config.compressString());
       }
       Expression action;
-      if (useCollectionSerialization(descriptor)) {
+      if (usesPrimitiveListArrayProtocol(descriptor)) {
+        serializer = getPrimitiveListArraySerializer(clz);
+        action = serializeForNotNullObjectForField(inputObject, buffer, descriptor, serializer);
+      } else if (useCollectionSerialization(descriptor)) {
         TypeRef<?> elementType = null;
         if (usesPrimitiveListCollectionProtocol(descriptor)) {
           serializer = getPrimitiveListCollectionSerializer(clz);
@@ -1241,6 +1245,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         && typeResolver(r -> r.isCollectionDescriptor(descriptor));
   }
 
+  private boolean usesPrimitiveListArrayProtocol(Descriptor descriptor) {
+    return TypeUtils.isPrimitiveListClass(descriptor.getRawType())
+        && TypeAnnotationUtils.isArrayType(descriptor);
+  }
+
   private Expression getPrimitiveListCollectionSerializer(Class<?> cls) {
     return getOrCreateField(
         false,
@@ -1249,6 +1258,20 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         () ->
             new Expression.NewInstance(
                 TypeRef.of(CollectionSerializer.class), typeResolverRef, getClassExpr(cls)));
+  }
+
+  private Expression getPrimitiveListArraySerializer(Class<?> cls) {
+    return getOrCreateField(
+        false,
+        Serializer.class,
+        StringUtils.uncapitalize(cls.getSimpleName()) + "ArraySerializer",
+        () ->
+            new StaticInvoke(
+                PrimitiveListSerializers.class,
+                "createArraySerializer",
+                SERIALIZER_TYPE,
+                typeResolverRef,
+                getClassExpr(cls)));
   }
 
   protected Expression writeCollectionData(
@@ -2202,7 +2225,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             getOrCreateStringSerializer(), buffer, config.compressString());
       }
       Expression obj;
-      if (useCollectionSerialization(descriptor)) {
+      if (usesPrimitiveListArrayProtocol(descriptor)) {
+        serializer = getPrimitiveListArraySerializer(cls);
+        obj = cast(inline(read(serializer, buffer, OBJECT_TYPE)), typeRef);
+      } else if (useCollectionSerialization(descriptor)) {
         TypeRef<?> elementType = null;
         if (usesPrimitiveListCollectionProtocol(descriptor)) {
           serializer = getPrimitiveListCollectionSerializer(cls);

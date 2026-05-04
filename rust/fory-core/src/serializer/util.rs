@@ -20,7 +20,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::serializer::Serializer;
 use crate::type_id::TypeId;
-use crate::type_id::{is_user_type, ENUM, NAMED_ENUM, UNION};
+use crate::type_id::{is_user_type, ENUM, NAMED_ENUM, UNION, UNKNOWN};
 
 #[inline(always)]
 pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
@@ -34,28 +34,30 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
     Ok(())
 }
 
-/// Check at runtime whether type info should be skipped for a given type id.
+/// Returns whether a schema-known struct field value carries inline type information.
 ///
-/// According to xlang_serialization_spec.md:
-/// - For enums (ENUM/NAMED_ENUM), we should skip writing type info
-/// - For structs and ext types, we should write type info
-///
-/// Keep as const fn for compile time evaluation or constant folding
-#[inline]
+/// Compatible/xlang struct field metadata describes the schema kind, but dynamic fields and
+/// struct/ext user fields carry inline type information so readers can resolve the concrete
+/// TypeInfo. Enums and union-compatible fields are exceptions: their field payloads are
+/// ordinal/index based and do not start with a type-info header.
+#[inline(always)]
 pub const fn field_need_read_type_info(type_id: u32) -> bool {
     if type_id == ENUM || type_id == NAMED_ENUM || type_id == UNION {
         return false;
     }
-    is_user_type(type_id)
+    type_id == UNKNOWN || is_user_type(type_id)
 }
 
-/// Keep as const fn for compile time evaluation or constant folding
+/// Returns whether a schema-known struct field write must include inline type information.
+///
+/// This is the write-side counterpart of [`field_need_read_type_info`].
+#[inline(always)]
 pub const fn field_need_write_type_info(static_type_id: TypeId) -> bool {
     let static_type_id = static_type_id as u32;
     if static_type_id == ENUM || static_type_id == NAMED_ENUM || static_type_id == UNION {
         return false;
     }
-    is_user_type(static_type_id)
+    static_type_id == UNKNOWN || is_user_type(static_type_id)
 }
 
 /// Keep as const fn for compile time evaluation or constant folding

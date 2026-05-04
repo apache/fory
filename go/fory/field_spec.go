@@ -1813,6 +1813,14 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if goType.Kind() != reflect.Slice && goType.Kind() != reflect.Array {
 			return nil, fmt.Errorf("LIST type spec requires slice/array Go type, got %s", goType)
 		}
+		if spec.Element != nil && !spec.Element.TrackRef {
+			if serializer, ok := newPrimitiveListSerializer(goType, spec.Element.TypeID); ok {
+				return serializer, nil
+			}
+		}
+		if goType.Kind() == reflect.Slice && goType.Elem().Kind() == reflect.String {
+			return stringSliceSerializer{}, nil
+		}
 		if spec.Element == nil || spec.Element.TypeID == UNKNOWN || goType.Elem().Kind() == reflect.Interface {
 			switch goType.Kind() {
 			case reflect.Slice:

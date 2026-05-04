@@ -207,7 +207,7 @@ class Struct1:
     f8: pyfory.int64 = None
     f9: pyfory.float32 = None
     f10: pyfory.float64 = None
-    f11: pyfory.int16_array = None
+    f11: pyfory.Array[pyfory.int16] = None
     f12: List[pyfory.int16] = None
 
 
@@ -230,7 +230,7 @@ class SlotsStruct:
     f8: pyfory.int64 = None
     f9: pyfory.float32 = None
     f10: pyfory.float64 = None
-    f11: pyfory.int16_array = None
+    f11: pyfory.Array[pyfory.int16] = None
     f12: List[pyfory.int16] = None
 
 
@@ -339,14 +339,9 @@ def make_msgpack_compatible(obj):
     if isinstance(obj, array.array):
         return obj.tolist()
     if is_dataclass(obj):
-        return {
-            f.name: make_msgpack_compatible(getattr(obj, f.name)) for f in fields(obj)
-        }
+        return {f.name: make_msgpack_compatible(getattr(obj, f.name)) for f in fields(obj)}
     if isinstance(obj, dict):
-        return {
-            make_msgpack_compatible(k): make_msgpack_compatible(v)
-            for k, v in obj.items()
-        }
+        return {make_msgpack_compatible(k): make_msgpack_compatible(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [make_msgpack_compatible(v) for v in obj]
     if isinstance(obj, tuple):
@@ -365,9 +360,7 @@ def _restore_dataclass_from_template(value, template):
         field_value = value.get(field.name)
         template_value = getattr(template, field.name, None)
         if is_dataclass(template_value):
-            kwargs[field.name] = _restore_dataclass_from_template(
-                field_value, template_value
-            )
+            kwargs[field.name] = _restore_dataclass_from_template(field_value, template_value)
         else:
             kwargs[field.name] = field_value
     return type(template)(**kwargs)
@@ -567,19 +560,12 @@ def micro_benchmark():
     msgpack_data = {}
     if "msgpack" in selected_serializers:
         msgpack_data = {
-            benchmark_name: (
-                data if is_dataclass(data) else make_msgpack_compatible(data)
-            )
-            for benchmark_name, data in benchmark_data.items()
+            benchmark_name: (data if is_dataclass(data) else make_msgpack_compatible(data)) for benchmark_name, data in benchmark_data.items()
         }
 
-    print(
-        f"\nBenchmarking {len(selected_benchmarks)} benchmark(s) with {len(selected_serializers)} serializer(s)"
-    )
+    print(f"\nBenchmarking {len(selected_benchmarks)} benchmark(s) with {len(selected_serializers)} serializer(s)")
     print(f"Operation: {args.operation}")
-    print(
-        f"Warmup: {args.warmup}, Iterations: {args.iterations}, Repeat: {args.repeat}, Inner loop: {args.number}"
-    )
+    print(f"Warmup: {args.warmup}, Iterations: {args.iterations}, Repeat: {args.repeat}, Inner loop: {args.number}")
     print(f"Fory reference tracking: {'enabled' if ref else 'disabled'}")
     print("=" * 80)
 
@@ -587,9 +573,7 @@ def micro_benchmark():
     results = []
     for benchmark_name in selected_benchmarks:
         data = benchmark_data[benchmark_name]
-        benchmark_number = (
-            max(1, args.number // 10) if benchmark_name == "large_dict" else args.number
-        )
+        benchmark_number = max(1, args.number // 10) if benchmark_name == "large_dict" else args.number
 
         if "fory" in selected_serializers:
             print(
@@ -633,9 +617,7 @@ def micro_benchmark():
                 end=" ",
                 flush=True,
             )
-            msgpack_func, msgpack_args = build_msgpack_benchmark_case(
-                args.operation, msgpack_data[benchmark_name]
-            )
+            msgpack_func, msgpack_args = build_msgpack_benchmark_case(args.operation, msgpack_data[benchmark_name])
             mean, stdev = run_benchmark(
                 msgpack_func,
                 *msgpack_args,
@@ -654,9 +636,7 @@ def micro_benchmark():
     print(f"{'Serializer':<15} {'Benchmark':<25} {'Mean':<20} {'Std Dev':<20}")
     print("-" * 80)
     for serializer, benchmark, mean, stdev in results:
-        print(
-            f"{serializer:<15} {benchmark:<25} {format_time(mean):<20} {format_time(stdev):<20}"
-        )
+        print(f"{serializer:<15} {benchmark:<25} {format_time(mean):<20} {format_time(stdev):<20}")
 
     # Calculate speedup if fory and at least one baseline serializer were tested.
     if "fory" in selected_serializers:
@@ -666,9 +646,7 @@ def micro_benchmark():
             print("\n" + "=" * 80)
             print(f"SPEEDUP (Fory vs {baseline.capitalize()})")
             print("=" * 80)
-            print(
-                f"{'Benchmark':<25} {'Fory':<20} {baseline.capitalize():<20} {'Speedup':<20}"
-            )
+            print(f"{'Benchmark':<25} {'Fory':<20} {baseline.capitalize():<20} {'Speedup':<20}")
             print("-" * 80)
 
             for benchmark_name in selected_benchmarks:
@@ -685,14 +663,8 @@ def micro_benchmark():
                     fory_mean = fory_result[2]
                     baseline_mean = baseline_result[2]
                     speedup = baseline_mean / fory_mean
-                    speedup_str = (
-                        f"{speedup:.2f}x"
-                        if speedup >= 1
-                        else f"{1 / speedup:.2f}x slower"
-                    )
-                    print(
-                        f"{benchmark_name:<25} {format_time(fory_mean):<20} {format_time(baseline_mean):<20} {speedup_str:<20}"
-                    )
+                    speedup_str = f"{speedup:.2f}x" if speedup >= 1 else f"{1 / speedup:.2f}x slower"
+                    print(f"{benchmark_name:<25} {format_time(fory_mean):<20} {format_time(baseline_mean):<20} {speedup_str:<20}")
 
 
 if __name__ == "__main__":

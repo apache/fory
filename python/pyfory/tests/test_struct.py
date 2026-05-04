@@ -298,7 +298,7 @@ def test_sort_fields():
     assert serializer._field_names == ["f13", "f5", "f7", "f11", "f12", "f1", "f4", "f15", "f6", "f10", "f2", "f14", "f3", "f9", "f8"]
 
 
-def test_tagged_fields_use_flat_tag_order():
+def test_tagged_fields_keep_grouped_payload_order():
     @dataclass
     class TaggedClass:
         later_int: pyfory.int32 = pyfory.field(id=20, default=0)
@@ -310,9 +310,9 @@ def test_tagged_fields_use_flat_tag_order():
     serializer = DataClassSerializer(fory.type_resolver, TaggedClass)
     assert serializer._field_names == [
         "first_bool",
+        "later_int",
         "early_string",
         "middle_map",
-        "later_int",
     ]
 
 

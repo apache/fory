@@ -64,7 +64,7 @@ console.log(user);
 | `Array`          | `Type.list(Type.T())`                                             | Ordered collection                        |
 | `Map`            | `Type.map(Type.K(), Type.V())`                                    |                                           |
 | `Set`            | `Type.set(Type.T())`                                              |                                           |
-| Typed arrays     | `Type.array(Type.int32())` / `Type.array(Type.float64())` / ...   | Dense numeric or bool arrays              |
+| Typed arrays     | `Type.int32Array()` / `Type.float64Array()` / ...                 | Dense numeric or bool arrays              |
 
 ## Define Schemas
 
@@ -103,7 +103,7 @@ const personType = Type.struct("example.person", {
 ```ts
 const inventoryType = Type.struct("example.inventory", {
   tags: Type.list(Type.string()),
-  sampleIds: Type.array(Type.int32()),
+  sampleIds: Type.int32Array(),
   counts: Type.map(Type.string(), Type.int32()),
   labels: Type.set(Type.string()),
 });

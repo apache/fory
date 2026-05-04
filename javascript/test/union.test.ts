@@ -26,7 +26,7 @@ describe('union', () => {
     const { serialize, deserialize } = fory.register(Type.struct(100, {
       payload: Type.union({
         1: Type.string(),
-        2: Type.varInt32(),
+        2: Type.int32(),
       }).setId(1),
     }));
     const input = { payload: { case: 1, value: "hello" } };
@@ -39,7 +39,7 @@ describe('union', () => {
     const { serialize, deserialize } = fory.register(Type.struct(200, {
       payload: Type.union({
         1: Type.string(),
-        2: Type.varInt32(),
+        2: Type.int32(),
       }).setId(1),
     }));
     const input = { payload: { case: 2, value: 42 } };
@@ -55,7 +55,7 @@ describe('union', () => {
     const { serialize, deserialize } = fory.register(Type.struct(300, {
       payload: Type.union({
         1: Type.struct(301),
-        2: Type.varInt32(),
+        2: Type.int32(),
       }).setId(1),
     }));
     const input = { payload: { case: 1, value: { text: "a note" } } };
@@ -111,7 +111,7 @@ describe('union', () => {
     const { serialize, deserialize } = fory.register(Type.struct({ namespace: "test", typeName: "Holder" }, {
       payload: Type.union({ namespace: "test", typeName: "ContentUnion" }, {
         1: Type.struct({ namespace: "test", typeName: "Note" }),
-        2: Type.varInt32(),
+        2: Type.int32(),
       }),
     }));
     const input = { payload: { case: 1, value: { text: "a note" } } };
@@ -125,7 +125,7 @@ describe('union', () => {
       value: Type.float64().setId(1),
     }));
     const { serialize, deserialize } = fory.register(Type.struct(600, {
-      id: Type.varInt32().setId(1),
+      id: Type.int32().setId(1),
       name: Type.string().setId(2),
       detail: Type.union({
         1: Type.string(),

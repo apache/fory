@@ -42,7 +42,7 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.ArraySerializers;
+import org.apache.fory.serializer.PrimitiveArraySerializers;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Shareable;
 import org.apache.fory.type.BFloat16;
@@ -180,7 +180,7 @@ public class PrimitiveListSerializers {
     @Override
     public void write(WriteContext writeContext, Int32List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      if (config.compressIntArray()) {
+      if (!config.isXlang() && config.compressIntArray()) {
         writeInt32Compressed(buffer, value);
         return;
       }
@@ -200,7 +200,7 @@ public class PrimitiveListSerializers {
     @Override
     public Int32List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      if (config.compressIntArray()) {
+      if (!config.isXlang() && config.compressIntArray()) {
         return readInt32Compressed(buffer);
       }
       int byteSize = buffer.readVarUInt32Small7();
@@ -245,7 +245,9 @@ public class PrimitiveListSerializers {
     public Int64ListSerializer(TypeResolver typeResolver) {
       super(typeResolver, Int64List.class);
       compressLongArray =
-          config.compressLongArray() && config.longEncoding() != Int64Encoding.FIXED;
+          !config.isXlang()
+              && config.compressLongArray()
+              && config.longEncoding() != Int64Encoding.FIXED;
     }
 
     @Override
@@ -402,7 +404,7 @@ public class PrimitiveListSerializers {
     @Override
     public void write(WriteContext writeContext, UInt32List value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      if (config.compressIntArray()) {
+      if (!config.isXlang() && config.compressIntArray()) {
         writeUInt32Compressed(buffer, value);
         return;
       }
@@ -422,7 +424,7 @@ public class PrimitiveListSerializers {
     @Override
     public UInt32List read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      if (config.compressIntArray()) {
+      if (!config.isXlang() && config.compressIntArray()) {
         return readUInt32Compressed(buffer);
       }
       int byteSize = buffer.readVarUInt32Small7();
@@ -467,7 +469,9 @@ public class PrimitiveListSerializers {
     public UInt64ListSerializer(TypeResolver typeResolver) {
       super(typeResolver, UInt64List.class);
       compressLongArray =
-          config.compressLongArray() && config.longEncoding() != Int64Encoding.FIXED;
+          !config.isXlang()
+              && config.compressLongArray()
+              && config.longEncoding() != Int64Encoding.FIXED;
     }
 
     @Override
@@ -718,6 +722,49 @@ public class PrimitiveListSerializers {
     }
   }
 
+  public static Serializer<?> createArraySerializer(TypeResolver resolver, Class<?> type) {
+    if (type == BoolList.class) {
+      return new BoolListSerializer(resolver);
+    }
+    if (type == Int8List.class) {
+      return new Int8ListSerializer(resolver);
+    }
+    if (type == Int16List.class) {
+      return new Int16ListSerializer(resolver);
+    }
+    if (type == Int32List.class) {
+      return new Int32ListSerializer(resolver);
+    }
+    if (type == Int64List.class) {
+      return new Int64ListSerializer(resolver);
+    }
+    if (type == UInt8List.class) {
+      return new UInt8ListSerializer(resolver);
+    }
+    if (type == UInt16List.class) {
+      return new UInt16ListSerializer(resolver);
+    }
+    if (type == UInt32List.class) {
+      return new UInt32ListSerializer(resolver);
+    }
+    if (type == UInt64List.class) {
+      return new UInt64ListSerializer(resolver);
+    }
+    if (type == Float16List.class) {
+      return new Float16ListSerializer(resolver);
+    }
+    if (type == BFloat16List.class) {
+      return new BFloat16ListSerializer(resolver);
+    }
+    if (type == Float32List.class) {
+      return new Float32ListSerializer(resolver);
+    }
+    if (type == Float64List.class) {
+      return new Float64ListSerializer(resolver);
+    }
+    throw new IllegalArgumentException("Unsupported primitive list type " + type);
+  }
+
   public static final class BoxedArrayAsListSerializer extends Serializer<List<?>>
       implements Shareable {
     private final int typeId;
@@ -731,31 +778,31 @@ public class PrimitiveListSerializers {
       this.fieldName = fieldName;
       switch (typeId) {
         case Types.BOOL_ARRAY:
-          arraySerializer = new ArraySerializers.BooleanArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.BooleanArraySerializer(typeResolver);
           break;
         case Types.INT8_ARRAY:
         case Types.UINT8_ARRAY:
-          arraySerializer = new ArraySerializers.ByteArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.ByteArraySerializer(typeResolver);
           break;
         case Types.INT16_ARRAY:
         case Types.UINT16_ARRAY:
         case Types.FLOAT16_ARRAY:
         case Types.BFLOAT16_ARRAY:
-          arraySerializer = new ArraySerializers.ShortArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.ShortArraySerializer(typeResolver);
           break;
         case Types.INT32_ARRAY:
         case Types.UINT32_ARRAY:
-          arraySerializer = new ArraySerializers.IntArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.IntArraySerializer(typeResolver);
           break;
         case Types.INT64_ARRAY:
         case Types.UINT64_ARRAY:
-          arraySerializer = new ArraySerializers.LongArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.LongArraySerializer(typeResolver);
           break;
         case Types.FLOAT32_ARRAY:
-          arraySerializer = new ArraySerializers.FloatArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.FloatArraySerializer(typeResolver);
           break;
         case Types.FLOAT64_ARRAY:
-          arraySerializer = new ArraySerializers.DoubleArraySerializer(typeResolver);
+          arraySerializer = new PrimitiveArraySerializers.DoubleArraySerializer(typeResolver);
           break;
         default:
           throw new IllegalArgumentException("Unsupported array type id " + typeId);

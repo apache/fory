@@ -49,16 +49,11 @@ import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Ignore;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
-import org.apache.fory.annotation.Int8ArrayType;
 import org.apache.fory.annotation.Int8Type;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.annotation.UInt16Elements;
 import org.apache.fory.annotation.UInt16Type;
-import org.apache.fory.annotation.UInt32Elements;
 import org.apache.fory.annotation.UInt32Type;
-import org.apache.fory.annotation.UInt64Elements;
 import org.apache.fory.annotation.UInt64Type;
-import org.apache.fory.annotation.UInt8Elements;
 import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.collection.Cache;
 import org.apache.fory.collection.CacheBuilder;
@@ -696,13 +691,8 @@ public class Descriptor {
     typeAnnotationsTypes.add(UInt16Type.class);
     typeAnnotationsTypes.add(UInt32Type.class);
     typeAnnotationsTypes.add(UInt64Type.class);
-    typeAnnotationsTypes.add(Int8ArrayType.class);
     typeAnnotationsTypes.add(Float16Type.class);
     typeAnnotationsTypes.add(BFloat16Type.class);
-    typeAnnotationsTypes.add(UInt8Elements.class);
-    typeAnnotationsTypes.add(UInt16Elements.class);
-    typeAnnotationsTypes.add(UInt32Elements.class);
-    typeAnnotationsTypes.add(UInt64Elements.class);
   }
 
   public static Annotation getAnnotation(Field field) {

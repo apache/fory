@@ -34,7 +34,6 @@ import org.apache.fory.annotation.Float16Type;
 import org.apache.fory.annotation.Int32Type;
 import org.apache.fory.annotation.Int64Type;
 import org.apache.fory.annotation.Int8Type;
-import org.apache.fory.annotation.UInt32Elements;
 import org.apache.fory.annotation.UInt32Type;
 import org.apache.fory.annotation.UInt64Type;
 import org.apache.fory.annotation.UInt8Type;
@@ -87,7 +86,7 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
   }
 
   public static class UInt32ArrayStruct {
-    @UInt32Elements public int[] ids;
+    @UInt32Type public int[] ids;
   }
 
   @Data
@@ -150,6 +149,16 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
 
   public static class InvalidArrayTaggedEncoding {
     @ArrayType public List<@UInt64Type(encoding = Int64Encoding.TAGGED) Long> values;
+  }
+
+  public static class InvalidUInt32ArrayEncoding {
+    @UInt32Type(encoding = Int32Encoding.FIXED)
+    public int[] values;
+  }
+
+  public static class InvalidUInt64ArrayEncoding {
+    @UInt64Type(encoding = Int64Encoding.TAGGED)
+    public long[] values;
   }
 
   @Data
@@ -346,6 +355,12 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
     Assert.expectThrows(
         IllegalArgumentException.class,
         () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidArrayTaggedEncoding.class));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidUInt32ArrayEncoding.class));
+    Assert.expectThrows(
+        IllegalArgumentException.class,
+        () -> TypeDef.buildTypeDef(fory.getTypeResolver(), InvalidUInt64ArrayEncoding.class));
 
     fory.register(BoxedUInt8ListArray.class, 720);
     BoxedUInt8ListArray nullElement = new BoxedUInt8ListArray();

@@ -20,6 +20,7 @@ package fory
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/apache/fory/go/fory/bfloat16"
 	"github.com/apache/fory/go/fory/float16"
@@ -485,7 +486,7 @@ func TestSetFieldTypeId(t *testing.T) {
 	}
 }
 
-func TestReducedPrecisionPrimitiveArraysUseBuiltInOrdering(t *testing.T) {
+func TestReducedPrecisionSlicesUseListOrdering(t *testing.T) {
 	type TestStruct struct {
 		Float16Value  float16.Float16
 		Bfloat16Value bfloat16.BFloat16
@@ -508,8 +509,44 @@ func TestReducedPrecisionPrimitiveArraysUseBuiltInOrdering(t *testing.T) {
 	require.Equal(t, "bfloat16_value", structSer.fieldGroup.FixedFields[1].Meta.Name)
 
 	require.Len(t, structSer.fieldGroup.RemainingFields, 2)
-	require.Equal(t, "float16_array", structSer.fieldGroup.RemainingFields[0].Meta.Name)
-	require.Equal(t, "bfloat16_array", structSer.fieldGroup.RemainingFields[1].Meta.Name)
+	require.Equal(t, "bfloat16_array", structSer.fieldGroup.RemainingFields[0].Meta.Name)
+	require.Equal(t, TypeId(LIST), structSer.fieldGroup.RemainingFields[0].Meta.TypeId)
+	require.IsType(t, primitiveListSerializer{}, structSer.fieldGroup.RemainingFields[0].Serializer)
+	require.Equal(t, "float16_array", structSer.fieldGroup.RemainingFields[1].Meta.Name)
+	require.Equal(t, TypeId(LIST), structSer.fieldGroup.RemainingFields[1].Meta.TypeId)
+	require.IsType(t, primitiveListSerializer{}, structSer.fieldGroup.RemainingFields[1].Serializer)
+}
+
+func TestTaggedFieldsKeepGroupedPayloadOrder(t *testing.T) {
+	type TaggedSortStruct struct {
+		StringTen string        `fory:"id=10"`
+		StringTwo string        `fory:"id=2"`
+		Count     int32         `fory:"id=1"`
+		Flag      bool          `fory:"id=3"`
+		Duration  time.Duration `fory:"id=4"`
+	}
+
+	f := New(WithXlang(true), WithCompatible(true))
+	require.NoError(t, f.RegisterStruct(TaggedSortStruct{}, 1006))
+
+	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TaggedSortStruct{}), false)
+	require.NoError(t, err)
+	structSer, ok := typeInfo.Serializer.(*structSerializer)
+	require.True(t, ok)
+	require.NoError(t, structSer.initialize(f.typeResolver))
+
+	var fieldNames []string
+	structSer.fieldGroup.ForEachField(func(field *FieldInfo) {
+		fieldNames = append(fieldNames, field.Meta.Name)
+	})
+	require.Equal(t, []string{"flag", "count", "string_two", "string_ten", "duration"}, fieldNames)
+
+	typeDef, err := buildTypeDef(f, reflect.ValueOf(TaggedSortStruct{}))
+	require.NoError(t, err)
+	require.Len(t, typeDef.fieldDefs, len(fieldNames))
+	for i, name := range fieldNames {
+		require.Equal(t, name, typeDef.fieldDefs[i].name)
+	}
 }
 
 func TestCompatibleSkipReducedPrecisionArrays(t *testing.T) {

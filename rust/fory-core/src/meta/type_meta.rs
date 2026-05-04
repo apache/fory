@@ -23,8 +23,8 @@ use crate::meta::{
 };
 use crate::resolver::{TypeInfo, TypeResolver};
 use crate::type_id::{
-    TypeId, BINARY, COMPATIBLE_STRUCT, ENUM, EXT, INT8_ARRAY, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM,
-    NAMED_EXT, NAMED_STRUCT, PRIMITIVE_TYPES, STRUCT, UINT8_ARRAY, UNKNOWN,
+    TypeId, BINARY, COMPATIBLE_STRUCT, ENUM, EXT, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM, NAMED_EXT,
+    NAMED_STRUCT, STRUCT, UINT8_ARRAY, UNKNOWN,
 };
 use crate::util::{murmurhash3_x64_128, to_snake_case};
 
@@ -32,7 +32,9 @@ use crate::util::{murmurhash3_x64_128, to_snake_case};
 /// This treats all struct variants (STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
 /// NAMED_COMPATIBLE_STRUCT) and UNKNOWN as equivalent to STRUCT.
 /// UNKNOWN (0) is used for polymorphic types (interfaces) in cross-language serialization.
-/// Similarly for ENUM and EXT variants, and byte array encodings.
+/// Similarly for ENUM and EXT variants. Dense byte arrays stay distinct here because schema
+/// equality and schema hashes must not turn compatibility-only byte-sequence assignment into
+/// schema-consistent equality.
 fn normalize_type_id_for_eq(type_id: u32) -> u32 {
     match type_id {
         // All struct variants and UNKNOWN normalize to STRUCT
@@ -48,8 +50,6 @@ fn normalize_type_id_for_eq(type_id: u32) -> u32 {
         _ if type_id == ENUM || type_id == NAMED_ENUM => ENUM,
         // All ext variants normalize to EXT
         _ if type_id == EXT || type_id == NAMED_EXT => EXT,
-        // Byte array encodings normalize to BINARY
-        _ if type_id == BINARY || type_id == INT8_ARRAY || type_id == UINT8_ARRAY => BINARY,
         // Everything else stays the same
         _ => type_id,
     }
@@ -423,7 +423,7 @@ fn compatible_fingerprint_type_id(type_id: u32) -> u32 {
         }
         _ if type_id == ENUM || type_id == NAMED_ENUM => ENUM,
         _ if type_id == EXT || type_id == NAMED_EXT => EXT,
-        _ if type_id == BINARY || type_id == INT8_ARRAY || type_id == UINT8_ARRAY => BINARY,
+        _ if type_id == BINARY || type_id == UINT8_ARRAY => BINARY,
         _ if type_id == TypeId::INT32 as u32 || type_id == TypeId::VARINT32 as u32 => {
             TypeId::VARINT32 as u32
         }
@@ -776,127 +776,6 @@ impl TypeMeta {
         Ok(buffer)
     }
 
-    fn sort_field_infos(field_infos: Vec<FieldInfo>) -> Vec<FieldInfo> {
-        let fields_len = field_infos.len();
-        // group
-        let mut primitive_fields = Vec::new();
-        let mut nullable_primitive_fields = Vec::new();
-        let mut internal_type_fields = Vec::new();
-        let mut list_fields = Vec::new();
-        let mut set_fields = Vec::new();
-        let mut map_fields = Vec::new();
-        let mut other_fields = Vec::new();
-
-        for field_info in field_infos.into_iter() {
-            let type_id = field_info.field_type.type_id;
-            let is_nullable = field_info.field_type.nullable;
-            if is_nullable && PRIMITIVE_TYPES.contains(&type_id) {
-                nullable_primitive_fields.push(field_info);
-                continue;
-            }
-
-            if PRIMITIVE_TYPES.contains(&type_id) {
-                primitive_fields.push(field_info);
-            } else if TypeId::LIST as u32 == type_id {
-                list_fields.push(field_info);
-            } else if TypeId::SET as u32 == type_id {
-                set_fields.push(field_info);
-            } else if TypeId::MAP as u32 == type_id {
-                map_fields.push(field_info);
-            } else if crate::type_id::is_internal_type(type_id) {
-                internal_type_fields.push(field_info);
-            } else {
-                other_fields.push(field_info);
-            }
-        }
-
-        fn get_primitive_type_size(type_id_num: u32) -> i32 {
-            let type_id = TypeId::try_from(type_id_num as u8).unwrap();
-            match type_id {
-                TypeId::BOOL => 1,
-                TypeId::INT8 => 1,
-                TypeId::INT16 => 2,
-                TypeId::INT32 => 4,
-                TypeId::VARINT32 => 4,
-                TypeId::INT64 => 8,
-                TypeId::VARINT64 => 8,
-                TypeId::TAGGED_INT64 => 8,
-                TypeId::UINT8 => 1,
-                TypeId::UINT16 => 2,
-                TypeId::UINT32 => 4,
-                TypeId::VAR_UINT32 => 4,
-                TypeId::UINT64 => 8,
-                TypeId::VAR_UINT64 => 8,
-                TypeId::TAGGED_UINT64 => 8,
-                TypeId::FLOAT8 => 1,
-                TypeId::FLOAT16 => 2,
-                TypeId::BFLOAT16 => 2,
-                TypeId::FLOAT32 => 4,
-                TypeId::FLOAT64 => 8,
-                TypeId::U128 => 16,
-                TypeId::INT128 => 16,
-                TypeId::USIZE => std::mem::size_of::<usize>() as i32,
-                TypeId::ISIZE => std::mem::size_of::<isize>() as i32,
-                _ => unreachable!(),
-            }
-        }
-        fn is_compress(type_id: u32) -> bool {
-            // Variable-size integer types (both signed and unsigned)
-            // These are sorted after fixed-size types in field ordering
-            [
-                TypeId::VARINT32 as u32,
-                TypeId::VARINT64 as u32,
-                TypeId::TAGGED_INT64 as u32,
-                TypeId::VAR_UINT32 as u32,
-                TypeId::VAR_UINT64 as u32,
-                TypeId::TAGGED_UINT64 as u32,
-            ]
-            .contains(&type_id)
-        }
-        fn numeric_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            let (a_id, b_id) = (a.field_type.type_id, b.field_type.type_id);
-            let a_field_name = &a.field_name;
-            let b_field_name = &b.field_name;
-            let compress_a = is_compress(a_id);
-            let compress_b = is_compress(b_id);
-            let size_a = get_primitive_type_size(a_id);
-            let size_b = get_primitive_type_size(b_id);
-            let a_nullable = a.field_type.nullable;
-            let b_nullable = b.field_type.nullable;
-            a_nullable
-                .cmp(&b_nullable) // non-nullable first
-                .then_with(|| compress_a.cmp(&compress_b)) // fixed-size (false) first, then variable-size (true) last
-                .then_with(|| size_b.cmp(&size_a)) // when same compress status: larger size first
-                .then_with(|| a_id.cmp(&b_id)) // when same size: smaller type id first
-                .then_with(|| a_field_name.cmp(b_field_name)) // when same id: lexicographic name
-        }
-        fn type_then_name_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            a.field_type
-                .type_id
-                .cmp(&b.field_type.type_id)
-                .then_with(|| a.field_name.cmp(&b.field_name))
-        }
-        fn name_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            a.field_name.cmp(&b.field_name)
-        }
-        primitive_fields.sort_by(numeric_sorter);
-        nullable_primitive_fields.sort_by(numeric_sorter);
-        internal_type_fields.sort_by(type_then_name_sorter);
-        list_fields.sort_by(name_sorter);
-        set_fields.sort_by(name_sorter);
-        map_fields.sort_by(name_sorter);
-        other_fields.sort_by(name_sorter);
-        let mut sorted_field_infos = Vec::with_capacity(fields_len);
-        sorted_field_infos.extend(primitive_fields);
-        sorted_field_infos.extend(nullable_primitive_fields);
-        sorted_field_infos.extend(internal_type_fields);
-        sorted_field_infos.extend(list_fields);
-        sorted_field_infos.extend(set_fields);
-        sorted_field_infos.extend(map_fields);
-        sorted_field_infos.extend(other_fields);
-        sorted_field_infos
-    }
-
     fn from_meta_bytes(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
@@ -934,7 +813,9 @@ impl TypeMeta {
         for _ in 0..num_fields {
             field_infos.push(FieldInfo::from_bytes(reader)?);
         }
-        let mut sorted_field_infos = Self::sort_field_infos(field_infos);
+        // TypeMeta field order is the payload order. Preserve the peer's encoded order while only
+        // remapping matched fields to local generated field indexes.
+        let mut sorted_field_infos = field_infos;
 
         if register_by_name {
             if let Some(type_info_current) =

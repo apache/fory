@@ -89,8 +89,9 @@ int main() {
   assert(decoded.star_animal->age == 3);
 
   auto* dog_ptr = dynamic_cast<Dog*>(decoded.star_animal.get());
-  assert(dog_ptr != nullptr);
-  assert(dog_ptr->breed == "Labrador");
+  if (dog_ptr == nullptr || dog_ptr->breed != "Labrador") {
+    return 1;
+  }
 }
 ```
 

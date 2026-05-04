@@ -171,7 +171,36 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
     }
 }
 
-type FieldGroup = Vec<(String, String, u32)>;
+#[derive(Clone)]
+struct FieldSortKey {
+    id: Option<i32>,
+    text: String,
+}
+
+impl FieldSortKey {
+    fn id(id: i32) -> Self {
+        Self {
+            id: Some(id),
+            text: id.to_string(),
+        }
+    }
+
+    fn name(name: String) -> Self {
+        Self {
+            id: None,
+            text: name,
+        }
+    }
+}
+
+fn compare_field_sort_key(a: &FieldSortKey, b: &FieldSortKey) -> std::cmp::Ordering {
+    match (a.id, b.id) {
+        (Some(id_a), Some(id_b)) => id_a.cmp(&id_b),
+        _ => a.text.cmp(&b.text),
+    }
+}
+
+type FieldGroup = Vec<(String, FieldSortKey, u32)>;
 type FieldGroups = (
     FieldGroup,
     FieldGroup,
@@ -233,13 +262,17 @@ pub(crate) fn get_type_id_by_type_ast(ty: &Type) -> u32 {
 /// - `UNKNOWN` for unknown/user-defined types
 pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
     let ty = extract_option_inner(ty).unwrap_or(ty);
+    let unqualified_ty = ty.rsplit("::").next().unwrap_or(ty);
     // Check primitive types
     if PRIMITIVE_TYPE_NAMES.contains(&ty) {
         return get_primitive_type_id(ty);
     }
+    if PRIMITIVE_TYPE_NAMES.contains(&unqualified_ty) {
+        return get_primitive_type_id(unqualified_ty);
+    }
 
     // Check internal types
-    match ty {
+    match unqualified_ty {
         "String" => return TypeId::STRING as u32,
         "NaiveDate" => return TypeId::DATE as u32,
         "NaiveDateTime" => return TypeId::TIMESTAMP as u32,
@@ -368,6 +401,7 @@ fn is_internal_type_id(type_id: u32) -> bool {
         TypeId::BFLOAT16_ARRAY as u32,
         TypeId::FLOAT32_ARRAY as u32,
         TypeId::FLOAT64_ARRAY as u32,
+        TypeId::UINT8_ARRAY as u32,
         TypeId::UINT16_ARRAY as u32,
         TypeId::UINT32_ARRAY as u32,
         TypeId::UINT64_ARRAY as u32,
@@ -395,7 +429,11 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             let raw_ident = get_field_name(field, idx);
             let ident = to_snake_case(&raw_ident);
             // Forward fields don't have explicit IDs; sort by name.
-            other_fields.push((ident.clone(), ident, TypeId::UNKNOWN as u32));
+            other_fields.push((
+                ident.clone(),
+                FieldSortKey::name(ident),
+                TypeId::UNKNOWN as u32,
+            ));
         }
     }
 
@@ -411,9 +449,9 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         // Parse field metadata to get encoding attributes and field ID
         let meta = parse_field_meta(field).unwrap_or_default();
         let sort_key = if meta.uses_tag_id() {
-            meta.effective_id().to_string()
+            FieldSortKey::id(meta.effective_id())
         } else {
-            ident.clone()
+            FieldSortKey::name(ident.clone())
         };
 
         let ty: String = field
@@ -426,8 +464,10 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
 
         // Closure to group non-option fields, considering encoding attributes
         let mut group_field =
-            |ident: String, sort_key: String, ty_str: &str, is_primitive: bool| {
-                let type_id = if meta.array {
+            |ident: String, sort_key: FieldSortKey, ty_str: &str, is_primitive: bool| {
+                let type_id = if meta.bytes {
+                    TypeId::BINARY as u32
+                } else if meta.array {
                     array_type_id_for_vec_name(ty_str).unwrap_or(TypeId::UNKNOWN as u32)
                 } else {
                     // Adjust type ID based on encoding attributes for u32/u64 fields.
@@ -468,7 +508,10 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         }
     }
 
-    fn numeric_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
+    fn numeric_sorter(
+        a: &(String, FieldSortKey, u32),
+        b: &(String, FieldSortKey, u32),
+    ) -> std::cmp::Ordering {
         let compress_a = is_compress(a.2);
         let compress_b = is_compress(b.2);
         let size_a = get_primitive_type_size(a.2);
@@ -477,23 +520,26 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             .cmp(&compress_b)
             .then_with(|| size_b.cmp(&size_a))
             .then_with(|| a.2.cmp(&b.2))
-            // Field identifier (tag ID or name) as tie-breaker
-            .then_with(|| a.1.cmp(&b.1))
+            // Field identifier (numeric tag ID or name) as tie-breaker.
+            .then_with(|| compare_field_sort_key(&a.1, &b.1))
             // Deterministic fallback for duplicate identifiers
             .then_with(|| a.0.cmp(&b.0))
     }
 
     fn type_id_then_name_sorter(
-        a: &(String, String, u32),
-        b: &(String, String, u32),
+        a: &(String, FieldSortKey, u32),
+        b: &(String, FieldSortKey, u32),
     ) -> std::cmp::Ordering {
         a.2.cmp(&b.2)
-            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| compare_field_sort_key(&a.1, &b.1))
             .then_with(|| a.0.cmp(&b.0))
     }
 
-    fn name_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
-        a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))
+    fn name_sorter(
+        a: &(String, FieldSortKey, u32),
+        b: &(String, FieldSortKey, u32),
+    ) -> std::cmp::Ordering {
+        compare_field_sort_key(&a.1, &b.1).then_with(|| a.0.cmp(&b.0))
     }
 
     primitive_fields.sort_by(numeric_sorter);
@@ -528,7 +574,8 @@ pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
             .collect();
     }
 
-    // For named structs, sort by type for optimal memory layout
+    // For named structs, sort by Fory field order. Tag IDs are the field identifier inside each
+    // group, but they do not bypass the language-neutral grouping rules.
     let (
         primitive_fields,
         nullable_primitive_fields,
@@ -569,6 +616,8 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
 
 /// Field metadata for fingerprint computation.
 struct FieldFingerprintInfo {
+    /// Field ID, or -1 when the field is identified by name.
+    field_id: i32,
     /// Field name (snake_case) or field ID as string.
     name_or_id: String,
     /// Recursive field type fingerprint.
@@ -679,7 +728,9 @@ fn build_type_fingerprint(
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>();
-    let type_id = fingerprint_type_id(if meta.array {
+    let type_id = fingerprint_type_id(if meta.bytes {
+        TypeId::BINARY as u32
+    } else if meta.array {
         array_type_id_for_vec_name(&container_ty_str).unwrap_or(TypeId::UNKNOWN as u32)
     } else {
         adjust_type_id_for_encoding(get_type_id_by_name(&container_ty_str), meta)
@@ -763,9 +814,10 @@ fn build_type_fingerprint(
 /// Computes struct fingerprint string at compile time (during proc-macro execution).
 ///
 /// **Fingerprint Format:** `<field_name_or_id>,<type_id>,<ref>,<nullable>[<child...>];`
-/// Fields are sorted by name lexicographically.
+/// Tagged fields are sorted by numeric ID. Untagged fields are sorted by name lexicographically.
 fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     use super::field_meta::parse_field_meta;
+    use std::cmp::Ordering;
 
     let mut field_infos: Vec<FieldFingerprintInfo> = Vec::with_capacity(fields.len());
 
@@ -784,13 +836,21 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         };
 
         field_infos.push(FieldFingerprintInfo {
+            field_id,
             name_or_id,
             type_fingerprint: build_type_fingerprint(&field.ty, &meta, true, true),
         });
     }
 
-    // Sort field infos by name_or_id lexicographically (matches Java/C++ behavior)
-    field_infos.sort_by(|a, b| a.name_or_id.cmp(&b.name_or_id));
+    field_infos.sort_by(|a, b| match (a.field_id >= 0, b.field_id >= 0) {
+        (true, true) => a
+            .field_id
+            .cmp(&b.field_id)
+            .then_with(|| a.name_or_id.cmp(&b.name_or_id)),
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => a.name_or_id.cmp(&b.name_or_id),
+    });
 
     // Build fingerprint string
     let mut fingerprint = String::new();
@@ -959,6 +1019,71 @@ mod tests {
                 "map_values".to_string(),
                 "custom_type".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn group_fields_sorts_uint8_array_with_dense_arrays() {
+        let fields: Vec<syn::Field> = vec![
+            parse_quote!(#[fory(id = 21, bytes)] pub bytesValue: Vec<u8>),
+            parse_quote!(#[fory(id = 306, array)] pub uint8Array: Vec<u8>),
+            parse_quote!(#[fory(id = 302, array)] pub int8Array: Vec<i8>),
+            parse_quote!(#[fory(id = 307, array)] pub uint16Array: Vec<u16>),
+            parse_quote!(pub customType: CustomType),
+        ];
+        let field_refs: Vec<&syn::Field> = fields.iter().collect();
+
+        let (
+            _primitive_fields,
+            _nullable_primitive_fields,
+            internal_type_fields,
+            _list_fields,
+            _set_fields,
+            _map_fields,
+            other_fields,
+        ) = group_fields_by_type(&field_refs);
+
+        let internal_names: Vec<&str> = internal_type_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            internal_names,
+            vec!["bytes_value", "int8_array", "uint8_array", "uint16_array"]
+        );
+
+        let other_names: Vec<&str> = other_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(other_names, vec!["custom_type"]);
+
+        let sorted_names = get_sorted_field_names(&field_refs);
+        assert_eq!(
+            sorted_names,
+            vec![
+                "bytes_value".to_string(),
+                "int8_array".to_string(),
+                "uint8_array".to_string(),
+                "uint16_array".to_string(),
+                "custom_type".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn group_fields_sorts_tag_ids_numerically_inside_group() {
+        let fields: Vec<syn::Field> = vec![
+            parse_quote!(#[fory(id = 10)] pub ten: i32),
+            parse_quote!(#[fory(id = 2)] pub two: i32),
+            parse_quote!(#[fory(id = 1)] pub one: i32),
+        ];
+        let field_refs: Vec<&syn::Field> = fields.iter().collect();
+
+        let sorted_names = get_sorted_field_names(&field_refs);
+        assert_eq!(
+            sorted_names,
+            vec!["one".to_string(), "two".to_string(), "ten".to_string()]
         );
     }
 }

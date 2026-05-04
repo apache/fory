@@ -247,14 +247,8 @@ def _uint8_array_value(values):
 
 
 def _assert_uint8_array_value(value, expected):
-    if np is not None:
-        assert isinstance(value, np.ndarray)
-        assert value.dtype == np.dtype(np.uint8)
-        assert value.tolist() == expected
-    else:
-        assert isinstance(value, array.array)
-        assert value.typecode == "B"
-        assert list(value) == expected
+    assert isinstance(value, pyfory.UInt8Array)
+    assert list(value) == expected
 
 
 def test_compatible_bytes_assigns_to_uint8_array():

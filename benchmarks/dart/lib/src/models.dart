@@ -135,7 +135,7 @@ class Sample {
   final Int32List shortArray;
   @ForyField(id: 20)
   final Int32List charArray;
-  @ForyField(id: 21)
+  @ArrayField(id: 21, element: BoolType())
   final List<bool> booleanArray;
   @ForyField(id: 22)
   final String string;

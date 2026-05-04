@@ -104,6 +104,13 @@ func primitiveTypeIdMatchesKind(typeId TypeId, kind reflect.Kind) bool {
 	}
 }
 
+func getListDispatchId(type_ reflect.Type) DispatchId {
+	if type_.Kind() == reflect.Slice && type_.Elem().Kind() == reflect.String {
+		return StringSliceDispatchId
+	}
+	return UnknownDispatchId
+}
+
 // initFields initializes fields from local struct type using TypeResolver
 func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 	// If we have fieldDefs from type_def (remote meta), use them
@@ -182,12 +189,16 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		// Declared LIST fields must use their declared serializer even when the local
 		// Go carrier is a primitive slice; primitive array specs keep the slice fast path.
 		dispatchId := getDispatchIdFromTypeId(fieldTypeId, nullableFlag)
-		if dispatchId == UnknownDispatchId && fieldTypeId != LIST {
+		if dispatchId == UnknownDispatchId {
 			dispatchType := baseType
 			if dispatchType.Kind() == reflect.Ptr {
 				dispatchType = dispatchType.Elem()
 			}
-			dispatchId = GetDispatchId(dispatchType)
+			if fieldTypeId == LIST {
+				dispatchId = getListDispatchId(dispatchType)
+			} else {
+				dispatchId = GetDispatchId(dispatchType)
+			}
 		}
 		if fieldSerializer != nil {
 			if _, ok := fieldSerializer.(*enumSerializer); ok {
@@ -547,7 +558,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 							def.name, localType, baseType, fieldSerializer)
 					}
 				}
-				if localType.Kind() == reflect.Array {
+				if localType.Kind() == reflect.Array && isPrimitiveArrayType(TypeId(defTypeId)) {
 					elemType := localType.Elem()
 					switch elemType.Kind() {
 					case reflect.Bool:
@@ -632,7 +643,11 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		localIsPrimitive := isPrimitiveDispatchKind(baseKind) || (localIsPtr && isPrimitiveDispatchKind(fieldType.Elem().Kind()))
 
 		if fieldTypeId == LIST {
-			dispatchId = UnknownDispatchId
+			dispatchType := baseType
+			if dispatchType.Kind() == reflect.Ptr {
+				dispatchType = dispatchType.Elem()
+			}
+			dispatchId = getListDispatchId(dispatchType)
 		} else if localIsPrimitive {
 			if def.nullable {
 				dispatchId = getDispatchIdFromTypeId(fieldTypeId, true)

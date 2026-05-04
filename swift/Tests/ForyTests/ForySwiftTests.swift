@@ -45,6 +45,15 @@ struct FieldOrder: Equatable {
 }
 
 @ForyStruct
+struct TaggedFieldOrder: Equatable {
+    @ForyField(id: 1)
+    var textTail: String
+
+    @ForyField(id: 10)
+    var intValue: Int32
+}
+
+@ForyStruct
 struct EncodedNumberFields: Equatable {
     @ForyField(encoding: .fixed)
     var u32Fixed: UInt32
@@ -852,6 +861,29 @@ func macroFieldOrderFollowsForyRules() throws {
     #expect(second == value.longValue)
     #expect(third == value.intValue)
     #expect(fourth == value.textTail)
+}
+
+@Test
+func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
+    let fory = Fory()
+    fory.register(TaggedFieldOrder.self, id: 303)
+
+    let fields = TaggedFieldOrder.foryFieldsInfo(trackRef: false)
+    #expect(fields.map(\.fieldName) == ["intValue", "textTail"])
+    #expect(fields.map(\.fieldID) == [10, 1])
+
+    let value = TaggedFieldOrder(textTail: "tail", intValue: 99)
+    let data = try fory.serialize(value)
+    let buffer = ByteBuffer(data: data)
+    _ = try fory.readHead(buffer: buffer)
+    _ = try buffer.readInt8()
+    _ = try buffer.readVarUInt32()
+    _ = try buffer.readVarUInt32()
+    _ = try buffer.readInt32()
+
+    #expect(try buffer.readVarInt32() == value.intValue)
+    let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
+    #expect(try String.foryReadData(tailContext) == value.textTail)
 }
 
 @Test

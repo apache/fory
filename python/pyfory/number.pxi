@@ -1165,12 +1165,9 @@ cdef class BoolArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef BoolArray safe
-        if value is None:
-            raise TypeError("BoolArray value must not be None")
-        elif isinstance(value, BoolArray):
-            safe = <BoolArray>value
-        else:
-            safe = BoolArray(value)
+        if type(value) is not BoolArray:
+            raise TypeError(f"BoolArray serializer requires BoolArray, got {type(value)!r}")
+        safe = <BoolArray>value
         _write_uint8_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1186,12 +1183,9 @@ cdef class Int8ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Int8Array safe
-        if value is None:
-            raise TypeError("Int8Array value must not be None")
-        elif isinstance(value, Int8Array):
-            safe = <Int8Array>value
-        else:
-            safe = Int8Array(value)
+        if type(value) is not Int8Array:
+            raise TypeError(f"Int8Array serializer requires Int8Array, got {type(value)!r}")
+        safe = <Int8Array>value
         _write_int8_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1207,12 +1201,9 @@ cdef class Int16ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Int16Array safe
-        if value is None:
-            raise TypeError("Int16Array value must not be None")
-        elif isinstance(value, Int16Array):
-            safe = <Int16Array>value
-        else:
-            safe = Int16Array(value)
+        if type(value) is not Int16Array:
+            raise TypeError(f"Int16Array serializer requires Int16Array, got {type(value)!r}")
+        safe = <Int16Array>value
         _write_int16_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1228,12 +1219,9 @@ cdef class Int32ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Int32Array safe
-        if value is None:
-            raise TypeError("Int32Array value must not be None")
-        elif isinstance(value, Int32Array):
-            safe = <Int32Array>value
-        else:
-            safe = Int32Array(value)
+        if type(value) is not Int32Array:
+            raise TypeError(f"Int32Array serializer requires Int32Array, got {type(value)!r}")
+        safe = <Int32Array>value
         _write_int32_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1249,12 +1237,9 @@ cdef class Int64ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Int64Array safe
-        if value is None:
-            raise TypeError("Int64Array value must not be None")
-        elif isinstance(value, Int64Array):
-            safe = <Int64Array>value
-        else:
-            safe = Int64Array(value)
+        if type(value) is not Int64Array:
+            raise TypeError(f"Int64Array serializer requires Int64Array, got {type(value)!r}")
+        safe = <Int64Array>value
         _write_int64_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1270,12 +1255,9 @@ cdef class UInt8ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef UInt8Array safe
-        if value is None:
-            raise TypeError("UInt8Array value must not be None")
-        elif isinstance(value, UInt8Array):
-            safe = <UInt8Array>value
-        else:
-            safe = UInt8Array(value)
+        if type(value) is not UInt8Array:
+            raise TypeError(f"UInt8Array serializer requires UInt8Array, got {type(value)!r}")
+        safe = <UInt8Array>value
         _write_uint8_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1291,12 +1273,9 @@ cdef class UInt16ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef UInt16Array safe
-        if value is None:
-            raise TypeError("UInt16Array value must not be None")
-        elif isinstance(value, UInt16Array):
-            safe = <UInt16Array>value
-        else:
-            safe = UInt16Array(value)
+        if type(value) is not UInt16Array:
+            raise TypeError(f"UInt16Array serializer requires UInt16Array, got {type(value)!r}")
+        safe = <UInt16Array>value
         _write_uint16_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1312,12 +1291,9 @@ cdef class UInt32ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef UInt32Array safe
-        if value is None:
-            raise TypeError("UInt32Array value must not be None")
-        elif isinstance(value, UInt32Array):
-            safe = <UInt32Array>value
-        else:
-            safe = UInt32Array(value)
+        if type(value) is not UInt32Array:
+            raise TypeError(f"UInt32Array serializer requires UInt32Array, got {type(value)!r}")
+        safe = <UInt32Array>value
         _write_uint32_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1333,12 +1309,9 @@ cdef class UInt64ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef UInt64Array safe
-        if value is None:
-            raise TypeError("UInt64Array value must not be None")
-        elif isinstance(value, UInt64Array):
-            safe = <UInt64Array>value
-        else:
-            safe = UInt64Array(value)
+        if type(value) is not UInt64Array:
+            raise TypeError(f"UInt64Array serializer requires UInt64Array, got {type(value)!r}")
+        safe = <UInt64Array>value
         _write_uint64_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1354,12 +1327,9 @@ cdef class Float16ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Float16Array safe
-        if value is None:
-            raise TypeError("Float16Array value must not be None")
-        elif isinstance(value, Float16Array):
-            safe = <Float16Array>value
-        else:
-            safe = Float16Array(value)
+        if type(value) is not Float16Array:
+            raise TypeError(f"Float16Array serializer requires Float16Array, got {type(value)!r}")
+        safe = <Float16Array>value
         _write_uint16_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1384,12 +1354,9 @@ cdef class BFloat16ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef BFloat16Array safe
-        if value is None:
-            raise TypeError("BFloat16Array value must not be None")
-        elif isinstance(value, BFloat16Array):
-            safe = <BFloat16Array>value
-        else:
-            safe = BFloat16Array(value)
+        if type(value) is not BFloat16Array:
+            raise TypeError(f"BFloat16Array serializer requires BFloat16Array, got {type(value)!r}")
+        safe = <BFloat16Array>value
         _write_uint16_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1405,12 +1372,9 @@ cdef class Float32ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Float32Array safe
-        if value is None:
-            raise TypeError("Float32Array value must not be None")
-        elif isinstance(value, Float32Array):
-            safe = <Float32Array>value
-        else:
-            safe = Float32Array(value)
+        if type(value) is not Float32Array:
+            raise TypeError(f"Float32Array serializer requires Float32Array, got {type(value)!r}")
+        safe = <Float32Array>value
         _write_float_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):
@@ -1426,12 +1390,9 @@ cdef class Float64ArraySerializer(_DenseArraySerializer):
 
     cpdef write(self, WriteContext write_context, value):
         cdef Float64Array safe
-        if value is None:
-            raise TypeError("Float64Array value must not be None")
-        elif isinstance(value, Float64Array):
-            safe = <Float64Array>value
-        else:
-            safe = Float64Array(value)
+        if type(value) is not Float64Array:
+            raise TypeError(f"Float64Array serializer requires Float64Array, got {type(value)!r}")
+        safe = <Float64Array>value
         _write_double_vector(write_context, safe._values)
 
     cpdef read(self, ReadContext read_context):

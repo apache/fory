@@ -265,18 +265,18 @@ and `Bfloat16List` as contiguous fixed-length buffers.
 | map             | `Map`                                    |
 | enum            | `enum`                                   |
 | named_struct    | `class`                                  |
-| bool_array      | `List<bool>`                             |
-| int8_array      | `Int8List`                               |
-| int16_array     | `Int16List`                              |
-| int32_array     | `Int32List`                              |
-| int64_array     | `Int64List`                              |
-| uint16_array    | `Uint16List`                             |
-| uint32_array    | `Uint32List`                             |
-| uint64_array    | `Uint64List`                             |
-| float16_array   | `Float16List`                            |
-| bfloat16_array  | `Bfloat16List`                           |
-| float32_array   | `Float32List`                            |
-| float64_array   | `Float64List`                            |
+| array<bool>     | `List<bool>`                             |
+| array<int8>     | `Int8List`                               |
+| array<int16>    | `Int16List`                              |
+| array<int32>    | `Int32List`                              |
+| array<int64>    | `Int64List`                              |
+| array<uint16>   | `Uint16List`                             |
+| array<uint32>   | `Uint32List`                             |
+| array<uint64>   | `Uint64List`                             |
+| array<float16>  | `Float16List`                            |
+| array<bfloat16> | `Bfloat16List`                           |
+| array<float32>  | `Float32List`                            |
+| array<float64>  | `Float64List`                            |
 
 ## Public API
 

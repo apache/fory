@@ -587,7 +587,7 @@ func (s uintSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 type stringSliceSerializer struct{}
 
 func (s stringSliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect.Value, hasGenerics bool) {
-	v := value.Interface().([]string)
+	v := stringSliceValue(value)
 	buf := ctx.Buffer()
 	length := len(v)
 	buf.WriteVarUint32(uint32(length))
@@ -673,6 +673,13 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		result[i] = readString(buf, ctxErr)
 	}
 	*ptr = result
+}
+
+func stringSliceValue(value reflect.Value) []string {
+	if value.CanAddr() {
+		return *(*[]string)(value.Addr().UnsafePointer())
+	}
+	return value.Interface().([]string)
 }
 
 // ============================================================================

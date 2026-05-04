@@ -15,14 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import array
-
 import typing
-from typing import TypeVar
 
 from pyfory.annotation import (
+    NDArray,
     Ref,
     RefMeta,
+    StdArray,
     bfloat16,
     fixed_int32,
     fixed_int64,
@@ -95,13 +94,6 @@ __all__ = [
     "uint32",
     "uint64",
 ]
-
-try:
-    import numpy as np
-
-    ndarray = np.ndarray
-except ImportError:
-    np, ndarray = None, None
 
 
 class TypeId:
@@ -345,67 +337,31 @@ def get_primitive_type_size(type_id) -> int:
     return _primitive_type_sizes.get(type_id, -1)
 
 
-BoolArrayType = TypeVar("BoolArrayType")
-int8_array = TypeVar("int8_array", bound=array.ArrayType)
-uint8_array = TypeVar("uint8_array", bound=array.ArrayType)
-int16_array = TypeVar("int16_array", bound=array.ArrayType)
-int32_array = TypeVar("int32_array", bound=array.ArrayType)
-int64_array = TypeVar("int64_array", bound=array.ArrayType)
-uint16_array = TypeVar("uint16_array", bound=array.ArrayType)
-uint32_array = TypeVar("uint32_array", bound=array.ArrayType)
-uint64_array = TypeVar("uint64_array", bound=array.ArrayType)
-float32_array = TypeVar("float32_array", bound=array.ArrayType)
-float64_array = TypeVar("float64_array", bound=array.ArrayType)
-BoolNDArrayType = TypeVar("BoolNDArrayType", bound=ndarray)
-Int8NDArrayType = TypeVar("Int8NDArrayType", bound=ndarray)
-Uint8NDArrayType = TypeVar("Uint8NDArrayType", bound=ndarray)
-Int16NDArrayType = TypeVar("Int16NDArrayType", bound=ndarray)
-Int32NDArrayType = TypeVar("Int32NDArrayType", bound=ndarray)
-Int64NDArrayType = TypeVar("Int64NDArrayType", bound=ndarray)
-Uint16NDArrayType = TypeVar("Uint16NDArrayType", bound=ndarray)
-Uint32NDArrayType = TypeVar("Uint32NDArrayType", bound=ndarray)
-Uint64NDArrayType = TypeVar("Uint64NDArrayType", bound=ndarray)
-Float32NDArrayType = TypeVar("Float32NDArrayType", bound=ndarray)
-Float64NDArrayType = TypeVar("Float64NDArrayType", bound=ndarray)
-
-# Aliases for numpy ndarray type hints (snake_case for ergonomics)
-bool_ndarray = BoolNDArrayType
-int8_ndarray = Int8NDArrayType
-uint8_ndarray = Uint8NDArrayType
-int16_ndarray = Int16NDArrayType
-int32_ndarray = Int32NDArrayType
-int64_ndarray = Int64NDArrayType
-uint16_ndarray = Uint16NDArrayType
-uint32_ndarray = Uint32NDArrayType
-uint64_ndarray = Uint64NDArrayType
-float32_ndarray = Float32NDArrayType
-float64_ndarray = Float64NDArrayType
-
-
 _py_array_types = {
-    int8_array,
-    uint8_array,
-    int16_array,
-    int32_array,
-    int64_array,
-    uint16_array,
-    uint32_array,
-    uint64_array,
-    float32_array,
-    float64_array,
+    StdArray[int8],
+    StdArray[uint8],
+    StdArray[int16],
+    StdArray[int32],
+    StdArray[int64],
+    StdArray[uint16],
+    StdArray[uint32],
+    StdArray[uint64],
+    StdArray[float32],
+    StdArray[float64],
 }
 _np_array_types = {
-    BoolNDArrayType,
-    Int8NDArrayType,
-    Uint8NDArrayType,
-    Int16NDArrayType,
-    Int32NDArrayType,
-    Int64NDArrayType,
-    Uint16NDArrayType,
-    Uint32NDArrayType,
-    Uint64NDArrayType,
-    Float32NDArrayType,
-    Float64NDArrayType,
+    NDArray[bool],
+    NDArray[int8],
+    NDArray[uint8],
+    NDArray[int16],
+    NDArray[int32],
+    NDArray[int64],
+    NDArray[uint16],
+    NDArray[uint32],
+    NDArray[uint64],
+    NDArray[float16],
+    NDArray[float32],
+    NDArray[float64],
 }
 _primitive_array_types = _py_array_types.union(_np_array_types)
 _fory_array_types = None

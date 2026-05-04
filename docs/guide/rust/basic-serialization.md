@@ -103,7 +103,7 @@ assert_eq!(person, decoded);
 | `BinaryHeap<T>`  | Binary heap        |
 | `Option<T>`      | Optional value     |
 
-`Vec<BFloat16>` is the dense xlang carrier for `bfloat16_array` payloads.
+`Vec<BFloat16>` is the dense carrier when the schema is `array<bfloat16>`.
 
 ### Smart Pointers
 

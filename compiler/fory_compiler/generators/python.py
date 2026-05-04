@@ -75,6 +75,28 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.ANY: "Any",
     }
 
+    ARRAY_ELEMENT_MAP = {
+        PrimitiveKind.BOOL: "bool",
+        PrimitiveKind.INT8: "pyfory.int8",
+        PrimitiveKind.INT16: "pyfory.int16",
+        PrimitiveKind.INT32: "pyfory.int32",
+        PrimitiveKind.VARINT32: "pyfory.int32",
+        PrimitiveKind.INT64: "pyfory.int64",
+        PrimitiveKind.VARINT64: "pyfory.int64",
+        PrimitiveKind.TAGGED_INT64: "pyfory.int64",
+        PrimitiveKind.UINT8: "pyfory.uint8",
+        PrimitiveKind.UINT16: "pyfory.uint16",
+        PrimitiveKind.UINT32: "pyfory.uint32",
+        PrimitiveKind.VAR_UINT32: "pyfory.uint32",
+        PrimitiveKind.UINT64: "pyfory.uint64",
+        PrimitiveKind.VAR_UINT64: "pyfory.uint64",
+        PrimitiveKind.TAGGED_UINT64: "pyfory.uint64",
+        PrimitiveKind.FLOAT16: "pyfory.float16",
+        PrimitiveKind.BFLOAT16: "pyfory.bfloat16",
+        PrimitiveKind.FLOAT32: "pyfory.float32",
+        PrimitiveKind.FLOAT64: "pyfory.float64",
+    }
+
     # Numpy dtype strings for primitive arrays
     NUMPY_DTYPE_MAP = {
         PrimitiveKind.BOOL: "np.bool_",
@@ -742,9 +764,9 @@ class PythonGenerator(BaseGenerator):
             return list_type
 
         elif isinstance(field_type, ArrayType):
-            element_type = self.generate_type(
-                field_type.element_type, False, False, False, parent_stack, False
-            )
+            if not isinstance(field_type.element_type, PrimitiveType):
+                raise ValueError("array<T> requires a primitive element type")
+            element_type = self.ARRAY_ELEMENT_MAP[field_type.element_type.kind]
             array_type = f"pyfory.Array[{element_type}]"
             if nullable:
                 return f"Optional[{array_type}]"

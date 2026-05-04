@@ -119,6 +119,7 @@ import org.apache.fory.serializer.LocaleSerializer;
 import org.apache.fory.serializer.NoneSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.OptionalSerializers;
+import org.apache.fory.serializer.PrimitiveArraySerializers;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.SerializationUtils;
@@ -153,8 +154,10 @@ import org.apache.fory.serializer.scala.SingletonObjectSerializer;
 import org.apache.fory.serializer.shim.ProtobufDispatcher;
 import org.apache.fory.serializer.shim.ShimDispatcher;
 import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.BFloat16Array;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.Float16;
+import org.apache.fory.type.Float16Array;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
@@ -289,6 +292,8 @@ public class ClassResolver extends TypeResolver {
     registerInternal(double[].class, PRIMITIVE_DOUBLE_ARRAY_ID);
     registerInternal(Float16[].class);
     registerInternal(BFloat16[].class);
+    registerInternal(Float16Array.class);
+    registerInternal(BFloat16Array.class);
     registerInternal(String[].class, STRING_ARRAY_ID);
     registerInternal(Object[].class, OBJECT_ARRAY_ID);
     registerInternal(BoolList.class, Types.BOOL_ARRAY);
@@ -331,6 +336,7 @@ public class ClassResolver extends TypeResolver {
     PrimitiveSerializers.registerDefaultSerializers(this);
     UnsignedSerializers.registerDefaultSerializers(this);
     Serializers.registerDefaultSerializers(this);
+    PrimitiveArraySerializers.registerDefaultSerializers(this);
     ArraySerializers.registerDefaultSerializers(this);
     PrimitiveListSerializers.registerDefaultSerializers(this);
     TimeSerializers.registerDefaultSerializers(this);
@@ -344,7 +350,7 @@ public class ClassResolver extends TypeResolver {
     MapSerializers.registerDefaultSerializers(this);
     addDefaultSerializer(
         StackTraceElement[].class,
-        new ArraySerializers.ObjectArraySerializer<>(this, StackTraceElement[].class));
+        new ArraySerializers.ObjectArraySerializer(this, StackTraceElement[].class));
     addDefaultSerializer(Locale.class, new LocaleSerializer(config));
     addDefaultSerializer(
         SerializedLambda.class, new SerializedLambdaSerializer(this, SerializedLambda.class));

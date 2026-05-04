@@ -839,10 +839,6 @@ export class TypeMeta {
   }
 
   static groupFieldsByType<T extends { fieldName: string; nullable?: boolean; typeId: number; fieldId?: number }>(typeInfos: Array<T>): Array<T> {
-    if (typeInfos.length > 0 && typeInfos.every((typeInfo) => typeInfo.fieldId !== undefined && typeInfo.fieldId !== null)) {
-      return [...typeInfos].sort((a, b) => a.fieldId! - b.fieldId!);
-    }
-
     const primitiveFields: Array<T> = [];
     const nullablePrimitiveFields: Array<T> = [];
     const internalTypeFields: Array<T> = [];
@@ -917,7 +913,8 @@ export class TypeMeta {
 
     const nameSorter = (a: T, b: T) => TypeMeta.compareFieldSortKey(a, b);
 
-    // Sort each group
+    // Field IDs identify fields for fingerprints and compatible matching. They are only tie
+    // breakers inside the language-neutral direct payload groups, even when every field is tagged.
     primitiveFields.sort(primitiveComparator);
     nullablePrimitiveFields.sort(primitiveComparator);
     internalTypeFields.sort(typeIdThenNameSorter);

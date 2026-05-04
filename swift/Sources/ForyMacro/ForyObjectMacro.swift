@@ -536,7 +536,7 @@ private func enumDeclUsesExplicitIntegerRawValues(_ enumDecl: EnumDeclSyntax) ->
             "UInt8",
             "UInt16",
             "UInt32",
-            "UInt64",
+            "UInt64"
         ].contains($0)
     }
 }
@@ -2013,9 +2013,6 @@ private func compareTaggedFieldIdentifier(_ lhs: ParsedField, _ rhs: ParsedField
 
 private func sortFields(_ fields: [ParsedField]) -> [ParsedField] {
     fields.sorted { lhs, rhs in
-        if let taggedOrder = compareTaggedFieldIdentifier(lhs, rhs) {
-            return taggedOrder
-        }
         if lhs.group != rhs.group {
             return lhs.group < rhs.group
         }

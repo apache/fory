@@ -1094,14 +1094,7 @@ class GoGenerator(BaseGenerator):
                 return None
             return self.render_type_hint("list", [f"element={element_hint}"])
         if isinstance(field.field_type, ArrayType):
-            element_hint = self.build_node_type_hint(
-                field.field_type.element_type,
-                False,
-                False,
-                parent_stack,
-            )
-            if element_hint is None and isinstance(field.field_type.element_type, PrimitiveType):
-                element_hint = self.get_type_hint_name(field.field_type.element_type)
+            element_hint = self.build_array_element_type_hint(field.field_type.element_type)
             if element_hint is None:
                 return None
             return self.render_type_hint("array", [f"element={element_hint}"])
@@ -1144,14 +1137,7 @@ class GoGenerator(BaseGenerator):
             return self.render_type_hint("list", params)
         if isinstance(field_type, ArrayType):
             params = self.build_node_modifiers(field_type, nullable, ref, parent_stack)
-            element_hint = self.build_node_type_hint(
-                field_type.element_type,
-                False,
-                False,
-                parent_stack,
-            )
-            if element_hint is None and isinstance(field_type.element_type, PrimitiveType):
-                element_hint = self.get_type_hint_name(field_type.element_type)
+            element_hint = self.build_array_element_type_hint(field_type.element_type)
             if element_hint is not None:
                 params.append(f"element={element_hint}")
             return self.render_type_hint("array", params)
@@ -1303,6 +1289,11 @@ class GoGenerator(BaseGenerator):
             PrimitiveKind.DECIMAL: "decimal",
         }
         return names[kind]
+
+    def build_array_element_type_hint(self, field_type: FieldType) -> Optional[str]:
+        if not isinstance(field_type, PrimitiveType):
+            return None
+        return self.get_type_hint_name(field_type)
 
     def get_type_hint_encoding(self, field_type: PrimitiveType) -> Optional[str]:
         kind = field_type.kind

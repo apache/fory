@@ -342,15 +342,15 @@ describe("bool", () => {
 
     // Define SimpleStruct class with field type registration
     @Type.struct(103, {
-      f1: Type.map(Type.varInt32(), Type.float64()),
-      f2: Type.varInt32(),
+      f1: Type.map(Type.int32(), Type.float64()),
+      f2: Type.int32(),
       f3: Type.struct(102),
       f4: Type.string(),
       f5: Type.enum(101, Color),
       f6: Type.list(Type.string()),
-      f7: Type.varInt32(),
-      f8: Type.varInt32(),
-      last: Type.varInt32(),
+      f7: Type.int32(),
+      f8: Type.int32(),
+      last: Type.int32(),
     })
     class SimpleStruct {
       f2: number = 0;
@@ -410,15 +410,15 @@ describe("bool", () => {
     @Type.struct(
       { namespace: "demo", typeName: "simple_struct" },
       {
-        f1: Type.map(Type.varInt32(), Type.float64()),
-        f2: Type.varInt32(),
+        f1: Type.map(Type.int32(), Type.float64()),
+        f2: Type.int32(),
         f3: Type.struct({ namespace: "demo", typeName: "item" }),
         f4: Type.string(),
         f5: Type.enum({ namespace: "demo", typeName: "color" }, Color),
         f6: Type.list(Type.string()),
-        f7: Type.varInt32(),
-        f8: Type.varInt32(),
-        last: Type.varInt32(),
+        f7: Type.int32(),
+        f8: Type.int32(),
+        last: Type.int32(),
       },
     )
     class SimpleStruct {
@@ -558,12 +558,12 @@ describe("bool", () => {
     });
 
     @Type.struct(101, {
-      f1: Type.varInt32(),
-      f2: Type.varInt32(),
-      f3: Type.varInt32(),
-      f4: Type.varInt32(),
-      f5: Type.varInt32(),
-      f6: Type.varInt32(),
+      f1: Type.int32(),
+      f2: Type.int32(),
+      f3: Type.int32(),
+      f4: Type.int32(),
+      f5: Type.int32(),
+      f6: Type.int32(),
     })
     class Item1 {
       f1: number = 0;
@@ -785,7 +785,7 @@ describe("bool", () => {
     });
 
     const Type701 = Type.struct(701, {
-      id: Type.varInt32(),
+      id: Type.int32(),
       name: Type.string(),
     });
 
@@ -851,7 +851,7 @@ describe("bool", () => {
     });
 
     const Type701 = Type.struct(701, {
-      id: Type.varInt32(),
+      id: Type.int32(),
       name: Type.string(),
     });
 
@@ -932,7 +932,7 @@ describe("bool", () => {
     fory2.register(Type.enum(101, Color));
 
     @Type.struct(102, {
-      id: Type.varInt32(),
+      id: Type.int32(),
     })
     class MyStruct {
       id: number = 0;
@@ -1016,7 +1016,7 @@ describe("bool", () => {
     fory2.register(Type.enum("color", Color));
 
     @Type.struct("my_struct", {
-      id: Type.varInt32(),
+      id: Type.int32(),
     })
     class MyStruct {
       id: number = 0;
@@ -1082,7 +1082,7 @@ describe("bool", () => {
     @Type.struct(
       { namespace: "", typeName: "my_struct" },
       {
-        id: Type.varInt32(),
+        id: Type.int32(),
       },
     )
     class MyStruct {
@@ -1136,7 +1136,7 @@ describe("bool", () => {
     });
 
     @Type.struct(201, {
-      f1: Type.varInt32(),
+      f1: Type.int32(),
       f2: Type.string().setNullable(true),
       f3: Type.float64(),
     })
@@ -1167,7 +1167,7 @@ describe("bool", () => {
 
     // Define Animal interface implementations
     @Type.struct(302, {
-      age: Type.varInt32(),
+      age: Type.int32(),
       name: Type.string().setNullable(true),
     })
     class Dog {
@@ -1177,8 +1177,8 @@ describe("bool", () => {
     fory.register(Dog);
 
     @Type.struct(303, {
-      age: Type.varInt32(),
-      lives: Type.varInt32(),
+      age: Type.int32(),
+      lives: Type.int32(),
     })
     class Cat {
       age: number = 0;
@@ -1227,7 +1227,7 @@ describe("bool", () => {
 
     // Define Animal interface implementations
     @Type.struct(302, {
-      age: Type.varInt32(),
+      age: Type.int32(),
       name: Type.string().setNullable(true),
     })
     class Dog {
@@ -1237,8 +1237,8 @@ describe("bool", () => {
     fory.register(Dog);
 
     @Type.struct(303, {
-      age: Type.varInt32(),
-      lives: Type.varInt32(),
+      age: Type.int32(),
+      lives: Type.int32(),
     })
     class Cat {
       age: number = 0;
@@ -1560,9 +1560,9 @@ describe("bool", () => {
       byteField: number = 0;
       @Type.int16()
       shortField: number = 0;
-      @Type.varInt32()
+      @Type.int32()
       intField: number = 0;
-      @Type.varInt64()
+      @Type.int64()
       longField: number = 0;
       @Type.float32()
       floatField: number = 0;
@@ -1572,9 +1572,9 @@ describe("bool", () => {
       boolField: boolean = false;
 
       // Base non-nullable boxed fields (not nullable by default in xlang)
-      @Type.varInt32()
+      @Type.int32()
       boxedInt: number = 0;
-      @Type.varInt64()
+      @Type.int64()
       boxedLong: number = 0;
       @Type.float32()
       boxedFloat: number = 0;
@@ -1594,10 +1594,10 @@ describe("bool", () => {
       mapField: Map<string, string> = new Map();
 
       // Nullable group 1 - boxed types with nullable type decorators
-      @(Type.varInt32().setNullable(true))
+      @(Type.int32().setNullable(true))
       nullableInt1: number | null = null;
 
-      @(Type.varInt64().setNullable(true))
+      @(Type.int64().setNullable(true))
       nullableLong1: number | null = null;
 
       @(Type.float32().setNullable(true))
@@ -1633,9 +1633,9 @@ describe("bool", () => {
       byteField: number = 0;
       @Type.int16()
       shortField: number = 0;
-      @Type.varInt32()
+      @Type.int32()
       intField: number = 0;
-      @Type.varInt64()
+      @Type.int64()
       longField: number = 0;
       @Type.float32()
       floatField: number = 0;
@@ -1655,10 +1655,10 @@ describe("bool", () => {
       mapField: Map<string, string> = new Map();
 
       // Nullable group 1 - boxed types with nullable type decorators
-      @(Type.varInt32().setNullable(true))
+      @(Type.int32().setNullable(true))
       nullableInt: number | null = null;
 
-      @(Type.varInt64().setNullable(true))
+      @(Type.int64().setNullable(true))
       nullableLong: number | null = null;
 
       @(Type.float32().setNullable(true))
@@ -1771,7 +1771,7 @@ describe("bool", () => {
     });
 
     @Type.struct(501, {
-      id: Type.varInt32(),
+      id: Type.int32(),
       name: Type.string(),
     })
     class RefInner {
@@ -1814,7 +1814,7 @@ describe("bool", () => {
     });
 
     @Type.struct(503, {
-      id: Type.varInt32(),
+      id: Type.int32(),
       name: Type.string(),
     })
     class RefInner {
@@ -1904,8 +1904,8 @@ describe("bool", () => {
     });
 
     @Type.struct(1, {
-      u64Tagged: Type.taggedUInt64(),
-      u64TaggedNullable: Type.taggedUInt64().setNullable(true),
+      u64Tagged: Type.uint64({ encoding: "tagged" }),
+      u64TaggedNullable: Type.uint64({ encoding: "tagged" }).setNullable(true),
     })
     class UnsignedSchemaConsistentSimple {
       u64Tagged: bigint = 0n;
@@ -1932,11 +1932,11 @@ describe("bool", () => {
     @Type.struct(501, {
       u8Field: Type.uint8(),
       u16Field: Type.uint16(),
-      u32VarField: Type.varUInt32(),
-      u32FixedField: Type.uint32(),
-      u64VarField: Type.varUInt64(),
-      u64FixedField: Type.uint64(),
-      u64TaggedField: Type.taggedUInt64(),
+      u32VarField: Type.uint32(),
+      u32FixedField: Type.uint32({ encoding: "fixed" }),
+      u64VarField: Type.uint64(),
+      u64FixedField: Type.uint64({ encoding: "fixed" }),
+      u64TaggedField: Type.uint64({ encoding: "tagged" }),
     })
     class UnsignedSchemaConsistent {
       u8Field: number = 0;
@@ -1953,19 +1953,19 @@ describe("bool", () => {
       @(Type.uint16().setNullable(true))
       u16NullableField: number = 0;
 
-      @(Type.varUInt32().setNullable(true))
+      @(Type.uint32().setNullable(true))
       u32VarNullableField: number = 0;
 
-      @(Type.uint32().setNullable(true))
+      @(Type.uint32({ encoding: "fixed" }).setNullable(true))
       u32FixedNullableField: number = 0;
 
-      @(Type.varUInt64().setNullable(true))
+      @(Type.uint64().setNullable(true))
       u64VarNullableField: bigint = 0n;
 
-      @(Type.uint64().setNullable(true))
+      @(Type.uint64({ encoding: "fixed" }).setNullable(true))
       u64FixedNullableField: bigint = 0n;
 
-      @(Type.taggedUInt64().setNullable(true))
+      @(Type.uint64({ encoding: "tagged" }).setNullable(true))
       u64TaggedNullableField: bigint = 0n;
     }
     fory.register(UnsignedSchemaConsistent);
@@ -1988,11 +1988,11 @@ describe("bool", () => {
     @Type.struct(502, {
       u8Field1: Type.uint8(),
       u16Field1: Type.uint16(),
-      u32VarField1: Type.varUInt32(),
-      u32FixedField1: Type.uint32(),
-      u64VarField1: Type.varUInt64(),
-      u64FixedField1: Type.uint64(),
-      u64TaggedField1: Type.taggedUInt64(),
+      u32VarField1: Type.uint32(),
+      u32FixedField1: Type.uint32({ encoding: "fixed" }),
+      u64VarField1: Type.uint64(),
+      u64FixedField1: Type.uint64({ encoding: "fixed" }),
+      u64TaggedField1: Type.uint64({ encoding: "tagged" }),
     })
     class UnsignedSchemaCompatible {
       u8Field1: number = 0;
@@ -2009,19 +2009,19 @@ describe("bool", () => {
       @(Type.uint16().setNullable(true))
       u16Field2: number = 0;
 
-      @(Type.varUInt32().setNullable(true))
+      @(Type.uint32().setNullable(true))
       u32VarField2: number = 0;
 
-      @(Type.uint32().setNullable(true))
+      @(Type.uint32({ encoding: "fixed" }).setNullable(true))
       u32FixedField2: number = 0;
 
-      @(Type.varUInt64().setNullable(true))
+      @(Type.uint64().setNullable(true))
       u64VarField2: bigint = 0n;
 
-      @(Type.uint64().setNullable(true))
+      @(Type.uint64({ encoding: "fixed" }).setNullable(true))
       u64FixedField2: bigint = 0n;
 
-      @(Type.taggedUInt64().setNullable(true))
+      @(Type.uint64({ encoding: "tagged" }).setNullable(true))
       u64TaggedField2: bigint = 0n;
     }
     fory.register(UnsignedSchemaCompatible);

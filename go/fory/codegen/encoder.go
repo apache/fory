@@ -400,11 +400,6 @@ func generateElementTypeIDWrite(buf *bytes.Buffer, elemType types.Type) error {
 func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
 	elemType := sliceType.Elem()
 
-	// Check if element type is a primitive type that uses ARRAY protocol
-	if isPrimitiveSliceElemType(elemType) {
-		return generatePrimitiveSliceWriteInline(buf, sliceType, fieldAccess)
-	}
-
 	// Check if element type is referencable (needs ref tracking)
 	elemIsReferencable := isReferencableType(elemType)
 
@@ -509,13 +504,7 @@ func generateSliceWriteInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, f
 		return nil
 	}
 
-	// Primitive slice - use ARRAY protocol helpers without null flag
-	if isPrimitiveSliceElemType(elemType) {
-		basic := elemType.Underlying().(*types.Basic)
-		return writePrimitiveSliceCall(buf, basic, fieldAccess, indent)
-	}
-
-	// Non-primitive slices use LIST protocol, no null flag
+	// Slices use LIST protocol by default, including primitive element slices.
 	elemIsReferencable := isReferencableType(elemType)
 	fmt.Fprintf(buf, "%ssliceLen := 0\n", indent)
 	fmt.Fprintf(buf, "%sif %s != nil {\n", indent, fieldAccess)
@@ -541,83 +530,6 @@ func generateSliceWriteInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, f
 	}
 	fmt.Fprintf(buf, "%s\t}\n", indent)
 	fmt.Fprintf(buf, "%s}\n", indent)
-	return nil
-}
-
-// isPrimitiveSliceElemType checks if the element type is a primitive type that uses ARRAY protocol
-func isPrimitiveSliceElemType(elemType types.Type) bool {
-	if basic, ok := elemType.Underlying().(*types.Basic); ok {
-		switch basic.Kind() {
-		case types.Bool, types.Int8, types.Int16, types.Int32, types.Int64,
-			types.Uint8, types.Float32, types.Float64:
-			return true
-		}
-	}
-	return false
-}
-
-// generatePrimitiveSliceWriteInline generates inline serialization code for primitive slices using ARRAY protocol
-func generatePrimitiveSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
-	elemType := sliceType.Elem()
-	basic := elemType.Underlying().(*types.Basic)
-
-	// In xlang mode, slices are NOT nullable by default (only pointer types are nullable).
-	// In native Go mode, slices can be nil and need null flags.
-	// Generate conditional code that respects the mode at runtime.
-
-	fmt.Fprintf(buf, "\t{\n")
-	fmt.Fprintf(buf, "\t\tisXlang := ctx.TypeResolver().IsXlang()\n")
-	fmt.Fprintf(buf, "\t\tif isXlang {\n")
-	fmt.Fprintf(buf, "\t\t\t// xlang mode: slices are not nullable, write directly without null flag\n")
-
-	// Write primitive slice directly in xlang mode
-	if err := writePrimitiveSliceCall(buf, basic, fieldAccess, "\t\t\t"); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(buf, "\t\t} else {\n")
-	fmt.Fprintf(buf, "\t\t\t// Native Go mode: slices are nullable, write null flag\n")
-	fmt.Fprintf(buf, "\t\t\tif %s == nil {\n", fieldAccess)
-	fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-3) // NullFlag\n")
-	fmt.Fprintf(buf, "\t\t\t} else {\n")
-	fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
-
-	// Write primitive slice in native mode
-	if err := writePrimitiveSliceCall(buf, basic, fieldAccess, "\t\t\t\t"); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(buf, "\t\t\t}\n") // end else (not nil)
-	fmt.Fprintf(buf, "\t\t}\n")   // end else (native mode)
-	fmt.Fprintf(buf, "\t}\n")     // end block scope
-	return nil
-}
-
-// writePrimitiveSliceCall writes the helper function call for a primitive slice type
-func writePrimitiveSliceCall(buf *bytes.Buffer, basic *types.Basic, fieldAccess string, indent string) error {
-	switch basic.Kind() {
-	case types.Bool:
-		fmt.Fprintf(buf, "%sfory.WriteBoolSlice(buf, %s)\n", indent, fieldAccess)
-	case types.Int8:
-		fmt.Fprintf(buf, "%sfory.WriteInt8Slice(buf, %s)\n", indent, fieldAccess)
-	case types.Uint8:
-		fmt.Fprintf(buf, "%sbuf.WriteLength(len(%s))\n", indent, fieldAccess)
-		fmt.Fprintf(buf, "%sif len(%s) > 0 {\n", indent, fieldAccess)
-		fmt.Fprintf(buf, "%s\tbuf.WriteBinary(%s)\n", indent, fieldAccess)
-		fmt.Fprintf(buf, "%s}\n", indent)
-	case types.Int16:
-		fmt.Fprintf(buf, "%sfory.WriteInt16Slice(buf, %s)\n", indent, fieldAccess)
-	case types.Int32:
-		fmt.Fprintf(buf, "%sfory.WriteInt32Slice(buf, %s)\n", indent, fieldAccess)
-	case types.Int64:
-		fmt.Fprintf(buf, "%sfory.WriteInt64Slice(buf, %s)\n", indent, fieldAccess)
-	case types.Float32:
-		fmt.Fprintf(buf, "%sfory.WriteFloat32Slice(buf, %s)\n", indent, fieldAccess)
-	case types.Float64:
-		fmt.Fprintf(buf, "%sfory.WriteFloat64Slice(buf, %s)\n", indent, fieldAccess)
-	default:
-		return fmt.Errorf("unsupported primitive type for ARRAY protocol: %s", basic.String())
-	}
 	return nil
 }
 

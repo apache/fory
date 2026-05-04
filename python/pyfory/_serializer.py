@@ -286,11 +286,9 @@ class _DenseArraySerializer(Serializer):
         self.need_to_write_ref = False
 
     def write(self, write_context, value):
-        if value is None:
-            raise TypeError(f"{self.wrapper_type.__name__} value must not be None")
+        if type(value) is not self.wrapper_type:
+            raise TypeError(f"{self.wrapper_type.__name__} serializer requires {self.wrapper_type.__name__}, got {type(value)!r}")
         safe = value
-        if not isinstance(safe, self.wrapper_type):
-            safe = self.wrapper_type(safe)
         buffer = safe.to_buffer()
         itemsize = 1 if isinstance(buffer, (bytes, bytearray)) else buffer.itemsize
         write_context.write_var_uint32(len(buffer) * itemsize)

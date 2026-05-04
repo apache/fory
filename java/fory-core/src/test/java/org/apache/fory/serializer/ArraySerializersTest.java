@@ -39,7 +39,9 @@ import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.test.bean.ArraysData;
+import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.Float16;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -86,6 +88,44 @@ public class ArraySerializersTest extends ForyTestBase {
         f.getSerializer(Character[][].class);
       }
     }
+  }
+
+  @Test
+  public void testDedicatedObjectArraySerializersAreRetained() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    assertTrue(
+        (Object) fory.getSerializer(Object[].class)
+            instanceof ArraySerializers.ObjectArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Boolean[].class)
+            instanceof ArraySerializers.BooleanArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Byte[].class) instanceof ArraySerializers.ByteArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Short[].class)
+            instanceof ArraySerializers.ShortArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Integer[].class)
+            instanceof ArraySerializers.IntArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Long[].class) instanceof ArraySerializers.LongArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Float[].class)
+            instanceof ArraySerializers.FloatArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Double[].class)
+            instanceof ArraySerializers.DoubleArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(String[].class)
+            instanceof ArraySerializers.StringArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(Float16[].class)
+            instanceof ArraySerializers.Float16ArraySerializer);
+    assertTrue(
+        (Object) fory.getSerializer(BFloat16[].class)
+            instanceof ArraySerializers.BFloat16ArraySerializer);
+    assertTrue(
+        fory.getSerializer(int[].class) instanceof PrimitiveArraySerializers.IntArraySerializer);
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
@@ -578,6 +618,48 @@ public class ArraySerializersTest extends ForyTestBase {
     }
     int[] deserializedLargeArray = (int[]) serDe(fory, fory, largeArray);
     assertTrue(Arrays.equals(deserializedLargeArray, largeArray));
+  }
+
+  @Test
+  public void testXlangPrimitiveArrayIgnoresNativeCompressionFlags() {
+    Fory intFixed =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(false)
+            .withIntArrayCompressed(false)
+            .build();
+    Fory intCompressed =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(false)
+            .withIntArrayCompressed(true)
+            .build();
+    int[] intValues = {1, 2, 127, 128, -1, Integer.MAX_VALUE};
+    byte[] intFixedBytes = intFixed.serialize(intValues);
+    byte[] intCompressedBytes = intCompressed.serialize(intValues);
+    Assert.assertEquals(intCompressedBytes.length, intFixedBytes.length);
+    assertTrue(Arrays.equals((int[]) intFixed.deserialize(intCompressedBytes), intValues));
+    assertTrue(Arrays.equals((int[]) intCompressed.deserialize(intFixedBytes), intValues));
+
+    Fory longFixed =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(false)
+            .withLongArrayCompressed(false)
+            .build();
+    Fory longCompressed =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(false)
+            .withLongArrayCompressed(true)
+            .withLongCompressed(Int64Encoding.VARINT)
+            .build();
+    long[] longValues = {1L, 2L, 127L, 128L, -1L, Long.MAX_VALUE};
+    byte[] longFixedBytes = longFixed.serialize(longValues);
+    byte[] longCompressedBytes = longCompressed.serialize(longValues);
+    Assert.assertEquals(longCompressedBytes.length, longFixedBytes.length);
+    assertTrue(Arrays.equals((long[]) longFixed.deserialize(longCompressedBytes), longValues));
+    assertTrue(Arrays.equals((long[]) longCompressed.deserialize(longFixedBytes), longValues));
   }
 
   /**

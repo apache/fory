@@ -27,7 +27,7 @@ This page lists the JavaScript and TypeScript types supported by Fory, and expla
 | --------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `boolean`             | `Type.bool()`                                                                         |                                                      |
 | `number`              | `Type.int8()` / `Type.int16()` / `Type.int32()` / `Type.float32()` / `Type.float64()` | Pick the width that matches the peer language        |
-| `bigint`              | `Type.int64()` / `Type.varInt64()` / `Type.uint64()`                                  | Use `bigint` for 64-bit integers                     |
+| `bigint`              | `Type.int64()` / `Type.uint64()`                                                      | Use `bigint` for 64-bit integers                     |
 | `string`              | `Type.string()`                                                                       |                                                      |
 | `Uint8Array`          | `Type.binary()`                                                                       | Binary blob                                          |
 | `Date`                | `Type.timestamp()`                                                                    | Serializes/deserializes as `Date`                    |
@@ -43,18 +43,18 @@ JavaScript `number` is a 64-bit float. It cannot safely represent all 64-bit int
 ```ts
 Type.int8(); // -128 to 127
 Type.int16(); // -32,768 to 32,767
-Type.int32(); // matches Java int, Go int32, C# int
-Type.varInt32(); // variable-length encoding; smaller for small values
-Type.int64(); // use with bigint; matches Java long, Go int64
-Type.varInt64();
-Type.sliInt64();
+Type.int32(); // variable-length int32; default for semantic int32
+Type.int32({ encoding: "fixed" });
+Type.int64(); // variable-length int64; use with bigint
+Type.int64({ encoding: "fixed" });
+Type.int64({ encoding: "tagged" });
 Type.uint8();
 Type.uint16();
-Type.uint32();
-Type.varUInt32();
-Type.uint64(); // use with bigint
-Type.varUInt64();
-Type.taggedUInt64();
+Type.uint32(); // variable-length uint32
+Type.uint32({ encoding: "fixed" });
+Type.uint64(); // variable-length uint64; use with bigint
+Type.uint64({ encoding: "fixed" });
+Type.uint64({ encoding: "tagged" });
 ```
 
 **Rule of thumb**: anything that maps to a 64-bit integer in another language should use `Type.int64()` or `Type.uint64()` on the JavaScript side and be passed as a `bigint` value.
@@ -72,22 +72,22 @@ Type.bfloat16();
 
 ## Arrays and Typed Arrays
 
-### Generic arrays
+### Lists
 
 ```ts
-Type.array(Type.string());
-Type.array(
+Type.list(Type.string());
+Type.list(
   Type.struct("example.item", {
     id: Type.int64(),
   }),
 );
 ```
 
-These map to JavaScript arrays.
+These map to JavaScript arrays and use the Fory `list<T>` schema.
 
 ## Optimized Numeric Arrays
 
-For arrays of numbers, use the specialized typed array schemas. They are more compact and map to native typed arrays:
+For dense arrays of bools and numbers, use the element-specific array builders. They are more compact and map to native typed arrays where JavaScript has one:
 
 ```ts
 Type.boolArray(); // boolean[] in JS
@@ -100,7 +100,7 @@ Type.float16Array(); // number[]
 Type.bfloat16Array(); // BFloat16[]
 ```
 
-For non-numeric or struct arrays, use `Type.array(elementType)` instead.
+Use `Type.list(elementType)` for non-numeric, struct, nullable-element, or ref-tracked ordered collections.
 
 ## Maps and Sets
 
@@ -117,7 +117,7 @@ These map to JavaScript `Map` and `Set` values.
 Type.struct("example.user", {
   id: Type.int64(),
   name: Type.string(),
-  tags: Type.array(Type.string()),
+  tags: Type.list(Type.string()),
 });
 ```
 

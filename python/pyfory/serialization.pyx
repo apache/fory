@@ -470,6 +470,7 @@ cdef class TypeResolver:
 
     cdef _populate_type_info(self, TypeInfo typeinfo):
         cdef uint8_t type_id = typeinfo.type_id
+        cdef object canonical_typeinfo
         if (
             type_id == <uint8_t>TypeId.ENUM
             or type_id == <uint8_t>TypeId.STRUCT
@@ -478,12 +479,16 @@ cdef class TypeResolver:
             or type_id == <uint8_t>TypeId.TYPED_UNION
         ):
             if typeinfo.user_type_id != NO_USER_TYPE_ID:
-                self._c_user_type_id_to_type_info[typeinfo.user_type_id] = <PyObject *> typeinfo
+                canonical_typeinfo = self._user_type_id_to_type_info.get(typeinfo.user_type_id)
+                if canonical_typeinfo is None or canonical_typeinfo is typeinfo:
+                    self._c_user_type_id_to_type_info[typeinfo.user_type_id] = <PyObject *> typeinfo
         else:
             if type_id >= self._c_registered_id_to_type_info.size():
                 self._c_registered_id_to_type_info.resize(type_id * 2 if type_id > 0 else 1, NULL)
             if type_id > 0 and not is_namespaced_type(<TypeId>type_id):
-                self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
+                canonical_typeinfo = self._type_id_to_type_info.get(type_id)
+                if canonical_typeinfo is None or canonical_typeinfo is typeinfo:
+                    self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         if self._c_types_info.size() * 10 >= self._c_types_info.bucket_count() * 5:
             self._c_types_info.rehash(self._c_types_info.size() * 2)

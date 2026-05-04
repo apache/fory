@@ -130,7 +130,9 @@ func TestFieldSpecSerializerSelection(t *testing.T) {
 	defaultListSpec := mustParseFieldSpec(t, typ.Field(0))
 	defaultListSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(0).Type, defaultListSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, &sliceSerializer{}, defaultListSerializer)
+	defaultListPrimitive, ok := defaultListSerializer.(primitiveListSerializer)
+	require.True(t, ok)
+	require.EqualValues(t, VARINT32, defaultListPrimitive.elemTypeID)
 	require.EqualValues(t, LIST, defaultListSpec.Type.TypeId())
 	require.EqualValues(t, VARINT32, defaultListSpec.Type.Element.TypeId())
 
@@ -143,7 +145,9 @@ func TestFieldSpecSerializerSelection(t *testing.T) {
 	explicitSpec := mustParseFieldSpec(t, typ.Field(2))
 	explicitSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(2).Type, explicitSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, &sliceSerializer{}, explicitSerializer)
+	explicitPrimitive, ok := explicitSerializer.(primitiveListSerializer)
+	require.True(t, ok)
+	require.EqualValues(t, INT32, explicitPrimitive.elemTypeID)
 	require.EqualValues(t, LIST, explicitSpec.Type.TypeId())
 
 	ptrsSpec := mustParseFieldSpec(t, typ.Field(3))
@@ -155,7 +159,9 @@ func TestFieldSpecSerializerSelection(t *testing.T) {
 	u8ListSpec := mustParseFieldSpec(t, typ.Field(4))
 	u8ListSerializer, err := serializerForTypeSpec(f.typeResolver, typ.Field(4).Type, u8ListSpec.Type)
 	require.NoError(t, err)
-	require.IsType(t, &sliceSerializer{}, u8ListSerializer)
+	u8Primitive, ok := u8ListSerializer.(primitiveListSerializer)
+	require.True(t, ok)
+	require.EqualValues(t, UINT8, u8Primitive.elemTypeID)
 	require.EqualValues(t, LIST, u8ListSpec.Type.TypeId())
 	require.EqualValues(t, UINT8, u8ListSpec.Type.Element.TypeId())
 

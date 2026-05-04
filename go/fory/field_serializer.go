@@ -41,6 +41,7 @@ func readSerializerData(ctx *ReadContext, serializer Serializer, hasGenerics boo
 func serializerNeedsGenericDispatch(serializer Serializer) bool {
 	switch serializer.(type) {
 	case *sliceSerializer,
+		primitiveListSerializer,
 		sliceDynSerializer,
 		setSerializer,
 		mapSerializer,

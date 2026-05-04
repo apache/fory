@@ -262,7 +262,7 @@ describe('number', () => {
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
-      a: Type.varUInt32()
+      a: Type.uint32()
     })).serializer;
     const input = fory.serialize({ a: 1000000 }, serializer);
     const result = fory.deserialize(input);
@@ -286,7 +286,7 @@ describe('number', () => {
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
-      a: Type.varUInt64()
+      a: Type.uint64()
     })).serializer;
     const input = fory.serialize({ a: 1n }, serializer);
     const result = fory.deserialize(input);
@@ -298,7 +298,7 @@ describe('number', () => {
     const serializer = fory.register(Type.struct({
       typeName: "example.foo"
     }, {
-      a: Type.taggedUInt64()
+      a: Type.uint64({ encoding: "tagged" })
     })).serializer;
     const input = fory.serialize({ a: 1n }, serializer);
     const result = fory.deserialize(input);

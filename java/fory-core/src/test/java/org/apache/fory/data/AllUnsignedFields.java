@@ -19,13 +19,9 @@
 
 package org.apache.fory.data;
 
-import org.apache.fory.annotation.UInt16Elements;
 import org.apache.fory.annotation.UInt16Type;
-import org.apache.fory.annotation.UInt32Elements;
 import org.apache.fory.annotation.UInt32Type;
-import org.apache.fory.annotation.UInt64Elements;
 import org.apache.fory.annotation.UInt64Type;
-import org.apache.fory.annotation.UInt8Elements;
 import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.config.Int32Encoding;
 import org.apache.fory.config.Int64Encoding;
@@ -42,11 +38,11 @@ public class AllUnsignedFields {
   @UInt64Type(encoding = Int64Encoding.FIXED)
   public long u64;
 
-  @UInt8Elements public byte[] u8Array;
+  @UInt8Type public byte[] u8Array;
 
-  @UInt16Elements public short[] u16Array;
+  @UInt16Type public short[] u16Array;
 
-  @UInt32Elements public int[] u32Array;
+  @UInt32Type public int[] u32Array;
 
-  @UInt64Elements public long[] u64Array;
+  @UInt64Type public long[] u64Array;
 }

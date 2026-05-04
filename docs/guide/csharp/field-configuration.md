@@ -35,7 +35,7 @@ public sealed class Metrics
     [ForyField(Type = typeof(S.UInt32))]
     public uint Count { get; set; }
 
-    [ForyField(Type = typeof(S.TaggedUInt64))]
+    [ForyField(Type = typeof(S.Tagged<S.UInt64>))]
     public ulong TraceId { get; set; }
 
     public long LatencyMicros { get; set; }
@@ -51,7 +51,7 @@ using S = Apache.Fory.Schema.Types;
 [ForyObject]
 public sealed class NestedMetrics
 {
-    [ForyField(Type = typeof(S.Map<S.UInt32, S.List<S.TaggedUInt64>>))]
+    [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
     public Dictionary<uint, List<ulong?>?> Values { get; set; } = [];
 
     [ForyField(3, Type = typeof(S.UInt64))]
@@ -65,18 +65,19 @@ Schema descriptors live under `Apache.Fory.Schema.Types` and are metadata only. 
 
 Common scalar descriptors include:
 
-- `S.Int32`, `S.VarInt32`, `S.UInt32`, `S.VarUInt32`
-- `S.Int64`, `S.VarInt64`, `S.TaggedInt64`
-- `S.UInt64`, `S.VarUInt64`, `S.TaggedUInt64`
+- `S.Int32`, `S.UInt32`
+- `S.Int64`, `S.UInt64`
 - `S.Float16`, `S.BFloat16`, `S.Float32`, `S.Float64`
 
 Container descriptors are composable:
 
+- `S.Fixed<TScalar>` and `S.Tagged<TScalar>` for scalar integer encodings
 - `S.List<TElement>`
 - `S.Set<TElement>`
 - `S.Map<TKey, TValue>`
+- `S.Array<TElement>`
 
-Packed array descriptors such as `S.Int32Array`, `S.UInt32Array`, `S.Float16Array`, and `S.BFloat16Array` are available when the field should use the packed array wire type.
+Dense array fields use `S.Array<TElement>`, for example `S.Array<S.Int32>` or `S.Array<S.BFloat16>`.
 
 Nullability comes from the C# carrier type. Use `List<ulong?>` for nullable list elements and `NullableKeyDictionary<TKey, TValue>` when a map needs nullable keys.
 

@@ -37,8 +37,8 @@ This page summarizes built-in and generated type support in Apache Fory™ C#.
 ## Arrays
 
 - Primitive numeric arrays (`bool[]`, `int[]`, `ulong[]`, etc.)
-- `Half[]`, `List<Half>` for `float16_array`
-- `BFloat16[]`, `List<BFloat16>` for `bfloat16_array`
+- `Half[]`, `List<Half>` with `S.Array<S.Float16>` for `array<float16>`
+- `BFloat16[]`, `List<BFloat16>` with `S.Array<S.BFloat16>` for `array<bfloat16>`
 - `byte[]`
 - General arrays (`T[]`) through collection serializers
 

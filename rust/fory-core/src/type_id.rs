@@ -369,9 +369,10 @@ pub const fn is_internal_type(type_id: u32) -> bool {
 }
 
 /// Keep as const fn for compile time evaluation or constant folding.
-/// Returns true if this type needs type info written in compatible mode.
-/// Only user-defined types (struct, ext, unknown) need type info.
-/// Internal types (primitives, strings, collections, enums) don't need type info.
+///
+/// Returns true when a collection/map element header cannot declare the type by its compact TypeId
+/// alone and must carry type info before the payload. Direct struct-field values use TypeDef
+/// metadata instead; see `serializer::util::field_need_write_type_info`.
 #[inline(always)]
 pub const fn need_to_write_type_for_field(type_id: TypeId) -> bool {
     matches!(

@@ -43,6 +43,20 @@ describe('typemeta', () => {
     expect(header >> HASH_SHIFT_BITS).toBeGreaterThan(0n);
   });
 
+  test('keeps tagged direct payload order grouped instead of field-id ordered', () => {
+    const typeMeta = TypeMeta.fromTypeInfo(Type.struct(7005, {
+      stringValue: Type.string().setId(1),
+      mapValue: Type.map(Type.string(), Type.int32()).setId(2),
+      intValue: Type.int32().setId(10),
+    }));
+
+    expect(typeMeta.getFieldInfo().map((field) => field.fieldName)).toEqual([
+      'intValue',
+      'stringValue',
+      'mapValue',
+    ]);
+  });
+
   test('writes the zero size extension when the TypeMeta body is exactly 0xFF bytes', () => {
     const typeMeta = TypeMeta.fromTypeInfo(Type.struct(7003, {})) as any;
     const body = new Uint8Array(0xFF);
@@ -271,7 +285,7 @@ describe('typemeta', () => {
       id = 0;
     }
     Type.struct('my_struct', {
-      id: Type.varInt32(),
+      id: Type.int32(),
     })(MyStruct);
 
     writerFory.register(MyStruct);

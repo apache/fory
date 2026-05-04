@@ -44,13 +44,13 @@ including getting started, API reference, and code examples.
 | map             | `Map`                                    |
 | enum            | `enum`                                   |
 | named_struct    | `class`                                  |
-| bool_array      | `List<bool>`                             |
-| int8_array      | `Int8List`                               |
-| int16_array     | `Int16List`                              |
-| int32_array     | `Int32List`                              |
-| int64_array     | `Int64List`                              |
-| float32_array   | `Float32List`                            |
-| float64_array   | `Float64List`                            |
+| array<bool>     | `List<bool>`                             |
+| array<int8>     | `Int8List`                               |
+| array<int16>    | `Int16List`                              |
+| array<int32>    | `Int32List`                              |
+| array<int64>    | `Int64List`                              |
+| array<float32>  | `Float32List`                            |
+| array<float64>  | `Float64List`                            |
 
 ## Quick Start
 

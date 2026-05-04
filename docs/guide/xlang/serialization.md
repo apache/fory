@@ -27,10 +27,10 @@ Common types can be serialized automatically without registration: primitive num
 
 Reduced-precision floating-point values are also part of the built-in xlang type system:
 
-- `float16` and `float16_array`
-- `bfloat16` and `bfloat16_array`
+- `float16` and `array<float16>`
+- `bfloat16` and `array<bfloat16>`
 
-Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.float16` and `pyfory.bfloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `Float16List` / `BFloat16List` for xlang `*_array` payloads, while `Float16[]` / `BFloat16[]` stay on the general `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
+Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.float16` and `pyfory.bfloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` / `number[]` for `float16` and `BFloat16` / `BFloat16Array` for `bfloat16`; Java uses `@ArrayType` on supported reduced-precision carriers for `array<float16>` / `array<bfloat16>` schema, while general object arrays stay on the `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
 
 ### Java
 
@@ -240,7 +240,7 @@ class SomeClass2:
     f9: pyfory.Float32Type = None
     # float type will be taken as `pyfory.Float64Type`
     f10: float = None
-    f11: pyfory.Int16ArrayType = None
+    f11: pyfory.Array[pyfory.int16] = None
     f12: List[pyfory.Int16Type] = None
 
 

@@ -27,11 +27,11 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ArrayType;
-import org.apache.fory.annotation.Int8ArrayType;
-import org.apache.fory.annotation.UInt16Elements;
-import org.apache.fory.annotation.UInt32Elements;
-import org.apache.fory.annotation.UInt64Elements;
-import org.apache.fory.annotation.UInt8Elements;
+import org.apache.fory.annotation.Int8Type;
+import org.apache.fory.annotation.UInt16Type;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
@@ -166,14 +166,14 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   }
 
   public static class PrimitiveArrayStruct {
-    @Int8ArrayType public byte[] int8Values;
+    @Int8Type public byte[] int8Values;
     public short[] int16Values;
     public int[] int32Values;
     public long[] int64Values;
-    @UInt8Elements public byte[] uint8Values;
-    @UInt16Elements public short[] uint16Values;
-    @UInt32Elements public int[] uint32Values;
-    @UInt64Elements public long[] uint64Values;
+    @UInt8Type public byte[] uint8Values;
+    @UInt16Type public short[] uint16Values;
+    @UInt32Type public int[] uint32Values;
+    @UInt64Type public long[] uint64Values;
   }
 
   public static class PrimitiveListStruct {

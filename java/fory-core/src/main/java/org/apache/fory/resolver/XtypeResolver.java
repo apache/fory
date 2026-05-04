@@ -84,6 +84,7 @@ import org.apache.fory.serializer.DeferedLazySerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
+import org.apache.fory.serializer.PrimitiveArraySerializers;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
@@ -107,11 +108,12 @@ import org.apache.fory.serializer.collection.CollectionSerializers.XlangSetDefau
 import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.serializer.collection.MapSerializer;
 import org.apache.fory.serializer.collection.MapSerializers.XlangMapSerializer;
-import org.apache.fory.serializer.collection.PrimitiveListSerializers;
 import org.apache.fory.type.BFloat16;
+import org.apache.fory.type.BFloat16Array;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Float16;
+import org.apache.fory.type.Float16Array;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeAnnotationUtils;
 import org.apache.fory.type.TypeUtils;
@@ -527,16 +529,10 @@ public class XtypeResolver extends TypeResolver {
     if (type == BFloat16.class) {
       return Types.BFLOAT16;
     }
-    if (type == Float16[].class) {
+    if (type == Float16Array.class) {
       return Types.FLOAT16_ARRAY;
     }
-    if (type == BFloat16[].class) {
-      return Types.BFLOAT16_ARRAY;
-    }
-    if (type == Float16List.class) {
-      return Types.FLOAT16_ARRAY;
-    }
-    if (type == BFloat16List.class) {
+    if (type == BFloat16Array.class) {
       return Types.BFLOAT16_ARRAY;
     }
     if (type.isArray()) {
@@ -785,7 +781,7 @@ public class XtypeResolver extends TypeResolver {
       }
       typeId = Types.LIST;
     } else if (cls.isArray() && !cls.getComponentType().isPrimitive()) {
-      serializer = new ArraySerializers.ObjectArraySerializer(this, cls);
+      serializer = ArraySerializers.newObjectArraySerializer(this, cls);
       typeId = Types.LIST;
     } else if (isMap(cls)) {
       if (cls.isAssignableFrom(HashMap.class)) {
@@ -964,7 +960,8 @@ public class XtypeResolver extends TypeResolver {
     registerType(Types.DECIMAL, BigInteger.class, new BigIntegerSerializer(config));
 
     // Binary types
-    registerType(Types.BINARY, byte[].class, new ArraySerializers.ByteArraySerializer(this));
+    registerType(
+        Types.BINARY, byte[].class, new PrimitiveArraySerializers.ByteArraySerializer(this));
     @SuppressWarnings("unchecked")
     Class<java.nio.ByteBuffer> heapByteBufferClass =
         (Class<java.nio.ByteBuffer>) Platform.HEAP_BYTE_BUFFER_CLASS;
@@ -984,60 +981,43 @@ public class XtypeResolver extends TypeResolver {
 
     // Primitive arrays
     registerType(
-        Types.BOOL_ARRAY, boolean[].class, new ArraySerializers.BooleanArraySerializer(this));
-    registerType(Types.INT16_ARRAY, short[].class, new ArraySerializers.ShortArraySerializer(this));
-    registerType(Types.INT32_ARRAY, int[].class, new ArraySerializers.IntArraySerializer(this));
-    registerType(Types.INT64_ARRAY, long[].class, new ArraySerializers.LongArraySerializer(this));
+        Types.BOOL_ARRAY,
+        boolean[].class,
+        new PrimitiveArraySerializers.BooleanArraySerializer(this));
+    registerArrayTypeOnly(
+        Types.INT8_ARRAY, byte[].class, new PrimitiveArraySerializers.ByteArraySerializer(this));
     registerType(
-        Types.FLOAT32_ARRAY, float[].class, new ArraySerializers.FloatArraySerializer(this));
+        Types.INT16_ARRAY, short[].class, new PrimitiveArraySerializers.ShortArraySerializer(this));
     registerType(
-        Types.FLOAT64_ARRAY, double[].class, new ArraySerializers.DoubleArraySerializer(this));
-    // Primitive lists
+        Types.INT32_ARRAY, int[].class, new PrimitiveArraySerializers.IntArraySerializer(this));
     registerType(
-        Types.BOOL_ARRAY, BoolList.class, new PrimitiveListSerializers.BoolListSerializer(this));
-    registerType(
-        Types.INT8_ARRAY, Int8List.class, new PrimitiveListSerializers.Int8ListSerializer(this));
-    registerType(
-        Types.INT16_ARRAY, Int16List.class, new PrimitiveListSerializers.Int16ListSerializer(this));
-    registerType(
-        Types.INT32_ARRAY, Int32List.class, new PrimitiveListSerializers.Int32ListSerializer(this));
-    registerType(
-        Types.INT64_ARRAY, Int64List.class, new PrimitiveListSerializers.Int64ListSerializer(this));
-    registerType(
-        Types.UINT8_ARRAY, UInt8List.class, new PrimitiveListSerializers.UInt8ListSerializer(this));
-    registerType(
+        Types.INT64_ARRAY, long[].class, new PrimitiveArraySerializers.LongArraySerializer(this));
+    registerArrayTypeOnly(
+        Types.UINT8_ARRAY, byte[].class, new PrimitiveArraySerializers.ByteArraySerializer(this));
+    registerArrayTypeOnly(
         Types.UINT16_ARRAY,
-        UInt16List.class,
-        new PrimitiveListSerializers.UInt16ListSerializer(this));
-    registerType(
-        Types.UINT32_ARRAY,
-        UInt32List.class,
-        new PrimitiveListSerializers.UInt32ListSerializer(this));
-    registerType(
-        Types.UINT64_ARRAY,
-        UInt64List.class,
-        new PrimitiveListSerializers.UInt64ListSerializer(this));
-    registerType(
-        Types.FLOAT32_ARRAY,
-        Float32List.class,
-        new PrimitiveListSerializers.Float32ListSerializer(this));
-    registerType(
-        Types.FLOAT64_ARRAY,
-        Float64List.class,
-        new PrimitiveListSerializers.Float64ListSerializer(this));
+        short[].class,
+        new PrimitiveArraySerializers.ShortArraySerializer(this));
+    registerArrayTypeOnly(
+        Types.UINT32_ARRAY, int[].class, new PrimitiveArraySerializers.IntArraySerializer(this));
+    registerArrayTypeOnly(
+        Types.UINT64_ARRAY, long[].class, new PrimitiveArraySerializers.LongArraySerializer(this));
     registerType(
         Types.FLOAT16_ARRAY,
-        Float16List.class,
-        new PrimitiveListSerializers.Float16ListSerializer(this));
-    registerType(
-        Types.FLOAT16_ARRAY, Float16[].class, new ArraySerializers.Float16ArraySerializer(this));
+        Float16Array.class,
+        new PrimitiveArraySerializers.Float16ArraySerializer(this));
     registerType(
         Types.BFLOAT16_ARRAY,
-        BFloat16List.class,
-        new PrimitiveListSerializers.BFloat16ListSerializer(this));
+        BFloat16Array.class,
+        new PrimitiveArraySerializers.BFloat16ArraySerializer(this));
     registerType(
-        Types.BFLOAT16_ARRAY, BFloat16[].class, new ArraySerializers.BFloat16ArraySerializer(this));
-
+        Types.FLOAT32_ARRAY,
+        float[].class,
+        new PrimitiveArraySerializers.FloatArraySerializer(this));
+    registerType(
+        Types.FLOAT64_ARRAY,
+        double[].class,
+        new PrimitiveArraySerializers.DoubleArraySerializer(this));
     // Collections
     registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(this));
     registerType(
@@ -1047,6 +1027,23 @@ public class XtypeResolver extends TypeResolver {
     registerType(Types.LIST, List.class, new XlangListDefaultSerializer(this, List.class));
     registerType(
         Types.LIST, Collection.class, new XlangListDefaultSerializer(this, Collection.class));
+
+    // Primitive-list carriers are list<T> by default in xlang. Explicit @ArrayType fields use
+    // PrimitiveListSerializers through FieldGroups so dense-array payloads stay direct.
+    registerType(Types.LIST, BoolList.class, new CollectionSerializer(this, BoolList.class));
+    registerType(Types.LIST, Int8List.class, new CollectionSerializer(this, Int8List.class));
+    registerType(Types.LIST, Int16List.class, new CollectionSerializer(this, Int16List.class));
+    registerType(Types.LIST, Int32List.class, new CollectionSerializer(this, Int32List.class));
+    registerType(Types.LIST, Int64List.class, new CollectionSerializer(this, Int64List.class));
+    registerType(Types.LIST, UInt8List.class, new CollectionSerializer(this, UInt8List.class));
+    registerType(Types.LIST, UInt16List.class, new CollectionSerializer(this, UInt16List.class));
+    registerType(Types.LIST, UInt32List.class, new CollectionSerializer(this, UInt32List.class));
+    registerType(Types.LIST, UInt64List.class, new CollectionSerializer(this, UInt64List.class));
+    registerType(Types.LIST, Float32List.class, new CollectionSerializer(this, Float32List.class));
+    registerType(Types.LIST, Float64List.class, new CollectionSerializer(this, Float64List.class));
+    registerType(Types.LIST, Float16List.class, new CollectionSerializer(this, Float16List.class));
+    registerType(
+        Types.LIST, BFloat16List.class, new CollectionSerializer(this, BFloat16List.class));
 
     // Sets
     registerType(Types.SET, HashSet.class, new HashSetSerializer(this));
@@ -1074,6 +1071,13 @@ public class XtypeResolver extends TypeResolver {
   private void registerType(int xtypeId, Class<?> type, Serializer<?> serializer) {
     TypeInfo typeInfo = newTypeInfo(type, serializer, xtypeId, INVALID_USER_TYPE_ID);
     classInfoMap.put(type, typeInfo);
+    if (getInternalTypeInfoByTypeId(xtypeId) == null) {
+      putInternalTypeInfo(xtypeId, typeInfo);
+    }
+  }
+
+  private void registerArrayTypeOnly(int xtypeId, Class<?> type, Serializer<?> serializer) {
+    TypeInfo typeInfo = newTypeInfo(type, serializer, xtypeId, INVALID_USER_TYPE_ID);
     if (getInternalTypeInfoByTypeId(xtypeId) == null) {
       putInternalTypeInfo(xtypeId, typeInfo);
     }
@@ -1280,9 +1284,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   protected DescriptorGrouper configureDescriptorGrouper(DescriptorGrouper descriptorGrouper) {
-    return descriptorGrouper
-        .setOtherDescriptorComparator(TypeResolver::compareFieldSortKey)
-        .setSortTogetherComparator(TypeResolver::compareFieldSortKey, TypeResolver::hasFieldSortId);
+    return descriptorGrouper.setOtherDescriptorComparator(TypeResolver::compareFieldSortKey);
   }
 
   @Override
@@ -1299,6 +1301,9 @@ public class XtypeResolver extends TypeResolver {
       return (byte) TypeAnnotationUtils.getBoxedListArrayTypeId(descriptor.getField());
     }
     Class<?> cls = descriptor.getRawType();
+    if (TypeUtils.isPrimitiveListClass(cls) && TypeAnnotationUtils.isArrayType(descriptor)) {
+      return (byte) TypeAnnotationUtils.getPrimitiveListArrayTypeId(cls);
+    }
     if (TypeUtils.isPrimitiveListClass(cls)
         && !TypeAnnotationUtils.isArrayType(descriptor)
         && TypeAnnotationUtils.usesCollectionProtocolForPrimitiveList(
@@ -1320,12 +1325,6 @@ public class XtypeResolver extends TypeResolver {
     }
     if (isCollection(cls)) {
       return Types.LIST;
-    }
-    if (cls == Float16[].class) {
-      return Types.FLOAT16_ARRAY;
-    }
-    if (cls == BFloat16[].class) {
-      return Types.BFLOAT16_ARRAY;
     }
     if (cls.isArray() && !cls.getComponentType().isPrimitive()) {
       return Types.LIST;
