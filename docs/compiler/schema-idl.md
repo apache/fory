@@ -930,7 +930,7 @@ to customize pointer types. For protobuf option syntax, see
 
 #### `list`
 
-Marks the field as a list/array:
+Marks the field as an ordered collection:
 
 ```protobuf
 message Document {

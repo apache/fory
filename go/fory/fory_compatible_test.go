@@ -119,6 +119,18 @@ type NestedOuterIncompatible struct {
 	Inner InconsistentDataClass
 }
 
+type ByteFamilyBinaryDataClass struct {
+	Payload []byte `fory:"type=bytes"`
+}
+
+type ByteFamilyUInt8ArrayDataClass struct {
+	Payload []byte `fory:"type=array(element=uint8)"`
+}
+
+type ByteFamilyInt8ArrayDataClass struct {
+	Payload []int8 `fory:"type=array(element=int8)"`
+}
+
 func TestMetaShareEnabled(t *testing.T) {
 	fory := NewForyWithOptions(WithXlang(true), WithCompatible(true))
 
@@ -476,6 +488,33 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				assert.Zero(t, out.Inner.Name)
 				assert.Equal(t, in.Inner.Age, out.Inner.Age)
 				assert.Equal(t, in.Inner.Active, out.Inner.Active)
+			},
+		},
+		{
+			name:      "BytesToUInt8Array",
+			tag:       "ByteFamily",
+			writeType: ByteFamilyBinaryDataClass{},
+			readType:  ByteFamilyUInt8ArrayDataClass{},
+			input: ByteFamilyBinaryDataClass{
+				Payload: []byte{1, 2, 255},
+			},
+			assertFunc: func(t *testing.T, input any, output any) {
+				in := input.(ByteFamilyBinaryDataClass)
+				out := output.(ByteFamilyUInt8ArrayDataClass)
+				assert.Equal(t, in.Payload, out.Payload)
+			},
+		},
+		{
+			name:      "Int8ArrayDoesNotMatchBytes",
+			tag:       "ByteFamily",
+			writeType: ByteFamilyInt8ArrayDataClass{},
+			readType:  ByteFamilyBinaryDataClass{},
+			input: ByteFamilyInt8ArrayDataClass{
+				Payload: []int8{-1, 0, 1},
+			},
+			assertFunc: func(t *testing.T, input any, output any) {
+				out := output.(ByteFamilyBinaryDataClass)
+				assert.Nil(t, out.Payload)
 			},
 		},
 	}

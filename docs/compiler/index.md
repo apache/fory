@@ -182,7 +182,8 @@ data = bytes(person) # or `person.to_bytes()`
 
 - **`optional`**: Field can be null/None
 - **`ref`**: Enable reference tracking for shared/circular references
-- **`list`**: Field is a list/array (alias: `repeated`)
+- **`list`**: Field is an ordered collection (alias: `repeated`)
+- **`array`**: Field is dense one-dimensional bool or numeric data
 
 ```protobuf
 message Example {

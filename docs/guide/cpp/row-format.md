@@ -218,7 +218,7 @@ public:
 
 ### ArrayData Class
 
-The `ArrayData` class provides access to list/array elements:
+The `ArrayData` class provides access to nested sequence elements:
 
 ```cpp
 class ArrayData {
