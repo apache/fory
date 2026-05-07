@@ -231,6 +231,7 @@ public class FieldTypes {
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter0()));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())) {
+      Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
       return new MapFieldType(
           typeId,
           nullable,
@@ -238,15 +239,15 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              genericType.getTypeParameter0() == null
+              mapKeyValueType.f0 == null
                   ? GenericType.build(Object.class)
-                  : genericType.getTypeParameter0()),
+                  : resolver.buildGenericType(mapKeyValueType.f0)),
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              genericType.getTypeParameter1() == null
+              mapKeyValueType.f1 == null
                   ? GenericType.build(Object.class)
-                  : genericType.getTypeParameter1()));
+                  : resolver.buildGenericType(mapKeyValueType.f1)));
     } else if (isUnionType || Union.class.isAssignableFrom(rawType)) {
       return new UnionFieldType(nullable, trackingRef);
     } else if (TypeUtils.unwrap(rawType).isPrimitive()) {
@@ -289,6 +290,18 @@ public class FieldTypes {
         return new ObjectFieldType(typeId, nullable, trackingRef);
       }
     }
+  }
+
+  private static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(GenericType genericType) {
+    if (genericType.getTypeParametersCount() >= 2) {
+      return Tuple2.of(
+          genericType.getTypeParameter0().getTypeRef(),
+          genericType.getTypeParameter1().getTypeRef());
+    }
+    if (!MAP_TYPE.isSupertypeOf(genericType.getTypeRef())) {
+      return Tuple2.of(TypeRef.of(Object.class), TypeRef.of(Object.class));
+    }
+    return TypeUtils.getMapKeyValueType(genericType.getTypeRef());
   }
 
   public abstract static class FieldType implements Serializable {

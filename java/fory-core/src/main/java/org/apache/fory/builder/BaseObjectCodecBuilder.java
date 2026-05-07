@@ -2847,7 +2847,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                   new Assign(size, cast(shift(">>>", sizeAndHeader, 8), PRIMITIVE_INT_TYPE)));
               exprs.add(new If(eq(size, ofInt(0)), new Break()));
               Expression sizeAndHeader2 =
-                  readChunk(buffer, newMap, size, keyType, valueType, chunkHeader, mapSerializer);
+                  readChunk(buffer, newMap, size, keyType, valueType, chunkHeader);
               if (inline) {
                 exprs.add(sizeAndHeader2);
               } else {
@@ -2907,14 +2907,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression size,
       TypeRef<?> keyType,
       TypeRef<?> valueType,
-      Expression chunkHeader,
-      Expression mapSerializer) {
+      Expression chunkHeader) {
     boolean keyMonomorphic = isMonomorphic(keyType);
     boolean valueMonomorphic = isMonomorphic(valueType);
     Class<?> keyTypeRawType = keyType.getRawType();
     Class<?> valueTypeRawType = valueType.getRawType();
-    boolean needsDeclaredSerializerRecovery =
-        keyTypeRawType == Object.class || valueTypeRawType == Object.class;
     boolean trackingKeyRef = mayTrackRefForCollectionRead(keyTypeRawType);
     boolean trackingValueRef = mayTrackRefForCollectionRead(valueTypeRawType);
     boolean inline =
@@ -2937,22 +2934,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
     Expression keySerializer, valueSerializer;
     if (!keyMonomorphic && !valueMonomorphic) {
-      keySerializer =
-          readOrGetSerializerForDeclaredType(
-              buffer, keyTypeRawType, keyIsDeclaredType, mapSerializer, true);
+      keySerializer = readOrGetSerializerForDeclaredType(buffer, keyTypeRawType, keyIsDeclaredType);
       valueSerializer =
-          readOrGetSerializerForDeclaredType(
-              buffer, valueTypeRawType, valueIsDeclaredType, mapSerializer, false);
+          readOrGetSerializerForDeclaredType(buffer, valueTypeRawType, valueIsDeclaredType);
     } else if (!keyMonomorphic) {
-      keySerializer =
-          readOrGetSerializerForDeclaredType(
-              buffer, keyTypeRawType, keyIsDeclaredType, mapSerializer, true);
+      keySerializer = readOrGetSerializerForDeclaredType(buffer, keyTypeRawType, keyIsDeclaredType);
       valueSerializer = getOrCreateSerializer(valueTypeRawType);
     } else if (!valueMonomorphic) {
       keySerializer = getOrCreateSerializer(keyTypeRawType);
       valueSerializer =
-          readOrGetSerializerForDeclaredType(
-              buffer, valueTypeRawType, valueIsDeclaredType, mapSerializer, false);
+          readOrGetSerializerForDeclaredType(buffer, valueTypeRawType, valueIsDeclaredType);
     } else {
       keySerializer = getOrCreateSerializer(keyTypeRawType);
       valueSerializer = getOrCreateSerializer(valueTypeRawType);
@@ -3036,20 +3027,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       //   Serializer keySerializer,
       //   Serializer valueSerializer
       //  )
-      Set<Expression> params =
-          needsDeclaredSerializerRecovery
-              ? readCutPoints(buffer, size, chunkHeader, map, mapSerializer)
-              : readCutPoints(buffer, size, chunkHeader, map);
+      Set<Expression> params = readCutPoints(buffer, size, chunkHeader, map);
       return invokeGenerated(ctx, params, expressions, "readChunk", false);
     }
   }
 
   private Expression readOrGetSerializerForDeclaredType(
-      Expression buffer,
-      Class<?> type,
-      Expression isDeclaredType,
-      Expression mapSerializer,
-      boolean key) {
+      Expression buffer, Class<?> type, Expression isDeclaredType) {
     if (isMonomorphic(type)) {
       return getOrCreateSerializer(type);
     }
@@ -3057,18 +3041,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (ReflectionUtils.isAbstract(type) || type.isInterface()) {
       return invoke(readTypeInfo(type, buffer), "getSerializer", "serializer", serializerType);
     } else {
-      Expression declaredSerializer = getOrCreateSerializer(type);
-      if (type == Object.class) {
-        declaredSerializer =
-            new Invoke(
-                mapSerializer,
-                key ? "getKeySerializerForDeclaredType" : "getValueSerializerForDeclaredType",
-                SERIALIZER_TYPE,
-                declaredSerializer);
-      }
       return new If(
           isDeclaredType,
-          declaredSerializer,
+          getOrCreateSerializer(type),
           invokeInline(readTypeInfo(type, buffer), "getSerializer", serializerType),
           false);
     }

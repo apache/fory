@@ -70,8 +70,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     GenericType partialGenericKVTypeValue0;
     GenericType partialGenericKVTypeKey1;
     GenericType partialGenericKVTypeValue1;
-    GenericType serializerKeyType;
-    GenericType serializerValueType;
 
     private MapTypeCache(TypeResolver typeResolver) {
       keyTypeInfoWriteCache = typeResolver.nilTypeInfoHolder();
@@ -682,7 +680,17 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
           boolean trackKeyRef = (chunkHeader & TRACKING_KEY_REF) != 0;
           Object key;
           if ((chunkHeader & KEY_DECL_TYPE) != 0) {
-            key = readDeclaredElementFromNullChunk(readContext, trackKeyRef, keySerializer, true);
+            if (keySerializer == null) {
+              key = readNonEmptyValueFromNullChunk(readContext, trackKeyRef, true);
+            } else {
+              readContext.increaseDepth();
+              if (trackKeyRef) {
+                key = keySerializer.read(readContext, RefMode.TRACKING);
+              } else {
+                key = keySerializer.read(readContext, RefMode.NONE);
+              }
+              readContext.decreaseDepth();
+            }
           } else {
             if (trackKeyRef) {
               key = readContext.readRef(state.keyTypeInfoReadCache);
@@ -719,8 +727,17 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       Object value;
       boolean trackValueRef = (chunkHeader & TRACKING_VALUE_REF) != 0;
       if ((chunkHeader & VALUE_DECL_TYPE) != 0) {
-        value =
-            readDeclaredElementFromNullChunk(readContext, trackValueRef, valueSerializer, false);
+        if (valueSerializer == null) {
+          value = readNonEmptyValueFromNullChunk(readContext, trackValueRef, false);
+        } else {
+          readContext.increaseDepth();
+          if (trackValueRef) {
+            value = valueSerializer.read(readContext, RefMode.TRACKING);
+          } else {
+            value = valueSerializer.read(readContext, RefMode.NONE);
+          }
+          readContext.decreaseDepth();
+        }
       } else {
         if (trackValueRef) {
           value = readContext.readRef(state.valueTypeInfoReadCache);
@@ -734,53 +751,26 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     }
   }
 
-  private Object readDeclaredElementFromNullChunk(
-      ReadContext readContext, boolean trackRef, Serializer fallbackSerializer, boolean key) {
-    Serializer serializer = getSerializerForDeclaredType(fallbackSerializer, key);
-    if (serializer == null) {
-      return readNonEmptyValueFromNullChunk(readContext, trackRef, key);
-    }
-    return readBySerializer(readContext, trackRef, serializer);
-  }
-
-  private Object readBySerializer(
-      ReadContext readContext, boolean trackRef, Serializer serializer) {
-    readContext.increaseDepth();
-    try {
-      if (trackRef) {
-        return serializer.read(readContext, RefMode.TRACKING);
-      } else {
-        return serializer.read(readContext, RefMode.NONE);
-      }
-    } finally {
-      readContext.decreaseDepth();
-    }
-  }
-
   private Object readNonEmptyValueFromNullChunk(
       ReadContext readContext, boolean trackRef, boolean isKey) {
     Generics generics = readContext.getGenerics();
     GenericType genericType = generics.nextGenericType(readContext.getDepth());
-    if (genericType == null) {
-      Serializer serializer = getSerializerForDeclaredType(null, isKey);
-      if (serializer != null) {
-        return readBySerializer(readContext, trackRef, serializer);
-      }
-      genericType =
-          Preconditions.checkNotNull(
-              genericType, "Missing map generic type for declared null chunk");
-    }
     if (genericType.getTypeParametersCount() < 2) {
       genericType = getKVGenericType(genericType);
     }
     GenericType type = isKey ? genericType.getTypeParameter0() : genericType.getTypeParameter1();
     generics.pushGenericType(type, readContext.getDepth());
     Serializer<?> serializer = type.getSerializer(typeResolver);
-    try {
-      return readBySerializer(readContext, trackRef, serializer);
-    } finally {
-      generics.popGenericType(readContext.getDepth());
+    Object v;
+    readContext.increaseDepth();
+    if (trackRef) {
+      v = serializer.read(readContext, RefMode.TRACKING);
+    } else {
+      v = serializer.read(readContext, RefMode.NONE);
     }
+    readContext.decreaseDepth();
+    generics.popGenericType(readContext.getDepth());
+    return v;
   }
 
   @CodegenInvoke
@@ -799,8 +789,10 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
         if (!valueHasNull) {
           return (size << 8) | chunkHeader;
         } else {
-          Object key = readDeclaredElementFromNullChunk(readContext, false, keySerializer, true);
+          readContext.increaseDepth();
+          Object key = keySerializer.read(readContext, RefMode.NONE);
           map.put(key, null);
+          readContext.decreaseDepth();
         }
       } else {
         readNullKeyChunk(readContext, map, chunkHeader, valueSerializer, valueHasNull);
@@ -888,14 +880,13 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       keySerializer =
           typeResolver.readTypeInfo(readContext, state.keyTypeInfoReadCache).getSerializer();
     } else {
-      keySerializer = getKeySerializerForDeclaredType(keyGenericType.getSerializer(typeResolver));
+      keySerializer = keyGenericType.getSerializer(typeResolver);
     }
     if (!valueIsDeclaredType) {
       valueSerializer =
           typeResolver.readTypeInfo(readContext, state.valueTypeInfoReadCache).getSerializer();
     } else {
-      valueSerializer =
-          getValueSerializerForDeclaredType(valueGenericType.getSerializer(typeResolver));
+      valueSerializer = valueGenericType.getSerializer(typeResolver);
     }
     for (int i = 0; i < chunkSize; i++) {
       generics.pushGenericType(keyGenericType, readContext.getDepth());
@@ -918,43 +909,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       size--;
     }
     return size > 0 ? (size << 8) | buffer.readUnsignedByte() : 0;
-  }
-
-  @CodegenInvoke
-  public Serializer getKeySerializerForDeclaredType(Serializer fallbackSerializer) {
-    return getSerializerForDeclaredType(fallbackSerializer, true);
-  }
-
-  @CodegenInvoke
-  public Serializer getValueSerializerForDeclaredType(Serializer fallbackSerializer) {
-    return getSerializerForDeclaredType(fallbackSerializer, false);
-  }
-
-  private Serializer getSerializerForDeclaredType(Serializer fallbackSerializer, boolean key) {
-    if (fallbackSerializer != null && fallbackSerializer.getType() != Object.class) {
-      return fallbackSerializer;
-    }
-    GenericType declaredType = getSerializerKVGenericType(key);
-    if (declaredType != null
-        && declaredType.getCls() != Object.class
-        && declaredType.isMonomorphic()) {
-      return declaredType.getSerializer(typeResolver);
-    }
-    return fallbackSerializer;
-  }
-
-  private GenericType getSerializerKVGenericType(boolean key) {
-    MapTypeCache state = mapTypeCache();
-    GenericType declaredType = key ? state.serializerKeyType : state.serializerValueType;
-    if (declaredType == null) {
-      // Compatible metadata for removed map-subclass fields may only preserve Map<Object, Object>.
-      // Declared-type chunks still use the actual map class's key/value serializers.
-      GenericType mapGenericType = getKVGenericType(typeResolver.buildGenericType(type));
-      state.serializerKeyType = mapGenericType.getTypeParameter0();
-      state.serializerValueType = mapGenericType.getTypeParameter1();
-      declaredType = key ? state.serializerKeyType : state.serializerValueType;
-    }
-    return declaredType;
   }
 
   /**
