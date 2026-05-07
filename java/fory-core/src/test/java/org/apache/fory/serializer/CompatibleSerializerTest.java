@@ -19,14 +19,19 @@
 
 package org.apache.fory.serializer;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
+import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -42,6 +47,10 @@ import org.testng.annotations.Test;
  * forward/backward compatibility when using compatible mode with scoped meta share.
  */
 public class CompatibleSerializerTest extends ForyTestBase {
+  private static final int CATALOG_SNAPSHOT_CLASS_ID = 4100;
+  private static final int MOVIE_DOCUMENT_CLASS_ID = 4101;
+  private static final int LEGACY_LABELS_CLASS_ID = 4102;
+  private static final int NULLABLE_KEY_LABELS_CLASS_ID = 4103;
 
   @Test
   public void testWrite() {
@@ -242,6 +251,23 @@ public class CompatibleSerializerTest extends ForyTestBase {
             CollectionFields.copyToCanEqual(newObj, newObj.getClass().newInstance())));
   }
 
+  @Test(dataProvider = "twoBoolOptions")
+  public void testCompatibleModeSkipsRemovedTreeMapSubclassField(
+      boolean asyncCompilation, boolean codegen) {
+    byte[] bytes = writeCatalogSnapshotV1(asyncCompilation, codegen);
+
+    Fory reader = catalogFory(asyncCompilation, codegen);
+    reader.register(CatalogSnapshotV2.class, CATALOG_SNAPSHOT_CLASS_ID);
+    reader.register(MovieDocumentV2.class, MOVIE_DOCUMENT_CLASS_ID);
+    reader.register(LegacyLabelsV2.class, LEGACY_LABELS_CLASS_ID);
+    reader.register(NullableKeyLabelsV2.class, NULLABLE_KEY_LABELS_CLASS_ID);
+
+    CatalogSnapshotV2 decoded = reader.deserialize(bytes, CatalogSnapshotV2.class);
+    Assert.assertEquals(decoded.batchId, "batch-1");
+    Assert.assertEquals(decoded.movies.size(), 1);
+    Assert.assertEquals(decoded.movies.get(0).id, "m-1");
+  }
+
   @Test
   public void testWriteCompatibleMap() throws Exception {
     Fory fory =
@@ -339,5 +365,84 @@ public class CompatibleSerializerTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(fory.serialize(beanA)), beanA);
     byte[] serialized = fory.serialize(beanA);
     Assert.assertEquals(fory.deserialize(serialized, BeanA.class), beanA);
+  }
+
+  private static byte[] writeCatalogSnapshotV1(boolean asyncCompilation, boolean codegen) {
+    Fory writer = catalogFory(asyncCompilation, codegen);
+    writer.register(CatalogSnapshotV1.class, CATALOG_SNAPSHOT_CLASS_ID);
+    writer.register(MovieDocumentV1.class, MOVIE_DOCUMENT_CLASS_ID);
+    writer.register(LegacyLabelsV1.class, LEGACY_LABELS_CLASS_ID);
+    writer.register(NullableKeyLabelsV1.class, NULLABLE_KEY_LABELS_CLASS_ID);
+    return writer.serialize(new CatalogSnapshotV1("batch-1"));
+  }
+
+  private static Fory catalogFory(boolean asyncCompilation, boolean codegen) {
+    return Fory.builder()
+        .withLanguage(Language.JAVA)
+        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .requireClassRegistration(false)
+        .withDeserializeUnknownClass(true)
+        .withAsyncCompilation(asyncCompilation)
+        .withCodegen(codegen)
+        .build();
+  }
+
+  public static class LegacyLabelsV1 extends TreeMap<String, String> {
+    public LegacyLabelsV1() {}
+  }
+
+  public static class LegacyLabelsV2 extends TreeMap<String, String> {
+    public LegacyLabelsV2() {}
+  }
+
+  public static class NullableKeyLabelsV1 extends HashMap<String, String> {
+    public NullableKeyLabelsV1() {}
+  }
+
+  public static class NullableKeyLabelsV2 extends HashMap<String, String> {
+    public NullableKeyLabelsV2() {}
+  }
+
+  public static class MovieDocumentV1 {
+    public String id;
+    public LegacyLabelsV1 labels;
+    public NullableKeyLabelsV1 nullableKeyLabels;
+
+    public MovieDocumentV1() {}
+
+    MovieDocumentV1(String id) {
+      this.id = id;
+      labels = new LegacyLabelsV1();
+      labels.put("region", "se");
+      labels.put("unknown", null);
+      nullableKeyLabels = new NullableKeyLabelsV1();
+      nullableKeyLabels.put(null, "fallback");
+    }
+  }
+
+  public static class MovieDocumentV2 {
+    public String id;
+
+    public MovieDocumentV2() {}
+  }
+
+  public static class CatalogSnapshotV1 {
+    public String batchId;
+    public ArrayList<MovieDocumentV1> movies;
+
+    public CatalogSnapshotV1() {}
+
+    CatalogSnapshotV1(String batchId) {
+      this.batchId = batchId;
+      movies = new ArrayList<>();
+      movies.add(new MovieDocumentV1("m-1"));
+    }
+  }
+
+  public static class CatalogSnapshotV2 {
+    public String batchId;
+    public ArrayList<MovieDocumentV2> movies;
+
+    public CatalogSnapshotV2() {}
   }
 }
