@@ -21,6 +21,8 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Dict, Tuple, Type
 
+import pytest
+
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
@@ -777,3 +779,121 @@ def test_go_generator_distinguishes_bytes_from_uint8_lists():
     go_output = render_files(generate_files(schema, GoGenerator))
     assert 'Payload []byte `fory:"id=1,type=bytes"`' in go_output
     assert 'Values []uint8 `fory:"id=2"`' in go_output
+
+
+def test_rust_escapes_keywords_basic():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message type {
+                string type = 1;
+                string self = 2;
+                string crate = 3;
+                string extern = 4;
+                string raw = 5;
+            }
+            """
+        )
+    )
+    rust_files = generate_files(schema, RustGenerator)
+    rust_output = render_files(rust_files)
+
+    assert "demo.rs" in rust_files
+    assert "pub struct Type {" in rust_output
+    assert "pub r#type: String," in rust_output
+    assert "pub self_: String," in rust_output
+    assert "pub crate_: String," in rust_output
+    assert "pub r#extern: String," in rust_output
+    assert "pub raw: String," in rust_output
+
+
+def test_rust_escapes_keywords_complex():
+    schema = parse_fdl(
+        dedent(
+            """
+            package Self;
+
+            enum match {
+                self = 0;
+            }
+
+            enum PhoneType {
+                PHONE_TYPE_MOBILE = 0;
+            }
+
+            union crate {
+                string self = 1;
+            }
+
+            message _1 {
+                string raw = 1;
+            }
+
+            message type {
+                message super {
+                    string match = 1;
+                }
+
+                super foo = 1;
+            }
+
+            message Holder {
+                type foo = 1;
+                match bar = 2;
+                crate foo_bar = 3;
+                _1 numeric = 4;
+            }
+            """
+        )
+    )
+    rust_files = generate_files(schema, RustGenerator)
+    rust_output = render_files(rust_files)
+
+    assert "self_.rs" in rust_files
+    assert "pub mod r#type {" in rust_output
+    assert "pub struct Super {" in rust_output
+    assert "pub r#match: String," in rust_output
+    assert "pub foo: r#type::Super," in rust_output
+    assert "pub enum Match {" in rust_output
+    assert "Self_ = 0," in rust_output
+    assert "pub enum PhoneType {" in rust_output
+    assert "    Mobile = 0," in rust_output
+    assert "pub enum Crate {" in rust_output
+    assert "Self_(String)," in rust_output
+    assert "pub struct _1 {" in rust_output
+    assert "pub numeric: _1," in rust_output
+
+
+def test_rust_rejects_normalized_name_collisions():
+    collision_cases = [
+        """
+        message foo_bar {}
+
+        message FooBar {}
+        """,
+        """
+        message Holder {
+            string fooBar = 1;
+            string foo_bar = 2;
+        }
+        """,
+        """
+        message Holder {
+            string self = 1;
+            string self_ = 2;
+        }
+        """,
+        """
+        union crate {
+            string self = 1;
+            string Self = 2;
+        }
+        """,
+    ]
+
+    for source in collision_cases:
+        schema = parse_fdl(dedent(source))
+        with pytest.raises(ValueError, match="Rust name collision"):
+            generate_files(schema, RustGenerator)

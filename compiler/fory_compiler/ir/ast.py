@@ -18,7 +18,7 @@
 """AST node definitions for FDL."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Union as TypingUnion
+from typing import Dict, List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -319,6 +319,7 @@ class Schema:
     )  # File-level options (java_package, go_package, etc.)
     source_file: Optional[str] = None
     source_format: Optional[str] = None
+    source_packages: Dict[str, Optional[str]] = field(default_factory=dict)
 
     def __repr__(self) -> str:
         opts = f", options={len(self.options)}" if self.options else ""

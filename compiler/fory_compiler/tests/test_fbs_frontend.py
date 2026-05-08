@@ -102,6 +102,10 @@ def test_fbs_union_translation():
     assert union.name == "Event"
     assert [f.name for f in union.fields] == ["foo", "bar"]
     assert [f.number for f in union.fields] == [1, 2]
+    assert [(f.location.line, f.location.column) for f in union.fields] == [
+        (3, 19),
+        (3, 24),
+    ]
 
 
 def test_fbs_fory_ref_attributes():

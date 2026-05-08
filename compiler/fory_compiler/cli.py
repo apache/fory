@@ -123,6 +123,7 @@ def resolve_imports(
     imported_enums = []
     imported_messages = []
     imported_unions = []
+    source_packages: Dict[str, Optional[str]] = {str(file_path): schema.package}
 
     for imp in schema.imports:
         # Resolve import path using search paths
@@ -149,6 +150,7 @@ def resolve_imports(
         imported_enums.extend(imported_schema.enums)
         imported_messages.extend(imported_schema.messages)
         imported_unions.extend(imported_schema.unions)
+        source_packages.update(imported_schema.source_packages)
 
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
@@ -161,6 +163,7 @@ def resolve_imports(
         options=schema.options,
         source_file=schema.source_file,
         source_format=schema.source_format,
+        source_packages=source_packages,
     )
 
     cache[file_path] = copy.deepcopy(merged_schema)
@@ -482,6 +485,7 @@ def compile_file(
         package_override: Optional package name override
         import_paths: List of import search paths
     """
+    file_path = file_path.resolve()
     print(f"Compiling {file_path}...")
 
     # Parse and resolve imports
@@ -543,11 +547,25 @@ def compile_file(
 
         generator_class = GENERATORS[lang]
         generator = generator_class(schema, options)
-        files = generator.generate()
+        try:
+            files = generator.generate()
 
-        if grpc:
-            service_files = generator.generate_services()
-            files.extend(service_files)
+            if grpc:
+                service_files = generator.generate_services()
+                files.extend(service_files)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return False
+
+        if lang == "rust":
+            for f in files:
+                target = (lang_output / f.path).resolve()
+                if target.exists() and not is_generated_file(target):
+                    print(
+                        f"Error: refusing to overwrite non-generated Rust file: {target}",
+                        file=sys.stderr,
+                    )
+                    return False
 
         generator.write_files(files)
 
