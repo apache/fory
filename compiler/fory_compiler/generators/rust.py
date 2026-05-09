@@ -55,17 +55,17 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.UINT16: "u16",
         PrimitiveKind.UINT32: "u32",
         PrimitiveKind.UINT64: "u64",
-        PrimitiveKind.FLOAT16: "Float16",
-        PrimitiveKind.BFLOAT16: "BFloat16",
+        PrimitiveKind.FLOAT16: "::fory::Float16",
+        PrimitiveKind.BFLOAT16: "::fory::BFloat16",
         PrimitiveKind.FLOAT32: "f32",
         PrimitiveKind.FLOAT64: "f64",
-        PrimitiveKind.STRING: "String",
-        PrimitiveKind.BYTES: "Vec<u8>",
-        PrimitiveKind.DATE: "chrono::NaiveDate",
-        PrimitiveKind.TIMESTAMP: "chrono::NaiveDateTime",
-        PrimitiveKind.DURATION: "chrono::Duration",
-        PrimitiveKind.DECIMAL: "fory::Decimal",
-        PrimitiveKind.ANY: "Box<dyn Any>",
+        PrimitiveKind.STRING: "::std::string::String",
+        PrimitiveKind.BYTES: "::std::vec::Vec<u8>",
+        PrimitiveKind.DATE: "::chrono::NaiveDate",
+        PrimitiveKind.TIMESTAMP: "::chrono::NaiveDateTime",
+        PrimitiveKind.DURATION: "::chrono::Duration",
+        PrimitiveKind.DECIMAL: "::fory::Decimal",
+        PrimitiveKind.ANY: "::std::boxed::Box<dyn ::std::any::Any>",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -177,13 +177,15 @@ class RustGenerator(BaseGenerator):
     def generate_bytes_impl(self, type_name: str) -> List[str]:
         lines = []
         lines.append(f"impl {type_name} {{")
-        lines.append("    pub fn to_bytes(&self) -> Result<Vec<u8>, fory::Error> {")
+        lines.append(
+            "    pub fn to_bytes(&self) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {"
+        )
         lines.append("        let fory = detail::get_fory();")
         lines.append("        fory.serialize(self)")
         lines.append("    }")
         lines.append("")
         lines.append(
-            f"    pub fn from_bytes(data: &[u8]) -> Result<{type_name}, fory::Error> {{"
+            f"    pub fn from_bytes(data: &[u8]) -> ::std::result::Result<{type_name}, ::fory::Error> {{"
         )
         lines.append("        let fory = detail::get_fory();")
         lines.append("        fory.deserialize(data)")
@@ -194,42 +196,9 @@ class RustGenerator(BaseGenerator):
     def generate_module(self) -> GeneratedFile:
         """Generate a Rust module with all types."""
         lines = []
-        uses: Set[str] = set()
-
-        # Collect uses (including from nested types)
-        uses.add("use fory::Fory")
-        if any(not self.is_imported_type(message) for message in self.schema.messages):
-            uses.add("use fory::ForyStruct")
-        if any(not self.is_imported_type(enum) for enum in self.schema.enums) or any(
-            self.message_has_nested_enum(message)
-            for message in self.schema.messages
-            if not self.is_imported_type(message)
-        ):
-            uses.add("use fory::ForyEnum")
-        if any(not self.is_imported_type(union) for union in self.schema.unions) or any(
-            self.message_has_nested_union(message)
-            for message in self.schema.messages
-            if not self.is_imported_type(message)
-        ):
-            uses.add("use fory::ForyUnion")
-        uses.add("use std::sync::OnceLock")
-
-        for message in self.schema.messages:
-            if self.is_imported_type(message):
-                continue
-            self.collect_message_uses(message, uses)
-        for union in self.schema.unions:
-            if self.is_imported_type(union):
-                continue
-            self.collect_union_uses(union, uses)
 
         # License header
         lines.append(self.get_license_header("//"))
-        lines.append("")
-
-        # Uses
-        for use in sorted(uses):
-            lines.append(f"{use};")
         lines.append("")
 
         # Generate enums (top-level)
@@ -273,15 +242,6 @@ class RustGenerator(BaseGenerator):
             content="\n".join(lines),
         )
 
-    def collect_message_uses(self, message: Message, uses: Set[str]):
-        """Collect uses for a message and its nested types recursively."""
-        for field in message.fields:
-            self.collect_uses_for_field(field, uses)
-        for nested_msg in message.nested_messages:
-            self.collect_message_uses(nested_msg, uses)
-        for nested_union in message.nested_unions:
-            self.collect_union_uses(nested_union, uses)
-
     def message_has_nested_enum(self, message: Message) -> bool:
         if message.nested_enums:
             return True
@@ -297,13 +257,6 @@ class RustGenerator(BaseGenerator):
             self.message_has_nested_union(nested_msg)
             for nested_msg in message.nested_messages
         )
-
-    def collect_union_uses(self, union: Union, uses: Set[str]):
-        """Collect uses for a union and its cases."""
-        for field in union.fields:
-            if self.field_uses_pointer(field):
-                uses.add("use std::sync::Arc")
-            self.collect_uses(field.field_type, uses)
 
     def get_registration_type_name(
         self, name: str, parent_stack: Optional[List[Message]] = None
@@ -364,7 +317,9 @@ class RustGenerator(BaseGenerator):
         type_name = enum.name
 
         # Derive macros
-        lines.append("#[derive(ForyEnum, Debug, Clone, PartialEq, Eq, Hash, Default)]")
+        lines.append(
+            "#[derive(::fory::ForyEnum, Debug, Clone, PartialEq, Eq, Hash, Default)]"
+        )
         lines.append("#[repr(i32)]")
 
         lines.append(f"pub enum {type_name} {{")
@@ -396,7 +351,7 @@ class RustGenerator(BaseGenerator):
         comment = self.format_type_id_comment(union, "//")
         if comment:
             lines.append(comment)
-        derives = ["ForyUnion", "Debug"]
+        derives = ["::fory::ForyUnion", "Debug"]
         if not has_any:
             derives.extend(["Clone", "PartialEq"])
         lines.append(f"#[derive({', '.join(derives)})]")
@@ -411,7 +366,7 @@ class RustGenerator(BaseGenerator):
                 element_optional=field.element_optional,
                 element_ref=field.element_ref,
                 parent_stack=parent_stack,
-                pointer_type="Arc",
+                pointer_type="::std::sync::Arc",
             )
             lines.append(f"    #[fory(id = {field.number})]")
             payload_attr = self.get_payload_field_attr(field)
@@ -428,9 +383,11 @@ class RustGenerator(BaseGenerator):
         if union.fields:
             first_field = union.fields[0]
             first_variant = self.to_pascal_case(first_field.name)
-            lines.append(f"impl Default for {union.name} {{")
+            lines.append(f"impl ::std::default::Default for {union.name} {{")
             lines.append("    fn default() -> Self {")
-            lines.append(f"        Self::{first_variant}(Default::default())")
+            lines.append(
+                f"        Self::{first_variant}(::std::default::Default::default())"
+            )
             lines.append("    }")
             lines.append("}")
             lines.append("")
@@ -454,7 +411,7 @@ class RustGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
         needs_safe_debug = self.message_needs_safe_debug(message)
-        derives = ["ForyStruct"]
+        derives = ["::fory::ForyStruct"]
         if not needs_safe_debug:
             derives.append("Debug")
         if not self.message_has_any(message):
@@ -524,9 +481,9 @@ class RustGenerator(BaseGenerator):
         """Generate a Debug impl that avoids recursive ref expansion."""
         lines: List[str] = []
         type_name = self.to_pascal_case(message.name)
-        lines.append(f"impl std::fmt::Debug for {type_name} {{")
+        lines.append(f"impl ::std::fmt::Debug for {type_name} {{")
         lines.append(
-            "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {"
+            "    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {"
         )
         if not message.fields:
             lines.append(
@@ -760,15 +717,15 @@ class RustGenerator(BaseGenerator):
         element_optional: bool = False,
         element_ref: bool = False,
         parent_stack: Optional[List[Message]] = None,
-        pointer_type: str = "Arc",
+        pointer_type: str = "::std::sync::Arc",
     ) -> str:
         """Generate Rust type string."""
         if isinstance(field_type, PrimitiveType):
             if field_type.kind == PrimitiveKind.ANY:
-                return "Box<dyn Any>"
+                return "::std::boxed::Box<dyn ::std::any::Any>"
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable:
-                return f"Option<{base_type}>"
+                return f"::std::option::Option<{base_type}>"
             return base_type
 
         elif isinstance(field_type, NamedType):
@@ -781,7 +738,7 @@ class RustGenerator(BaseGenerator):
             if ref:
                 type_name = f"{pointer_type}<{type_name}>"
             if nullable:
-                type_name = f"Option<{type_name}>"
+                type_name = f"::std::option::Option<{type_name}>"
             return type_name
 
         elif isinstance(field_type, ListType):
@@ -794,11 +751,11 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
-            list_type = f"Vec<{element_type}>"
+            list_type = f"::std::vec::Vec<{element_type}>"
             if ref:
                 list_type = f"{pointer_type}<{list_type}>"
             if nullable:
-                list_type = f"Option<{list_type}>"
+                list_type = f"::std::option::Option<{list_type}>"
             return list_type
 
         elif isinstance(field_type, ArrayType):
@@ -809,11 +766,11 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
-            array_type = f"Vec<{element_type}>"
+            array_type = f"::std::vec::Vec<{element_type}>"
             if ref:
                 array_type = f"{pointer_type}<{array_type}>"
             if nullable:
-                array_type = f"Option<{array_type}>"
+                array_type = f"::std::option::Option<{array_type}>"
             return array_type
 
         elif isinstance(field_type, MapType):
@@ -831,11 +788,11 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
-            map_type = f"HashMap<{key_type}, {value_type}>"
+            map_type = f"::std::collections::HashMap<{key_type}, {value_type}>"
             if ref:
                 map_type = f"{pointer_type}<{map_type}>"
             if nullable:
-                map_type = f"Option<{map_type}>"
+                map_type = f"::std::option::Option<{map_type}>"
             return map_type
 
         return "()"
@@ -867,60 +824,6 @@ class RustGenerator(BaseGenerator):
 
         return self.to_pascal_case(type_name)
 
-    def collect_uses(self, field_type: FieldType, uses: Set[str]):
-        """Collect required use statements for a field type."""
-        if isinstance(field_type, PrimitiveType):
-            if field_type.kind in (
-                PrimitiveKind.DATE,
-                PrimitiveKind.TIMESTAMP,
-                PrimitiveKind.DURATION,
-            ):
-                uses.add("use chrono")
-            if field_type.kind == PrimitiveKind.FLOAT16:
-                uses.add("use fory::Float16")
-            if field_type.kind == PrimitiveKind.BFLOAT16:
-                uses.add("use fory::BFloat16")
-            if field_type.kind == PrimitiveKind.ANY:
-                uses.add("use std::any::Any")
-
-        elif isinstance(field_type, NamedType):
-            pass  # No additional uses needed
-
-        elif isinstance(field_type, ListType):
-            self.collect_uses(field_type.element_type, uses)
-
-        elif isinstance(field_type, ArrayType):
-            self.collect_uses(field_type.element_type, uses)
-
-        elif isinstance(field_type, MapType):
-            uses.add("use std::collections::HashMap")
-            self.collect_uses(field_type.key_type, uses)
-            self.collect_uses(field_type.value_type, uses)
-
-    def collect_uses_for_field(self, field: Field, uses: Set[str]):
-        """Collect uses for a field, including ref tracking."""
-        if isinstance(field.field_type, ListType) and field.element_ref:
-            ref_options = field.element_ref_options
-            weak_ref = ref_options.get("weak_ref") is True
-        elif isinstance(field.field_type, MapType) and field.field_type.value_ref:
-            ref_options = field.field_type.value_ref_options
-            weak_ref = ref_options.get("weak_ref") is True
-        else:
-            ref_options = field.ref_options
-            weak_ref = ref_options.get("weak_ref") is True
-        pointer_type = self.get_pointer_type(ref_options, weak_ref)
-        if weak_ref and self.field_uses_pointer(field):
-            if pointer_type == "RcWeak":
-                uses.add("use fory::RcWeak")
-            else:
-                uses.add("use fory::ArcWeak")
-        elif self.field_uses_pointer(field):
-            if pointer_type == "Rc":
-                uses.add("use std::rc::Rc")
-            else:
-                uses.add("use std::sync::Arc")
-        self.collect_uses(field.field_type, uses)
-
     def field_uses_pointer(self, field: Field) -> bool:
         if field.ref:
             return True
@@ -934,15 +837,15 @@ class RustGenerator(BaseGenerator):
         """Determine pointer type for ref tracking based on field options."""
         thread_safe = ref_options.get("thread_safe_pointer")
         if thread_safe is False:
-            return "RcWeak" if weak_ref else "Rc"
-        return "ArcWeak" if weak_ref else "Arc"
+            return "::fory::RcWeak" if weak_ref else "::std::rc::Rc"
+        return "::fory::ArcWeak" if weak_ref else "::std::sync::Arc"
 
     def generate_registration(self) -> List[str]:
         """Generate the Fory registration function."""
         lines = []
 
         lines.append(
-            "pub fn register_types(fory: &mut Fory) -> Result<(), fory::Error> {"
+            "pub fn register_types(fory: &mut ::fory::Fory) -> ::std::result::Result<(), ::fory::Error> {"
         )
 
         # Register enums (top-level)
@@ -963,7 +866,7 @@ class RustGenerator(BaseGenerator):
                 continue
             self.generate_message_registration(lines, message, None)
 
-        lines.append("    Ok(())")
+        lines.append("    ::std::result::Result::Ok(())")
         lines.append("}")
 
         return lines
@@ -973,10 +876,12 @@ class RustGenerator(BaseGenerator):
         lines.append("mod detail {")
         lines.append("    use super::*;")
         lines.append("")
-        lines.append("    pub(super) fn get_fory() -> &'static Fory {")
-        lines.append("        static FORY: OnceLock<Fory> = OnceLock::new();")
+        lines.append("    pub(super) fn get_fory() -> &'static ::fory::Fory {")
+        lines.append(
+            "        static FORY: ::std::sync::OnceLock<::fory::Fory> = ::std::sync::OnceLock::new();"
+        )
         lines.append("        FORY.get_or_init(|| {")
-        lines.append("            let mut fory = Fory::builder()")
+        lines.append("            let mut fory = ::fory::Fory::builder()")
         lines.append("                .xlang(true)")
         lines.append("                .track_ref(true)")
         lines.append("                .compatible(true)")

@@ -86,7 +86,7 @@ fn gen_write_variant_elements(
             .filter_map(|(binding, ident)| match binding {
                 FieldBinding::Codec(binding) => Some(binding.write_value_with_mode(
                     quote! { #ident },
-                    quote! { fory_core::RefMode::NullOnly },
+                    quote! { ::fory_core::RefMode::NullOnly },
                     quote! { true },
                 )),
                 FieldBinding::Skipped(_) => None,
@@ -101,7 +101,7 @@ fn gen_write_single_payload(source_fields: &[SourceField<'_>], value: TokenStrea
         Ok(bindings) => match bindings.as_slice() {
             [FieldBinding::Codec(binding)] => binding.write_value_with_mode(
                 value,
-                quote! { fory_core::RefMode::Tracking },
+                quote! { ::fory_core::RefMode::Tracking },
                 quote! { true },
             ),
             [FieldBinding::Skipped(_)] => {
@@ -153,7 +153,7 @@ fn gen_read_variant_elements(
                         let index = serialized_index;
                         serialized_index += 1;
                         let read_value = binding.read_with_mode_expr(
-                            quote! { fory_core::RefMode::NullOnly },
+                            quote! { ::fory_core::RefMode::NullOnly },
                             quote! { true },
                         );
                         read_fields.push(quote! {
@@ -186,7 +186,7 @@ fn gen_read_single_payload(source_fields: &[SourceField<'_>]) -> TokenStream {
     match build_bindings(source_fields) {
         Ok(bindings) => match bindings.as_slice() {
             [FieldBinding::Codec(binding)] => binding
-                .read_with_mode_expr(quote! { fory_core::RefMode::Tracking }, quote! { true }),
+                .read_with_mode_expr(quote! { ::fory_core::RefMode::Tracking }, quote! { true }),
             [FieldBinding::Skipped(_)] => {
                 quote! { compile_error!("skip is not valid for union payload fields") }
             }
@@ -209,25 +209,25 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
         quote! {
             if xlang {
                 if register_by_name {
-                    fory_core::type_id::TypeId::NAMED_UNION as u32
+                    ::fory_core::type_id::TypeId::NAMED_UNION as u32
                 } else {
-                    fory_core::type_id::TypeId::TYPED_UNION as u32
+                    ::fory_core::type_id::TypeId::TYPED_UNION as u32
                 }
             } else {
-                fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+                ::fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
             }
         }
     } else {
         quote! {
             let _ = xlang;
-            fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+            ::fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
         }
     }
 }
 
 pub fn gen_field_fields_info(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        Ok(Vec::new())
+        ::std::result::Result::Ok(::std::vec::Vec::new())
     }
 }
 
@@ -247,8 +247,8 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
                     quote! {
                         (
                             #variant_name.to_string(),
-                            std::any::TypeId::of::<#meta_type_ident>(),
-                            <#meta_type_ident as fory_core::serializer::enum_::NamedEnumVariantMetaTrait>::fory_fields_info(type_resolver)?
+                            ::std::any::TypeId::of::<#meta_type_ident>(),
+                            <#meta_type_ident as ::fory_core::serializer::enum_::NamedEnumVariantMetaTrait>::fory_fields_info(type_resolver)?
                         )
                     }
                 }
@@ -257,8 +257,8 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
                     quote! {
                         (
                             #variant_name.to_string(),
-                            std::any::TypeId::of::<()>(), // Placeholder type ID
-                            Vec::new()
+                            ::std::any::TypeId::of::<()>(), // Placeholder type ID
+                            ::std::vec::Vec::new()
                         )
                     }
                 }
@@ -267,7 +267,7 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
         .collect();
 
     quote! {
-        Ok(vec![
+        ::std::result::Result::Ok(::std::vec![
             #(#variant_info),*
         ])
     }
@@ -334,12 +334,12 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
     quote! {
         struct #meta_type_ident;
 
-        impl fory_core::serializer::enum_::NamedEnumVariantMetaTrait for #meta_type_ident {
+        impl ::fory_core::serializer::enum_::NamedEnumVariantMetaTrait for #meta_type_ident {
             fn fory_get_sorted_field_names() -> &'static [&'static str] {
                 &[#(#field_name_literals),*]
             }
 
-            fn fory_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> Result<Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
+            fn fory_fields_info(type_resolver: &::fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<::fory_core::meta::FieldInfo>, ::fory_core::error::Error> {
                 #fields_info_ts
             }
         }
@@ -348,7 +348,7 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
 
 pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::write::<Self>(self, context, ref_mode, write_type_info)
+        ::fory_core::serializer::enum_::write::<Self>(self, context, ref_mode, write_type_info)
     }
 }
 
@@ -378,7 +378,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                             Self::#ident => {
                                 context.writer.write_var_u32(#tag_value);
                                 // Write null flag for unit variant (no value)
-                                context.writer.write_i8(fory_core::RefFlag::Null as i8);
+                                context.writer.write_i8(::fory_core::RefFlag::Null as i8);
                             }
                         }
                     } else {
@@ -562,7 +562,7 @@ fn rust_compatible_variant_write_branches(
                         Self::#ident { #(#field_idents),* } => {
                             context.writer.write_var_u32((#tag_value << 2) | 0b10);
                             // Write type meta inline using streaming protocol
-                            context.write_type_meta(std::any::TypeId::of::<#meta_type_ident>())?;
+                            context.write_type_meta(::std::any::TypeId::of::<#meta_type_ident>())?;
                             // Write fields same as struct
                             #(#write_fields)*
                         }
@@ -620,29 +620,29 @@ pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
         // Union-compatible with data: write typed/named union type info in xlang mode
         quote! {
             if context.is_xlang() {
-                let rs_type_id = std::any::TypeId::of::<Self>();
-                context.write_any_type_info(fory_core::type_id::UNKNOWN, rs_type_id)?;
+                let rs_type_id = ::std::any::TypeId::of::<Self>();
+                context.write_any_type_info(::fory_core::type_id::UNKNOWN, rs_type_id)?;
                 Ok(())
             } else {
-                fory_core::serializer::enum_::write_type_info::<Self>(context)
+                ::fory_core::serializer::enum_::write_type_info::<Self>(context)
             }
         }
     } else {
         quote! {
-            fory_core::serializer::enum_::write_type_info::<Self>(context)
+            ::fory_core::serializer::enum_::write_type_info::<Self>(context)
         }
     }
 }
 
 pub fn gen_read(_: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::read::<Self>(context, ref_mode, read_type_info)
+        ::fory_core::serializer::enum_::read::<Self>(context, ref_mode, read_type_info)
     }
 }
 
 pub fn gen_read_with_type_info(_: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::read::<Self>(context, ref_mode, false)
+        ::fory_core::serializer::enum_::read::<Self>(context, ref_mode, false)
     }
 }
 
@@ -674,9 +674,9 @@ pub fn gen_static_type_id(data_enum: &DataEnum) -> TokenStream {
         .any(|v| !matches!(v.fields, Fields::Unit));
 
     if is_union_compatible && has_data_variants {
-        quote! { fory_core::TypeId::UNION }
+        quote! { ::fory_core::TypeId::UNION }
     } else {
-        quote! { fory_core::TypeId::ENUM }
+        quote! { ::fory_core::TypeId::ENUM }
     }
 }
 
@@ -854,7 +854,7 @@ fn rust_compatible_variant_read_branches(
                             // Unit variant should have variant_type == 0b0
                             if variant_type != 0b0 {
                                 // Variant type mismatch: skip the data and use default
-                                use fory_core::serializer::skip::skip_enum_variant;
+                                use ::fory_core::serializer::skip::skip_enum_variant;
                                 skip_enum_variant(context, variant_type, &None)?;
                                 return Ok(#default_value);
                             }
@@ -880,7 +880,7 @@ fn rust_compatible_variant_read_branches(
                             // Unnamed variant should have variant_type == 0b1
                             if variant_type != 0b1 {
                                 // Variant type mismatch: skip the data and use default
-                                use fory_core::serializer::skip::skip_enum_variant;
+                                use ::fory_core::serializer::skip::skip_enum_variant;
                                 skip_enum_variant(context, variant_type, &None)?;
                                 return Ok(#default_value);
                             }
@@ -891,7 +891,7 @@ fn rust_compatible_variant_read_branches(
                             #(#read_fields;)*
 
                             // Skip any extra elements
-                            use fory_core::serializer::skip::skip_any_value;
+                            use ::fory_core::serializer::skip::skip_any_value;
                             for _ in #field_count..len {
                                 skip_any_value(context, true)?;
                             }
@@ -931,7 +931,7 @@ fn rust_compatible_variant_read_branches(
                             if variant_type != 0b10 {
                                 // Variant type mismatch: peer didn't write meta for non-named variant
                                 // Skip the data and use default
-                                use fory_core::serializer::skip::skip_enum_variant;
+                                use ::fory_core::serializer::skip::skip_enum_variant;
                                 skip_enum_variant(context, variant_type, &None)?;
                                 return Ok(#default_value);
                             }
@@ -1005,12 +1005,12 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     let unknown_xlang_branch = if is_union_compatible && has_data_variants {
         quote! {
             _ => {
-                use fory_core::serializer::skip::skip_any_value;
+                use ::fory_core::serializer::skip::skip_any_value;
                 skip_any_value(context, true)?;
                 if context.is_compatible() {
                     Ok(#default_variant_construction)
                 } else {
-                    return Err(fory_core::error::Error::unknown_enum("unknown enum value"));
+                    return Err(::fory_core::error::Error::unknown_enum("unknown enum value"));
                 }
             }
         }
@@ -1021,7 +1021,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                 if context.is_compatible() {
                     Ok(#default_variant_construction)
                 } else {
-                    return Err(fory_core::error::Error::unknown_enum("unknown enum value"));
+                    return Err(::fory_core::error::Error::unknown_enum("unknown enum value"));
                 }
             }
         }
@@ -1045,7 +1045,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                     _ => {
                         // Unknown variant in compatible mode: skip the data and use default variant
                         // variant_type: 0b0 = Unit, 0b1 = Unnamed, 0b10 = Named
-                        use fory_core::serializer::skip::skip_enum_variant;
+                        use ::fory_core::serializer::skip::skip_enum_variant;
                         // For named variants, we don't have type_info yet, so pass None
                         // skip_enum_variant will read it from the stream
                         skip_enum_variant(context, variant_type, &None)?;
@@ -1056,7 +1056,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                 let tag = context.reader.read_var_u32()?;
                 match tag {
                     #(#rust_variant_branches)*
-                    _ => return Err(fory_core::error::Error::unknown_enum("unknown enum value")),
+                    _ => return Err(::fory_core::error::Error::unknown_enum("unknown enum value")),
                 }
             }
         }
@@ -1079,19 +1079,19 @@ pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
                 let type_info = context.read_any_type_info()?;
                 let remote_type_id = type_info.get_type_id();
                 if remote_type_id != expected_type_id {
-                    return Err(fory_core::error::Error::type_mismatch(
+                    return Err(::fory_core::error::Error::type_mismatch(
                         expected_type_id as u32,
                         remote_type_id as u32,
                     ));
                 }
                 Ok(())
             } else {
-                fory_core::serializer::enum_::read_type_info::<Self>(context)
+                ::fory_core::serializer::enum_::read_type_info::<Self>(context)
             }
         }
     } else {
         quote! {
-            fory_core::serializer::enum_::read_type_info::<Self>(context)
+            ::fory_core::serializer::enum_::read_type_info::<Self>(context)
         }
     }
 }

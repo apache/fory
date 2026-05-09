@@ -73,7 +73,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 actual_type_id_ts,
                 misc::gen_get_sorted_field_names(&fields),
                 misc::gen_field_fields_info(&source_fields),
-                quote! { Ok(Vec::new()) }, // No variants for structs
+                quote! { ::std::result::Result::Ok(::std::vec::Vec::new()) }, // No variants for structs
                 read::gen_read_compatible(&source_fields),
                 vec![], // No variant meta types for structs
             )
@@ -88,7 +88,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 derive_enum::gen_field_fields_info(s),
                 derive_enum::gen_variants_fields_info(name, s),
                 quote! {
-                    Err(fory_core::Error::not_allowed("`fory_read_compatible` should only be invoked at struct type"
+                    ::std::result::Result::Err(::fory_core::Error::not_allowed("`fory_read_compatible` should only be invoked at struct type"
                 ))
                 },
                 variant_meta_types,
@@ -121,7 +121,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 read::gen_read_data(&source_fields),
                 read::gen_read_type_info(),
                 write::gen_reserved_space(&source_fields),
-                quote! { fory_core::TypeId::STRUCT },
+                quote! { ::fory_core::TypeId::STRUCT },
             )
         }
         syn::Data::Enum(e) => (
@@ -144,14 +144,14 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
     let type_idx = misc::allocate_type_id();
 
     let gen = quote! {
-        use fory_core::ForyDefault as _;
+        use ::fory_core::ForyDefault as _;
 
         // Generate variant meta types for enums (must be at module scope)
         #(#enum_variant_meta_types)*
 
         #default_impl
 
-        impl #impl_generics fory_core::StructSerializer for #name #ty_generics #where_clause {
+        impl #impl_generics ::fory_core::StructSerializer for #name #ty_generics #where_clause {
             #[inline(always)]
             fn fory_type_index() -> u32 {
                 #type_idx
@@ -166,41 +166,41 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 #get_sorted_field_names_ts
             }
 
-            fn fory_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> Result<Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
+            fn fory_fields_info(type_resolver: &::fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<::fory_core::meta::FieldInfo>, ::fory_core::error::Error> {
                 #fields_info_ts
             }
 
-            fn fory_variants_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> Result<Vec<(String, std::any::TypeId, Vec<fory_core::meta::FieldInfo>)>, fory_core::error::Error> {
+            fn fory_variants_fields_info(type_resolver: &::fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<(::std::string::String, ::std::any::TypeId, ::std::vec::Vec<::fory_core::meta::FieldInfo>)>, ::fory_core::error::Error> {
                 #variants_fields_info_ts
             }
 
             #[inline]
-            fn fory_read_compatible(context: &mut fory_core::ReadContext, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_compatible(context: &mut ::fory_core::ReadContext, type_info: ::std::rc::Rc<::fory_core::TypeInfo>) -> ::std::result::Result<Self, ::fory_core::error::Error> {
                 #read_compatible_ts
             }
         }
 
-        impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
+        impl #impl_generics ::fory_core::Serializer for #name #ty_generics #where_clause {
             #[inline(always)]
-            fn fory_get_type_id(type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::error::Error> {
+            fn fory_get_type_id(type_resolver: &::fory_core::resolver::TypeResolver) -> ::std::result::Result<::fory_core::TypeId, ::fory_core::error::Error> {
                 let type_id = type_resolver
-                    .get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
-                    .map_err(fory_core::error::Error::enhance_type_error::<Self>)?;
-                Ok(type_id)
+                    .get_type_id(&::std::any::TypeId::of::<Self>(), #type_idx)
+                    .map_err(::fory_core::error::Error::enhance_type_error::<Self>)?;
+                ::std::result::Result::Ok(type_id)
             }
 
             #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> Result<fory_core::TypeId, fory_core::error::Error> {
+            fn fory_type_id_dyn(&self, type_resolver: &::fory_core::resolver::TypeResolver) -> ::std::result::Result<::fory_core::TypeId, ::fory_core::error::Error> {
                 Self::fory_get_type_id(type_resolver)
             }
 
             #[inline(always)]
-            fn as_any(&self) -> &dyn std::any::Any {
+            fn as_any(&self) -> &dyn ::std::any::Any {
                 self
             }
 
             #[inline(always)]
-            fn fory_static_type_id() -> fory_core::TypeId
+            fn fory_static_type_id() -> ::fory_core::TypeId
             where
                 Self: Sized,
             {
@@ -213,37 +213,37 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             }
 
             #[inline(always)]
-            fn fory_write(&self, context: &mut fory_core::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, _: bool) -> Result<(), fory_core::error::Error> {
+            fn fory_write(&self, context: &mut ::fory_core::WriteContext, ref_mode: ::fory_core::RefMode, write_type_info: bool, _: bool) -> ::std::result::Result<(), ::fory_core::error::Error> {
                 #write_ts
             }
 
             #[inline]
-            fn fory_write_data(&self, context: &mut fory_core::WriteContext) -> Result<(), fory_core::error::Error> {
+            fn fory_write_data(&self, context: &mut ::fory_core::WriteContext) -> ::std::result::Result<(), ::fory_core::error::Error> {
                 #write_data_ts
             }
 
             #[inline(always)]
-            fn fory_write_type_info(context: &mut fory_core::WriteContext) -> Result<(), fory_core::error::Error> {
+            fn fory_write_type_info(context: &mut ::fory_core::WriteContext) -> ::std::result::Result<(), ::fory_core::error::Error> {
                 #write_type_info_ts
             }
 
             #[inline(always)]
-            fn fory_read(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, read_type_info: bool) -> Result<Self, fory_core::error::Error> {
+            fn fory_read(context: &mut ::fory_core::ReadContext, ref_mode: ::fory_core::RefMode, read_type_info: bool) -> ::std::result::Result<Self, ::fory_core::error::Error> {
                 #read_ts
             }
 
             #[inline(always)]
-            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_with_type_info(context: &mut ::fory_core::ReadContext, ref_mode: ::fory_core::RefMode, type_info: ::std::rc::Rc<::fory_core::TypeInfo>) -> ::std::result::Result<Self, ::fory_core::error::Error> {
                 #read_with_type_info_ts
             }
 
             #[inline]
-            fn fory_read_data( context: &mut fory_core::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_data( context: &mut ::fory_core::ReadContext) -> ::std::result::Result<Self, ::fory_core::error::Error> {
                 #read_data_ts
             }
 
             #[inline(always)]
-            fn fory_read_type_info(context: &mut fory_core::ReadContext) -> Result<(), fory_core::error::Error> {
+            fn fory_read_type_info(context: &mut ::fory_core::ReadContext) -> ::std::result::Result<(), ::fory_core::error::Error> {
                 #read_type_info_ts
             }
         }
@@ -292,12 +292,12 @@ fn generate_default_impl(
             if should_generate_default {
                 // User requested Default generation via #[fory(generate_default)]
                 quote! {
-                    impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
+                    impl #impl_generics ::fory_core::ForyDefault for #name #ty_generics #where_clause {
                         fn fory_default() -> Self {
                             #self_construction
                         }
                     }
-                    impl #impl_generics std::default::Default for #name #ty_generics #where_clause {
+                    impl #impl_generics ::std::default::Default for #name #ty_generics #where_clause {
                         fn default() -> Self {
                             Self::fory_default()
                         }
@@ -307,7 +307,7 @@ fn generate_default_impl(
                 // Default case: only generate ForyDefault, not Default
                 // This avoids conflicts with existing Default implementations
                 quote! {
-                   impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
+                   impl #impl_generics ::fory_core::ForyDefault for #name #ty_generics #where_clause {
                         fn fory_default() -> Self {
                             #self_construction
                         }
@@ -332,7 +332,7 @@ fn generate_default_impl(
                     syn::Fields::Unnamed(fields) => {
                         let defaults = fields.unnamed.iter().map(|f| {
                             let ty = &f.ty;
-                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
+                            quote! { <#ty as ::fory_core::ForyDefault>::fory_default() }
                         });
                         quote! { (#(#defaults),*) }
                     }
@@ -340,7 +340,7 @@ fn generate_default_impl(
                         let field_inits = fields.named.iter().map(|f| {
                             let ident = &f.ident;
                             let ty = &f.ty;
-                            quote! { #ident: <#ty as fory_core::ForyDefault>::fory_default() }
+                            quote! { #ident: <#ty as ::fory_core::ForyDefault>::fory_default() }
                         });
                         quote! { { #(#field_inits),* } }
                     }
@@ -350,7 +350,7 @@ fn generate_default_impl(
                     // User has #[derive(Default)] or #[default] attribute
                     // Only generate ForyDefault that delegates to Default
                     quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
+                        impl #impl_generics ::fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::default()
                             }
@@ -359,13 +359,13 @@ fn generate_default_impl(
                 } else if should_generate_default {
                     // User requested Default generation via #[fory(generate_default)]
                     quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
+                        impl #impl_generics ::fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }
                         }
 
-                        impl #impl_generics std::default::Default for #name #ty_generics #where_clause {
+                        impl #impl_generics ::std::default::Default for #name #ty_generics #where_clause {
                             fn default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }
@@ -374,7 +374,7 @@ fn generate_default_impl(
                 } else {
                     // Default case: only generate ForyDefault, not Default
                     quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
+                        impl #impl_generics ::fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }

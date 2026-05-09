@@ -777,3 +777,40 @@ def test_go_generator_distinguishes_bytes_from_uint8_lists():
     go_output = render_files(generate_files(schema, GoGenerator))
     assert 'Payload []byte `fory:"id=1,type=bytes"`' in go_output
     assert 'Values []uint8 `fory:"id=2"`' in go_output
+
+
+def test_rust_generated_code_uses_absolute_paths():
+    schema = parse_fdl(
+        dedent(
+            """
+            package foo;
+
+            message String {
+                string value = 1;
+                list<string> items = 2;
+                map<string, string> labels = 3;
+                any payload = 4;
+                ref(weak=true) String parent = 5;
+            }
+
+            union Fory {
+                String text = 1;
+            }
+            """
+        )
+    )
+    rust_output = render_files(generate_files(schema, RustGenerator))
+    assert "use fory::" not in rust_output
+    assert "use std::" not in rust_output
+    assert "#[derive(::fory::ForyStruct" in rust_output
+    assert "#[derive(::fory::ForyUnion" in rust_output
+    assert "pub value: ::std::string::String," in rust_output
+    assert "pub items: ::std::vec::Vec<::std::string::String>," in rust_output
+    assert (
+        "pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,"
+        in rust_output
+    )
+    assert "pub payload: ::std::boxed::Box<dyn ::std::any::Any>," in rust_output
+    assert "pub parent: ::fory::ArcWeak<String>," in rust_output
+    assert "pub fn register_types(fory: &mut ::fory::Fory)" in rust_output
+    assert "static FORY: ::std::sync::OnceLock<::fory::Fory>" in rust_output

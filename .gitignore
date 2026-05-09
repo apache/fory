@@ -7,7 +7,7 @@ bazel-*
 **/.bazel_user_root/
 .whl
 python/.cache
-python/pyfory/__pycache__/
+__pycache__/
 python/dist
 python/build
 python/pyfory.egg-info

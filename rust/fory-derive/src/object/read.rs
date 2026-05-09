@@ -80,7 +80,7 @@ pub(crate) fn assign_value(source_fields: &[SourceField<'_>]) -> Vec<TokenStream
 
 pub fn gen_read_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::read_type_info_fast::<Self>(context)
+        ::fory_core::serializer::struct_::read_type_info_fast::<Self>(context)
     }
 }
 
@@ -104,16 +104,16 @@ fn get_source_fields_loop_ts(source_fields: &[SourceField<'_>]) -> TokenStream {
                     );
                     let private_ident = &binding.private_ident;
                     quote! {
-                        fory_core::serializer::struct_::struct_before_read_field(
+                        ::fory_core::serializer::struct_::struct_before_read_field(
                             #struct_name_lit,
                             #field_name_lit,
                             context,
                         );
                         #base
-                        fory_core::serializer::struct_::struct_after_read_field(
+                        ::fory_core::serializer::struct_::struct_after_read_field(
                             #struct_name_lit,
                             #field_name_lit,
-                            (&#private_ident) as &dyn std::any::Any,
+                            (&#private_ident) as &dyn ::std::any::Any,
                             context,
                         );
                     }
@@ -168,9 +168,9 @@ pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
         // Read and check version hash when class version checking is enabled
         if context.is_check_struct_version() {
             let read_version = context.reader.read_i32()?;
-            let type_name = std::any::type_name::<Self>();
+            let type_name = ::std::any::type_name::<Self>();
             let local_version: i32 = #version_hash_ts;
-            fory_core::meta::TypeMeta::check_struct_version(read_version, local_version, type_name)?;
+            ::fory_core::meta::TypeMeta::check_struct_version(read_version, local_version, type_name)?;
         }
         #read_fields
         #self_construction
@@ -182,37 +182,37 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
     // When the struct has generics (e.g., LeaderId<C>), using `Self` ensures the full
     // type with generics is used in the impl block.
     quote! {
-        let ref_flag = if ref_mode != fory_core::RefMode::None {
+        let ref_flag = if ref_mode != ::fory_core::RefMode::None {
             context.reader.read_i8()?
         } else {
-            fory_core::RefFlag::NotNullValue as i8
+            ::fory_core::RefFlag::NotNullValue as i8
         };
-        if ref_flag == (fory_core::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::RefFlag::RefValue as i8) {
+        if ref_flag == (::fory_core::RefFlag::NotNullValue as i8) || ref_flag == (::fory_core::RefFlag::RefValue as i8) {
             // For RefValueFlag with Tracking mode, reserve a ref_id to participate in ref tracking.
             // This is needed for xlang compatibility where all objects (not just Rc/Arc)
             // participate in reference tracking when ref tracking is enabled.
             // Only reserve for Tracking mode, not NullOnly mode.
-            if ref_flag == (fory_core::RefFlag::RefValue as i8) && ref_mode == fory_core::RefMode::Tracking {
+            if ref_flag == (::fory_core::RefFlag::RefValue as i8) && ref_mode == ::fory_core::RefMode::Tracking {
                 context.ref_reader.reserve_ref_id();
             }
             if context.is_compatible() {
                 let type_info = if read_type_info {
                     context.read_any_type_info()?
                 } else {
-                    let rs_type_id = std::any::TypeId::of::<Self>();
+                    let rs_type_id = ::std::any::TypeId::of::<Self>();
                     context.get_type_info(&rs_type_id)?
                 };
-                <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
+                <Self as ::fory_core::StructSerializer>::fory_read_compatible(context, type_info)
             } else {
                 if read_type_info {
-                    <Self as fory_core::Serializer>::fory_read_type_info(context)?;
+                    <Self as ::fory_core::Serializer>::fory_read_type_info(context)?;
                 }
-                <Self as fory_core::Serializer>::fory_read_data(context)
+                <Self as ::fory_core::Serializer>::fory_read_data(context)
             }
-        } else if ref_flag == (fory_core::RefFlag::Null as i8) {
-            Ok(<Self as fory_core::ForyDefault>::fory_default())
+        } else if ref_flag == (::fory_core::RefFlag::Null as i8) {
+            Ok(<Self as ::fory_core::ForyDefault>::fory_default())
         } else {
-            Err(fory_core::error::Error::invalid_ref(format!("Unknown ref flag, value:{ref_flag}")))
+            Err(::fory_core::error::Error::invalid_ref(format!("Unknown ref flag, value:{ref_flag}")))
         }
     }
 }
@@ -225,21 +225,21 @@ pub fn gen_read_with_type_info() -> TokenStream {
     // ) -> Result<Self, Error>
     // Note: We use `Self` instead of `#struct_ident` to correctly handle generic types.
     quote! {
-        let ref_flag = if ref_mode != fory_core::RefMode::None {
+        let ref_flag = if ref_mode != ::fory_core::RefMode::None {
             context.reader.read_i8()?
         } else {
-            fory_core::RefFlag::NotNullValue as i8
+            ::fory_core::RefFlag::NotNullValue as i8
         };
-        if ref_flag == (fory_core::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::RefFlag::RefValue as i8) {
+        if ref_flag == (::fory_core::RefFlag::NotNullValue as i8) || ref_flag == (::fory_core::RefFlag::RefValue as i8) {
             if context.is_compatible() {
-                <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
+                <Self as ::fory_core::StructSerializer>::fory_read_compatible(context, type_info)
             } else {
-                <Self as fory_core::Serializer>::fory_read_data(context)
+                <Self as ::fory_core::Serializer>::fory_read_data(context)
             }
-        } else if ref_flag == (fory_core::RefFlag::Null as i8) {
-            Ok(<Self as fory_core::ForyDefault>::fory_default())
+        } else if ref_flag == (::fory_core::RefFlag::Null as i8) {
+            Ok(<Self as ::fory_core::ForyDefault>::fory_default())
         } else {
-            Err(fory_core::error::Error::invalid_ref(format!("Unknown ref flag, value:{ref_flag}")))
+            Err(::fory_core::error::Error::invalid_ref(format!("Unknown ref flag, value:{ref_flag}")))
         }
     }
 }
@@ -291,19 +291,19 @@ pub(crate) fn gen_read_compatible_with_construction(
         quote! {
             _ => {
                 let field_type = &_field.field_type;
-                let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
+                let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
                     field_type.type_id,
                     field_type.nullable,
                 );
                 let field_name = _field.field_name.as_str();
-                fory_core::serializer::struct_::struct_before_read_field(
+                ::fory_core::serializer::struct_::struct_before_read_field(
                     #struct_name_lit,
                     field_name,
                     context,
                 );
-                fory_core::serializer::skip::skip_field_value(context, &field_type, read_ref_flag)?;
-                let placeholder: &dyn std::any::Any = &();
-                fory_core::serializer::struct_::struct_after_read_field(
+                ::fory_core::serializer::skip::skip_field_value(context, &field_type, read_ref_flag)?;
+                let placeholder: &dyn ::std::any::Any = &();
+                ::fory_core::serializer::struct_::struct_after_read_field(
                     #struct_name_lit,
                     field_name,
                     placeholder,
@@ -315,11 +315,11 @@ pub(crate) fn gen_read_compatible_with_construction(
         quote! {
             _ => {
                 let field_type = &_field.field_type;
-                let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
+                let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
                     field_type.type_id,
                     field_type.nullable,
                 );
-                fory_core::serializer::skip::skip_field_value(context, field_type, read_ref_flag)?;
+                ::fory_core::serializer::skip::skip_field_value(context, field_type, read_ref_flag)?;
             }
         }
     };
@@ -352,21 +352,21 @@ pub(crate) fn gen_read_compatible_with_construction(
         quote! {
             let local_variant_type_info = context
                 .get_type_resolver()
-                .get_type_info(&std::any::TypeId::of::<#meta_type_ident>())
-                .map_err(|_| fory_core::Error::type_error(
+                .get_type_info(&::std::any::TypeId::of::<#meta_type_ident>())
+                .map_err(|_| ::fory_core::Error::type_error(
                     concat!("Local enum variant metadata not found for ", #variant_name_lit)
                 ))?;
             let local_variant_type_meta = local_variant_type_info.get_type_meta();
             let local_fields = local_variant_type_meta.get_field_infos();
 
-            let field_index_by_name: std::collections::HashMap<_, _> = local_fields
+            let field_index_by_name: ::std::collections::HashMap<_, _> = local_fields
                 .iter()
                 .enumerate()
                 .filter(|(_, f)| !f.field_name.is_empty())
                 .map(|(i, f)| (f.field_name.clone(), (i, f)))
                 .collect();
 
-            let field_index_by_id: std::collections::HashMap<_, _> = local_fields
+            let field_index_by_id: ::std::collections::HashMap<_, _> = local_fields
                 .iter()
                 .enumerate()
                 .filter(|(_, f)| f.field_id >= 0)
@@ -378,7 +378,7 @@ pub(crate) fn gen_read_compatible_with_construction(
                     field_index_by_id.get(&field.field_id).copied()
                 } else {
                     let snake_case_name =
-                        fory_core::util::to_snake_case(&field.field_name);
+                        ::fory_core::util::to_snake_case(&field.field_name);
                     field_index_by_name.get(&snake_case_name).copied()
                 };
 
@@ -414,14 +414,14 @@ pub(crate) fn gen_read_compatible_with_construction(
 
     quote! {
         let meta = context.get_type_resolver().get_type_meta_by_index_ref(
-            &std::any::TypeId::of::<Self>(),
-            <Self as fory_core::StructSerializer>::fory_type_index(),
+            &::std::any::TypeId::of::<Self>(),
+            <Self as ::fory_core::StructSerializer>::fory_type_index(),
         )?;
         let local_type_hash = meta.get_hash();
         let remote_meta = type_info.get_type_meta_ref();
         let remote_type_hash = remote_meta.get_hash();
         if remote_type_hash == local_type_hash {
-            return <Self as fory_core::Serializer>::fory_read_data(context);
+            return <Self as ::fory_core::Serializer>::fory_read_data(context);
         }
         #fields_binding
         #(#declare_ts)*

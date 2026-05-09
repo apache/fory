@@ -211,8 +211,30 @@ type FieldGroups = (
     FieldGroup,
 );
 
+/// Extract the inner generic arguments from a type name while ignoring path qualifiers.
+///
+/// e.g., both `Vec<T>` and `::std::vec::Vec<T>` return `T` when `outer` is `Vec`.
+fn extract_generic_inner<'a>(s: &'a str, outer: &str) -> Option<&'a str> {
+    let generic_start = s.find('<')?;
+    let owner = s[..generic_start]
+        .rsplit("::")
+        .next()
+        .unwrap_or(&s[..generic_start]);
+    if owner != outer {
+        return None;
+    }
+    s[generic_start + 1..].strip_suffix('>')
+}
+
+/// Return the final path segment so absolute generated paths match the same runtime type names.
+///
+/// e.g., `::fory::Float16` and `Float16` both normalize to `Float16`.
+fn unqualified_type_name(ty: &str) -> &str {
+    ty.rsplit("::").next().unwrap_or(ty)
+}
+
 fn extract_option_inner(s: &str) -> Option<&str> {
-    s.strip_prefix("Option<")?.strip_suffix(">")
+    extract_generic_inner(s, "Option")
 }
 
 const PRIMITIVE_TYPE_NAMES: [&str; 17] = [
@@ -220,8 +242,12 @@ const PRIMITIVE_TYPE_NAMES: [&str; 17] = [
     "f64", "u8", "u16", "u32", "u64", "u128",
 ];
 
+fn is_primitive_type_name(ty: &str) -> bool {
+    PRIMITIVE_TYPE_NAMES.contains(&unqualified_type_name(ty))
+}
+
 fn get_primitive_type_id(ty: &str) -> u32 {
-    match ty {
+    match unqualified_type_name(ty) {
         "bool" => TypeId::BOOL as u32,
         "i8" => TypeId::INT8 as u32,
         "i16" => TypeId::INT16 as u32,
@@ -311,15 +337,23 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
     }
 
     // Check collection types
-    if ty.starts_with("Vec<") || ty.starts_with("VecDeque<") || ty.starts_with("LinkedList<") {
+    if extract_generic_inner(ty, "Vec").is_some()
+        || extract_generic_inner(ty, "VecDeque").is_some()
+        || extract_generic_inner(ty, "LinkedList").is_some()
+    {
         return TypeId::LIST as u32;
     }
 
-    if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") || ty.starts_with("BinaryHeap<") {
+    if extract_generic_inner(ty, "HashSet").is_some()
+        || extract_generic_inner(ty, "BTreeSet").is_some()
+        || extract_generic_inner(ty, "BinaryHeap").is_some()
+    {
         return TypeId::SET as u32;
     }
 
-    if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
+    if extract_generic_inner(ty, "HashMap").is_some()
+        || extract_generic_inner(ty, "BTreeMap").is_some()
+    {
         return TypeId::MAP as u32;
     }
 
@@ -493,7 +527,7 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
 
         // handle Option<Primitive> specially
         if let Some(inner) = extract_option_inner(&ty) {
-            if PRIMITIVE_TYPE_NAMES.contains(&inner) {
+            if is_primitive_type_name(inner) {
                 // Get base type ID and adjust for encoding attributes
                 let base_type_id = get_primitive_type_id(inner);
                 let type_id = adjust_type_id_for_encoding(base_type_id, &meta);
@@ -501,7 +535,7 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             } else {
                 group_field(ident, sort_key, inner, false);
             }
-        } else if PRIMITIVE_TYPE_NAMES.contains(&ty.as_str()) {
+        } else if is_primitive_type_name(&ty) {
             group_field(ident, sort_key, &ty, true);
         } else {
             group_field(ident, sort_key, &ty, false);
@@ -644,8 +678,8 @@ fn adjust_type_id_for_encoding(base_type_id: u32, meta: &super::field_meta::Fory
 }
 
 fn array_type_id_for_vec_name(ty: &str) -> Option<u32> {
-    let elem = ty.strip_prefix("Vec<")?.strip_suffix('>')?;
-    match elem {
+    let elem = extract_generic_inner(ty, "Vec")?;
+    match unqualified_type_name(elem) {
         "bool" => Some(TypeId::BOOL_ARRAY as u32),
         "i8" => Some(TypeId::INT8_ARRAY as u32),
         "i16" => Some(TypeId::INT16_ARRAY as u32),
@@ -873,10 +907,10 @@ pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     quote! {
         {
             const VERSION_HASH: i32 = #version_hash;
-            if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
+            if ::fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
                 println!(
                     "[rust][fory-debug] struct {} version fingerprint=\"{}\" hash={}",
-                    std::any::type_name::<Self>(),
+                    ::std::any::type_name::<Self>(),
                     #fingerprint,
                     VERSION_HASH
                 );
