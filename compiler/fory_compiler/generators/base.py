@@ -235,7 +235,7 @@ class BaseGenerator(ABC):
                 return f"{field_type.encoding_modifier} {field_type.kind.value}"
             return field_type.kind.value
         if isinstance(field_type, NamedType):
-            return field_type.name
+            return field_type.display_name or field_type.name
         if isinstance(field_type, ListType):
             element = self.format_idl_type(field_type.element_type)
             return f"list<{element}>"
