@@ -293,6 +293,7 @@ export default class TypeResolver {
     const serializer = this.generateReadSerializer(typeInfo);
     return this.registerSerializer(typeInfo, {
       getHash: serializer.getHash,
+      getTypeInfo: serializer.getTypeInfo,
       read: serializer.read,
       readNoRef: serializer.readNoRef,
       readRef: serializer.readRef,
