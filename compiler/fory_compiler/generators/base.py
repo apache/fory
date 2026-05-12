@@ -30,6 +30,8 @@ from fory_compiler.ir.ast import (
     ListType,
     ArrayType,
     MapType,
+    RpcMethod,
+    Service,
 )
 from fory_compiler.ir.types import ARRAY_ELEMENT_KINDS
 
@@ -84,6 +86,18 @@ class BaseGenerator(ABC):
         if they support service generation.
         """
         return []
+
+    def get_grpc_service_name(self, service: Service) -> str:
+        """Get the gRPC service name."""
+        # e.g. for service `Greeter` defined in package `demo.greeter`, return `demo.greeter.Greeter`.
+        if self.package:
+            return f"{self.package}.{service.name}"
+        return service.name
+
+    def get_grpc_method_path(self, service: Service, method: RpcMethod) -> str:
+        """Get the gRPC method path."""
+        # e.g. for method `sayHello` defined in service `demo.greeter.Greeter, return `/demo.greeter.Greeter/SayHello`.
+        return f"/{self.get_grpc_service_name(service)}/{method.name}"
 
     @abstractmethod
     def generate_type(self, field_type: FieldType, nullable: bool = False) -> str:
