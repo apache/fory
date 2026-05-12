@@ -241,6 +241,18 @@ describe("typemeta", () => {
     expect(reader.deserialize(localBytes)).toEqual({ value: 123 });
   });
 
+  test("regenerated read serializers keep getTypeInfo", () => {
+    const fory = new Fory({ compatible: true });
+    const serializer = (fory as any).typeResolver.regenerateReadSerializer(
+      Type.struct({ namespace: "example", typeName: "repro_struct" }, {
+        value: Type.int32(),
+      }),
+    );
+
+    expect(typeof serializer.getTypeInfo).toBe("function");
+    expect(serializer.getTypeInfo().named).toBe("example$repro_struct");
+  });
+
   test("caches regenerated compatible readers for alternating nested schemas", () => {
     const stringWriterFory = new Fory({ compatible: true });
     const boolWriterFory = new Fory({ compatible: true });
