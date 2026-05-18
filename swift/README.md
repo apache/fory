@@ -33,7 +33,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", from: "0.17.0")
+    .package(url: "https://github.com/apache/fory.git", from: "1.0.0")
 ],
 targets: [
     .target(
