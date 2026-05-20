@@ -122,6 +122,27 @@ message Container {
 }
 ```
 
+### Services
+
+FlatBuffers `rpc_service` definitions are translated to Fory services. With
+`--grpc`, the compiler emits Java and Python gRPC service companions that use
+Fory serialization for request and response payloads.
+
+```fbs
+rpc_service SearchService {
+  Lookup(SearchRequest):SearchResponse;
+  StreamLookup(SearchRequest):SearchResponse (streaming: "server");
+}
+```
+
+```bash
+foryc api.fbs --java_out=./generated/java --python_out=./generated/python --grpc
+```
+
+Generated service code imports grpc APIs, so applications must provide grpc-java
+or `grpcio` dependencies when they compile or run those files. The Fory runtime
+packages do not add gRPC as a hard dependency.
+
 ### Defaults and Metadata
 
 - FlatBuffers default values are parsed but not applied as Fory runtime defaults.

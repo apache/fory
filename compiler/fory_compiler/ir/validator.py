@@ -747,11 +747,11 @@ class SchemaValidator:
                     resolved = self.schema.get_type(named_type.name)
                     if resolved is None:
                         continue
-                    if not isinstance(resolved, Message):
-                        kind = "enum" if isinstance(resolved, Enum) else "union"
+                    if not isinstance(resolved, (Message, Union)):
+                        kind = "an enum" if isinstance(resolved, Enum) else "unknown"
                         self._error(
                             f"RPC type '{named_type.name}' in service {service.name}"
-                            f" must be a message, not a {kind}",
+                            f" must be a message or union, not {kind}",
                             named_type.location,
                         )
 

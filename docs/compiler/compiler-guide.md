@@ -72,6 +72,7 @@ Compile options:
 | `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
 | `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
 | `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
+| `--grpc`                              | Generate gRPC service companions for Java and Python  | `false`       |
 
 Schema-level file options are supported for language-specific generation choices.
 For `go_nested_type_style` and `swift_namespace_style`, the CLI flag overrides
@@ -145,6 +146,18 @@ foryc user.fdl order.fdl product.fdl --output ./generated
 ```bash
 foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python
 ```
+
+**Generate Java and Python gRPC service companions:**
+
+```bash
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --grpc
+```
+
+The generated gRPC service code uses Fory to serialize request and response
+payloads. Java output imports grpc-java APIs and Python output imports `grpc`;
+applications that compile or run those generated service files must provide
+their own gRPC dependencies. Fory's Java and Python runtime packages do not add a
+hard gRPC dependency for this feature.
 
 **Use import search paths:**
 

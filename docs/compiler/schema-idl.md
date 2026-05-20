@@ -34,6 +34,7 @@ An Fory IDL file typically consists of:
 2. Optional file-level options
 3. Optional import statements
 4. Type definitions (enums, messages, and unions)
+5. Optional service definitions
 
 ```protobuf
 // Optional package declaration
@@ -48,8 +49,14 @@ import "common/types.fdl";
 // Type definitions
 enum Color [id=100] { ... }
 message User [id=101] { ... }
-message Order [id=102] { ... }
-union Event [id=103] { ... }
+message OrderRequest [id=102] { ... }
+message Order [id=103] { ... }
+union Event [id=104] { ... }
+
+// Service definitions
+service OrderService {
+    rpc GetOrder (OrderRequest) returns (Order);
+}
 ```
 
 ## Comments
@@ -876,6 +883,62 @@ union_def  := 'union' IDENTIFIER [type_options] '{' union_field* '}'
 union_field := field_type IDENTIFIER '=' INTEGER ';'
 ```
 
+## Service Definition
+
+Services define RPC method contracts in Fory IDL. They are optional: schemas
+with services still generate the normal data model types, and gRPC service code
+is generated only when the compiler is run with `--grpc` for Java or Python.
+
+```protobuf
+message GetPetRequest [id=200] {
+    string name = 1;
+}
+
+message PetRecord [id=201] {
+    string name = 1;
+    Animal animal = 2;
+}
+
+service PetDirectory {
+    rpc GetPet (GetPetRequest) returns (PetRecord);
+    rpc Classify (Animal) returns (Animal);
+}
+```
+
+The first method uses message request and response types. The second method uses
+a direct union request and response type, which is supported in Fory IDL.
+
+### Streaming RPCs
+
+Use `stream` before the request type, the response type, or both:
+
+```protobuf
+service PetDirectory {
+    rpc GetPet (GetPetRequest) returns (PetRecord);              // unary
+    rpc WatchPets (GetPetRequest) returns (stream PetRecord);    // server streaming
+    rpc ImportPets (stream PetRecord) returns (PetRecord);       // client streaming
+    rpc ChatPets (stream Animal) returns (stream Animal);        // bidirectional streaming
+}
+```
+
+### RPC Type Rules
+
+- Request and response types must reference named message or union types.
+- Enum, primitive, collection, map, and array types are not valid direct RPC
+  request or response types. Wrap those values in a message when they are part
+  of a service contract.
+- The generated Java and Python gRPC companions use Fory serialization for each
+  RPC payload. Applications that compile or run those companions provide their
+  own grpc-java or `grpcio` dependency.
+
+**Grammar:**
+
+```
+service_def := 'service' IDENTIFIER '{' rpc_method* '}'
+rpc_method  := 'rpc' IDENTIFIER '(' ['stream'] named_type ')'
+               'returns' '(' ['stream'] named_type ')' ';'
+```
+
 ## Field Definition
 
 Fields define the properties of a message.
@@ -1570,7 +1633,7 @@ For protobuf-specific extension options and `(fory).` syntax, see
 ## Grammar Summary
 
 ```
-file         := [package_decl] file_option* import_decl* type_def*
+file         := [package_decl] file_option* import_decl* definition*
 
 package_decl := 'package' package_name ['alias' package_name] ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
@@ -1580,6 +1643,7 @@ option_name  := IDENTIFIER
 
 import_decl  := 'import' STRING ';'
 
+definition   := type_def | service_def
 type_def     := enum_def | message_def | union_def
 
 enum_def     := 'enum' IDENTIFIER [type_options] '{' enum_body '}'
@@ -1593,6 +1657,10 @@ field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER [field_options] ';
 
 union_def    := 'union' IDENTIFIER [type_options] '{' union_field* '}'
 union_field  := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';'
+
+service_def  := 'service' IDENTIFIER '{' rpc_method* '}'
+rpc_method   := 'rpc' IDENTIFIER '(' ['stream'] named_type ')'
+                'returns' '(' ['stream'] named_type ')' ';'
 option_value := 'true' | 'false' | IDENTIFIER | INTEGER | STRING
 
 reserved_stmt := 'reserved' reserved_items ';'

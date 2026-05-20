@@ -497,7 +497,7 @@ jobs:
         run: |
           cd integration_tests/idl_tests/swift/idl_package
           swift test --disable-automatic-resolution --skip-build
-      - name: Install Java artifacts for IDL tests
+      - name: Install Java artifacts for gRPC tests
         run: |
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
@@ -683,6 +683,35 @@ jobs:
           python-version: 3.8
       - name: Run CI
         run: python ./ci/run_ci.py java --version integration_tests
+
+  grpc_tests:
+    name: Java/Python gRPC Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Run Java/Python gRPC Tests
+        run: ./integration_tests/grpc_tests/run_tests.sh
 
   javascript:
     name: JavaScript CI

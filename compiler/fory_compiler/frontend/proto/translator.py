@@ -420,18 +420,24 @@ class ProtoTranslator:
         _, options = self._translate_type_options(proto_method.options)
         return RpcMethod(
             name=proto_method.name,
-            request_type=NamedType(
-                name=proto_method.request_type,
-                location=self._location(proto_method.line, proto_method.column),
+            request_type=self._translate_rpc_type(
+                proto_method.request_type, proto_method
             ),
-            response_type=NamedType(
-                name=proto_method.response_type,
-                location=self._location(proto_method.line, proto_method.column),
+            response_type=self._translate_rpc_type(
+                proto_method.response_type, proto_method
             ),
             client_streaming=proto_method.client_streaming,
             server_streaming=proto_method.server_streaming,
             options=options,
             line=proto_method.line,
             column=proto_method.column,
+            location=self._location(proto_method.line, proto_method.column),
+        )
+
+    def _translate_rpc_type(
+        self, type_name: str, proto_method: ProtoRpcMethod
+    ) -> NamedType:
+        return NamedType(
+            name=type_name,
             location=self._location(proto_method.line, proto_method.column),
         )

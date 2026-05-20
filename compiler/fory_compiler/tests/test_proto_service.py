@@ -105,6 +105,73 @@ def test_streaming_rpc():
     assert m3.server_streaming is True
 
 
+def test_fully_qualified_rpc_types_pass_validation():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    message Request {}
+    message Response {}
+
+    service Greeter {
+        rpc SayHello (.demo.Request) returns (.demo.Response);
+    }
+    """
+    schema = parse_and_translate(source)
+    method = schema.services[0].methods[0]
+    assert method.request_type.name == ".demo.Request"
+    assert method.response_type.name == ".demo.Response"
+
+    validator = SchemaValidator(schema)
+    assert validator.validate(), [issue.message for issue in validator.errors]
+
+
+def test_absolute_rpc_type_prefers_package_qualified_type_over_nested_shadow():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    message demo {
+        message Request {}
+    }
+    message Request {}
+    message Response {}
+
+    service Greeter {
+        rpc SayHello (.demo.Request) returns (.demo.Response);
+    }
+    """
+    schema = parse_and_translate(source)
+    method = schema.services[0].methods[0]
+    assert schema.resolve_type_name(method.request_type.name) == "Request"
+
+    validator = SchemaValidator(schema)
+    assert validator.validate(), [issue.message for issue in validator.errors]
+
+
+def test_wrong_package_qualified_rpc_type_fails_validation():
+    source = """
+    syntax = "proto3";
+    package demo;
+
+    message other {
+        message Request {}
+    }
+    message Request {}
+    message Response {}
+
+    service Greeter {
+        rpc SayHello (.other.Request) returns (.demo.Response);
+    }
+    """
+    schema = parse_and_translate(source)
+    validator = SchemaValidator(schema)
+    assert not validator.validate()
+    assert any(
+        "Unknown type '.other.Request'" in err.message for err in validator.errors
+    )
+
+
 def test_service_options():
     source = """
     syntax = "proto3";

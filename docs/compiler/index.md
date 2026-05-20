@@ -22,7 +22,9 @@ license: |
 Fory IDL is a schema definition language for Apache Fory that enables type-safe
 cross-language serialization. Define your data structures once and generate
 native data structure code for Java, Python, Go, Rust, C++, C#, Swift,
-JavaScript, Dart, Scala, and Kotlin.
+JavaScript, Dart, Scala, and Kotlin. Fory IDL can also describe RPC services;
+for Java and Python, the compiler can generate gRPC service companions that use
+Fory serialization for request and response payloads.
 
 ## Example Schema
 
@@ -70,7 +72,31 @@ union Animal [id=106] {
     Dog dog = 1;
     Cat cat = 2;
 }
+
+message LookupRequest [id=107] {
+    string name = 1;
+}
+
+message LookupResponse [id=108] {
+    Animal animal = 1;
+}
+
+service AnimalService {
+    rpc Lookup (LookupRequest) returns (LookupResponse);
+    rpc Classify (Animal) returns (Animal);
+}
 ```
+
+Generate Java and Python models plus gRPC service companions with:
+
+```bash
+foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --grpc
+```
+
+The generated service code uses normal gRPC APIs, but request and response
+objects are serialized with Fory. Applications provide their own grpc-java or
+`grpcio` dependencies; Fory runtime packages do not add gRPC as a hard
+dependency.
 
 ## Why Fory IDL?
 
@@ -170,14 +196,15 @@ data = bytes(person) # or `person.to_bytes()`
 
 ## Documentation
 
-| Document                                        | Description                                       |
-| ----------------------------------------------- | ------------------------------------------------- |
-| [Fory IDL Syntax](schema-idl.md)                | Complete language syntax and grammar              |
-| [Type System](schema-idl.md#type-system)        | Primitive types, collections, and type rules      |
-| [Compiler Guide](compiler-guide.md)             | CLI options and build integration                 |
-| [Generated Code](generated-code.md)             | Output format for each target language            |
-| [Protocol Buffers IDL Support](protobuf-idl.md) | Protobuf mapping rules and adoption guidance      |
-| [FlatBuffers IDL Support](flatbuffers-idl.md)   | FlatBuffers mapping rules and codegen differences |
+| Document                                         | Description                                       |
+| ------------------------------------------------ | ------------------------------------------------- |
+| [Fory IDL Syntax](schema-idl.md)                 | Complete language syntax and grammar              |
+| [Type System](schema-idl.md#type-system)         | Primitive types, collections, and type rules      |
+| [RPC Services](schema-idl.md#service-definition) | Service and RPC method syntax                     |
+| [Compiler Guide](compiler-guide.md)              | CLI options and build integration                 |
+| [Generated Code](generated-code.md)              | Output format for each target language            |
+| [Protocol Buffers IDL Support](protobuf-idl.md)  | Protobuf mapping rules and adoption guidance      |
+| [FlatBuffers IDL Support](flatbuffers-idl.md)    | FlatBuffers mapping rules and codegen differences |
 
 ## Key Concepts
 

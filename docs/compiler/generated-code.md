@@ -238,6 +238,32 @@ byte[] data = person.toBytes();
 Person restored = Person.fromBytes(data);
 ```
 
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Java
+generation emits one `<ServiceName>Grpc.java` file per service next to the model
+types.
+
+```java
+public final class AddressBookServiceGrpc {
+  public static final String SERVICE_NAME = "addressbook.AddressBookService";
+
+  public static AddressBookServiceStub newStub(io.grpc.Channel channel) { ... }
+  public static AddressBookServiceBlockingStub newBlockingStub(io.grpc.Channel channel) { ... }
+  public static AddressBookServiceFutureStub newFutureStub(io.grpc.Channel channel) { ... }
+
+  public abstract static class AddressBookServiceImplBase
+      implements io.grpc.BindableService {
+    public void lookup(Person request, io.grpc.stub.StreamObserver<AddressBook> responseObserver) { ... }
+  }
+}
+```
+
+The generated marshaller serializes each request or response with the schema
+module's `ThreadSafeFory`. It uses grpc-java's `MethodDescriptor.Marshaller`
+API, so applications compiling these files must provide grpc-java dependencies.
+Those dependencies are not added to Fory Java runtime artifacts.
+
 ## Python
 
 ### Output Layout
@@ -336,6 +362,38 @@ person = Person(name="Alice", pet=Animal.dog(Dog(name="Rex", bark_volume=10)))
 data = person.to_bytes()
 restored = Person.from_bytes(data)
 ```
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Python
+generation emits a companion module named `<module>_grpc.py`. The module name is
+derived from the Fory package by replacing dots with underscores, or `generated`
+when the schema has no package.
+
+```python
+class AddressBookServiceStub:
+    def __init__(self, channel):
+        self.lookup = channel.unary_unary(
+            "/addressbook.AddressBookService/Lookup",
+            request_serializer=_serialize,
+            response_deserializer=_deserialize,
+        )
+
+
+class AddressBookServiceServicer:
+    def lookup(self, request, context):
+        raise NotImplementedError("Method not implemented!")
+
+
+def add_servicer(servicer, server): ...
+```
+
+Python gRPC serializers receive and return complete `bytes` payloads, so the
+generated callbacks call the model module's `_get_fory().serialize(...)` and
+`_get_fory().deserialize(...)` directly. Applications using the generated
+companion module must install `grpcio`; `pyfory` does not add a hard gRPC
+dependency. The Python API uses snake_case method names while preserving the
+original IDL method names in the gRPC wire paths.
 
 ## Rust
 

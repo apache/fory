@@ -138,7 +138,8 @@ def test_rpc_request_type_enum_fails_validation():
     """
     v = validate(parse_fdl(source))
     assert any(
-        "RPC type 'Status'" in e.message and "not a enum" in e.message for e in v.errors
+        "RPC type 'Status'" in e.message and "not an enum" in e.message
+        for e in v.errors
     )
 
 
@@ -155,11 +156,12 @@ def test_rpc_response_type_enum_fails_validation():
     """
     v = validate(parse_fdl(source))
     assert any(
-        "RPC type 'Status'" in e.message and "not a enum" in e.message for e in v.errors
+        "RPC type 'Status'" in e.message and "not an enum" in e.message
+        for e in v.errors
     )
 
 
-def test_rpc_request_type_union_fails_validation():
+def test_rpc_request_type_union_passes_validation():
     source = """
     package test;
 
@@ -171,13 +173,10 @@ def test_rpc_request_type_union_fails_validation():
     }
     """
     v = validate(parse_fdl(source))
-    assert any(
-        "RPC type 'Payload'" in e.message and "not a union" in e.message
-        for e in v.errors
-    )
+    assert v.errors == []
 
 
-def test_rpc_response_type_union_fails_validation():
+def test_rpc_response_type_union_passes_validation():
     source = """
     package test;
 
@@ -189,10 +188,7 @@ def test_rpc_response_type_union_fails_validation():
     }
     """
     v = validate(parse_fdl(source))
-    assert any(
-        "RPC type 'Payload'" in e.message and "not a union" in e.message
-        for e in v.errors
-    )
+    assert v.errors == []
 
 
 def test_rpc_message_types_pass_validation():
@@ -224,6 +220,31 @@ def test_proto_rpc_enum_type_fails_validation():
     """
     v = validate(parse_proto(source))
     assert any("RPC type 'Status'" in e.message for e in v.errors)
+
+
+def test_fbs_rpc_union_type_passes_validation():
+    source = """
+    namespace test;
+
+    table Text {
+        value: string;
+    }
+
+    table Count {
+        value: int;
+    }
+
+    union Payload {
+        Text,
+        Count
+    }
+
+    rpc_service Svc {
+        Call(Payload):Payload;
+    }
+    """
+    v = validate(parse_fbs(source))
+    assert v.errors == []
 
 
 def test_fbs_rpc_duplicate_method_fails_validation():

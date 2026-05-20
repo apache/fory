@@ -122,6 +122,7 @@ def resolve_imports(
 
     # Parse the file
     schema = parse_idl_file(file_path)
+    annotate_source_package(schema)
 
     # Process imports
     imported_enums = []
@@ -167,6 +168,7 @@ def resolve_imports(
         enums=imported_enums + schema.enums,
         messages=imported_messages + schema.messages,
         unions=imported_unions + schema.unions,
+        services=schema.services,
         options=schema.options,
         source_file=schema.source_file,
         source_format=schema.source_format,
@@ -175,6 +177,13 @@ def resolve_imports(
 
     cache[file_path] = copy.deepcopy(merged_schema)
     return merged_schema
+
+
+def annotate_source_package(schema: Schema) -> None:
+    """Record each parsed top-level type's declaring package for qualified lookups."""
+    for type_def in schema.enums + schema.messages + schema.unions:
+        if type_def.source_package is None:
+            type_def.source_package = schema.package
 
 
 def go_package_info(schema: Schema) -> Tuple[Optional[str], str]:

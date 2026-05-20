@@ -49,10 +49,13 @@ how protobuf concepts map to Fory, and how to use protobuf-only Fory extension o
 | Circular refs      | Not supported                 | Supported                             |
 | Unknown fields     | Preserved                     | Not preserved                         |
 | Generated types    | Protobuf-specific model types | Native language constructs            |
-| gRPC ecosystem     | Native                        | In progress (active development)      |
+| gRPC ecosystem     | Native                        | Java/Python service codegen           |
 
-Fory gRPC support is under active development. For production gRPC
-workflows today, protobuf remains the mature/default choice.
+Fory can generate Java and Python gRPC service companions with `--grpc`. Those
+services use normal gRPC transports but serialize request and response payloads
+with Fory rather than protobuf. For broad gRPC ecosystem tooling, schema
+reflection, and protobuf-native interceptors, protobuf remains the mature/default
+choice.
 
 ## Why Use Apache Fory
 
@@ -306,6 +309,19 @@ modifiers (and optional `ref(weak=true)` where needed).
 
 Replace protobuf generation steps with the Fory compiler invocation for target
 languages.
+
+For Java and Python services, add `--grpc` to emit gRPC companion code:
+
+```bash
+foryc api.proto --java_out=./generated/java --python_out=./generated/python --grpc
+```
+
+Generated Java service files compile against grpc-java, and generated Python
+service modules import `grpc`. Add those dependencies in your application build;
+Fory runtime packages do not add gRPC as a hard dependency. Protobuf `oneof`
+fields are translated to Fory union fields inside request and response messages.
+Direct union RPC request or response types are not part of normal protobuf RPC
+syntax.
 
 ### Step 5: Run Compatibility Checks
 

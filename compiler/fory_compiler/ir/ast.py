@@ -196,6 +196,7 @@ class Message:
     location: Optional[SourceLocation] = None
     id_generated: bool = False
     id_source: Optional[str] = None
+    source_package: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
@@ -236,6 +237,7 @@ class Enum:
     location: Optional[SourceLocation] = None
     id_generated: bool = False
     id_source: Optional[str] = None
+    source_package: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
@@ -256,6 +258,7 @@ class Union:
     location: Optional[SourceLocation] = None
     id_generated: bool = False
     id_source: Optional[str] = None
+    source_package: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
@@ -337,6 +340,60 @@ class Schema:
 
     def get_type(self, name: str) -> Optional[TypingUnion[Message, Enum, "Union"]]:
         """Look up a type by name, supporting qualified names like Parent.Child."""
+        return self._get_type_by_path(self.resolve_type_name(name))
+
+    def resolve_type_name(self, name: str) -> str:
+        """Resolve package-qualified type names to the schema-local type path."""
+        absolute = name.startswith(".")
+        cleaned = name.lstrip(".")
+        if absolute:
+            package_resolved = self._resolve_package_qualified_type(cleaned)
+            if package_resolved is not None:
+                return package_resolved
+            return name
+        if self._get_type_by_path(cleaned) is not None:
+            return cleaned
+        package_resolved = self._resolve_package_qualified_type(cleaned)
+        if package_resolved is not None:
+            return package_resolved
+        return cleaned
+
+    def _resolve_package_qualified_type(self, name: str) -> Optional[str]:
+        if "." not in name:
+            return None
+        packages = {
+            type_def.source_package
+            for type_def in self.get_all_types()
+            if type_def.source_package
+        }
+        if self.package:
+            packages.add(self.package)
+        ordered_packages = sorted(
+            packages, key=lambda package: (-len(package), package)
+        )
+        for package in ordered_packages:
+            prefix = f"{package}."
+            if name.startswith(prefix):
+                candidate = name[len(prefix) :]
+                if self._type_path_belongs_to_package(candidate, package):
+                    return candidate
+        return None
+
+    def _type_path_belongs_to_package(self, name: str, package: str) -> bool:
+        type_def = self._get_type_by_path(name)
+        if type_def is None:
+            return False
+        top_level = self._get_top_level_type(name.split(".", 1)[0])
+        source_package = getattr(type_def, "source_package", None) or getattr(
+            top_level, "source_package", None
+        )
+        if source_package is None:
+            return package == self.package
+        return source_package == package
+
+    def _get_type_by_path(
+        self, name: str
+    ) -> Optional[TypingUnion[Message, Enum, "Union"]]:
         # Handle qualified names (e.g., SearchResponse.Result)
         if "." in name:
             parts = name.split(".")

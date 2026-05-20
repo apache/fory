@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.java import JavaServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -37,11 +38,67 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class JavaGenerator(BaseGenerator):
+class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
     """Generates Java POJOs with Fory annotations."""
 
     language_name = "java"
     file_extension = ".java"
+    JAVA_RESERVED_IDENTIFIERS = {
+        "abstract",
+        "assert",
+        "boolean",
+        "break",
+        "byte",
+        "case",
+        "catch",
+        "char",
+        "class",
+        "const",
+        "continue",
+        "default",
+        "do",
+        "double",
+        "else",
+        "enum",
+        "extends",
+        "false",
+        "final",
+        "finally",
+        "float",
+        "for",
+        "goto",
+        "if",
+        "implements",
+        "import",
+        "instanceof",
+        "int",
+        "interface",
+        "long",
+        "native",
+        "new",
+        "null",
+        "package",
+        "private",
+        "protected",
+        "public",
+        "return",
+        "short",
+        "static",
+        "strictfp",
+        "super",
+        "switch",
+        "synchronized",
+        "this",
+        "throw",
+        "throws",
+        "transient",
+        "true",
+        "try",
+        "void",
+        "volatile",
+        "while",
+        "_",
+    }
 
     def __init__(self, schema: Schema, options):
         super().__init__(schema, options)
