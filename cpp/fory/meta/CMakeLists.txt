@@ -32,6 +32,18 @@ add_library(fory_meta ${FORY_META_SOURCES})
 add_library(fory::meta ALIAS fory_meta)
 fory_configure_target(fory_meta)
 
+# FORY_STRUCT forwards __VA_ARGS__ through nested macros, which the legacy
+# MSVC preprocessor expands as a single token. /Zc:preprocessor selects the
+# standard-conforming preprocessor (MSVC 19.25+ / VS 2019 16.5+) and is
+# propagated to anything that links fory_meta so CMake consumers that use
+# FORY_STRUCT do not need to opt in by hand. The genex gates on the MSVC
+# compiler id (not the legacy MSVC variable) so the flag is omitted for
+# clang-cl, which warns on `/Zc:preprocessor` and is already conforming;
+# the gate also keeps the install-export hermetic for non-MSVC consumers.
+# Mirrors .bazelrc:59-60, which already sets this for Bazel Windows builds.
+target_compile_options(fory_meta PUBLIC
+    $<$<CXX_COMPILER_ID:MSVC>:/Zc:preprocessor>)
+
 target_include_directories(fory_meta
     PUBLIC
         $<BUILD_INTERFACE:${FORY_CPP_ROOT}>
