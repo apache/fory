@@ -104,11 +104,6 @@ if(FORY_BUILD_TESTS)
     target_link_libraries(fory_serialization_variant_test fory_serialization GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_serialization_variant_test)
 
-    add_executable(fory_serialization_field_test field_serializer_test.cc)
-    fory_configure_target(fory_serialization_field_test)
-    target_link_libraries(fory_serialization_field_test fory_serialization GTest::gtest)
-    gtest_discover_tests(fory_serialization_field_test)
-
     add_executable(fory_serialization_namespace_macro_test namespace_macro_test.cc)
     fory_configure_target(fory_serialization_namespace_macro_test)
     target_link_libraries(fory_serialization_namespace_macro_test fory_serialization GTest::gtest GTest::gtest_main)

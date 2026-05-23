@@ -555,8 +555,7 @@ struct Serializer<
   }
 
   static inline void write(const std::vector<T, Alloc> &vec, WriteContext &ctx,
-                           RefMode ref_mode, bool write_type,
-                           bool has_generics = false) {
+                           RefMode ref_mode, bool write_type, bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -586,7 +585,7 @@ struct Serializer<
   }
 
   static inline void write_data_generic(const std::vector<T, Alloc> &vec,
-                                        WriteContext &ctx, bool has_generics) {
+                                        WriteContext &ctx, bool) {
     write_data(vec, ctx);
   }
 
@@ -612,8 +611,7 @@ struct Serializer<
   }
 
   static inline std::vector<T, Alloc>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 
@@ -671,7 +669,7 @@ template <typename Alloc> struct Serializer<std::vector<float16_t, Alloc>> {
 
   static inline void write(const std::vector<float16_t, Alloc> &vec,
                            WriteContext &ctx, RefMode ref_mode, bool write_type,
-                           bool has_generics = false) {
+                           bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -702,7 +700,7 @@ template <typename Alloc> struct Serializer<std::vector<float16_t, Alloc>> {
 
   static inline void
   write_data_generic(const std::vector<float16_t, Alloc> &vec,
-                     WriteContext &ctx, bool has_generics) {
+                     WriteContext &ctx, bool) {
     write_data(vec, ctx);
   }
 
@@ -727,8 +725,7 @@ template <typename Alloc> struct Serializer<std::vector<float16_t, Alloc>> {
   }
 
   static inline std::vector<float16_t, Alloc>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 
@@ -777,7 +774,7 @@ template <typename Alloc> struct Serializer<std::vector<bfloat16_t, Alloc>> {
 
   static inline void write(const std::vector<bfloat16_t, Alloc> &vec,
                            WriteContext &ctx, RefMode ref_mode, bool write_type,
-                           bool has_generics = false) {
+                           bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -808,7 +805,7 @@ template <typename Alloc> struct Serializer<std::vector<bfloat16_t, Alloc>> {
 
   static inline void
   write_data_generic(const std::vector<bfloat16_t, Alloc> &vec,
-                     WriteContext &ctx, bool has_generics) {
+                     WriteContext &ctx, bool) {
     write_data(vec, ctx);
   }
 
@@ -833,8 +830,7 @@ template <typename Alloc> struct Serializer<std::vector<bfloat16_t, Alloc>> {
   }
 
   static inline std::vector<bfloat16_t, Alloc>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 
