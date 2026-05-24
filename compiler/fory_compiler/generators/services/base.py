@@ -34,7 +34,7 @@ def streaming_mode(method: RpcMethod) -> StreamingMode:
     elif method.client_streaming and not method.server_streaming:
         return StreamingMode.CLIENT_STREAMING
     elif not method.client_streaming and method.server_streaming:
-        return StreamingMode.SERVER_STREAMING   
+        return StreamingMode.SERVER_STREAMING
     else:
         return StreamingMode.BIDIRECTIONAL
 
