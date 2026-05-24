@@ -89,15 +89,15 @@ fory.register(MyClass, typename="my.package.MyClass", serializer=custom_serializ
 
 ## Xlang And Native Mode Comparison
 
-| Feature             | Native mode (`xlang=False`)                    | Xlang mode (default)                  |
-| ------------------- | ---------------------------------------------- | ------------------------------------- |
-| Use case            | Python-only applications                       | Multi-language systems                |
-| Compatibility       | Python only                                    | Java, Go, Rust, C++, JavaScript, etc. |
-| Supported types     | Python object surface                          | Cross-language compatible types       |
-| Functions/lambdas   | Supported with trusted dynamic deserialization | Not allowed                           |
-| Local classes       | Supported with trusted dynamic deserialization | Not allowed                           |
-| Dynamic classes     | Supported with trusted dynamic deserialization | Not allowed                           |
-| Schema mode default | Schema-consistent                              | Compatible                            |
+| Feature             | Native mode (`xlang=False`)                    | Xlang mode (default)                                                             |
+| ------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------- |
+| Use case            | Python-only applications                       | Multi-language systems                                                           |
+| Compatibility       | Python only                                    | Java, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin, etc. |
+| Supported types     | Python object surface                          | Cross-language compatible types                                                  |
+| Functions/lambdas   | Supported with trusted dynamic deserialization | Not allowed                                                                      |
+| Local classes       | Supported with trusted dynamic deserialization | Not allowed                                                                      |
+| Dynamic classes     | Supported with trusted dynamic deserialization | Not allowed                                                                      |
+| Schema mode default | Schema-consistent                              | Compatible                                                                       |
 
 ## Xlang Mode
 

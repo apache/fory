@@ -26,7 +26,8 @@ The C++ implementation provides high-performance serialization with compile-time
 ## Why Apache Fory™ C++?
 
 - **Fast binary encoding**: Fast serialization and optimized binary protocols
-- **Xlang**: Seamlessly serialize/deserialize data across Java, Python, C++, Go, JavaScript, and Rust
+- **Xlang**: Seamlessly serialize/deserialize data across Java, Python, C++, Go,
+  Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
 - **Type-safe**: Compile-time type checking with macro-based struct registration
 - **Reference tracking**: Automatic tracking of shared and circular references
 - **Schema evolution**: Compatible mode for independent schema changes

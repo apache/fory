@@ -20,7 +20,7 @@ license: |
 ---
 
 Apache Fory™ xlang serialization is the Java wire mode for payloads that must be read by Python,
-Rust, Go, JavaScript, C++, C#, Swift, Dart, or another non-Java Fory runtime. Java defaults to
+Rust, Go, JavaScript/TypeScript, C++, C#, Swift, Dart, Scala, Kotlin, or another non-Java Fory runtime. Java defaults to
 xlang mode with compatible schema evolution, but examples set the mode explicitly so the payload
 contract is visible in code.
 

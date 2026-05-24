@@ -69,8 +69,8 @@ auto fory = Fory::builder()
 ```
 
 When `true`, C++ writes the xlang wire format used by Java, Python, Go, Rust,
-JavaScript, C#, Swift, and Dart. When `false`, C++ writes native-mode payloads
-for C++-only traffic.
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. When `false`, C++
+writes native-mode payloads for C++-only traffic.
 
 **Default:** `true`
 

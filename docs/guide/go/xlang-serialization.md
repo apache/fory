@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Fory Go enables seamless data exchange with Java, Python, C++, Rust, and JavaScript. This guide covers xlang compatibility and type mapping.
+Fory Go enables seamless data exchange with Java, Python, C++, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. This guide covers
+xlang compatibility and type mapping.
 
 ## Create an Xlang Runtime
 

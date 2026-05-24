@@ -669,8 +669,9 @@ val fory = ForyKotlin.builder()
 
 Fory IDL is Fory's schema language for shared data models. It supports
 references, nullable fields, lists, maps, arrays, enums, messages, and unions,
-and generates native data structures for supported languages. Use it when
-multiple languages need one shared contract.
+and generates native data structures for Java, Python, C++, Go, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Use it when multiple
+languages need one shared contract.
 
 ```protobuf
 package tree;

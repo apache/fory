@@ -23,8 +23,9 @@ C++ native serialization is the C++-only wire mode selected with `.xlang(false)`
 writer and reader is C++ and the payload should follow C++ type behavior instead of the portable
 xlang type system.
 
-Use [Xlang Serialization](xlang-serialization.md), the default C++ mode, when bytes must be read by
-Java, Python, Go, Rust, JavaScript, or another non-C++ Fory runtime.
+Use [Xlang Serialization](xlang-serialization.md), the default C++ mode, when
+bytes must be read by Java, Python, Go, Rust, JavaScript/TypeScript, C#, Swift,
+Dart, Scala, Kotlin, or another non-C++ Fory runtime.
 
 ## When To Use Native Serialization
 

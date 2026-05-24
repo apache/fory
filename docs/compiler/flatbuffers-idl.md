@@ -187,9 +187,11 @@ table Node {
 Using `.fbs` as input to Fory still produces normal Fory-generated code, not
 FlatBuffers `ByteBuffer`-style APIs.
 
-- Java: POJOs/records with Fory metadata
+- Java, Scala, and Kotlin: JVM model types with Fory metadata and registration helpers
 - Python: dataclasses plus registration helpers
-- Go/Rust/C++: native structs and Fory metadata
+- C++, Go, and Rust: native structs and Fory metadata
+- JavaScript/TypeScript: TypeScript interfaces and registration helpers
+- C#, Swift, and Dart: annotated or macro-based model types with registration helpers
 
 The serialization format is Fory binary protocol, not FlatBuffers wire format.
 

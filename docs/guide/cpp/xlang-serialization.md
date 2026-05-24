@@ -23,7 +23,9 @@ This page explains how to use Fory xlang serialization between C++ and other lan
 
 ## Overview
 
-Apache Fory™ enables seamless data exchange between C++, Java, Python, Go, Rust, and JavaScript. Xlang mode ensures binary compatibility across all supported languages.
+Apache Fory™ enables seamless data exchange between C++, Java, Python, Go, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Xlang mode ensures
+binary compatibility across all supported languages.
 
 ## Create an Xlang Runtime
 

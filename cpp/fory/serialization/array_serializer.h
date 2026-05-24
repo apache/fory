@@ -114,7 +114,7 @@ struct Serializer<
   }
 
   static inline void write_data_generic(const std::array<T, N> &arr,
-                                        WriteContext &ctx, bool has_generics) {
+                                        WriteContext &ctx, bool) {
     write_data(arr, ctx);
   }
 
@@ -176,8 +176,7 @@ struct Serializer<
   }
 
   static inline std::array<T, N>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };
@@ -232,7 +231,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
   }
 
   static inline void write_data_generic(const std::array<bool, N> &arr,
-                                        WriteContext &ctx, bool has_generics) {
+                                        WriteContext &ctx, bool) {
     write_data(arr, ctx);
   }
 
@@ -280,8 +279,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
   }
 
   static inline std::array<bool, N>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };
@@ -310,7 +308,7 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
 
   static inline void write(const std::array<float16_t, N> &arr,
                            WriteContext &ctx, RefMode ref_mode, bool write_type,
-                           bool has_generics = false) {
+                           bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -341,7 +339,7 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
   }
 
   static inline void write_data_generic(const std::array<float16_t, N> &arr,
-                                        WriteContext &ctx, bool has_generics) {
+                                        WriteContext &ctx, bool) {
     write_data(arr, ctx);
   }
 
@@ -396,8 +394,7 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
   }
 
   static inline std::array<float16_t, N>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };
@@ -423,7 +420,7 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
 
   static inline void write(const std::array<bfloat16_t, N> &arr,
                            WriteContext &ctx, RefMode ref_mode, bool write_type,
-                           bool has_generics = false) {
+                           bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
@@ -454,7 +451,7 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
   }
 
   static inline void write_data_generic(const std::array<bfloat16_t, N> &arr,
-                                        WriteContext &ctx, bool has_generics) {
+                                        WriteContext &ctx, bool) {
     write_data(arr, ctx);
   }
 
@@ -509,8 +506,7 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
   }
 
   static inline std::array<bfloat16_t, N>
-  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                      const TypeInfo &type_info) {
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode, const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };

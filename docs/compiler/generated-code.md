@@ -818,11 +818,11 @@ public static class AddressbookForyRegistration
 When explicit type IDs are not provided, generated registration uses computed
 numeric IDs (same behavior as other targets).
 
-## JavaScript
+## JavaScript/TypeScript
 
 ### Output Layout
 
-JavaScript output is one `.ts` file per schema, for example:
+JavaScript/TypeScript output is one `.ts` file per schema, for example:
 
 - `<javascript_out>/addressbook.ts`
 
@@ -1376,30 +1376,32 @@ object AddressbookForyModule extends org.apache.fory.ForyModule {
 
 ### Nested Type Shape
 
-| Language   | Nested type form               |
-| ---------- | ------------------------------ |
-| Java       | `Person.PhoneNumber`           |
-| Python     | `Person.PhoneNumber`           |
-| Rust       | `person::PhoneNumber`          |
-| C++        | `Person::PhoneNumber`          |
-| Go         | `Person_PhoneNumber` (default) |
-| C#         | `Person.PhoneNumber`           |
-| JavaScript | `Person.PhoneNumber`           |
-| Swift      | `Person.PhoneNumber`           |
-| Dart       | `Person_PhoneNumber`           |
+| Language              | Nested type form               |
+| --------------------- | ------------------------------ |
+| Java                  | `Person.PhoneNumber`           |
+| Python                | `Person.PhoneNumber`           |
+| Rust                  | `person::PhoneNumber`          |
+| C++                   | `Person::PhoneNumber`          |
+| Go                    | `Person_PhoneNumber` (default) |
+| C#                    | `Person.PhoneNumber`           |
+| JavaScript/TypeScript | `Person.PhoneNumber`           |
+| Swift                 | `Person.PhoneNumber`           |
+| Dart                  | `Person_PhoneNumber`           |
+| Kotlin                | `PersonPhoneNumber`            |
+| Scala                 | `Person.PhoneNumber`           |
 
 ### Byte Helper Naming
 
-| Language   | Helpers                   |
-| ---------- | ------------------------- |
-| Java       | `toBytes` / `fromBytes`   |
-| Kotlin     | `toBytes` / `fromBytes`   |
-| Scala      | `toBytes` / `fromBytes`   |
-| Python     | `to_bytes` / `from_bytes` |
-| Rust       | `to_bytes` / `from_bytes` |
-| C++        | `to_bytes` / `from_bytes` |
-| Go         | `ToBytes` / `FromBytes`   |
-| C#         | `ToBytes` / `FromBytes`   |
-| JavaScript | (via `fory.serialize()`)  |
-| Swift      | `toBytes` / `fromBytes`   |
-| Dart       | (via `fory.serialize()`)  |
+| Language              | Helpers                   |
+| --------------------- | ------------------------- |
+| Java                  | `toBytes` / `fromBytes`   |
+| Kotlin                | `toBytes` / `fromBytes`   |
+| Scala                 | `toBytes` / `fromBytes`   |
+| Python                | `to_bytes` / `from_bytes` |
+| Rust                  | `to_bytes` / `from_bytes` |
+| C++                   | `to_bytes` / `from_bytes` |
+| Go                    | `ToBytes` / `FromBytes`   |
+| C#                    | `ToBytes` / `FromBytes`   |
+| JavaScript/TypeScript | (via `fory.serialize()`)  |
+| Swift                 | `toBytes` / `fromBytes`   |
+| Dart                  | (via `fory.serialize()`)  |

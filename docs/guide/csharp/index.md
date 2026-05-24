@@ -24,7 +24,8 @@ Apache Fory™ C# is a high-performance, cross-language serialization runtime fo
 ## Why Fory C#?
 
 - High performance binary serialization for .NET 8+
-- Xlang compatibility with Fory implementations in Java, Python, C++, Go, Rust, and JavaScript
+- Xlang compatibility with Fory implementations in Java, Python, C++, Go, Rust,
+  JavaScript/TypeScript, Swift, Dart, Scala, and Kotlin
 - Source-generator-based serializers for `[ForyObject]` types
 - Optional reference tracking for shared and circular object graphs
 - Compatible mode for schema evolution

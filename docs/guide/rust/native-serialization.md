@@ -24,7 +24,8 @@ every writer and reader is Rust and the payload should preserve Rust object-grap
 of the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Rust mode, when bytes must be read
-by Java, Python, C++, Go, JavaScript, or another non-Rust Fory runtime.
+by Java, Python, C++, Go, JavaScript/TypeScript, C#, Swift, Dart, Scala,
+Kotlin, or another non-Rust Fory runtime.
 
 ## When To Use Native Serialization
 

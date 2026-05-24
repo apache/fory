@@ -24,7 +24,8 @@ every writer and reader is Python and the payload should follow Python's object 
 the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Python mode, when bytes must be read
-by Java, Go, Rust, C++, JavaScript, or another non-Python Fory runtime.
+by Java, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
+or another non-Python Fory runtime.
 
 ## When To Use Native Serialization
 

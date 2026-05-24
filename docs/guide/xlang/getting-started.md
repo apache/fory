@@ -60,10 +60,51 @@ go get github.com/apache/fory/go/fory
 fory = "1.0.0"
 ```
 
-### JavaScript
+### JavaScript/TypeScript
 
 ```bash
 npm install @apache-fory/core
+```
+
+For the optional Node.js string fast path:
+
+```bash
+npm install @apache-fory/core @apache-fory/hps
+```
+
+### C\#
+
+```bash
+dotnet add package Apache.Fory --version 1.0.0
+```
+
+### Dart
+
+```bash
+dart pub add fory:^1.0.0
+dart pub add dev:build_runner
+```
+
+### Swift
+
+Add Fory to `Package.swift`:
+
+```swift
+dependencies: [
+  .package(url: "https://github.com/apache/fory.git", exact: "1.0.0")
+]
+```
+
+### Scala
+
+```scala
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.0.0"
+```
+
+### Kotlin
+
+```kotlin
+implementation("org.apache.fory:fory-kotlin:1.0.0")
 ```
 
 ### C++
@@ -117,12 +158,56 @@ use fory::Fory;
 let fory = Fory::builder().xlang(true).build();
 ```
 
-### JavaScript
+### JavaScript/TypeScript
 
 ```javascript
 import Fory, { Type } from "@apache-fory/core";
 
 const fory = new Fory();
+```
+
+### C\#
+
+```csharp
+using Apache.Fory;
+
+Fory fory = Fory.Builder().Build();
+```
+
+### Dart
+
+```dart
+import 'package:fory/fory.dart';
+
+final fory = Fory();
+```
+
+### Swift
+
+```swift
+import Fory
+
+let fory = Fory()
+```
+
+### Scala
+
+```scala
+import org.apache.fory.scala.ForyScala
+
+val fory = ForyScala.builder()
+  .withXlang(true)
+  .build()
+```
+
+### Kotlin
+
+```kotlin
+import org.apache.fory.kotlin.ForyKotlin
+
+val fory = ForyKotlin.builder()
+    .withXlang(true)
+    .build()
 ```
 
 ### C++
@@ -178,7 +263,7 @@ fory
     .expect("register Person");
 ```
 
-**JavaScript:**
+**JavaScript/TypeScript:**
 
 ```javascript
 const personType = Type.struct(
@@ -197,6 +282,41 @@ const { serialize, deserialize } = fory.register(personType);
 fory.register_struct<Person>("example", "Person");
 // For enums, use register_enum:
 // fory.register_enum<Color>("example", "Color");
+```
+
+**C#:**
+
+```csharp
+fory.Register<Person>("example", "Person");
+```
+
+**Dart:**
+
+```dart
+PersonFory.register(
+  fory,
+  Person,
+  namespace: 'example',
+  typeName: 'Person',
+);
+```
+
+**Swift:**
+
+```swift
+try fory.register(Person.self, namespace: "example", name: "Person")
+```
+
+**Scala:**
+
+```scala
+fory.register(classOf[Person], "example.Person")
+```
+
+**Kotlin:**
+
+```kotlin
+fory.register(Person::class.java, "example.Person")
 ```
 
 ### Register by ID
@@ -221,12 +341,60 @@ fory.register_type(Person, type_id=100)
 fory.RegisterStruct(Person{}, 100)
 ```
 
+**Rust:**
+
+```rust
+fory.register::<Person>(100)?;
+```
+
+**JavaScript/TypeScript:**
+
+```javascript
+const personType = Type.struct(
+  { typeId: 100 },
+  {
+    name: Type.string(),
+    age: Type.int32(),
+  },
+);
+```
+
 **C++:**
 
 ```cpp
 fory.register_struct<Person>(100);
 // For enums, use register_enum:
 // fory.register_enum<Color>(101);
+```
+
+**C#:**
+
+```csharp
+fory.Register<Person>(100);
+```
+
+**Dart:**
+
+```dart
+PersonFory.register(fory, Person, id: 100);
+```
+
+**Swift:**
+
+```swift
+fory.register(Person.self, id: 100)
+```
+
+**Scala:**
+
+```scala
+fory.register(classOf[Person], 100)
+```
+
+**Kotlin:**
+
+```kotlin
+fory.register(Person::class.java, 100)
 ```
 
 ## Hello World Example

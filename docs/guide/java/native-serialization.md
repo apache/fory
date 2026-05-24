@@ -44,8 +44,9 @@ Use native serialization when:
 - Large primitive arrays or binary payloads should use native-mode out-of-band buffers.
 - You are replacing Java-only serialization frameworks and want the broadest Java object surface.
 
-Use xlang serialization instead when the payload must be read by Python, C++, Go, Rust,
-JavaScript/TypeScript, C#, Swift, Dart, or another non-Java runtime.
+Use xlang serialization instead when the payload must be read by Python, C++, Go,
+Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin, or another
+non-Java runtime.
 
 ## Create a Native Runtime
 

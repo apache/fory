@@ -26,7 +26,8 @@ The Rust implementation provides versatile and high-performance serialization wi
 ## Why Apache Fory™ Rust?
 
 - **Fast binary encoding**: Zero-copy deserialization and optimized binary protocols
-- **Xlang**: Seamlessly serialize/deserialize data across Java, Python, C++, Go, JavaScript, and Rust
+- **Xlang**: Seamlessly serialize/deserialize data across Java, Python, C++,
+  Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
 - **Type-safe**: Compile-time type checking with derive macros
 - **Circular references**: Automatic tracking of shared and circular references with `Rc`/`Arc` and weak pointers
 - **Polymorphic**: Serialize trait objects with `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`

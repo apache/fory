@@ -24,7 +24,8 @@ Apache Fory Go is a high-performance serialization library for Go. It supports x
 ## Why Fory Go?
 
 - **High Performance**: Fast serialization and optimized binary protocols
-- **Xlang**: Seamless data exchange with Java, Python, C++, Rust, and JavaScript
+- **Xlang**: Seamless data exchange with Java, Python, C++, Rust,
+  JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
 - **Automatic Serialization**: No IDL definitions or schema compilation required
 - **Reference Tracking**: Built-in support for circular references and shared objects
 - **Type Safety**: Strong typing with schema-aware serializers
@@ -120,7 +121,9 @@ See [Supported Types](supported-types.md) for the complete type mapping.
 
 ## Xlang Serialization
 
-Fory Go is fully compatible with other Fory implementations. Data serialized in Go can be deserialized in Java, Python, C++, Rust, or JavaScript:
+Fory Go is fully compatible with other Fory implementations. Data serialized in
+Go can be deserialized in Java, Python, C++, Rust, JavaScript/TypeScript, C#,
+Swift, Dart, Scala, or Kotlin:
 
 ```go
 // Go serialization

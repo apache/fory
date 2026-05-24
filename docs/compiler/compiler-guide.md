@@ -63,7 +63,7 @@ Compile options:
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
 | `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
-| `--javascript_out=DST_DIR`            | Generate JavaScript code in DST_DIR                   | (none)        |
+| `--javascript_out=DST_DIR`            | Generate JavaScript/TypeScript code in DST_DIR        | (none)        |
 | `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
 | `--dart_out=DST_DIR`                  | Generate Dart code in DST_DIR                         | (none)        |
 | `--scala_out=DST_DIR`                 | Generate Scala 3 code in DST_DIR                      | (none)        |
@@ -123,7 +123,7 @@ foryc --scan-generated --root ./src --dry-run
 foryc schema.fdl
 ```
 
-**Compile for specific languages:**
+**Compile for a selected subset of languages:**
 
 ```bash
 foryc schema.fdl --lang java,python,csharp,javascript,swift,dart,kotlin
@@ -185,7 +185,7 @@ foryc src/main.fdl -I libs/common,libs/types --proto_path third_party/
 foryc schema.fdl --java_out=./src/main/java
 
 # Generate multiple languages to different directories
-foryc schema.fdl --java_out=./java/gen --python_out=./python/src --go_out=./go/gen --csharp_out=./csharp/gen --javascript_out=./javascript/src --swift_out=./swift/gen --dart_out=./dart/gen --kotlin_out=./kotlin/gen
+foryc schema.fdl --java_out=./java/gen --python_out=./python/src --cpp_out=./cpp/gen --go_out=./go/gen --rust_out=./rust/gen --csharp_out=./csharp/gen --javascript_out=./javascript/src --swift_out=./swift/gen --dart_out=./dart/gen --scala_out=./scala/gen --kotlin_out=./kotlin/gen
 
 # Combine with import paths
 foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
@@ -260,19 +260,19 @@ Compiling src/main.fdl...
 
 ## Supported Languages
 
-| Language   | Flag         | Output Extension | Description                            |
-| ---------- | ------------ | ---------------- | -------------------------------------- |
-| Java       | `java`       | `.java`          | POJOs with Fory annotations            |
-| Python     | `python`     | `.py`            | Dataclasses with type hints            |
-| Go         | `go`         | `.go`            | Structs with struct tags               |
-| Rust       | `rust`       | `.rs`            | Structs with derive macros             |
-| C++        | `cpp`        | `.h`             | Structs with FORY macros               |
-| C#         | `csharp`     | `.cs`            | Classes with Fory attributes           |
-| JavaScript | `javascript` | `.ts`            | Interfaces with registration function  |
-| Swift      | `swift`      | `.swift`         | Fory Swift model macros                |
-| Dart       | `dart`       | `.dart`          | `@ForyStruct` classes with annotations |
-| Scala      | `scala`      | `.scala`         | Scala 3 models with macro derivation   |
-| Kotlin     | `kotlin`     | `.kt`            | Kotlin models with KSP serializers     |
+| Language              | Flag         | Output Extension | Description                            |
+| --------------------- | ------------ | ---------------- | -------------------------------------- |
+| Java                  | `java`       | `.java`          | POJOs with Fory annotations            |
+| Python                | `python`     | `.py`            | Dataclasses with type hints            |
+| Go                    | `go`         | `.go`            | Structs with struct tags               |
+| Rust                  | `rust`       | `.rs`            | Structs with derive macros             |
+| C++                   | `cpp`        | `.h`             | Structs with FORY macros               |
+| C#                    | `csharp`     | `.cs`            | Classes with Fory attributes           |
+| JavaScript/TypeScript | `javascript` | `.ts`            | Interfaces with registration function  |
+| Swift                 | `swift`      | `.swift`         | Fory Swift model macros                |
+| Dart                  | `dart`       | `.dart`          | `@ForyStruct` classes with annotations |
+| Scala                 | `scala`      | `.scala`         | Scala 3 models with macro derivation   |
+| Kotlin                | `kotlin`     | `.kt`            | Kotlin models with KSP serializers     |
 
 ## Output Structure
 
@@ -342,7 +342,7 @@ generated/
 - Namespace matches package (dots to `::`)
 - Header guards and forward declarations
 
-### JavaScript
+### JavaScript/TypeScript
 
 ```
 generated/
@@ -420,6 +420,25 @@ generated/
 - `optional T` fields use `Option[T]`
 - Enums use Scala 3 `enum`
 - Unions use Scala 3 ADT `enum` with `@ForyUnion`, `@ForyCase`, and an `UnknownCase`
+- Schema module object included
+
+### Kotlin
+
+```
+generated/
+└── kotlin/
+    └── example/
+        ├── User.kt
+        ├── Status.kt
+        ├── Animal.kt
+        └── ExampleForyModule.kt
+```
+
+- One Kotlin source file per generated type
+- Package structure uses `kotlin_package` when set, otherwise the Fory IDL package
+- Messages use `@ForyStruct` and KSP-generated serializers
+- Enums use stable Fory enum IDs
+- Unions use sealed classes with `@ForyUnion`, `@ForyCase`, and an unknown-case carrier
 - Schema module object included
 
 ### C# IDL Matrix Verification

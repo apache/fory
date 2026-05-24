@@ -19,7 +19,8 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ supports seamless data exchange across multiple languages including Java, Python, C++, Go, and JavaScript.
+Apache Fory™ supports seamless data exchange across Java, Python, C++, Go,
+Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin.
 
 ## Create an Xlang Runtime
 

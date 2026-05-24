@@ -19,11 +19,15 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory JavaScript lets you serialize JavaScript and TypeScript objects to bytes and deserialize them back — including across services written in Java, Python, Go, Rust, Swift, and other Fory-supported languages.
+Apache Fory JavaScript lets you serialize JavaScript and TypeScript objects to
+bytes and deserialize them back, including across services written in Java,
+Python, C++, Go, Rust, C#, Swift, Dart, Scala, Kotlin, and other
+Fory-supported languages.
 
 ## Why Fory JavaScript?
 
-- **Xlang**: serialize in JavaScript, deserialize in Java, Python, Go, and more without writing glue code
+- **Xlang**: serialize in JavaScript/TypeScript, deserialize in any supported
+  Fory runtime without writing glue code
 - **Fast**: serializer code is generated and cached the first time you register a schema, not on every call
 - **Reference-aware**: shared references and circular object graphs are supported when enabled
 - **Explicit schemas**: field types, nullability, and polymorphism are declared once with `Type.*` builders or TypeScript decorators

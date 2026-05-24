@@ -131,7 +131,8 @@ xlang := fory.New(fory.WithXlang(true))
 **When enabled:**
 
 - Uses cross-language type system
-- Compatible with Java, Python, C++, Rust, JavaScript
+- Compatible with Java, Python, C++, Rust, JavaScript/TypeScript, C#, Swift,
+  Dart, Scala, and Kotlin
 - Type IDs follow xlang specification
 
 **When disabled:**

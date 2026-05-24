@@ -19,7 +19,9 @@ license: |
   limitations under the License.
 ---
 
-This page demonstrates cross-language serialization patterns with examples in all supported languages. Data serialized in one language can be deserialized in any other supported language.
+This page demonstrates common cross-language serialization patterns. Data serialized in one
+supported language can be deserialized in any other supported language when peers use matching type
+identity, field schema, and compatibility settings.
 
 ## Serialize Built-in Types
 

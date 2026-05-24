@@ -21,10 +21,11 @@ license: |
 
 Fory IDL is a schema definition language for Apache Fory that enables type-safe
 cross-language serialization. Define your data structures once and generate
-native data structure code for Java, Python, Go, Rust, C++, C#, Swift,
-JavaScript, Dart, Scala, and Kotlin. Fory IDL can also describe RPC services;
-for Java and Python, the compiler can generate gRPC service companions that use
-Fory serialization for request and response payloads.
+native data structure code for Java, Python, C++, Go, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Fory IDL can also
+describe RPC services; for Java and Python, the compiler can generate gRPC
+service companions that use Fory serialization for request and response
+payloads.
 
 ## Example Schema
 
@@ -128,7 +129,7 @@ Generated code uses native language constructs:
 - Rust: Structs with `#[derive(ForyObject)]`
 - C++: Structs with `FORY_STRUCT` macros
 - C#: Classes with `[ForyObject]` and registration helpers
-- JavaScript: Interfaces with registration function
+- JavaScript/TypeScript: Interfaces with registration function
 - Swift: Fory model macros with field/case metadata and registration helpers
 - Dart: `@ForyStruct` classes with `@ForyField` annotations and registration helpers
 - Scala: Scala 3 `case class`, normal class, enum, and ADT enum models with macro-derived serializers
@@ -227,11 +228,11 @@ message Example {
 
 Fory IDL types map to native types in each language:
 
-| Fory IDL Type | Java      | Python         | Go       | Rust     | C++           | C#       | JavaScript | Swift    | Dart     | Scala     |
-| ------------- | --------- | -------------- | -------- | -------- | ------------- | -------- | ---------- | -------- | -------- | --------- |
-| `int32`       | `int`     | `pyfory.Int32` | `int32`  | `i32`    | `int32_t`     | `int`    | `number`   | `Int32`  | `int`    | `Int`     |
-| `string`      | `String`  | `str`          | `string` | `String` | `std::string` | `string` | `string`   | `String` | `String` | `String`  |
-| `bool`        | `boolean` | `bool`         | `bool`   | `bool`   | `bool`        | `bool`   | `boolean`  | `Bool`   | `bool`   | `Boolean` |
+| Fory IDL Type | Java      | Python         | C++           | Go       | Rust     | JavaScript/TypeScript | C#       | Swift    | Dart     | Scala     | Kotlin    |
+| ------------- | --------- | -------------- | ------------- | -------- | -------- | --------------------- | -------- | -------- | -------- | --------- | --------- |
+| `int32`       | `int`     | `pyfory.Int32` | `int32_t`     | `int32`  | `i32`    | `number`              | `int`    | `Int32`  | `int`    | `Int`     | `Int`     |
+| `string`      | `String`  | `str`          | `std::string` | `string` | `String` | `string`              | `string` | `String` | `String` | `String`  | `String`  |
+| `bool`        | `boolean` | `bool`         | `bool`        | `bool`   | `bool`   | `boolean`             | `bool`   | `Bool`   | `bool`   | `Boolean` | `Boolean` |
 
 See [Type System](schema-idl.md#type-system) for complete mappings.
 

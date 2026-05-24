@@ -19,7 +19,10 @@ license: |
   limitations under the License.
 ---
 
-Fory JavaScript serializes to the same binary format as the Java, Python, Go, Rust, Swift, and C++ Fory runtimes. You can write a message in JavaScript and read it in Java — or any other direction — without any conversion layer.
+Fory JavaScript serializes to the same binary format as the Java, Python, C++,
+Go, Rust, C#, Swift, Dart, Scala, and Kotlin Fory runtimes. You can write a
+message in JavaScript and read it in Java, or any other direction, without a
+conversion layer.
 
 Things to keep in mind:
 

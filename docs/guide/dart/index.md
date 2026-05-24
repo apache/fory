@@ -19,7 +19,10 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ Dart lets you serialize Dart objects to bytes and deserialize them back — including across services written in Java, Go, C#, Python, and other Fory-supported languages.
+Apache Fory™ Dart lets you serialize Dart objects to bytes and deserialize them
+back, including across services written in Java, Python, C++, Go, Rust,
+JavaScript/TypeScript, C#, Swift, Scala, Kotlin, and other Fory-supported
+languages.
 
 ## Why Fory Dart?
 

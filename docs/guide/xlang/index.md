@@ -27,7 +27,9 @@ workflow is a better fit.
 ## Features
 
 - **No IDL required**: Serialize objects directly with language model types.
-- **Multi-language support**: Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, and Dart interoperate through the same xlang format.
+- **Multi-language support**: Java, Python, C++, Go, Rust,
+  JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin interoperate through
+  the same xlang format.
 - **Reference support**: Shared and circular references work across language boundaries when reference tracking is enabled in each runtime.
 - **Schema evolution**: Compatible mode is the xlang default so readers can tolerate added, removed, or reordered fields.
 - **Out-of-band buffers**: Language runtimes can expose zero-copy buffer paths for large binary data.
@@ -46,6 +48,8 @@ workflow is a better fit.
 | C#                    | Supported | `Apache.Fory`                    |
 | Swift                 | Supported | Swift Package Manager target     |
 | Dart                  | Supported | `fory` package                   |
+| Scala                 | Supported | `org.apache.fory:fory-scala`     |
+| Kotlin                | Supported | `org.apache.fory:fory-kotlin`    |
 
 ## When to Use Xlang Mode
 
@@ -53,7 +57,8 @@ Use xlang mode when:
 
 - Building multi-language microservices
 - Creating polyglot data pipelines
-- Sharing data between frontend (JavaScript) and backend (Java/Python/Go)
+- Sharing data between frontend JavaScript/TypeScript and backend runtimes such
+  as Java, Python, Go, C#, Scala, or Kotlin
 
 Use native mode for same-language traffic in Java, Scala, Kotlin, Python, C++,
 Go, or Rust:
@@ -128,7 +133,7 @@ message Person {
 Generate code:
 
 ```bash
-foryc person.fdl --lang java,python,go,rust,cpp --output ./generated
+foryc person.fdl --lang java,python,cpp,go,rust,javascript,csharp,swift,dart,scala,kotlin --output ./generated
 ```
 
 This generates native language types with consistent field/type mappings across all targets.
@@ -159,7 +164,14 @@ For language-specific details and API reference:
 - [Java Xlang Serialization Guide](../java/xlang-serialization.md)
 - [Python Xlang Serialization Guide](../python/xlang-serialization.md)
 - [C++ Xlang Serialization Guide](../cpp/xlang-serialization.md)
+- [Go Xlang Serialization Guide](../go/xlang-serialization.md)
 - [Rust Xlang Serialization Guide](../rust/xlang-serialization.md)
+- [JavaScript/TypeScript Xlang Serialization Guide](../javascript/xlang-serialization.md)
+- [C# Xlang Serialization Guide](../csharp/xlang-serialization.md)
+- [Swift Xlang Serialization Guide](../swift/xlang-serialization.md)
+- [Dart Xlang Serialization Guide](../dart/xlang-serialization.md)
+- [Scala Schema IDL And Xlang Guide](../scala/schema-idl.md)
+- [Kotlin Static Generated Serializers Guide](../kotlin/static-generated-serializers.md)
 
 ## Specifications
 

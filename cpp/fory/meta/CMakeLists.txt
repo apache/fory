@@ -89,6 +89,6 @@ if(FORY_BUILD_TESTS)
 
     add_executable(fory_meta_field_test field_test.cc)
     fory_configure_target(fory_meta_field_test)
-    target_link_libraries(fory_meta_field_test fory_meta GTest::gtest)
+    target_link_libraries(fory_meta_field_test fory_meta GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_meta_field_test)
 endif()

@@ -26,7 +26,8 @@ Apache Fory™ xlang serialization enables automatic cross-language object seria
 Key characteristics:
 
 - **Automatic**: No IDL definition, no schema compilation, no manual object-to-protocol conversion
-- **Cross-language**: Same binary format works seamlessly across Java, Python, C++, Rust, Go, JavaScript, and more
+- **Cross-language**: Same binary format works across Java, Python, C++, Go,
+  Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
 - **Reference-aware**: Handles shared references and circular references without duplication or infinite recursion
 - **Polymorphic**: Supports object polymorphism with runtime type resolution
 

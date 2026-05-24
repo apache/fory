@@ -19,7 +19,10 @@ license: |
   limitations under the License.
 ---
 
-`pyfory` supports xlang object graph serialization, allowing you to serialize data in Python and deserialize it in Java, Go, Rust, or other supported languages.
+`pyfory` supports xlang object graph serialization, allowing you to serialize
+data in Python and deserialize it in Java, C++, Go, Rust,
+JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin, or another supported
+language.
 
 ## Create an Xlang Runtime
 

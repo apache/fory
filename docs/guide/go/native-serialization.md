@@ -24,7 +24,8 @@ when every writer and reader is a Go service and the payload should follow Go's 
 of the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Go mode, when bytes must be read by
-Java, Python, C++, Rust, JavaScript, or another non-Go Fory runtime.
+Java, Python, C++, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
+or another non-Go Fory runtime.
 
 ## When To Use Native Serialization
 

@@ -22,7 +22,7 @@ set -e
 pip install cmake
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${SCRIPT_DIR}/build"
+BUILD_DIR="${SCRIPT_DIR}/cmake-build"
 
 echo "=== Fory C++ Hello World Example Build Script ==="
 echo ""
