@@ -29,6 +29,9 @@ on:
       - "**.yml"
       - "**.yaml"
 
+permissions:
+  contents: read
+
 jobs:
   markdownlint:
     name: 🍇 Markdown
