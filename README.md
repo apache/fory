@@ -35,13 +35,12 @@ references.
   enums, structs, and unions. Define schemas once, then generate native domain
   objects for each language without forcing wrapper types into user code.
 - **Row-Format Random Access**: Read fields, arrays, and nested values without
-  rebuilding full objects, with zero-copy access, partial reads, and Arrow
-  integration.
+  rebuilding full objects, with zero-copy access and partial reads.
 - **Optimized Runtimes**: Java JIT serializers and generated/static serializers
   in other runtimes keep hot paths fast and payloads compact.
 - **Language And Platform Support**: Java, Python, C++, Go, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
-  native image, Dart VM/Flutter/web, and Node.js/browser JavaScript.
+  native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
 
 ## Performance
 
@@ -752,23 +751,24 @@ deserialization, see the
 
 **User Guides**
 
-| Guide                 | Source                                                                   | Website                                                         |
-| --------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Java                  | [docs/guide/java](docs/guide/java)                                       | [View](https://fory.apache.org/docs/guide/java/)                |
-| Python                | [docs/guide/python](docs/guide/python)                                   | [View](https://fory.apache.org/docs/guide/python/)              |
-| Rust                  | [docs/guide/rust](docs/guide/rust)                                       | [View](https://fory.apache.org/docs/guide/rust/)                |
-| C++                   | [docs/guide/cpp](docs/guide/cpp)                                         | [View](https://fory.apache.org/docs/guide/cpp/)                 |
-| Go                    | [docs/guide/go](docs/guide/go)                                           | [View](https://fory.apache.org/docs/guide/go/)                  |
-| JavaScript/TypeScript | [docs/guide/javascript](docs/guide/javascript)                           | [View](https://fory.apache.org/docs/guide/javascript/)          |
-| C#                    | [docs/guide/csharp](docs/guide/csharp)                                   | [View](https://fory.apache.org/docs/guide/csharp/)              |
-| Swift                 | [docs/guide/swift](docs/guide/swift)                                     | [View](https://fory.apache.org/docs/guide/swift/)               |
-| Dart                  | [docs/guide/dart](docs/guide/dart)                                       | [View](https://fory.apache.org/docs/guide/dart/)                |
-| Scala                 | [docs/guide/scala](docs/guide/scala)                                     | [View](https://fory.apache.org/docs/guide/scala/)               |
-| Kotlin                | [docs/guide/kotlin](docs/guide/kotlin)                                   | [View](https://fory.apache.org/docs/guide/kotlin/)              |
-| Cross-language xlang  | [docs/guide/xlang](docs/guide/xlang)                                     | [View](https://fory.apache.org/docs/guide/xlang/)               |
-| Schema IDL/compiler   | [docs/compiler](docs/compiler)                                           | [View](https://fory.apache.org/docs/compiler/)                  |
-| GraalVM native image  | [docs/guide/java/graalvm-support.md](docs/guide/java/graalvm-support.md) | [View](https://fory.apache.org/docs/guide/java/graalvm_support) |
-| Development           | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)                               | [View](docs/DEVELOPMENT.md)                                     |
+| Guide                 | Source                                                                       | Website                                                            |
+| --------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Java                  | [docs/guide/java](docs/guide/java)                                           | [View](https://fory.apache.org/docs/guide/java/)                   |
+| Python                | [docs/guide/python](docs/guide/python)                                       | [View](https://fory.apache.org/docs/guide/python/)                 |
+| Rust                  | [docs/guide/rust](docs/guide/rust)                                           | [View](https://fory.apache.org/docs/guide/rust/)                   |
+| C++                   | [docs/guide/cpp](docs/guide/cpp)                                             | [View](https://fory.apache.org/docs/guide/cpp/)                    |
+| Go                    | [docs/guide/go](docs/guide/go)                                               | [View](https://fory.apache.org/docs/guide/go/)                     |
+| JavaScript/TypeScript | [docs/guide/javascript](docs/guide/javascript)                               | [View](https://fory.apache.org/docs/guide/javascript/)             |
+| C#                    | [docs/guide/csharp](docs/guide/csharp)                                       | [View](https://fory.apache.org/docs/guide/csharp/)                 |
+| Swift                 | [docs/guide/swift](docs/guide/swift)                                         | [View](https://fory.apache.org/docs/guide/swift/)                  |
+| Dart                  | [docs/guide/dart](docs/guide/dart)                                           | [View](https://fory.apache.org/docs/guide/dart/)                   |
+| Scala                 | [docs/guide/scala](docs/guide/scala)                                         | [View](https://fory.apache.org/docs/guide/scala/)                  |
+| Kotlin                | [docs/guide/kotlin](docs/guide/kotlin)                                       | [View](https://fory.apache.org/docs/guide/kotlin/)                 |
+| Cross-language xlang  | [docs/guide/xlang](docs/guide/xlang)                                         | [View](https://fory.apache.org/docs/guide/xlang/)                  |
+| Schema IDL/compiler   | [docs/compiler](docs/compiler)                                               | [View](https://fory.apache.org/docs/compiler/)                     |
+| GraalVM native image  | [docs/guide/java/graalvm-support.md](docs/guide/java/graalvm-support.md)     | [View](https://fory.apache.org/docs/guide/java/graalvm_support)    |
+| Android               | [docs/guide/kotlin/android-support.md](docs/guide/kotlin/android-support.md) | [View](https://fory.apache.org/docs/guide/kotlin/android_support/) |
+| Development           | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)                                   | [View](docs/DEVELOPMENT.md)                                        |
 
 **Specifications**
 

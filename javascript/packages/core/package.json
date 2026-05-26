@@ -18,10 +18,10 @@
     "@typescript-eslint/parser": "^5.40.0",
     "benchmark": "^2.1.4",
     "eslint": "^8.25.0",
-    "protobufjs": "^7.2.4"
+    "protobufjs": "^7.6.1"
   },
   "dependencies": {
-    "node-gyp": "^9.4.0",
+    "node-gyp": "^11.5.0",
     "tslib": "^2.4.0"
   },
   "repository": "git@github.com:apache/fory.git",

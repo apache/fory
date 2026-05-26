@@ -41,6 +41,9 @@ on:
       - "NOTICE"
     types: ["opened", "reopened", "synchronize"]
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect Changed Paths
