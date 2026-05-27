@@ -48,7 +48,7 @@ class DeserializationPolicy:
     | __reduce__ interception   | no                   | intercept_reduce_call()    |
     | Post-reduce inspection    | no                   | inspect_reduced_object()   |
     | __setstate__ interception | no                   | intercept_setstate()       |
-    | Object replacement        | no                   | return from validators     |
+    | Object replacement        | no                   | inspect_reduced_object()   |
     | State sanitization        | no                   | modify in-place            |
     | Local class/function      | no                   | is_local flag              |
     +---------------------------+----------------------+----------------------------+
@@ -87,8 +87,8 @@ class DeserializationPolicy:
 
     This DeserializationPolicy interface allows users to implement custom security policies by
     subclassing and overriding specific hook methods. Each hook is called at a critical
-    point during deserialization, allowing inspection, replacement, or rejection of
-    dangerous constructs.
+    point during deserialization, allowing validation hooks to inspect or reject
+    dangerous constructs and interceptor hooks to control protocol operations.
 
     Hook Categories
     ---------------
@@ -98,7 +98,7 @@ class DeserializationPolicy:
 
     2. **Reference Validation Hooks** (Validators)
        - Validate deserialized type/function/module references
-       - Return None to accept original, return object to replace, raise exception to block,
+       - Raise exception to block, otherwise return normally
 
     3. **Protocol Interception Hooks** (Interceptors)
        - Intercept pickle protocol operations (__reduce__, __setstate__)
@@ -109,17 +109,15 @@ class DeserializationPolicy:
     >>> class SafeDeserializationPolicy(DeserializationPolicy):
     ...     ALLOWED_MODULES = {'builtins', 'datetime', 'decimal'}
     ...
-    ...     def validate_module(self, module_name, **kwargs):
+    ...     def validate_module(self, module_name, is_local, **kwargs):
     ...         # Reject imports from disallowed modules
     ...         if module_name.split('.')[0] not in self.ALLOWED_MODULES:
     ...             raise ValueError(f"Module {module_name} is not allowed")
-    ...         return None  # Accept
     ...
     ...     def validate_class(self, cls, is_local, **kwargs):
     ...         # Reject dangerous built-in classes
     ...         if cls.__name__ in ('eval', 'exec', 'compile'):
     ...             raise ValueError(f"Class {cls} is forbidden")
-    ...         return None  # Accept
     ...
     ...     def intercept_reduce_call(self, callable_obj, args, **kwargs):
     ...         # Log all __reduce__ callables for audit
@@ -201,7 +199,7 @@ class DeserializationPolicy:
 
         This hook is called after a class reference has been deserialized (either by
         importing from a module or reconstructing a local class), but before it is used.
-        It allows inspection, replacement, or rejection of class references.
+        It allows inspection or rejection of class references.
 
         When Called
         -----------
@@ -212,9 +210,8 @@ class DeserializationPolicy:
         Security Use Cases
         ------------------
         - Block dangerous classes (subprocess.Popen, os.system, etc.)
-        - Replace untrusted classes with safe alternatives
         - Validate that local classes match expected signatures
-        - Implement class versioning or adaptation logic
+        - Audit class imports for security logging
 
         Args:
             cls (type): The deserialized class object.
@@ -223,29 +220,20 @@ class DeserializationPolicy:
                            class from an importable module.
             **kwargs: Reserved for future extensions.
 
-        Returns:
-            None: Return None to accept the class as-is.
-            type: Return a different class to replace the original. The replacement
-                 class will be used instead for deserialization.
-
         Raises:
             Exception: Raise any exception to reject the class and abort deserialization.
 
         Example:
-            >>> class ClassAdapter(DeserializationPolicy):
+            >>> class ClassChecker(DeserializationPolicy):
             ...     def validate_class(self, cls, is_local, **kwargs):
-            ...         # Map a serialized class name to the current class.
-            ...         if cls.__name__ == 'ArchivedUserClass':
-            ...             return NewUserClass
             ...         # Block dangerous classes
             ...         if cls.__module__ == 'subprocess':
             ...             raise ValueError("subprocess classes not allowed")
-            ...         return None  # Accept
 
         Note:
             `check_class` is an alias for this hook.
         """
-        pass
+        return None
 
     def validate_function(self, func, is_local: bool, **kwargs):
         """Validate a deserialized function reference.
@@ -263,7 +251,6 @@ class DeserializationPolicy:
         ------------------
         - Block dangerous built-in functions (eval, exec, compile, __import__)
         - Validate that reconstructed functions have expected signatures
-        - Replace untrusted functions with safe alternatives
         - Audit function imports for security logging
 
         Args:
@@ -271,10 +258,6 @@ class DeserializationPolicy:
             is_local (bool): True if the function is local (defined in __main__ or
                            within a function scope), False if it's a global function.
             **kwargs: Reserved for future extensions.
-
-        Returns:
-            None: Return None to accept the function as-is.
-            function: Return a different function to replace the original.
 
         Raises:
             Exception: Raise any exception to reject the function.
@@ -286,12 +269,11 @@ class DeserializationPolicy:
             ...     def validate_function(self, func, is_local, **kwargs):
             ...         if func.__name__ in self.BLOCKED:
             ...             raise ValueError(f"Function {func.__name__} is forbidden")
-            ...         return None
 
         Note:
             `check_function` is an alias for this hook.
         """
-        pass
+        return None
 
     def validate_method(self, method, is_local: bool, **kwargs):
         """Validate a deserialized method reference.
@@ -309,16 +291,12 @@ class DeserializationPolicy:
         ------------------
         - Validate that methods belong to expected classes
         - Block methods that could perform dangerous operations
-        - Replace methods with safer alternatives
+        - Audit method references for security logging
 
         Args:
             method (method): The deserialized bound method object.
             is_local (bool): True if the method's class is local, False if global.
             **kwargs: Reserved for future extensions.
-
-        Returns:
-            None: Return None to accept the method as-is.
-            method: Return a different method to replace the original.
 
         Raises:
             Exception: Raise any exception to reject the method.
@@ -329,38 +307,34 @@ class DeserializationPolicy:
             ...         # Block methods from dangerous classes
             ...         if method.__self__.__class__.__name__ == 'FileRemover':
             ...             raise ValueError("FileRemover methods not allowed")
-            ...         return None
 
         Note:
             `check_method` is an alias for this hook.
         """
-        pass
+        return None
 
-    def validate_module(self, module_name: str, **kwargs):
+    def validate_module(self, module_name: str, *, is_local: bool, **kwargs):
         """Validate a deserialized module reference.
 
-        This hook is called after a module has been imported during deserialization,
-        but before it is used.
+        This hook is called before a module is imported during deserialization.
 
         When Called
         -----------
-        - After importing modules via importlib.import_module()
-        - Before the module is stored or its contents accessed
+        - Before importing modules via importlib.import_module()
+        - Before the module is stored or its contents are accessed
 
         Security Use Cases
         ------------------
         - Whitelist/blacklist modules by name or prefix
         - Prevent imports of system modules (os, subprocess, sys, etc.)
-        - Replace modules with safe alternatives or mocks
         - Audit module imports for security logging
 
         Args:
-            module_name (str): The name of the imported module (e.g., 'os.path').
+            module_name (str): The name of the module to import (e.g., 'os.path').
+            is_local (bool): True if the reference being resolved is local (defined
+                           in __main__ or within a function/method scope), False
+                           otherwise.
             **kwargs: Reserved for future extensions.
-
-        Returns:
-            None: Return None to accept the module as-is.
-            module: Return a different module object to replace the original.
 
         Raises:
             Exception: Raise any exception to reject the module import.
@@ -369,16 +343,15 @@ class DeserializationPolicy:
             >>> class ModuleWhitelistChecker(DeserializationPolicy):
             ...     ALLOWED = {'builtins', 'datetime', 'decimal', 'collections'}
             ...
-            ...     def validate_module(self, module_name, **kwargs):
+            ...     def validate_module(self, module_name, is_local, **kwargs):
             ...         root = module_name.split('.')[0]
             ...         if root not in self.ALLOWED:
             ...             raise ValueError(f"Module {module_name} not whitelisted")
-            ...         return None
 
         Note:
             `check_module` is an alias for this hook.
         """
-        pass
+        return None
 
     # ============================================================================
     # Protocol Interception Hooks (Interceptors)

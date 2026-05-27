@@ -101,8 +101,7 @@ public class JavaSerializer extends AbstractObjectSerializer {
       ObjectInputStream objectInputStream =
           (ObjectInputStream) readContext.getContextObject(objectInput);
       if (objectInputStream == null) {
-        objectInputStream =
-            new ClassLoaderObjectInputStream(typeResolver.getClassLoader(), objectInput);
+        objectInputStream = new ClassLoaderObjectInputStream(typeResolver, objectInput);
         readContext.putContextObject(objectInput, objectInputStream);
       }
       return objectInputStream.readObject();

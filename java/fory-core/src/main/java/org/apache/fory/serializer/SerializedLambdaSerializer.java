@@ -25,6 +25,7 @@ import java.lang.reflect.Method;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.AndroidSupport;
@@ -42,6 +43,7 @@ public class SerializedLambdaSerializer extends Serializer {
   static final Class<SerializedLambda> SERIALIZED_LAMBDA = SerializedLambda.class;
   private static final MethodHandle READ_RESOLVE_HANDLE;
   private final TypeResolver typeResolver;
+  private final int maxCollectionSize;
 
   static {
     if (AndroidSupport.IS_ANDROID) {
@@ -62,6 +64,7 @@ public class SerializedLambdaSerializer extends Serializer {
   public SerializedLambdaSerializer(TypeResolver typeResolver, Class<?> cls) {
     super(typeResolver.getConfig(), cls);
     this.typeResolver = typeResolver;
+    maxCollectionSize = typeResolver.getConfig().maxCollectionSize();
     Preconditions.checkArgument(cls == SERIALIZED_LAMBDA);
   }
 
@@ -105,7 +108,8 @@ public class SerializedLambdaSerializer extends Serializer {
         serializedLambda.getImplMethodName(),
         serializedLambda.getImplMethodSignature(),
         serializedLambda.getInstantiatedMethodType(),
-        capturedArgs);
+        capturedArgs,
+        false);
   }
 
   @Override
@@ -127,6 +131,9 @@ public class SerializedLambdaSerializer extends Serializer {
     int implMethodKind = buffer.readVarInt32();
     String instantiatedMethodType = readContext.readStringRef();
     int capturedArgCount = buffer.readVarUInt32Small7();
+    if (capturedArgCount < 0 || capturedArgCount > maxCollectionSize) {
+      throwInvalidCapturedArgCount(capturedArgCount);
+    }
     Object[] capturedArgs = new Object[capturedArgCount];
     for (int i = 0; i < capturedArgCount; i++) {
       capturedArgs[i] = readContext.readRef();
@@ -141,7 +148,20 @@ public class SerializedLambdaSerializer extends Serializer {
         implMethodName,
         implMethodSignature,
         instantiatedMethodType,
-        capturedArgs);
+        capturedArgs,
+        true);
+  }
+
+  private void throwInvalidCapturedArgCount(int capturedArgCount) {
+    if (capturedArgCount < 0) {
+      throw new DeserializationException(
+          "SerializedLambda captured arg count must be non-negative: " + capturedArgCount);
+    }
+    throw new DeserializationException(
+        "SerializedLambda captured arg count "
+            + capturedArgCount
+            + " exceeds max collection size "
+            + maxCollectionSize);
   }
 
   static Object readResolve(Object replacement) {
@@ -170,9 +190,10 @@ public class SerializedLambdaSerializer extends Serializer {
       String implMethodName,
       String implMethodSignature,
       String instantiatedMethodType,
-      Object[] capturedArgs) {
+      Object[] capturedArgs,
+      boolean checkCapturingClass) {
     return new SerializedLambda(
-        loadCapturingClass(capturingClass),
+        loadCapturingClass(capturingClass, checkCapturingClass),
         functionalInterfaceClass,
         functionalInterfaceMethodName,
         functionalInterfaceMethodSignature,
@@ -184,17 +205,27 @@ public class SerializedLambdaSerializer extends Serializer {
         capturedArgs);
   }
 
-  private Class<?> loadCapturingClass(String className) {
+  private Class<?> loadCapturingClass(String className, boolean checkClass) {
     String binaryClassName = className.replace('/', '.');
     try {
-      return Class.forName(binaryClassName, false, typeResolver.getClassLoader());
+      return loadCapturingClass(binaryClassName, typeResolver.getClassLoader(), checkClass);
     } catch (ClassNotFoundException e) {
       try {
-        return Class.forName(
-            binaryClassName, false, Thread.currentThread().getContextClassLoader());
+        return loadCapturingClass(
+            binaryClassName, Thread.currentThread().getContextClassLoader(), checkClass);
       } catch (ClassNotFoundException ex) {
         throw new RuntimeException("Can't load capturing class " + binaryClassName, ex);
       }
     }
+  }
+
+  private Class<?> loadCapturingClass(String className, ClassLoader classLoader, boolean checkClass)
+      throws ClassNotFoundException {
+    Class<?> cls = Class.forName(className, false, classLoader);
+    if (checkClass) {
+      // JDK SerializedLambda readResolve invokes restoration code on the capturing class.
+      typeResolver.checkClassForDeserialization(cls);
+    }
+    return cls;
   }
 }

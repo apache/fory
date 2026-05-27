@@ -576,11 +576,15 @@ without a `chunk_size` byte:
 - non-null key and null value: special null-value header, then key payload.
 - null key and null value: `KV_NULL` header only.
 
-`EnumMap` writes one serializer-owned payload mode byte before its normal map
-payload:
+`EnumMap` writes its entry count, key enum class metadata, and then its normal
+map entry payload:
 
-- `0`: normal payload follows.
-- `1`: Java-serialized empty `EnumMap` payload.
+```text
+| varuint32_small7 size | key enum class metadata | chunk... |
+```
+
+The key enum class metadata is present even when `size` is zero so an empty
+`EnumMap` can be reconstructed with the original key type.
 
 ### Map Subclasses
 

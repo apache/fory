@@ -20,6 +20,7 @@
 package org.apache.fory.serializer;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
@@ -40,6 +41,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.util.Preconditions;
 import org.testng.annotations.Test;
 
@@ -614,6 +616,56 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             getJavaFory(),
             new WriteReplaceExternalizable(10),
             ReplaceResolveSerializer.class.getName());
+    assertEquals(o.f1, 10);
+  }
+
+  static class ReplaceProtectedExternalizable implements Externalizable {
+    static boolean readExternalCalled;
+    private int f1;
+
+    public ReplaceProtectedExternalizable() {}
+
+    ReplaceProtectedExternalizable(int f1) {
+      this.f1 = f1;
+    }
+
+    @Override
+    public void writeExternal(ObjectOutput out) throws IOException {
+      out.writeInt(f1);
+    }
+
+    @Override
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+      readExternalCalled = true;
+      f1 = in.readInt();
+    }
+
+    private Object writeReplace() {
+      return this;
+    }
+  }
+
+  @Test
+  public void testRejectExternalizableReplace() {
+    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    byte[] bytes = writer.serialize(new ReplaceProtectedExternalizable(10));
+    ReplaceProtectedExternalizable.readExternalCalled = false;
+
+    Fory reader = Fory.builder().withXlang(false).build();
+    assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
+    assertFalse(ReplaceProtectedExternalizable.readExternalCalled);
+  }
+
+  @Test
+  public void testRegisteredExternalizableReplace() {
+    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    byte[] bytes = writer.serialize(new ReplaceProtectedExternalizable(10));
+    ReplaceProtectedExternalizable.readExternalCalled = false;
+
+    Fory reader = Fory.builder().withXlang(false).build();
+    reader.register(ReplaceProtectedExternalizable.class);
+    ReplaceProtectedExternalizable o = (ReplaceProtectedExternalizable) reader.deserialize(bytes);
+    assertTrue(ReplaceProtectedExternalizable.readExternalCalled);
     assertEquals(o.f1, 10);
   }
 

@@ -699,6 +699,8 @@ public class Serializers {
 
     @Override
     public Class read(ReadContext readContext) {
+      // A wire-provided Class value can later drive reflection, proxy creation, or serializer
+      // selection, so class literals must stay under the same registration/TypeChecker boundary.
       return ((ClassResolver) readContext.getTypeResolver()).readClassInternal(readContext);
     }
   }

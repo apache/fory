@@ -33,6 +33,9 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 @SuppressWarnings("unchecked")
@@ -103,6 +106,33 @@ public class LambdaSerializerTest extends ForyTestBase {
     Function<Integer, Integer> newFunc =
         (Function<Integer, Integer>) fory.deserialize(fory.serialize(serializedLambda));
     assertEquals(newFunc.apply(10), Integer.valueOf(17));
+  }
+
+  @Test
+  public void testSerializedLambdaAdmission() throws Exception {
+    int delta = 7;
+    Function<Integer, Integer> function =
+        (Serializable & Function<Integer, Integer>) (x) -> x + delta;
+    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory reader = Fory.builder().withXlang(false).build();
+    byte[] bytes = writer.serialize(extractSerializedLambda(function));
+    Assert.assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
+  }
+
+  @Test
+  public void testSerializedLambdaArgLimit() throws Exception {
+    int delta = 7;
+    Function<Integer, Integer> function =
+        (Serializable & Function<Integer, Integer>) (x) -> x + delta;
+    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withMaxCollectionSize(0)
+            .build();
+    byte[] bytes = writer.serialize(extractSerializedLambda(function));
+    Assert.assertThrows(DeserializationException.class, () -> reader.deserialize(bytes));
   }
 
   @Test(dataProvider = "foryCopyConfig")

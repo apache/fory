@@ -30,6 +30,10 @@ def policy_global_function():
     return "safe"
 
 
+def policy_replacement_function():
+    return "replacement"
+
+
 class PolicyMethodHolder:
     def run(self):
         return "safe"
@@ -491,31 +495,88 @@ def test_validate_module():
     import json
     import collections
 
-    # Test 1: Return module object directly
     class ReturnModulePolicy(DeserializationPolicy):
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
+            assert not is_local
             return collections
 
     fory1 = Fory(xlang=False, ref=True, strict=False, policy=ReturnModulePolicy())
     data = fory1.serialize(json)
-    assert fory1.deserialize(data) is collections
+    assert fory1.deserialize(data) is json
 
-    # Test 2: Return string to redirect import
     class RedirectPolicy(DeserializationPolicy):
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
+            assert not is_local
             return "collections" if module_name == "json" else None
 
     fory2 = Fory(xlang=False, ref=True, strict=False, policy=RedirectPolicy())
-    assert fory2.deserialize(fory2.serialize(json)).__name__ == "collections"
+    assert fory2.deserialize(fory2.serialize(json)).__name__ == "json"
 
-    # Test 3: Raise to block module
     class BlockPolicy(DeserializationPolicy):
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
+            assert not is_local
             raise ValueError(f"Module {module_name} blocked")
 
     fory3 = Fory(xlang=False, ref=True, strict=False, policy=BlockPolicy())
     with pytest.raises(ValueError, match="blocked"):
         fory3.deserialize(fory3.serialize(json))
+
+
+def test_validator_returns_ignored():
+    import json
+    import collections
+
+    class ReplacementClass:
+        pass
+
+    class ReturnPolicy(DeserializationPolicy):
+        def validate_module(self, module_name, is_local, **kwargs):
+            assert not is_local
+            return collections
+
+        def validate_class(self, cls, is_local, **kwargs):
+            return ReplacementClass
+
+        def validate_function(self, func, is_local, **kwargs):
+            return policy_replacement_function
+
+        def validate_method(self, method, is_local, **kwargs):
+            return policy_replacement_function
+
+    policy = ReturnPolicy()
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    assert fory.deserialize(fory.serialize(json)) is json
+    assert fory.deserialize(fory.serialize(PolicyGlobalClass)) is PolicyGlobalClass
+    assert fory.deserialize(fory.serialize(policy_global_function)) is policy_global_function
+
+    serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
+    read_context = FakeReadContext(policy, [1, __name__, "policy_global_bound_method"])
+    assert serializer._deserialize_function(read_context) is policy_global_bound_method
+
+
+def test_local_class_return_ignored():
+    class SafeClass:
+        @classmethod
+        def run(cls):
+            return "safe"
+
+    def make_payload_class():
+        class PayloadClass:
+            @classmethod
+            def run(cls):
+                return "payload"
+
+        return PayloadClass
+
+    class ReturnClassPolicy(DeserializationPolicy):
+        def validate_class(self, cls, is_local, **kwargs):
+            return SafeClass if is_local else None
+
+    fory = Fory(xlang=False, ref=True, strict=False, policy=ReturnClassPolicy())
+    decoded = fory.deserialize(fory.serialize(make_payload_class()))
+    assert decoded is not SafeClass
+    assert decoded.run() == "payload"
+    assert SafeClass.run() == "safe"
 
 
 def test_type_deserialization_validates_module():
@@ -525,9 +586,11 @@ def test_type_deserialization_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == "subprocess":
                 raise ValueError("subprocess blocked")
             return None
@@ -537,6 +600,7 @@ def test_type_deserialization_validates_module():
     with pytest.raises(ValueError, match="subprocess blocked"):
         fory.deserialize(fory.serialize(subprocess.Popen))
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [False]
 
 
 def test_native_bound_method_uses_validate_method():
@@ -818,9 +882,11 @@ def test_global_function_deserialization_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == policy_global_function.__module__:
                 raise ValueError("function module blocked")
             return None
@@ -830,6 +896,7 @@ def test_global_function_deserialization_validates_module():
     with pytest.raises(ValueError, match="function module blocked"):
         fory.deserialize(fory.serialize(policy_global_function))
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [False]
 
 
 def test_local_function_deserialization_validates_module():
@@ -841,9 +908,11 @@ def test_local_function_deserialization_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == local_function.__module__:
                 raise ValueError("local function module blocked")
             return None
@@ -853,6 +922,7 @@ def test_local_function_deserialization_validates_module():
     with pytest.raises(ValueError, match="local function module blocked"):
         fory.deserialize(fory.serialize(local_function))
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [True]
 
 
 def test_native_function_deserialization_validates_module():
@@ -862,9 +932,11 @@ def test_native_function_deserialization_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == "time":
                 raise ValueError("time blocked")
             return None
@@ -874,6 +946,7 @@ def test_native_function_deserialization_validates_module():
     with pytest.raises(ValueError, match="time blocked"):
         fory.deserialize(fory.serialize(time.time))
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [False]
 
 
 def test_type_metadata_load_validates_module():
@@ -882,9 +955,11 @@ def test_type_metadata_load_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == "subprocess":
                 raise ValueError("subprocess blocked")
             return None
@@ -902,6 +977,7 @@ def test_type_metadata_load_validates_module():
     with pytest.raises(ValueError, match="subprocess blocked"):
         resolver._load_metabytes_to_type_info(ns_metabytes, type_metabytes)
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [False]
 
 
 def test_type_metadata_load_validates_class():
@@ -942,9 +1018,11 @@ def test_reduce_global_name_validates_module():
     class BlockModulePolicy(DeserializationPolicy):
         def __init__(self):
             self.validate_module_calls = 0
+            self.is_local_values = []
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            self.is_local_values.append(is_local)
             if module_name == "subprocess":
                 raise ValueError(f"Module {module_name} blocked")
             return None
@@ -954,6 +1032,7 @@ def test_reduce_global_name_validates_module():
     with pytest.raises(ValueError, match="subprocess blocked"):
         fory.deserialize(fory.serialize(GlobalNamePayload()))
     assert policy.validate_module_calls == 1
+    assert policy.is_local_values == [False]
 
 
 def test_reduce_global_name_validates_class():
@@ -968,8 +1047,9 @@ def test_reduce_global_name_validates_class():
             self.validate_module_calls = 0
             self.validate_class_calls = 0
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            assert not is_local
             return None
 
         def validate_class(self, cls, is_local, **kwargs):
@@ -998,8 +1078,9 @@ def test_reduce_global_name_validates_function():
             self.validate_module_calls = 0
             self.validate_function_calls = 0
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            assert not is_local
             return None
 
         def validate_function(self, func, is_local, **kwargs):
@@ -1029,8 +1110,9 @@ def test_reduce_global_method_resolution_uses_validate_method():
             self.validate_method_calls = 0
             self.validate_function_calls = 0
 
-        def validate_module(self, module_name, **kwargs):
+        def validate_module(self, module_name, is_local, **kwargs):
             self.validate_module_calls += 1
+            assert not is_local
             return None
 
         def validate_method(self, method, is_local, **kwargs):

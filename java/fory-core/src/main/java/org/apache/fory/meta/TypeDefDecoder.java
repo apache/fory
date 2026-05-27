@@ -76,7 +76,11 @@ class TypeDefDecoder {
       }
       numFields = header & SMALL_NUM_FIELDS_THRESHOLD;
       if (numFields == SMALL_NUM_FIELDS_THRESHOLD) {
-        numFields += buffer.readVarUInt32Small7();
+        int extraFields = buffer.readVarUInt32Small7();
+        if (extraFields < 0 || extraFields > Integer.MAX_VALUE - SMALL_NUM_FIELDS_THRESHOLD) {
+          throw new DeserializationException("Invalid TypeDef field count");
+        }
+        numFields += extraFields;
       }
       if (named) {
         String namespace = readPkgName(buffer);
@@ -201,7 +205,7 @@ class TypeDefDecoder {
   // | header + type info + field name | ... | header + type info + field name |
   private static List<FieldInfo> readFieldsInfo(
       MemoryBuffer buffer, XtypeResolver resolver, String className, int numFields) {
-    List<FieldInfo> fieldInfos = new ArrayList<>(numFields);
+    List<FieldInfo> fieldInfos = new ArrayList<>();
     for (int i = 0; i < numFields; i++) {
       // header: 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
       byte header = buffer.readByte();

@@ -33,6 +33,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
@@ -166,6 +167,18 @@ public class StringSerializerTest extends ForyTestBase {
       assertEquals(str, serializer.readString(buffer));
       Assert.assertEquals(buffer.writerIndex(), buffer.readerIndex());
     }
+  }
+
+  @Test
+  public void testStringSizeLimit() {
+    Fory writer = Fory.builder().withXlang(false).build();
+    Fory reader = Fory.builder().withXlang(false).withMaxBinarySize(2).build();
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    new StringSerializer(writer.getConfig()).writeString(buffer, "abcd");
+
+    Assert.assertThrows(
+        DeserializationException.class,
+        () -> new StringSerializer(reader.getConfig()).readString(buffer));
   }
 
   @Data

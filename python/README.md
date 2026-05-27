@@ -1119,7 +1119,6 @@ class SafeDeserializationPolicy(DeserializationPolicy):
         # Block dangerous modules
         if cls.__module__ in dangerous_modules:
             raise ValueError(f"Blocked dangerous class: {cls.__module__}.{cls.__name__}")
-        return None
 
     def intercept_reduce_call(self, callable_obj, args, **kwargs):
         # Block specific callable invocations during __reduce__
@@ -1144,9 +1143,11 @@ result = fory.deserialize(data)  # Policy hooks will be invoked
 
 **Available Policy Hooks:**
 
+- Reference validation hooks reject by raising exceptions and otherwise leave deserialized references unchanged.
 - `validate_class(cls, is_local)` - Validate/block class types during deserialization
-- `validate_module(module, is_local)` - Validate/block module imports
+- `validate_module(module_name, is_local)` - Validate/block module imports
 - `validate_function(func, is_local)` - Validate/block function references
+- `validate_method(method, is_local)` - Validate/block method references
 - `intercept_reduce_call(callable_obj, args)` - Intercept `__reduce__` invocations
 - `inspect_reduced_object(obj)` - Inspect/replace objects created via `__reduce__`
 - `intercept_setstate(obj, state)` - Sanitize state before `__setstate__`

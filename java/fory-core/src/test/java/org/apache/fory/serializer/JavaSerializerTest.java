@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InvalidClassException;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamConstants;
 import java.io.Serializable;
@@ -31,6 +32,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.memory.BigEndian;
+import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -51,6 +53,16 @@ public class JavaSerializerTest extends ForyTestBase {
       this.age = s.readInt();
     }
   }
+
+  public static class JavaBox implements Serializable {
+    Object value;
+
+    JavaBox(Object value) {
+      this.value = value;
+    }
+  }
+
+  public static class NestedValue implements Serializable {}
 
   @Test
   public void testWriteObject() {
@@ -84,5 +96,17 @@ public class JavaSerializerTest extends ForyTestBase {
     URL url = new URL("http://localhost:80");
     fory.registerSerializer(URL.class, JavaSerializer.class);
     copyCheck(fory, url);
+  }
+
+  @Test
+  public void testJdkStreamChecksNestedClass() {
+    Fory fory = Fory.builder().withXlang(false).build();
+    Serializer serializer = new JavaSerializer(fory.getTypeResolver(), JavaBox.class);
+    fory.registerSerializer(JavaBox.class, serializer);
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
+    writeSerializer(fory, serializer, buffer, new JavaBox(new NestedValue()));
+
+    Assert.assertThrows(
+        InvalidClassException.class, () -> readSerializer(fory, serializer, buffer));
   }
 }

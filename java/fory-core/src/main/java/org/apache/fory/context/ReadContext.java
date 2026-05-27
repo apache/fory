@@ -470,6 +470,8 @@ public final class ReadContext {
       if (size < 0) {
         throw new IllegalArgumentException("Buffer object size must be non-negative: " + size);
       }
+      // This returns a zero-copy slice. Allocation limits belong to serializers which allocate
+      // objects from the slice, not to the buffer-object transport itself.
       buffer.checkReadableBytes(size);
       int readerIndex = buffer.readerIndex();
       MemoryBuffer slice = buffer.slice(readerIndex, size);

@@ -19,10 +19,12 @@ package org.apache.fory.io;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InvalidClassException;
 import java.io.ObjectInputStream;
 import java.io.ObjectStreamClass;
 import java.io.StreamCorruptedException;
 import java.lang.reflect.Proxy;
+import org.apache.fory.resolver.TypeResolver;
 
 // Derived from
 // https://github.com/apache/commons-io/blob/5168fa5e9de9dd2ff6ace3f34226397a4faebc14/src/main/java/org/apache/commons/io/input/ClassLoaderObjectInputStream.java.
@@ -38,6 +40,8 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
   /** The class loader to use. */
   private final ClassLoader classLoader;
 
+  private final TypeResolver typeResolver;
+
   /**
    * Constructs a new ClassLoaderObjectInputStream.
    *
@@ -50,6 +54,14 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
       throws IOException, StreamCorruptedException {
     super(inputStream);
     this.classLoader = classLoader;
+    typeResolver = null;
+  }
+
+  public ClassLoaderObjectInputStream(TypeResolver typeResolver, InputStream inputStream)
+      throws IOException, StreamCorruptedException {
+    super(inputStream);
+    this.typeResolver = typeResolver;
+    classLoader = typeResolver.getClassLoader();
   }
 
   /**
@@ -67,10 +79,13 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
     Class<?> clazz = Class.forName(objectStreamClass.getName(), false, classLoader);
     if (clazz != null) {
       // the classloader knows of the class
+      checkClass(clazz);
       return clazz;
     } else {
       // classloader knows not of class, let the super classloader do it
-      return super.resolveClass(objectStreamClass);
+      Class<?> superClass = super.resolveClass(objectStreamClass);
+      checkClass(superClass);
+      return superClass;
     }
   }
 
@@ -91,11 +106,27 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
     Class<?>[] interfaceClasses = new Class[interfaces.length];
     for (int i = 0; i < interfaces.length; i++) {
       interfaceClasses[i] = Class.forName(interfaces[i], false, classLoader);
+      checkClass(interfaceClasses[i]);
     }
     try {
       return Proxy.getProxyClass(classLoader, interfaceClasses);
     } catch (IllegalArgumentException e) {
-      return super.resolveProxyClass(interfaces);
+      Class<?> proxyClass = super.resolveProxyClass(interfaces);
+      checkClass(proxyClass);
+      return proxyClass;
+    }
+  }
+
+  private void checkClass(Class<?> cls) throws InvalidClassException {
+    if (typeResolver == null) {
+      return;
+    }
+    try {
+      typeResolver.checkClassForDeserialization(cls);
+    } catch (RuntimeException e) {
+      InvalidClassException exception = new InvalidClassException(cls.getName(), e.getMessage());
+      exception.initCause(e);
+      throw exception;
     }
   }
 }

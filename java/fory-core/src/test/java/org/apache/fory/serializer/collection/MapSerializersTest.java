@@ -716,6 +716,33 @@ public class MapSerializersTest extends ForyTestBase {
         MapSerializers.EnumMapSerializer.class);
   }
 
+  @Test
+  public void testEmptyEnumMap() {
+    Fory fory = getJavaFory();
+    EnumMap<TestEnum, Object> enumMap = new EnumMap<>(TestEnum.class);
+    Serializer<EnumMap> serializer = fory.getSerializer(EnumMap.class);
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    writeSerializer(fory, serializer, buffer, enumMap);
+    Assert.assertEquals(buffer.getByte(0), (byte) 0);
+    Assert.assertEquals(buffer.readerIndex(), 0);
+    EnumMap<TestEnum, Object> restored = readSerializer(fory, serializer, buffer);
+    Assert.assertEquals(restored, enumMap);
+    restored.put(TestEnum.A, "value");
+    Assert.assertEquals(restored.get(TestEnum.A), "value");
+  }
+
+  @Test
+  public void testEnumMapHasNoPayloadMode() {
+    Fory fory = getJavaFory();
+    Serializer<EnumMap> serializer = fory.getSerializer(EnumMap.class);
+    EnumMap<TestEnum, Object> enumMap = new EnumMap<>(TestEnum.class);
+    enumMap.put(TestEnum.A, "value");
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    writeSerializer(fory, serializer, buffer, enumMap);
+    Assert.assertEquals(buffer.getByte(0), (byte) 1);
+    Assert.assertEquals(readSerializer(fory, serializer, buffer), enumMap);
+  }
+
   @Test(dataProvider = "foryCopyConfig")
   public void testEnumMap(Fory fory) {
     EnumMap<TestEnum, Object> enumMap = new EnumMap<>(TestEnum.class);

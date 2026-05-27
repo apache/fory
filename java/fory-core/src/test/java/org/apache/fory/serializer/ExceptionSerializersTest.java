@@ -60,6 +60,23 @@ public class ExceptionSerializersTest extends ForyTestBase {
     Assert.assertEquals(copy.getSuppressed()[1].getMessage(), "suppressed-2");
   }
 
+  @Test
+  public void testSuppressedCountLimit() {
+    Fory writer = Fory.builder().withXlang(false).build();
+    Fory reader = Fory.builder().withXlang(false).withMaxCollectionSize(1).build();
+    RuntimeException value = new RuntimeException("outer");
+    RuntimeException suppressed1 = new RuntimeException("suppressed-1");
+    RuntimeException suppressed2 = new RuntimeException("suppressed-2");
+    value.setStackTrace(new StackTraceElement[0]);
+    suppressed1.setStackTrace(new StackTraceElement[0]);
+    suppressed2.setStackTrace(new StackTraceElement[0]);
+    value.addSuppressed(suppressed1);
+    value.addSuppressed(suppressed2);
+    byte[] bytes = writer.serialize(value);
+
+    Assert.assertThrows(ForyException.class, () -> reader.deserialize(bytes));
+  }
+
   @Test(dataProvider = "javaFory")
   public void testStackTraceElementRoundTrip(Fory fory) {
     StackTraceElement value = new Exception().getStackTrace()[0];

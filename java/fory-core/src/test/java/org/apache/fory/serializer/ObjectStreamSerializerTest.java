@@ -48,6 +48,7 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.collection.CollectionSerializers;
@@ -1027,6 +1028,54 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result.parentData, "parent");
     assertEquals(result.childData, "child");
     assertEquals(result.childValue, 42);
+  }
+
+  @Test
+  public void testObjectStreamExpectedParentLayer() {
+    Fory writerFory =
+        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+    writerFory.register(HierarchyChildDefault.class);
+    writerFory.registerSerializer(
+        HierarchyChildDefault.class,
+        new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyChildDefault.class));
+
+    Fory readerFory =
+        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+    readerFory.register(HierarchyChildDefault.class);
+    readerFory.registerSerializer(
+        HierarchyChildDefault.class,
+        new ObjectStreamSerializer(readerFory.getTypeResolver(), HierarchyChildDefault.class));
+
+    HierarchyChildDefault obj = new HierarchyChildDefault("parent", "child", 42);
+    HierarchyChildDefault result =
+        (HierarchyChildDefault) readerFory.deserialize(writerFory.serialize(obj));
+    assertEquals(result.parentData, "parent");
+    assertEquals(result.childData, "child");
+    assertEquals(result.childValue, 42);
+  }
+
+  @Test
+  public void testObjectStreamRejectsParentRoot() {
+    Fory writerFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .build();
+    writerFory.registerSerializer(
+        HierarchyParentPutFields.class,
+        new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyParentPutFields.class));
+
+    Fory readerFory =
+        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+    readerFory.register(HierarchyChildDefault.class);
+    readerFory.registerSerializer(
+        HierarchyChildDefault.class,
+        new ObjectStreamSerializer(readerFory.getTypeResolver(), HierarchyChildDefault.class));
+
+    byte[] bytes = writerFory.serialize(new HierarchyParentPutFields("parent"));
+    Assert.assertThrows(InsecureException.class, () -> readerFory.deserialize(bytes));
   }
 
   // ==================== Cross-Fory Instance Schema Tests ====================

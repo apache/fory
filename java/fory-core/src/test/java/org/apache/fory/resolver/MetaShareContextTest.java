@@ -28,6 +28,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -38,6 +39,12 @@ import org.testng.annotations.Test;
 public class MetaShareContextTest extends ForyTestBase {
   public interface InterfacePrice {
     int cents();
+  }
+
+  public static class MetaSharedPayload {
+    public int value;
+
+    public MetaSharedPayload() {}
   }
 
   @Test
@@ -87,6 +94,21 @@ public class MetaShareContextTest extends ForyTestBase {
     TypeDef typeDef = TypeDef.buildTypeDef(resolver, InterfacePrice.class);
     TypeInfo typeInfo = resolver.buildMetaSharedTypeInfo(typeDef);
     Assert.assertNull(typeInfo.getSerializer());
+  }
+
+  @Test
+  public void testMetaTypeDefAdmission() {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .withCompatible(true)
+            .requireClassRegistration(false)
+            .build();
+    Fory reader = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(true).build();
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), MetaSharedPayload.class);
+    Assert.assertThrows(
+        InsecureException.class, () -> reader.getTypeResolver().buildMetaSharedTypeInfo(typeDef));
   }
 
   private void checkMetaShare(Fory fory, Object o) {

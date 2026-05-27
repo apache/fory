@@ -176,6 +176,9 @@ public abstract class TypeResolver {
     return extRegistry.classLoader;
   }
 
+  @Internal
+  public void checkClassForDeserialization(Class<?> cls) {}
+
   public final SharedRegistry getSharedRegistry() {
     return sharedRegistry;
   }
@@ -1011,6 +1014,8 @@ public abstract class TypeResolver {
       return typeInfo;
     }
     Class<?> cls = loadClass(typeDef.getClassSpec());
+    // A wire TypeDef may create a compatible serializer; admit the class before caching it by id.
+    checkClassForDeserialization(cls);
     if (!typeDef.isStructSchemaKind()
         && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
       typeInfo = getTypeInfo(cls);

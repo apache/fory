@@ -53,6 +53,7 @@ import org.apache.fory.builder.Generated;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -447,6 +448,19 @@ public class ClassResolverTest extends ForyTestBase {
     serDeCheck(
         fory,
         Arrays.asList(Interface1.class, Interface1.class, Interface2.class, Interface2.class));
+  }
+
+  @Test
+  public void testClassLiteralRegistration() {
+    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    byte[] serialized = writer.serialize(Foo.class);
+
+    Fory reader = Fory.builder().withXlang(false).build();
+    Assert.assertThrows(InsecureException.class, () -> reader.deserialize(serialized));
+
+    Fory registeredReader = Fory.builder().withXlang(false).build();
+    registeredReader.register(Foo.class);
+    Assert.assertSame(registeredReader.deserialize(serialized), Foo.class);
   }
 
   @Test

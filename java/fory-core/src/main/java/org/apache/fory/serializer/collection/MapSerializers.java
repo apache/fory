@@ -19,7 +19,15 @@
 
 package org.apache.fory.serializer.collection;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InvalidObjectException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamClass;
 import java.lang.invoke.MethodHandle;
 import java.util.Collection;
 import java.util.Collections;
@@ -29,6 +37,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,17 +48,15 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.UnsafeOps;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ExternalizableSerializer;
-import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 
 /**
@@ -333,23 +340,34 @@ public class MapSerializers {
   }
 
   public static class EnumMapSerializer extends MapSerializer<EnumMap> {
-    private static final byte NORMAL_ENUM_MAP = 0;
-    private static final byte JAVA_SERIALIZED_EMPTY_ENUM_MAP = 1;
+    private static final class CapturingObjectInputStream extends ObjectInputStream {
+      private final ClassLoader fallbackLoader;
+      private Class<?> enumClass;
 
-    private static final class KeyTypeFieldOffset {
-      // Make offset compatible with graalvm native image.
-      private static final long VALUE;
+      private CapturingObjectInputStream(InputStream in, ClassLoader fallbackLoader)
+          throws IOException {
+        super(in);
+        this.fallbackLoader = fallbackLoader;
+      }
 
-      static {
+      @Override
+      protected Class<?> resolveClass(ObjectStreamClass desc)
+          throws IOException, ClassNotFoundException {
+        Class<?> cls;
         try {
-          VALUE = UnsafeOps.objectFieldOffset(EnumMap.class.getDeclaredField("keyType"));
-        } catch (final Exception e) {
-          throw new RuntimeException(e);
+          cls = super.resolveClass(desc);
+        } catch (ClassNotFoundException e) {
+          if (fallbackLoader == null) {
+            throw e;
+          }
+          cls = Class.forName(desc.getName(), false, fallbackLoader);
         }
+        if (enumClass == null && cls != Enum.class && Enum.class.isAssignableFrom(cls)) {
+          enumClass = cls;
+        }
+        return cls;
       }
     }
-
-    private JavaSerializer javaSerializer;
 
     public EnumMapSerializer(TypeResolver typeResolver) {
       // getMapKeyValueType(EnumMap.class) will be `K, V` without Enum as key bound.
@@ -360,12 +378,6 @@ public class MapSerializers {
     @Override
     public Map onMapWrite(WriteContext writeContext, EnumMap value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      if (AndroidSupport.IS_ANDROID && value.isEmpty()) {
-        buffer.writeByte(JAVA_SERIALIZED_EMPTY_ENUM_MAP);
-        getJavaSerializer().write(writeContext, value);
-        return value;
-      }
-      buffer.writeByte(NORMAL_ENUM_MAP);
       buffer.writeVarUInt32Small7(value.size());
       Class keyType = getKeyType(value);
       ((ClassResolver) typeResolver).writeClassAndUpdateCache(writeContext, keyType);
@@ -375,16 +387,6 @@ public class MapSerializers {
     @Override
     public EnumMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      byte payloadMode = buffer.readByte();
-      if (payloadMode == JAVA_SERIALIZED_EMPTY_ENUM_MAP) {
-        EnumMap map = (EnumMap) getJavaSerializer().read(readContext);
-        setNumElements(0);
-        readContext.reference(map);
-        return map;
-      }
-      if (payloadMode != NORMAL_ENUM_MAP) {
-        throw new IllegalArgumentException("Unknown EnumMap payload mode: " + payloadMode);
-      }
       setNumElements(readMapSize(buffer));
       Class<?> keyType = typeResolver.readTypeInfo(readContext).getType();
       EnumMap map = new EnumMap(keyType);
@@ -397,20 +399,38 @@ public class MapSerializers {
       return new EnumMap(originMap);
     }
 
-    private static Class<?> getKeyType(EnumMap value) {
+    private Class<?> getKeyType(EnumMap value) {
+      Objects.requireNonNull(value, "value");
       if (!value.isEmpty()) {
         Enum key = (Enum) value.keySet().iterator().next();
         return key.getDeclaringClass();
       }
-      return (Class<?>) UnsafeOps.getObject(value, KeyTypeFieldOffset.VALUE);
+      try {
+        return keyTypeBySerialization(value, typeResolver.getClassLoader());
+      } catch (IOException | ClassNotFoundException e) {
+        throw ExceptionUtils.throwException(e);
+      }
     }
 
-    private JavaSerializer getJavaSerializer() {
-      JavaSerializer javaSerializer = this.javaSerializer;
-      if (javaSerializer == null) {
-        javaSerializer = this.javaSerializer = new JavaSerializer(typeResolver, EnumMap.class);
+    private static Class<?> keyTypeBySerialization(EnumMap value, ClassLoader fallbackLoader)
+        throws IOException, ClassNotFoundException {
+      // This JDK stream is local-only key-type discovery for an already-owned EnumMap; remote Fory
+      // payloads must keep using the normal class metadata path in newMap.
+      EnumMap copy = value.clone();
+      copy.clear();
+      ByteArrayOutputStream bytes = new ByteArrayOutputStream(128);
+      try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {
+        out.writeObject(copy);
       }
-      return javaSerializer;
+      try (CapturingObjectInputStream in =
+          new CapturingObjectInputStream(
+              new ByteArrayInputStream(bytes.toByteArray()), fallbackLoader)) {
+        in.readObject();
+        if (in.enumClass == null) {
+          throw new InvalidObjectException("Cannot determine EnumMap key type");
+        }
+        return in.enumClass;
+      }
     }
   }
 

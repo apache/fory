@@ -24,6 +24,8 @@ import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import java.io.Externalizable;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
@@ -31,18 +33,25 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Currency;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.SortedSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
@@ -277,6 +286,14 @@ public class SerializersTest extends ForyTestBase {
 
   private static class TestClassSerialization {}
 
+  private interface TestClassTokenInterface {
+    void test();
+  }
+
+  private interface TestDefaultClassTokenInterface {
+    default void test() {}
+  }
+
   private static class TestReplaceClassSerialization {
     private Object writeReplace() {
       return 1;
@@ -298,6 +315,22 @@ public class SerializersTest extends ForyTestBase {
     serDeCheckSerializer(fory, TestClassSerialization.class, "ClassSerializer");
     serDeCheckSerializer(fory, TestReplaceClassSerialization.class, "ClassSerializer");
     serDe(fory, new TestReplaceClassSerialization());
+  }
+
+  @Test
+  public void testDefaultSafeClassTokens() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    assertSame(serDe(fory, Serializable.class), Serializable.class);
+    assertSame(serDe(fory, Externalizable.class), Externalizable.class);
+    assertSame(serDe(fory, Function.class), Function.class);
+    assertSame(serDe(fory, Collection.class), Collection.class);
+    assertSame(serDe(fory, List.class), List.class);
+    assertSame(serDe(fory, Set.class), Set.class);
+    assertSame(serDe(fory, Map.class), Map.class);
+    assertSame(serDe(fory, SortedMap.class), SortedMap.class);
+    assertSame(serDe(fory, SortedSet.class), SortedSet.class);
+    assertSame(serDe(fory, TestClassTokenInterface.class), TestClassTokenInterface.class);
+    assertThrows(InsecureException.class, () -> serDe(fory, TestDefaultClassTokenInterface.class));
   }
 
   @Test

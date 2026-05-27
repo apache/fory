@@ -184,9 +184,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         type_cls = make_dataclass(class_name, field_definitions)
         policy = getattr(resolver, "policy", None)
         if policy is not None:
-            result = policy.validate_class(type_cls, is_local=True)
-            if result is not None:
-                type_cls = result
+            policy.validate_class(type_cls, is_local=True)
     elif type_cls is None:
         raise ValueError(f"TypeDef {name} is not registered")
 

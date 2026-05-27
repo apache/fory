@@ -83,7 +83,11 @@ class NativeTypeDefDecoder {
     int rootTypeId = nativeTypeId(bodyHeader >>> 4);
     int numClasses = bodyHeader & NUM_CLASS_THRESHOLD;
     if (numClasses == NUM_CLASS_THRESHOLD) {
-      numClasses += typeDefBuf.readVarUInt32Small7();
+      int extraClasses = typeDefBuf.readVarUInt32Small7();
+      if (extraClasses < 0 || extraClasses > Integer.MAX_VALUE - NUM_CLASS_THRESHOLD - 1) {
+        throw new DeserializationException("Invalid TypeDef class count");
+      }
+      numClasses += extraClasses;
     }
     numClasses += 1;
     String className;
@@ -95,6 +99,9 @@ class NativeTypeDefDecoder {
       // | num fields + register flag | header + package name | header + class name
       // | header + type id + field name | next field info | ... |
       int currentClassHeader = typeDefBuf.readVarUInt32Small7();
+      if (currentClassHeader < 0) {
+        throw new DeserializationException("Invalid TypeDef field count");
+      }
       boolean isRegistered = (currentClassHeader & 0b1) != 0;
       int numFields = currentClassHeader >>> 1;
       Class<?> currentClass = null;
@@ -269,7 +276,7 @@ class NativeTypeDefDecoder {
 
   private static List<FieldInfo> readFieldsInfo(
       MemoryBuffer buffer, ClassResolver resolver, String className, int numFields) {
-    List<FieldInfo> fieldInfos = new ArrayList<>(numFields);
+    List<FieldInfo> fieldInfos = new ArrayList<>();
     for (int i = 0; i < numFields; i++) {
       int header = buffer.readByte() & 0xff;
       //  `3 bits size + 2 bits field name encoding + nullability flag + ref tracking flag`
