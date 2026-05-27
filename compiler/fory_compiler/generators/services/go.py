@@ -20,7 +20,7 @@
 from typing import List
 from fory_compiler.generators.services.base import ImportTracker, StreamingMode, streaming_mode
 from fory_compiler.generators.base import GeneratedFile
-from fory_compiler.ir.ast import RpcMethod, Service
+from fory_compiler.ir.ast import RpcMethod, Service, NamedType
 
 
 class GoServiceGeneratorMixin:
@@ -48,7 +48,8 @@ class GoServiceGeneratorMixin:
         # save the placeholder index for now
         import_placeholder_index = len(lines)
 
-
+        # Client interface
+        
 
 
 
@@ -73,7 +74,7 @@ class GoServiceGeneratorMixin:
         for path in tracker.go_imports():
             imports.append(f'"{path}"')
         
-        sorted_imports = sorted(set(imports))       # deduplicate and sort the imports
+        sorted_imports = sorted(set(imports))
 
         lines = ["import ("]
         for imp in sorted_imports:
@@ -81,4 +82,37 @@ class GoServiceGeneratorMixin:
         lines.append(")")
         lines.append("")
 
+        return lines
+
+    def _resolve_go_type(self, named_type: NamedType, tracker: ImportTracker) -> str:
+        type_ref = self.schema.resolve_type_name(named_type.name)
+        type_def = self.schema.get_type(type_ref)
+        if type_def is not None and self.is_imported_type(type_def):
+            info = self._import_info_for_type(type_def)
+            if info:
+                alias, import_path, _ = info
+                tracker.add(alias, import_path)
+                return f"*{alias}.{type_ref}"
+        return f"*{type_ref}"
+
+    def _generate_client_interface(self, service: Service, tracker: ImportTracker) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"// {service.name}Client is the client API for {service.name} service")
+        lines.append(f"type {service.name}Client interface {{")
+        for method in service.methods:
+            req_type = self._resolve_go_type(method.request_type, tracker)
+            res_type = self._resolve_go_type(method.response_type, tracker)
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                signature = f"(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({res_type}, error)"
+                lines.append(f"\t{self.to_pascal_case(method.name)}{signature}")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                signature = f"(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error)"
+                lines.append(f"\t{self.to_pascal_case(method.name)}{signature}")
+            else:
+                signature = f"(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error)"
+                lines.append(f"\t{self.to_pascal_case(method.name)}{signature}")
+
+        lines.append("}")
+        lines.append("")
         return lines
