@@ -23,7 +23,7 @@ Add `fory` to your package dependencies.
 
 ```yaml
 dependencies:
-  fory: ^1.0.0
+  fory: ^1.1.0
 
 dev_dependencies:
   build_runner: ^2.4.13
