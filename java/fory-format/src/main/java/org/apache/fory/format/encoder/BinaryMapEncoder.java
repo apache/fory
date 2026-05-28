@@ -85,6 +85,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
 
   @Override
   public M decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 
