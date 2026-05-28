@@ -39,6 +39,7 @@ import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.CustomTypeRegistration;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -339,19 +340,22 @@ public class Encoders {
   }
 
   /**
-   * Compile and load a projection codec class for one historical version of {@code beanClass}.
-   * The current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this
-   * is used by schema-evolution code paths to materialize a decoder for each older version.
+   * Compile and load a projection codec class for one historical version of {@code beanClass}. The
+   * current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this is
+   * used by schema-evolution code paths to materialize a decoder for each older version. The {@code
+   * nestedSuffixes} map directs codegen to the projection codec class to embed for each nested
+   * versioned bean type.
    */
   static Class<?> loadOrGenProjectionRowCodecClass(
       Class<?> beanClass,
       Encoding codecFactory,
-      org.apache.fory.format.type.Schema historicalSchema,
+      Schema historicalSchema,
       Set<String> liveNames,
-      String classSuffix) {
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes) {
     final RowEncoderBuilder codecBuilder =
         codecFactory.newProjectionRowEncoder(
-            TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix);
+            TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix, nestedSuffixes);
     CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(beanClass),

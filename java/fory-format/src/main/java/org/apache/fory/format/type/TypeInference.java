@@ -117,16 +117,6 @@ public class TypeInference {
     return inferField(null, typeRef);
   }
 
-  /**
-   * Infer a single named field from its Java type, used by schema-evolution code paths that need
-   * to reconstruct historical fields by name and type without going through a Java member.
-   */
-  static Field inferNamedField(String name, TypeRef<?> typeRef) {
-    TypeResolutionContext ctx =
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-    return inferField(name, typeRef, ctx);
-  }
-
   private static Field inferField(TypeRef<?> arrayTypeRef, TypeRef<?> typeRef) {
     TypeResolutionContext ctx =
         new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
@@ -266,6 +256,16 @@ public class TypeInference {
               "Unsupported type %s for field %s, seen type set is %s",
               typeRef, name, ctx.getWalkedTypePath()));
     }
+  }
+
+  /**
+   * Infer a single named field from its Java type, used by schema-evolution code paths that need to
+   * reconstruct historical fields by name and type without going through a Java member.
+   */
+  static Field inferNamedField(String name, TypeRef<?> typeRef) {
+    TypeResolutionContext ctx =
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+    return inferField(name, typeRef, ctx);
   }
 
   public static String inferTypeName(TypeRef<?> token) {

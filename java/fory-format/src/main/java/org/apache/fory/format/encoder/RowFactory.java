@@ -25,8 +25,8 @@ import org.apache.fory.format.row.binary.BinaryRow;
  * Allocates fresh {@link BinaryRow} instances for a fixed schema. Obtained once per schema from
  * {@link Encoding#newRowFactory}, so any schema-derived layout (compact offsets, widths,
  * nullability) is computed a single time and reused by every {@link #newRow} call. The schema-
- * evolution decode path holds one factory per historical schema, giving it the same per-decode
- * cost as the current-schema path that reads through the writer's cached layout.
+ * evolution decode path holds one factory per historical schema, giving it the same per-decode cost
+ * as the current-schema path that reads through the writer's cached layout.
  */
 @FunctionalInterface
 interface RowFactory {

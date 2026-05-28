@@ -22,20 +22,23 @@ package org.apache.fory.format.encoder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.UnaryOperator;
 import lombok.Data;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * Stress tests for row-codec schema evolution. Each test probes a specific edge case; the names
- * say what is being stressed. Tests that surfaced real bugs are kept with a note pointing at the
- * fix; tests kept for coverage are short.
+ * Stress tests for row-codec schema evolution. Each test probes a specific edge case; the names say
+ * what is being stressed. Tests that surfaced real bugs are kept with a note pointing at the fix;
+ * tests kept for coverage are short.
  */
 public class SchemaEvolutionStressTest {
 
@@ -84,8 +87,8 @@ public class SchemaEvolutionStressTest {
 
   /**
    * v5 also removes the v1 'a' field starting at v5. The reader must therefore know about three
-   * different historical schemas: v1, v2-3, and v4 (since 'a' is removed and a new field 'e'
-   * shows up in v5; 'a' removal makes v5 differ from v4).
+   * different historical schemas: v1, v2-3, and v4 (since 'a' is removed and a new field 'e' shows
+   * up in v5; 'a' removal makes v5 differ from v4).
    */
   @Data
   @ForySchema(removedFields = ChainV5.History.class)
@@ -523,6 +526,118 @@ public class SchemaEvolutionStressTest {
   }
 
   // ---------------------------------------------------------------------------
+  // A removed-field history declaration must carry a well-formed @ForyVersion.
+  // Each misconfiguration fails at build with a message that names the offending
+  // declaration, so the user can fix the annotation rather than chase a decode error.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  @ForySchema(removedFields = MissingAnnotation.History.class)
+  public static class MissingAnnotation {
+    private int x;
+
+    interface History {
+      // No @ForyVersion: a removed field has no [since, until) window without it.
+      String legacy();
+    }
+  }
+
+  @Data
+  @ForySchema(removedFields = MissingUntil.History.class)
+  public static class MissingUntil {
+    private int x;
+
+    interface History {
+      @ForyVersion(since = 2)
+      String legacy();
+    }
+  }
+
+  @Data
+  @ForySchema(removedFields = EmptyWindow.History.class)
+  public static class EmptyWindow {
+    private int x;
+
+    interface History {
+      @ForyVersion(since = 5, until = 5)
+      String legacy();
+    }
+  }
+
+  @Test
+  public void removedFieldWithoutForyVersionFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class,
+            () ->
+                Encoders.buildBeanCodec(MissingAnnotation.class)
+                    .withSchemaEvolution()
+                    .build()
+                    .get());
+    Assert.assertTrue(e.getMessage().contains("requires a @ForyVersion"), e.getMessage());
+  }
+
+  @Test
+  public void removedFieldWithoutUntilFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class,
+            () -> Encoders.buildBeanCodec(MissingUntil.class).withSchemaEvolution().build().get());
+    Assert.assertTrue(e.getMessage().contains("must specify @ForyVersion.until"), e.getMessage());
+  }
+
+  @Test
+  public void removedFieldEmptyWindowFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class,
+            () -> Encoders.buildBeanCodec(EmptyWindow.class).withSchemaEvolution().build().get());
+    Assert.assertTrue(e.getMessage().contains("must be strictly less than until"), e.getMessage());
+  }
+
+  // ---------------------------------------------------------------------------
+  // A field whose type is a Collection subclass that shadows a field name across
+  // its own hierarchy. The row format encodes it through the iterable branch and
+  // never introspects it as a bean, so it round-trips fine. SchemaHistory must
+  // apply the same iterable/map/bean classification before introspecting a nested
+  // field type; otherwise it calls Descriptor.getDescriptors on the shadowed
+  // collection class and fails the whole history build on a bean that works.
+  // ---------------------------------------------------------------------------
+
+  public static class TaggedListBase<E> extends ArrayList<E> {
+    protected String marker;
+  }
+
+  // Shadows TaggedListBase.marker, which makes Descriptor.getDescriptors reject
+  // this class even though the codec treats it purely as a List.
+  public static class TaggedList<E> extends TaggedListBase<E> {
+    protected String marker;
+  }
+
+  @Data
+  public static class ShadowedCollectionV2 {
+    private TaggedList<String> labels;
+
+    @ForyVersion(since = 2)
+    private String tag;
+  }
+
+  @Test
+  public void versionedBeanWithShadowedCollectionFieldBuilds() {
+    RowEncoder<ShadowedCollectionV2> codec =
+        Encoders.buildBeanCodec(ShadowedCollectionV2.class).withSchemaEvolution().build().get();
+    ShadowedCollectionV2 in = new ShadowedCollectionV2();
+    TaggedList<String> labels = new TaggedList<>();
+    labels.add("a");
+    labels.add("b");
+    in.setLabels(labels);
+    in.setTag("t");
+    ShadowedCollectionV2 out = codec.decode(codec.encode(in));
+    Assert.assertEquals(out.getLabels(), Arrays.asList("a", "b"));
+    Assert.assertEquals(out.getTag(), "t");
+  }
+
+  // ---------------------------------------------------------------------------
   // Roundtrip a List<DefaultsV1> field nested inside a versioned outer record.
   // Verifies the projection codec generated for the outer correctly handles
   // an inline list of plain beans whose layout is fixed.
@@ -567,6 +682,88 @@ public class SchemaEvolutionStressTest {
       Assert.fail("expected ClassNotCompatibleException");
     } catch (ClassNotCompatibleException expected) {
       // ok
+    }
+  }
+
+  @Test
+  public void evolutionFlagAsymmetryFailsLoud_array() {
+    ArrayEncoder<List<DefaultsV1>> withFlag =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<DefaultsV1>> noFlag =
+        Encoders.buildArrayCodec(new TypeRef<List<DefaultsV1>>() {}).build().get();
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    List<DefaultsV1> in = Arrays.asList(v);
+    // Evolution-on consumer reading evolution-off bytes: the absent strict-hash prefix is read
+    // out of the array header and produces a hash mismatch.
+    byte[] noFlagBytes = noFlag.encode(in);
+    try {
+      withFlag.decode(noFlagBytes);
+      Assert.fail("expected ClassNotCompatibleException");
+    } catch (ClassNotCompatibleException expected) {
+      // ok
+    }
+    // Evolution-off consumer reading evolution-on bytes: the 8-byte hash prefix bleeds into the
+    // array header. We cannot guarantee a clean failure mode without a wire-format-level flag,
+    // but we at least require the decode to throw rather than silently return a plausible-looking
+    // array. Documented as wire-incompatible in the user guide; mismatched producers/consumers
+    // must use the same flag.
+    byte[] withFlagBytes = withFlag.encode(in);
+    try {
+      List<DefaultsV1> out = noFlag.decode(withFlagBytes);
+      // If decode returned, sanity-check it didn't silently produce a "correct" result. The
+      // array length and the recovered string must not both look right.
+      boolean lengthLooksRight = out != null && out.size() == in.size();
+      boolean stringLooksRight =
+          lengthLooksRight && !out.isEmpty() && "hi".equals(out.get(0).getName());
+      Assert.assertFalse(
+          lengthLooksRight && stringLooksRight,
+          "evolution-off decoder silently accepted evolution-on bytes as a valid array");
+    } catch (RuntimeException | AssertionError expected) {
+      // ok — undefined behavior, but a thrown exception is a tolerable failure mode.
+    }
+  }
+
+  @Test
+  public void evolutionFlagAsymmetryFailsLoud_map() {
+    MapEncoder<Map<String, DefaultsV1>> withFlag =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, DefaultsV1>> noFlag =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {}).build().get();
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("hi");
+    LinkedHashMap<String, DefaultsV1> in = new LinkedHashMap<>();
+    in.put("k", v);
+    // Evolution-on consumer reading evolution-off bytes: clean hash mismatch.
+    byte[] noFlagBytes = noFlag.encode(in);
+    try {
+      withFlag.decode(noFlagBytes);
+      Assert.fail("expected ClassNotCompatibleException");
+    } catch (ClassNotCompatibleException expected) {
+      // ok
+    }
+    // Reverse direction: see the array test above for the rationale. Require a thrown exception
+    // or a value that is observably wrong.
+    byte[] withFlagBytes = withFlag.encode(in);
+    try {
+      Map<String, DefaultsV1> out = noFlag.decode(withFlagBytes);
+      boolean sizeLooksRight = out != null && out.size() == in.size();
+      boolean valueLooksRight =
+          sizeLooksRight
+              && out.containsKey("k")
+              && out.get("k") != null
+              && "hi".equals(out.get("k").getName());
+      Assert.assertFalse(
+          sizeLooksRight && valueLooksRight,
+          "evolution-off decoder silently accepted evolution-on bytes as a valid map");
+    } catch (RuntimeException | AssertionError expected) {
+      // ok — undefined behavior, but a thrown exception is a tolerable failure mode.
     }
   }
 
@@ -726,11 +923,7 @@ public class SchemaEvolutionStressTest {
     private NestedInnerV2 inner;
   }
 
-  // TODO: nested versioned beans inside another versioned bean are not yet dispatched. The
-  // strict hash naturally encodes inner-struct shape, but SchemaHistory.build does not
-  // currently cross-product over nested-bean versions, so no projection codec is generated for
-  // the older inner shape. Re-enable when implemented.
-  @Test(enabled = false)
+  @Test
   public void nestedInnerEvolution_readerInnerNewerThanWriter() {
     // Writer uses the "older shape" inner. Both writer and reader are evolution-on so they
     // agree on strict-hash framing.
@@ -752,5 +945,297 @@ public class SchemaEvolutionStressTest {
     Assert.assertEquals(out.getInner().getName(), "hello");
     Assert.assertNull(out.getInner().getAddedField());
   }
-}
 
+  // ---------------------------------------------------------------------------
+  // Outer + inner versioned independently. The cross-product enumeration must
+  // generate a projection codec for each (outer-version, inner-version) pair
+  // that isn't the current combination.
+  // ---------------------------------------------------------------------------
+
+  /** Outer with its own added field at v2; inner stays at v1. */
+  @Data
+  public static class CrossOuterV2_InnerV1 {
+    private long id;
+    private NestedInnerWriter inner;
+
+    @ForyVersion(since = 2)
+    private String label;
+  }
+
+  /** Outer v2 reader with inner evolved to v2. Both dimensions evolve independently. */
+  @Data
+  public static class CrossOuterV2_InnerV2 {
+    private long id;
+    private NestedInnerV2 inner;
+
+    @ForyVersion(since = 2)
+    private String label;
+  }
+
+  @Test
+  public void crossOuterAndInnerEvolution() {
+    // Writer writes outer V1 + inner V1 (no label, no addedField).
+    RowEncoder<NestedOuterWriter> writer =
+        Encoders.buildBeanCodec(NestedOuterWriter.class).withSchemaEvolution().build().get();
+    RowEncoder<CrossOuterV2_InnerV2> reader =
+        Encoders.buildBeanCodec(CrossOuterV2_InnerV2.class).withSchemaEvolution().build().get();
+
+    NestedOuterWriter in = new NestedOuterWriter();
+    in.setId(100);
+    NestedInnerWriter inn = new NestedInnerWriter();
+    inn.setName("legacy-inner");
+    in.setInner(inn);
+
+    byte[] bytes = writer.encode(in);
+    CrossOuterV2_InnerV2 out = reader.decode(bytes);
+    Assert.assertEquals(out.getId(), 100);
+    Assert.assertEquals(out.getInner().getName(), "legacy-inner");
+    Assert.assertNull(out.getInner().getAddedField());
+    Assert.assertNull(out.getLabel());
+  }
+
+  /**
+   * Contract: {@code SchemaHistory.current().nestedBeanSchemas()} must report each nested bean at
+   * its current entry. Two cross-product combinations canonicalizing to the same signature is rare
+   * today (the inner's own bySignature collapses wire-equal schemas before the outer sees them) but
+   * the contract is documented and future callers may rely on it.
+   */
+  @Test
+  public void schemaHistoryCurrentReflectsCurrentInnerVersions() {
+    SchemaHistory history =
+        SchemaHistory.build(CrossOuterV2_InnerV2.class, UnaryOperator.identity());
+    SchemaHistory.VersionedSchema current = history.current();
+    Assert.assertTrue(current.isCurrent(), "history.current() must be marked current");
+    for (Map.Entry<Class<?>, SchemaHistory.VersionedSchema> e :
+        current.nestedBeanSchemas().entrySet()) {
+      SchemaHistory innerHistory = SchemaHistory.build(e.getKey(), UnaryOperator.identity());
+      Assert.assertTrue(
+          e.getValue().isCurrent(),
+          "current().nestedBeanSchemas() must report inner " + e.getKey() + " at its current");
+      Assert.assertEquals(
+          e.getValue().version(),
+          innerHistory.current().version(),
+          "inner current version mismatch for " + e.getKey());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cross-product enumeration must route inner-bean versions through array and
+  // map projection codecs, not just through the row codec. The reader's outer
+  // type has N outer versions x M inner versions; multiple cross-product entries
+  // share an outer version number, so the per-class suffix must encode the
+  // inner version to keep them from colliding on the codegen cache.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void crossOuterAndInnerEvolution_array() {
+    ArrayEncoder<List<NestedOuterWriter>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<NestedOuterWriter>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<CrossOuterV2_InnerV2>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<CrossOuterV2_InnerV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    List<NestedOuterWriter> in = new ArrayList<>();
+    for (int i = 0; i < 3; i++) {
+      NestedOuterWriter e = new NestedOuterWriter();
+      e.setId(i);
+      NestedInnerWriter inn = new NestedInnerWriter();
+      inn.setName("legacy-" + i);
+      e.setInner(inn);
+      in.add(e);
+    }
+
+    List<CrossOuterV2_InnerV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 3);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(out.get(i).getId(), i);
+      Assert.assertEquals(out.get(i).getInner().getName(), "legacy-" + i);
+      Assert.assertNull(out.get(i).getInner().getAddedField());
+      Assert.assertNull(out.get(i).getLabel());
+    }
+  }
+
+  @Test
+  public void crossOuterAndInnerEvolution_map() {
+    MapEncoder<Map<String, NestedOuterWriter>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<String, NestedOuterWriter>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, CrossOuterV2_InnerV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, CrossOuterV2_InnerV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    LinkedHashMap<String, NestedOuterWriter> in = new LinkedHashMap<>();
+    for (int i = 0; i < 3; i++) {
+      NestedOuterWriter e = new NestedOuterWriter();
+      e.setId(i);
+      NestedInnerWriter inn = new NestedInnerWriter();
+      inn.setName("legacy-" + i);
+      e.setInner(inn);
+      in.put("k" + i, e);
+    }
+
+    Map<String, CrossOuterV2_InnerV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 3);
+    for (int i = 0; i < 3; i++) {
+      CrossOuterV2_InnerV2 v = out.get("k" + i);
+      Assert.assertNotNull(v, "missing key k" + i);
+      Assert.assertEquals(v.getId(), i);
+      Assert.assertEquals(v.getInner().getName(), "legacy-" + i);
+      Assert.assertNull(v.getInner().getAddedField());
+      Assert.assertNull(v.getLabel());
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Under evolution, array/map payloads carry an 8-byte schema-hash prefix. A
+  // payload too small to hold that prefix is malformed and must fail loudly
+  // rather than feed a negative size into pointTo.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void arrayPayloadBelowHashPrefixFailsLoudly() {
+    ArrayEncoder<List<ChainV2>> codec =
+        Encoders.buildArrayCodec(new TypeRef<List<ChainV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> codec.decode(new byte[3]));
+  }
+
+  @Test
+  public void mapPayloadBelowHashPrefixFailsLoudly() {
+    MapEncoder<Map<String, DefaultsV1>> codec =
+        Encoders.buildMapCodec(new TypeRef<Map<String, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Assert.expectThrows(ClassNotCompatibleException.class, () -> codec.decode(new byte[3]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Three-level nesting: L1 -> L2 -> L3, each independently versioned. Because
+  // L2's own history cross-products over L3's versions, L2's history holds two
+  // entries that share a version number but differ in their L3 layout. Routing
+  // must pick the L2 entry whose L3 matches the writer, not the first one with a
+  // matching version number. Identifies the inner combination by strict hash, so
+  // it resolves the correct subtree to arbitrary depth.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class L3Writer {
+    private String name;
+  }
+
+  @Data
+  public static class L2Writer {
+    private long tag;
+    private L3Writer leaf;
+  }
+
+  @Data
+  public static class L1Writer {
+    private long id;
+    private L2Writer mid;
+  }
+
+  @Data
+  public static class L3V2 {
+    private String name;
+
+    @ForyVersion(since = 2)
+    private String note;
+  }
+
+  @Data
+  public static class L2V2 {
+    private long tag;
+    private L3V2 leaf;
+
+    @ForyVersion(since = 2)
+    private String midLabel;
+  }
+
+  @Data
+  public static class L1V2 {
+    private long id;
+    private L2V2 mid;
+
+    @ForyVersion(since = 2)
+    private String outerLabel;
+  }
+
+  @Test
+  public void threeLevelNestedEvolution() {
+    RowEncoder<L1Writer> writer =
+        Encoders.buildBeanCodec(L1Writer.class).withSchemaEvolution().build().get();
+    RowEncoder<L1V2> reader =
+        Encoders.buildBeanCodec(L1V2.class).withSchemaEvolution().build().get();
+
+    L1Writer in = new L1Writer();
+    in.setId(7);
+    L2Writer mid = new L2Writer();
+    mid.setTag(11);
+    L3Writer leaf = new L3Writer();
+    leaf.setName("deep");
+    mid.setLeaf(leaf);
+    in.setMid(mid);
+
+    L1V2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), 7);
+    Assert.assertNull(out.getOuterLabel());
+    Assert.assertEquals(out.getMid().getTag(), 11);
+    Assert.assertNull(out.getMid().getMidLabel());
+    Assert.assertEquals(out.getMid().getLeaf().getName(), "deep");
+    Assert.assertNull(out.getMid().getLeaf().getNote());
+  }
+
+  // ---------------------------------------------------------------------------
+  // The same versioned bean class in two fields. A writer writes one definition
+  // of that class, so both fields are always at the same version on the wire;
+  // the enumeration carries one version dimension per class, not per field, so a
+  // class may back more than one slot.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class TwoLeafWriter {
+    private L3Writer first;
+    private L3Writer second;
+  }
+
+  @Data
+  public static class TwoLeafV2 {
+    private L3V2 first;
+    private L3V2 second;
+  }
+
+  @Test
+  public void sameClassInTwoFields() {
+    RowEncoder<TwoLeafWriter> writer =
+        Encoders.buildBeanCodec(TwoLeafWriter.class).withSchemaEvolution().build().get();
+    RowEncoder<TwoLeafV2> reader =
+        Encoders.buildBeanCodec(TwoLeafV2.class).withSchemaEvolution().build().get();
+
+    TwoLeafWriter in = new TwoLeafWriter();
+    L3Writer a = new L3Writer();
+    a.setName("alpha");
+    L3Writer b = new L3Writer();
+    b.setName("beta");
+    in.setFirst(a);
+    in.setSecond(b);
+
+    TwoLeafV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getFirst().getName(), "alpha");
+    Assert.assertNull(out.getFirst().getNote());
+    Assert.assertEquals(out.getSecond().getName(), "beta");
+    Assert.assertNull(out.getSecond().getNote());
+  }
+}

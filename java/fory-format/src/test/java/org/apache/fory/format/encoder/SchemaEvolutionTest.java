@@ -26,6 +26,7 @@ import java.util.Map;
 import lombok.Data;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -87,12 +88,11 @@ public class SchemaEvolutionTest {
   }
 
   /**
-   * The crux: a payload produced by PersonV1 (literally a different Java class with the
-   * v1-shaped schema) decoded by PersonV2's evolution-enabled codec. We use PersonV1 as a
-   * stand-in for "what older code wrote." Both classes are encoded with schema evolution on so
-   * they share the strict-hash format; PersonV1's history is a single entry, and PersonV2's
-   * history contains both v1 (without email) and v2 (with email) entries that match PersonV1's
-   * single entry by hash.
+   * The crux: a payload produced by PersonV1 (literally a different Java class with the v1-shaped
+   * schema) decoded by PersonV2's evolution-enabled codec. We use PersonV1 as a stand-in for "what
+   * older code wrote." Both classes are encoded with schema evolution on so they share the
+   * strict-hash format; PersonV1's history is a single entry, and PersonV2's history contains both
+   * v1 (without email) and v2 (with email) entries that match PersonV1's single entry by hash.
    */
   @Test
   public void olderPayloadReadByNewerCodec() {
@@ -136,6 +136,41 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(out.getName(), "bob");
     Assert.assertEquals(out.getAge(), 42);
     Assert.assertNull(out.getEmail());
+  }
+
+  /**
+   * The byte[] overloads use bytes.length for the body size; the MemoryBuffer overloads write and
+   * read an embedded int32 size prefix ahead of the 8-byte hash. That framing is a distinct code
+   * path, so exercise a projection hit (older payload, newer reader) through it. Two records are
+   * written into one buffer and read back in order to confirm the reader advances past each
+   * record's embedded size.
+   */
+  @Test
+  public void streamingOlderPayloadReadByNewerCodec() {
+    RowEncoder<PersonV1> oldWriter =
+        Encoders.buildBeanCodec(PersonV1.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV2> newReader =
+        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+
+    PersonV1 alice = new PersonV1();
+    alice.setName("alice");
+    alice.setAge(30);
+    PersonV1 bob = new PersonV1();
+    bob.setName("bob");
+    bob.setAge(42);
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    oldWriter.encode(buffer, alice);
+    oldWriter.encode(buffer, bob);
+
+    PersonV2 outAlice = newReader.decode(buffer);
+    PersonV2 outBob = newReader.decode(buffer);
+    Assert.assertEquals(outAlice.getName(), "alice");
+    Assert.assertEquals(outAlice.getAge(), 30);
+    Assert.assertNull(outAlice.getEmail());
+    Assert.assertEquals(outBob.getName(), "bob");
+    Assert.assertEquals(outBob.getAge(), 42);
+    Assert.assertNull(outBob.getEmail());
   }
 
   // --- Array of versioned beans ---
@@ -397,8 +432,8 @@ public class SchemaEvolutionTest {
 
   /**
    * OuterV2 adds {@code displayName} at version 2 and removes {@code legacyName} at version 2.
-   * Everything else carries forward unchanged. The compositional test writes an OuterV1 and
-   * reads as OuterV2.
+   * Everything else carries forward unchanged. The compositional test writes an OuterV1 and reads
+   * as OuterV2.
    */
   @Data
   @ForySchema(removedFields = OuterV2.History.class)

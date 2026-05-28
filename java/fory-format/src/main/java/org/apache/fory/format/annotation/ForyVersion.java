@@ -29,9 +29,8 @@ import java.lang.annotation.Target;
  * inclusive on the left and exclusive on the right, so {@code since=2, until=5} means versions 2,
  * 3, and 4.
  *
- * <p>Only effective when the codec builder is configured with
- * {@code withSchemaEvolution()}; otherwise the annotation is ignored and the field is treated as
- * always present.
+ * <p>Only effective when the codec builder is configured with {@code withSchemaEvolution()};
+ * otherwise the annotation is ignored and the field is treated as always present.
  */
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD, ElementType.RECORD_COMPONENT})

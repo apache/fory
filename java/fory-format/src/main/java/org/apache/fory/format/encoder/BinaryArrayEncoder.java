@@ -19,7 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
-import java.util.Map;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
@@ -32,10 +32,15 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
   private final BinaryArrayWriter writer;
   private final GeneratedArrayEncoder codec;
   private final boolean sizeEmbedded;
-  /** Strict hash of the element bean's current schema; written before the array payload when {@code schemaEvolution} is on. */
+
+  /**
+   * Strict hash of the element bean's current schema; written before the array payload when {@code
+   * schemaEvolution} is on.
+   */
   private final long currentHash;
+
   /** Per-version projection codecs and their element fields. {@code null} disables versioning. */
-  private final Map<Long, ProjectionArrayCodec> projections;
+  private final LongMap<ProjectionArrayCodec> projections;
 
   /**
    * A projection variant of the array codec along with the writer used to materialize an array
@@ -63,7 +68,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
       final GeneratedArrayEncoder codec,
       final boolean sizeEmbedded,
       final long currentHash,
-      final Map<Long, ProjectionArrayCodec> projections) {
+      final LongMap<ProjectionArrayCodec> projections) {
     this.writer = writer;
     this.codec = codec;
     this.sizeEmbedded = sizeEmbedded;
@@ -106,6 +111,10 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
       array.pointTo(buffer, readerIndex, size);
       buffer.readerIndex(readerIndex + size);
       return fromArray(array);
+    }
+    if (size < 8) {
+      throw new ClassNotCompatibleException(
+          "Array payload too small for an 8-byte schema hash under schema evolution: size=" + size);
     }
     final long peerHash = buffer.readInt64();
     final int payloadSize = size - 8;

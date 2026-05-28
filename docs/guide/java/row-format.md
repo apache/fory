@@ -113,76 +113,6 @@ Row format is ideal for:
 - **Data pipelines**: Processing data without full object reconstruction
 - **Cross-language data sharing**: When data needs to be accessed from multiple languages
 
-## Schema evolution
-
-Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
-by older versions of the same bean. Writing always uses the current version; reading detects
-the payload's version from a strict hash at the head of the payload. Java only.
-
-Annotate fields added after v1 with `@ForyVersion(since = N)`:
-
-```java
-@Data
-public class Person {
-  private String name;
-  private int age;
-
-  @ForyVersion(since = 2)
-  private String email;
-}
-```
-
-A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
-Primitive fields added later default to `0` / `false`. If a class adopts versioning after its
-v1 is already in the wild, set `@ForySchema(baseVersion = N)` so unannotated fields are
-treated as present since version `N`.
-
-Remove a field by deleting the Java member and listing it on a nested history interface. The
-interface's methods carry the original field's name, return type, and `[since, until)` window.
-Parameterized types are expressed naturally because the methods are real Java declarations.
-
-```java
-@Data
-@ForySchema(removedFields = Person.History.class)
-public class Person {
-  private String name;
-
-  @ForyVersion(since = 2)
-  private String email;
-
-  interface History {
-    @ForyVersion(until = 3)
-    int age();
-
-    @ForyVersion(until = 5)
-    List<String> tags();
-  }
-}
-```
-
-Each history method must carry a `@ForyVersion` with `until` set. The method name matches the
-original live descriptor name: the field name for Lombok `@Data` or record-style classes
-(`age`, `tags`), or the full accessor name for JavaBeans-style classes and interfaces
-(`getAge`).
-
-### Wire format and limitations
-
-Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
-wire-compatible otherwise. Row payloads already carry an 8-byte hash slot whose value changes
-under evolution (the strict hash includes field name and nullability). For arrays and maps
-whose element bean opts into evolution, an 8-byte hash prefix is prepended; arrays and maps
-whose element is not a versioned bean carry no prefix.
-
-Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
-
-Map keys do not carry a per-payload hash; a versioned bean used as a map key is read with the
-current schema only, not dispatched to a projection codec.
-
-A versioned bean nested as a struct field inside another versioned bean is read with its
-current schema regardless of what the wire bytes were written from — the row format does not
-carry a per-nested-struct hash. Evolve either the outer or the nested bean, but expect the
-nested-bean schema to remain stable while the outer evolves (or vice versa).
-
 ## Cross-Language Compatibility
 
 Row format works seamlessly across languages. The same binary data can be accessed from:
@@ -256,6 +186,106 @@ std::string str = bar10->get_string(0);
 | Single field access  | Full deserialization required | Direct offset read              |
 | Memory usage         | Full object graph in memory   | Only accessed fields            |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
+
+## Schema evolution
+
+Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
+by older versions of the same bean. Writing always uses the current version; reading detects
+the payload's version from a strict hash at the head of the payload. Java only.
+
+Annotate fields added after v1 with `@ForyVersion(since = N)`:
+
+```java
+@Data
+public class Person {
+  String name;
+  int age;
+
+  @ForyVersion(since = 2)
+  String email;
+}
+```
+
+A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
+Primitive fields added later default to `0`, `0.0`, or `false`. Unannotated fields are treated
+as present from the first version, so a class can adopt versioning by annotating only the fields
+added after v1.
+
+For a record, the absent component's default is passed to the canonical constructor, so a
+constructor that rejects `null` for a reference component added in a later version throws when
+decoding an older payload. Let the constructor tolerate the missing value, for example by
+normalizing `null` to a default:
+
+```java
+public record Person(String name, @ForyVersion(since = 2) String email) {
+  public Person {
+    if (email == null) {
+      email = "";
+    }
+  }
+}
+```
+
+Remove a field by deleting the Java member and declaring it on a nested history interface as a
+method with a `@ForyVersion(until = N)`. The method's return type carries any parameterized
+type information from the original field.
+
+```java
+@Data
+@ForySchema(removedFields = Person.History.class)
+public class Person {
+  String name;
+
+  @ForyVersion(since = 2)
+  String email;
+
+  interface History {
+    @ForyVersion(until = 3)
+    int age();
+
+    @ForyVersion(until = 5)
+    List<String> tags();
+  }
+}
+```
+
+The history method name matches the original live descriptor name. For field-backed beans
+(Lombok `@Data`, records, or plain classes with a backing field) that is the field name
+(`age`, `tags`). For interface beans, where the live member is a getter with no backing field,
+it is the method name (`getAge`).
+
+### Wire format and limitations
+
+Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
+wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
+value is the strict hash (which includes field name and nullability), so a flag-mismatched
+peer fails loudly with `ClassNotCompatibleException`. Arrays and maps of bean elements prepend
+an 8-byte strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
+reading evolution-off bytes also fails with `ClassNotCompatibleException`, but the reverse
+direction (evolution-off consumer, evolution-on bytes) is undefined.
+
+To adopt the flag on an existing deployment, enable `withSchemaEvolution()` on both sides in a
+release that changes no schema, then start evolving schemas only once every peer is on the
+evolution-enabled build. Turning the flag on and changing a schema in the same release strands
+any peer that has not yet upgraded.
+
+Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
+
+Map keys do not carry a per-payload hash; a versioned bean used as a map key is read with the
+current schema only, not dispatched to a projection codec.
+
+Nested evolution works to arbitrary depth and places no restriction on shape: a versioned bean
+may contain versioned beans that themselves contain versioned beans, the same versioned bean
+class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
+unrestricted. Each nesting level is routed to the correct historical layout.
+
+When a versioned bean contains other versioned beans, the reader generates one projection codec
+class per combination of versions across the composition. The count grows as the product of the
+version counts of the distinct nested versioned bean classes, not the number of fields, so
+reusing a class across several fields adds no combinations. If the product across distinct classes
+becomes a concern, drop entries from each bean's `History` interface once you no longer need to
+read payloads from that range. Retiring a history entry is purely a read-side decision; the writer
+always uses the current schema.
 
 ## Related Topics
 

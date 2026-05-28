@@ -44,19 +44,25 @@ interface Encoding {
 
   /**
    * Construct a projection codec builder for an older version of {@code beanType}, reading the
-   * supplied historical schema and producing instances of the current bean class. Used only by
-   * the schema-evolution code path.
+   * supplied historical schema and producing instances of the current bean class. The {@code
+   * nestedSuffixes} map directs codegen to embed a specific projection codec class for each
+   * nested-bean type (used when a nested versioned bean was on the wire at an older version). An
+   * empty map means all nested beans use their current-version codecs.
    */
   RowEncoderBuilder newProjectionRowEncoder(
-      TypeRef<?> beanType, Schema historicalSchema, Set<String> liveNames, String classSuffix);
+      TypeRef<?> beanType,
+      Schema historicalSchema,
+      Set<String> liveNames,
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes);
 
   ArrayEncoderBuilder newArrayEncoder(
       TypeRef<? extends Collection<?>> collectionType, TypeRef<?> elementType);
 
   /**
-   * Construct an array encoder builder whose generated code references the row codec class for
-   * the element bean with the supplied suffix. Used by schema-evolution paths to generate one
-   * array codec per historical version of the element bean.
+   * Construct an array encoder builder whose generated code references the row codec class for the
+   * element bean with the supplied suffix. Used by schema-evolution paths to generate one array
+   * codec per historical version of the element bean.
    */
   ArrayEncoderBuilder newProjectionArrayEncoder(
       TypeRef<? extends Collection<?>> collectionType,
@@ -66,9 +72,9 @@ interface Encoding {
   MapEncoderBuilder newMapEncoder(TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken);
 
   /**
-   * Construct a map encoder builder whose generated code references the bean row codec class
-   * with the supplied suffix. Used by schema-evolution paths to generate one map codec per
-   * historical version of the bean.
+   * Construct a map encoder builder whose generated code references the bean row codec class with
+   * the supplied suffix. Used by schema-evolution paths to generate one map codec per historical
+   * version of the bean.
    */
   MapEncoderBuilder newProjectionMapEncoder(
       TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken, String rowCodecSuffix);

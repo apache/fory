@@ -60,15 +60,15 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
   }
 
   /**
-   * Enable schema evolution. The codec accepts payloads written by older versions of the same
-   * bean, using the {@link org.apache.fory.format.annotation.ForyVersion} and
-   * {@link org.apache.fory.format.annotation.ForySchema} annotations to reconstruct historical
-   * schemas. Writing always uses the current version.
+   * Enable schema evolution. The codec accepts payloads written by older versions of the same bean,
+   * using the {@link org.apache.fory.format.annotation.ForyVersion} and {@link
+   * org.apache.fory.format.annotation.ForySchema} annotations to reconstruct historical schemas.
+   * Writing always uses the current version.
    *
    * <p>For array and map codecs, this changes the wire format by adding an 8-byte strict-hash
-   * prefix to the payload, so producers and consumers must agree on the flag. Row payloads
-   * already carry an 8-byte hash slot; under schema evolution that slot is computed with a
-   * stricter hash that also distinguishes field names and nullability.
+   * prefix to the payload, so producers and consumers must agree on the flag. Row payloads already
+   * carry an 8-byte hash slot; under schema evolution that slot is computed with a stricter hash
+   * that also distinguishes field names and nullability.
    */
   public B withSchemaEvolution() {
     this.schemaEvolution = true;

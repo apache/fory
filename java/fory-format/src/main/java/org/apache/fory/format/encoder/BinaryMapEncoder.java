@@ -19,7 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
-import java.util.Map;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
@@ -37,7 +37,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
   private final GeneratedMapEncoder codec;
   private final boolean sizeEmbedded;
   private final long currentHash;
-  private final Map<Long, ProjectionMapCodec> projections;
+  private final LongMap<ProjectionMapCodec> projections;
 
   /**
    * Per-version projection codec; the {@code Encoding} and historical {@code mapField} together
@@ -73,7 +73,7 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
       final GeneratedMapEncoder codec,
       final boolean sizeEmbedded,
       final long currentHash,
-      final Map<Long, ProjectionMapCodec> projections) {
+      final LongMap<ProjectionMapCodec> projections) {
     this.format = format;
     this.mapField = mapField;
     this.valWriter = valWriter;
@@ -118,6 +118,10 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
       map.pointTo(buffer, readerIndex, size);
       buffer.readerIndex(readerIndex + size);
       return fromMap(map);
+    }
+    if (size < 8) {
+      throw new ClassNotCompatibleException(
+          "Map payload too small for an 8-byte schema hash under schema evolution: size=" + size);
     }
     long peerHash = buffer.readInt64();
     int payloadSize = size - 8;

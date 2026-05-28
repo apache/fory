@@ -20,6 +20,7 @@
 package org.apache.fory.format.encoder;
 
 import lombok.Data;
+import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.Schema;
@@ -67,5 +68,31 @@ public class BinaryRowEncoderPointToTest {
 
     Assert.assertNotNull(captured[0], "decode must hand the row to fromRow");
     Assert.assertEquals(captured[0].getSizeInBytes(), payload.length - 8);
+  }
+
+  /**
+   * A payload shorter than the 8-byte schema hash must fail loudly. Without the guard, decode reads
+   * the hash past the supplied bytes and hands {@code pointTo} a negative {@code size - 8} length.
+   */
+  @Test
+  public void decodeRejectsPayloadShorterThanSchemaHash() {
+    Schema schema = TypeInference.inferSchema(Tiny.class);
+    BinaryRowEncoder<Tiny> encoder =
+        new BinaryRowEncoder<>(
+            schema,
+            new GeneratedRowEncoder() {
+              @Override
+              public BinaryRow toRow(Object obj) {
+                throw new AssertionError("toRow must not be reached for a truncated payload");
+              }
+
+              @Override
+              public Object fromRow(BinaryRow row) {
+                throw new AssertionError("fromRow must not be reached for a truncated payload");
+              }
+            },
+            new BinaryRowWriter(schema),
+            false);
+    Assert.assertThrows(ClassNotCompatibleException.class, () -> encoder.decode(new byte[7]));
   }
 }

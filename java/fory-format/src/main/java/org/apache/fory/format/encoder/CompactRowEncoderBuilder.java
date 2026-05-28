@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.Map;
 import java.util.Set;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
@@ -46,8 +47,9 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
       final TypeRef<?> beanType,
       final Schema historicalSchema,
       final Set<String> liveNames,
-      final String classSuffix) {
-    super(beanType, historicalSchema, liveNames, classSuffix);
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    super(beanType, historicalSchema, liveNames, classSuffix, nestedSuffixes);
   }
 
   @Override

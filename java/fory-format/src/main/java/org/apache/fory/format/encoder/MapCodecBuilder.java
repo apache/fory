@@ -26,6 +26,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
@@ -61,7 +62,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
 
   public Supplier<MapEncoder<M>> build() {
     loadMapInnerCodecs();
-    if (!schemaEvolution || !isVersionedBeanValue()) {
+    if (!schemaEvolution || !isBeanValue()) {
       final var mapEncoderFactory = generatedMapEncoder();
       return new Supplier<MapEncoder<M>>() {
         @Override
@@ -74,17 +75,22 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
               initialBufferSize,
               keyWriter,
               valWriter,
-              new BinaryMapEncoder<M>(codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded));
+              new BinaryMapEncoder<M>(
+                  codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded));
         }
       };
     }
     return buildVersioned();
   }
 
-  private boolean isVersionedBeanValue() {
+  /**
+   * True if the value is a bean — the only case where schema evolution affects the wire format.
+   * Unversioned beans still take the evolution path so the strict-hash prefix is always present and
+   * an evolution-on consumer can detect a flag-mismatched producer cleanly.
+   */
+  private boolean isBeanValue() {
     return TypeUtils.isBean(
-        valType,
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+        valType, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
   }
 
   private Supplier<MapEncoder<M>> buildVersioned() {
@@ -96,14 +102,18 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     SchemaHistory history = SchemaHistory.build(valClass, schemaTransform);
     SchemaHistory.VersionedSchema current = history.current();
 
+    // Generate per-combination row codec classes and per-combination map codec classes. The
+    // suffix encodes the outer version plus each chosen inner-bean version so that distinct
+    // cross-product entries do not collide on a single generated class.
     Map<Long, ProjectionMapFactory> projectionFactories = new HashMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == current) {
         continue;
       }
-      String suffix = "_V" + vs.version();
+      String suffix = ProjectionRouting.projectionSuffix(vs);
+      Map<Class<?>, String> nestedSuffixes = ProjectionRouting.nestedSuffixesFor(vs, codecFormat);
       Encoders.loadOrGenProjectionRowCodecClass(
-          valClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix);
+          valClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix, nestedSuffixes);
       Class<?> mapClass =
           Encoders.loadOrGenProjectionMapCodecClass(
               mapType, TypeRef.of(valClass), codecFormat, suffix);
@@ -124,7 +134,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         BinaryArrayWriter keyWriter = codecFormat.newArrayWriter(keyField);
         BinaryArrayWriter valWriter = codecFormat.newArrayWriter(valField, keyWriter.getBuffer());
         var codec = currentFactory.apply(keyWriter, valWriter);
-        Map<Long, BinaryMapEncoder.ProjectionMapCodec> proj = new HashMap<>();
+        LongMap<BinaryMapEncoder.ProjectionMapCodec> proj =
+            new LongMap<>(projectionFactories.size());
         for (Map.Entry<Long, ProjectionMapFactory> entry : projectionFactories.entrySet()) {
           proj.put(entry.getKey(), entry.getValue().instantiate(codecFormat, fory));
         }
