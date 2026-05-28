@@ -69,8 +69,10 @@ enum CompactCodecFormat implements Encoding {
       final TypeRef<?> beanType,
       final Schema historicalSchema,
       final Set<String> liveNames,
-      final String classSuffix) {
-    return new CompactRowEncoderBuilder(beanType, historicalSchema, liveNames, classSuffix);
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    return new CompactRowEncoderBuilder(
+        beanType, historicalSchema, liveNames, classSuffix, nestedSuffixes);
   }
 
   @Override

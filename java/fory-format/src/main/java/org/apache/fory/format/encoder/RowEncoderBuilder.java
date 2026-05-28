@@ -26,6 +26,7 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -78,37 +79,44 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   protected Reference beanClassRef = new Reference(BEAN_CLASS_NAME, CLASS_TYPE);
   private final CodegenContext generatedBeanImpl;
   private final String generatedBeanImplName;
+
   /**
-   * When non-null, this builder produces a decode-only projection codec: schema fields whose
-   * name is in {@code projectionLiveNames} are assigned to the bean as usual; others are decoded
-   * for offset arithmetic only and discarded. {@code toRow} on a projection codec throws.
+   * When non-null, this builder produces a decode-only projection codec: schema fields whose name
+   * is in {@code projectionLiveNames} are assigned to the bean as usual; others are decoded for
+   * offset arithmetic only and discarded. {@code toRow} on a projection codec throws.
    */
   private final Set<String> projectionLiveNames;
+
   private final String projectionClassSuffix;
+  private final Map<Class<?>, String> nestedSuffixes;
 
   public RowEncoderBuilder(Class<?> beanClass) {
     this(TypeRef.of(beanClass));
   }
 
   public RowEncoderBuilder(TypeRef<?> beanType) {
-    this(beanType, null, null, null);
+    this(beanType, null, null, null, Collections.emptyMap());
   }
 
   /**
    * Construct a decode-only projection builder for an older version of {@code beanType}. The
-   * supplied {@code historicalSchema} is used as the layout to decode; only fields whose name is
-   * in {@code liveNames} are written into the resulting bean. {@code classSuffix} distinguishes
-   * this codec from the current-version codec and from other historical projections.
+   * supplied {@code historicalSchema} is used as the layout to decode; only fields whose name is in
+   * {@code liveNames} are written into the resulting bean. {@code classSuffix} distinguishes this
+   * codec from the current-version codec and from other historical projections. {@code
+   * nestedSuffixes} routes each nested-bean type to a specific projection codec class (used when an
+   * inner versioned bean was on the wire at an older version).
    */
   RowEncoderBuilder(
       TypeRef<?> beanType,
       Schema historicalSchema,
       Set<String> liveNames,
-      String classSuffix) {
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes) {
     super(new CodegenContext(), beanType);
     Preconditions.checkArgument(beanClass.isInterface() || TypeUtils.isBean(beanType, typeCtx));
     this.projectionLiveNames = liveNames;
     this.projectionClassSuffix = classSuffix;
+    this.nestedSuffixes = nestedSuffixes == null ? Collections.emptyMap() : nestedSuffixes;
     className =
         projectionClassSuffix == null
             ? codecClassName(beanClass)
@@ -149,6 +157,12 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   protected Schema inferSchema(TypeRef<?> beanType) {
     return TypeInference.inferSchema(getRawType(beanType));
+  }
+
+  @Override
+  protected String nestedBeanSuffix(TypeRef<?> typeRef) {
+    String s = nestedSuffixes.get(getRawType(typeRef));
+    return s != null ? s : super.nestedBeanSuffix(typeRef);
   }
 
   @Override
@@ -214,8 +228,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
               + generatedBeanImpl.genCode()
               + code.substring(insertPoint);
     }
-    long durationMs = (System.nanoTime() - startTime) / 1000;
-    LOG.info("Generate codec for class {} take {} us", beanClass, durationMs);
+    long durationUs = (System.nanoTime() - startTime) / 1000;
+    LOG.info("Generate codec for class {} take {} us", beanClass, durationUs);
     return code;
   }
 
@@ -342,8 +356,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   /**
    * Build a record instance, supplying defaults for components not contributed by the wire. The
-   * non-projection path always supplies every component; the projection path may supply a
-   * subset.
+   * non-projection path always supplies every component; the projection path may supply a subset.
    */
   private Expression buildRecordInstance(
       List<Descriptor> liveDescriptors, List<Expression> liveValues) {
@@ -512,7 +525,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
                   String body;
                   if (projecting && isAccessorOfAbsentField(methodName, methodType)) {
                     body =
-                        "return " + defaultValueExpression(methodType.returnType(), implClass) + ";";
+                        "return "
+                            + defaultValueExpression(methodType.returnType(), implClass)
+                            + ";";
                   } else {
                     body = "throw new UnsupportedOperationException();";
                   }
@@ -523,10 +538,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   /**
-   * True when {@code methodName(returnType)} on the current bean class names a property whose
-   * field is not in the historical schema this projection codec is generating. Such a method
-   * gets a default-value body instead of {@code throw} so the interface proxy can serve callers
-   * that don't know the field is missing in this version.
+   * True when {@code methodName(returnType)} on the current bean class names a property whose field
+   * is not in the historical schema this projection codec is generating. Such a method gets a
+   * default-value body instead of {@code throw} so the interface proxy can serve callers that don't
+   * know the field is missing in this version.
    */
   private boolean isAccessorOfAbsentField(String methodName, MethodType methodType) {
     Descriptor d = descriptorsMap.get(methodName);

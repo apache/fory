@@ -66,8 +66,10 @@ enum DefaultCodecFormat implements Encoding {
       final TypeRef<?> beanType,
       final Schema historicalSchema,
       final Set<String> liveNames,
-      final String classSuffix) {
-    return new RowEncoderBuilder(beanType, historicalSchema, liveNames, classSuffix);
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    return new RowEncoderBuilder(
+        beanType, historicalSchema, liveNames, classSuffix, nestedSuffixes);
   }
 
   @Override

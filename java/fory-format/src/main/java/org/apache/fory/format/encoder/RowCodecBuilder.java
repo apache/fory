@@ -26,6 +26,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
@@ -100,18 +101,21 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
 
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> currentFactory =
         rowEncoderFactory(currentSchema);
-    // Projection codecs for each older version; classes are loaded eagerly.
+    // Projection codecs for each non-current combination of (outer-version, inner-versions).
+    // The suffix encodes the combination so different cross-product entries get distinct
+    // generated classes; the nested-bean version map directs the projection codec to embed
+    // the right inner projection class for each nested-bean type.
     final Map<Long, ProjectionCodecFactory> projectionFactories = new HashMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == currentVersion) {
         continue;
       }
-      String suffix = "_V" + vs.version();
+      String suffix = ProjectionRouting.projectionSuffix(vs);
+      Map<Class<?>, String> nestedSuffixes = ProjectionRouting.nestedSuffixesFor(vs, codecFormat);
       Class<?> projectionClass =
           Encoders.loadOrGenProjectionRowCodecClass(
-              beanClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix);
-      MethodHandle ctor =
-          Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
+              beanClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix, nestedSuffixes);
+      MethodHandle ctor = Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
       projectionFactories.put(vs.strictHash(), new ProjectionCodecFactory(vs.schema(), ctor));
     }
 
@@ -119,7 +123,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     return new Function<BaseBinaryRowWriter, RowEncoder<T>>() {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
-        Map<Long, BinaryRowEncoder.ProjectionCodec> projections = new HashMap<>();
+        LongMap<BinaryRowEncoder.ProjectionCodec> projections =
+            new LongMap<>(projectionFactories.size());
         for (Map.Entry<Long, ProjectionCodecFactory> entry : projectionFactories.entrySet()) {
           projections.put(entry.getKey(), entry.getValue().instantiate(codecFormat, writer, fory));
         }
@@ -143,7 +148,8 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       this.ctor = ctor;
     }
 
-    BinaryRowEncoder.ProjectionCodec instantiate(Encoding codecFormat, BaseBinaryRowWriter writer, Fory fory) {
+    BinaryRowEncoder.ProjectionCodec instantiate(
+        Encoding codecFormat, BaseBinaryRowWriter writer, Fory fory) {
       try {
         Object[] references = {historicalSchema, writer, fory};
         GeneratedRowEncoder codec = (GeneratedRowEncoder) ctor.invokeExact(references);

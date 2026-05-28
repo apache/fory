@@ -35,16 +35,17 @@ import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
 /**
- * Resolves the version history of a row-codec bean. Each entry exposes the schema as it appeared
- * at a particular version, along with a strict hash that uniquely identifies the historical
- * layout. Only used when {@code withSchemaEvolution()} is configured on the codec builder.
+ * Resolves the version history of a row-codec bean. Each entry exposes the schema as it appeared at
+ * a particular version, along with a strict hash that uniquely identifies the historical layout.
+ * Only used when {@code withSchemaEvolution()} is configured on the codec builder.
  *
  * <p>The hash mixes field names and nullability in addition to types, so that two schemas that
- * differ only in field order or naming are distinguishable. This is intentionally a different
- * hash from {@link DataTypes#computeSchemaHash} and is used only by versioning code paths.
+ * differ only in field order or naming are distinguishable. This is intentionally a different hash
+ * from {@link DataTypes#computeSchemaHash} and is used only by versioning code paths.
  */
 @Internal
 public final class SchemaHistory {
@@ -57,13 +58,23 @@ public final class SchemaHistory {
     private final int version;
     private final Schema schema;
     private final long strictHash;
+    private final boolean current;
     private final Set<String> liveFieldNames;
+    private final Map<Class<?>, VersionedSchema> nestedBeanSchemas;
 
-    VersionedSchema(int version, Schema schema, long strictHash, Set<String> liveFieldNames) {
+    VersionedSchema(
+        int version,
+        Schema schema,
+        long strictHash,
+        boolean current,
+        Set<String> liveFieldNames,
+        Map<Class<?>, VersionedSchema> nestedBeanSchemas) {
       this.version = version;
       this.schema = schema;
       this.strictHash = strictHash;
+      this.current = current;
       this.liveFieldNames = liveFieldNames;
+      this.nestedBeanSchemas = nestedBeanSchemas;
     }
 
     public int version() {
@@ -79,11 +90,34 @@ public final class SchemaHistory {
     }
 
     /**
+     * True when this entry is its bean's current (writer-side) schema. Routing uses this to decide
+     * whether a nested-bean slot embeds the current-version codec class (no suffix) or a historical
+     * projection class.
+     */
+    public boolean isCurrent() {
+      return current;
+    }
+
+    /**
      * Names of fields in this version that still have a Java member on the current bean class.
      * Other fields are read-and-discarded during projection.
      */
     public Set<String> liveFieldNames() {
       return liveFieldNames;
+    }
+
+    /**
+     * For each nested versioned bean class referenced by this schema, the exact inner entry chosen
+     * for this combination. Empty when the schema has no nested versioned beans. Each value carries
+     * its own {@code strictHash} and {@code nestedBeanSchemas}, so routing can identify and recurse
+     * into the inner subtree to arbitrary depth without re-deriving it from a version number.
+     *
+     * <p>Keyed by class, not by field. A writer writes one definition of a given bean class, so
+     * every field of that class in a single payload is at the same version; the enumeration carries
+     * one entry per class, and a class may back more than one field.
+     */
+    public Map<Class<?>, VersionedSchema> nestedBeanSchemas() {
+      return nestedBeanSchemas;
     }
   }
 
@@ -105,15 +139,20 @@ public final class SchemaHistory {
     return current;
   }
 
-  /** All known versions, ordered by version number ascending. */
+  /**
+   * All distinct historical schemas, in build order: outer version ascending, and within an outer
+   * version, one entry per nested cross-product combination. This is not a strict sort by {@link
+   * VersionedSchema#version()} — collapsing field-set duplicates can place a later combination in an
+   * earlier slot. Dispatch keys on the strict hash, so callers must not rely on positional order.
+   */
   public List<VersionedSchema> versions() {
     return versions;
   }
 
   /**
    * Build a history from the bean's annotations. The schema for each version is transformed by
-   * {@code schemaTransform} after filtering; pass an identity for standard format, or
-   * {@code CompactBinaryRowWriter::sortSchema} for compact format.
+   * {@code schemaTransform} after filtering; pass an identity for standard format, or {@code
+   * CompactBinaryRowWriter::sortSchema} for compact format.
    */
   public static SchemaHistory build(Class<?> beanClass, UnaryOperator<Schema> schemaTransform) {
     ForySchema schemaAnn = beanClass.getAnnotation(ForySchema.class);
@@ -122,6 +161,17 @@ public final class SchemaHistory {
     List<FieldEntry> all = collectLiveFields(beanClass);
     if (removedFieldsClass != void.class) {
       all.addAll(collectRemovedFields(removedFieldsClass));
+    }
+
+    // Recursively expand any nested versioned bean field's own history. For each entry whose
+    // type is a versioned bean (has @ForyVersion-annotated descriptors or @ForySchema), we
+    // attach its SchemaHistory so the outer's enumeration can cross-product over inner
+    // versions. The inner schema substitutes into the outer at materialization time.
+    for (FieldEntry fe : all) {
+      Class<?> raw = TypeUtils.getRawType(fe.typeRef);
+      if (raw != null && isBeanWithVersioning(raw)) {
+        fe.innerHistory = build(raw, schemaTransform);
+      }
     }
 
     // Materialize a schema at every version V where the field set changes — both "since" and
@@ -145,70 +195,158 @@ public final class SchemaHistory {
     all.sort((a, b) -> a.javaName.compareTo(b.javaName));
     // A field with finite [since, until) can leave two boundaries with identical field sets
     // (e.g. v1 and v4 both lack a field that lived in [v2, v4)). Collapse boundaries that
-    // produce the same field set into one VersionedSchema, since they round-trip identically.
-    // A real strict-hash collision — two distinct field sets producing the same hash — is
-    // caught by comparing canonical signatures on insertion.
+    // produce the same schema into one VersionedSchema, since they round-trip identically.
+    // A real strict-hash collision — two distinct schemas producing the same hash — is caught by
+    // comparing schemas on insertion. Schema.equals compares fields by name, DataType, and
+    // nullability, the same identity the strict hash mixes, so it is the canonical dedup key.
     int latestVersion = schemaVersions.last();
-    Map<String, VersionedSchema> bySignature = new LinkedHashMap<>();
-    Map<Long, String> hashToSignature = new HashMap<>();
+    Map<Schema, VersionedSchema> bySchema = new LinkedHashMap<>();
+    Map<Long, Schema> hashToSchema = new HashMap<>();
+    Schema currentSchema = null;
     for (int v : schemaVersions) {
-      List<Field> fields = new ArrayList<>();
-      Set<String> liveNames = new HashSet<>();
+      List<FieldEntry> activeEntries = new ArrayList<>();
       for (FieldEntry fe : all) {
         if (fe.since <= v && v < fe.until) {
-          fields.add(TypeInference.inferNamedField(fe.name, fe.typeRef));
+          activeEntries.add(fe);
+        }
+      }
+      // Cross-product over each nested versioned bean *class*, not each field. A writer always
+      // writes one definition of a given bean class, so every field of that class in a single
+      // payload is at the same version; the off-diagonal combinations (the same class at two
+      // versions in one record) are unreachable on the wire. Enumerating one dimension per class
+      // keeps the count a product over distinct nested classes rather than over fields, and lets
+      // a class appear in more than one field. If no entries have nested histories, this yields a
+      // single combination.
+      //
+      // The class count generated downstream is the product of the per-class version counts. If
+      // that growth becomes a concern, drop entries from each bean's History interface once you
+      // no longer need to read payloads from that range — that removes the corresponding
+      // VersionedSchema from this enumeration. Retiring history entries is purely a read-side
+      // concern; the writer always uses the current schema.
+      LinkedHashMap<Class<?>, List<VersionedSchema>> innerChoices = new LinkedHashMap<>();
+      for (FieldEntry fe : activeEntries) {
+        if (fe.innerHistory != null) {
+          innerChoices.putIfAbsent(TypeUtils.getRawType(fe.typeRef), fe.innerHistory.versions());
+        }
+      }
+      for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
+        List<Field> fields = new ArrayList<>(activeEntries.size());
+        Set<String> liveNames = new HashSet<>();
+        for (FieldEntry fe : activeEntries) {
+          Field field;
+          VersionedSchema innerVs = combination.get(TypeUtils.getRawType(fe.typeRef));
+          if (innerVs != null) {
+            // Substitute the chosen inner version's struct fields.
+            field =
+                DataTypes.field(
+                    fe.name,
+                    new DataTypes.StructType(innerVs.schema().fields()),
+                    fe.typeRef.getRawType() == null || !fe.typeRef.getRawType().isPrimitive());
+          } else {
+            field = TypeInference.inferNamedField(fe.name, fe.typeRef);
+          }
+          fields.add(field);
           if (fe.live) {
             liveNames.add(fe.name);
           }
         }
+        Schema schema = schemaTransform.apply(new Schema(fields));
+        long hash = computeStrictSchemaHash(schema);
+        Schema previousSchema = hashToSchema.putIfAbsent(hash, schema);
+        if (previousSchema != null && !previousSchema.equals(schema)) {
+          throw new IllegalStateException(
+              "Strict hash collision for bean "
+                  + beanClass.getName()
+                  + " at version "
+                  + v
+                  + ": two distinct historical schemas hashed to the same value. Please file an "
+                  + "issue with the bean definition.");
+        }
+        // This combination represents the writer-side configuration at outer version v only when
+        // every chosen inner is itself that inner's current schema. The bean's own current schema
+        // is the writer-side configuration at the latest version.
+        boolean innerAllCurrent = true;
+        for (VersionedSchema inner : combination.values()) {
+          if (!inner.isCurrent()) {
+            innerAllCurrent = false;
+            break;
+          }
+        }
+        boolean isCurrent = v == latestVersion && innerAllCurrent;
+        VersionedSchema vs =
+            new VersionedSchema(
+                v,
+                schema,
+                hash,
+                isCurrent,
+                Collections.unmodifiableSet(liveNames),
+                Collections.unmodifiableMap(new HashMap<>(combination)));
+        // Prefer the all-current combination on collapse so the stored VS's nestedBeanSchemas
+        // map reflects the writer-side state at this outer version. This guards a contract on
+        // current().nestedBeanSchemas() in case two combinations ever canonicalize to the same
+        // schema; today's inner-by-schema collapse means inner.versions() has no wire-equal
+        // duplicates, but the guard preserves the invariant for future callers.
+        if (innerAllCurrent) {
+          bySchema.put(schema, vs);
+        } else {
+          bySchema.putIfAbsent(schema, vs);
+        }
+        if (isCurrent) {
+          currentSchema = schema;
+        }
       }
-      Schema schema = schemaTransform.apply(new Schema(fields));
-      long hash = computeStrictSchemaHash(schema);
-      String signature = schemaSignature(schema);
-      String previousSig = hashToSignature.putIfAbsent(hash, signature);
-      if (previousSig != null && !previousSig.equals(signature)) {
-        throw new IllegalStateException(
-            "Strict hash collision for bean "
-                + beanClass.getName()
-                + " at version "
-                + v
-                + ": two distinct historical schemas hashed to the same value. Please file an "
-                + "issue with the bean definition.");
-      }
-      // Record the highest version at which this signature first appears. The latest boundary
-      // is the writer's "current" version; preferring it over earlier first-appearances keeps
-      // current().version() aligned with what writers emit.
-      bySignature.put(
-          signature,
-          new VersionedSchema(v, schema, hash, Collections.unmodifiableSet(liveNames)));
     }
-    // current is the schema in effect at latestVersion.
-    VersionedSchema current = null;
-    for (VersionedSchema vs : bySignature.values()) {
-      if (vs.version() == latestVersion) {
-        current = vs;
-        break;
-      }
+    // The all-current combination at the latest version is always one of the cartesian entries,
+    // so currentSchema is always set and present here.
+    VersionedSchema current = bySchema.get(currentSchema);
+    if (current == null) {
+      throw new IllegalStateException("No current schema resolved for bean " + beanClass.getName());
     }
     return new SchemaHistory(
-        Collections.unmodifiableList(new ArrayList<>(bySignature.values())), current);
+        Collections.unmodifiableList(new ArrayList<>(bySchema.values())), current);
   }
 
-  /**
-   * Canonical textual signature of a schema, used to distinguish a real strict-hash collision
-   * (two genuinely different schemas with the same hash) from the benign case where two version
-   * boundaries produce the same field set.
-   */
-  private static String schemaSignature(Schema schema) {
-    StringBuilder sb = new StringBuilder(64);
-    for (Field field : schema.fields()) {
-      sb.append(field.name())
-          .append(':')
-          .append(field.type())
-          .append(field.nullable() ? "?" : "!")
-          .append(';');
+  /** Cartesian product over (nested bean class, list-of-inner-VersionedSchema). */
+  private static List<Map<Class<?>, VersionedSchema>> cartesian(
+      LinkedHashMap<Class<?>, List<VersionedSchema>> choices) {
+    List<Map<Class<?>, VersionedSchema>> out = new ArrayList<>();
+    out.add(new HashMap<>());
+    for (Map.Entry<Class<?>, List<VersionedSchema>> choice : choices.entrySet()) {
+      Class<?> cls = choice.getKey();
+      List<VersionedSchema> options = choice.getValue();
+      List<Map<Class<?>, VersionedSchema>> next = new ArrayList<>(out.size() * options.size());
+      for (Map<Class<?>, VersionedSchema> prefix : out) {
+        for (VersionedSchema opt : options) {
+          Map<Class<?>, VersionedSchema> extended = new HashMap<>(prefix);
+          extended.put(cls, opt);
+          next.add(extended);
+        }
+      }
+      out = next;
     }
-    return sb.toString();
+    return out;
+  }
+
+  /** True if the class is a row-codec bean and carries any schema-evolution annotations. */
+  private static boolean isBeanWithVersioning(Class<?> cls) {
+    if (cls.isAnnotationPresent(ForySchema.class)) {
+      return true;
+    }
+    // Only introspect classes the row format actually treats as beans. TypeInference.inferField
+    // routes collection/map/array/enum field types away from Descriptor.getDescriptors, so a
+    // collection subclass that shadows a field name across its hierarchy round-trips fine even
+    // though getDescriptors would reject it. Gating on isBean keeps this probe consistent with
+    // inferField; getDescriptors then only throws for a class that genuinely cannot be a bean,
+    // which fails identically on the real encode/decode path.
+    if (!TypeUtils.isBean(cls)) {
+      return false;
+    }
+    for (Descriptor d : Descriptor.getDescriptors(cls)) {
+      if (lookupForyVersion(d) != null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static List<FieldEntry> collectRemovedFields(Class<?> historyClass) {
@@ -251,7 +389,9 @@ public final class SchemaHistory {
       // ("tags"); for interface beans or JavaBean-style classes it is the method name
       // ("getTags"). The user writes the history method to match.
       String wireName = StringUtils.lowerCamelToLowerUnderscore(d.getName());
-      out.add(new FieldEntry(wireName, d.getName(), d.getTypeRef(), ann.since(), ann.until(), /*live*/ false));
+      out.add(
+          new FieldEntry(
+              wireName, d.getName(), d.getTypeRef(), ann.since(), ann.until(), /*live*/ false));
     }
     return out;
   }
@@ -265,8 +405,15 @@ public final class SchemaHistory {
       int until = ann == null ? Integer.MAX_VALUE : ann.until();
       if (since >= until) {
         throw new IllegalStateException(
-            "Invalid @ForyVersion on " + beanClass.getName() + "." + d.getName()
-                + ": since (" + since + ") must be strictly less than until (" + until + ")");
+            "Invalid @ForyVersion on "
+                + beanClass.getName()
+                + "."
+                + d.getName()
+                + ": since ("
+                + since
+                + ") must be strictly less than until ("
+                + until
+                + ")");
       }
       String wireName = StringUtils.lowerCamelToLowerUnderscore(d.getName());
       out.add(new FieldEntry(wireName, d.getName(), d.getTypeRef(), since, until, /*live*/ true));
@@ -330,8 +477,7 @@ public final class SchemaHistory {
     Set<String> seen = new HashSet<>();
     for (Field field : schema.fields()) {
       if (!seen.add(field.name())) {
-        throw new IllegalStateException(
-            "Duplicate field name in schema: " + field.name());
+        throw new IllegalStateException("Duplicate field name in schema: " + field.name());
       }
       hash = hashField(hash, field);
     }
@@ -379,16 +525,21 @@ public final class SchemaHistory {
 
   private static final class FieldEntry {
     final String name;
+
     /**
      * Java member name used for canonical ordering. Matches {@link Descriptor#getName} so live
-     * fields and removed fields (declared on the history class) sort into the same order as
-     * {@link TypeInference#inferSchema} produces.
+     * fields and removed fields (declared on the history class) sort into the same order as {@link
+     * TypeInference#inferSchema} produces.
      */
     final String javaName;
+
     final TypeRef<?> typeRef;
     final int since;
     final int until;
     final boolean live;
+
+    /** SchemaHistory of this entry's bean type, when the type is itself versioned. */
+    SchemaHistory innerHistory;
 
     FieldEntry(
         String name, String javaName, TypeRef<?> typeRef, int since, int until, boolean live) {
