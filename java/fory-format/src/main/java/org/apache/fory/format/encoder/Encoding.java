@@ -21,6 +21,7 @@ package org.apache.fory.format.encoder;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
@@ -41,10 +42,43 @@ interface Encoding {
 
   RowEncoderBuilder newRowEncoder(TypeRef<?> beanType);
 
+  /**
+   * Construct a projection codec builder for an older version of {@code beanType}, reading the
+   * supplied historical schema and producing instances of the current bean class. Used only by
+   * the schema-evolution code path.
+   */
+  RowEncoderBuilder newProjectionRowEncoder(
+      TypeRef<?> beanType, Schema historicalSchema, Set<String> liveNames, String classSuffix);
+
   ArrayEncoderBuilder newArrayEncoder(
       TypeRef<? extends Collection<?>> collectionType, TypeRef<?> elementType);
 
+  /**
+   * Construct an array encoder builder whose generated code references the row codec class for
+   * the element bean with the supplied suffix. Used by schema-evolution paths to generate one
+   * array codec per historical version of the element bean.
+   */
+  ArrayEncoderBuilder newProjectionArrayEncoder(
+      TypeRef<? extends Collection<?>> collectionType,
+      TypeRef<?> elementType,
+      String rowCodecSuffix);
+
   MapEncoderBuilder newMapEncoder(TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken);
+
+  /**
+   * Construct a map encoder builder whose generated code references the bean row codec class
+   * with the supplied suffix. Used by schema-evolution paths to generate one map codec per
+   * historical version of the bean.
+   */
+  MapEncoderBuilder newProjectionMapEncoder(
+      TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken, String rowCodecSuffix);
+
+  /**
+   * Build a {@link RowFactory} for {@code schema}, precomputing any schema-derived layout once.
+   * Used by the schema-evolution decode path to allocate rows for a historical schema without
+   * re-deriving the layout on every decode.
+   */
+  RowFactory newRowFactory(Schema schema);
 
   BinaryArray newArray(Field field);
 

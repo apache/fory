@@ -22,6 +22,10 @@ package org.apache.fory.format.encoder;
 import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Constructor;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -334,6 +338,28 @@ public class Encoders {
     return loadCls(compileUnits);
   }
 
+  /**
+   * Compile and load a projection codec class for one historical version of {@code beanClass}.
+   * The current-version codec class is loaded separately by {@link #loadOrGenRowCodecClass}; this
+   * is used by schema-evolution code paths to materialize a decoder for each older version.
+   */
+  static Class<?> loadOrGenProjectionRowCodecClass(
+      Class<?> beanClass,
+      Encoding codecFactory,
+      org.apache.fory.format.type.Schema historicalSchema,
+      Set<String> liveNames,
+      String classSuffix) {
+    final RowEncoderBuilder codecBuilder =
+        codecFactory.newProjectionRowEncoder(
+            TypeRef.of(beanClass), historicalSchema, liveNames, classSuffix);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(beanClass),
+            codecBuilder.codecClassName(beanClass) + classSuffix,
+            codecBuilder::genCode);
+    return loadCls(compileUnit);
+  }
+
   static <B> Class<?> loadOrGenArrayCodecClass(
       TypeRef<? extends Collection<?>> arrayCls, TypeRef<B> elementType, Encoding codecFactory) {
     LOG.info("Create ArrayCodec for classes {}", elementType);
@@ -348,6 +374,23 @@ public class Encoders {
             codecBuilder.codecClassName(cls, prefix),
             codecBuilder::genCode);
 
+    return loadCls(compileUnit);
+  }
+
+  static <B> Class<?> loadOrGenProjectionArrayCodecClass(
+      TypeRef<? extends Collection<?>> arrayCls,
+      TypeRef<B> elementType,
+      Encoding codecFactory,
+      String rowCodecSuffix) {
+    Class<?> cls = getRawType(elementType);
+    String prefix = TypeInference.inferTypeName(arrayCls);
+    ArrayEncoderBuilder codecBuilder =
+        codecFactory.newProjectionArrayEncoder(arrayCls, elementType, rowCodecSuffix);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(cls),
+            codecBuilder.codecClassName(cls, prefix) + rowCodecSuffix,
+            codecBuilder::genCode);
     return loadCls(compileUnit);
   }
 
@@ -384,6 +427,23 @@ public class Encoders {
     return loadCls(compileUnit);
   }
 
+  static Class<?> loadOrGenProjectionMapCodecClass(
+      TypeRef<? extends Map<?, ?>> mapCls,
+      TypeRef<?> beanToken,
+      Encoding codecFactory,
+      String rowCodecSuffix) {
+    Class<?> cls = getRawType(beanToken);
+    String prefix = TypeInference.inferTypeName(mapCls);
+    MapEncoderBuilder codecBuilder =
+        codecFactory.newProjectionMapEncoder(mapCls, beanToken, rowCodecSuffix);
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(cls),
+            codecBuilder.codecClassName(cls, prefix) + rowCodecSuffix,
+            codecBuilder::genCode);
+    return loadCls(compileUnit);
+  }
+
   private static Class<?> loadCls(CompileUnit... compileUnit) {
     CodeGenerator codeGenerator =
         CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
@@ -393,6 +453,23 @@ public class Encoders {
       return classLoader.loadClass(className);
     } catch (final ClassNotFoundException e) {
       throw new IllegalStateException("Impossible because we just compiled class", e);
+    }
+  }
+
+  /**
+   * Build a {@link MethodHandle} bound to {@code generatedClass}'s {@code (Object[])} constructor,
+   * adapted so it returns {@code generatedType}. All generated row/array/map codec classes share
+   * this constructor shape; this helper centralises the reflection and exception wrapping.
+   */
+  static MethodHandle constructorHandleFor(Class<?> generatedClass, Class<?> generatedType) {
+    try {
+      Constructor<?> constructor =
+          generatedClass.asSubclass(generatedType).getConstructor(Object[].class);
+      return MethodHandles.lookup()
+          .unreflectConstructor(constructor)
+          .asType(MethodType.methodType(generatedType, Object[].class));
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new EncoderException("Failed to resolve constructor for " + generatedClass, e);
     }
   }
 }

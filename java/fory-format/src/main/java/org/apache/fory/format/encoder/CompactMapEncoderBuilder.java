@@ -36,6 +36,11 @@ class CompactMapEncoderBuilder extends MapEncoderBuilder {
     super(clsType, beanType);
   }
 
+  CompactMapEncoderBuilder(
+      final TypeRef<?> clsType, final TypeRef<?> beanType, final String rowCodecSuffix) {
+    super(clsType, beanType, rowCodecSuffix);
+  }
+
   @Override
   protected Invoke beanWriterReset(
       final Expression writer, final Reference rowWriter, final Expression ordinal) {

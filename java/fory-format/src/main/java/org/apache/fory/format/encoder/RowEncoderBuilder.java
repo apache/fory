@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
@@ -59,6 +60,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
+import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordUtils;
 
 /** Expression builder for building jit row encoder class. */
@@ -76,16 +78,42 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   protected Reference beanClassRef = new Reference(BEAN_CLASS_NAME, CLASS_TYPE);
   private final CodegenContext generatedBeanImpl;
   private final String generatedBeanImplName;
+  /**
+   * When non-null, this builder produces a decode-only projection codec: schema fields whose
+   * name is in {@code projectionLiveNames} are assigned to the bean as usual; others are decoded
+   * for offset arithmetic only and discarded. {@code toRow} on a projection codec throws.
+   */
+  private final Set<String> projectionLiveNames;
+  private final String projectionClassSuffix;
 
   public RowEncoderBuilder(Class<?> beanClass) {
     this(TypeRef.of(beanClass));
   }
 
   public RowEncoderBuilder(TypeRef<?> beanType) {
+    this(beanType, null, null, null);
+  }
+
+  /**
+   * Construct a decode-only projection builder for an older version of {@code beanType}. The
+   * supplied {@code historicalSchema} is used as the layout to decode; only fields whose name is
+   * in {@code liveNames} are written into the resulting bean. {@code classSuffix} distinguishes
+   * this codec from the current-version codec and from other historical projections.
+   */
+  RowEncoderBuilder(
+      TypeRef<?> beanType,
+      Schema historicalSchema,
+      Set<String> liveNames,
+      String classSuffix) {
     super(new CodegenContext(), beanType);
     Preconditions.checkArgument(beanClass.isInterface() || TypeUtils.isBean(beanType, typeCtx));
-    className = codecClassName(beanClass);
-    this.schema = inferSchema(beanType);
+    this.projectionLiveNames = liveNames;
+    this.projectionClassSuffix = classSuffix;
+    className =
+        projectionClassSuffix == null
+            ? codecClassName(beanClass)
+            : codecClassName(beanClass) + projectionClassSuffix;
+    this.schema = historicalSchema != null ? historicalSchema : inferSchema(beanType);
     this.descriptorsMap = Descriptor.getDescriptorsMap(beanClass);
     ctx.reserveName(ROOT_ROW_WRITER_NAME);
     ctx.reserveName(SCHEMA_NAME);
@@ -105,7 +133,13 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     ctx.addImports(Row.class, ArrayData.class, MapData.class);
     ctx.addImports(BinaryRow.class, BinaryArray.class, BinaryMap.class);
     if (beanClass.isInterface()) {
-      generatedBeanImplName = beanClass.getSimpleName() + "GeneratedImpl";
+      // Append the projection suffix so each historical version of an interface bean gets its
+      // own impl class; the impl classes are inner classes of the codec and would collide on
+      // the simple name otherwise.
+      generatedBeanImplName =
+          beanClass.getSimpleName()
+              + "GeneratedImpl"
+              + (projectionClassSuffix == null ? "" : projectionClassSuffix);
       generatedBeanImpl = buildImplClass();
     } else {
       generatedBeanImplName = null;
@@ -158,6 +192,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     ctx.addField(rowWriterType, ROOT_ROW_WRITER_NAME);
     ctx.addField(ctx.type(Fory.class), FORY_NAME);
 
+    // Order matters for projection codecs: the encode pass registers nested-bean encoder fields
+    // on ctx as a side effect (see buildEncodeExpression), and the decode pass reads them. Building
+    // decode first would fail with "No bean codec registered". Keep encode genCode before decode.
     Expression encodeExpr = buildEncodeExpression();
     String encodeCode = encodeExpr.genCode(ctx).code();
     Expression decodeExpr = buildDecodeExpression();
@@ -203,8 +240,14 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     // schema field's name must correspond to descriptor's name.
     for (int i = 0; i < numFields; i++) {
       Field field = schema.field(i);
+      if (projectionLiveNames != null && !projectionLiveNames.contains(field.name())) {
+        // Removed wire field — no Java accessor to read from, so we cannot emit encode
+        // code. The projection codec's encode body is unreachable anyway because
+        // BinaryRowEncoder never dispatches a projection codec on write.
+        continue;
+      }
       Descriptor d = getDescriptorByFieldName(field.name());
-      Preconditions.checkNotNull(d);
+      Preconditions.checkNotNull(d, "missing descriptor for schema field " + field.name());
       TypeRef<?> fieldType = d.getTypeRef();
       Expression fieldValue = getFieldValue(bean, d);
       Literal ordinal = Literal.ofInt(i);
@@ -214,6 +257,12 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       Expression fieldExpr =
           serializeFor(ordinal, fieldValue, writer, fieldType, field, foryField, new HashSet<>());
       expressions.add(fieldExpr);
+    }
+    if (projectionLiveNames != null) {
+      // Decode-only: never run the writer logic. The expressions above were generated only for
+      // their side effects on the codegen context (registering nested-bean encoder fields).
+      return new Expression.Block(
+          "throw new UnsupportedOperationException(\"projection codec is decode-only\");\n");
     }
     expressions.add(
         new Expression.Return(
@@ -237,19 +286,25 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       bean = new Expression.Reference("new " + generatedBeanImplName + "(row)");
     } else {
       int numFields = schema.numFields();
-      List<String> fieldNames = new ArrayList<>(numFields);
-      Expression[] values = new Expression[numFields];
-      Descriptor[] descriptors = new Descriptor[numFields];
-      // schema field's name must correspond to descriptor's name.
+      // Build, in schema order, the per-slot bean-side info for live fields only. Discarded
+      // slots are part of the row layout but have no Java target; we skip emitting any code
+      // for them because BinaryRow's offset arithmetic is keyed on slot index, not on prior
+      // reads.
+      List<Descriptor> liveDescriptors = new ArrayList<>();
+      List<Expression> liveValues = new ArrayList<>();
       for (int i = 0; i < numFields; i++) {
         Literal ordinal = Literal.ofInt(i);
-        Descriptor d = getDescriptorByFieldName(schema.field(i).name());
-        fieldNames.add(d.getName());
-        descriptors[i] = d;
+        String wireName = schema.field(i).name();
+        if (projectionLiveNames != null && !projectionLiveNames.contains(wireName)) {
+          continue;
+        }
+        Descriptor d = getDescriptorByFieldName(wireName);
+        Preconditions.checkNotNull(d, "missing descriptor for wire field " + wireName);
         TypeRef<?> fieldType = d.getTypeRef();
         Expression.Variable value =
             new Expression.Variable("value_" + d.getName(), nullValue(fieldType));
-        values[i] = value;
+        liveDescriptors.add(d);
+        liveValues.add(value);
         expressions.add(value);
         Expression.Invoke isNullAt =
             new Expression.Invoke(
@@ -267,17 +322,12 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         expressions.add(decode);
       }
       if (RecordUtils.isRecord(beanClass)) {
-        int[] map = RecordUtils.buildRecordComponentMapping(beanClass, fieldNames);
-        Expression[] args = new Expression[numFields];
-        for (int i = 0; i < numFields; i++) {
-          args[i] = values[map[i]];
-        }
-        bean = new Expression.NewInstance(beanType, beanType.getRawType().getName(), args);
+        bean = buildRecordInstance(liveDescriptors, liveValues);
       } else {
         bean = newBean();
         expressions.add(bean);
-        for (int i = 0; i < values.length; i++) {
-          expressions.add(setFieldValue(bean, descriptors[i], values[i]));
+        for (int i = 0; i < liveDescriptors.size(); i++) {
+          expressions.add(setFieldValue(bean, liveDescriptors.get(i), liveValues.get(i)));
         }
       }
     }
@@ -288,6 +338,31 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     }
     expressions.add(new Expression.Return(bean));
     return expressions;
+  }
+
+  /**
+   * Build a record instance, supplying defaults for components not contributed by the wire. The
+   * non-projection path always supplies every component; the projection path may supply a
+   * subset.
+   */
+  private Expression buildRecordInstance(
+      List<Descriptor> liveDescriptors, List<Expression> liveValues) {
+    Map<String, Expression> byName = new HashMap<>(liveDescriptors.size() * 2);
+    for (int i = 0; i < liveDescriptors.size(); i++) {
+      byName.put(liveDescriptors.get(i).getName(), liveValues.get(i));
+    }
+    RecordComponent[] components = RecordUtils.getRecordComponents(beanClass);
+    Expression[] args = new Expression[components.length];
+    for (int i = 0; i < components.length; i++) {
+      String compName = components[i].getName();
+      Expression value = byName.get(compName);
+      if (value == null) {
+        TypeRef<?> compType = TypeRef.of(components[i].getGenericType());
+        value = nullValue(compType);
+      }
+      args[i] = value;
+    }
+    return new Expression.NewInstance(beanType, beanType.getRawType().getName(), args);
   }
 
   private static Expression nullValue(TypeRef<?> fieldType) {
@@ -303,7 +378,11 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     int numFields = schema.numFields();
     for (int i = 0; i < numFields; i++) {
       Literal ordinal = Literal.ofInt(i);
-      Descriptor d = getDescriptorByFieldName(schema.field(i).name());
+      String wireName = schema.field(i).name();
+      if (projectionLiveNames != null && !projectionLiveNames.contains(wireName)) {
+        continue;
+      }
+      Descriptor d = getDescriptorByFieldName(wireName);
       TypeRef<?> fieldType = d.getTypeRef();
       Class<?> rawFieldType = fieldType.getRawType();
       // Resolve a codec on the raw field type before any Optional unwrap; keep in lockstep with the
@@ -358,7 +437,14 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     int numFields = schema.numFields();
     for (int i = 0; i < numFields; i++) {
       Literal ordinal = Literal.ofInt(i);
-      Descriptor d = getDescriptorByFieldName(schema.field(i).name());
+      String wireName = schema.field(i).name();
+      if (projectionLiveNames != null && !projectionLiveNames.contains(wireName)) {
+        // Removed wire field — no Java member to back this slot. The other interface methods
+        // can still be served lazily from the row; the row's offset arithmetic does not need
+        // us to read this slot.
+        continue;
+      }
+      Descriptor d = getDescriptorByFieldName(wireName);
       TypeRef<?> fieldType = d.getTypeRef();
       Class<?> rawFieldType = fieldType.getRawType();
 
@@ -410,6 +496,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     // Note: adding constructor captures init code, so must happen after all fields are collected
     implClass.addConstructor("this.row = row;", BinaryRow.class, "row");
 
+    final boolean projecting = projectionLiveNames != null;
     methodsNeedingImpl.forEach(
         (methodName, signatures) ->
             signatures.forEach(
@@ -422,14 +509,47 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
                     params[i * 2] = methodType.parameterType(i);
                     params[i * 2 + 1] = "unused" + i;
                   }
-                  implClass.addMethod(
-                      methodName,
-                      "throw new UnsupportedOperationException();",
-                      methodType.returnType(),
-                      params);
+                  String body;
+                  if (projecting && isAccessorOfAbsentField(methodName, methodType)) {
+                    body =
+                        "return " + defaultValueExpression(methodType.returnType(), implClass) + ";";
+                  } else {
+                    body = "throw new UnsupportedOperationException();";
+                  }
+                  implClass.addMethod(methodName, body, methodType.returnType(), params);
                 }));
 
     return implClass;
+  }
+
+  /**
+   * True when {@code methodName(returnType)} on the current bean class names a property whose
+   * field is not in the historical schema this projection codec is generating. Such a method
+   * gets a default-value body instead of {@code throw} so the interface proxy can serve callers
+   * that don't know the field is missing in this version.
+   */
+  private boolean isAccessorOfAbsentField(String methodName, MethodType methodType) {
+    Descriptor d = descriptorsMap.get(methodName);
+    if (d == null) {
+      return false;
+    }
+    // Match the raw return type, the same identity the live-field pass uses to remove an accessor
+    // from methodsNeedingImpl above. A method whose return type differs is a different overload,
+    // not this field's accessor, and must still throw.
+    if (d.getTypeRef().getRawType() != methodType.returnType()) {
+      return false;
+    }
+    // The main loop above emits getters for every wire field that is also a live Java member.
+    // Anything left in methodsNeedingImpl that matches a descriptor by name and type must
+    // correspond to a Java member whose wire field is not in this version.
+    return true;
+  }
+
+  private static String defaultValueExpression(Class<?> returnType, CodegenContext ctx) {
+    if (TypeUtils.isOptionalType(returnType)) {
+      return ctx.type(returnType) + ".empty()";
+    }
+    return TypeUtils.defaultValue(returnType);
   }
 
   private Descriptor getDescriptorByFieldName(String fieldName) {

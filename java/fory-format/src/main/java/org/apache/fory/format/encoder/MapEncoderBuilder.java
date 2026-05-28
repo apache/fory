@@ -58,10 +58,15 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
+    this(clsType, beanType, null);
+  }
+
+  MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType, String rowCodecSuffix) {
     // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
     // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
     // naming and schema generation.
     super(new CodegenContext(), beanType, Object.class);
+    this.rowCodecSuffixForBeans = rowCodecSuffix;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);
@@ -75,7 +80,9 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
-    String className = codecClassName(beanClass, TypeInference.inferTypeName(mapToken));
+    String className =
+        codecClassName(beanClass, TypeInference.inferTypeName(mapToken))
+            + (rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans);
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics

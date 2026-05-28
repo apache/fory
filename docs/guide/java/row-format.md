@@ -113,6 +113,76 @@ Row format is ideal for:
 - **Data pipelines**: Processing data without full object reconstruction
 - **Cross-language data sharing**: When data needs to be accessed from multiple languages
 
+## Schema evolution
+
+Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
+by older versions of the same bean. Writing always uses the current version; reading detects
+the payload's version from a strict hash at the head of the payload. Java only.
+
+Annotate fields added after v1 with `@ForyVersion(since = N)`:
+
+```java
+@Data
+public class Person {
+  private String name;
+  private int age;
+
+  @ForyVersion(since = 2)
+  private String email;
+}
+```
+
+A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
+Primitive fields added later default to `0` / `false`. If a class adopts versioning after its
+v1 is already in the wild, set `@ForySchema(baseVersion = N)` so unannotated fields are
+treated as present since version `N`.
+
+Remove a field by deleting the Java member and listing it on a nested history interface. The
+interface's methods carry the original field's name, return type, and `[since, until)` window.
+Parameterized types are expressed naturally because the methods are real Java declarations.
+
+```java
+@Data
+@ForySchema(removedFields = Person.History.class)
+public class Person {
+  private String name;
+
+  @ForyVersion(since = 2)
+  private String email;
+
+  interface History {
+    @ForyVersion(until = 3)
+    int age();
+
+    @ForyVersion(until = 5)
+    List<String> tags();
+  }
+}
+```
+
+Each history method must carry a `@ForyVersion` with `until` set. The method name matches the
+original live descriptor name: the field name for Lombok `@Data` or record-style classes
+(`age`, `tags`), or the full accessor name for JavaBeans-style classes and interfaces
+(`getAge`).
+
+### Wire format and limitations
+
+Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
+wire-compatible otherwise. Row payloads already carry an 8-byte hash slot whose value changes
+under evolution (the strict hash includes field name and nullability). For arrays and maps
+whose element bean opts into evolution, an 8-byte hash prefix is prepended; arrays and maps
+whose element is not a versioned bean carry no prefix.
+
+Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
+
+Map keys do not carry a per-payload hash; a versioned bean used as a map key is read with the
+current schema only, not dispatched to a projection codec.
+
+A versioned bean nested as a struct field inside another versioned bean is read with its
+current schema regardless of what the wire bytes were written from — the row format does not
+carry a per-nested-struct hash. Evolve either the outer or the nested bean, but expect the
+nested-bean schema to remain stable while the outer evolves (or vice versa).
+
 ## Cross-Language Compatibility
 
 Row format works seamlessly across languages. The same binary data can be accessed from:

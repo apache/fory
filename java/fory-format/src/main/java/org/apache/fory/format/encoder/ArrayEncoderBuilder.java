@@ -54,10 +54,20 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public ArrayEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
+    this(clsType, beanType, null);
+  }
+
+  /**
+   * Construct an array codec builder that embeds row codec class references for its element bean
+   * with the supplied suffix. Used by schema-evolution code to point per-version array codecs at
+   * per-version row codecs.
+   */
+  ArrayEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType, String rowCodecSuffix) {
     // A top-level collection has no enclosing bean, so scope element-codec resolution to Object to
     // match TypeInference's empty-path enclosing type; beanType still names the element type for
     // class naming and the empty-array template below.
     super(new CodegenContext(), beanType, Object.class);
+    this.rowCodecSuffixForBeans = rowCodecSuffix;
     arrayToken = clsType;
     ctx.reserveName(ROOT_ARRAY_WRITER_NAME);
     ctx.reserveName(ROOT_ARRAY_NAME);
@@ -86,7 +96,9 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
-    String className = codecClassName(beanClass, TypeInference.inferTypeName(arrayToken));
+    String className =
+        codecClassName(beanClass, TypeInference.inferTypeName(arrayToken))
+            + (rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans);
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
