@@ -20,16 +20,22 @@
 package org.apache.fory.format.encoder;
 
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
-import java.lang.invoke.MethodType;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
+import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.ExceptionUtils;
 
@@ -55,21 +61,105 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
 
   public Supplier<MapEncoder<M>> build() {
     loadMapInnerCodecs();
-    final var mapEncoderFactory = generatedMapEncoder();
+    if (!schemaEvolution || !isVersionedBeanValue()) {
+      final var mapEncoderFactory = generatedMapEncoder();
+      return new Supplier<MapEncoder<M>>() {
+        @Override
+        public MapEncoder<M> get() {
+          final BinaryArrayWriter keyWriter = codecFormat.newArrayWriter(keyField);
+          final BinaryArrayWriter valWriter =
+              codecFormat.newArrayWriter(valField, keyWriter.getBuffer());
+          final var codec = mapEncoderFactory.apply(keyWriter, valWriter);
+          return new BufferResettingMapEncoder<>(
+              initialBufferSize,
+              keyWriter,
+              valWriter,
+              new BinaryMapEncoder<M>(codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded));
+        }
+      };
+    }
+    return buildVersioned();
+  }
+
+  private boolean isVersionedBeanValue() {
+    return TypeUtils.isBean(
+        valType,
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+  }
+
+  private Supplier<MapEncoder<M>> buildVersioned() {
+    Class<?> valClass = TypeUtils.getRawType(valType);
+    UnaryOperator<Schema> schemaTransform =
+        codecFormat == CompactCodecFormat.INSTANCE
+            ? CompactBinaryRowWriter::sortSchema
+            : UnaryOperator.identity();
+    SchemaHistory history = SchemaHistory.build(valClass, schemaTransform);
+    SchemaHistory.VersionedSchema current = history.current();
+
+    Map<Long, ProjectionMapFactory> projectionFactories = new HashMap<>();
+    for (SchemaHistory.VersionedSchema vs : history.versions()) {
+      if (vs == current) {
+        continue;
+      }
+      String suffix = "_V" + vs.version();
+      Encoders.loadOrGenProjectionRowCodecClass(
+          valClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix);
+      Class<?> mapClass =
+          Encoders.loadOrGenProjectionMapCodecClass(
+              mapType, TypeRef.of(valClass), codecFormat, suffix);
+      MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
+      // Build a MapType whose value is the historical element struct, keeping the same key.
+      Field individualKey = DataTypes.keyFieldForMap(field);
+      Field histIndividualVal =
+          DataTypes.field(
+              DataTypes.MAP_VALUE_NAME, new DataTypes.StructType(vs.schema().fields()), true);
+      Field histMapField = DataTypes.mapField(field.name(), individualKey, histIndividualVal);
+      projectionFactories.put(vs.strictHash(), new ProjectionMapFactory(histMapField, ctor));
+    }
+    final var currentFactory = generatedMapEncoder();
+    long currentHash = current.strictHash();
     return new Supplier<MapEncoder<M>>() {
       @Override
       public MapEncoder<M> get() {
-        final BinaryArrayWriter keyWriter = codecFormat.newArrayWriter(keyField);
-        final BinaryArrayWriter valWriter =
-            codecFormat.newArrayWriter(valField, keyWriter.getBuffer());
-        final var codec = mapEncoderFactory.apply(keyWriter, valWriter);
+        BinaryArrayWriter keyWriter = codecFormat.newArrayWriter(keyField);
+        BinaryArrayWriter valWriter = codecFormat.newArrayWriter(valField, keyWriter.getBuffer());
+        var codec = currentFactory.apply(keyWriter, valWriter);
+        Map<Long, BinaryMapEncoder.ProjectionMapCodec> proj = new HashMap<>();
+        for (Map.Entry<Long, ProjectionMapFactory> entry : projectionFactories.entrySet()) {
+          proj.put(entry.getKey(), entry.getValue().instantiate(codecFormat, fory));
+        }
         return new BufferResettingMapEncoder<>(
             initialBufferSize,
             keyWriter,
             valWriter,
-            new BinaryMapEncoder<M>(codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded));
+            new BinaryMapEncoder<M>(
+                codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded, currentHash, proj));
       }
     };
+  }
+
+  private final class ProjectionMapFactory {
+    private final Field histMapField;
+    private final MethodHandle ctor;
+
+    ProjectionMapFactory(Field histMapField, MethodHandle ctor) {
+      this.histMapField = histMapField;
+      this.ctor = ctor;
+    }
+
+    BinaryMapEncoder.ProjectionMapCodec instantiate(Encoding format, Fory fory) {
+      try {
+        Field histKeyField = DataTypes.keyArrayFieldForMap(histMapField);
+        Field histValField = DataTypes.itemArrayFieldForMap(histMapField);
+        BinaryArrayWriter projKey = format.newArrayWriter(histKeyField);
+        BinaryArrayWriter projVal = format.newArrayWriter(histValField, projKey.getBuffer());
+        Object[] references = {histKeyField, histValField, projKey, projVal, fory, histMapField};
+        GeneratedMapEncoder codec = (GeneratedMapEncoder) ctor.invokeExact(references);
+        return new BinaryMapEncoder.ProjectionMapCodec(format, histMapField, codec);
+      } catch (Throwable e) {
+        throw ExceptionUtils.throwException(e);
+      }
+    }
   }
 
   private void loadMapInnerCodecs() {
@@ -81,17 +171,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     final Class<?> arrayCodecClass =
         Encoders.loadOrGenMapCodecClass(mapType, keyType, valType, codecFormat);
 
-    final MethodHandle constructorHandle;
-    try {
-      final var constructor =
-          arrayCodecClass.asSubclass(GeneratedMapEncoder.class).getConstructor(Object[].class);
-      constructorHandle =
-          MethodHandles.lookup()
-              .unreflectConstructor(constructor)
-              .asType(MethodType.methodType(GeneratedMapEncoder.class, Object[].class));
-    } catch (final NoSuchMethodException | IllegalAccessException e) {
-      throw new EncoderException("Failed to construct array codec for " + mapType, e);
-    }
+    final MethodHandle constructorHandle =
+        Encoders.constructorHandleFor(arrayCodecClass, GeneratedMapEncoder.class);
     return new BiFunction<BinaryArrayWriter, BinaryArrayWriter, GeneratedMapEncoder>() {
       @Override
       public GeneratedMapEncoder apply(
@@ -99,7 +180,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         final Object[] references = {keyField, valField, keyWriter, valWriter, fory, field};
         try {
           return (GeneratedMapEncoder) constructorHandle.invokeExact(references);
-        } catch (final Throwable t) {
+        } catch (Throwable t) {
           throw ExceptionUtils.throwException(t);
         }
       }

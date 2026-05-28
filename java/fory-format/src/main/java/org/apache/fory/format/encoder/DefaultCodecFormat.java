@@ -21,8 +21,10 @@ package org.apache.fory.format.encoder;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
+import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
@@ -60,15 +62,45 @@ enum DefaultCodecFormat implements Encoding {
   }
 
   @Override
+  public RowEncoderBuilder newProjectionRowEncoder(
+      final TypeRef<?> beanType,
+      final Schema historicalSchema,
+      final Set<String> liveNames,
+      final String classSuffix) {
+    return new RowEncoderBuilder(beanType, historicalSchema, liveNames, classSuffix);
+  }
+
+  @Override
   public ArrayEncoderBuilder newArrayEncoder(
       final TypeRef<? extends Collection<?>> collectionType, final TypeRef<?> elementType) {
     return new ArrayEncoderBuilder(collectionType, elementType);
   }
 
   @Override
+  public ArrayEncoderBuilder newProjectionArrayEncoder(
+      final TypeRef<? extends Collection<?>> collectionType,
+      final TypeRef<?> elementType,
+      final String rowCodecSuffix) {
+    return new ArrayEncoderBuilder(collectionType, elementType, rowCodecSuffix);
+  }
+
+  @Override
   public MapEncoderBuilder newMapEncoder(
       final TypeRef<? extends Map<?, ?>> mapType, final TypeRef<?> beanToken) {
     return new MapEncoderBuilder(mapType, beanToken);
+  }
+
+  @Override
+  public MapEncoderBuilder newProjectionMapEncoder(
+      final TypeRef<? extends Map<?, ?>> mapType,
+      final TypeRef<?> beanToken,
+      final String rowCodecSuffix) {
+    return new MapEncoderBuilder(mapType, beanToken, rowCodecSuffix);
+  }
+
+  @Override
+  public RowFactory newRowFactory(final Schema schema) {
+    return () -> new BinaryRow(schema);
   }
 
   @Override
