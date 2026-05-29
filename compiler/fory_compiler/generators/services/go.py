@@ -135,17 +135,39 @@ class GoServiceGeneratorMixin:
 
     def _generate_client_methods(self, service: Service, tracker: ImportTracker) -> List[str]:
         lines: List[str] = []
+        tracker.add("forygrpc", "github.com/apache/fory/go/fory/grpc")
+        stream_index = 0
         for method in service.methods:
             req_type = self._resolve_go_type(method.request_type, tracker)
             res_type = self._resolve_go_type(method.response_type, tracker)
-            if method is StreamingMode.UNARY:
-                lines.append(f"func (c *{self.to_camel_case(service.name)}) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({res_type}, error) {{")
-                lines.append(f"\tout := new({method.name})")
-                lines.append(f"\terr := c.cc.Invoke(ctx, {self.get_grpc_method_path(service, method)}, in, out, grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)")
-                lines.append(f"\tif err != nil {{")
-                lines.append(f"\t\treturn nil, err")
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                lines.append(f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({res_type}, error) {{")
+                lines.append(f"\tout := new({res_type[1:]})")
+                lines.append(f'\terr := c.cc.Invoke(ctx, "{self.get_grpc_method_path(service, method)}", in, out, grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append("\tif err != nil {")
+                lines.append("\t\treturn nil, err")
                 lines.append("\t}")
                 lines.append("\treturn out, nil")
                 lines.append("}")
                 lines.append("")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                lines.append(f'func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{')
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{self.to_pascal_case(service.name)}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append("\tif err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append(f"\tx := &{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client{{stream}}")
+                lines.append("\tif err := x.SendMsg(in); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\tif err := x.CloseSend(); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\treturn x, nil")
+                lines.append("}")
+                lines.append("")
+                stream_index += 1
             
+            
+
