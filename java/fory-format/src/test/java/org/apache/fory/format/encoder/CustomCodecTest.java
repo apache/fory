@@ -49,6 +49,8 @@ public class CustomCodecTest {
     Encoders.registerCustomCodec(InterceptedType.class, new InterceptedTypeEncoder());
     Encoders.registerCustomCollectionFactory(
         SortedSet.class, UUID.class, new SortedSetOfUuidDecoder());
+    Encoders.registerCustomCollectionFactory(
+        SortedSet.class, Long.class, new SortedSetOfLongDecoder());
   }
 
   @Data
@@ -97,6 +99,14 @@ public class CustomCodecTest {
     public UuidType() {}
   }
 
+  @Data
+  public static class TwoSortedSetsType {
+    public SortedSet<UUID> uuids;
+    public SortedSet<Long> longs;
+
+    public TwoSortedSetsType() {}
+  }
+
   @Test
   public void testCustomTypes() {
     final CustomType bean = new CustomType();
@@ -136,6 +146,23 @@ public class CustomCodecTest {
     final UuidType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
     Assert.assertEquals(deserializedBean.f3.comparator(), UnsignedUuidComparator.INSTANCE);
+  }
+
+  // Sibling SortedSet fields with different element types must each dispatch
+  // to their own factory; the codegen cache must key on (container, element).
+  @Test
+  public void testSiblingSortedSetsDifferentElementTypes() {
+    final TwoSortedSetsType bean = new TwoSortedSetsType();
+    bean.uuids = new TreeSet<>(Arrays.asList(new UUID(7, 8), new UUID(9, 10)));
+    bean.longs = new TreeSet<>(Arrays.asList(1L, 2L, 3L));
+    final RowEncoder<TwoSortedSetsType> encoder = Encoders.bean(TwoSortedSetsType.class);
+    final BinaryRow row = encoder.toRow(bean);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final TwoSortedSetsType deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean, bean);
+    Assert.assertEquals(deserializedBean.uuids.comparator(), UnsignedUuidComparator.INSTANCE);
+    Assert.assertEquals(deserializedBean.longs.comparator(), Comparator.reverseOrder());
   }
 
   static class ZoneIdEncoder implements CustomCodec<ZoneId, String> {
@@ -220,6 +247,13 @@ public class CustomCodecTest {
     @Override
     public SortedSet<UUID> newCollection(final int size) {
       return new TreeSet<>(UnsignedUuidComparator.INSTANCE);
+    }
+  }
+
+  static class SortedSetOfLongDecoder implements CustomCollectionFactory<Long, SortedSet<Long>> {
+    @Override
+    public SortedSet<Long> newCollection(final int size) {
+      return new TreeSet<>(Comparator.reverseOrder());
     }
   }
 
