@@ -178,3 +178,94 @@ class GoServiceGeneratorMixin:
                 lines.append("}")
                 lines.append("")
                 stream_index += 1
+    
+    def _generate_stream_types(self, service: Service, tracker: ImportTracker) -> List[str]:
+        lines: List[str] = []
+        for method in service.methods:
+            req_type = self._resolve_go_type(method.request_type, tracker)
+            res_type = self._resolve_go_type(method.response_type, tracker)
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                continue
+            if mode is StreamingMode.CLIENT_STREAMING:
+                # type interface
+                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"\tSend({req_type}) error")
+                lines.append(f"\tCloseAndRecv() ({res_type}, error)")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+
+                # struct
+                lines.append(f"type {self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client struct {{")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+
+                # methods
+                lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) Send(m {req_type}) error {{")
+                lines.append(f"\treturn x.ClientStream.SendMsg(m)")
+                lines.append("}")
+                lines.append("")
+                lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) CloseAndRecv() ({res_type}, error) {{")
+                lines.append("\tif err := x.ClientStream.CloseSend(); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append(f"\tm := new({res_type[1:]})")
+                lines.append("\tif err := x.ClientStream.RecvMsg(m); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\treturn m, nil")
+                lines.append("}")
+                lines.append("")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                # type interface
+                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"\tRecv() ({res_type}, error)")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+                
+                # struct
+                lines.append(f"type {self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client struct {{")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+
+                # methods
+                lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) Recv() ({res_type}, error) {{")
+                lines.append(f"\tm := new({res_type[1:]})")
+                lines.append("\tif err := x.ClientStream.RecvMsg(m); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\treturn m, nil")
+                lines.append("}")
+                lines.append("")
+            else:
+                # interface
+                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"\tSend({req_type}) error")
+                lines.append(f"\tRecv() ({res_type}, error)")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+
+                # struct
+                lines.append(f"type {self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client struct {{")
+                lines.append("\tgrpc.ClientStream")
+                lines.append("}")
+                lines.append("")
+
+                # methods
+                lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) Send(m {req_type}) error {{")
+                lines.append("\treturn x.ClientStream.SendMsg(m)")
+                lines.append("}")
+                lines.append("")
+                lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) Recv() ({res_type}, error) {{")
+                lines.append(f"\tm := new({res_type[1:]})")
+                lines.append("\tif err := x.ClientStream.RecvMsg(m); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\treturn m, nil")
+                lines.append("}")
+                lines.append("")
