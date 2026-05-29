@@ -292,3 +292,32 @@ class GoServiceGeneratorMixin:
         lines.append("}")
         lines.append("")
         return lines
+
+    def _generate_unimplemented_server(self, service: Service, tracker: ImportTracker) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"// Unimplemented{service.name}Server must be embedded to have forward compatible implementation.")
+        lines.append(f"type Unimplemented{service.name}Server struct {{}}")
+        lines.append("")
+        lines.append(f"func (Unimplemented{service.name}Server) mustEmbedUnimplemented{service.name}Server() {{}}")
+        lines.append("")
+        for method in service.methods:
+            req_type = self._resolve_go_type(method.request_type, tracker)
+            res_type = self._resolve_go_type(method.response_type, tracker)
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                lines.append(f"func (Unimplemented{service.name}Server) {self.to_pascal_case(method.name)}(context.Context, {req_type}) ({res_type}, error) {{")
+                lines.append(f'\treturn nil, status.Errorf(codes.Unimplemented, "method {self.to_pascal_case(method.name)} not implemented")')
+                lines.append("}")
+                lines.append("")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                lines.append(f"func (Unimplemented{service.name}Server) {self.to_pascal_case(method.name)}({req_type}, {service.name}_{self.to_pascal_case(method.name)}Server) error {{")
+                lines.append(f'\treturn status.Errorf(codes.Unimplemented, "method {self.to_pascal_case(method.name)} not implemented")')
+                lines.append("}")
+                lines.append("")
+            else:
+                lines.append(f"func (Unimplemented{service.name}Server) {self.to_pascal_case(method.name)}({service.name}_{self.to_pascal_case(method.name)}Server) error {{")
+                lines.append(f'\treturn status.Errorf(codes.Unimplemented, "method {self.to_pascal_case(method.name)} not implemented")')
+                lines.append("}")
+                lines.append("")
+        return lines
+
