@@ -127,7 +127,7 @@ class GoServiceGeneratorMixin:
 
     def _generate_new_client(self, service: Service) -> List[str]:
         lines: List[str] = []
-        lines.append(f"func New{self.to_pascal_case(service.name)}Client(cc grpc.ClientConnInterface) {self.to_pascal_case(service.name)}Client {{")
+        lines.append(f"func New{service.name}Client(cc grpc.ClientConnInterface) {service.name}Client {{")
         lines.append(f"\treturn &{self.to_camel_case(service.name)}Client{{cc}}")
         lines.append("}")
         lines.append("")
@@ -153,7 +153,7 @@ class GoServiceGeneratorMixin:
                 lines.append("")
             elif mode is StreamingMode.SERVER_STREAMING:
                 lines.append(f'func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{')
-                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{self.to_pascal_case(service.name)}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
                 lines.append("\tif err != nil {")
                 lines.append("\t\treturn nil, err")
                 lines.append("\t}")
@@ -170,7 +170,7 @@ class GoServiceGeneratorMixin:
                 stream_index += 1
             else:
                 lines.append(f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{")
-                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{self.to_pascal_case(service.name)}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
                 lines.append("\tif err != nil {")
                 lines.append("\t\treturn nil, err")
                 lines.append("\t}")
@@ -178,6 +178,7 @@ class GoServiceGeneratorMixin:
                 lines.append("}")
                 lines.append("")
                 stream_index += 1
+        return lines
     
     def _generate_stream_types(self, service: Service, tracker: ImportTracker) -> List[str]:
         lines: List[str] = []
@@ -189,7 +190,7 @@ class GoServiceGeneratorMixin:
                 continue
             if mode is StreamingMode.CLIENT_STREAMING:
                 # type interface
-                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"type {service.name}_{self.to_pascal_case(method.name)}Client interface {{")
                 lines.append(f"\tSend({req_type}) error")
                 lines.append(f"\tCloseAndRecv() ({res_type}, error)")
                 lines.append("\tgrpc.ClientStream")
@@ -204,7 +205,7 @@ class GoServiceGeneratorMixin:
 
                 # methods
                 lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) Send(m {req_type}) error {{")
-                lines.append(f"\treturn x.ClientStream.SendMsg(m)")
+                lines.append("\treturn x.ClientStream.SendMsg(m)")
                 lines.append("}")
                 lines.append("")
                 lines.append(f"func (x *{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client) CloseAndRecv() ({res_type}, error) {{")
@@ -220,7 +221,7 @@ class GoServiceGeneratorMixin:
                 lines.append("")
             elif mode is StreamingMode.SERVER_STREAMING:
                 # type interface
-                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"type {service.name}_{self.to_pascal_case(method.name)}Client interface {{")
                 lines.append(f"\tRecv() ({res_type}, error)")
                 lines.append("\tgrpc.ClientStream")
                 lines.append("}")
@@ -243,7 +244,7 @@ class GoServiceGeneratorMixin:
                 lines.append("")
             else:
                 # interface
-                lines.append(f"type {self.to_pascal_case(service.name)}_{self.to_pascal_case(method.name)}Client interface {{")
+                lines.append(f"type {service.name}_{self.to_pascal_case(method.name)}Client interface {{")
                 lines.append(f"\tSend({req_type}) error")
                 lines.append(f"\tRecv() ({res_type}, error)")
                 lines.append("\tgrpc.ClientStream")
@@ -269,3 +270,25 @@ class GoServiceGeneratorMixin:
                 lines.append("\treturn m, nil")
                 lines.append("}")
                 lines.append("")
+        return lines
+
+    def _generate_server_interface(self, service: Service, tracker: ImportTracker) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"// {service.name}Server is the server API for {service.name} service.")
+        lines.append(f"// All implementations must embed Unimplemented{service.name}Server")
+        lines.append("// for forward compatibility.")
+        lines.append(f"type {service.name}Server interface {{")
+        for method in service.methods:
+            req_type = self._resolve_go_type(method.request_type, tracker)
+            res_type = self._resolve_go_type(method.response_type, tracker)
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                lines.append(f"\t{self.to_pascal_case(method.name)}(context.Context, {req_type}) ({res_type}, error)")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                lines.append(f"\t{self.to_pascal_case(method.name)}({req_type}, {service.name}_{self.to_pascal_case(method.name)}Server) error")
+            else:
+                lines.append(f"\t{self.to_pascal_case(method.name)}({service.name}_{self.to_pascal_case(method.name)}Server) error")
+        lines.append(f"\tmustEmbedUnimplemented{service.name}Server()")
+        lines.append("}")
+        lines.append("")
+        return lines
