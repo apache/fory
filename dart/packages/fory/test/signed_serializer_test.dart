@@ -98,7 +98,7 @@ class SignedIntFieldsReader {
 }
 
 void _registerSignedFields(Fory fory) {
-  SignedSerializerTestFory.register(
+  SignedSerializerTestForyModule.register(
     fory,
     SignedFields,
     namespace: 'test',
@@ -107,7 +107,7 @@ void _registerSignedFields(Fory fory) {
 }
 
 void _registerSignedMetadataReader(Fory fory) {
-  SignedSerializerTestFory.register(
+  SignedSerializerTestForyModule.register(
     fory,
     SignedMetadataReader,
     namespace: 'test',
@@ -116,7 +116,7 @@ void _registerSignedMetadataReader(Fory fory) {
 }
 
 void _registerSignedIntFieldsReader(Fory fory) {
-  SignedSerializerTestFory.register(
+  SignedSerializerTestForyModule.register(
     fory,
     SignedIntFieldsReader,
     namespace: 'test',
@@ -201,10 +201,11 @@ SignedFields _nullSignedFields() {
 }
 
 SignedFields _int64ReadMismatchPayload(String encoding) {
-  final value = _smallSignedFields()
-    ..i64Var = Int64(1)
-    ..i64Fixed = Int64(1)
-    ..i64Tagged = Int64(1);
+  final value =
+      _smallSignedFields()
+        ..i64Var = Int64(1)
+        ..i64Fixed = Int64(1)
+        ..i64Tagged = Int64(1);
   switch (encoding) {
     case 'varint':
       value.i64Var = _int64Min;
@@ -268,23 +269,26 @@ void main() {
       }
     });
 
-    test('native schema-consistent Int64 varint int fields decode signed min',
-        () {
-      if (identical(1, 1.0)) {
-        return;
-      }
+    test(
+      'native schema-consistent Int64 varint int fields decode signed min',
+      () {
+        if (identical(1, 1.0)) {
+          return;
+        }
 
-      final signedMin = _int64Min.toInt();
-      final fory = Fory();
-      _registerSignedFields(fory);
+        final signedMin = _int64Min.toInt();
+        final fory = Fory();
+        _registerSignedFields(fory);
 
-      final value = _smallSignedFields()
-        ..i64VarInt = signedMin
-        ..optionalI64VarInt = signedMin;
-      final roundTrip = fory.deserialize<SignedFields>(fory.serialize(value));
-      expect(roundTrip.i64VarInt, equals(signedMin));
-      expect(roundTrip.optionalI64VarInt, equals(signedMin));
-    });
+        final value =
+            _smallSignedFields()
+              ..i64VarInt = signedMin
+              ..optionalI64VarInt = signedMin;
+        final roundTrip = fory.deserialize<SignedFields>(fory.serialize(value));
+        expect(roundTrip.i64VarInt, equals(signedMin));
+        expect(roundTrip.optionalI64VarInt, equals(signedMin));
+      },
+    );
 
     test('compatible mode reads signed fields through remote wire types', () {
       final writer = Fory(compatible: true);
@@ -300,14 +304,8 @@ void main() {
 
     test('rejects out-of-range annotated int32 fields', () {
       final cases = <({String name, SignedFields value})>[
-        (
-          name: 'i32Var',
-          value: _smallSignedFields()..i32Var = -0x80000001,
-        ),
-        (
-          name: 'i32Fixed',
-          value: _smallSignedFields()..i32Fixed = 0x80000000,
-        ),
+        (name: 'i32Var', value: _smallSignedFields()..i32Var = -0x80000001),
+        (name: 'i32Fixed', value: _smallSignedFields()..i32Fixed = 0x80000000),
         (
           name: 'optionalI32Var',
           value: _smallSignedFields()..optionalI32Var = 0x80000000,
@@ -331,50 +329,52 @@ void main() {
       }
     });
 
-    test('web rejects JS-unsafe Dart int fields instead of corrupting bytes',
-        () {
-      final cases = <({String name, SignedFields value})>[
-        (
-          name: 'plain int',
-          value: _smallSignedFields()..plainInt = _jsUnsafeInt,
-        ),
-        (
-          name: 'varint',
-          value: _smallSignedFields()..i64VarInt = _jsUnsafeInt,
-        ),
-        (
-          name: 'fixed',
-          value: _smallSignedFields()..i64FixedInt = _jsUnsafeInt,
-        ),
-        (
-          name: 'tagged',
-          value: _smallSignedFields()..i64TaggedInt = _jsUnsafeInt,
-        ),
-        (
-          name: 'nullable varint',
-          value: _smallSignedFields()..optionalI64VarInt = _jsUnsafeInt,
-        ),
-      ];
+    test(
+      'web rejects JS-unsafe Dart int fields instead of corrupting bytes',
+      () {
+        final cases = <({String name, SignedFields value})>[
+          (
+            name: 'plain int',
+            value: _smallSignedFields()..plainInt = _jsUnsafeInt,
+          ),
+          (
+            name: 'varint',
+            value: _smallSignedFields()..i64VarInt = _jsUnsafeInt,
+          ),
+          (
+            name: 'fixed',
+            value: _smallSignedFields()..i64FixedInt = _jsUnsafeInt,
+          ),
+          (
+            name: 'tagged',
+            value: _smallSignedFields()..i64TaggedInt = _jsUnsafeInt,
+          ),
+          (
+            name: 'nullable varint',
+            value: _smallSignedFields()..optionalI64VarInt = _jsUnsafeInt,
+          ),
+        ];
 
-      for (final testCase in cases) {
-        for (final compatible in <bool>[false, true]) {
-          final fory = Fory(compatible: compatible);
-          _registerSignedFields(fory);
-          if (identical(1, 1.0)) {
-            expect(
-              () => fory.serialize(testCase.value),
-              throwsA(isA<StateError>()),
-              reason: '${testCase.name}, compatible=$compatible',
-            );
-          } else {
-            final roundTrip = fory.deserialize<SignedFields>(
-              fory.serialize(testCase.value),
-            );
-            _expectSignedFieldsEqual(roundTrip, testCase.value);
+        for (final testCase in cases) {
+          for (final compatible in <bool>[false, true]) {
+            final fory = Fory(compatible: compatible);
+            _registerSignedFields(fory);
+            if (identical(1, 1.0)) {
+              expect(
+                () => fory.serialize(testCase.value),
+                throwsA(isA<StateError>()),
+                reason: '${testCase.name}, compatible=$compatible',
+              );
+            } else {
+              final roundTrip = fory.deserialize<SignedFields>(
+                fory.serialize(testCase.value),
+              );
+              _expectSignedFieldsEqual(roundTrip, testCase.value);
+            }
           }
         }
-      }
-    });
+      },
+    );
 
     test('web rejects JS-unsafe root and dynamic Dart ints', () {
       final fory = Fory();

@@ -26,6 +26,7 @@ private func foryMacros() -> [String: Macro.Type] {
         "ForyUnion": ForyUnionMacro.self,
         "ForyField": ForyFieldMacro.self,
         "ForyCase": ForyCaseMacro.self,
+        "ForyUnknownCase": ForyUnknownCaseMacro.self,
         "ListField": ListFieldMacro.self,
         "ArrayField": ArrayFieldMacro.self,
         "SetField": SetFieldMacro.self,
@@ -161,6 +162,8 @@ func unionPayloadHintsMustMatchPayloadType() {
         """
         @ForyUnion
         enum BadUnion {
+            @ForyUnknownCase
+            case unknown(UnknownCase)
             @ForyCase(id: 1, payload: .uint64(encoding: .fixed))
             case deleted(UInt32)
         }
@@ -168,9 +171,124 @@ func unionPayloadHintsMustMatchPayloadType() {
         expandedSource:
         """
         enum BadUnion {
+            case unknown(UnknownCase)
             case deleted(UInt32)
         }
         """,
         message: "Fory field type hint .uint64 does not match Swift type UInt32"
+    )
+}
+
+@Test
+func unionRequiresUnknownCarrier() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum BadUnion {
+            @ForyCase(id: 1)
+            case dog(Dog)
+        }
+        """,
+        expandedSource:
+        """
+        enum BadUnion {
+            case dog(Dog)
+        }
+        """,
+        message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+    )
+}
+
+@Test
+func unionRequiresRealCaseBeyondUnknown() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum OnlyUnknown {
+            @ForyUnknownCase
+            case unknown(UnknownCase)
+        }
+        """,
+        expandedSource:
+        """
+        enum OnlyUnknown {
+            case unknown(UnknownCase)
+        }
+        """,
+        message: "@ForyUnion requires at least one non-unknown case; unknown is a forward-compatibility carrier and cannot be the default"
+    )
+}
+
+@Test
+func unionRejectsUnknownCaseLookalike() {
+    assertForyDiagnostic(
+        """
+        enum Local {
+            struct UnknownCase {}
+        }
+        @ForyUnion
+        enum BadUnion {
+            @ForyUnknownCase
+            case unknown(Local.UnknownCase)
+            @ForyCase(id: 1)
+            case dog(Dog)
+        }
+        """,
+        expandedSource:
+        """
+        enum Local {
+            struct UnknownCase {}
+        }
+        enum BadUnion {
+            case unknown(Local.UnknownCase)
+            case dog(Dog)
+        }
+        """,
+        message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
+    )
+}
+
+@Test
+func unionRejectsUnknownMarkerWithWrongPayload() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum BadUnion {
+            @ForyUnknownCase
+            case unknown(String)
+            @ForyCase(id: 0)
+            case dog(Dog)
+        }
+        """,
+        expandedSource:
+        """
+        enum BadUnion {
+            case unknown(String)
+            case dog(Dog)
+        }
+        """,
+        message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
+    )
+}
+
+@Test
+func unionUnknownRequiresMarker() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum BadUnion {
+            case unknown(UnknownCase)
+            @ForyCase(id: 1)
+            case dog(Dog)
+        }
+        """,
+        expandedSource:
+        """
+        enum BadUnion {
+            case unknown(UnknownCase)
+            case dog(Dog)
+        }
+        """,
+        message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
     )
 }

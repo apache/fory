@@ -26,9 +26,7 @@ part 'nested_type_spec_test.fory.dart';
 class NestedFixedContainer {
   NestedFixedContainer();
 
-  @MapField(
-    value: ListType(element: Int32Type(encoding: Encoding.fixed)),
-  )
+  @MapField(value: ListType(element: Int32Type(encoding: Encoding.fixed)))
   Map<String, List<int?>> nested = <String, List<int?>>{};
 }
 
@@ -36,9 +34,7 @@ class NestedFixedContainer {
 class NestedVarintContainer {
   NestedVarintContainer();
 
-  @MapField(
-    value: ListType(element: Int32Type(encoding: Encoding.varint)),
-  )
+  @MapField(value: ListType(element: Int32Type(encoding: Encoding.varint)))
   Map<String, List<int?>> nested = <String, List<int?>>{};
 }
 
@@ -80,7 +76,7 @@ class NestedNullableReaderContainer {
 }
 
 void _registerFixedCompatible(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedFixedContainer,
     namespace: 'nested',
@@ -89,7 +85,7 @@ void _registerFixedCompatible(Fory fory) {
 }
 
 void _registerVarintConsistent(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedVarintContainer,
     namespace: 'nested',
@@ -98,13 +94,13 @@ void _registerVarintConsistent(Fory fory) {
 }
 
 void _registerRefWriter(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefNode,
     namespace: 'nested',
     typeName: 'NestedRefNode',
   );
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefWriterContainer,
     namespace: 'nested',
@@ -113,13 +109,13 @@ void _registerRefWriter(Fory fory) {
 }
 
 void _registerRefReader(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefNode,
     namespace: 'nested',
     typeName: 'NestedRefNode',
   );
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefReaderContainer,
     namespace: 'nested',
@@ -128,7 +124,7 @@ void _registerRefReader(Fory fory) {
 }
 
 void _registerNullableWriter(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedNullableWriterContainer,
     namespace: 'nested',
@@ -137,7 +133,7 @@ void _registerNullableWriter(Fory fory) {
 }
 
 void _registerNullableReader(Fory fory) {
-  NestedTypeSpecTestFory.register(
+  NestedTypeSpecTestForyModule.register(
     fory,
     NestedNullableReaderContainer,
     namespace: 'nested',
@@ -147,26 +143,23 @@ void _registerNullableReader(Fory fory) {
 
 void main() {
   group('nested type specs', () {
-    test(
-      'compatible mode reads nested overridden fixed int32 list values',
-      () {
-        final writer = Fory(compatible: true);
-        final reader = Fory(compatible: true);
-        _registerFixedCompatible(writer);
-        _registerVarintConsistent(reader);
+    test('compatible mode reads nested overridden fixed int32 list values', () {
+      final writer = Fory(compatible: true);
+      final reader = Fory(compatible: true);
+      _registerFixedCompatible(writer);
+      _registerVarintConsistent(reader);
 
-        final result = reader.deserialize<NestedVarintContainer>(
-          writer.serialize(
-            NestedFixedContainer()
-              ..nested = <String, List<int?>>{
-                'a': <int?>[1, null, -7],
-              },
-          ),
-        );
+      final result = reader.deserialize<NestedVarintContainer>(
+        writer.serialize(
+          NestedFixedContainer()
+            ..nested = <String, List<int?>>{
+              'a': <int?>[1, null, -7],
+            },
+        ),
+      );
 
-        expect(result.nested['a'], orderedEquals(<int?>[1, null, -7]));
-      },
-    );
+      expect(result.nested['a'], orderedEquals(<int?>[1, null, -7]));
+    });
 
     test('schema-consistent mode rejects nested encoding hash mismatches', () {
       final writer = Fory(compatible: false);
@@ -193,27 +186,24 @@ void main() {
       );
     });
 
-    test(
-      'nested ref metadata stays out of schema hash and preserves refs',
-      () {
-        final writer = Fory(compatible: true);
-        final reader = Fory(compatible: true);
-        _registerRefWriter(writer);
-        _registerRefReader(reader);
+    test('nested ref metadata stays out of schema hash and preserves refs', () {
+      final writer = Fory(compatible: true);
+      final reader = Fory(compatible: true);
+      _registerRefWriter(writer);
+      _registerRefReader(reader);
 
-        final shared = NestedRefNode()..name = 'shared';
-        final result = reader.deserialize<NestedRefReaderContainer>(
-          writer.serialize(
-            NestedRefWriterContainer()..items = <NestedRefNode>[shared, shared],
-            trackRef: true,
-          ),
-        );
+      final shared = NestedRefNode()..name = 'shared';
+      final result = reader.deserialize<NestedRefReaderContainer>(
+        writer.serialize(
+          NestedRefWriterContainer()..items = <NestedRefNode>[shared, shared],
+          trackRef: true,
+        ),
+      );
 
-        expect(result.items, hasLength(2));
-        expect(result.items[0].name, equals('shared'));
-        expect(identical(result.items[0], result.items[1]), isTrue);
-      },
-    );
+      expect(result.items, hasLength(2));
+      expect(result.items[0].name, equals('shared'));
+      expect(identical(result.items[0], result.items[1]), isTrue);
+    });
 
     test(
       'schema-consistent mode ignores nested ref-only schema differences',

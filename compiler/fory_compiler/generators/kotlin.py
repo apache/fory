@@ -272,6 +272,8 @@ class KotlinGenerator(BaseGenerator):
         imports = {
             "org.apache.fory.annotation.ForyCase",
             "org.apache.fory.annotation.ForyUnion",
+            "org.apache.fory.annotation.ForyUnknownCase",
+            "org.apache.fory.type.union.UnknownCase",
         }
         self.collect_union_imports(union, imports)
         lines = self.source_header(imports, self.uses_unsigned_union(union))
@@ -343,10 +345,9 @@ class KotlinGenerator(BaseGenerator):
     def generate_union(self, union: Union, parent_stack: List[Message]) -> List[str]:
         union_name = self.type_name(union, parent_stack)
         lines = ["@ForyUnion", f"public sealed class {union_name} {{"]
-        lines.append("    @ForyCase(id = 0)")
-        lines.append("    public data class UnknownCase(")
-        lines.append("        public val caseId: Int,")
-        lines.append("        public val value: Any?,")
+        lines.append("    @ForyUnknownCase")
+        lines.append("    public data class Unknown(")
+        lines.append("        public val value: UnknownCase,")
         lines.append(f"    ) : {union_name}()")
         for field in union.fields:
             lines.append("")
@@ -360,8 +361,12 @@ class KotlinGenerator(BaseGenerator):
                 top_level_ref=field.ref,
                 parent_stack=parent_stack,
             )
+            case_name = self.union_case_name(field.field_type, field_type, case_name)
+            field_type = self.qualify_union_payload_type(
+                field.field_type, field_type, case_name, parent_stack
+            )
             lines.append(
-                f"    public data class {case_name}Case(public val value: {field_type}) : {union_name}()"
+                f"    public data class {case_name}(public val value: {field_type}) : {union_name}()"
             )
         lines.append("}")
         return lines
@@ -762,6 +767,40 @@ class KotlinGenerator(BaseGenerator):
             if package and package != self.kotlin_package:
                 return f"{package}.{self.type_name(named_type, [])}"
         return name
+
+    def qualify_union_payload_type(
+        self,
+        field_type: FieldType,
+        rendered_type: str,
+        case_name: str,
+        parent_stack: Optional[List[Message]],
+    ) -> str:
+        if rendered_type != case_name:
+            return rendered_type
+        if isinstance(field_type, NamedType) and self.kotlin_package:
+            return f"{self.kotlin_package}.{rendered_type}"
+        if isinstance(field_type, ArrayType) and isinstance(
+            field_type.element_type, PrimitiveType
+        ):
+            if field_type.element_type.kind == PrimitiveKind.FLOAT16:
+                return "org.apache.fory.type.Float16Array"
+            if field_type.element_type.kind == PrimitiveKind.BFLOAT16:
+                return "org.apache.fory.type.BFloat16Array"
+        return rendered_type
+
+    def union_case_name(
+        self,
+        field_type: FieldType,
+        rendered_type: str,
+        case_name: str,
+    ) -> str:
+        if (
+            rendered_type == case_name
+            and isinstance(field_type, NamedType)
+            and not self.kotlin_package
+        ):
+            return f"{case_name}Case"
+        return case_name
 
     def type_name(self, type_def: object, parent_stack: List[Message]) -> str:
         if not parent_stack:

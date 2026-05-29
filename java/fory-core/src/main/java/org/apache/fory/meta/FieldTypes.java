@@ -244,6 +244,9 @@ public class FieldTypes {
 
     boolean isUnionType = Types.isUnionType(typeId);
     if (isUnionType) {
+      // Static fields already carry the union schema in their declared field
+      // type. TYPED_UNION/NAMED_UNION are only for root or dynamic Any values
+      // where the wire must identify the union without field context.
       typeId = Types.UNION;
     }
 

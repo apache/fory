@@ -89,14 +89,14 @@ Generated Swift code includes:
 
 - `@ForyStruct`, `@ForyEnum`, `@ForyUnion`, and field/case metadata
 - Tagged union enums (associated-value enum cases)
-- `ForyRegistration.register(_:)` helpers with transitive import registration
+- `ForyModule.install(_:)` helpers with transitive import installation
 - `toBytes` / `fromBytes` helpers on generated types
 
-Use generated registration before xlang serialization:
+Install the generated module before xlang serialization:
 
 ```swift
 let fory = Fory(ref: true)
-try Addressbook.ForyRegistration.register(fory)
+try Addressbook.ForyModule.install(fory)
 
 let payload = try fory.serialize(book)
 let decoded: Addressbook.AddressBook = try fory.deserialize(payload)

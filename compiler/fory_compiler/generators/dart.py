@@ -194,7 +194,7 @@ class DartGenerator(BaseGenerator):
                 lines.extend(self.generate_message(message, indent))
                 lines.append("")
 
-        lines.extend(self.generate_registration_type(indent))
+        lines.extend(self.generate_module_type(indent))
         lines.append("")
         return GeneratedFile(self.output_file_path(), "\n".join(lines).rstrip() + "\n")
 
@@ -218,8 +218,18 @@ class DartGenerator(BaseGenerator):
     def part_file_name(self) -> str:
         return f"{Path(self.module_file_name()).stem}.fory.dart"
 
-    def generated_api_name(self) -> str:
-        return f"{self.to_pascal_case(Path(self.module_file_name()).stem)}Fory"
+    def module_type_name(self) -> str:
+        return self._module_type_name_for_schema(self.schema)
+
+    def _module_type_name_for_schema(self, schema: Schema) -> str:
+        return f"{self.to_pascal_case(Path(self._module_file_name_for_schema(schema)).stem)}ForyModule"
+
+    def _generated_schema_variable_name(self, type_name: str) -> str:
+        parts = [part for part in type_name.replace("-", "_").split("_") if part]
+        pascal = "".join(f"{part[0].upper()}{part[1:]}" for part in parts)
+        if not pascal:
+            return "_forySchema"
+        return f"_{pascal[0].lower()}{pascal[1:]}ForySchema"
 
     def safe_identifier(self, name: str) -> str:
         if not name:
@@ -892,8 +902,8 @@ class DartGenerator(BaseGenerator):
                 f"{self.indent_str * (indent + 1)}@override",
                 f"{self.indent_str * (indent + 1)}int get hashCode => Object.hash(_case, _value);",
                 "",
-                f"{self.indent_str * (indent + 1)}Uint8List toBytes() => ForyRegistration.getFory().serialize(this);",
-                f"{self.indent_str * (indent + 1)}static {full} fromBytes(Uint8List bytes) => ForyRegistration.getFory().deserialize<{full}>(bytes);",
+                f"{self.indent_str * (indent + 1)}Uint8List toBytes() => {self.module_type_name()}.getFory().serialize(this);",
+                f"{self.indent_str * (indent + 1)}static {full} fromBytes(Uint8List bytes) => {self.module_type_name()}.getFory().deserialize<{full}>(bytes);",
                 f"{self.indent_str * indent}}}",
                 "",
                 f"{self.indent_str * indent}const List<GeneratedFieldInfo> {case_fields_name} = <GeneratedFieldInfo>[",
@@ -1000,8 +1010,8 @@ class DartGenerator(BaseGenerator):
         lines.extend(
             [
                 "",
-                f"{self.indent_str * (indent + 1)}Uint8List toBytes() => ForyRegistration.getFory().serialize(this);",
-                f"{self.indent_str * (indent + 1)}static {full} fromBytes(Uint8List bytes) => ForyRegistration.getFory().deserialize<{full}>(bytes);",
+                f"{self.indent_str * (indent + 1)}Uint8List toBytes() => {self.module_type_name()}.getFory().serialize(this);",
+                f"{self.indent_str * (indent + 1)}static {full} fromBytes(Uint8List bytes) => {self.module_type_name()}.getFory().deserialize<{full}>(bytes);",
                 "",
                 f"{self.indent_str * (indent + 1)}@override",
                 f"{self.indent_str * (indent + 1)}bool operator ==(Object other) => identical(this, other) || (other is {name}"
@@ -1190,7 +1200,10 @@ class DartGenerator(BaseGenerator):
             if isinstance(resolved, Enum):
                 return self.ref_name(resolved), "TypeIds.enumById"
             if isinstance(resolved, Union):
-                return self.ref_name(resolved), "TypeIds.typedUnion"
+                # Static union fields carry the schema in the owning field
+                # TypeDef, so they use UNION. TYPED_UNION/NAMED_UNION are only
+                # root or dynamic Any identities.
+                return self.ref_name(resolved), "TypeIds.union"
             if isinstance(resolved, Message):
                 return self.ref_name(
                     resolved
@@ -1237,110 +1250,16 @@ class DartGenerator(BaseGenerator):
             return type_expr, tagged_type_id
         return type_expr, varint_type_id
 
-    def generate_registration_type(self, indent: int) -> List[str]:
-        generated_api = self.generated_api_name()
+    def generate_module_type(self, indent: int) -> List[str]:
         lines = [
-            f"{self.indent_str * indent}abstract final class ForyRegistration {{",
+            f"{self.indent_str * indent}abstract final class {self.module_type_name()} {{",
             f"{self.indent_str * (indent + 1)}static Fory? _fory;",
             "",
-            f"{self.indent_str * (indent + 1)}static void setFory(Fory fory) => _fory = fory;",
-            f"{self.indent_str * (indent + 1)}static Fory getFory() {{",
-            f"{self.indent_str * (indent + 2)}final fory = _fory;",
-            f"{self.indent_str * (indent + 2)}if (fory == null) throw StateError('Call ForyRegistration.register(...) before using generated helpers.');",
-            f"{self.indent_str * (indent + 2)}return fory;",
-            f"{self.indent_str * (indent + 1)}}}",
-            "",
-            f"{self.indent_str * (indent + 1)}static ({'{'}int? id, String? namespace, String? typeName{'}'}) _registrationMode({{",
-            f"{self.indent_str * (indent + 2)}int? id,",
-            f"{self.indent_str * (indent + 2)}String? namespace,",
-            f"{self.indent_str * (indent + 2)}String? typeName,",
-            f"{self.indent_str * (indent + 2)}int? defaultId,",
-            f"{self.indent_str * (indent + 2)}String? defaultNamespace,",
-            f"{self.indent_str * (indent + 2)}String? defaultTypeName,",
-            f"{self.indent_str * (indent + 1)}}}) {{",
-            f"{self.indent_str * (indent + 2)}if (id != null || namespace != null || typeName != null) {{",
-            f"{self.indent_str * (indent + 3)}return (id: id, namespace: namespace, typeName: typeName);",
-            f"{self.indent_str * (indent + 2)}}}",
-            f"{self.indent_str * (indent + 2)}return (id: defaultId, namespace: defaultNamespace, typeName: defaultTypeName);",
-            f"{self.indent_str * (indent + 1)}}}",
-            "",
-            f"{self.indent_str * (indent + 1)}static void register(Fory fory, Type type, {{int? id, String? namespace, String? typeName}}) {{",
-            f"{self.indent_str * (indent + 2)}setFory(fory);",
+            f"{self.indent_str * (indent + 1)}static void install(Fory fory) {{",
+            f"{self.indent_str * (indent + 2)}if (identical(_fory, fory)) return;",
+            f"{self.indent_str * (indent + 2)}_fory = fory;",
         ]
-
-        def registration_lines(type_def: object, call_line: str) -> List[str]:
-            n = self.local_name(type_def)
-            default_id, default_namespace, default_type_name = (
-                self._registration_defaults(type_def)
-            )
-            return [
-                f"{self.indent_str * (indent + 2)}if (type == {n}) {{",
-                f"{self.indent_str * (indent + 3)}final registrationMode = _registrationMode(",
-                f"{self.indent_str * (indent + 4)}id: id,",
-                f"{self.indent_str * (indent + 4)}namespace: namespace,",
-                f"{self.indent_str * (indent + 4)}typeName: typeName,",
-                f"{self.indent_str * (indent + 4)}defaultId: {default_id},",
-                f"{self.indent_str * (indent + 4)}defaultNamespace: {default_namespace},",
-                f"{self.indent_str * (indent + 4)}defaultTypeName: {default_type_name},",
-                f"{self.indent_str * (indent + 3)});",
-                f"{self.indent_str * (indent + 3)}{call_line.format(mode='registrationMode')}",
-                f"{self.indent_str * (indent + 3)}return;",
-                f"{self.indent_str * (indent + 2)}}}",
-            ]
-
-        for enum in self.schema.enums:
-            if self.is_imported_type(enum):
-                continue
-            n = self.local_name(enum)
-            lines.extend(
-                registration_lines(
-                    enum,
-                    f"{generated_api}.register(fory, {n}, id: {{mode}}.id, namespace: {{mode}}.namespace, typeName: {{mode}}.typeName);",
-                )
-            )
-        for union in self.schema.unions:
-            if self.is_imported_type(union):
-                continue
-            n = self.local_name(union)
-            lines.extend(
-                registration_lines(
-                    union,
-                    f"fory.registerSerializer({n}, const _{n}ForySerializer(), id: {{mode}}.id, namespace: {{mode}}.namespace, typeName: {{mode}}.typeName);",
-                )
-            )
-
-        def visit_message(message: Message):
-            if self.is_imported_type(message):
-                return
-            n = self.local_name(message)
-            lines.extend(
-                registration_lines(
-                    message,
-                    f"{generated_api}.register(fory, {n}, id: {{mode}}.id, namespace: {{mode}}.namespace, typeName: {{mode}}.typeName);",
-                )
-            )
-            for enum in message.nested_enums:
-                en = self.local_name(enum)
-                lines.extend(
-                    registration_lines(
-                        enum,
-                        f"{generated_api}.register(fory, {en}, id: {{mode}}.id, namespace: {{mode}}.namespace, typeName: {{mode}}.typeName);",
-                    )
-                )
-            for union in message.nested_unions:
-                un = self.local_name(union)
-                lines.extend(
-                    registration_lines(
-                        union,
-                        f"fory.registerSerializer({un}, const _{un}ForySerializer(), id: {{mode}}.id, namespace: {{mode}}.namespace, typeName: {{mode}}.typeName);",
-                    )
-                )
-            for nested in message.nested_messages:
-                visit_message(nested)
-
-        for message in self.schema.messages:
-            visit_message(message)
-        seen: Set[str] = set()
+        seen_imports: Set[str] = set()
         for item in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(item):
                 continue
@@ -1352,18 +1271,100 @@ class DartGenerator(BaseGenerator):
                 if schema.package
                 else Path(item.location.file).stem
             )
-            call = f"{alias}.ForyRegistration.register(fory, type, id: id, namespace: namespace, typeName: typeName);"
-            if call not in seen:
-                lines.extend(
-                    [
-                        f"{self.indent_str * (indent + 2)}try {{",
-                        f"{self.indent_str * (indent + 3)}{call}",
-                        f"{self.indent_str * (indent + 3)}return;",
-                        f"{self.indent_str * (indent + 2)}}} on ArgumentError {{",
-                        f"{self.indent_str * (indent + 2)}}}",
-                    ]
+            call = f"{alias}.{self._module_type_name_for_schema(schema)}.install(fory);"
+            if call not in seen_imports:
+                lines.append(f"{self.indent_str * (indent + 2)}{call}")
+                seen_imports.add(call)
+
+        for type_def in self._local_registration_types():
+            lines.append(
+                f"{self.indent_str * (indent + 2)}_registerType(fory, {self.local_name(type_def)});"
+            )
+        lines.extend(
+            [
+                f"{self.indent_str * (indent + 1)}}}",
+                "",
+            ]
+        )
+        lines.extend(
+            [
+                f"{self.indent_str * (indent + 1)}static Fory getFory() {{",
+                f"{self.indent_str * (indent + 2)}final fory = _fory;",
+                f"{self.indent_str * (indent + 2)}if (fory == null) throw StateError('Call {self.module_type_name()}.install(...) before using generated helpers.');",
+                f"{self.indent_str * (indent + 2)}return fory;",
+                f"{self.indent_str * (indent + 1)}}}",
+                "",
+                f"{self.indent_str * (indent + 1)}static void _registerType(Fory fory, Type type) {{",
+            ]
+        )
+
+        def registration_lines(type_def: object, call_line: str) -> List[str]:
+            n = self.local_name(type_def)
+            default_id, default_namespace, default_type_name = (
+                self._registration_defaults(type_def)
+            )
+            return [
+                f"{self.indent_str * (indent + 2)}if (type == {n}) {{",
+                f"{self.indent_str * (indent + 3)}{call_line.format(id=default_id, namespace=default_namespace, type_name=default_type_name)}",
+                f"{self.indent_str * (indent + 3)}return;",
+                f"{self.indent_str * (indent + 2)}}}",
+            ]
+
+        for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
+            n = self.local_name(enum)
+            schema_name = self._generated_schema_variable_name(n)
+            lines.extend(
+                registration_lines(
+                    enum,
+                    f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
                 )
-                seen.add(call)
+            )
+        for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
+            n = self.local_name(union)
+            lines.extend(
+                registration_lines(
+                    union,
+                    f"fory.registerSerializer({n}, const _{n}ForySerializer(), id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                )
+            )
+
+        def visit_message(message: Message):
+            if self.is_imported_type(message):
+                return
+            n = self.local_name(message)
+            schema_name = self._generated_schema_variable_name(n)
+            lines.extend(
+                registration_lines(
+                    message,
+                    f"registerGeneratedStruct(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                )
+            )
+            for enum in message.nested_enums:
+                en = self.local_name(enum)
+                schema_name = self._generated_schema_variable_name(en)
+                lines.extend(
+                    registration_lines(
+                        enum,
+                        f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                    )
+                )
+            for union in message.nested_unions:
+                un = self.local_name(union)
+                lines.extend(
+                    registration_lines(
+                        union,
+                        f"fory.registerSerializer({un}, const _{un}ForySerializer(), id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                    )
+                )
+            for nested in message.nested_messages:
+                visit_message(nested)
+
+        for message in self.schema.messages:
+            visit_message(message)
         lines.extend(
             [
                 f"{self.indent_str * (indent + 2)}throw ArgumentError('Unknown generated Dart type: $type');",
@@ -1372,3 +1373,29 @@ class DartGenerator(BaseGenerator):
             ]
         )
         return lines
+
+    def _local_registration_types(self) -> List[object]:
+        local: List[object] = []
+        unions: List[object] = []
+        for enum in self.schema.enums:
+            if not self.is_imported_type(enum):
+                local.append(enum)
+        for union in self.schema.unions:
+            if not self.is_imported_type(union):
+                unions.append(union)
+
+        def visit_message(message: Message):
+            if self.is_imported_type(message):
+                return
+            local.append(message)
+            for enum in message.nested_enums:
+                local.append(enum)
+            for union in message.nested_unions:
+                unions.append(union)
+            for nested in message.nested_messages:
+                visit_message(nested)
+
+        for message in self.schema.messages:
+            visit_message(message)
+        local.extend(unions)
+        return local

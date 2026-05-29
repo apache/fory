@@ -743,6 +743,7 @@ def test_generated_code_tree_ref_options_equivalent():
 
     rust_output = render_files(generate_files(schemas["fdl"], RustGenerator))
     assert "RcWeak<TreeNode>" in rust_output
+    assert "#[derive(::fory::ForyStruct, Clone, PartialEq, Eq, Default)]" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
     assert "SharedWeak<TreeNode>" in cpp_output
@@ -1105,6 +1106,10 @@ def test_rust_generated_code_uses_absolute_paths():
     assert "use std::" not in rust_output
     assert "#[derive(::fory::ForyStruct" in rust_output
     assert "#[derive(::fory::ForyUnion" in rust_output
+    assert "#[fory(unknown)]" in rust_output
+    assert "Unknown(::fory::UnknownCase)," in rust_output
+    assert "#[fory(id = 1, default)]" in rust_output
+    assert "impl ::std::default::Default for Fory" in rust_output
     assert "pub value: ::std::string::String," in rust_output
     assert "pub items: ::std::vec::Vec<::std::string::String>," in rust_output
     assert (
@@ -1115,3 +1120,28 @@ def test_rust_generated_code_uses_absolute_paths():
     assert "pub parent: ::fory::RcWeak<String>," in rust_output
     assert "pub fn register_types(fory: &mut ::fory::Fory)" in rust_output
     assert "static FORY: ::std::sync::OnceLock<::fory::Fory>" in rust_output
+
+
+def test_rust_union_conflicting_payload_uses_self_path():
+    schema = parse_fdl(
+        dedent(
+            """
+            package foo;
+
+            message Dog {
+                string name = 1;
+            }
+
+            union Animal {
+                Dog dog = 1;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+    assert "Dog(self::Dog)," in rust_output
+    assert (
+        "Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())" in rust_output
+    )
+    assert "Dog(Dog)," not in rust_output

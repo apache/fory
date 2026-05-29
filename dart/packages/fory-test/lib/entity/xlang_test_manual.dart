@@ -55,7 +55,7 @@ bool registerXlangManualType(
   if (type == RefOverrideContainer) {
     registerGeneratedStruct(
       fory,
-      _refOverrideContainerForyRegistration,
+      _refOverrideContainerForySchema,
       id: id,
       namespace: namespace,
       typeName: typeName,
@@ -75,14 +75,14 @@ final class _Union2Serializer extends UnionSerializer<Union2> {
   Object caseValue(Union2 value) => value.value;
 
   @override
-  Union2 buildValue(int index, Object? value) {
-    if (index == 0 && value is String) {
+  Union2 buildValue(int caseId, Object? value) {
+    if (caseId == 0 && value is String) {
       return Union2.ofString(value);
     }
-    if (index == 1 && value is int) {
+    if (caseId == 1 && value is int) {
       return Union2.ofInt64(value);
     }
-    throw StateError('Unsupported Union2 case $index with value $value.');
+    throw StateError('Unsupported Union2 case $caseId with value $value.');
   }
 }
 
@@ -109,8 +109,8 @@ const GeneratedFieldType _refOverrideElementFieldType = GeneratedFieldType(
   arguments: <GeneratedFieldType>[],
 );
 
-const List<GeneratedFieldInfo> _refOverrideContainerForyFieldInfo =
-    <GeneratedFieldInfo>[
+const List<GeneratedFieldInfo>
+_refOverrideContainerForyFieldInfo = <GeneratedFieldInfo>[
   // Keep this manual fixture in the same protocol order as generated structs:
   // all fields are non-primitive, so field identifiers order the wire payload.
   GeneratedFieldInfo(
@@ -164,9 +164,8 @@ const List<GeneratedFieldInfo> _refOverrideContainerForyFieldInfo =
   ),
 ];
 
-final GeneratedStructRegistration<RefOverrideContainer>
-    _refOverrideContainerForyRegistration =
-    GeneratedStructRegistration<RefOverrideContainer>(
+final GeneratedStructSchema<RefOverrideContainer>
+_refOverrideContainerForySchema = GeneratedStructSchema<RefOverrideContainer>(
   type: RefOverrideContainer,
   serializerFactory: _RefOverrideContainerForySerializer.new,
   evolving: true,
@@ -185,14 +184,14 @@ final class _RefOverrideContainerForySerializer
   List<GeneratedStructFieldInfo> _writeFields(WriteContext context) {
     return _generatedFields ??= buildGeneratedStructFieldInfos(
       context.typeResolver,
-      _refOverrideContainerForyRegistration,
+      _refOverrideContainerForySchema,
     );
   }
 
   List<GeneratedStructFieldInfo> _readFields(ReadContext context) {
     return _generatedFields ??= buildGeneratedStructFieldInfos(
       context.typeResolver,
-      _refOverrideContainerForyRegistration,
+      _refOverrideContainerForySchema,
     );
   }
 
@@ -272,16 +271,18 @@ List<RefOverrideElement> _readRefOverrideContainerListField(
       ? (fallback != null
           ? fallback as List<RefOverrideElement>
           : (throw StateError(
-              'Received null for non-nullable field listField.',
-            )))
+            'Received null for non-nullable field listField.',
+          )))
       : List<RefOverrideElement>.of(
-          (value as List).map(
-            (item) => item == null
-                ? (throw StateError(
-                    'Received null for non-nullable list item.'))
-                : item as RefOverrideElement,
-          ),
-        );
+        (value as List).map(
+          (item) =>
+              item == null
+                  ? (throw StateError(
+                    'Received null for non-nullable list item.',
+                  ))
+                  : item as RefOverrideElement,
+        ),
+      );
 }
 
 Set<RefOverrideElement> _readRefOverrideContainerSetField(
@@ -292,15 +293,18 @@ Set<RefOverrideElement> _readRefOverrideContainerSetField(
       ? (fallback != null
           ? fallback as Set<RefOverrideElement>
           : (throw StateError(
-              'Received null for non-nullable field setField.',
-            )))
+            'Received null for non-nullable field setField.',
+          )))
       : Set<RefOverrideElement>.of(
-          (value as Set).map(
-            (item) => item == null
-                ? (throw StateError('Received null for non-nullable set item.'))
-                : item as RefOverrideElement,
-          ),
-        );
+        (value as Set).map(
+          (item) =>
+              item == null
+                  ? (throw StateError(
+                    'Received null for non-nullable set item.',
+                  ))
+                  : item as RefOverrideElement,
+        ),
+      );
 }
 
 Map<String, RefOverrideElement> _readRefOverrideContainerMapField(
@@ -311,21 +315,20 @@ Map<String, RefOverrideElement> _readRefOverrideContainerMapField(
       ? (fallback != null
           ? fallback as Map<String, RefOverrideElement>
           : (throw StateError(
-              'Received null for non-nullable field mapField.',
-            )))
+            'Received null for non-nullable field mapField.',
+          )))
       : Map<String, RefOverrideElement>.of(
-          (value as Map).map(
-            (key, mappedValue) => MapEntry(
-              key == null
-                  ? (throw StateError(
-                      'Received null for non-nullable map key.'))
-                  : key as String,
-              mappedValue == null
-                  ? (throw StateError(
-                      'Received null for non-nullable map value.',
-                    ))
-                  : mappedValue as RefOverrideElement,
-            ),
+        (value as Map).map(
+          (key, mappedValue) => MapEntry(
+            key == null
+                ? (throw StateError('Received null for non-nullable map key.'))
+                : key as String,
+            mappedValue == null
+                ? (throw StateError(
+                  'Received null for non-nullable map value.',
+                ))
+                : mappedValue as RefOverrideElement,
           ),
-        );
+        ),
+      );
 }

@@ -28,8 +28,9 @@ import java.lang.annotation.Target;
 /**
  * Declares a stable xlang union case ID.
  *
- * <p>Case ID {@code 0} is reserved for unknown-case carriers. Schema-defined union cases must use
- * positive IDs.
+ * <p>Schema-defined union cases may use IDs {@code 0..N}. Use {@link ForyUnknownCase} for the
+ * runtime-owned unknown-case carrier; the marker selects that carrier without adding an entry to
+ * the schema case table.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

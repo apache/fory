@@ -135,7 +135,8 @@ public class SwiftXlangTest extends XlangTestBase {
           || isFileNewerThan(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Package.resolved"))) {
         return false;
       }
-      return !hasNewerFileInTree(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Sources"));
+      return !hasNewerFileInTree(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Sources"))
+          && !hasNewerFileInTree(binaryMTime, SWIFT_WORK_DIR_PATH.resolve("Tests"));
     } catch (IOException e) {
       return false;
     }

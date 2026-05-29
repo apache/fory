@@ -81,10 +81,10 @@ def test_swift_generator_emits_nested_field_encoding_hints():
     }
 
     union Event [id=101] {
-        fixed uint64 deleted = 1;
-        list<fixed int32> many = 2;
-        map<fixed int32, string> fixed_keys = 3;
-        array<int32> dense = 4;
+        fixed uint64 deleted = 0;
+        list<fixed int32> many = 1;
+        map<fixed int32, string> fixed_keys = 2;
+        array<int32> dense = 3;
     }
     """
     content = generate_swift(source)
@@ -108,15 +108,15 @@ def test_swift_generator_emits_nested_field_encoding_hints():
     assert "@ArrayField(element: .int32())" in content
     assert "@MapField(key: .string, value: .array(element: .uint8))" in content
     assert "@ForyUnion" in content
-    assert "@ForyCase(id: 1, payload: .uint64(encoding: .fixed))" in content
+    assert "@ForyCase(id: 0, payload: .uint64(encoding: .fixed))" in content
     assert (
-        "@ForyCase(id: 2, payload: .list(element: .int32(encoding: .fixed)))" in content
+        "@ForyCase(id: 1, payload: .list(element: .int32(encoding: .fixed)))" in content
     )
     assert (
-        "@ForyCase(id: 3, payload: .map(key: .int32(encoding: .fixed), value: .string))"
+        "@ForyCase(id: 2, payload: .map(key: .int32(encoding: .fixed), value: .string))"
         in content
     )
-    assert "@ForyCase(id: 4, payload: .array(element: .int32()))" in content
+    assert "@ForyCase(id: 3, payload: .array(element: .int32()))" in content
 
 
 def test_swift_generator_emits_tagged_union_case_ids():
@@ -135,11 +135,31 @@ def test_swift_generator_emits_tagged_union_case_ids():
     content = generate_swift(source)
     assert "@ForyUnion" in content
     assert "public enum Animal: Equatable" in content
+    assert "@ForyUnknownCase" in content
+    assert "case unknown(UnknownCase)" in content
     assert "@ForyCase(id: 3)" in content
     assert "case node(Demo.Node)" in content
     assert "@ForyCase(id: 7, payload: .string)" in content
     assert "case note(String)" in content
     assert "fory.register(Demo.Animal.self, id: 101)" in content
+
+
+def test_swift_union_field_preserves_synthesized_equatable():
+    source = """
+    package demo;
+
+    union Choice [id=100] {
+        string note = 1;
+    }
+
+    message Holder [id=101] {
+        Choice choice = 1;
+        optional Choice optional_choice = 2;
+    }
+    """
+    content = generate_swift(source)
+    assert "public enum Choice: Equatable" in content
+    assert "public struct Holder: Equatable" in content
 
 
 def test_swift_generator_supports_decimal_fields_and_unions():
@@ -265,7 +285,7 @@ def test_swift_generator_no_namespace_wrapper_when_package_empty():
     content = generate_swift(source)
     assert "public enum Generated" not in content
     assert "public struct User" in content
-    assert "try ForyRegistration.getFory().serialize(self)" in content
+    assert "try ForyModule.getFory().serialize(self)" in content
     assert "fory.register(User.self, id: 1)" in content
 
 
@@ -287,8 +307,8 @@ def test_swift_generator_supports_flatten_namespace_style_option():
     assert "public struct Demo_Foo_User" in content
     assert "public struct Demo_Foo_Group" in content
     assert "public var user: Demo_Foo_User" in content
-    assert "public enum Demo_Foo_ForyRegistration" in content
-    assert "try Demo_Foo_ForyRegistration.getFory().serialize(self)" in content
+    assert "public enum Demo_Foo_ForyModule" in content
+    assert "try Demo_Foo_ForyModule.getFory().serialize(self)" in content
 
 
 def test_swift_generator_supports_explicit_enum_namespace_style_option():

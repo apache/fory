@@ -68,9 +68,14 @@ def test_dart_generator_emits_annotated_structs_and_generated_part_registration(
     assert "int fixedValue = 0;" in file.content
     assert "Uint64 taggedValue = Uint64(0);" in file.content
     assert (
-        "DemoFory.register(fory, Scalar, id: registrationMode.id, namespace: registrationMode.namespace, typeName: registrationMode.typeName);"
+        "registerGeneratedStruct(fory, _scalarForySchema, id: 100, namespace: null, typeName: null);"
         in file.content
     )
+    assert "abstract final class DemoForyModule" in file.content
+    assert "static void install(Fory fory)" in file.content
+    assert "if (identical(_fory, fory)) return;" in file.content
+    assert "static void register(Fory fory" not in file.content
+    assert "ForyRegistration" not in file.content
     assert "GeneratedStructRegistration<Scalar>" not in file.content
     assert "_ScalarForySerializer" not in file.content
 
@@ -93,7 +98,7 @@ def test_dart_generator_keeps_enum_helpers_in_source_and_uses_generated_enum_reg
     assert "static Status fromRawValue(int value) => switch (value) {" in file.content
     assert "_StatusForySerializer" not in file.content
     assert (
-        "DemoFory.register(fory, Status, id: registrationMode.id, namespace: registrationMode.namespace, typeName: registrationMode.typeName);"
+        "registerGeneratedEnum(fory, _statusForySchema, id: 101, namespace: null, typeName: null);"
         in file.content
     )
 
@@ -111,6 +116,10 @@ def test_dart_generator_keeps_union_serializers_direct_and_marks_union_types():
             Node node = 3;
             string note = 7;
         }
+
+        union Envelope [id=102] {
+            Animal pet = 0;
+        }
         """
     )
 
@@ -126,10 +135,12 @@ def test_dart_generator_keeps_union_serializers_direct_and_marks_union_types():
     assert "Animal buildValue(int caseId, Object? value) {" in file.content
     assert "if (caseId == 3) return Animal.node(value as Node);" in file.content
     assert "if (caseId == 7) return Animal.note(value as String);" in file.content
+    assert "type: Animal," in file.content
+    assert "typeId: TypeIds.union," in file.content
     assert "void write(" not in file.content
     assert "Animal read(" not in file.content
     assert (
-        "fory.registerSerializer(Animal, const _AnimalForySerializer(), id: registrationMode.id, namespace: registrationMode.namespace, typeName: registrationMode.typeName);"
+        "fory.registerSerializer(Animal, const _AnimalForySerializer(), id: 101, namespace: null, typeName: null);"
         in file.content
     )
 
@@ -318,11 +329,12 @@ def test_dart_generator_uses_name_registration_when_auto_id_disabled():
         """
     )
 
-    assert "defaultNamespace: 'demo'," in file.content
-    assert "defaultTypeName: 'Envelope'," in file.content
-    assert "defaultTypeName: 'Envelope.Payload'," in file.content
     assert (
-        "DemoFory.register(fory, Envelope_Payload, id: registrationMode.id, namespace: registrationMode.namespace, typeName: registrationMode.typeName);"
+        "registerGeneratedStruct(fory, _envelopeForySchema, id: null, namespace: 'demo', typeName: 'Envelope');"
+        in file.content
+    )
+    assert (
+        "registerGeneratedStruct(fory, _envelopePayloadForySchema, id: null, namespace: 'demo', typeName: 'Envelope.Payload');"
         in file.content
     )
 
@@ -362,11 +374,6 @@ def test_dart_generator_supports_imported_registration_calls_without_fallthrough
     generator = DartGenerator(schema, GeneratorOptions(output_dir=Path("/tmp")))
     file = generator.generate()[0]
     assert "import '../addressbook/addressbook.dart' as addressbook;" in file.content
-    assert "try {" in file.content
-    assert (
-        "addressbook.ForyRegistration.register(fory, type, id: id, namespace: namespace, typeName: typeName);"
-        in file.content
-    )
-    assert "return;" in file.content
-    assert "} on ArgumentError {" in file.content
+    assert "addressbook.AddressbookForyModule.install(fory);" in file.content
+    assert "ForyRegistration" not in file.content
     assert "addressbook.AddressBook" in file.content

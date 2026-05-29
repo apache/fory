@@ -39,7 +39,7 @@ When enabled:
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class Node
 {
     public int Value { get; set; }

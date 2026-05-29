@@ -267,12 +267,17 @@ class SchemaValidator:
 
         def validate_union(union: Union, parent_path: str = ""):
             full_name = f"{parent_path}.{union.name}" if parent_path else union.name
+            if not union.fields:
+                self._error(
+                    f"Union {full_name} must declare at least one schema-defined case",
+                    union.location,
+                )
             case_numbers = {}
             case_names = {}
             for f in union.fields:
-                if f.number <= 0:
+                if f.number < 0:
                     self._error(
-                        f"Union case id {f.number} in {full_name} is reserved; use ids starting from 1",
+                        f"Union case id {f.number} in {full_name} must be non-negative",
                         f.location,
                     )
                 if f.number in case_numbers:

@@ -365,21 +365,21 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust tagged union."""
         lines: List[str] = []
 
-        has_any = any(
-            self.field_type_has_any(field.field_type) for field in union.fields
-        )
         if self.to_pascal_case(union.name) != union.name:
             lines.append("#[allow(non_camel_case_types)]")
         comment = self.format_type_id_comment(union, "//")
         if comment:
             lines.append(comment)
-        derives = ["::fory::ForyUnion", "Debug"]
-        if not has_any:
-            derives.extend(["Clone", "PartialEq"])
+        derives = ["::fory::ForyUnion"]
+        for trait in ("Clone", "Debug", "PartialEq", "Eq", "Hash"):
+            if self.union_supports_trait(union, trait, parent_stack):
+                derives.append(trait)
         lines.append(f"#[derive({', '.join(derives)})]")
         lines.append(f"pub enum {union.name} {{")
+        lines.append("    #[fory(unknown)]")
+        lines.append("    Unknown(::fory::UnknownCase),")
 
-        for field in union.fields:
+        for index, field in enumerate(union.fields):
             variant_name = self.to_pascal_case(field.name)
             pointer_type = self.get_field_pointer_type(field)
             variant_type = self.generate_type(
@@ -391,7 +391,13 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
-            lines.append(f"    #[fory(id = {field.number})]")
+            variant_type = self.qualify_union_payload_type(
+                field.field_type, variant_type, variant_name
+            )
+            variant_attrs = [f"id = {field.number}"]
+            if index == 0:
+                variant_attrs.append("default")
+            lines.append(f"    #[fory({', '.join(variant_attrs)})]")
             payload_attr = self.get_payload_field_attr(field)
             if payload_attr:
                 lines.append(
@@ -404,12 +410,25 @@ class RustGenerator(BaseGenerator):
         lines.append("")
 
         if union.fields:
-            first_field = union.fields[0]
-            first_variant = self.to_pascal_case(first_field.name)
+            default_field = union.fields[0]
+            default_variant = self.to_pascal_case(default_field.name)
+            default_pointer_type = self.get_field_pointer_type(default_field)
+            default_type = self.generate_type(
+                default_field.field_type,
+                nullable=False,
+                ref=default_field.ref,
+                element_optional=default_field.element_optional,
+                element_ref=default_field.element_ref,
+                parent_stack=parent_stack,
+                pointer_type=default_pointer_type,
+            )
+            default_type = self.qualify_union_payload_type(
+                default_field.field_type, default_type, default_variant
+            )
             lines.append(f"impl ::std::default::Default for {union.name} {{")
             lines.append("    fn default() -> Self {")
             lines.append(
-                f"        Self::{first_variant}(::std::default::Default::default())"
+                f"        Self::{default_variant}(<{default_type} as ::fory::ForyDefault>::fory_default())"
             )
             lines.append("    }")
             lines.append("}")
@@ -418,6 +437,16 @@ class RustGenerator(BaseGenerator):
         lines.extend(self.generate_bytes_impl(union.name))
 
         return lines
+
+    def qualify_union_payload_type(
+        self,
+        field_type: FieldType,
+        rendered_type: str,
+        variant_name: str,
+    ) -> str:
+        if rendered_type == variant_name and isinstance(field_type, NamedType):
+            return f"self::{rendered_type}"
+        return rendered_type
 
     def generate_message(
         self,
@@ -437,8 +466,16 @@ class RustGenerator(BaseGenerator):
         derives = ["::fory::ForyStruct"]
         if not needs_safe_debug:
             derives.append("Debug")
-        if not self.message_has_any(message):
-            derives.extend(["Clone", "PartialEq", "Default"])
+        if self.message_supports_trait(message, "Clone"):
+            derives.append("Clone")
+        if self.message_supports_trait(message, "PartialEq"):
+            derives.append("PartialEq")
+        if self.message_supports_trait(message, "Eq"):
+            derives.append("Eq")
+        if self.message_supports_trait(message, "Hash"):
+            derives.append("Hash")
+        if self.message_supports_trait(message, "Default"):
+            derives.append("Default")
         lines.append(f"#[derive({', '.join(derives)})]")
         if not self.get_effective_evolving(message):
             lines.append("#[fory(evolving = false)]")
@@ -490,11 +527,254 @@ class RustGenerator(BaseGenerator):
             return field.field_type.value_ref
         return False
 
-    def field_needs_safe_debug(self, field: Field) -> bool:
-        return self.field_has_ref(field) or self.field_type_has_any(field.field_type)
+    def field_needs_safe_debug(
+        self, field: Field, parent_stack: Optional[List[Message]] = None
+    ) -> bool:
+        return (
+            self.field_has_ref(field)
+            or self.field_type_has_any(field.field_type)
+            or not self.field_supports_trait(field, "Debug", parent_stack)
+        )
 
     def message_needs_safe_debug(self, message: Message) -> bool:
-        return any(self.field_needs_safe_debug(field) for field in message.fields)
+        lineage = self._lineage_for_message(message)
+        return any(
+            self.field_needs_safe_debug(field, lineage) for field in message.fields
+        )
+
+    def _lineage_for_message(self, message: Message) -> List[Message]:
+        lineage: List[Message] = []
+
+        def visit(current: Message, parents: List[Message]) -> bool:
+            if current is message:
+                lineage.extend(parents + [current])
+                return True
+            for nested in current.nested_messages:
+                if visit(nested, parents + [current]):
+                    return True
+            return False
+
+        for top in self.schema.messages:
+            if visit(top, []):
+                break
+        return lineage
+
+    def union_supports_trait(
+        self,
+        union: Union,
+        trait: str,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+    ) -> bool:
+        if trait == "Default":
+            return bool(union.fields)
+        if visiting is None:
+            visiting = set()
+        key = ("union", trait, id(union))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        lineage = parent_stack or []
+        result = all(
+            self.field_supports_trait(field, trait, lineage, visiting)
+            for field in union.fields
+        )
+        visiting.remove(key)
+        return result
+
+    def message_supports_trait(
+        self,
+        message: Message,
+        trait: str,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+    ) -> bool:
+        if trait == "Debug":
+            return True
+        if visiting is None:
+            visiting = set()
+        key = ("message", trait, id(message))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        lineage = self._lineage_for_message(message)
+        result = all(
+            self.field_supports_trait(field, trait, lineage, visiting)
+            for field in message.fields
+        )
+        visiting.remove(key)
+        return result
+
+    def field_supports_trait(
+        self,
+        field: Field,
+        trait: str,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+    ) -> bool:
+        if trait == "Default" and field.optional:
+            return True
+        if field.ref:
+            return self.ref_type_supports_trait(
+                field.field_type,
+                trait,
+                parent_stack,
+                visiting,
+                field.ref_options.get("weak_ref") is True,
+            )
+        if isinstance(field.field_type, ListType):
+            element_ref = field.element_ref or field.field_type.element_ref
+            if element_ref:
+                if trait == "Default":
+                    return True
+                ref_options = (
+                    field.field_type.element_ref_options
+                    if field.field_type.element_ref
+                    else field.element_ref_options
+                )
+                return self.ref_type_supports_trait(
+                    field.field_type.element_type,
+                    trait,
+                    parent_stack,
+                    visiting,
+                    ref_options.get("weak_ref") is True,
+                )
+        if isinstance(field.field_type, MapType) and field.field_type.value_ref:
+            if trait == "Default":
+                return True
+            if trait == "Hash":
+                return False
+            key_ok = self.type_supports_trait(
+                field.field_type.key_type, "Eq", parent_stack, visiting
+            ) and self.type_supports_trait(
+                field.field_type.key_type, "Hash", parent_stack, visiting
+            )
+            value_trait = "PartialEq" if trait == "PartialEq" else trait
+            value_ok = self.ref_type_supports_trait(
+                field.field_type.value_type,
+                value_trait,
+                parent_stack,
+                visiting,
+                field.field_type.value_ref_options.get("weak_ref") is True,
+            )
+            if trait in ("PartialEq", "Eq"):
+                return key_ok and value_ok
+            return (
+                self.type_supports_trait(
+                    field.field_type.key_type, trait, parent_stack, visiting
+                )
+                and value_ok
+            )
+        return self.type_supports_trait(field.field_type, trait, parent_stack, visiting)
+
+    def ref_type_supports_trait(
+        self,
+        field_type: FieldType,
+        trait: str,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+        weak_ref: bool = False,
+    ) -> bool:
+        if weak_ref:
+            return trait in ("Clone", "Debug", "PartialEq", "Eq", "Default")
+        if trait == "Clone":
+            return True
+        if trait == "Default":
+            return self.type_supports_trait(field_type, trait, parent_stack, visiting)
+        if isinstance(field_type, NamedType):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if self.named_type_is_visiting(named_type, trait, visiting):
+                return True
+        return self.type_supports_trait(field_type, trait, parent_stack, visiting)
+
+    def named_type_is_visiting(
+        self,
+        named_type: object,
+        trait: str,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+    ) -> bool:
+        if visiting is None:
+            return False
+        if isinstance(named_type, Union):
+            return ("union", trait, id(named_type)) in visiting
+        if isinstance(named_type, Message):
+            return ("message", trait, id(named_type)) in visiting
+        return False
+
+    def type_supports_trait(
+        self,
+        field_type: FieldType,
+        trait: str,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, str, int]]] = None,
+    ) -> bool:
+        if isinstance(field_type, PrimitiveType):
+            if field_type.kind == PrimitiveKind.ANY:
+                return False
+            if trait in ("Eq", "Hash") and field_type.kind in (
+                PrimitiveKind.FLOAT16,
+                PrimitiveKind.BFLOAT16,
+                PrimitiveKind.FLOAT32,
+                PrimitiveKind.FLOAT64,
+            ):
+                return False
+            return True
+        if isinstance(field_type, ListType):
+            if trait == "Default":
+                return True
+            return self.type_supports_trait(
+                field_type.element_type, trait, parent_stack, visiting
+            )
+        if isinstance(field_type, ArrayType):
+            if trait == "Default":
+                return True
+            return self.type_supports_trait(
+                field_type.element_type, trait, parent_stack, visiting
+            )
+        if isinstance(field_type, MapType):
+            if trait == "Default":
+                return True
+            if trait == "Hash":
+                return False
+            key_ok = self.type_supports_trait(
+                field_type.key_type, "Eq", parent_stack, visiting
+            ) and self.type_supports_trait(
+                field_type.key_type, "Hash", parent_stack, visiting
+            )
+            value_trait = "PartialEq" if trait == "PartialEq" else trait
+            value_ok = self.type_supports_trait(
+                field_type.value_type, value_trait, parent_stack, visiting
+            )
+            if trait in ("PartialEq", "Eq"):
+                return key_ok and value_ok
+            return self.type_supports_trait(
+                field_type.key_type, trait, parent_stack, visiting
+            ) and self.type_supports_trait(
+                field_type.value_type, trait, parent_stack, visiting
+            )
+        if isinstance(field_type, NamedType):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if isinstance(named_type, Union):
+                return self.union_supports_trait(
+                    named_type, trait, parent_stack, visiting
+                )
+            if isinstance(named_type, Message):
+                return self.message_supports_trait(named_type, trait, visiting)
+            if isinstance(named_type, Enum):
+                return True
+            return True
+        return False
+
+    def resolve_named_type(
+        self, type_name: str, parent_stack: Optional[List[Message]] = None
+    ) -> object:
+        if "." in type_name:
+            return self.schema.get_type(type_name)
+        if parent_stack:
+            for message in reversed(parent_stack):
+                nested = message.get_nested_type(type_name)
+                if nested is not None:
+                    return nested
+        return self.schema.get_type(type_name)
 
     def rust_string_literal(self, value: str) -> str:
         escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -518,6 +798,7 @@ class RustGenerator(BaseGenerator):
         lines.append(
             f"        f.write_str({self.rust_string_literal(type_name + ' { ')})?;"
         )
+        lineage = self._lineage_for_message(message)
         for i, field in enumerate(message.fields):
             field_name = self.to_snake_case(field.name)
             if i > 0:
@@ -525,7 +806,7 @@ class RustGenerator(BaseGenerator):
             lines.append(
                 f"        f.write_str({self.rust_string_literal(field_name + ': ')})?;"
             )
-            if self.field_needs_safe_debug(field):
+            if self.field_needs_safe_debug(field, lineage):
                 placeholder = f"{self.format_idl_type(field.field_type)}(...)"
                 placeholder_literal = self.rust_string_literal(placeholder)
                 if field.optional:

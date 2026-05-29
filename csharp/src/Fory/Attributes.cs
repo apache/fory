@@ -18,15 +18,66 @@
 namespace Apache.Fory;
 
 /// <summary>
-/// Marks a class, struct, or enum as a generated Fory object type.
+/// Marks a class or struct as a generated Fory struct type.
 /// </summary>
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum)]
-public sealed class ForyObjectAttribute : Attribute
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public sealed class ForyStructAttribute : Attribute
 {
     /// <summary>
     /// Whether the annotated struct should use schema evolution metadata in compatible mode.
     /// </summary>
     public bool Evolving { get; set; } = true;
+}
+
+/// <summary>
+/// Marks an enum as a generated Fory enum type.
+/// </summary>
+[AttributeUsage(AttributeTargets.Enum)]
+public sealed class ForyEnumAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Marks a generated Fory union type.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ForyUnionAttribute : Attribute
+{
+}
+
+/// <summary>
+/// Marks a nested case type within a generated Fory union.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ForyCaseAttribute : Attribute
+{
+    public ForyCaseAttribute(int id)
+    {
+        if (id < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(id));
+        }
+
+        Id = id;
+    }
+
+    /// <summary>
+    /// Stable union case id written on the wire.
+    /// </summary>
+    public int Id { get; }
+
+    /// <summary>
+    /// Optional Fory schema descriptor type from <c>Apache.Fory.Schema.Types</c>.
+    /// </summary>
+    public Type? Type { get; set; }
+}
+
+/// <summary>
+/// Marks the runtime-owned unknown-case carrier inside a generated Fory union.
+/// </summary>
+[AttributeUsage(AttributeTargets.Class)]
+public sealed class ForyUnknownCaseAttribute : Attribute
+{
 }
 
 /// <summary>

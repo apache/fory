@@ -21,7 +21,7 @@ using ProtoBuf;
 
 namespace Apache.Fory.Benchmarks.CSharp;
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class NumericStruct
@@ -75,7 +75,7 @@ public sealed class NumericStruct
     public int F12 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class NumericStructList
@@ -85,7 +85,7 @@ public sealed class NumericStructList
     public List<NumericStruct> Values { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class Sample
@@ -179,7 +179,7 @@ public sealed class Sample
     public string String { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class SampleList
@@ -189,7 +189,7 @@ public sealed class SampleList
     public List<Sample> Values { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 [ProtoContract]
 public enum Player
 {
@@ -199,7 +199,7 @@ public enum Player
     Flash,
 }
 
-[ForyObject]
+[ForyStruct]
 [ProtoContract]
 public enum MediaSize
 {
@@ -209,7 +209,7 @@ public enum MediaSize
     Large,
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class Media
@@ -263,7 +263,7 @@ public sealed class Media
     public string Copyright { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class Image
@@ -289,7 +289,7 @@ public sealed class Image
     public MediaSize Size { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class MediaContent
@@ -303,7 +303,7 @@ public sealed class MediaContent
     public List<Image> Images { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 [MessagePackObject(keyAsPropertyName: true)]
 [ProtoContract]
 public sealed class MediaContentList

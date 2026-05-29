@@ -50,7 +50,7 @@ class Person {
 
 void main() {
   final fory = Fory();
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Person,
     namespace: 'example',
@@ -130,7 +130,7 @@ This is an optimization. For most applications the default `serialize`/`deserial
 Before you can serialize a custom class or enum, register it with `Fory`. The generated code makes this easy:
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
   id: 100,

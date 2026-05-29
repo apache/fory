@@ -21,7 +21,9 @@ license: |
 
 This document explains generated code for each target language.
 
-Fory IDL generated types are idiomatic in host languages and can be used directly as domain objects. Generated types also include `to/from bytes` helpers and registration helpers or modules.
+Fory IDL generated types are idiomatic in host languages and can be used directly as domain objects. Generated types also include `to/from bytes` helpers and schema modules or registration helpers, depending on the target language.
+
+Generated schema modules are schema-file owners, not package or namespace owners. In targets that expose the owner directly in a language package or namespace, the owner name includes a source-file-derived prefix such as `AddressbookForyModule` or `ComplexPbForyModule` so multiple IDL files can target the same package or namespace without producing colliding `ForyModule` types.
 
 ## Reference Schemas
 
@@ -405,15 +407,29 @@ Rust output is one module file per schema, for example:
 
 ### Type Generation
 
-Unions map to Rust enums with `#[fory(id = ...)]` case attributes:
+Unions map to Rust enums with `#[fory(id = ...)]` schema case attributes.
+`#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the runtime
+forward-compatibility carrier. The marker only selects the carrier and does not
+add an entry to the schema case table; schema cases still use the full `0..N`
+ID range. A generated typed union must have at least one non-`Unknown` case. The
+compiler marks the first declared non-`Unknown` case as `#[fory(default)]` and
+emits `Default` from that case:
 
 ```rust
-#[derive(ForyUnion, Debug, Clone, PartialEq)]
+#[derive(::fory::ForyUnion, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Animal {
+    #[fory(unknown)]
+    Unknown(::fory::UnknownCase),
+    #[fory(id = 0, default)]
+    Dog(self::Dog),
     #[fory(id = 1)]
-    Dog(Dog),
-    #[fory(id = 2)]
-    Cat(Cat),
+    Cat(self::Cat),
+}
+
+impl ::std::default::Default for Animal {
+    fn default() -> Self {
+        Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())
+    }
 }
 ```
 
@@ -493,7 +509,7 @@ fory.register_union_by_name::<Holder>("myapp.models", "Holder")?;
 ```rust
 let person = Person {
     name: "Alice".into(),
-    pet: Animal::Dog(Dog::default()),
+    pet: Animal::Dog(self::Dog::default()),
     ..Default::default()
 };
 
@@ -771,10 +787,10 @@ C# output is one `.cs` file per schema, for example:
 
 ### Type Generation
 
-Messages generate `[ForyObject]` classes with C# properties and byte helpers:
+Messages generate `[ForyStruct]` classes with C# properties and byte helpers:
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed partial class Person
 {
     public string Name { get; set; } = string.Empty;
@@ -787,26 +803,41 @@ public sealed partial class Person
 }
 ```
 
-Unions generate `Union` subclasses with typed case helpers:
+Unions generate `[ForyUnion]` ADTs. `Unknown(UnknownCase)` is the
+runtime-owned forward-compatibility carrier marked with `[ForyUnknownCase]`.
+The marker only selects the carrier and does not add an entry to the schema case
+table. Schema-defined cases use non-negative `[ForyCase]` IDs. If a case needs
+non-default schema encoding, the generated `[ForyCase]` carries `Type`. Known
+case record names are PascalCase FDL case names; payload types are emitted as
+qualified references when needed to avoid name conflicts. A typed union must
+have at least one non-`Unknown` case.
 
 ```csharp
-public sealed class Animal : Union
+[ForyUnion]
+public abstract partial record Animal
 {
-    public static Animal Dog(Dog value) { ... }
-    public static Animal Cat(Cat value) { ... }
-    public bool IsDog => ...;
-    public Dog DogValue() { ... }
+    private Animal() {}
+
+    [ForyUnknownCase]
+    public sealed partial record Unknown(UnknownCase Value) : Animal;
+
+    [ForyCase(0)]
+    public sealed partial record Dog(global::addressbook.Dog Value) : Animal;
+
+    [ForyCase(1)]
+    public sealed partial record Cat(global::addressbook.Cat Value) : Animal;
 }
 ```
 
-### Registration
+### Module Installation
 
-Each schema generates a registration helper:
+Each schema generates a module owner that installs imported modules first and
+then registers the local schema types:
 
 ```csharp
-public static class AddressbookForyRegistration
+public static class AddressbookForyModule
 {
-    public static void Register(Fory fory)
+    public static void Install(Fory fory)
     {
         fory.Register<addressbook.Animal>((uint)106);
         fory.Register<addressbook.Person>((uint)100);
@@ -815,7 +846,10 @@ public static class AddressbookForyRegistration
 }
 ```
 
-When explicit type IDs are not provided, generated registration uses computed
+The C# module owner keeps the schema-file prefix even when several schemas share
+the same C# namespace.
+
+When explicit type IDs are not provided, generated installation uses computed
 numeric IDs (same behavior as other targets).
 
 ## JavaScript/TypeScript
@@ -873,6 +907,10 @@ Swift output is one `.swift` file per schema, for example:
 ### Type Generation
 
 The generator creates Swift models with split model macros and stable field/case IDs.
+A typed union must include `@ForyUnknownCase case unknown(UnknownCase)` and at
+least one non-`unknown` case; `unknown(UnknownCase)` is only the
+runtime-owned forward-compatibility carrier. The marker only selects the carrier
+and does not add an entry to the schema case table.
 
 When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
 
@@ -886,10 +924,12 @@ For non-empty package with default `enum` style:
 ```swift
 public enum Addressbook {
     @ForyUnion
-    public enum Animal: Equatable {
-        @ForyCase(id: 1)
+    public enum Animal {
+        @ForyUnknownCase
+        case unknown(UnknownCase)
+        @ForyCase(id: 0)
         case dog(Addressbook.Dog)
-        @ForyCase(id: 2)
+        @ForyCase(id: 1)
         case cat(Addressbook.Cat)
     }
 
@@ -921,30 +961,30 @@ For non-null fixed-width integer list elements, Swift classifies the field as
 the corresponding Fory primitive packed-array type; fixed-width integer sets
 remain Fory sets.
 
-### Registration
+### Module Installation
 
-Each schema includes a registration helper with transitive import registration:
+Each schema includes a `ForyModule` owner with transitive import installation:
 
 ```swift
-public enum ForyRegistration {
-    public static func register(_ fory: Fory) throws {
-        try ComplexPb.ForyRegistration.register(fory)
+public enum ForyModule {
+    public static func install(_ fory: Fory) throws {
+        try ComplexPb.ForyModule.install(fory)
         fory.register(Addressbook.Person.self, id: 100)
         fory.register(Addressbook.Animal.self, id: 106)
     }
 }
 ```
 
-With non-empty package and `flatten` style, the helper is prefixed too (for example `Addressbook_ForyRegistration`).
+With non-empty package and `flatten` style, the helper is prefixed too (for example `Addressbook_ForyModule`).
 
-For schemas without explicit `[id=...]`, registration uses computed numeric IDs.
+For schemas without explicit `[id=...]`, installation uses computed numeric IDs.
 If `option enable_auto_type_id = false;` is set, generated code uses name-based registration APIs.
 
 ## Dart
 
 ### Output Layout
 
-Dart output is two files per schema: a main `.dart` file with annotated types, and a `.fory.dart` part file with generated serializers and registration helpers.
+Dart output is two files per schema: a main `.dart` file with annotated types and the IDL module owner, and a `.fory.dart` part file with generated serializers and metadata.
 
 - `<dart_out>/package/package.dart`
 - `<dart_out>/package/package.fory.dart`
@@ -1066,24 +1106,26 @@ List<Node> children = <Node>[];
 Map<String, Node> byName = <String, Node>{};
 ```
 
-### Registration
+### Module Installation
 
-Each generated Dart library includes a registration helper named after the input
-file, such as `AddressbookFory` for `addressbook.dart`. The helper handles all
-generated types in that file and transitively registers imported generated
-types:
+Each generated Dart IDL library includes a module owner named after the input
+file, such as `AddressbookForyModule` for `addressbook.dart`. The module
+installs imported modules first and then registers every local schema type with
+its default IDL identity:
 
 ```dart
-abstract final class AddressbookFory {
-  static void register(
-    Fory fory,
-    Type type, {
-    int? id,
-    String? namespace,
-    String? typeName,
-  }) {
+abstract final class AddressbookForyModule {
+  static void install(Fory fory) {
+    complex_pb.ComplexPbForyModule.install(fory);
+    _registerType(fory, Person);
+    _registerType(fory, Dog);
+  }
+
+  static Fory getFory() { ... }
+
+  static void _registerType(Fory fory, Type type) {
     if (type == Person) {
-      registerGeneratedStruct(fory, _personForyRegistration, id: id, namespace: namespace, typeName: typeName);
+      registerGeneratedStruct(fory, _personForySchema, id: 100, namespace: null, typeName: null);
       return;
     }
     // ... other types
@@ -1099,9 +1141,7 @@ import 'generated/addressbook/addressbook.dart';
 
 void main() {
   final fory = Fory();
-  AddressbookFory.register(fory, Person, id: 100);
-  AddressbookFory.register(fory, Dog, id: 104);
-  // ...
+  AddressbookForyModule.install(fory);
 
   final person = Person()
     ..name = 'Alice'
@@ -1182,19 +1222,34 @@ Generated Kotlin IDL sources express nullability with Kotlin `?`, not Fory
 construction cycles.
 
 Enums generate Kotlin enum classes with stable Fory enum IDs. Unions generate
-sealed classes with `@ForyUnion`; case ID `0` is the unknown-case carrier and
-schema-defined cases hold a single `value` property.
+sealed classes with `@ForyUnion`; the runtime-owned `Unknown(UnknownCase)`
+carrier is marked with `@ForyUnknownCase`. The marker only selects the carrier
+and does not add an entry to the schema case table. Schema-defined cases may use
+case IDs `0..N` and hold a single `value` property. A typed union must have at
+least one non-`Unknown` case.
 
 ```kotlin
+package addressbook
+
+import org.apache.fory.annotation.ForyCase
+import org.apache.fory.annotation.ForyUnion
+import org.apache.fory.annotation.ForyUnknownCase
+import org.apache.fory.type.union.UnknownCase
+
 @ForyUnion
 public sealed class Animal {
-  @ForyCase(id = 0)
-  public data class UnknownCase(public val caseId: Int, public val value: Any?) : Animal()
+  @ForyUnknownCase
+  public data class Unknown(public val value: UnknownCase) : Animal()
 
-  @ForyCase(id = 1)
-  public data class DogCase(public val value: Dog) : Animal()
+  @ForyCase(id = 0)
+  public data class Dog(public val value: addressbook.Dog) : Animal()
 }
 ```
+
+Packaged Kotlin output keeps the schema case name and qualifies the payload
+type when both have the same simple name. If a target output mode cannot express
+a legal qualifier for a conflict, the compiler appends `Case` to the generated
+case class name.
 
 Kotlin `int32`, `int64`, `uint32`, and `uint64` fields use xlang varint
 encoding by default, so generated Kotlin does not emit `@VarInt` for the
@@ -1315,25 +1370,37 @@ enum PhoneType {
 }
 ```
 
-Unions generate Scala 3 ADT enums. Case ID `0` is reserved for the unknown-case
-carrier; schema-defined cases start at `1`.
+Unions generate Scala 3 ADT enums. `Unknown(UnknownCase)` is the runtime-owned
+forward-compatibility carrier marked with `@ForyUnknownCase`. It is omitted
+from the schema case table because the marker only selects the carrier and does
+not add a schema entry. Schema-defined cases use non-negative `@ForyCase` IDs.
+A typed union must have at least one
+non-`Unknown` case.
 
 ```scala
-import org.apache.fory.annotation.{ForyCase, ForyUnion}
+package addressbook
+
+import org.apache.fory.annotation.{ForyCase, ForyUnion, ForyUnknownCase}
 import org.apache.fory.scala.ForySerializer
+import org.apache.fory.`type`.union.UnknownCase
 
 @ForyUnion
 enum Animal derives ForySerializer {
+  @ForyUnknownCase
+  case Unknown(value: UnknownCase)
+
   @ForyCase(id = 0)
-  case UnknownCase(caseId: Int, value: Any)
+  case Dog(value: _root_.addressbook.Dog)
 
   @ForyCase(id = 1)
-  case DogCase(value: Dog)
-
-  @ForyCase(id = 2)
-  case CatCase(value: Cat)
+  case Cat(value: _root_.addressbook.Cat)
 }
 ```
+
+Packaged Scala output keeps the schema case name and qualifies the payload type
+when both have the same simple name. If a target output mode cannot express a
+legal qualifier for a conflict, the compiler appends `Case` to the generated
+case name.
 
 `optional T` fields generate `Option[T]`. Top-level message references use
 `@Ref` on the field or constructor parameter. Nested element/value references
@@ -1370,9 +1437,9 @@ object AddressbookForyModule extends org.apache.fory.ForyModule {
 
 ### Type ID Behavior
 
-- Explicit `[id=...]` values are used directly in generated registration.
+- Explicit `[id=...]` values are used directly by generated module installation or registration helpers.
 - When type IDs are omitted, generated code uses computed numeric IDs (see `auto_id.*` outputs).
-- If `option enable_auto_type_id = false;` is set, generated registration uses name-based APIs instead of numeric IDs.
+- If `option enable_auto_type_id = false;` is set, generated module installation or registration helpers use name-based APIs instead of numeric IDs.
 
 ### Nested Type Shape
 

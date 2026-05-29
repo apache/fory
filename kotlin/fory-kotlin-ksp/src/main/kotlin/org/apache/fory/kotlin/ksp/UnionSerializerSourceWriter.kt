@@ -107,11 +107,11 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
       builder.append("      descriptors.add(Descriptor(")
       builder.append(case.valueType.typeRefExpression()).append(", ")
       builder.append("\"").append(escape(case.valueType.typeName)).append("\", ")
-      builder.append("\"").append(escape(case.className.removeSuffix("Case"))).append("\", ")
+      builder.append("\"").append(escape(case.className)).append("\", ")
       builder.append("0, ")
       builder.append("\"").append(escape(union.qualifiedTypeName)).append("\", ")
       builder.append("true, ")
-      builder.append(case.id).append(", ")
+      builder.append(case.knownId).append(", ")
       builder.append(case.valueType.nullable).append(", ")
       builder.append(case.valueType.trackingRef).append(", ")
       builder.append("org.apache.fory.annotation.ForyField.Dynamic.AUTO, ")
@@ -153,9 +153,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     builder
       .append("      is ")
       .append(union.unknownCase.qualifiedClassName)
-      .append(
-        " -> UnionSerializer.writeUnknownCaseValue(writeContext, value.value, value.caseId)\n"
-      )
+      .append(" -> UnionSerializer.writeUnknownValue(writeContext, value.value)\n")
     for ((index, case) in union.cases.withIndex()) {
       builder.append("      is ").append(case.qualifiedClassName).append(" -> ")
       val direct = directWriteCaseStatement(case, "value.value")
@@ -164,7 +162,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
           .append("UnionSerializer.writeCaseValue(typeResolver, writeContext, caseFields[")
           .append(index)
           .append("]!!, value.value, ")
-          .append(case.id)
+          .append(case.knownId)
           .append(")\n")
       } else {
         builder.append("{ ").append(direct).append(" }\n")
@@ -182,7 +180,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     builder.append("    val caseId = readContext.buffer.readVarUInt32()\n")
     builder.append("    return when (caseId) {\n")
     for ((index, case) in union.cases.withIndex()) {
-      builder.append("      ").append(case.id).append(" -> ")
+      builder.append("      ").append(case.knownId).append(" -> ")
       val direct = directReadCaseExpression(case)
       if (direct == null) {
         builder
@@ -199,7 +197,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     builder
       .append("      else -> ")
       .append(union.unknownCase.qualifiedClassName)
-      .append("(caseId, readContext.readRef())\n")
+      .append("(UnionSerializer.readUnknownValue(readContext, caseId))\n")
     builder.append("    }\n")
     builder.append("  }\n\n")
     builder
@@ -221,7 +219,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
       .append(union.unknownCase.qualifiedClassName)
       .append(" -> ")
       .append(union.unknownCase.qualifiedClassName)
-      .append("(value.caseId, copyContext.copyObject(value.value))\n")
+      .append("(UnionSerializer.copyUnknownValue(copyContext, value.value))\n")
     for ((index, case) in union.cases.withIndex()) {
       builder
         .append("      is ")
@@ -246,13 +244,14 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
 
   private fun directWriteCaseStatement(case: KotlinSourceUnionCase, value: String): String? {
     val typeId = case.valueType.typeId ?: return null
-    val nullableValue = "caseValue${case.id}"
+    val caseId = case.knownId
+    val nullableValue = "caseValue$caseId"
     return if (case.valueType.nullable) {
       val writeValue = directPayloadWrite(case.valueType, nullableValue) ?: return null
-      "val $nullableValue = $value; val buffer = writeContext.buffer; buffer.writeVarUInt32(${case.id}); if ($nullableValue == null) { buffer.writeByte(Fory.NULL_FLAG) } else { buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG); buffer.writeUInt8($typeId); $writeValue }"
+      "val $nullableValue = $value; val buffer = writeContext.buffer; buffer.writeVarUInt32($caseId); if ($nullableValue == null) { buffer.writeByte(Fory.NULL_FLAG) } else { buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG); buffer.writeUInt8($typeId); $writeValue }"
     } else {
       val writeValue = directPayloadWrite(case.valueType, value) ?: return null
-      "val buffer = writeContext.buffer; buffer.writeVarUInt32(${case.id}); buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG); buffer.writeUInt8($typeId); $writeValue"
+      "val buffer = writeContext.buffer; buffer.writeVarUInt32($caseId); buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG); buffer.writeUInt8($typeId); $writeValue"
     }
   }
 

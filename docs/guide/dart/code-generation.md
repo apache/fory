@@ -68,14 +68,14 @@ The generator creates a namespace (named after your file) with a `register` func
 
 ```dart
 final fory = Fory();
-ModelsFory.register(fory, Address, id: 1);
-ModelsFory.register(fory, User, id: 2);
+ModelsForyModule.register(fory, Address, id: 1);
+ModelsForyModule.register(fory, User, id: 2);
 ```
 
 Or use a stable name instead of a numeric ID (useful for cross-language scenarios):
 
 ```dart
-ModelsFory.register(
+ModelsForyModule.register(
   fory,
   User,
   namespace: 'example',

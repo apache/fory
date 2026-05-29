@@ -126,9 +126,9 @@ Generated code uses native language constructs:
 - Java: Plain POJOs with `@ForyField` annotations
 - Python: Dataclasses with type hints
 - Go: Structs with struct tags
-- Rust: Structs with `#[derive(ForyObject)]`
+- Rust: Structs with `#[derive(ForyStruct)]`
 - C++: Structs with `FORY_STRUCT` macros
-- C#: Classes with `[ForyObject]` and registration helpers
+- C#: `[ForyStruct]` classes, `[ForyEnum]` enums, `[ForyUnion]` unions, and registration helpers
 - JavaScript/TypeScript: Interfaces with registration function
 - Swift: Fory model macros with field/case metadata and registration helpers
 - Dart: `@ForyStruct` classes with `@ForyField` annotations and registration helpers

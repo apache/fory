@@ -83,25 +83,33 @@ xlang mode.
 IDL unions generate Scala 3 ADT enums with `@ForyUnion` and `@ForyCase` metadata:
 
 ```scala
-import org.apache.fory.annotation.{ForyCase, ForyUnion, UInt32Type}
+package example
+
+import org.apache.fory.annotation.{ForyCase, ForyUnion, ForyUnknownCase, UInt32Type}
 import org.apache.fory.config.Int32Encoding
 import org.apache.fory.scala.ForySerializer
+import org.apache.fory.`type`.union.UnknownCase
 
 @ForyUnion
 enum SearchTarget derives ForySerializer {
+  @ForyUnknownCase
+  case Unknown(value: UnknownCase)
+
   @ForyCase(id = 0)
-  case UnknownCase(caseId: Int, value: Any)
+  case User(value: _root_.example.User)
 
   @ForyCase(id = 1)
-  case UserCase(value: User)
-
-  @ForyCase(id = 2)
-  case FixedIdCase(value: Long @UInt32Type(encoding = Int32Encoding.FIXED))
+  case FixedId(value: Long @UInt32Type(encoding = Int32Encoding.FIXED))
 }
 ```
 
-Schema-defined union cases must use positive IDs. Case ID `0` is reserved for the unknown-case
-carrier used when a reader sees a newer positive case ID.
+Schema-defined union cases use non-negative IDs, and a typed union must declare
+at least one non-`Unknown` case. The unknown-case carrier is selected by
+`@ForyUnknownCase`, not by a schema case ID.
+When a generated Scala union case name matches the payload type simple name,
+packaged output keeps the case name and qualifies the payload type. If a target
+output mode cannot express a legal qualifier for a conflict, the IDL compiler
+appends `Case` to the generated case name.
 
 ## Generated Metadata Source
 

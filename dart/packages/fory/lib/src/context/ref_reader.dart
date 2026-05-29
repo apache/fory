@@ -81,9 +81,7 @@ final class RefReader {
 
   void reference(Object? value) {
     if (_preservedIds.isEmpty) {
-      throw StateError(
-        'reference(value) requires a preserved read ref id.',
-      );
+      throw StateError('reference(value) requires a preserved read ref id.');
     }
     final id = _preservedIds.removeLast();
     if (id < 0) {
@@ -94,6 +92,11 @@ final class RefReader {
 
   void setReadRef(int id, Object? value) {
     _refs[id] = value;
+    if (_preservedIds.isNotEmpty && _preservedIds.last == id) {
+      // Late-bound values must release their reserved slot; otherwise a later
+      // early-bound struct can reuse the stale slot and corrupt repeated refs.
+      _preservedIds.removeLast();
+    }
   }
 
   void reset() {

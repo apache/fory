@@ -89,7 +89,7 @@ This specification defines the Fory xlang binary format. The format is dynamic r
   - bfloat16_array: canonical wire tag for `array<bfloat16>`.
   - float32_array: canonical wire tag for `array<float32>`.
   - float64_array: canonical wire tag for `array<float64>`.
-- union: a tagged union type that can hold one of several alternative types. The active alternative is identified by an index.
+- union: a tagged union type that can hold one of several alternative types. The active alternative is identified by a non-negative case ID.
 - typed_union: a union value with registered numeric union type ID.
 - named_union: a union value with embedded union type name or shared TypeDef.
 - none: represents an empty/unit value with no data (e.g., for empty union alternatives).
@@ -1570,17 +1570,20 @@ Union values are encoded using three union type IDs so the union schema identity
 
 ```fdl
 union Contact [id=0] {
-  string email = 1;
-  int32  phone = 2;
+  string email = 0;
+  int32  phone = 1;
 }
 ```
 
 Rules:
 
-- Each union alternative MUST have a stable tag number (`= 1`, `= 2`, ...).
+- A union schema MUST declare at least one schema-defined alternative. The
+  unknown-case carrier used by some language bindings is runtime-owned and is
+  omitted from the schema's alternative table.
+- Each union alternative MUST have a stable non-negative tag number (`= 0`, `= 1`, ...).
 - Tag numbers MUST be unique within the union and MUST NOT be reused.
-- Tag number `0` is reserved for language bindings that expose an unknown-case
-  carrier. Schema-defined alternatives MUST NOT use tag `0`.
+- Unknown-case carriers exposed by language bindings have no local schema tag of
+  their own; they replay the original peer schema tag when reserialized.
 
 #### Type IDs and type meta
 
@@ -1596,6 +1599,10 @@ Type meta encoding:
 - `TYPED_UNION (34)`: write `user_type_id` as varuint32 after the type ID.
 - `NAMED_UNION (35)`: followed by named type meta (namespace + type name, or shared TypeDef marker/body).
 
+Field TypeDef metadata MUST use `UNION` for statically typed union fields,
+including generated typed ADT union fields. It MUST NOT use `TYPED_UNION` or
+`NAMED_UNION` there, because the field owner already supplies the union schema.
+
 #### Union value payload
 
 A union payload is:
@@ -1605,6 +1612,9 @@ A union payload is:
 ```
 
 `case_id` is the union alternative tag number.
+Runtime APIs MAY expose zero-based ordinal indexes for generic union carriers;
+those ordinals are valid wire `case_id` values when they are the schema's
+alternative IDs.
 
 `case_value` MUST be encoded as a full xlang value:
 
@@ -1614,12 +1624,25 @@ A union payload is:
 
 This is required even for primitives so unknown alternatives can be skipped safely.
 
-If a reader sees a positive `case_id` that is not present in its local union
+If a reader sees a `case_id` that is not present in its local union
 schema, it SHOULD preserve the unknown case when the target language has a
-language-neutral carrier for it. Such a carrier MUST store the original positive
-case ID and the deserialized `case_value`. Writers MUST NOT serialize `0` as a
-schema-defined case ID; `0` is only the local unknown-case slot used by bindings
-that need one.
+language-neutral carrier for it. Such a carrier MUST expose the original case
+ID and decoded value, and it MUST retain only runtime-internal wire type ID
+state needed for reserialization. It MUST NOT store resolver-owned type
+metadata or other context-owned state. Writers MUST use the stored original
+case ID for the union envelope, not any generated carrier marker. Unknown-case
+payload writers MUST emit the Any-style payload body in wire order: ref
+metadata first, then full value type metadata, then value bytes. For internal
+numeric type IDs, the type ID byte is the complete value type metadata and the
+payload writer MAY use the stored wire type ID to preserve fixed, variable, or
+tagged integer encodings when the decoded value has the expected runtime type.
+These scalar numeric payloads are not reference-tracked, so their ref metadata
+is `NotNullValue`. Otherwise it MUST fall back to the language runtime's
+ordinary polymorphic Any-value writer. Unknown carriers are runtime-owned
+forward-compatibility containers, not entries in the local schema case table;
+schema-defined union cases MAY use `0..N`. When an unknown carrier is written
+back, the union envelope MUST use the carrier's original peer schema case ID
+unchanged, including `0` if that was the original peer schema case ID.
 
 #### Wire layouts
 
@@ -1656,7 +1679,10 @@ standard `skipValue(type_id)`.
 
 #### When to use each type ID
 
-- Use `UNION` when the union schema is known from context.
+- Use `UNION` when the union schema is known from context. This includes
+  statically typed generated union fields: the owning field metadata supplies
+  the union schema, so the field type ID remains `UNION` even if the root or
+  dynamic value form would identify the union as `TYPED_UNION` or `NAMED_UNION`.
 - Use `TYPED_UNION` for dynamic containers when numeric registration is available.
 - Use `NAMED_UNION` when name-based resolution is preferred or required.
 

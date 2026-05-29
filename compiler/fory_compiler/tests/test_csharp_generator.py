@@ -69,6 +69,60 @@ def test_csharp_namespace_fallback_to_package():
     assert "namespace com.example.models;" in file.content
 
 
+def test_csharp_semantic_model_attributes():
+    file = generate(
+        """
+        package example;
+
+        enum Status {
+            READY = 1;
+        }
+
+        message Item {
+            string name = 1;
+        }
+
+        union Choice {
+            string text = 0;
+            fixed int32 code = 1;
+            Item item = 2;
+        }
+
+        message Envelope {
+            Status status = 1;
+            Choice choice = 2;
+        }
+        """
+    )
+
+    assert "[ForyEnum]" in file.content
+    assert "[ForyUnion]" in file.content
+    assert "public abstract partial record Choice" in file.content
+    assert "[ForyUnknownCase]" in file.content
+    assert (
+        "public sealed partial record Unknown(UnknownCase Value) : Choice;"
+        in file.content
+    )
+    assert "[ForyCase(0)]" in file.content
+    assert "public sealed partial record Text(string Value) : Choice;" in file.content
+    assert "[ForyCase(1, Type = typeof(S.Fixed<S.Int32>))]" in file.content
+    assert "public sealed partial record Code(int Value) : Choice;" in file.content
+    assert "[ForyCase(2)]" in file.content
+    assert (
+        "public sealed partial record Item(global::example.Item Value) : Choice;"
+        in file.content
+    )
+    assert ": Union" not in file.content
+    assert "public enum ChoiceCase" not in file.content
+    assert "public static Choice Text" not in file.content
+    assert "public bool IsText" not in file.content
+    assert "TextValue()" not in file.content
+    assert "Case()" not in file.content
+    assert "GetCaseId()" not in file.content
+    assert "[ForyStruct]" in file.content
+    assert "[ForyObject]" not in file.content
+
+
 def test_csharp_registration_uses_fdl_package_for_name_registration():
     file = generate(
         """
@@ -161,11 +215,8 @@ def test_csharp_imported_registration_calls_generated():
     generator = CSharpGenerator(schema, GeneratorOptions(output_dir=Path("/tmp")))
     file = generator.generate()[0]
 
-    assert (
-        "global::addressbook.AddressbookForyRegistration.Register(fory);"
-        in file.content
-    )
-    assert "global::tree.TreeForyRegistration.Register(fory);" in file.content
+    assert "global::addressbook.AddressbookForyModule.Install(fory);" in file.content
+    assert "global::tree.TreeForyModule.Install(fory);" in file.content
 
 
 def test_csharp_namespace_option_is_known():

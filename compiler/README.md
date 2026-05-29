@@ -407,12 +407,12 @@ struct Cat {
 
 Generates classes with:
 
-- `[ForyObject]` model attributes
+- `[ForyStruct]`, `[ForyEnum]`, and `[ForyUnion]` model attributes
 - Auto-properties for schema fields
 - Registration helper class and `ToBytes`/`FromBytes` helpers
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed partial class Cat
 {
     public Dog? Friend { get; set; }

@@ -131,10 +131,10 @@ public class ScalaXlangTest extends XlangTestBase {
     user.email = "java@example.com";
 
     ExecutionContext context =
-        executePeer(KNOWN_UNION_CASE, fory, new ScalaPeerTargetMirror(1, user));
+        executePeer(KNOWN_UNION_CASE, fory, new ScalaPeerTargetMirror(0, user));
     ScalaPeerTargetMirror response =
         (ScalaPeerTargetMirror) fory.deserialize(readBuffer(context.dataFile()));
-    Assert.assertEquals(response.getIndex(), 1);
+    Assert.assertEquals(response.getIndex(), 0);
     Assert.assertTrue(response.getValue() instanceof ScalaPeerUserMirror);
     ScalaPeerUserMirror responseUser = (ScalaPeerUserMirror) response.getValue();
     Assert.assertEquals(responseUser.id, 42);

@@ -40,7 +40,7 @@ class NumericContainerEnvelope {
 }
 
 void _registerNumericContainerEnvelope(Fory fory) {
-  CollectionSerializerTestFory.register(
+  CollectionSerializerTestForyModule.register(
     fory,
     NumericContainerEnvelope,
     namespace: 'test',
@@ -82,8 +82,9 @@ void main() {
       final list =
           fory.deserialize<Object?>(fory.serialize(<Object?>[])) as List;
       final set = fory.deserialize<Object?>(fory.serialize(<Object?>{})) as Set;
-      final map = fory
-          .deserialize<Object?>(fory.serialize(<Object?, Object?>{})) as Map;
+      final map =
+          fory.deserialize<Object?>(fory.serialize(<Object?, Object?>{}))
+              as Map;
 
       expect(list, isA<List>());
       expect(set, isA<Set>());
@@ -133,25 +134,28 @@ void main() {
       expect(_describeValue(roundTrip), equals(_describeValue(value)));
     });
 
-    test('round-trips root map with null keys values and nested containers',
-        () {
-      final fory = Fory();
-      final value = <Object?, Object?>{
-        null: 'null-key',
-        'null-value': null,
-        'numbers': <Object?>[1, 2, 3],
-        'nested-map': <Object?, Object?>{
-          'left': 1,
-          'right': <Object?>['x', null, 'y'],
-        },
-        'set': <Object?>{'a', 'b', null},
-      };
+    test(
+      'round-trips root map with null keys values and nested containers',
+      () {
+        final fory = Fory();
+        final value = <Object?, Object?>{
+          null: 'null-key',
+          'null-value': null,
+          'numbers': <Object?>[1, 2, 3],
+          'nested-map': <Object?, Object?>{
+            'left': 1,
+            'right': <Object?>['x', null, 'y'],
+          },
+          'set': <Object?>{'a', 'b', null},
+        };
 
-      final roundTrip = fory.deserialize<Object?>(fory.serialize(value)) as Map;
+        final roundTrip =
+            fory.deserialize<Object?>(fory.serialize(value)) as Map;
 
-      expect(_describeValue(roundTrip), equals(_describeValue(value)));
-      expect(roundTrip.keys.toList(), orderedEquals(value.keys.toList()));
-    });
+        expect(_describeValue(roundTrip), equals(_describeValue(value)));
+        expect(roundTrip.keys.toList(), orderedEquals(value.keys.toList()));
+      },
+    );
 
     test('round-trips nested collection structures', () {
       final fory = Fory();
@@ -199,18 +203,24 @@ void main() {
       final sharedList = <Object?>['shared'];
       final sharedMap = <Object?, Object?>{'value': 1};
 
-      final listRoundTrip = fory.deserialize<Object?>(
-          fory.serialize(<Object?>[sharedList, sharedList])) as List;
-      final mapRoundTrip = fory.deserialize<Object?>(
-        fory.serialize(<Object?, Object?>{'a': sharedMap, 'b': sharedMap}),
-      ) as Map;
+      final listRoundTrip =
+          fory.deserialize<Object?>(
+                fory.serialize(<Object?>[sharedList, sharedList]),
+              )
+              as List;
+      final mapRoundTrip =
+          fory.deserialize<Object?>(
+                fory.serialize(<Object?, Object?>{
+                  'a': sharedMap,
+                  'b': sharedMap,
+                }),
+              )
+              as Map;
 
       expect(
-          _describeValue(listRoundTrip),
-          equals(_describeValue(<Object?>[
-            sharedList,
-            sharedList,
-          ])));
+        _describeValue(listRoundTrip),
+        equals(_describeValue(<Object?>[sharedList, sharedList])),
+      );
       expect(identical(listRoundTrip[0], listRoundTrip[1]), isFalse);
       expect(identical(mapRoundTrip['a'], mapRoundTrip['b']), isFalse);
     });
@@ -224,9 +234,9 @@ void main() {
         'map': <Object?, Object?>{'a': sharedMap, 'b': sharedMap},
       };
 
-      final roundTrip = fory.deserialize<Object?>(
-        fory.serialize(nested, trackRef: true),
-      ) as Map;
+      final roundTrip =
+          fory.deserialize<Object?>(fory.serialize(nested, trackRef: true))
+              as Map;
       final listRoundTrip = roundTrip['list'] as List;
       final mapRoundTrip = roundTrip['map'] as Map;
 
@@ -240,9 +250,9 @@ void main() {
       final value = <Object?>[];
       value.add(value);
 
-      final roundTrip = fory.deserialize<Object?>(
-        fory.serialize(value, trackRef: true),
-      ) as List;
+      final roundTrip =
+          fory.deserialize<Object?>(fory.serialize(value, trackRef: true))
+              as List;
 
       expect(roundTrip, hasLength(1));
       expect(identical(roundTrip, roundTrip[0]), isTrue);
@@ -253,9 +263,9 @@ void main() {
       final value = <Object?, Object?>{};
       value['self'] = value;
 
-      final roundTrip = fory.deserialize<Object?>(
-        fory.serialize(value, trackRef: true),
-      ) as Map;
+      final roundTrip =
+          fory.deserialize<Object?>(fory.serialize(value, trackRef: true))
+              as Map;
 
       expect(roundTrip.keys, contains('self'));
       expect(identical(roundTrip, roundTrip['self']), isTrue);
@@ -263,8 +273,11 @@ void main() {
 
     test('round-trips large list, set, and map payloads', () {
       final fory = Fory();
-      final largeList = List<Object?>.generate(600, (index) => 'item-$index',
-          growable: false);
+      final largeList = List<Object?>.generate(
+        600,
+        (index) => 'item-$index',
+        growable: false,
+      );
       final largeSet = Set<Object?>.of(largeList);
       final largeMap = <Object?, Object?>{
         for (var index = 0; index < 320; index += 1) 'k$index': index,
@@ -284,35 +297,36 @@ void main() {
     });
 
     test(
-        'reuses the same fory instance and target buffer across collection shapes',
-        () {
-      final fory = Fory();
-      final buffer = Buffer();
-      final cases = <Object?>[
-        <Object?>[1, 2, 3],
-        <Object?>{'a', null, 'b'},
-        <Object?, Object?>{
-          'nested': <Object?>[
-            <Object?, Object?>{'x': 1},
-            null,
-            <Object?>{'y', 'z'},
-          ],
-        },
-        <Object?, Object?>{
-          'shared': <Object?>[
-            <Object?>['x'],
-            <Object?>['x'],
-          ],
-        },
-      ];
+      'reuses the same fory instance and target buffer across collection shapes',
+      () {
+        final fory = Fory();
+        final buffer = Buffer();
+        final cases = <Object?>[
+          <Object?>[1, 2, 3],
+          <Object?>{'a', null, 'b'},
+          <Object?, Object?>{
+            'nested': <Object?>[
+              <Object?, Object?>{'x': 1},
+              null,
+              <Object?>{'y', 'z'},
+            ],
+          },
+          <Object?, Object?>{
+            'shared': <Object?>[
+              <Object?>['x'],
+              <Object?>['x'],
+            ],
+          },
+        ];
 
-      for (final value in cases) {
-        fory.serializeTo(value, buffer);
-        final roundTrip = fory.deserializeFrom<Object?>(buffer);
-        expect(_describeValue(roundTrip), equals(_describeValue(value)));
-        expect(buffer.readableBytes, equals(0));
-      }
-    });
+        for (final value in cases) {
+          fory.serializeTo(value, buffer);
+          final roundTrip = fory.deserializeFrom<Object?>(buffer);
+          expect(_describeValue(roundTrip), equals(_describeValue(value)));
+          expect(buffer.readableBytes, equals(0));
+        }
+      },
+    );
 
     test('round-trips generated Int64 and Uint64 list/map fields', () {
       for (final compatible in <bool>[false, true]) {
@@ -365,8 +379,10 @@ String _describeValue(Object? value) {
   }
   if (value is Map) {
     final entries = value.entries
-        .map((entry) =>
-            '${_describeValue(entry.key)}:${_describeValue(entry.value)}')
+        .map(
+          (entry) =>
+              '${_describeValue(entry.key)}:${_describeValue(entry.value)}',
+        )
         .join(',');
     return 'map($entries)';
   }

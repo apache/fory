@@ -29,7 +29,7 @@ public sealed class RoundtripTests
     public void AddressBookRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        addressbook.AddressbookForyRegistration.Register(fory);
+        addressbook.AddressbookForyModule.Install(fory);
 
         addressbook.AddressBook book = BuildAddressBook();
         addressbook.AddressBook decoded = fory.Deserialize<addressbook.AddressBook>(fory.Serialize(book));
@@ -44,17 +44,18 @@ public sealed class RoundtripTests
     public void AutoIdRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        auto_id.AutoIdForyRegistration.Register(fory);
+        auto_id.AutoIdForyModule.Install(fory);
 
         auto_id.Envelope envelope = BuildEnvelope();
-        auto_id.Wrapper wrapper = auto_id.Wrapper.Envelope(envelope);
+        auto_id.Wrapper wrapper = new auto_id.Wrapper.Envelope(envelope);
 
         auto_id.Envelope envelopeDecoded = fory.Deserialize<auto_id.Envelope>(fory.Serialize(envelope));
         AssertEnvelope(envelope, envelopeDecoded);
 
         auto_id.Wrapper wrapperDecoded = fory.Deserialize<auto_id.Wrapper>(fory.Serialize(wrapper));
-        Assert.True(wrapperDecoded.IsEnvelope);
-        AssertEnvelope(envelope, wrapperDecoded.EnvelopeValue());
+        auto_id.Wrapper.Envelope wrapperEnvelope =
+            Assert.IsType<auto_id.Wrapper.Envelope>(wrapperDecoded);
+        AssertEnvelope(envelope, wrapperEnvelope.Value);
 
         RoundTripFile(fory, "DATA_FILE_AUTO_ID", envelope, AssertEnvelope);
     }
@@ -65,7 +66,7 @@ public sealed class RoundtripTests
     public void PrimitiveTypesRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        complex_pb.ComplexPbForyRegistration.Register(fory);
+        complex_pb.ComplexPbForyModule.Install(fory);
 
         complex_pb.PrimitiveTypes types = BuildPrimitiveTypes();
         complex_pb.PrimitiveTypes decoded = fory.Deserialize<complex_pb.PrimitiveTypes>(fory.Serialize(types));
@@ -80,7 +81,7 @@ public sealed class RoundtripTests
     public void CollectionRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        collection.CollectionForyRegistration.Register(fory);
+        collection.CollectionForyModule.Install(fory);
 
         collection.NumericCollections collections = BuildNumericCollections();
         collection.NumericCollectionUnion unionValue = BuildNumericCollectionUnion();
@@ -115,7 +116,7 @@ public sealed class RoundtripTests
     public void ExampleRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        example.ExampleForyRegistration.Register(fory);
+        example.ExampleForyModule.Install(fory);
 
         example.ExampleMessage message = BuildExampleMessage();
         example.ExampleMessage decoded = fory.Deserialize<example.ExampleMessage>(fory.Serialize(message));
@@ -141,7 +142,7 @@ public sealed class RoundtripTests
     public void OptionalTypesRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        optional_types.OptionalTypesForyRegistration.Register(fory);
+        optional_types.OptionalTypesForyModule.Install(fory);
 
         optional_types.OptionalHolder holder = BuildOptionalHolder();
         optional_types.OptionalHolder decoded = fory.Deserialize<optional_types.OptionalHolder>(fory.Serialize(holder));
@@ -156,7 +157,7 @@ public sealed class RoundtripTests
     public void AnyRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        any_example.AnyExampleForyRegistration.Register(fory);
+        any_example.AnyExampleForyModule.Install(fory);
 
         any_example.AnyHolder holder = BuildAnyHolder();
         any_example.AnyHolder decoded = fory.Deserialize<any_example.AnyHolder>(fory.Serialize(holder));
@@ -171,7 +172,7 @@ public sealed class RoundtripTests
     public void AnyProtoRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        any_example_pb.AnyExamplePbForyRegistration.Register(fory);
+        any_example_pb.AnyExamplePbForyModule.Install(fory);
 
         any_example_pb.AnyHolder holder = BuildAnyProtoHolder();
         any_example_pb.AnyHolder decoded = fory.Deserialize<any_example_pb.AnyHolder>(fory.Serialize(holder));
@@ -186,8 +187,8 @@ public sealed class RoundtripTests
     public void FlatbuffersRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        monster.MonsterForyRegistration.Register(fory);
-        complex_fbs.ComplexFbsForyRegistration.Register(fory);
+        monster.MonsterForyModule.Install(fory);
+        complex_fbs.ComplexFbsForyModule.Install(fory);
 
         monster.Monster monsterValue = BuildMonster();
         monster.Monster monsterDecoded = fory.Deserialize<monster.Monster>(fory.Serialize(monsterValue));
@@ -207,7 +208,7 @@ public sealed class RoundtripTests
     public void TreeRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        tree.TreeForyRegistration.Register(fory);
+        tree.TreeForyModule.Install(fory);
 
         tree.TreeNode treeRoot = BuildTree();
         tree.TreeNode decoded = fory.Deserialize<tree.TreeNode>(fory.Serialize(treeRoot));
@@ -222,7 +223,7 @@ public sealed class RoundtripTests
     public void GraphRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        graph.GraphForyRegistration.Register(fory);
+        graph.GraphForyModule.Install(fory);
 
         graph.Graph graphValue = BuildGraph();
         graph.Graph decoded = fory.Deserialize<graph.Graph>(fory.Serialize(graphValue));
@@ -236,8 +237,8 @@ public sealed class RoundtripTests
     {
         ForyRuntime foryV1 = BuildFory(true, false);
         ForyRuntime foryV2 = BuildFory(true, false);
-        evolving1.Evolving1ForyRegistration.Register(foryV1);
-        evolving2.Evolving2ForyRegistration.Register(foryV2);
+        evolving1.Evolving1ForyModule.Install(foryV1);
+        evolving2.Evolving2ForyModule.Install(foryV2);
 
         evolving1.EvolvingMessage messageV1 = new()
         {
@@ -319,7 +320,7 @@ public sealed class RoundtripTests
     public void RootRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        root.RootForyRegistration.Register(fory);
+        root.RootForyModule.Install(fory);
 
         root.MultiHolder holder = BuildRootHolder();
         root.MultiHolder decoded = fory.Deserialize<root.MultiHolder>(fory.Serialize(holder));
@@ -344,15 +345,15 @@ public sealed class RoundtripTests
         addressbook.AddressBook decodedBook = addressbook.AddressBook.FromBytes(book.ToBytes());
         AssertAddressBook(book, decodedBook);
 
-        addressbook.Animal animal = addressbook.Animal.Dog(new addressbook.Dog
+        addressbook.Animal animal = new addressbook.Animal.Dog(new addressbook.Dog
         {
             Name = "Rex",
             BarkVolume = 5,
         });
         addressbook.Animal decodedAnimal = addressbook.Animal.FromBytes(animal.ToBytes());
-        Assert.True(decodedAnimal.IsDog);
-        Assert.Equal("Rex", decodedAnimal.DogValue().Name);
-        Assert.Equal(5, decodedAnimal.DogValue().BarkVolume);
+        addressbook.Animal.Dog dog = Assert.IsType<addressbook.Animal.Dog>(decodedAnimal);
+        Assert.Equal("Rex", dog.Value.Name);
+        Assert.Equal(5, dog.Value.BarkVolume);
     }
 
     private static ForyRuntime BuildFory(bool compatible, bool trackRef)
@@ -414,12 +415,12 @@ public sealed class RoundtripTests
             PhoneType = addressbook.Person.PhoneType.Work,
         };
 
-        addressbook.Animal pet = addressbook.Animal.Dog(new addressbook.Dog
+        addressbook.Animal pet = new addressbook.Animal.Dog(new addressbook.Dog
         {
             Name = "Rex",
             BarkVolume = 5,
         });
-        pet = addressbook.Animal.Cat(new addressbook.Cat
+        pet = new addressbook.Animal.Cat(new addressbook.Cat
         {
             Name = "Mimi",
             Lives = 9,
@@ -462,7 +463,7 @@ public sealed class RoundtripTests
         {
             Id = "env-1",
             PayloadValue = payload,
-            DetailValue = auto_id.Envelope.Detail.Payload(payload),
+            DetailValue = new auto_id.Envelope.Detail.Payload(payload),
             Status = auto_id.Status.Ok,
         };
     }
@@ -488,7 +489,7 @@ public sealed class RoundtripTests
             TaggedU64Value = 2222222222,
             Float32Value = 2.5f,
             Float64Value = 3.5,
-            ContactValue = complex_pb.PrimitiveTypes.Contact.Phone(12345),
+            ContactValue = new complex_pb.PrimitiveTypes.Contact.Phone(12345),
         };
     }
 
@@ -511,7 +512,7 @@ public sealed class RoundtripTests
 
     private static collection.NumericCollectionUnion BuildNumericCollectionUnion()
     {
-        return collection.NumericCollectionUnion.Int32Values([7, 8, 9]);
+        return new collection.NumericCollectionUnion.Int32Values([7, 8, 9]);
     }
 
     private static collection.NumericCollectionsArray BuildNumericCollectionsArray()
@@ -533,7 +534,7 @@ public sealed class RoundtripTests
 
     private static collection.NumericCollectionArrayUnion BuildNumericCollectionArrayUnion()
     {
-        return collection.NumericCollectionArrayUnion.Uint16Values([1000, 2000, 3000]);
+        return new collection.NumericCollectionArrayUnion.Uint16Values([1000, 2000, 3000]);
     }
 
     private static example.ExampleMessage BuildExampleMessage()
@@ -548,7 +549,7 @@ public sealed class RoundtripTests
             Label = "other",
             Count = 8,
         };
-        example.ExampleLeafUnion leafUnion = example.ExampleLeafUnion.Leaf(otherLeaf);
+        example.ExampleLeafUnion leafUnion = new example.ExampleLeafUnion.Leaf(otherLeaf);
 
         return new example.ExampleMessage
         {
@@ -622,7 +623,7 @@ public sealed class RoundtripTests
             DecimalList = [1.25m, 2.50m],
             EnumList = [example.ExampleState.Unknown, example.ExampleState.Failed],
             MessageList = [leaf, otherLeaf],
-            UnionList = [example.ExampleLeafUnion.Note("note"), leafUnion],
+            UnionList = [new example.ExampleLeafUnion.Note("note"), leafUnion],
             MaybeFixedI32List = [1, null, 3],
             MaybeUint64List = [10, null, 30],
             BoolArray = [true, false],
@@ -681,7 +682,7 @@ public sealed class RoundtripTests
             MessageValuesByName = new Dictionary<string, example.ExampleLeaf> { ["leaf"] = leaf },
             UnionValuesByName = new Dictionary<string, example.ExampleLeafUnion>
             {
-                ["union"] = example.ExampleLeafUnion.Code(42),
+                ["union"] = new example.ExampleLeafUnion.Code(42),
             },
             Uint8ArrayValuesByName = new Dictionary<string, byte[]>
             {
@@ -730,12 +731,12 @@ public sealed class RoundtripTests
 
     private static example.ExampleMessageUnion BuildExampleMessageUnion()
     {
-        return example.ExampleMessageUnion.Int32ArrayList([[11, 12], [13, 14]]);
+        return new example.ExampleMessageUnion.Int32ArrayList([[11, 12], [13, 14]]);
     }
 
     private static example.ExampleMessageUnion BuildExampleArrayListUnion()
     {
-        return example.ExampleMessageUnion.Uint8ArrayList([[4, 5], [6]]);
+        return new example.ExampleMessageUnion.Uint8ArrayList([[4, 5], [6]]);
     }
 
     private static optional_types.OptionalHolder BuildOptionalHolder()
@@ -781,7 +782,7 @@ public sealed class RoundtripTests
         return new optional_types.OptionalHolder
         {
             AllTypes = all,
-            Choice = optional_types.OptionalUnion.Note("optional"),
+            Choice = new optional_types.OptionalUnion.Note("optional"),
         };
     }
 
@@ -797,7 +798,7 @@ public sealed class RoundtripTests
             {
                 Name = "inner",
             },
-            UnionValue = any_example.AnyUnion.Text("union"),
+            UnionValue = new any_example.AnyUnion.Text("union"),
             ListValue = new List<string>
             {
                 "alpha",
@@ -815,7 +816,7 @@ public sealed class RoundtripTests
     {
         any_example_pb.AnyUnion union = new()
         {
-            KindValue = any_example_pb.AnyUnion.Kind.Text("proto-union"),
+            KindValue = new any_example_pb.AnyUnion.Kind.Text("proto-union"),
         };
 
         return new any_example_pb.AnyHolder
@@ -885,7 +886,7 @@ public sealed class RoundtripTests
             },
             Names = ["alpha", "beta"],
             Flags = [true, false],
-            Payload = complex_fbs.Payload.Metric(new complex_fbs.Metric
+            Payload = new complex_fbs.Payload.Metric(new complex_fbs.Metric
             {
                 Value = 42.0,
             }),
@@ -986,9 +987,9 @@ public sealed class RoundtripTests
         Assert.Equal(expectedPerson.Phones.Count, actualPerson.Phones.Count);
         Assert.Equal(expectedPerson.Phones[0].Number, actualPerson.Phones[0].Number);
         Assert.Equal(expectedPerson.Phones[0].PhoneType, actualPerson.Phones[0].PhoneType);
-        Assert.True(actualPerson.Pet.IsCat);
-        Assert.Equal("Mimi", actualPerson.Pet.CatValue().Name);
-        Assert.Equal(9, actualPerson.Pet.CatValue().Lives);
+        addressbook.Animal.Cat cat = Assert.IsType<addressbook.Animal.Cat>(actualPerson.Pet);
+        Assert.Equal("Mimi", cat.Value.Name);
+        Assert.Equal(9, cat.Value.Lives);
     }
 
     private static void AssertEnvelope(auto_id.Envelope expected, auto_id.Envelope actual)
@@ -1000,8 +1001,11 @@ public sealed class RoundtripTests
         Assert.Equal(expected.Status, actual.Status);
 
         Assert.NotNull(actual.DetailValue);
-        Assert.True(actual.DetailValue.IsPayload);
-        Assert.Equal(expected.DetailValue.PayloadValue().Value, actual.DetailValue.PayloadValue().Value);
+        auto_id.Envelope.Detail.Payload expectedPayload =
+            Assert.IsType<auto_id.Envelope.Detail.Payload>(expected.DetailValue);
+        auto_id.Envelope.Detail.Payload actualPayload =
+            Assert.IsType<auto_id.Envelope.Detail.Payload>(actual.DetailValue);
+        Assert.Equal(expectedPayload.Value.Value, actualPayload.Value.Value);
     }
 
     private static void AssertPrimitiveTypes(complex_pb.PrimitiveTypes expected, complex_pb.PrimitiveTypes actual)
@@ -1026,9 +1030,11 @@ public sealed class RoundtripTests
 
         Assert.NotNull(expected.ContactValue);
         Assert.NotNull(actual.ContactValue);
-        Assert.Equal(expected.ContactValue.CaseId(), actual.ContactValue.CaseId());
-        Assert.True(actual.ContactValue.IsPhone);
-        Assert.Equal(expected.ContactValue.PhoneValue(), actual.ContactValue.PhoneValue());
+        complex_pb.PrimitiveTypes.Contact.Phone expectedPhone =
+            Assert.IsType<complex_pb.PrimitiveTypes.Contact.Phone>(expected.ContactValue);
+        complex_pb.PrimitiveTypes.Contact.Phone actualPhone =
+            Assert.IsType<complex_pb.PrimitiveTypes.Contact.Phone>(actual.ContactValue);
+        Assert.Equal(expectedPhone.Value, actualPhone.Value);
     }
 
     private static void AssertNumericCollections(
@@ -1051,9 +1057,11 @@ public sealed class RoundtripTests
         collection.NumericCollectionUnion expected,
         collection.NumericCollectionUnion actual)
     {
-        Assert.Equal(expected.CaseId(), actual.CaseId());
-        Assert.True(actual.IsInt32Values);
-        Assert.Equal(expected.Int32ValuesValue(), actual.Int32ValuesValue());
+        collection.NumericCollectionUnion.Int32Values expectedValues =
+            Assert.IsType<collection.NumericCollectionUnion.Int32Values>(expected);
+        collection.NumericCollectionUnion.Int32Values actualValues =
+            Assert.IsType<collection.NumericCollectionUnion.Int32Values>(actual);
+        Assert.Equal(expectedValues.Value, actualValues.Value);
     }
 
     private static void AssertNumericCollectionsArray(
@@ -1076,9 +1084,11 @@ public sealed class RoundtripTests
         collection.NumericCollectionArrayUnion expected,
         collection.NumericCollectionArrayUnion actual)
     {
-        Assert.Equal(expected.CaseId(), actual.CaseId());
-        Assert.True(actual.IsUint16Values);
-        Assert.Equal(expected.Uint16ValuesValue(), actual.Uint16ValuesValue());
+        collection.NumericCollectionArrayUnion.Uint16Values expectedValues =
+            Assert.IsType<collection.NumericCollectionArrayUnion.Uint16Values>(expected);
+        collection.NumericCollectionArrayUnion.Uint16Values actualValues =
+            Assert.IsType<collection.NumericCollectionArrayUnion.Uint16Values>(actual);
+        Assert.Equal(expectedValues.Value, actualValues.Value);
     }
 
     private static void AssertExampleMessage(example.ExampleMessage expected, example.ExampleMessage actual)
@@ -1173,23 +1183,25 @@ public sealed class RoundtripTests
     {
         Assert.NotNull(expected);
         Assert.NotNull(actual);
-        Assert.Equal(expected.CaseId(), actual.CaseId());
-        switch (expected.Case())
+        switch (expected)
         {
-            case example.ExampleLeafUnion.ExampleLeafUnionCase.Note:
-                Assert.True(actual.IsNote);
-                Assert.Equal(expected.NoteValue(), actual.NoteValue());
+            case example.ExampleLeafUnion.Note expectedNote:
+                example.ExampleLeafUnion.Note actualNote =
+                    Assert.IsType<example.ExampleLeafUnion.Note>(actual);
+                Assert.Equal(expectedNote.Value, actualNote.Value);
                 break;
-            case example.ExampleLeafUnion.ExampleLeafUnionCase.Code:
-                Assert.True(actual.IsCode);
-                Assert.Equal(expected.CodeValue(), actual.CodeValue());
+            case example.ExampleLeafUnion.Code expectedCode:
+                example.ExampleLeafUnion.Code actualCode =
+                    Assert.IsType<example.ExampleLeafUnion.Code>(actual);
+                Assert.Equal(expectedCode.Value, actualCode.Value);
                 break;
-            case example.ExampleLeafUnion.ExampleLeafUnionCase.Leaf:
-                Assert.True(actual.IsLeaf);
-                AssertExampleLeaf(expected.LeafValue(), actual.LeafValue());
+            case example.ExampleLeafUnion.Leaf expectedLeaf:
+                example.ExampleLeafUnion.Leaf actualLeaf =
+                    Assert.IsType<example.ExampleLeafUnion.Leaf>(actual);
+                AssertExampleLeaf(expectedLeaf.Value, actualLeaf.Value);
                 break;
             default:
-                Assert.Fail($"Unexpected ExampleLeafUnion case {expected.CaseId()}");
+                Assert.Fail($"Unexpected ExampleLeafUnion case {expected.GetType()}");
                 break;
         }
     }
@@ -1200,27 +1212,30 @@ public sealed class RoundtripTests
     {
         Assert.NotNull(expected);
         Assert.NotNull(actual);
-        Assert.Equal(expected.CaseId(), actual.CaseId());
-        switch (expected.Case())
+        switch (expected)
         {
-            case example.ExampleMessageUnion.ExampleMessageUnionCase.Int32ArrayList:
-                Assert.True(actual.IsInt32ArrayList);
-                AssertArrayList(expected.Int32ArrayListValue(), actual.Int32ArrayListValue());
+            case example.ExampleMessageUnion.Int32ArrayList expectedIntList:
+                example.ExampleMessageUnion.Int32ArrayList actualIntList =
+                    Assert.IsType<example.ExampleMessageUnion.Int32ArrayList>(actual);
+                AssertArrayList(expectedIntList.Value, actualIntList.Value);
                 break;
-            case example.ExampleMessageUnion.ExampleMessageUnionCase.Uint8ArrayList:
-                Assert.True(actual.IsUint8ArrayList);
-                AssertArrayList(expected.Uint8ArrayListValue(), actual.Uint8ArrayListValue());
+            case example.ExampleMessageUnion.Uint8ArrayList expectedByteList:
+                example.ExampleMessageUnion.Uint8ArrayList actualByteList =
+                    Assert.IsType<example.ExampleMessageUnion.Uint8ArrayList>(actual);
+                AssertArrayList(expectedByteList.Value, actualByteList.Value);
                 break;
-            case example.ExampleMessageUnion.ExampleMessageUnionCase.Uint8ArrayValuesByName:
-                Assert.True(actual.IsUint8ArrayValuesByName);
-                AssertArrayMap(expected.Uint8ArrayValuesByNameValue(), actual.Uint8ArrayValuesByNameValue());
+            case example.ExampleMessageUnion.Uint8ArrayValuesByName expectedByteMap:
+                example.ExampleMessageUnion.Uint8ArrayValuesByName actualByteMap =
+                    Assert.IsType<example.ExampleMessageUnion.Uint8ArrayValuesByName>(actual);
+                AssertArrayMap(expectedByteMap.Value, actualByteMap.Value);
                 break;
-            case example.ExampleMessageUnion.ExampleMessageUnionCase.Int32ArrayValuesByName:
-                Assert.True(actual.IsInt32ArrayValuesByName);
-                AssertArrayMap(expected.Int32ArrayValuesByNameValue(), actual.Int32ArrayValuesByNameValue());
+            case example.ExampleMessageUnion.Int32ArrayValuesByName expectedIntMap:
+                example.ExampleMessageUnion.Int32ArrayValuesByName actualIntMap =
+                    Assert.IsType<example.ExampleMessageUnion.Int32ArrayValuesByName>(actual);
+                AssertArrayMap(expectedIntMap.Value, actualIntMap.Value);
                 break;
             default:
-                Assert.Fail($"Unexpected ExampleMessageUnion case {expected.CaseId()}");
+                Assert.Fail($"Unexpected ExampleMessageUnion case {expected.GetType()}");
                 break;
         }
     }
@@ -1266,9 +1281,11 @@ public sealed class RoundtripTests
 
         Assert.NotNull(actual.Choice);
         Assert.NotNull(expected.Choice);
-        Assert.Equal(expected.Choice.CaseId(), actual.Choice.CaseId());
-        Assert.True(actual.Choice.IsNote);
-        Assert.Equal(expected.Choice.NoteValue(), actual.Choice.NoteValue());
+        optional_types.OptionalUnion.Note expectedChoice =
+            Assert.IsType<optional_types.OptionalUnion.Note>(expected.Choice);
+        optional_types.OptionalUnion.Note actualChoice =
+            Assert.IsType<optional_types.OptionalUnion.Note>(actual.Choice);
+        Assert.Equal(expectedChoice.Value, actualChoice.Value);
     }
 
     private static void AssertAnyHolder(any_example.AnyHolder expected, any_example.AnyHolder actual)
@@ -1293,11 +1310,11 @@ public sealed class RoundtripTests
         Assert.True(TryAnyInnerName(actual.MessageValue, out string? actualInnerName));
         Assert.Equal(expectedInnerName, actualInnerName);
 
-        any_example.AnyUnion actualUnion = Assert.IsType<any_example.AnyUnion>(actual.UnionValue);
-        any_example.AnyUnion expectedUnion = Assert.IsType<any_example.AnyUnion>(expected.UnionValue);
-        Assert.Equal(expectedUnion.CaseId(), actualUnion.CaseId());
-        Assert.True(actualUnion.IsText);
-        Assert.Equal(expectedUnion.TextValue(), actualUnion.TextValue());
+        any_example.AnyUnion.Text actualUnion =
+            Assert.IsType<any_example.AnyUnion.Text>(actual.UnionValue);
+        any_example.AnyUnion.Text expectedUnion =
+            Assert.IsType<any_example.AnyUnion.Text>(expected.UnionValue);
+        Assert.Equal(expectedUnion.Value, actualUnion.Value);
 
         Assert.True(TryStringList(expected.ListValue, out List<string> expectedList));
         Assert.True(TryStringList(actual.ListValue, out List<string> actualList));
@@ -1334,9 +1351,11 @@ public sealed class RoundtripTests
         any_example_pb.AnyUnion actualUnion = Assert.IsType<any_example_pb.AnyUnion>(actual.UnionValue);
         Assert.NotNull(expectedUnion.KindValue);
         Assert.NotNull(actualUnion.KindValue);
-        Assert.Equal(expectedUnion.KindValue!.CaseId(), actualUnion.KindValue!.CaseId());
-        Assert.True(actualUnion.KindValue.IsText);
-        Assert.Equal(expectedUnion.KindValue.TextValue(), actualUnion.KindValue.TextValue());
+        any_example_pb.AnyUnion.Kind.Text expectedKind =
+            Assert.IsType<any_example_pb.AnyUnion.Kind.Text>(expectedUnion.KindValue);
+        any_example_pb.AnyUnion.Kind.Text actualKind =
+            Assert.IsType<any_example_pb.AnyUnion.Kind.Text>(actualUnion.KindValue);
+        Assert.Equal(expectedKind.Value, actualKind.Value);
 
         Assert.True(TryStringList(expected.ListValue, out List<string> expectedList));
         Assert.True(TryStringList(actual.ListValue, out List<string> actualList));
@@ -1386,9 +1405,11 @@ public sealed class RoundtripTests
 
         Assert.NotNull(expected.Payload);
         Assert.NotNull(actual.Payload);
-        Assert.Equal(expected.Payload.CaseId(), actual.Payload.CaseId());
-        Assert.True(actual.Payload.IsMetric);
-        Assert.Equal(expected.Payload.MetricValue().Value, actual.Payload.MetricValue().Value);
+        complex_fbs.Payload.Metric expectedMetric =
+            Assert.IsType<complex_fbs.Payload.Metric>(expected.Payload);
+        complex_fbs.Payload.Metric actualMetric =
+            Assert.IsType<complex_fbs.Payload.Metric>(actual.Payload);
+        Assert.Equal(expectedMetric.Value.Value, actualMetric.Value.Value);
     }
 
     private static void AssertTree(tree.TreeNode root)

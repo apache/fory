@@ -25,6 +25,52 @@ namespace Apache.Fory.Tests;
 public sealed class ForyGeneratorTests
 {
     [Fact]
+    public void SplitAttributesCompile()
+    {
+        const string source = """
+            using Apache.Fory;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyEnum]
+            public enum Status
+            {
+                Ready,
+                Done,
+            }
+
+            [ForyUnion]
+            public abstract partial record Choice
+            {
+                private Choice()
+                {
+                }
+
+                [ForyUnknownCase]
+                public sealed partial record Unknown(UnknownCase Value) : Choice;
+
+                [ForyCase(0)]
+                public sealed partial record Text(string Value) : Choice;
+            }
+
+            [ForyStruct]
+            public sealed class Envelope
+            {
+                public Status Status { get; set; }
+                public Choice Choice { get; set; } = new Choice.Text(string.Empty);
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
+
+        Assert.DoesNotContain(
+            diagnostics.Concat(output.GetDiagnostics()),
+            diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+    }
+
+    [Fact]
     public void NegativeForyFieldIdReportsDiagnostic()
     {
         const string source = """
@@ -32,7 +78,7 @@ public sealed class ForyGeneratorTests
 
             namespace GeneratedDiagnostics;
 
-            [ForyObject]
+            [ForyStruct]
             public sealed class InvalidFieldId
             {
                 [ForyField(-1)]
@@ -41,12 +87,45 @@ public sealed class ForyGeneratorTests
             """;
 
         CSharpCompilation compilation = CreateCompilation(source);
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyObjectGenerator());
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
 
         ImmutableArray<Diagnostic> generatorDiagnostics = driver.GetRunResult().Diagnostics;
         Assert.Contains(generatorDiagnostics.Concat(diagnostics), diagnostic => diagnostic.Id == "FORY004");
         Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id != "FORY004");
+    }
+
+    [Fact]
+    public void UnionRequiresRealCaseBeyondUnknown()
+    {
+        const string source = """
+            using Apache.Fory;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyUnion]
+            public abstract partial record OnlyUnknown
+            {
+                private OnlyUnknown()
+                {
+                }
+
+                [ForyUnknownCase]
+                public sealed partial record Unknown(UnknownCase Value) : OnlyUnknown;
+            }
+            """;
+
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
+
+        ImmutableArray<Diagnostic> generatorDiagnostics = driver.GetRunResult().Diagnostics;
+        Assert.Contains(
+            generatorDiagnostics.Concat(diagnostics),
+            diagnostic =>
+                diagnostic.Id == "FORY006" &&
+                diagnostic.GetMessage().Contains("at least one non-Unknown case", StringComparison.Ordinal));
+        Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id != "FORY006");
     }
 
     private static CSharpCompilation CreateCompilation(string source)
@@ -56,7 +135,7 @@ public sealed class ForyGeneratorTests
             .Split(Path.PathSeparator)
             .Select(path => MetadataReference.CreateFromFile(path));
         MetadataReference foryReference =
-            MetadataReference.CreateFromFile(typeof(ForyObjectAttribute).Assembly.Location);
+            MetadataReference.CreateFromFile(typeof(ForyStructAttribute).Assembly.Location);
 
         return CSharpCompilation.Create(
             "ForyGeneratorDiagnostics",

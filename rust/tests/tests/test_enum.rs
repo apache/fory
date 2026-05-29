@@ -25,10 +25,14 @@ use std::collections::HashMap;
 fn basic() {
     #[derive(ForyUnion, Debug, PartialEq)]
     enum Token {
+        #[fory(default)]
         Plus,
         Number(i64),
         Ident(String),
-        Assign { target: String, value: i32 },
+        Assign {
+            target: String,
+            value: i32,
+        },
         Other(Option<i64>),
         Child(Box<Token>),
         Map(HashMap<String, Token>),
@@ -67,11 +71,13 @@ fn basic() {
 fn named_enum() {
     #[derive(ForyUnion, Debug, PartialEq)]
     enum Token1 {
+        #[fory(default)]
         Assign { target: String, value: i32 },
     }
 
     #[derive(ForyUnion, Debug, PartialEq)]
     enum Token2 {
+        #[fory(default)]
         Assign { value: i32, target: String },
     }
 
@@ -152,13 +158,29 @@ fn struct_with_enum_field() {
 /// which should be compatible with Java's Union: index + xwriteRef(value)
 #[test]
 fn union_compatible_enum_xlang_format() {
-    use fory_core::serializer::Serializer;
+    use fory_core::serializer::{ForyDefault, Serializer};
     use fory_core::type_id::TypeId;
 
     // Define a Union-compatible enum (each variant has exactly one field)
+    #[allow(dead_code)]
     #[derive(ForyUnion, Debug, PartialEq, Clone)]
     enum StringOrLong {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+        #[fory(id = 0, default)]
         Text(String),
+        #[fory(id = 1)]
+        Number(i64),
+    }
+
+    #[allow(dead_code)]
+    #[derive(ForyUnion, Debug, PartialEq, Clone)]
+    enum ForwardStringOrLong {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+        #[fory(id = 0, default)]
+        Text(String),
+        #[fory(id = 1)]
         Number(i64),
     }
 
@@ -168,7 +190,10 @@ fn union_compatible_enum_xlang_format() {
         TypeId::UNION,
         "Union-compatible enum should have UNION TypeId"
     );
-
+    assert_eq!(
+        ForwardStringOrLong::fory_default(),
+        ForwardStringOrLong::Text(String::new())
+    );
     // Struct containing the Union-compatible enum
     #[derive(ForyStruct, Debug, PartialEq)]
     struct StructWithUnion {
@@ -201,6 +226,8 @@ fn union_compatible_enum_xlang_format() {
 fn union_payload_nested_codec_annotations_roundtrip() {
     #[derive(ForyUnion, Debug, PartialEq)]
     enum Payload {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
         Empty,
         Values(#[fory(list(element(nullable = true, encoding = fixed)))] Vec<Option<i32>>),

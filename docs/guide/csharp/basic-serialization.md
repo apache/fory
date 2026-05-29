@@ -23,19 +23,19 @@ This page covers typed serialization APIs in Apache Fory™ C#.
 
 ## Object Graph Serialization
 
-Use `[ForyObject]` on your classes/structs and register them before use.
+Use `[ForyStruct]` on your classes/structs and register them before use.
 
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class Address
 {
     public string Street { get; set; } = string.Empty;
     public int Zip { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Person
 {
     public long Id { get; set; }
@@ -122,7 +122,7 @@ fory.Serialize<object?>(dynamicWriter, value);
 
 - Reuse the same `Fory` or `ThreadSafeFory` instance for better performance.
 - Primitive types and collections do not require user registration.
-- User `[ForyObject]` and custom serializer types should be registered explicitly.
+- User `[ForyStruct]`, `[ForyEnum]`, `[ForyUnion]`, and custom serializer types should be registered explicitly.
 
 ## Related Topics
 

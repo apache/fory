@@ -36,13 +36,13 @@ Compatible mode writes type metadata that allows readers and writers with differ
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class OneStringField
 {
     public string? F1 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class TwoStringField
 {
     public string F1 { get; set; } = string.Empty;

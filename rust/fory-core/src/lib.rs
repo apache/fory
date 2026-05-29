@@ -209,4 +209,4 @@ pub use crate::serializer::{read_data, write_data, ForyDefault, Serializer, Stru
 pub use crate::type_id::TypeId;
 pub use crate::types::bfloat16::bfloat16 as BFloat16;
 pub use crate::types::float16::float16 as Float16;
-pub use crate::types::{ArcWeak, Date, Decimal, Duration, RcWeak, Timestamp};
+pub use crate::types::{ArcWeak, Date, Decimal, Duration, RcWeak, Timestamp, UnknownCase};

@@ -19,17 +19,17 @@ license: |
   limitations under the License.
 ---
 
-This page covers field-level serializer configuration for C# generated serializers.
+This page covers schema metadata for C# generated serializers.
 
-## `[ForyObject]` and `[ForyField]`
+## `[ForyStruct]` and `[ForyField]`
 
-Use `[ForyObject]` to enable source-generated serializers. Use `[ForyField]` to assign an optional stable non-negative field id or to override the Fory schema type used for a field.
+Use `[ForyStruct]` to enable source-generated serializers. Use `[ForyField]` to assign an optional stable non-negative field id or to override the Fory schema type used for a field.
 
 ```csharp
 using Apache.Fory;
 using S = Apache.Fory.Schema.Types;
 
-[ForyObject]
+[ForyStruct]
 public sealed class Metrics
 {
     [ForyField(Type = typeof(S.UInt32))]
@@ -48,7 +48,7 @@ public sealed class Metrics
 using Apache.Fory;
 using S = Apache.Fory.Schema.Types;
 
-[ForyObject]
+[ForyStruct]
 public sealed class NestedMetrics
 {
     [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
@@ -80,6 +80,36 @@ Container descriptors are composable:
 Dense array fields use `S.Array<TElement>`, for example `S.Array<S.Int32>` or `S.Array<S.BFloat16>`.
 
 Nullability comes from the C# carrier type. Use `List<ulong?>` for nullable list elements and `NullableKeyDictionary<TKey, TValue>` when a map needs nullable keys.
+
+## `[ForyUnion]` and `[ForyCase]`
+
+Generated union cases use `[ForyCase]` for both the stable case ID and optional
+case payload schema type. Do not put `[ForyField]` on union case payload
+members. Known case record names use PascalCase FDL case names; payload types
+use qualified references when needed to avoid name conflicts. A typed union must
+declare at least one non-`Unknown` case; `Unknown(UnknownCase)` is only the
+runtime forward-compatibility carrier. The marker only selects the carrier and
+does not add an entry to the schema case table.
+
+```csharp
+using Apache.Fory;
+using S = Apache.Fory.Schema.Types;
+
+[ForyUnion]
+public abstract partial record Shape
+{
+    private Shape() {}
+
+    [ForyUnknownCase]
+    public sealed partial record Unknown(UnknownCase Value) : Shape;
+
+    [ForyCase(0)]
+    public sealed partial record Circle(global::example.Circle Value) : Shape;
+
+    [ForyCase(1, Type = typeof(S.Fixed<S.Int32>))]
+    public sealed partial record Code(int Value) : Shape;
+}
+```
 
 ## Nullability and Reference Tracking
 

@@ -56,7 +56,7 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
 
       val envelope = BasicEnvelope(
         Some(Money(new BigDecimal("12.34"), "USD")),
-        BasicValue.MoneyCase(Money(new BigDecimal("56.78"), "EUR")),
+        BasicValue.Money(Money(new BigDecimal("56.78"), "EUR")),
         None)
 
       fory.deserialize(fory.serialize(envelope)) shouldEqual envelope
@@ -98,7 +98,7 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
         uint64Values = List(12L, -1L),
         float32Values = List(1.5f, -2.5f),
         float64Values = List(3.5d, -4.5d))
-      val union = NumericCollectionUnion.Uint32ValuesCase(List(1L, 4294967295L))
+      val union = NumericCollectionUnion.Uint32Values(List(1L, 4294967295L))
       val arrays = NumericCollectionsArray(
         int8Values = Array[Byte](1, -2),
         int16Values = Array[Short](3, -4),
@@ -110,7 +110,7 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
         uint64Values = Array[Long](12L, -1L),
         float32Values = Array[Float](1.5f, -2.5f),
         float64Values = Array[Double](3.5d, -4.5d))
-      val arrayUnion = NumericCollectionArrayUnion.Uint32ValuesCase(Array[Int](1, -1))
+      val arrayUnion = NumericCollectionArrayUnion.Uint32Values(Array[Int](1, -1))
 
       fory.deserialize(fory.serialize(collections)) shouldEqual collections
       fory.deserialize(fory.serialize(union)) shouldEqual union
@@ -119,8 +119,8 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
       arraysRoundTrip.uint32Values.sameElements(arrays.uint32Values) shouldBe true
       val arrayUnionRoundTrip =
         fory.deserialize(fory.serialize(arrayUnion)).asInstanceOf[NumericCollectionArrayUnion]
-      arrayUnionRoundTrip.asInstanceOf[NumericCollectionArrayUnion.Uint32ValuesCase].value
-        .sameElements(arrayUnion.asInstanceOf[NumericCollectionArrayUnion.Uint32ValuesCase].value) shouldBe true
+      arrayUnionRoundTrip.asInstanceOf[NumericCollectionArrayUnion.Uint32Values].value
+        .sameElements(arrayUnion.asInstanceOf[NumericCollectionArrayUnion.Uint32Values].value) shouldBe true
     }
 
     "preserve generated Scala enum metadata in nested descriptors" in {
@@ -214,7 +214,7 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
       val envelope = nested_name.Envelope(
         Some(root),
         nested_name.Envelope.Kind.Active,
-        nested_name.Envelope.Choice.NodeCase(child))
+        nested_name.Envelope.Choice.Node(child))
 
       val roundTrip = fory.deserialize(fory.serialize(envelope)).asInstanceOf[nested_name.Envelope]
       roundTrip.kind shouldBe nested_name.Envelope.Kind.Active
@@ -223,7 +223,7 @@ final class ScalaIdlRoundTripTest extends AnyWordSpec with Matchers {
       val roundTripChild = roundTripRoot.children.head
       roundTripChild.id shouldEqual "child"
       roundTripChild.parent.get shouldBe theSameInstanceAs(roundTripRoot)
-      roundTrip.choice.asInstanceOf[nested_name.Envelope.Choice.NodeCase].value shouldBe
+      roundTrip.choice.asInstanceOf[nested_name.Envelope.Choice.Node].value shouldBe
         theSameInstanceAs(roundTripChild)
     }
   }

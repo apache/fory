@@ -246,8 +246,10 @@ final class TypeResolver {
   final WireTypeMetaEncoder _wireTypeMetaEncoder = const WireTypeMetaEncoder();
   final WireTypeMetaDecoder _wireTypeMetaDecoder = const WireTypeMetaDecoder();
   final ParsedTypeMetaCache _parsedTypeMetaCache = ParsedTypeMetaCache();
-  final List<TypeInfo?> _lastNamedTypeByWireType =
-      List<TypeInfo?>.filled(64, null);
+  final List<TypeInfo?> _lastNamedTypeByWireType = List<TypeInfo?>.filled(
+    64,
+    null,
+  );
   final Map<_BuiltinKey, TypeInfo> _builtinByKey = <_BuiltinKey, TypeInfo>{};
   final List<_NamedTypeReadCacheEntry?> _namedTypeLookupCache =
       List<_NamedTypeReadCacheEntry?>.filled(128, null);
@@ -256,8 +258,11 @@ final class TypeResolver {
   final Map<int, TypeInfo> _registeredById = <int, TypeInfo>{};
   final Map<String, TypeInfo> _registeredByName = <String, TypeInfo>{};
   final Map<EncodedMetaString, Map<EncodedMetaString, TypeInfo>>
-      _registeredByEncodedName = LinkedHashMap<EncodedMetaString,
-          Map<EncodedMetaString, TypeInfo>>.identity();
+  _registeredByEncodedName =
+      LinkedHashMap<
+        EncodedMetaString,
+        Map<EncodedMetaString, TypeInfo>
+      >.identity();
   final Map<String, EncodedMetaString> _packageMetaStrings =
       <String, EncodedMetaString>{};
   final Map<String, EncodedMetaString> _typeNameMetaStrings =
@@ -265,8 +270,7 @@ final class TypeResolver {
   final Map<String, EncodedMetaString> _fieldNameMetaStrings =
       <String, EncodedMetaString>{};
   final Map<_EncodedMetaStringKey, EncodedMetaString>
-      _internedEncodedMetaStrings =
-      <_EncodedMetaStringKey, EncodedMetaString>{};
+  _internedEncodedMetaStrings = <_EncodedMetaStringKey, EncodedMetaString>{};
   final Map<TypeInfo, Uint8List> _initialTypeMetaBytes =
       LinkedHashMap<TypeInfo, Uint8List>.identity();
 
@@ -278,24 +282,24 @@ final class TypeResolver {
     String? namespace,
     String? typeName,
   }) {
-    final registration = GeneratedRegistrationCatalog.lookup(type);
-    if (registration == null) {
+    final entry = GeneratedTypeCatalog.lookup(type);
+    if (entry == null) {
       throw StateError(
-        'Type $type has no generated registration metadata. '
+        'Type $type has no generated type metadata. '
         'Register it through its generated library namespace first.',
       );
     }
     _registerResolvedSerializer(
       type,
-      registration.serializerFactory(),
-      switch (registration.kind) {
-        GeneratedRegistrationKind.enumType => RegistrationKind.enumType,
-        GeneratedRegistrationKind.struct => RegistrationKind.struct,
+      entry.serializerFactory(),
+      switch (entry.kind) {
+        GeneratedTypeKind.enumType => RegistrationKind.enumType,
+        GeneratedTypeKind.struct => RegistrationKind.struct,
       },
-      evolving: registration.evolving,
-      fields: registration.fields,
-      needsRootRef: registration.needsRootRef,
-      usesNestedTypeDefinitions: registration.usesNestedTypeDefinitions,
+      evolving: entry.evolving,
+      fields: entry.fields,
+      needsRootRef: entry.needsRootRef,
+      usesNestedTypeDefinitions: entry.usesNestedTypeDefinitions,
       id: id,
       namespace: namespace,
       typeName: typeName,
@@ -337,9 +341,10 @@ final class TypeResolver {
         namespace == null ? null : packageMetaString(namespace);
     final encodedTypeName =
         typeName == null ? null : typeNameMetaString(typeName);
-    final normalizedFields = registrationKind == RegistrationKind.struct
-        ? _validateFieldInfos(fields)
-        : const <FieldInfo>[];
+    final normalizedFields =
+        registrationKind == RegistrationKind.struct
+            ? _validateFieldInfos(fields)
+            : const <FieldInfo>[];
     final typeDef = _buildTypeDef(
       kind: registrationKind,
       evolving: registrationKind == RegistrationKind.struct ? evolving : false,
@@ -348,25 +353,24 @@ final class TypeResolver {
       encodedTypeName: encodedTypeName,
       fields: normalizedFields,
     );
-    final structSerializer = registrationKind != RegistrationKind.struct
-        ? null
-        : StructSerializer(
-            payloadSerializer,
-            typeDef,
-            this,
-          );
+    final structSerializer =
+        registrationKind != RegistrationKind.struct
+            ? null
+            : StructSerializer(payloadSerializer, typeDef, this);
     final resolved = TypeInfo(
       type: type,
       kind: registrationKind,
       typeId: _defaultTypeIdForType(type),
       supportsRef: payloadSerializer.supportsRef,
-      needsRootRef: registrationKind == RegistrationKind.struct
-          ? needsRootRef ?? _fieldsNeedRootRef(normalizedFields)
-          : payloadSerializer.supportsRef,
-      usesNestedTypeDefinitions: registrationKind == RegistrationKind.struct
-          ? usesNestedTypeDefinitions ??
-              _fieldsUseNestedTypeDefinitions(normalizedFields)
-          : true,
+      needsRootRef:
+          registrationKind == RegistrationKind.struct
+              ? needsRootRef ?? _fieldsNeedRootRef(normalizedFields)
+              : payloadSerializer.supportsRef,
+      usesNestedTypeDefinitions:
+          registrationKind == RegistrationKind.struct
+              ? usesNestedTypeDefinitions ??
+                  _fieldsUseNestedTypeDefinitions(normalizedFields)
+              : true,
       serializer: payloadSerializer,
       structSerializer: structSerializer,
       userTypeId: id,
@@ -378,8 +382,13 @@ final class TypeResolver {
       remoteTypeDef: null,
     );
     _parsedTypeMetaCache.remember(TypeHeader(typeDef.header), resolved);
-    _rememberResolved(type, resolved,
-        id: id, namespace: namespace, typeName: typeName);
+    _rememberResolved(
+      type,
+      resolved,
+      id: id,
+      namespace: namespace,
+      typeName: typeName,
+    );
   }
 
   EncodedMetaString packageMetaString(String value) {
@@ -634,7 +643,8 @@ final class TypeResolver {
     EncodedMetaString namespace,
     EncodedMetaString typeName,
   ) {
-    final slot = _namedTypeLookupCacheIndex(wireTypeId, namespace, typeName) &
+    final slot =
+        _namedTypeLookupCacheIndex(wireTypeId, namespace, typeName) &
         (_namedTypeLookupCache.length - 1);
     final cached = _namedTypeLookupCache[slot];
     if (cached != null &&
@@ -674,13 +684,14 @@ final class TypeResolver {
       field: field,
       index: index,
       declaredTypeInfo: declaredTypeInfo,
-      usesDeclaredType: declaredTypeInfo != null
-          ? usesDeclaredTypeInfo(
-              config.compatible,
-              fieldType,
-              declaredTypeInfo,
-            )
-          : false,
+      usesDeclaredType:
+          declaredTypeInfo != null
+              ? usesDeclaredTypeInfo(
+                config.compatible,
+                fieldType,
+                declaredTypeInfo,
+              )
+              : false,
     );
   }
 
@@ -688,10 +699,7 @@ final class TypeResolver {
     return _wireTypeMetaEncoder.typeMetaFor(config, resolved);
   }
 
-  TypeDef typeDefForResolved(
-    TypeInfo resolved, {
-    List<FieldInfo>? fields,
-  }) {
+  TypeDef typeDefForResolved(TypeInfo resolved, {List<FieldInfo>? fields}) {
     final resolvedFields = resolved.typeDef?.fields;
     if (fields == null || identical(fields, resolvedFields)) {
       return resolved.typeDef!;
@@ -720,8 +728,11 @@ final class TypeResolver {
       return;
     }
     if (_wireTypeWritesTypeDef(wireTypeId)) {
-      _writeTypeDef(buffer, typeDef ?? resolved.typeDef!,
-          typeDefIds: typeDefIds);
+      _writeTypeDef(
+        buffer,
+        typeDef ?? resolved.typeDef!,
+        typeDefIds: typeDefIds,
+      );
       return;
     }
     if (_wireTypeWritesNamedType(wireTypeId)) {
@@ -839,15 +850,16 @@ final class TypeResolver {
             ? _lastNamedTypeByWireType[wireTypeId]
             : null;
       },
-      readTypeDef: () => _readTypeDef(
-        buffer,
-        sharedTypes: sharedTypes,
-        expectedType: expectedNamedType,
-      ),
-      readPackageMetaString: ([expected]) =>
-          metaStringReader.readMetaString(buffer, expected),
-      readTypeNameMetaString: ([expected]) =>
-          metaStringReader.readMetaString(buffer, expected),
+      readTypeDef:
+          () => _readTypeDef(
+            buffer,
+            sharedTypes: sharedTypes,
+            expectedType: expectedNamedType,
+          ),
+      readPackageMetaString:
+          ([expected]) => metaStringReader.readMetaString(buffer, expected),
+      readTypeNameMetaString:
+          ([expected]) => metaStringReader.readMetaString(buffer, expected),
     );
     if (typeMeta.writesNamedType) {
       _rememberNamedType(typeMeta.wireTypeId, typeMeta.resolvedType);
@@ -905,20 +917,23 @@ final class TypeResolver {
     required List<FieldInfo> fields,
   }) {
     final metaBuffer = Buffer();
-    final byName = userTypeId == null &&
+    final byName =
+        userTypeId == null &&
         encodedNamespace != null &&
         encodedTypeName != null;
     final typeId = _typeDefTypeId(kind, byName: byName, evolving: evolving);
     if (!_isStructTypeDefKind(typeId) && fields.isNotEmpty) {
       throw StateError(
-          'Non-struct TypeDef $typeId cannot carry field metadata.');
+        'Non-struct TypeDef $typeId cannot carry field metadata.',
+      );
     }
     var classHeader = 0;
     metaBuffer.writeByte(0xff);
     if (_isStructTypeDefKind(typeId)) {
-      final inlineFieldCount = fields.length >= typeDefSmallFieldCountThreshold
-          ? typeDefSmallFieldCountThreshold
-          : fields.length;
+      final inlineFieldCount =
+          fields.length >= typeDefSmallFieldCountThreshold
+              ? typeDefSmallFieldCountThreshold
+              : fields.length;
       classHeader = typeDefStructFlag | inlineFieldCount;
       if (typeId == TypeIds.compatibleStruct ||
           typeId == TypeIds.namedCompatibleStruct) {
@@ -939,16 +954,12 @@ final class TypeResolver {
       _writeTypeDefName(
         metaBuffer,
         encodedNamespace.bytes,
-        encoding: packageNameCompactEncoding(
-          encodedNamespace.encoding,
-        ),
+        encoding: packageNameCompactEncoding(encodedNamespace.encoding),
       );
       _writeTypeDefName(
         metaBuffer,
         encodedTypeName.bytes,
-        encoding: typeNameCompactEncoding(
-          encodedTypeName.encoding,
-        ),
+        encoding: typeNameCompactEncoding(encodedTypeName.encoding),
       );
     } else {
       metaBuffer.writeVarUint32(userTypeId!);
@@ -961,9 +972,7 @@ final class TypeResolver {
     }
     final body = metaBuffer.toBytes();
     final buffer = Buffer();
-    buffer.writeInt64(
-      typeDefHeader(body),
-    );
+    buffer.writeInt64(typeDefHeader(body));
     if (body.length >= 0xff) {
       buffer.writeVarUint32(body.length - 0xff);
     }
@@ -980,10 +989,11 @@ final class TypeResolver {
     if (fieldType.nullable) {
       header |= 1 << 1;
     }
-    header |= ((size >= typeDefBigFieldNameThreshold
-            ? typeDefBigFieldNameThreshold
-            : size) <<
-        2);
+    header |=
+        ((size >= typeDefBigFieldNameThreshold
+                ? typeDefBigFieldNameThreshold
+                : size) <<
+            2);
     header |=
         ((usesTag ? 3 : fieldNameCompactEncoding(encodedName!.encoding)) << 6);
     target.writeByte(header);
@@ -1015,8 +1025,11 @@ final class TypeResolver {
       target.writeUint8(typeId);
     }
     if (typeId == TypeIds.list || typeId == TypeIds.set) {
-      _writeTypeDefFieldType(target, fieldType.arguments.single,
-          writeFlags: true);
+      _writeTypeDefFieldType(
+        target,
+        fieldType.arguments.single,
+        writeFlags: true,
+      );
     } else if (typeId == TypeIds.map) {
       _writeTypeDefFieldType(target, fieldType.arguments[0], writeFlags: true);
       _writeTypeDefFieldType(target, fieldType.arguments[1], writeFlags: true);
@@ -1069,6 +1082,13 @@ final class TypeResolver {
         fieldType.typeId == TypeIds.timestamp ||
         fieldType.typeId == TypeIds.decimal) {
       return fieldType.typeId;
+    }
+    // A field whose declared type is a generated union already carries the
+    // union schema in the owning TypeDef field, so field metadata uses UNION.
+    // TYPED_UNION/NAMED_UNION are only root or dynamic Any type identities.
+    if (fieldType.typeId == TypeIds.typedUnion ||
+        fieldType.typeId == TypeIds.namedUnion) {
+      return TypeIds.union;
     }
     return fieldType.ref ? TypeIds.unknown : fieldType.typeId;
   }
@@ -1157,12 +1177,10 @@ final class TypeResolver {
       throw StateError('Invalid TypeDef metadata size.');
     }
     header.validateBodyHash(metaBody);
-    final resolved = userTypeId != null
-        ? resolveUserById(userTypeId)
-        : resolveUserByEncodedName(
-            encodedNamespace!,
-            encodedTypeName!,
-          );
+    final resolved =
+        userTypeId != null
+            ? resolveUserById(userTypeId)
+            : resolveUserByEncodedName(encodedNamespace!, encodedTypeName!);
     if (resolved.typeDef?.header != header.value &&
         _typeDefTypeId(
               resolved.kind,
@@ -1238,9 +1256,10 @@ final class TypeResolver {
       nullable: fieldNullable,
       ref: fieldRef,
     );
-    final identifier = isTag
-        ? tagId.toString()
-        : decodeFieldName(source.readBytes(size), encoding);
+    final identifier =
+        isTag
+            ? tagId.toString()
+            : decodeFieldName(source.readBytes(size), encoding);
     return FieldInfo(
       name: identifier,
       identifier: identifier,
@@ -1596,8 +1615,9 @@ final class TypeResolver {
     }
     _registeredByName[_nameKey(namespace!, typeName!)] = resolved;
     (_registeredByEncodedName[resolved.encodedNamespace!] ??=
-            LinkedHashMap<EncodedMetaString, TypeInfo>.identity())[
-        resolved.encodedTypeName!] = resolved;
+            LinkedHashMap<EncodedMetaString, TypeInfo>.identity())[resolved
+            .encodedTypeName!] =
+        resolved;
   }
 
   void _validateRegistrationMode({
@@ -1622,13 +1642,8 @@ final class TypeResolver {
   static String _nameKey(String namespace, String typeName) =>
       '$namespace::$typeName';
 
-  EncodedMetaString _canonicalMetaString(
-    EncodedMetaString encoded,
-  ) {
-    return internEncodedMetaString(
-      encoded.bytes,
-      encoding: encoded.encoding,
-    );
+  EncodedMetaString _canonicalMetaString(EncodedMetaString encoded) {
+    return internEncodedMetaString(encoded.bytes, encoding: encoded.encoding);
   }
 
   void _rememberNamedType(int wireTypeId, TypeInfo resolved) {
@@ -1640,7 +1655,8 @@ final class TypeResolver {
     if (namespace == null || typeName == null) {
       return;
     }
-    final slot = _namedTypeLookupCacheIndex(wireTypeId, namespace, typeName) &
+    final slot =
+        _namedTypeLookupCacheIndex(wireTypeId, namespace, typeName) &
         (_namedTypeLookupCache.length - 1);
     _namedTypeLookupCache[slot] = _NamedTypeReadCacheEntry(
       wireTypeId,
@@ -1658,10 +1674,7 @@ final class TypeResolver {
     return Object.hash(wireTypeId, namespace.hash, typeName.hash);
   }
 
-  bool _sameTypeDef(
-    TypeDef left,
-    TypeDef right,
-  ) {
+  bool _sameTypeDef(TypeDef left, TypeDef right) {
     if (left.evolving != right.evolving ||
         left.fields.length != right.fields.length) {
       return false;
@@ -1787,7 +1800,7 @@ final class _EncodedMetaStringKey {
   final int _hashCode;
 
   _EncodedMetaStringKey(this.encoding, this.bytes)
-      : _hashCode = Object.hash(encoding, Object.hashAll(bytes));
+    : _hashCode = Object.hash(encoding, Object.hashAll(bytes));
 
   @override
   int get hashCode => _hashCode;

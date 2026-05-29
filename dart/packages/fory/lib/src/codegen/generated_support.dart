@@ -109,11 +109,11 @@ final class GeneratedFieldInfo {
 }
 
 @internal
-final class GeneratedEnumRegistration {
+final class GeneratedEnumSchema {
   final Type type;
   final Serializer<Object?> Function() serializerFactory;
 
-  const GeneratedEnumRegistration({
+  const GeneratedEnumSchema({
     required this.type,
     required this.serializerFactory,
   });
@@ -123,7 +123,7 @@ final class GeneratedEnumRegistration {
 typedef GeneratedStructFieldInfo = SerializationFieldInfo;
 
 @internal
-final class GeneratedStructRegistration<T> {
+final class GeneratedStructSchema<T> {
   final Type type;
   final Serializer<Object?> Function() serializerFactory;
   final bool evolving;
@@ -131,7 +131,7 @@ final class GeneratedStructRegistration<T> {
   final bool usesNestedTypeDefinitions;
   final List<GeneratedFieldInfo> fields;
 
-  GeneratedStructRegistration({
+  GeneratedStructSchema({
     required this.type,
     required this.serializerFactory,
     required this.evolving,
@@ -142,61 +142,51 @@ final class GeneratedStructRegistration<T> {
 
   late final List<meta.FieldInfo> fieldInfos =
       List<meta.FieldInfo>.unmodifiable(
-    List<meta.FieldInfo>.generate(
-      fields.length,
-      (index) => fields[index].toFieldInfo(),
-    ),
-  );
+        List<meta.FieldInfo>.generate(
+          fields.length,
+          (index) => fields[index].toFieldInfo(),
+        ),
+      );
 }
 
 @internal
 void registerGeneratedEnum(
   Fory fory,
-  GeneratedEnumRegistration registration, {
+  GeneratedEnumSchema schema, {
   int? id,
   String? namespace,
   String? typeName,
 }) {
-  GeneratedRegistrationCatalog.remember(
-    registration.type,
-    GeneratedRegistration(
-      kind: GeneratedRegistrationKind.enumType,
-      serializerFactory: registration.serializerFactory,
+  GeneratedTypeCatalog.remember(
+    schema.type,
+    GeneratedTypeEntry(
+      kind: GeneratedTypeKind.enumType,
+      serializerFactory: schema.serializerFactory,
     ),
   );
-  fory.register(
-    registration.type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  );
+  fory.register(schema.type, id: id, namespace: namespace, typeName: typeName);
 }
 
 @internal
 void registerGeneratedStruct<T>(
   Fory fory,
-  GeneratedStructRegistration<T> registration, {
+  GeneratedStructSchema<T> schema, {
   int? id,
   String? namespace,
   String? typeName,
 }) {
-  GeneratedRegistrationCatalog.remember(
-    registration.type,
-    GeneratedRegistration(
-      kind: GeneratedRegistrationKind.struct,
-      serializerFactory: registration.serializerFactory,
-      evolving: registration.evolving,
-      needsRootRef: registration.needsRootRef,
-      usesNestedTypeDefinitions: registration.usesNestedTypeDefinitions,
-      fields: registration.fieldInfos,
+  GeneratedTypeCatalog.remember(
+    schema.type,
+    GeneratedTypeEntry(
+      kind: GeneratedTypeKind.struct,
+      serializerFactory: schema.serializerFactory,
+      evolving: schema.evolving,
+      needsRootRef: schema.needsRootRef,
+      usesNestedTypeDefinitions: schema.usesNestedTypeDefinitions,
+      fields: schema.fieldInfos,
     ),
   );
-  fory.register(
-    registration.type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  );
+  fory.register(schema.type, id: id, namespace: namespace, typeName: typeName);
 }
 
 @internal
@@ -370,10 +360,10 @@ T readGeneratedTypedArrayValue<T>(
 @internal
 List<GeneratedStructFieldInfo> buildGeneratedStructFieldInfos(
   resolver.TypeResolver typeResolver,
-  GeneratedStructRegistration registration,
+  GeneratedStructSchema schema,
 ) {
   return typeResolver
-      .resolvedRegisteredType(registration.type)
+      .resolvedRegisteredType(schema.type)
       .structSerializer!
       .localFields;
 }
@@ -403,7 +393,8 @@ void writeGeneratedUnionCaseValue(
     return;
   }
   final fieldType = field.fieldType;
-  final declared = fieldDeclaredTypeInfo(context.typeResolver, field) ??
+  final declared =
+      fieldDeclaredTypeInfo(context.typeResolver, field) ??
       (!fieldType.isDynamic
           ? context.typeResolver.resolveFieldType(fieldType)
           : null);
@@ -433,7 +424,8 @@ Object? readGeneratedUnionCaseValue(
     return context.getReadRef();
   }
   final fieldType = field.fieldType;
-  final declared = fieldDeclaredTypeInfo(context.typeResolver, field) ??
+  final declared =
+      fieldDeclaredTypeInfo(context.typeResolver, field) ??
       (!fieldType.isDynamic
           ? context.typeResolver.resolveFieldType(fieldType)
           : null);
@@ -553,7 +545,8 @@ void writeGeneratedDirectListValue<T>(
   final elementFieldType = fieldType.arguments.single;
   if (elementFieldType.ref || elementFieldType.isDynamic) {
     throw StateError(
-        'Field ${field.name} element type is not a direct list path.');
+      'Field ${field.name} element type is not a direct list path.',
+    );
   }
   writeTypedListPayload<T>(context, value, elementFieldType);
 }
@@ -574,7 +567,8 @@ void writeGeneratedDirectSetValue<T>(
   final elementFieldType = fieldType.arguments.single;
   if (elementFieldType.ref || elementFieldType.isDynamic) {
     throw StateError(
-        'Field ${field.name} element type is not a direct set path.');
+      'Field ${field.name} element type is not a direct set path.',
+    );
   }
   writeTypedSetPayload<T>(context, value, elementFieldType);
 }
@@ -593,11 +587,7 @@ List<T> readGeneratedDirectListValue<T>(
       fieldType.isDynamic) {
     throw StateError('Field ${field.name} is not a direct list path.');
   }
-  return readTypedListPayload(
-    context,
-    fieldType.arguments.single,
-    convert,
-  );
+  return readTypedListPayload(context, fieldType.arguments.single, convert);
 }
 
 @internal
@@ -614,11 +604,7 @@ Set<T> readGeneratedDirectSetValue<T>(
       fieldType.isDynamic) {
     throw StateError('Field ${field.name} is not a direct set path.');
   }
-  return readTypedSetPayload(
-    context,
-    fieldType.arguments.single,
-    convert,
-  );
+  return readTypedSetPayload(context, fieldType.arguments.single, convert);
 }
 
 @internal

@@ -1893,11 +1893,15 @@ fn test_nullable_field_compatible_null() {
 // Union Xlang Tests - Rust enum <-> Java Union2
 // ============================================================================
 
-/// Rust enum that matches Java Union2<String, Long>
-/// Each variant has exactly one field to be Union-compatible
+/// Rust typed ADT union that matches Java Union2<String, Long> as a struct field.
+#[allow(dead_code)]
 #[derive(ForyUnion, Debug, PartialEq)]
 enum StringOrLong {
+    #[fory(unknown)]
+    Unknown(fory_core::UnknownCase),
+    #[fory(id = 0, default)]
     Str(String),
+    #[fory(id = 1)]
     Long(i64),
 }
 
@@ -1913,12 +1917,10 @@ struct StructWithUnion2 {
     union: StringOrLong,
 }
 
-/// Test cross-language Union serialization between Rust enum and Java Union2.
+/// Test cross-language Union serialization between Rust typed ADT and Java Union2.
 ///
-/// Rust enum with single-field variants is Union-compatible and can be deserialized
-/// from Java Union2 types. Union fields in xlang mode follow a special format:
-/// - Rust writes: ref_flag + union_data (no type_id, since Union fields skip type info)
-/// - Java reads: null_flag + union_data (directly calls UnionSerializer.read())
+/// The struct field owner supplies the union schema, so field metadata stays the
+/// generic UNION type and the payload starts with Java's zero-based case id.
 #[test]
 #[ignore]
 fn test_union_xlang() {
@@ -1926,16 +1928,16 @@ fn test_union_xlang() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     let mut fory = Fory::builder().compatible(true).xlang(true).build();
-    // Register both the enum and the struct that contains it
-    fory.register::<StringOrLong>(300).unwrap();
+    // Only the owning struct is registered. TYPED_UNION is for dynamic values;
+    // a statically typed union field uses the generic UNION field metadata.
     fory.register::<StructWithUnion2>(301).unwrap();
 
-    // Read struct1 with String value (index 0)
+    // Read struct1 with String value.
     let mut reader = Reader::new(bytes.as_slice());
     let struct1: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(struct1.union, StringOrLong::Str("hello".to_string()));
 
-    // Read struct2 with Long value (index 1)
+    // Read struct2 with Long value.
     let struct2: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(struct2.union, StringOrLong::Long(42));
 

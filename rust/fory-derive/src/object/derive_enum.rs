@@ -16,7 +16,9 @@
 // under the License.
 
 use super::field_codec::{build_bindings, FieldBinding};
-use super::util::{enum_variant_id, is_default_value_variant, is_skip_enum_variant};
+use super::util::{
+    enum_variant_id, is_default_value_variant, is_runtime_unknown_variant, is_skip_enum_variant,
+};
 use crate::object::misc;
 use crate::object::util::{get_filtered_fields_iter, get_sorted_field_names};
 use crate::util::{extract_fields, source_fields, SourceField};
@@ -235,6 +237,7 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
     let variant_info: Vec<TokenStream> = data_enum
         .variants
         .iter()
+        .filter(|v| !is_runtime_unknown_variant(v))
         .map(|v| {
             let variant_name = v.ident.to_string();
             match &v.fields {
@@ -288,6 +291,9 @@ pub(crate) fn gen_all_variant_meta_types_with_enum_name(
         .variants
         .iter()
         .filter_map(|v| {
+            if is_runtime_unknown_variant(v) {
+                return None;
+            }
             if let Fields::Named(fields_named) = &v.fields {
                 let ident = &v.ident;
                 Some(gen_named_variant_meta_type_impl_with_enum_name(
@@ -361,8 +367,17 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
+            if is_runtime_unknown_variant(v) {
+                return quote! {
+                    Self::#ident(ref unknown) => {
+                        context.writer.write_var_u32(unknown.case_id());
+                        ::fory_core::serializer::unknown_case::write_payload(context, unknown)?;
+                    }
+                };
+            }
+
             let mut tag_value = if is_union_compatible {
-                enum_variant_id(v).unwrap_or(idx as u32)
+                xlang_union_case_id(data_enum, idx, v)
             } else {
                 idx as u32
             };
@@ -653,14 +668,26 @@ fn is_union_compatible_enum(data_enum: &DataEnum) -> bool {
     let has_data_variant = data_enum
         .variants
         .iter()
-        .any(|v| !matches!(v.fields, Fields::Unit));
+        .any(|v| !is_runtime_unknown_variant(v) && !matches!(v.fields, Fields::Unit));
     let all_variants_compatible = data_enum.variants.iter().all(|v| match &v.fields {
+        _ if is_runtime_unknown_variant(v) => true,
         Fields::Unit => true,
         Fields::Unnamed(f) => f.unnamed.len() == 1,
         Fields::Named(f) => f.named.len() == 1,
     });
 
     has_data_variant && all_variants_compatible
+}
+
+fn xlang_union_case_id(data_enum: &DataEnum, idx: usize, variant: &syn::Variant) -> u32 {
+    enum_variant_id(variant).unwrap_or_else(|| {
+        data_enum
+            .variants
+            .iter()
+            .take(idx)
+            .filter(|variant| !is_runtime_unknown_variant(variant))
+            .count() as u32
+    })
 }
 
 /// Generate the static TypeId for enum.
@@ -692,8 +719,12 @@ fn xlang_variant_read_branches(
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
+            if is_runtime_unknown_variant(v) {
+                return quote! {};
+            }
+
             let mut tag_value = if is_union_compatible {
-                enum_variant_id(v).unwrap_or(idx as u32)
+                xlang_union_case_id(data_enum, idx, v)
             } else {
                 idx as u32
             };
@@ -1003,15 +1034,19 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     };
 
     let unknown_xlang_branch = if is_union_compatible && has_data_variants {
+        // ForyUnion validation guarantees xlang-compatible ADTs have the
+        // runtime Unknown carrier. A skip/default fallback here would drop
+        // forward-compatible payload metadata instead of preserving it.
+        let variant = data_enum
+            .variants
+            .iter()
+            .find(|variant| is_runtime_unknown_variant(variant))
+            .expect("xlang-compatible ForyUnion requires Unknown(UnknownCase)");
+        let ident = &variant.ident;
         quote! {
             _ => {
-                use ::fory_core::serializer::skip::skip_any_value;
-                skip_any_value(context, true)?;
-                if context.is_compatible() {
-                    Ok(#default_variant_construction)
-                } else {
-                    return Err(::fory_core::error::Error::unknown_enum("unknown enum value"));
-                }
+                let value = ::fory_core::serializer::unknown_case::read_payload(context, ordinal)?;
+                Ok(Self::#ident(value))
             }
         }
     } else {
@@ -1026,7 +1061,6 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
             }
         }
     };
-
     quote! {
         if context.is_xlang() {
             let ordinal = context.reader.read_var_u32()?;

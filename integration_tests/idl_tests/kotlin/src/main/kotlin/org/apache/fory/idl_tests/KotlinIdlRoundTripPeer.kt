@@ -99,16 +99,16 @@ private fun runGeneratedSurfaceChecks() {
       .build()
   fory.register(ExampleForyModule)
 
-  assertRoundTrip(fory, ExampleMessageUnion.VarintU32ValueCase(UInt.MAX_VALUE))
-  assertRoundTrip(fory, ExampleMessageUnion.DurationValueCase(3.seconds))
-  assertRoundTrip(fory, ExampleMessageUnion.VarintU32ListCase(emptyList()))
-  assertRoundTrip(fory, ExampleMessageUnion.VarintU32ListCase(listOf(1u, UInt.MAX_VALUE)))
-  assertRoundTrip(fory, ExampleMessageUnion.DurationListCase(emptyList()))
-  assertRoundTrip(fory, ExampleMessageUnion.DurationListCase(listOf(1.seconds, 2.seconds)))
-  assertRoundTrip(fory, ExampleMessageUnion.Int8ArrayCase(byteArrayOf(-1, 0, 1)))
-  assertRoundTrip(fory, ExampleMessageUnion.Uint32ArrayCase(uintArrayOf(1u, UInt.MAX_VALUE)))
-  assertRoundTrip(fory, ExampleMessageUnion.Float16ArrayCase(Float16Array.of(1.0f, -2.0f)))
-  assertRoundTrip(fory, ExampleMessageUnion.Bfloat16ArrayCase(BFloat16Array.of(3.0f, -4.0f)))
+  assertRoundTrip(fory, ExampleMessageUnion.VarintU32Value(UInt.MAX_VALUE))
+  assertRoundTrip(fory, ExampleMessageUnion.DurationValue(3.seconds))
+  assertRoundTrip(fory, ExampleMessageUnion.VarintU32List(emptyList()))
+  assertRoundTrip(fory, ExampleMessageUnion.VarintU32List(listOf(1u, UInt.MAX_VALUE)))
+  assertRoundTrip(fory, ExampleMessageUnion.DurationList(emptyList()))
+  assertRoundTrip(fory, ExampleMessageUnion.DurationList(listOf(1.seconds, 2.seconds)))
+  assertRoundTrip(fory, ExampleMessageUnion.Int8Array(byteArrayOf(-1, 0, 1)))
+  assertRoundTrip(fory, ExampleMessageUnion.Uint32Array(uintArrayOf(1u, UInt.MAX_VALUE)))
+  assertRoundTrip(fory, ExampleMessageUnion.Float16Array(Float16Array.of(1.0f, -2.0f)))
+  assertRoundTrip(fory, ExampleMessageUnion.Bfloat16Array(BFloat16Array.of(3.0f, -4.0f)))
   assertBaseForyExtensionReceivers()
 }
 
@@ -140,9 +140,9 @@ private fun assertRoundTrip(fory: Fory, value: ExampleMessageUnion) {
 
 private fun generatedSurfaceEquals(left: ExampleMessageUnion, right: ExampleMessageUnion): Boolean =
   when {
-    left is ExampleMessageUnion.Int8ArrayCase && right is ExampleMessageUnion.Int8ArrayCase ->
+    left is ExampleMessageUnion.Int8Array && right is ExampleMessageUnion.Int8Array ->
       left.value.contentEquals(right.value)
-    left is ExampleMessageUnion.Uint32ArrayCase && right is ExampleMessageUnion.Uint32ArrayCase ->
+    left is ExampleMessageUnion.Uint32Array && right is ExampleMessageUnion.Uint32Array ->
       left.value.contentEquals(right.value)
     else -> left == right
   }

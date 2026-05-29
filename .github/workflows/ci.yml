@@ -1611,7 +1611,7 @@ jobs:
           void main() {
             test('generated fory serializers work in flutter', () {
               final fory = Fory();
-              PersonFory.register(fory, Person, id: 1);
+              PersonForyModule.register(fory, Person, id: 1);
 
               final person = Person()
                 ..name = 'Ada'

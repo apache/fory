@@ -901,6 +901,11 @@ public sealed class TypeResolver
     {
         TypeId wireTypeId = typeInfo.WireTypeId
                             ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
+        // ReadAnyValue is the shared self-describing payload entry for object/Any,
+        // UnknownCase, and compatible field skipping. The Any envelope is not a
+        // nesting boundary; only payloads that can recursively contain values
+        // advance depth. If a nested read fails, the root context reset owns
+        // cleanup of partially advanced depth and type-info state.
         switch (wireTypeId)
         {
             case TypeId.Int32:
@@ -915,24 +920,56 @@ public sealed class TypeResolver
                 return context.Reader.ReadUInt64();
             case TypeId.TaggedUInt64:
                 return context.Reader.ReadTaggedUInt64();
+            case TypeId.List:
+            case TypeId.Set:
+            case TypeId.Union:
+                return ReadNestedAnyData(typeInfo, context);
             case TypeId.Map:
-                return DynamicContainerCodec.ReadMapPayload(context);
+                return ReadNestedAnyMap(context);
             case TypeId.Struct:
-            case TypeId.Enum:
             case TypeId.Ext:
             case TypeId.TypedUnion:
             case TypeId.NamedStruct:
-            case TypeId.NamedEnum:
             case TypeId.NamedExt:
             case TypeId.NamedUnion:
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
+                return ReadNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+            case TypeId.Enum:
+            case TypeId.NamedEnum:
                 return ReadRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
             case TypeId.None:
                 return null;
             default:
                 return ReadDataObject(typeInfo, context);
         }
+    }
+
+    private object? ReadNestedAnyData(TypeInfo typeInfo, ReadContext context)
+    {
+        context.IncreaseReadDepth();
+        object? value = ReadDataObject(typeInfo, context);
+        context.DecreaseReadDepth();
+        return value;
+    }
+
+    private object ReadNestedAnyMap(ReadContext context)
+    {
+        context.IncreaseReadDepth();
+        object value = DynamicContainerCodec.ReadMapPayload(context);
+        context.DecreaseReadDepth();
+        return value;
+    }
+
+    private object? ReadNestedRegisteredValue(
+        TypeInfo typeInfo,
+        ReadContext context,
+        TypeMeta? typeMeta)
+    {
+        context.IncreaseReadDepth();
+        object? value = ReadRegisteredValue(typeInfo, context, typeMeta);
+        context.DecreaseReadDepth();
+        return value;
     }
 
     private TypeInfo ResolveAnyTypeInfoFromMeta(TypeId wireTypeId, TypeMeta typeMeta, bool compatible)

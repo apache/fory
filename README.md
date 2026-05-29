@@ -472,7 +472,7 @@ console.log(person.name);
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class Person
 {
     public string Name { get; set; } = string.Empty;

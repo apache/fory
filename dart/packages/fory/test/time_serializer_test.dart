@@ -42,7 +42,7 @@ class TimeEnvelope {
 }
 
 void _registerTimeTypes(Fory fory) {
-  TimeSerializerTestFory.register(
+  TimeSerializerTestForyModule.register(
     fory,
     TimeEnvelope,
     namespace: 'time',
@@ -88,7 +88,9 @@ void main() {
 
       for (final value in cases) {
         expect(
-            fory.deserialize<LocalDate>(fory.serialize(value)), equals(value));
+          fory.deserialize<LocalDate>(fory.serialize(value)),
+          equals(value),
+        );
       }
     });
 
@@ -98,19 +100,23 @@ void main() {
 
       final bytes = fory.serialize(value);
       expect(
-          bytes, equals(Uint8List.fromList([0x01, 0xff, TypeIds.date, 0x01])));
+        bytes,
+        equals(Uint8List.fromList([0x01, 0xff, TypeIds.date, 0x01])),
+      );
       expect(fory.deserialize<LocalDate>(bytes), equals(value));
     });
 
-    test('LocalDate convenience methods bridge DateTime and epoch-day forms',
-        () {
-      final value = LocalDate.fromDateTime(DateTime.utc(2024, 1, 2, 3, 4, 5));
+    test(
+      'LocalDate convenience methods bridge DateTime and epoch-day forms',
+      () {
+        final value = LocalDate.fromDateTime(DateTime.utc(2024, 1, 2, 3, 4, 5));
 
-      expect(value, equals(const LocalDate(2024, 1, 2)));
-      final Int64 epochDay = value.toEpochDay();
-      expect(epochDay, equals(const LocalDate(2024, 1, 2).toEpochDay()));
-      expect(value.toDateTime(), equals(DateTime.utc(2024, 1, 2)));
-    });
+        expect(value, equals(const LocalDate(2024, 1, 2)));
+        final Int64 epochDay = value.toEpochDay();
+        expect(epochDay, equals(const LocalDate(2024, 1, 2).toEpochDay()));
+        expect(value.toDateTime(), equals(DateTime.utc(2024, 1, 2)));
+      },
+    );
 
     test('decodes root Timestamp payloads to DateTime by default', () {
       final fory = Fory();
@@ -151,27 +157,30 @@ void main() {
 
       for (final value in cases) {
         expect(
-            fory.deserialize<DateTime>(fory.serialize(value)), equals(value));
+          fory.deserialize<DateTime>(fory.serialize(value)),
+          equals(value),
+        );
       }
     });
 
     test(
-        'root containers without declared element types decode timestamps as DateTime',
-        () {
-      final fory = Fory();
-      final roundTrip = fory.deserialize<List<Object?>>(
-        fory.serialize(<Object>[_timestamp(-1, 999999000)]),
-      );
+      'root containers without declared element types decode timestamps as DateTime',
+      () {
+        final fory = Fory();
+        final roundTrip = fory.deserialize<List<Object?>>(
+          fory.serialize(<Object>[_timestamp(-1, 999999000)]),
+        );
 
-      expect(
-        roundTrip.single,
-        isA<DateTime>().having(
-          (value) => value,
-          'value',
-          equals(DateTime.fromMicrosecondsSinceEpoch(-1, isUtc: true)),
-        ),
-      );
-    });
+        expect(
+          roundTrip.single,
+          isA<DateTime>().having(
+            (value) => value,
+            'value',
+            equals(DateTime.fromMicrosecondsSinceEpoch(-1, isUtc: true)),
+          ),
+        );
+      },
+    );
 
     test('reads timestamp payloads directly as DateTime', () {
       final fory = Fory();
@@ -224,7 +233,9 @@ void main() {
 
       for (final value in cases) {
         expect(
-            fory.deserialize<Duration>(fory.serialize(value)), equals(value));
+          fory.deserialize<Duration>(fory.serialize(value)),
+          equals(value),
+        );
       }
     });
 
@@ -255,10 +266,14 @@ void main() {
       final date = LocalDate.fromEpochDay(Int64(-1));
 
       final roundTrip = fory.deserialize<List<Object?>>(
-        fory.serialize(
-          <Object>[duration, duration, timestamp, timestamp, date, date],
-          trackRef: true,
-        ),
+        fory.serialize(<Object>[
+          duration,
+          duration,
+          timestamp,
+          timestamp,
+          date,
+          date,
+        ], trackRef: true),
       );
 
       expect(roundTrip[0], equals(roundTrip[1]));
@@ -322,21 +337,19 @@ void main() {
 
     test('rejects duration payloads with inconsistent signs', () {
       final fory = Fory();
-      final positive =
-          Uint8List.fromList(fory.serialize(const Duration(seconds: 1)));
-      final negative =
-          Uint8List.fromList(fory.serialize(const Duration(seconds: -1)));
+      final positive = Uint8List.fromList(
+        fory.serialize(const Duration(seconds: 1)),
+      );
+      final negative = Uint8List.fromList(
+        fory.serialize(const Duration(seconds: -1)),
+      );
 
-      ByteData.sublistView(positive).setInt32(
-        positive.length - 4,
-        -1,
-        Endian.little,
-      );
-      ByteData.sublistView(negative).setInt32(
-        negative.length - 4,
-        1,
-        Endian.little,
-      );
+      ByteData.sublistView(
+        positive,
+      ).setInt32(positive.length - 4, -1, Endian.little);
+      ByteData.sublistView(
+        negative,
+      ).setInt32(negative.length - 4, 1, Endian.little);
 
       for (final bytes in <Uint8List>[positive, negative]) {
         expect(

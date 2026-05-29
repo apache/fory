@@ -98,17 +98,20 @@ final class ForyGenerator extends Generator {
     final helperBaseName = _toPascalCase(
       buildStep.inputId.pathSegments.last.split('.').first,
     );
-    final generatedApiName = '${helperBaseName}Fory';
+    final generatedApiName = '${helperBaseName}ForyModule';
+    final emitRegistrationHelper =
+        !_declaresGeneratedApiOwner(library, buildStep, generatedApiName);
 
     final enumSpecs = enumElements.map(_analyzeEnum).toList(growable: false);
     final structSpecs = annotatedClasses
         .map(_analyzeStruct)
         .toList(growable: false);
-    final output = StringBuffer()
-      ..writeln(
-        '// ignore_for_file: implementation_imports, invalid_use_of_internal_member, no_leading_underscores_for_local_identifiers, unreachable_switch_case, unused_element, unused_element_parameter, unnecessary_null_comparison',
-      )
-      ..writeln();
+    final output =
+        StringBuffer()
+          ..writeln(
+            '// ignore_for_file: implementation_imports, invalid_use_of_internal_member, no_leading_underscores_for_local_identifiers, unreachable_switch_case, unused_element, unused_element_parameter, unnecessary_null_comparison',
+          )
+          ..writeln();
 
     for (final enumSpec in enumSpecs) {
       _writeEnum(output, enumSpec);
@@ -117,13 +120,28 @@ final class ForyGenerator extends Generator {
       _writeStruct(output, structSpec);
     }
 
-    _writeRegistrationHelpers(
+    _writeGeneratedSupport(
       output,
       enumSpecs: enumSpecs,
       structSpecs: structSpecs,
       generatedApiName: generatedApiName,
+      emitRegistrationHelper: emitRegistrationHelper,
     );
     return output.toString();
+  }
+
+  bool _declaresGeneratedApiOwner(
+    LibraryReader library,
+    BuildStep buildStep,
+    String generatedApiName,
+  ) {
+    final inputFileName = buildStep.inputId.pathSegments.last;
+    return library.classes.any(
+      (element) =>
+          element.displayName == generatedApiName &&
+          element.firstFragment.libraryFragment.source.shortName ==
+              inputFileName,
+    );
   }
 
   _GeneratedStructSpec _analyzeStruct(ClassElement element) {
@@ -174,9 +192,8 @@ final class ForyGenerator extends Generator {
     final idValue = reader?.peek('id');
     final nullableValue = reader?.peek('nullable');
     final dynamicValue = reader?.peek('dynamic');
-    final rawFieldId = idValue == null || idValue.isNull
-        ? null
-        : idValue.intValue;
+    final rawFieldId =
+        idValue == null || idValue.isNull ? null : idValue.intValue;
     if (rawFieldId != null && rawFieldId < 0) {
       throw InvalidGenerationSourceError(
         'Fory field id must be non-negative.',
@@ -184,12 +201,14 @@ final class ForyGenerator extends Generator {
       );
     }
     final fieldId = rawFieldId;
-    final nullable = nullableValue == null || nullableValue.isNull
-        ? _isNullable(field.type)
-        : nullableValue.boolValue;
-    final dynamic = dynamicValue == null || dynamicValue.isNull
-        ? _autoDynamic(field.type)
-        : dynamicValue.boolValue;
+    final nullable =
+        nullableValue == null || nullableValue.isNull
+            ? _isNullable(field.type)
+            : nullableValue.boolValue;
+    final dynamic =
+        dynamicValue == null || dynamicValue.isNull
+            ? _autoDynamic(field.type)
+            : dynamicValue.boolValue;
     final ref = reader?.peek('ref')?.boolValue ?? false;
     final typeSpec = _analyzeTypeSpecAnnotation(field, reader);
 
@@ -197,9 +216,8 @@ final class ForyGenerator extends Generator {
       name: field.displayName,
       type: field.type,
       displayType: _typeCodeString(field.type),
-      identifier: fieldId != null
-          ? '$fieldId'
-          : _toSnakeCase(field.displayName),
+      identifier:
+          fieldId != null ? '$fieldId' : _toSnakeCase(field.displayName),
       id: fieldId,
       nullable: nullable,
       ref: ref,
@@ -413,10 +431,11 @@ final class ForyGenerator extends Generator {
       }
     }
 
-    final selfRefField = fields
-        .where((field) => field.ref)
-        .where((field) => _sameType(field.type, element.thisType))
-        .firstOrNull;
+    final selfRefField =
+        fields
+            .where((field) => field.ref)
+            .where((field) => _sameType(field.type, element.thisType))
+            .firstOrNull;
     if (selfRefField != null) {
       throw InvalidGenerationSourceError(
         'Constructor-based generated serializers cannot bind self references early. '
@@ -438,12 +457,14 @@ final class ForyGenerator extends Generator {
 
   void _writeEnum(StringBuffer output, _GeneratedEnumSpec enumSpec) {
     final serializerClassName = '_${enumSpec.name}ForySerializer';
-    final writeExpression = enumSpec.usesRawValue
-        ? 'context.writeVarUint32(value.rawValue);'
-        : 'context.writeVarUint32(value.index);';
-    final readExpression = enumSpec.usesRawValue
-        ? 'return ${enumSpec.name}.fromRawValue(context.readVarUint32());'
-        : 'return ${enumSpec.name}.values[context.readVarUint32()];';
+    final writeExpression =
+        enumSpec.usesRawValue
+            ? 'context.writeVarUint32(value.rawValue);'
+            : 'context.writeVarUint32(value.index);';
+    final readExpression =
+        enumSpec.usesRawValue
+            ? 'return ${enumSpec.name}.fromRawValue(context.readVarUint32());'
+            : 'return ${enumSpec.name}.values[context.readVarUint32()];';
     output
       ..writeln(
         'final class $serializerClassName extends EnumSerializer<${enumSpec.name}> {',
@@ -465,8 +486,7 @@ final class ForyGenerator extends Generator {
   void _writeStruct(StringBuffer output, _GeneratedStructSpec structSpec) {
     final serializerClassName = '_${structSpec.name}ForySerializer';
     final metadataListName = '_${_toCamelCase(structSpec.name)}ForyFieldInfo';
-    final registrationName =
-        '_${_toCamelCase(structSpec.name)}ForyRegistration';
+    final schemaName = '_${_toCamelCase(structSpec.name)}ForySchema';
     final hasRuntimeFastPath = structSpec.fields.any(
       (field) => !_usesDirectGeneratedBasicFastPath(field),
     );
@@ -501,7 +521,7 @@ final class ForyGenerator extends Generator {
       ..writeln('];')
       ..writeln()
       ..writeln(
-        'final GeneratedStructRegistration<${structSpec.name}> $registrationName = GeneratedStructRegistration<${structSpec.name}>(',
+        'final GeneratedStructSchema<${structSpec.name}> $schemaName = GeneratedStructSchema<${structSpec.name}>(',
       );
     output
       ..writeln('  type: ${structSpec.name},')
@@ -530,7 +550,7 @@ final class ForyGenerator extends Generator {
         '    return _generatedFields ??= buildGeneratedStructFieldInfos(',
       )
       ..writeln('      context.typeResolver,')
-      ..writeln('      $registrationName,')
+      ..writeln('      $schemaName,')
       ..writeln('    );')
       ..writeln('  }')
       ..writeln()
@@ -541,7 +561,7 @@ final class ForyGenerator extends Generator {
         '    return _generatedFields ??= buildGeneratedStructFieldInfos(',
       )
       ..writeln('      context.typeResolver,')
-      ..writeln('      $registrationName,')
+      ..writeln('      $schemaName,')
       ..writeln('    );')
       ..writeln('  }')
       ..writeln('  @override')
@@ -874,18 +894,18 @@ final class ForyGenerator extends Generator {
     output.writeln('  }');
   }
 
-  void _writeRegistrationHelpers(
+  void _writeGeneratedSupport(
     StringBuffer output, {
     required List<_GeneratedEnumSpec> enumSpecs,
     required List<_GeneratedStructSpec> structSpecs,
     required String generatedApiName,
+    required bool emitRegistrationHelper,
   }) {
     for (final enumSpec in enumSpecs) {
-      final registrationName =
-          '_${_toCamelCase(enumSpec.name)}ForyRegistration';
+      final schemaName = '_${_toCamelCase(enumSpec.name)}ForySchema';
       output
         ..writeln(
-          'final GeneratedEnumRegistration $registrationName = GeneratedEnumRegistration(',
+          'final GeneratedEnumSchema $schemaName = GeneratedEnumSchema(',
         )
         ..writeln('  type: ${enumSpec.name},')
         ..writeln('  serializerFactory: _${enumSpec.name}ForySerializer.new,')
@@ -894,6 +914,10 @@ final class ForyGenerator extends Generator {
     }
     if (enumSpecs.isNotEmpty && structSpecs.isNotEmpty) {
       output.writeln();
+    }
+
+    if (!emitRegistrationHelper) {
+      return;
     }
 
     output
@@ -921,12 +945,11 @@ final class ForyGenerator extends Generator {
       ..writeln('    }');
 
     for (final enumSpec in enumSpecs) {
-      final registrationName =
-          '_${_toCamelCase(enumSpec.name)}ForyRegistration';
+      final schemaName = '_${_toCamelCase(enumSpec.name)}ForySchema';
       output.writeln('  if (type == ${enumSpec.name}) {');
       output.writeln('    registerGeneratedEnum(');
       output.writeln('      fory,');
-      output.writeln('      $registrationName,');
+      output.writeln('      $schemaName,');
       output.writeln('      id: id,');
       output.writeln('      namespace: namespace,');
       output.writeln('      typeName: typeName,');
@@ -935,12 +958,11 @@ final class ForyGenerator extends Generator {
       output.writeln('  }');
     }
     for (final structSpec in structSpecs) {
-      final registrationName =
-          '_${_toCamelCase(structSpec.name)}ForyRegistration';
+      final schemaName = '_${_toCamelCase(structSpec.name)}ForySchema';
       output.writeln('  if (type == ${structSpec.name}) {');
       output.writeln('    registerGeneratedStruct(');
       output.writeln('      fory,');
-      output.writeln('      $registrationName,');
+      output.writeln('      $schemaName,');
       output.writeln('      id: id,');
       output.writeln('      namespace: namespace,');
       output.writeln('      typeName: typeName,');
@@ -998,9 +1020,10 @@ final class ForyGenerator extends Generator {
   }
 
   String _fieldTypeLiteral(_GeneratedFieldTypeSpec fieldType) {
-    final argumentsLiteral = fieldType.arguments.isEmpty
-        ? '<GeneratedFieldType>[]'
-        : '<GeneratedFieldType>[\n${fieldType.arguments.map(_fieldTypeLiteral).join(',\n')}\n      ]';
+    final argumentsLiteral =
+        fieldType.arguments.isEmpty
+            ? '<GeneratedFieldType>[]'
+            : '<GeneratedFieldType>[\n${fieldType.arguments.map(_fieldTypeLiteral).join(',\n')}\n      ]';
     final dynamicLiteral = switch (fieldType.dynamic) {
       true => 'true',
       false => 'false',
@@ -2637,17 +2660,19 @@ GeneratedFieldType(
     required Element field,
   }) {
     final encodingReader = reader.peek('encoding');
-    final encodingValue = encodingReader == null || encodingReader.isNull
-        ? 'varint'
-        : encodingReader.revive().accessor.split('.').last;
+    final encodingValue =
+        encodingReader == null || encodingReader.isNull
+            ? 'varint'
+            : encodingReader.revive().accessor.split('.').last;
     return switch (encodingValue) {
       'fixed' => fixed,
       'varint' => varint,
       'tagged' when tagged != null => tagged,
-      _ => throw InvalidGenerationSourceError(
-        'Unsupported encoding $encodingValue for type spec.',
-        element: field,
-      ),
+      _ =>
+        throw InvalidGenerationSourceError(
+          'Unsupported encoding $encodingValue for type spec.',
+          element: field,
+        ),
     };
   }
 
@@ -2721,10 +2746,11 @@ GeneratedFieldType(
       TypeIds.bfloat16 => TypeIds.bfloat16Array,
       TypeIds.float32 => TypeIds.float32Array,
       TypeIds.float64 => TypeIds.float64Array,
-      _ => throw InvalidGenerationSourceError(
-        'ArrayType requires a numeric or bool scalar element type without fixed/tagged encoding.',
-        element: field,
-      ),
+      _ =>
+        throw InvalidGenerationSourceError(
+          'ArrayType requires a numeric or bool scalar element type without fixed/tagged encoding.',
+          element: field,
+        ),
     };
   }
 
@@ -3008,7 +3034,10 @@ GeneratedFieldType(
         final element = nonNullable.element;
         if (element is ClassElement &&
             _foryUnionChecker.hasAnnotationOf(element)) {
-          return TypeIds.typedUnion;
+          // A declared union field gets its schema from the owning field TypeDef.
+          // Root/dynamic Any paths still use TYPED_UNION or NAMED_UNION when
+          // they need to identify the union independently.
+          return TypeIds.union;
         }
         return TypeIds.compatibleStruct;
     }
@@ -3155,11 +3184,12 @@ GeneratedFieldType(
     return _isNullable(type) ? '$base?' : base;
   }
 
-  String _toPascalCase(String value) => value
-      .split(RegExp(r'[_\-\s]+'))
-      .where((part) => part.isNotEmpty)
-      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-      .join();
+  String _toPascalCase(String value) =>
+      value
+          .split(RegExp(r'[_\-\s]+'))
+          .where((part) => part.isNotEmpty)
+          .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+          .join();
 
   String _toCamelCase(String value) {
     final pascal = _toPascalCase(value);

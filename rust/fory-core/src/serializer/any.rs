@@ -41,7 +41,7 @@ fn resolve_registered_type_id(
 /// These types cannot be deserialized polymorphically via `Box<dyn Any>` because
 /// different generic instantiations (e.g., `Vec<A>`, `Vec<B>`) share the same type ID.
 #[inline]
-fn check_generic_container_type(type_info: &TypeInfo) -> Result<(), Error> {
+pub(crate) fn check_generic_container_type(type_info: &TypeInfo) -> Result<(), Error> {
     let type_id = type_info.get_type_id();
     if type_id == TypeId::LIST || type_id == TypeId::SET || type_id == TypeId::MAP {
         return Err(Error::type_error(

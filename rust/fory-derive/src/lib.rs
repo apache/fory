@@ -117,6 +117,8 @@
 //!   By default, `ForyStruct` does NOT generate `impl Default` to avoid conflicts with existing
 //!   `Default` implementations. Use this attribute when you want the macro to generate both
 //!   `ForyDefault` and `Default` for you.
+//! - **`#[fory(default)]`**: Marks the default `ForyUnion` variant. `ForyUnion` requires exactly
+//!   one default variant so schema evolution and null fallback have an explicit owner.
 //!
 //! ## Field Types
 //!
@@ -231,25 +233,8 @@ pub fn proc_macro_derive_fory_enum(input: proc_macro::TokenStream) -> TokenStrea
 #[proc_macro_derive(ForyUnion, attributes(fory))]
 pub fn proc_macro_derive_fory_union(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let Data::Enum(data_enum) = &input.data else {
-        return syn::Error::new(
-            input.ident.span(),
-            "ForyUnion can only be derived for enums",
-        )
-        .into_compile_error()
-        .into();
-    };
-    if data_enum
-        .variants
-        .iter()
-        .all(|variant| matches!(variant.fields, Fields::Unit))
-    {
-        return syn::Error::new(
-            input.ident.span(),
-            "ForyUnion requires at least one payload variant; use ForyEnum for pure unit enums",
-        )
-        .into_compile_error()
-        .into();
+    if let Err(err) = object::derive_union::validate_input(&input) {
+        return err.into_compile_error().into();
     }
     derive_serializer(input)
 }

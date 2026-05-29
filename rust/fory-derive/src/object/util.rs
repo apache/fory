@@ -21,7 +21,7 @@ use fory_core::util::to_snake_case;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::cell::RefCell;
-use syn::{Field, GenericArgument, Index, PathArguments, Type};
+use syn::{Field, Fields, GenericArgument, Index, PathArguments, Type};
 
 /// Get field name for a field, handling both named and tuple struct fields.
 /// For named fields, returns the field name.
@@ -890,11 +890,82 @@ pub(crate) fn enum_variant_id(variant: &syn::Variant) -> Option<u32> {
     None
 }
 
-pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
-    variant
-        .attrs
+pub(crate) fn has_fory_unknown_attr(variant: &syn::Variant) -> bool {
+    variant.attrs.iter().any(|attr| {
+        if !attr.path().is_ident("fory") {
+            return false;
+        }
+        let mut is_unknown = false;
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("unknown") {
+                is_unknown = true;
+            } else if !meta.input.is_empty() {
+                let value = meta.value()?;
+                let _ = value.parse::<syn::Expr>()?;
+            }
+            Ok(())
+        });
+        is_unknown
+    })
+}
+
+pub(crate) fn is_unknown_case_type(ty: &Type) -> bool {
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+    let segments: Vec<String> = type_path
+        .path
+        .segments
         .iter()
-        .any(|attr| attr.path().is_ident("default"))
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
+    matches!(
+        segments.as_slice(),
+        [owner, "UnknownCase"] if *owner == "fory" || *owner == "fory_core"
+    ) || matches!(
+        segments.as_slice(),
+        [owner, "types", "UnknownCase"] if *owner == "fory_core"
+    )
+}
+
+// The typed-ADT forward-compatibility carrier is selected by a runtime marker,
+// not by a schema case id. Known schema cases may still use id 0.
+pub(crate) fn is_runtime_unknown_variant(variant: &syn::Variant) -> bool {
+    if !has_fory_unknown_attr(variant) {
+        return false;
+    }
+    if variant.ident != "Unknown" {
+        return false;
+    }
+    let Fields::Unnamed(fields) = &variant.fields else {
+        return false;
+    };
+    if fields.unnamed.len() != 1 || !is_unknown_case_type(&fields.unnamed[0].ty) {
+        return false;
+    }
+    enum_variant_id(variant).is_none()
+}
+
+pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
+    variant.attrs.iter().any(|attr| {
+        if attr.path().is_ident("default") {
+            return true;
+        }
+        attr.path().is_ident("fory") && {
+            let mut is_default = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("default") {
+                    is_default = true;
+                } else if !meta.input.is_empty() {
+                    let value = meta.value()?;
+                    let _ = value.parse::<syn::Expr>()?;
+                }
+                Ok(())
+            });
+            is_default
+        }
+    })
 }
 
 #[cfg(test)]

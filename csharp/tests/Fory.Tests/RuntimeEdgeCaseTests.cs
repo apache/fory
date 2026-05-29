@@ -21,7 +21,7 @@ using ForyRuntime = Apache.Fory.Fory;
 
 namespace Apache.Fory.Tests;
 
-[ForyObject]
+[ForyStruct]
 public sealed class TimeEnvelope
 {
     public DateOnly Date { get; set; }
@@ -34,7 +34,7 @@ public sealed class TimeEnvelope
     public List<TimeSpan> Durations { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class NullableEnvelope
 {
     public int? Int32Value { get; set; }
@@ -43,14 +43,14 @@ public sealed class NullableEnvelope
     public TestColor? Color { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class CustomPayload
 {
     public int Id { get; set; }
     public string Marker { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class DecimalEnvelope
 {
     public ForyDecimal Exact { get; set; }

@@ -59,13 +59,13 @@ class Person {
 void main() {
   final fory = Fory();
 
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Color,
     namespace: 'example',
     typeName: 'Color',
   );
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Person,
     namespace: 'example',
@@ -94,17 +94,17 @@ dart run build_runner build --delete-conflicting-outputs
 ## Type Registration
 
 Generated types register through the generated library namespace. The namespace
-class is named `<FileName>Fory` based on the source file that contains the
+class is named `<FileName>ForyModule` based on the source file that contains the
 annotated types.
 
 ```dart
-PersonFory.register(fory, Person, id: 100);
+PersonForyModule.register(fory, Person, id: 100);
 ```
 
 Or use namespace and type name registration:
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
   namespace: 'example',

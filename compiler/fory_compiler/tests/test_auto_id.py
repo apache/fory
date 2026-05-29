@@ -58,7 +58,7 @@ def test_auto_id_generation_for_message_and_union():
     assert union.id_source == "demo.Item"
 
 
-def test_union_case_ids_must_start_from_one():
+def test_union_case_ids_must_be_non_negative():
     source = """
     package demo;
 
@@ -72,7 +72,7 @@ def test_union_case_ids_must_start_from_one():
 
     assert not validator.validate()
     messages = [issue.message for issue in validator.errors]
-    assert any("Union case id 0" in message for message in messages)
+    assert not any("Union case id 0" in message for message in messages)
     assert any("Union case id -1" in message for message in messages)
 
 

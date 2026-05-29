@@ -36,28 +36,26 @@ void main() {
   group('generated registration', () {
     test('round-trips struct and enum data', () {
       final fory = Fory();
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         Color,
         namespace: 'fory_test.person',
         typeName: 'Color',
       );
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         Person,
         namespace: 'fory_test.person',
         typeName: 'Person',
       );
 
-      final person = Person()
-        ..name = 'Ada'
-        ..age = (36)
-        ..favoriteColor = Color.blue
-        ..tags = <String?>['engineer', null]
-        ..scores = <String, int>{
-          'math': (100),
-          'logic': (99),
-        };
+      final person =
+          Person()
+            ..name = 'Ada'
+            ..age = (36)
+            ..favoriteColor = Color.blue
+            ..tags = <String?>['engineer', null]
+            ..scores = <String, int>{'math': (100), 'logic': (99)};
 
       final bytes = fory.serialize(person);
       final roundTrip = fory.deserialize<Person>(bytes);
@@ -72,7 +70,7 @@ void main() {
 
     test('supports root trackRef for top-level graphs', () {
       final fory = Fory();
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         RefNode,
         namespace: 'fory_test.person',
@@ -91,16 +89,17 @@ void main() {
 
     test('preserves self reference on annotated ref fields', () {
       final fory = Fory();
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         RefNode,
         namespace: 'fory_test.person',
         typeName: 'RefNode',
       );
 
-      final node = RefNode()
-        ..name = 'self'
-        ..self = null;
+      final node =
+          RefNode()
+            ..name = 'self'
+            ..self = null;
       node.self = node;
 
       final bytes = fory.serialize(node);
@@ -108,38 +107,44 @@ void main() {
       expect(identical(roundTrip, roundTrip.self), isTrue);
     });
 
-    test('fixed payload stays smaller than evolving payload in compatible mode',
-        () {
-      final fory = Fory(compatible: true);
-      PersonFory.register(
-        fory,
-        EvolvingPayload,
-        namespace: 'fory_test.person',
-        typeName: 'EvolvingPayload',
-      );
-      PersonFory.register(
-        fory,
-        FixedPayload,
-        namespace: 'fory_test.person',
-        typeName: 'FixedPayload',
-      );
+    test(
+      'fixed payload stays smaller than evolving payload in compatible mode',
+      () {
+        final fory = Fory(compatible: true);
+        PersonForyModule.register(
+          fory,
+          EvolvingPayload,
+          namespace: 'fory_test.person',
+          typeName: 'EvolvingPayload',
+        );
+        PersonForyModule.register(
+          fory,
+          FixedPayload,
+          namespace: 'fory_test.person',
+          typeName: 'FixedPayload',
+        );
 
-      final evolving = EvolvingPayload()..value = 'payload';
-      final fixed = FixedPayload()..value = 'payload';
+        final evolving = EvolvingPayload()..value = 'payload';
+        final fixed = FixedPayload()..value = 'payload';
 
-      final evolvingBytes = fory.serialize(evolving);
-      final fixedBytes = fory.serialize(fixed);
+        final evolvingBytes = fory.serialize(evolving);
+        final fixedBytes = fory.serialize(fixed);
 
-      expect(fixedBytes.length, lessThan(evolvingBytes.length));
-      expect(fory.deserialize<EvolvingPayload>(evolvingBytes).value,
-          equals('payload'));
-      expect(
-          fory.deserialize<FixedPayload>(fixedBytes).value, equals('payload'));
-    });
+        expect(fixedBytes.length, lessThan(evolvingBytes.length));
+        expect(
+          fory.deserialize<EvolvingPayload>(evolvingBytes).value,
+          equals('payload'),
+        );
+        expect(
+          fory.deserialize<FixedPayload>(fixedBytes).value,
+          equals('payload'),
+        );
+      },
+    );
 
     test('serializes private mutable fields', () {
       final fory = Fory();
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         PrivatePayload,
         namespace: 'fory_test.person',
@@ -156,7 +161,7 @@ void main() {
 
     test('serializes private immutable fields', () {
       final fory = Fory();
-      PersonFory.register(
+      PersonForyModule.register(
         fory,
         PrivateImmutablePayload,
         namespace: 'fory_test.person',
@@ -173,13 +178,14 @@ void main() {
 
     test('supports per-type registration with custom ids', () {
       final fory = Fory();
-      PersonFory.register(fory, Color, id: 101);
-      PersonFory.register(fory, Person, id: 102);
+      PersonForyModule.register(fory, Color, id: 101);
+      PersonForyModule.register(fory, Person, id: 102);
 
-      final person = Person()
-        ..name = 'Ada'
-        ..age = (36)
-        ..favoriteColor = Color.blue;
+      final person =
+          Person()
+            ..name = 'Ada'
+            ..age = (36)
+            ..favoriteColor = Color.blue;
 
       final bytes = fory.serialize(person);
       final roundTrip = fory.deserialize<Person>(bytes);

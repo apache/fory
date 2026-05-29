@@ -222,3 +222,6 @@ public macro ForyCase(
     id: Int? = nil,
     payload: ForyFieldType? = nil
 ) = #externalMacro(module: "ForyMacro", type: "ForyCaseMacro")
+
+@attached(peer)
+public macro ForyUnknownCase() = #externalMacro(module: "ForyMacro", type: "ForyUnknownCaseMacro")

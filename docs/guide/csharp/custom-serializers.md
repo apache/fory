@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Use custom serializers when a type is not generated with `[ForyObject]` or requires specialized encoding.
+Use custom serializers when a type is not generated with `[ForyStruct]` or requires specialized encoding.
 
 ## Implement `Serializer<T>`
 
@@ -75,7 +75,7 @@ Point decoded = fory.Deserialize<Point>(payload);
 1. Keep serializers deterministic and symmetric.
 2. Use varint/fixed/tagged encoding intentionally for integer-heavy payloads.
 3. Register custom serializers on all reader/writer peers.
-4. Prefer generated `[ForyObject]` serializers for normal domain models.
+4. Prefer generated `[ForyStruct]` serializers for normal domain models.
 
 ## Related Topics
 

@@ -33,7 +33,8 @@ struct ForySwiftPlugin: CompilerPlugin {
         ArrayFieldMacro.self,
         SetFieldMacro.self,
         MapFieldMacro.self,
-        ForyCaseMacro.self
+        ForyCaseMacro.self,
+        ForyUnknownCaseMacro.self
     ]
 }
 
@@ -145,7 +146,7 @@ public struct ForyEnumMacro: MemberMacro, ExtensionMacro {
         guard parsedEnum.kind == .ordinal else {
             throw MacroExpansionErrorMessage("@ForyEnum cases cannot have associated values; use @ForyUnion")
         }
-        return buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
+        return try buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
     }
 
     public static func expansion(
@@ -178,7 +179,7 @@ public struct ForyUnionMacro: MemberMacro, ExtensionMacro {
         guard parsedEnum.kind == .taggedUnion else {
             throw MacroExpansionErrorMessage("@ForyUnion requires at least one associated-value case; use @ForyEnum")
         }
-        return buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
+        return try buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
     }
 
     public static func expansion(
@@ -256,6 +257,16 @@ public struct ForyCaseMacro: PeerMacro {
     }
 }
 
+public struct ForyUnknownCaseMacro: PeerMacro {
+    public static func expansion(
+        of _: AttributeSyntax,
+        providingPeersOf _: some DeclSyntaxProtocol,
+        in _: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        []
+    }
+}
+
 private func serializerMemberAccessPrefix(_ declaration: some DeclGroupSyntax) -> String {
     let isPublicType = declaration.modifiers.contains(where: { modifier in
         modifier.name.tokenKind == .keyword(.public) || modifier.name.tokenKind == .keyword(.open)
@@ -323,6 +334,7 @@ private struct ParsedEnumCase {
     let name: String
     let payload: [ParsedEnumPayloadField]
     let caseID: Int?
+    let unknownCase: Bool
     let wireValue: UInt32?
 }
 
@@ -370,8 +382,15 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
         }
 
         let caseConfig = try parseForyCaseConfiguration(from: caseDecl.attributes)
+        let unknownCase = hasForyUnknownCase(from: caseDecl.attributes)
         if caseConfig?.id != nil, caseDecl.elements.count != 1 {
             throw MacroExpansionErrorMessage("@ForyCase(id:) enum case declarations must contain exactly one case")
+        }
+        if unknownCase, caseDecl.elements.count != 1 {
+            throw MacroExpansionErrorMessage("@ForyUnknownCase enum case declarations must contain exactly one case")
+        }
+        if unknownCase, caseConfig?.id != nil {
+            throw MacroExpansionErrorMessage("@ForyUnknownCase must not be combined with @ForyCase(id:)")
         }
 
         for element in caseDecl.elements {
@@ -422,6 +441,7 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
                     name: caseName,
                     payload: payloadFields,
                     caseID: caseConfig?.id,
+                    unknownCase: unknownCase,
                     wireValue: integerRawEnum ? parseEnumCaseWireValue(element) : nil
                 )
             )
@@ -453,12 +473,12 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
     return .init(kind: .ordinal, cases: cases)
 }
 
-private func buildEnumDecls(_ parsedEnum: ParsedEnumDecl, accessPrefix: String) -> [DeclSyntax] {
+private func buildEnumDecls(_ parsedEnum: ParsedEnumDecl, accessPrefix: String) throws -> [DeclSyntax] {
     switch parsedEnum.kind {
     case .ordinal:
         return buildOrdinalEnumDecls(parsedEnum.cases, accessPrefix: accessPrefix)
     case .taggedUnion:
-        return buildTaggedUnionEnumDecls(parsedEnum.cases, accessPrefix: accessPrefix)
+        return try buildTaggedUnionEnumDecls(parsedEnum.cases, accessPrefix: accessPrefix)
     }
 }
 
@@ -550,10 +570,50 @@ private func parseEnumCaseWireValue(_ element: EnumCaseElementSyntax) -> UInt32?
     return parsed
 }
 
-private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: String) -> [DeclSyntax] {
-    let defaultExpr = enumCaseDefaultExpr(cases[0])
-    let writeSwitchCases = cases.enumerated().map { index, enumCase in
+private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: String) throws -> [DeclSyntax] {
+    for enumCase in cases {
+        if enumCase.unknownCase && !isRuntimeUnknownCase(enumCase) {
+            throw MacroExpansionErrorMessage(
+                "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
+            )
+        }
+    }
+    guard let unknownCase = cases.first(where: isRuntimeUnknownCase) else {
+        throw MacroExpansionErrorMessage(
+            "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+        )
+    }
+    let knownCases = cases.filter { $0.name != unknownCase.name }
+    var knownCaseIDs: [String: Int] = [:]
+    var seenCaseIDs: [Int: String] = [:]
+    for (index, enumCase) in knownCases.enumerated() {
         let caseID = enumCase.caseID ?? index
+        if let existing = seenCaseIDs[caseID], existing != enumCase.name {
+            throw MacroExpansionErrorMessage(
+                "duplicate @ForyCase(id:) value \(caseID) used by enum cases '\(existing)' and '\(enumCase.name)'"
+            )
+        }
+        seenCaseIDs[caseID] = enumCase.name
+        knownCaseIDs[enumCase.name] = caseID
+    }
+    let defaultCase: ParsedEnumCase
+    guard let knownCase = knownCases.first else {
+        throw MacroExpansionErrorMessage(
+            "@ForyUnion requires at least one non-unknown case; unknown is a forward-compatibility carrier and cannot be the default"
+        )
+    }
+    defaultCase = knownCase
+    let defaultExpr = enumCaseDefaultExpr(defaultCase)
+    let writeSwitchCases = cases.enumerated().map { index, enumCase in
+        if enumCase.name == unknownCase.name {
+            return """
+            case .unknown(let value):
+                context.buffer.writeVarUInt32(value.caseId)
+                try UnknownCaseSerializer.writePayload(value, context)
+            """
+        }
+
+        let caseID = knownCaseIDs[enumCase.name]!
         var lines: [String] = []
         lines.append("case \(enumCasePattern(enumCase)):")
         lines.append("    context.buffer.writeVarUInt32(\(caseID))")
@@ -575,7 +635,11 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
     }.joined(separator: "\n        ")
 
     let readSwitchCases = cases.enumerated().map { index, enumCase in
-        let caseID = enumCase.caseID ?? index
+        if enumCase.name == unknownCase.name {
+            return ""
+        }
+
+        let caseID = knownCaseIDs[enumCase.name]!
         if enumCase.payload.isEmpty {
             return """
             case \(caseID):
@@ -605,6 +669,10 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         lines.append("    return .\(enumCase.name)(\(ctorArgs))")
         return lines.joined(separator: "\n")
     }.joined(separator: "\n        ")
+    let unknownDefault: String = """
+            default:
+                return .unknown(try UnknownCaseSerializer.readPayload(caseId: caseID, context))
+        """
 
     let defaultDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
@@ -638,14 +706,24 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
             let caseID = try context.buffer.readVarUInt32()
             switch caseID {
             \(readSwitchCases)
-            default:
-                throw ForyError.invalidData("unknown union tag \\(caseID)")
+            \(unknownDefault)
             }
         }
         """
     )
 
     return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, writeDecl, readDecl]
+}
+
+private func isRuntimeUnknownCase(_ enumCase: ParsedEnumCase) -> Bool {
+    enumCase.unknownCase &&
+        enumCase.name == "unknown" &&
+        enumCase.caseID == nil &&
+        enumCase.payload.count == 1 &&
+        (
+            enumCase.payload[0].typeText == "UnknownCase" ||
+                enumCase.payload[0].typeText == "Fory.UnknownCase"
+        )
 }
 
 private func enumCasePattern(_ enumCase: ParsedEnumCase) -> String {
@@ -903,6 +981,16 @@ private func parseForyCaseConfiguration(
         return nil
     }
     return .init(id: parsedID, payloadHint: payloadHint)
+}
+
+private func hasForyUnknownCase(from attributes: AttributeListSyntax) -> Bool {
+    attributes.contains { element in
+        guard let attr = element.as(AttributeSyntax.self) else {
+            return false
+        }
+        let attrName = trimType(attr.attributeName.trimmedDescription)
+        return attrName == "ForyUnknownCase" || attrName.hasSuffix(".ForyUnknownCase")
+    }
 }
 
 private func parseNestedFieldTypeHint(
@@ -2771,7 +2859,9 @@ TypeMeta.FieldType(
 
 private func compatibleFieldTypeIDExpression(_ typeText: String) -> String {
     let staticTypeIDExpr = "\(typeText).staticTypeId"
-    return "UInt32((\(staticTypeIDExpr) == .structType ? TypeId.compatibleStruct : \(staticTypeIDExpr)).rawValue)"
+    // A typed union field already has schema from the owning struct field; only
+    // dynamic/top-level union values need TYPED_UNION metadata.
+    return "UInt32((\(staticTypeIDExpr) == .structType ? TypeId.compatibleStruct : (\(staticTypeIDExpr) == .typedUnion ? TypeId.union : \(staticTypeIDExpr))).rawValue)"
 }
 
 private func compatibleGenericNullableExpression(_ typeText: String) -> String {

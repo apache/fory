@@ -169,7 +169,7 @@ public sealed class TypeInfo
         }
 
         Type structType = Nullable.GetUnderlyingType(type) ?? type;
-        ForyObjectAttribute? attribute = structType.GetCustomAttribute<ForyObjectAttribute>();
+        ForyStructAttribute? attribute = structType.GetCustomAttribute<ForyStructAttribute>();
         return attribute?.Evolving ?? true;
     }
 
@@ -230,7 +230,8 @@ public sealed class TypeInfo
             return (null, Apache.Fory.UserTypeKind.Enum, false);
         }
 
-        if (typeof(Union).IsAssignableFrom(type))
+        if (type.GetCustomAttribute<ForyUnionAttribute>() is not null ||
+            typeof(Union).IsAssignableFrom(type))
         {
             return (null, Apache.Fory.UserTypeKind.TypedUnion, false);
         }

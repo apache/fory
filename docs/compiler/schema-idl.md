@@ -714,9 +714,9 @@ message Person {  // Auto-generated when enable_auto_type_id = true
 | Java                  | POJO class with getters/setters     |
 | Python                | `@dataclass` class                  |
 | Go                    | Struct with exported fields         |
-| Rust                  | Struct with `#[derive(ForyObject)]` |
+| Rust                  | Struct with `#[derive(ForyStruct)]` |
 | C++                   | Struct with `FORY_STRUCT` macro     |
-| C#                    | `[ForyObject]` class                |
+| C#                    | `[ForyStruct]` class                |
 | JavaScript/TypeScript | `export interface` declaration      |
 | Swift                 | `@ForyStruct` struct or class       |
 | Dart                  | `@ForyStruct` `final class`         |
@@ -887,10 +887,12 @@ message Person [id=100] {
 
 ### Rules
 
-- Case IDs must be positive and unique within the union
-- Case ID `0` is reserved for language runtimes that expose an unknown-case carrier
+- Case IDs must be non-negative and unique within the union
+- Runtime unknown-case markers only select the carrier and do not add entries to
+  the schema case table
 - Cases cannot be `optional` or `ref`
-- Union cases do not support field options
+- Union cases support field options for payload metadata, such as scalar encoding
+  and collection element metadata
 - Case types can be primitives, enums, messages, or other named types
 - Union type IDs follow the rules in [Type IDs](#type-ids).
 
@@ -898,7 +900,7 @@ message Person [id=100] {
 
 ```
 union_def  := 'union' IDENTIFIER [type_options] '{' union_field* '}'
-union_field := field_type IDENTIFIER '=' INTEGER ';'
+union_field := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 ```
 
 ## Service Definition

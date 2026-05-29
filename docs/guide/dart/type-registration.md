@@ -30,7 +30,7 @@ Fory offers two strategies. Pick one and use it consistently across every langua
 Compact and fast. Good when a small team can coordinate IDs across services.
 
 ```dart
-ModelsFory.register(fory, User, id: 100);
+ModelsForyModule.register(fory, User, id: 100);
 ```
 
 The same number must be used in every other language:
@@ -45,7 +45,7 @@ fory.register(User.class, 100);
 More self-describing. Good when multiple teams or packages define types independently and numeric ID coordination is impractical.
 
 ```dart
-ModelsFory.register(
+ModelsForyModule.register(
   fory,
   User,
   namespace: 'example',
@@ -62,7 +62,7 @@ Every runtime that reads or writes this type must use the same `namespace` and `
 Call the generated `register` function from the `.fory.dart` file. It installs all the serializer metadata for you:
 
 ```dart
-UserModelsFory.register(fory, User, id: 100);
+UserModelsForyModule.register(fory, User, id: 100);
 ```
 
 ## Registering a Custom Serializer

@@ -87,6 +87,9 @@ fn field_write_type_info<T: Serializer>(context: &WriteContext) -> bool {
 #[inline(always)]
 fn serializer_static_field_type_id<T: Serializer>() -> u32 {
     let type_id = T::fory_static_type_id() as u32;
+    // Static fields already carry the union schema in their FieldType, so field
+    // metadata uses UNION. TYPED_UNION/NAMED_UNION are root or dynamic Any
+    // identities where no field owner supplies the schema.
     if type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32 {
         TypeId::UNION as u32
     } else {
@@ -138,6 +141,8 @@ where
     C: Codec<T>,
 {
     let type_id = C::static_type_id() as u32;
+    // Keep typed union identity out of static field metadata; the owning field
+    // already supplies the schema for the union payload.
     if type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32 {
         TypeId::UNION as u32
     } else {
@@ -245,17 +250,41 @@ fn field_type_for_serializer<T: Serializer>(
     nullable: bool,
     track_ref: bool,
 ) -> Result<FieldType, Error> {
+    let static_type_id = T::fory_static_type_id() as u32;
+    if type_resolver.is_xlang()
+        && (static_type_id == TypeId::UNION as u32
+            || static_type_id == TypeId::TYPED_UNION as u32
+            || static_type_id == TypeId::NAMED_UNION as u32)
+    {
+        // Xlang struct fields already own the union schema in FieldType, so they
+        // use UNION instead of TYPED_UNION/NAMED_UNION. Native mode must keep
+        // the registered enum identity because compatible enum evolution uses
+        // that identity to resolve named variant metadata.
+        return Ok(FieldType::new_with_user_type_id(
+            TypeId::UNION as u32,
+            u32::MAX,
+            nullable,
+            track_ref,
+            Vec::new(),
+        ));
+    }
     let mut type_id = T::fory_get_type_id(type_resolver)? as u32;
     let mut user_type_id = u32::MAX;
     if !type_id::is_internal_type(type_id) {
         let type_info = T::fory_get_type_info(type_resolver)?;
         type_id = type_info.get_type_id() as u32;
         user_type_id = type_info.get_user_type_id();
-        if type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32 {
+        // Field TypeDef metadata must be schema-local. Registered union
+        // identities are written only by root or dynamic Any type metadata.
+        if type_resolver.is_xlang()
+            && (type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32)
+        {
             type_id = TypeId::UNION as u32;
             user_type_id = u32::MAX;
         }
-    } else if type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32 {
+    } else if type_resolver.is_xlang()
+        && (type_id == TypeId::TYPED_UNION as u32 || type_id == TypeId::NAMED_UNION as u32)
+    {
         type_id = TypeId::UNION as u32;
     }
     Ok(FieldType::new_with_user_type_id(

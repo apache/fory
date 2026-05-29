@@ -293,7 +293,7 @@ fory.Register<Person>("example", "Person");
 **Dart:**
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
   namespace: 'example',
@@ -376,7 +376,7 @@ fory.Register<Person>(100);
 **Dart:**
 
 ```dart
-PersonFory.register(fory, Person, id: 100);
+PersonForyModule.register(fory, Person, id: 100);
 ```
 
 **Swift:**

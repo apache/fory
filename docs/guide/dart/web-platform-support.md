@@ -58,7 +58,7 @@ class Account {
 
 void main() {
   final fory = Fory();
-  AccountFory.register(
+  AccountForyModule.register(
     fory,
     Account,
     namespace: 'example',

@@ -140,25 +140,25 @@ class DuplicateFieldIdOrder {
 }
 
 void _registerValidationTypes(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicDog,
     namespace: 'validation',
     typeName: 'DynamicDog',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicCat,
     namespace: 'validation',
     typeName: 'DynamicCat',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicAnimalEnvelope,
     namespace: 'validation',
     typeName: 'DynamicAnimalEnvelope',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipEnvelope,
     namespace: 'validation',
@@ -167,7 +167,7 @@ void _registerValidationTypes(Fory fory) {
 }
 
 void _registerSkipV1(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipCompatibleV1,
     namespace: 'validation',
@@ -176,7 +176,7 @@ void _registerSkipV1(Fory fory) {
 }
 
 void _registerSkipV2(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipCompatibleV2,
     namespace: 'validation',
@@ -185,7 +185,7 @@ void _registerSkipV2(Fory fory) {
 }
 
 void _registerSchemaV1(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SchemaVersionV1,
     namespace: 'validation',
@@ -194,7 +194,7 @@ void _registerSchemaV1(Fory fory) {
 }
 
 void _registerSchemaV2(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SchemaVersionV2,
     namespace: 'validation',
@@ -216,7 +216,7 @@ void main() {
       final fory = Fory();
 
       expect(
-        () => RuntimeValidationTestFory.register(
+        () => RuntimeValidationTestForyModule.register(
           fory,
           DuplicateFieldIdOrder,
           namespace: 'validation',
@@ -260,9 +260,10 @@ void main() {
       final catEnvelope = fory.deserialize<DynamicAnimalEnvelope>(
         fory.serialize(
           DynamicAnimalEnvelope()
-            ..animal = (DynamicCat()
-              ..name = 'Misty'
-              ..lives = 7),
+            ..animal =
+                (DynamicCat()
+                  ..name = 'Misty'
+                  ..lives = 7),
         ),
       );
 
@@ -364,7 +365,7 @@ void main() {
             isA<StateError>().having(
               (error) => error.toString(),
               'message',
-              contains('has no generated registration metadata'),
+              contains('has no generated type metadata'),
             ),
           ),
         );

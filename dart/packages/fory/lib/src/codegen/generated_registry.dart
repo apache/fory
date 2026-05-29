@@ -22,21 +22,18 @@ import 'package:meta/meta.dart';
 import 'package:fory/src/meta/field_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
-enum GeneratedRegistrationKind {
-  enumType,
-  struct,
-}
+enum GeneratedTypeKind { enumType, struct }
 
 @internal
-final class GeneratedRegistration {
-  final GeneratedRegistrationKind kind;
+final class GeneratedTypeEntry {
+  final GeneratedTypeKind kind;
   final Serializer<Object?> Function() serializerFactory;
   final bool evolving;
   final bool needsRootRef;
   final bool usesNestedTypeDefinitions;
   final List<FieldInfo> fields;
 
-  const GeneratedRegistration({
+  const GeneratedTypeEntry({
     required this.kind,
     required this.serializerFactory,
     this.evolving = true,
@@ -47,15 +44,15 @@ final class GeneratedRegistration {
 }
 
 @internal
-abstract final class GeneratedRegistrationCatalog {
-  static final Map<Type, GeneratedRegistration> _byType =
-      <Type, GeneratedRegistration>{};
+abstract final class GeneratedTypeCatalog {
+  static final Map<Type, GeneratedTypeEntry> _byType =
+      <Type, GeneratedTypeEntry>{};
 
-  static void remember(Type type, GeneratedRegistration registration) {
-    _byType[type] = registration;
+  static void remember(Type type, GeneratedTypeEntry entry) {
+    _byType[type] = entry;
   }
 
-  static GeneratedRegistration? lookup(Type type) {
+  static GeneratedTypeEntry? lookup(Type type) {
     return _byType[type];
   }
 }

@@ -77,9 +77,7 @@ class RefMapKeyContainer {
 class NestedListOfMapContainer {
   NestedListOfMapContainer();
 
-  @ListField(
-    element: MapType(value: DeclaredType(ref: true)),
-  )
+  @ListField(element: MapType(value: DeclaredType(ref: true)))
   List<Map<String, Node>> groups = <Map<String, Node>>[];
 }
 
@@ -88,29 +86,59 @@ class NestedListOfMapContainer {
 class NestedMapOfListContainer {
   NestedMapOfListContainer();
 
-  @MapField(
-    value: ListType(element: DeclaredType(ref: true)),
-  )
+  @MapField(value: ListType(element: DeclaredType(ref: true)))
   Map<String, List<Node>> groups = <String, List<Node>>{};
 }
 
 void _registerAll(Fory fory) {
-  ContainerRefTestFory.register(fory, Node,
-      namespace: 'test', typeName: 'Node');
-  ContainerRefTestFory.register(fory, RefListContainer,
-      namespace: 'test', typeName: 'RefListContainer');
-  ContainerRefTestFory.register(fory, NoRefListContainer,
-      namespace: 'test', typeName: 'NoRefListContainer');
-  ContainerRefTestFory.register(fory, RefMapValueContainer,
-      namespace: 'test', typeName: 'RefMapValueContainer');
-  ContainerRefTestFory.register(fory, NoRefMapContainer,
-      namespace: 'test', typeName: 'NoRefMapContainer');
-  ContainerRefTestFory.register(fory, RefMapKeyContainer,
-      namespace: 'test', typeName: 'RefMapKeyContainer');
-  ContainerRefTestFory.register(fory, NestedListOfMapContainer,
-      namespace: 'test', typeName: 'NestedListOfMapContainer');
-  ContainerRefTestFory.register(fory, NestedMapOfListContainer,
-      namespace: 'test', typeName: 'NestedMapOfListContainer');
+  ContainerRefTestForyModule.register(
+    fory,
+    Node,
+    namespace: 'test',
+    typeName: 'Node',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    RefListContainer,
+    namespace: 'test',
+    typeName: 'RefListContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    NoRefListContainer,
+    namespace: 'test',
+    typeName: 'NoRefListContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    RefMapValueContainer,
+    namespace: 'test',
+    typeName: 'RefMapValueContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    NoRefMapContainer,
+    namespace: 'test',
+    typeName: 'NoRefMapContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    RefMapKeyContainer,
+    namespace: 'test',
+    typeName: 'RefMapKeyContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    NestedListOfMapContainer,
+    namespace: 'test',
+    typeName: 'NestedListOfMapContainer',
+  );
+  ContainerRefTestForyModule.register(
+    fory,
+    NestedMapOfListContainer,
+    namespace: 'test',
+    typeName: 'NestedMapOfListContainer',
+  );
 }
 
 void main() {
@@ -124,8 +152,8 @@ void main() {
   group('list element ref via @ListField annotation', () {
     test('shared list elements preserve identity with element ref enabled', () {
       final shared = Node()..name = 'shared';
-      final container = RefListContainer()
-        ..items = <Node>[shared, shared, shared];
+      final container =
+          RefListContainer()..items = <Node>[shared, shared, shared];
       final bytes = fory.serialize(container);
       final result = fory.deserialize<RefListContainer>(bytes);
 
@@ -137,8 +165,8 @@ void main() {
 
     test('shared list elements are different instances without annotation', () {
       final shared = Node()..name = 'shared';
-      final container = NoRefListContainer()
-        ..items = <Node>[shared, shared, shared];
+      final container =
+          NoRefListContainer()..items = <Node>[shared, shared, shared];
       final bytes = fory.serialize(container);
       final result = fory.deserialize<NoRefListContainer>(bytes);
 
@@ -153,8 +181,9 @@ void main() {
   group('map value ref via @MapField annotation', () {
     test('shared map values preserve identity with value ref enabled', () {
       final shared = Node()..name = 'val';
-      final container = RefMapValueContainer()
-        ..entries = <String, Node>{'a': shared, 'b': shared};
+      final container =
+          RefMapValueContainer()
+            ..entries = <String, Node>{'a': shared, 'b': shared};
       final bytes = fory.serialize(container);
       final result = fory.deserialize<RefMapValueContainer>(bytes);
 
@@ -165,8 +194,9 @@ void main() {
 
     test('shared map values are different instances without annotation', () {
       final shared = Node()..name = 'val';
-      final container = NoRefMapContainer()
-        ..entries = <String, Node>{'a': shared, 'b': shared};
+      final container =
+          NoRefMapContainer()
+            ..entries = <String, Node>{'a': shared, 'b': shared};
       final bytes = fory.serialize(container);
       final result = fory.deserialize<NoRefMapContainer>(bytes);
 
@@ -180,8 +210,8 @@ void main() {
   group('map key ref via @MapField annotation', () {
     test('shared map keys preserve identity with key ref enabled', () {
       final shared = Node()..name = 'key';
-      final container = RefMapKeyContainer()
-        ..entries = <Node, String>{shared: 'x'};
+      final container =
+          RefMapKeyContainer()..entries = <Node, String>{shared: 'x'};
       final bytes = fory.serialize(container);
       final result = fory.deserialize<RefMapKeyContainer>(bytes);
 
@@ -192,39 +222,50 @@ void main() {
   });
 
   group('nested container ref via @ListField/@MapField annotation', () {
-    test('list of maps with ref-tracked values preserves identity across maps',
-        () {
-      final shared = Node()..name = 'deep';
-      final container = NestedListOfMapContainer()
-        ..groups = <Map<String, Node>>[
-          <String, Node>{'x': shared},
-          <String, Node>{'y': shared},
-        ];
-      final bytes = fory.serialize(container);
-      final result = fory.deserialize<NestedListOfMapContainer>(bytes);
+    test(
+      'list of maps with ref-tracked values preserves identity across maps',
+      () {
+        final shared = Node()..name = 'deep';
+        final container =
+            NestedListOfMapContainer()
+              ..groups = <Map<String, Node>>[
+                <String, Node>{'x': shared},
+                <String, Node>{'y': shared},
+              ];
+        final bytes = fory.serialize(container);
+        final result = fory.deserialize<NestedListOfMapContainer>(bytes);
 
-      expect(result.groups, hasLength(2));
-      expect(result.groups[0]['x']!.name, equals('deep'));
-      expect(identical(result.groups[0]['x'], result.groups[1]['y']), isTrue);
-    });
+        expect(result.groups, hasLength(2));
+        expect(result.groups[0]['x']!.name, equals('deep'));
+        expect(identical(result.groups[0]['x'], result.groups[1]['y']), isTrue);
+      },
+    );
 
     test(
-        'map of lists with ref-tracked elements preserves identity across lists',
-        () {
-      final shared = Node()..name = 'maplist';
-      final container = NestedMapOfListContainer()
-        ..groups = <String, List<Node>>{
-          'a': <Node>[shared, shared],
-          'b': <Node>[shared],
-        };
-      final bytes = fory.serialize(container);
-      final result = fory.deserialize<NestedMapOfListContainer>(bytes);
+      'map of lists with ref-tracked elements preserves identity across lists',
+      () {
+        final shared = Node()..name = 'maplist';
+        final container =
+            NestedMapOfListContainer()
+              ..groups = <String, List<Node>>{
+                'a': <Node>[shared, shared],
+                'b': <Node>[shared],
+              };
+        final bytes = fory.serialize(container);
+        final result = fory.deserialize<NestedMapOfListContainer>(bytes);
 
-      expect(result.groups['a'], hasLength(2));
-      expect(result.groups['b'], hasLength(1));
-      expect(result.groups['a']![0].name, equals('maplist'));
-      expect(identical(result.groups['a']![0], result.groups['a']![1]), isTrue);
-      expect(identical(result.groups['a']![0], result.groups['b']![0]), isTrue);
-    });
+        expect(result.groups['a'], hasLength(2));
+        expect(result.groups['b'], hasLength(1));
+        expect(result.groups['a']![0].name, equals('maplist'));
+        expect(
+          identical(result.groups['a']![0], result.groups['a']![1]),
+          isTrue,
+        );
+        expect(
+          identical(result.groups['a']![0], result.groups['b']![0]),
+          isTrue,
+        );
+      },
+    );
   });
 }

@@ -424,9 +424,10 @@ fn test_enum_variant_type_change() {
     // Version 1: Different variant types
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV1 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
-        Unknown,
-        Active,          // Unit variant
+        Active, // Unit variant
         Processing(i32), // Unnamed variant
         Finished {
             code: i32,
@@ -436,8 +437,9 @@ fn test_enum_variant_type_change() {
     // Version 2: Change variant types
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV2 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
-        Unknown,
         Active {
             timestamp: i64,
         }, // Unit -> Named
@@ -451,9 +453,10 @@ fn test_enum_variant_type_change() {
     // Version 3: More type changes
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StatusV3 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
-        Unknown,
-        Active,                  // Named -> Unit
+        Active, // Named -> Unit
         Processing(i32, String), // Named -> Unnamed (2 fields)
         Finished,                // Unnamed -> Unit
     }
@@ -535,6 +538,8 @@ fn test_struct_with_enum_field_evolution() {
     // Version 1: Struct with enum field
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV1 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
         Init,
         Ready {
@@ -552,6 +557,8 @@ fn test_struct_with_enum_field_evolution() {
     // Version 2: Enum evolved with new fields and variant
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV2 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
         Init,
         Ready {
@@ -575,6 +582,8 @@ fn test_struct_with_enum_field_evolution() {
     // Version 3: Enum variant type changed
     #[derive(ForyUnion, Debug, PartialEq)]
     enum StateV3 {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
         #[fory(default)]
         Init,
         Ready(u32, String), // Changed from named to unnamed

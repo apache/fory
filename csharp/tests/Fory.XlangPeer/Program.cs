@@ -1135,7 +1135,7 @@ internal static class Program
     }
 }
 
-[ForyObject]
+[ForyEnum]
 public enum Color
 {
     Green,
@@ -1144,13 +1144,13 @@ public enum Color
     White,
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Item
 {
     public string Name { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class SimpleStruct
 {
     public Dictionary<int, double> F1 { get; set; } = [];
@@ -1164,19 +1164,19 @@ public sealed class SimpleStruct
     public int Last { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class EvolvingOverrideStruct
 {
     public string F1 { get; set; } = string.Empty;
 }
 
-[ForyObject(Evolving = false)]
+[ForyStruct(Evolving = false)]
 public sealed class FixedOverrideStruct
 {
     public string F1 { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Item1
 {
     public int F1 { get; set; }
@@ -1187,31 +1187,31 @@ public sealed class Item1
     public int F6 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class StructWithList
 {
     public List<string?> Items { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class StructWithMap
 {
     public NullableKeyDictionary<string, string?> Data { get; set; } = new();
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class StructWithUnion2
 {
     public Union2<string, long> Union { get; set; } = Union2<string, long>.OfT1(string.Empty);
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class MyStruct
 {
     public int Id { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class MyExt
 {
     public int Id { get; set; }
@@ -1233,7 +1233,7 @@ public sealed class MyExtSerializer : Serializer<MyExt>
     }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class MyWrapper
 {
     public Color Color { get; set; }
@@ -1241,12 +1241,12 @@ public sealed class MyWrapper
     public MyStruct MyStruct { get; set; } = new();
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class EmptyWrapper
 {
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class VersionCheckStruct
 {
     public int F1 { get; set; }
@@ -1254,57 +1254,57 @@ public sealed class VersionCheckStruct
     public double F3 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Dog
 {
     public int Age { get; set; }
     public string? Name { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Cat
 {
     public int Age { get; set; }
     public int Lives { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class AnimalListHolder
 {
     public List<object?> Animals { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class AnimalMapHolder
 {
     public Dictionary<string, object?> AnimalMap { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class OneFieldStruct
 {
     public int Value { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class OneStringFieldStruct
 {
     public string? F1 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class TwoStringFieldStruct
 {
     public string F1 { get; set; } = string.Empty;
     public string F2 { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class EmptyStruct
 {
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class ReducedPrecisionFloatStruct
 {
     public Half Float16Value { get; set; }
@@ -1313,28 +1313,28 @@ public sealed class ReducedPrecisionFloatStruct
     public List<BFloat16> BFloat16Array { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class CompatibleInt32ListField
 {
     [ForyField(1, Type = typeof(S.List<S.Fixed<S.Int32>>))]
     public List<int> Values { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class CompatibleNullableInt32ListField
 {
     [ForyField(1, Type = typeof(S.List<S.Fixed<S.Int32>>))]
     public List<int?> Values { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class CompatibleInt32ArrayField
 {
     [ForyField(1, Type = typeof(S.Array<S.Int32>))]
     public int[] Values { get; set; } = [];
 }
 
-[ForyObject]
+[ForyEnum]
 public enum TestEnum
 {
     ValueA,
@@ -1342,20 +1342,20 @@ public enum TestEnum
     ValueC,
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class OneEnumFieldStruct
 {
     public TestEnum F1 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class TwoEnumFieldStruct
 {
     public TestEnum F1 { get; set; }
     public TestEnum F2 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class NullableComprehensiveSchemaConsistent
 {
     public sbyte ByteField { get; set; }
@@ -1382,7 +1382,7 @@ public sealed class NullableComprehensiveSchemaConsistent
     public NullableKeyDictionary<string, string>? NullableMap { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class NullableComprehensiveCompatible
 {
     public sbyte ByteField { get; set; }
@@ -1416,42 +1416,42 @@ public sealed class NullableComprehensiveCompatible
     public NullableKeyDictionary<string, string> NullableMap2 { get; set; } = new();
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefInnerSchemaConsistent
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefOuterSchemaConsistent
 {
     public RefInnerSchemaConsistent? Inner1 { get; set; }
     public RefInnerSchemaConsistent? Inner2 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefInnerCompatible
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefOuterCompatible
 {
     public RefInnerCompatible? Inner1 { get; set; }
     public RefInnerCompatible? Inner2 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefOverrideElement
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class RefOverrideContainer
 {
     public List<RefOverrideElement?> ListField { get; set; } = [];
@@ -1459,14 +1459,14 @@ public sealed class RefOverrideContainer
     public Dictionary<string, RefOverrideElement?> MapField { get; set; } = [];
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class CircularRefStruct
 {
     public string Name { get; set; } = string.Empty;
     public CircularRefStruct? SelfRef { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class UnsignedSchemaConsistentSimple
 {
     [ForyField(Type = typeof(S.Tagged<S.UInt64>))]
@@ -1476,7 +1476,7 @@ public sealed class UnsignedSchemaConsistentSimple
     public ulong? U64TaggedNullable { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class UnsignedSchemaConsistent
 {
     public byte U8Field { get; set; }
@@ -1510,7 +1510,7 @@ public sealed class UnsignedSchemaConsistent
     public ulong? U64TaggedNullableField { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class UnsignedSchemaCompatible
 {
     public byte? U8Field1 { get; set; }
@@ -1545,14 +1545,14 @@ public sealed class UnsignedSchemaCompatible
 }
 
 #pragma warning disable CS8714
-[ForyObject]
+[ForyStruct]
 public sealed class NestedAnnotatedContainerSchemaConsistent
 {
     [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]
     public NullableKeyDictionary<uint?, List<ulong?>?> Values { get; set; } = new();
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class NestedAnnotatedContainerCompatible
 {
     [ForyField(Type = typeof(S.Map<S.Fixed<S.UInt32>, S.List<S.Tagged<S.UInt64>>>))]

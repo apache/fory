@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::object::util::is_default_value_variant;
 use crate::object::{derive_enum, misc, read, write};
 use crate::util::{extract_fields, source_fields};
 use crate::ForyAttrs;
@@ -317,7 +318,7 @@ fn generate_default_impl(
         }
         Data::Enum(e) => {
             // Check if any variant has #[default] attribute (indicates user is deriving Default)
-            let has_default_variant = e
+            let has_std_default_variant = e
                 .variants
                 .iter()
                 .any(|v| v.attrs.iter().any(|attr| attr.path().is_ident("default")));
@@ -325,7 +326,13 @@ fn generate_default_impl(
             // Check if user has #[derive(Default)] on the enum
             let has_derived_default = has_existing_default(ast, "Default");
 
-            if let Some(first_variant) = e.variants.first() {
+            let default_variant = e
+                .variants
+                .iter()
+                .find(|variant| is_default_value_variant(variant))
+                .or_else(|| e.variants.first());
+
+            if let Some(first_variant) = default_variant {
                 let variant_ident = &first_variant.ident;
                 let field_defaults = match &first_variant.fields {
                     syn::Fields::Unit => quote! {},
@@ -346,7 +353,7 @@ fn generate_default_impl(
                     }
                 };
 
-                if has_derived_default || has_default_variant {
+                if has_derived_default || has_std_default_variant {
                     // User has #[derive(Default)] or #[default] attribute
                     // Only generate ForyDefault that delegates to Default
                     quote! {

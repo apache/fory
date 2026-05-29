@@ -367,8 +367,9 @@ generated/
 
 - Single `.cs` file per schema
 - Namespace uses `csharp_namespace` (if set) or Fory IDL package
-- Includes registration helper and `ToBytes`/`FromBytes` methods
-- Imported schemas are registered transitively (for example `root.idl` importing
+- Includes source-file-prefixed `XXXForyModule` installation helper and
+  `ToBytes`/`FromBytes` methods
+- Imported schemas are installed transitively (for example `root.idl` importing
   `addressbook.fdl` and `tree.fdl`)
 
 ### Swift
@@ -384,8 +385,9 @@ generated/
 - Package segments are mapped to nested Swift enums (for example `addressbook.*` -> `Addressbook.*`)
 - Generated messages use `@ForyStruct`, enums use `@ForyEnum`, and unions use `@ForyUnion`/`@ForyCase`
 - Union types are generated as tagged enums with associated payload values
-- Each schema includes `ForyRegistration` and `toBytes`/`fromBytes` helpers
-- Imported schemas are registered transitively by generated registration helpers
+- Each schema includes a schema-file module owner and `toBytes`/`fromBytes`
+  helpers
+- Imported schemas are installed transitively by generated module helpers
 
 ### Dart
 
@@ -399,7 +401,8 @@ generated/
 
 - Two files per schema: a main `.dart` file with annotated types, and a `.fory.dart` part file with generated serializers
 - Package segments map to directories (e.g., `demo.foo` → `demo/foo/`)
-- Registration helper class included in the part file
+- IDL module class included in the main file; generated serializer metadata is
+  included in the part file
 - Typed arrays used for non-optional, non-ref primitive lists (e.g., `Int32List`)
 
 ### Scala
@@ -419,7 +422,7 @@ generated/
 - Messages derive `org.apache.fory.scala.ForySerializer`
 - `optional T` fields use `Option[T]`
 - Enums use Scala 3 `enum`
-- Unions use Scala 3 ADT `enum` with `@ForyUnion`, `@ForyCase`, and an `UnknownCase`
+- Unions use Scala 3 ADT `enum` with `@ForyUnion`, `@ForyCase`, and an `Unknown`
 - Schema module object included
 
 ### Kotlin

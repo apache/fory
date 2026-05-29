@@ -57,9 +57,9 @@ def test_emits_models():
         }
 
         union SearchTarget [id=103] {
-            User user = 1;
-            string note = 2;
-            array<int8> bytes = 3;
+            User user = 0;
+            string note = 1;
+            array<int8> bytes = 2;
         }
         """
     )
@@ -85,13 +85,13 @@ def test_emits_models():
     union = files["org/example/demo/SearchTarget.kt"]
     assert "@ForyUnion" in union
     assert "public sealed class SearchTarget" in union
-    assert "public data class UnknownCase(" in union
-    assert "@ForyCase(id = 1)" in union
-    assert "public data class UserCase(public val value: User)" in union
+    assert "@ForyUnknownCase" in union
+    assert "public data class Unknown(" in union
+    assert "public val value: UnknownCase" in union
+    assert "@ForyCase(id = 0)" in union
+    assert "public data class User(public val value: org.example.demo.User)" in union
     assert "import org.apache.fory.annotation.ArrayType" in union
-    assert (
-        "public data class BytesCase(public val value: @ArrayType ByteArray)" in union
-    )
+    assert "public data class Bytes(public val value: @ArrayType ByteArray)" in union
 
     assert (
         "public fun toBytes(): ByteArray = DemoForyModule.getFory().serialize(this)"
@@ -134,6 +134,24 @@ def test_fdl_package():
 
     assert "demo/models/User.kt" in files
     assert "package demo.models" in files["demo/models/User.kt"]
+
+
+def test_default_package_union_conflict_uses_case_suffix():
+    files = generate_kotlin(
+        """
+        message Dog {
+            string name = 1;
+        }
+
+        union Animal {
+            Dog dog = 1;
+        }
+        """
+    )
+
+    union = files["Animal.kt"]
+    assert "public data class DogCase(public val value: Dog) : Animal()" in union
+    assert "public data class Dog(public val value: Dog) : Animal()" not in union
 
 
 def test_registration_path_collision_rejected(tmp_path, capsys):

@@ -37,6 +37,7 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             throw new InvalidDataException("union value is null");
         }
 
+        CheckWireCaseId(value.Index);
         context.Writer.WriteVarUInt32((uint)value.Index);
         if (CaseTypeByIndex.TryGetValue(value.Index, out Type? caseType))
         {
@@ -67,6 +68,14 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
         }
 
         return Factory(caseId, caseValue);
+    }
+
+    private static void CheckWireCaseId(int caseId)
+    {
+        if (caseId < 0)
+        {
+            throw new InvalidDataException("union wire case id must be non-negative");
+        }
     }
 
     private static Func<int, object?, TUnion> BuildFactory()

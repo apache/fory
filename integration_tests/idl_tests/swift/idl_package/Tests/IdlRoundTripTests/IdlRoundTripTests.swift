@@ -31,9 +31,9 @@ final class IdlRoundTripTests: XCTestCase {
 
     func testEvolvingRoundTrip() throws {
         let foryV1 = Fory(ref: false, compatible: true)
-        try Evolving1.ForyRegistration.register(foryV1)
+        try Evolving1.ForyModule.install(foryV1)
         let foryV2 = Fory(ref: false, compatible: true)
-        try Evolving2.ForyRegistration.register(foryV2)
+        try Evolving2.ForyModule.install(foryV2)
 
         let messageV1 = Evolving1.EvolvingMessage(id: 1, name: "Alice", city: "NYC")
         let bytes = try foryV1.serialize(messageV1)
@@ -101,7 +101,7 @@ final class IdlRoundTripTests: XCTestCase {
 
     func testGeneratedFixedIntegerListsUseListMetadata() throws {
         let fory = Fory(ref: false, compatible: true)
-        try Example.ForyRegistration.register(fory)
+        try Example.ForyModule.install(fory)
         let maybeFloat16Values: [String: Float16?] = ["none": nil, "one": Float16(1)]
         let maybeBFloat16Values: [String: BFloat16?] = ["none": nil, "one": BFloat16(rawValue: 0x3F80)]
 
@@ -137,14 +137,14 @@ final class IdlRoundTripTests: XCTestCase {
 
     private func runIdlMatrixRoundTrip(compatible: Bool) throws {
         let fory = Fory(ref: false, compatible: compatible)
-        try Addressbook.ForyRegistration.register(fory)
-        try AutoId.ForyRegistration.register(fory)
-        try Collection.ForyRegistration.register(fory)
-        try OptionalTypes.ForyRegistration.register(fory)
-        try AnyExample.ForyRegistration.register(fory)
-        try MonsterNamespace.ForyRegistration.register(fory)
-        try ComplexFbs.ForyRegistration.register(fory)
-        try Example.ForyRegistration.register(fory)
+        try Addressbook.ForyModule.install(fory)
+        try AutoId.ForyModule.install(fory)
+        try Collection.ForyModule.install(fory)
+        try OptionalTypes.ForyModule.install(fory)
+        try AnyExample.ForyModule.install(fory)
+        try MonsterNamespace.ForyModule.install(fory)
+        try ComplexFbs.ForyModule.install(fory)
+        try Example.ForyModule.install(fory)
 
         let book = buildAddressBook()
         let bookRoundTrip: Addressbook.AddressBook = try roundTrip(fory, value: book)
@@ -246,7 +246,7 @@ final class IdlRoundTripTests: XCTestCase {
         }
 
         let anyProtoFory = Fory(ref: false, compatible: compatible)
-        try AnyExamplePb.ForyRegistration.register(anyProtoFory)
+        try AnyExamplePb.ForyModule.install(anyProtoFory)
         let anyProtoHolder = buildAnyProtoHolder()
         do {
             let anyProtoRoundTrip: AnyExamplePb.AnyHolder = try roundTrip(anyProtoFory, value: anyProtoHolder)
@@ -277,9 +277,9 @@ final class IdlRoundTripTests: XCTestCase {
         }
 
         let refFory = Fory(ref: true, compatible: compatible)
-        try Tree.ForyRegistration.register(refFory)
-        try GraphNamespace.ForyRegistration.register(refFory)
-        try Root.ForyRegistration.register(refFory)
+        try Tree.ForyModule.install(refFory)
+        try GraphNamespace.ForyModule.install(refFory)
+        try Root.ForyModule.install(refFory)
 
         let tree = buildTree()
         let treeRoundTrip: Tree.TreeNode = try roundTrip(refFory, value: tree)

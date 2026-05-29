@@ -43,7 +43,7 @@ void registerXlangType(
   )) {
     return;
   }
-  XlangTestModelsFory.register(
+  XlangTestModelsForyModule.register(
     fory,
     type,
     id: id,
@@ -53,19 +53,10 @@ void registerXlangType(
 }
 
 @ForyStruct()
-enum Color {
-  green,
-  red,
-  blue,
-  white,
-}
+enum Color { green, red, blue, white }
 
 @ForyStruct()
-enum TestEnum {
-  valueA,
-  valueB,
-  valueC,
-}
+enum TestEnum { valueA, valueB, valueC }
 
 @ForyStruct()
 class TwoEnumFieldStructEvolution {

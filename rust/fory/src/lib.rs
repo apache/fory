@@ -679,7 +679,7 @@
 //!
 //! - Efficient varint encoding for variant ordinals
 //! - Schema evolution support (add/remove variants, add/remove fields)
-//! - Default variant support with `#[default]`
+//! - Default variant support with `#[fory(default)]`
 //! - Automatic type mismatch handling
 //!
 //! ```rust
@@ -687,9 +687,9 @@
 //! use fory::Error;
 //! use fory::ForyUnion;
 //!
-//! #[derive(Default, ForyUnion, Debug, PartialEq)]
+//! #[derive(ForyUnion, Debug, PartialEq)]
 //! enum Value {
-//!     #[default]
+//!     #[fory(default)]
 //!     Null,
 //!     Bool(bool),
 //!     Number(f64),
@@ -721,12 +721,14 @@
 //! // Old version with 2 fields
 //! #[derive(ForyUnion, Debug)]
 //! enum OldEvent {
+//!     #[fory(default)]
 //!     Click { x: i32, y: i32 },
 //! }
 //!
 //! // New version with 3 fields - added timestamp
 //! #[derive(ForyUnion, Debug)]
 //! enum NewEvent {
+//!     #[fory(default)]
 //!     Click { x: i32, y: i32, timestamp: u64 },
 //! }
 //!
@@ -1194,6 +1196,7 @@
 pub use fory_core::{
     error::Error, fory::Fory, fory::ForyBuilder, register_trait_type, row::from_row, row::to_row,
     ArcWeak, BFloat16, Date, Decimal, Duration, Float16, ForyDefault, RcWeak, ReadContext, Reader,
-    RefFlag, RefMode, Serializer, Timestamp, TypeId, TypeResolver, WriteContext, Writer,
+    RefFlag, RefMode, Serializer, Timestamp, TypeId, TypeResolver, UnknownCase, WriteContext,
+    Writer,
 };
 pub use fory_derive::{ForyEnum, ForyRow, ForyStruct, ForyUnion};

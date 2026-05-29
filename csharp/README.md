@@ -10,7 +10,7 @@ The C# implementation provides high-performance object graph serialization for .
 
 - High-performance binary serialization for .NET 8+
 - Cross-language compatibility with Java, Python, C++, Go, Rust, and JavaScript
-- Source-generator-based serializers for `[ForyObject]` types
+- Source-generator-based serializers for `[ForyStruct]` types, plus `[ForyEnum]` and `[ForyUnion]` registration
 - Field-level schema descriptors with `[ForyField(Type = typeof(...))]`
 - Optional shared/circular reference tracking (`TrackRef(true)`)
 - Compatible mode for schema evolution
@@ -27,7 +27,7 @@ The C# implementation provides high-performance object graph serialization for .
 
 ### Add Apache Fory™ C\#
 
-From NuGet, reference the single `Apache.Fory` package. It includes the runtime plus the source generator for `[ForyObject]` types.
+From NuGet, reference the single `Apache.Fory` package. It includes the runtime plus the source generator for `[ForyStruct]`, `[ForyEnum]`, and `[ForyUnion]` types.
 
 ```xml
 <ItemGroup>
@@ -52,7 +52,7 @@ For local development against this repository, reference the runtime project and
 ```csharp
 using Apache.Fory;
 
-[ForyObject]
+[ForyStruct]
 public sealed class User
 {
     public long Id { get; set; }
@@ -78,17 +78,17 @@ User decoded = fory.Deserialize<User>(payload);
 
 ### 1. Object Graph Serialization
 
-`[ForyObject]` types are serialized with generated serializers.
+`[ForyStruct]` types are serialized with generated serializers.
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed class Address
 {
     public string Street { get; set; } = string.Empty;
     public int Zip { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class Person
 {
     public long Id { get; set; }
@@ -106,7 +106,7 @@ fory.Register<Person>(101);
 Enable reference tracking to preserve object identity.
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed class Node
 {
     public int Value { get; set; }
@@ -128,13 +128,13 @@ System.Diagnostics.Debug.Assert(object.ReferenceEquals(decoded, decoded.Next));
 Compatible mode allows schema changes between writer and reader.
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed class OneField
 {
     public string? F1 { get; set; }
 }
 
-[ForyObject]
+[ForyStruct]
 public sealed class TwoFields
 {
     public string F1 { get; set; } = string.Empty;

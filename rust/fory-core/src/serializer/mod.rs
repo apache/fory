@@ -41,6 +41,8 @@ mod string;
 pub mod struct_;
 pub mod trait_object;
 mod tuple;
+#[doc(hidden)]
+pub mod unknown_case;
 mod unsigned_number;
 pub mod util;
 pub mod weak;

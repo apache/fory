@@ -342,7 +342,11 @@ private struct AnimalMapHolder {
 
 @ForyUnion
 private enum StringOrLong {
+    @ForyUnknownCase
+    case unknown(UnknownCase)
+    @ForyCase(id: 0)
     case text(String)
+    @ForyCase(id: 1)
     case number(Int64)
 }
 

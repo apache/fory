@@ -174,7 +174,7 @@ class SwiftGenerator(BaseGenerator):
             lines.extend(self.generate_message(message, indent=indent_level))
             lines.append("")
 
-        lines.extend(self.generate_registration_type(indent=indent_level))
+        lines.extend(self.generate_module_type(indent=indent_level))
         lines.append("")
 
         if namespace_components:
@@ -223,21 +223,21 @@ class SwiftGenerator(BaseGenerator):
             )
         return normalized
 
-    def _registration_helper_name_for_schema(self, schema: Schema) -> str:
+    def _module_helper_name_for_schema(self, schema: Schema) -> str:
         prefix = self._namespace_prefix_for_schema(schema)
         if prefix:
-            return self.safe_type_identifier(f"{prefix}_ForyRegistration")
-        return "ForyRegistration"
+            return self.safe_type_identifier(f"{prefix}_ForyModule")
+        return "ForyModule"
 
-    def _registration_type_path_for_schema(self, schema: Schema) -> str:
+    def _module_type_path_for_schema(self, schema: Schema) -> str:
         namespace_path = ".".join(self._namespace_components_for_schema(schema))
-        registration_type_name = self._registration_helper_name_for_schema(schema)
+        module_type_name = self._module_helper_name_for_schema(schema)
         if namespace_path:
-            return f"{namespace_path}.{registration_type_name}"
-        return registration_type_name
+            return f"{namespace_path}.{module_type_name}"
+        return module_type_name
 
-    def registration_type_path(self) -> str:
-        return self._registration_type_path_for_schema(self.schema)
+    def module_type_path(self) -> str:
+        return self._module_type_path_for_schema(self.schema)
 
     def safe_identifier(self, name: str) -> str:
         if not name:
@@ -371,7 +371,7 @@ class SwiftGenerator(BaseGenerator):
             return self.namespace_path()
         return ".".join(self._namespace_components_for_schema(schema))
 
-    def _collect_imported_registration_paths(self) -> List[str]:
+    def _collect_imported_module_paths(self) -> List[str]:
         by_file: Dict[str, str] = {}
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
@@ -386,7 +386,7 @@ class SwiftGenerator(BaseGenerator):
             schema = self._load_schema(file_path)
             if schema is None:
                 continue
-            by_file[normalized] = self._registration_type_path_for_schema(schema)
+            by_file[normalized] = self._module_type_path_for_schema(schema)
 
         ordered: List[str] = []
         used_paths: Set[str] = set()
@@ -407,7 +407,7 @@ class SwiftGenerator(BaseGenerator):
         deduped: List[str] = []
         seen: Set[str] = set()
         for path in ordered:
-            if path == self.registration_type_path():
+            if path == self.module_type_path():
                 continue
             if path in seen:
                 continue
@@ -869,6 +869,22 @@ class SwiftGenerator(BaseGenerator):
             return True
         return False
 
+    def union_supports_equatable(
+        self,
+        union: Union,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[int]] = None,
+    ) -> bool:
+        if visiting is None:
+            visiting = set()
+        lineage = parent_stack or []
+        for field in union.fields:
+            if not self.type_supports_equatable(
+                field.field_type, parent_stack=lineage, visiting=visiting
+            ):
+                return False
+        return True
+
     def message_supports_equatable(
         self,
         message: Message,
@@ -890,32 +906,6 @@ class SwiftGenerator(BaseGenerator):
         for field in message.fields:
             if not self.type_supports_equatable(
                 field.field_type, parent_stack=lineage, visiting=visiting
-            ):
-                self._equatable_cache[key] = False
-                visiting.remove(key)
-                return False
-
-        self._equatable_cache[key] = True
-        visiting.remove(key)
-        return True
-
-    def union_supports_equatable(
-        self,
-        union: Union,
-        visiting: Optional[Set[int]] = None,
-    ) -> bool:
-        key = id(union)
-        if key in self._equatable_cache:
-            return self._equatable_cache[key]
-        if visiting is None:
-            visiting = set()
-        if key in visiting:
-            return False
-        visiting.add(key)
-
-        for field in union.fields:
-            if not self.type_supports_equatable(
-                field.field_type, parent_stack=[], visiting=visiting
             ):
                 self._equatable_cache[key] = False
                 visiting.remove(key)
@@ -978,9 +968,16 @@ class SwiftGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
         lines.append(f"{ind}@ForyUnion")
-        conformances = ": Equatable" if self.union_supports_equatable(union) else ""
+        conformances = (
+            ": Equatable"
+            if self.union_supports_equatable(union, parent_stack=parent_stack)
+            else ""
+        )
         lines.append(f"{ind}public enum {type_name}{conformances} {{")
         lineage = parent_stack or []
+        lines.append(f"{ind}{self.indent_str}@ForyUnknownCase")
+        lines.append(f"{ind}{self.indent_str}case unknown(UnknownCase)")
+        lines.append("")
         for field in union.fields:
             field_type = self.generate_type(
                 field.field_type,
@@ -1164,10 +1161,10 @@ class SwiftGenerator(BaseGenerator):
     def generate_bytes_methods(self, type_name: str, indent: int) -> List[str]:
         ind = self.indent_str * indent
         lines: List[str] = []
-        registration_path = self.registration_type_path()
+        module_path = self.module_type_path()
         lines.append(f"{ind}public func toBytes() throws -> Data {{")
         lines.append(
-            f"{ind}{self.indent_str}try {registration_path}.getFory().serialize(self)"
+            f"{ind}{self.indent_str}try {module_path}.getFory().serialize(self)"
         )
         lines.append(f"{ind}}}")
         lines.append("")
@@ -1175,7 +1172,7 @@ class SwiftGenerator(BaseGenerator):
             f"{ind}public static func fromBytes(_ data: Data) throws -> {type_name} {{"
         )
         lines.append(
-            f"{ind}{self.indent_str}try {registration_path}.getFory().deserialize(data)"
+            f"{ind}{self.indent_str}try {module_path}.getFory().deserialize(data)"
         )
         lines.append(f"{ind}}}")
         return lines
@@ -1205,25 +1202,23 @@ class SwiftGenerator(BaseGenerator):
 
         return local
 
-    def registration_type_name(
+    def schema_type_name(
         self,
         type_def: TypingUnion[Message, Enum, Union],
     ) -> str:
         return self._qualified_type_names.get(id(type_def), type_def.name)
 
-    def registration_swift_type(
+    def schema_swift_type(
         self,
         type_def: TypingUnion[Message, Enum, Union],
     ) -> str:
-        return self._qualified_type_path(
-            type_def, self.registration_type_name(type_def)
-        )
+        return self._qualified_type_path(type_def, self.schema_type_name(type_def))
 
-    def generate_registration_type(self, indent: int = 0) -> List[str]:
+    def generate_module_type(self, indent: int = 0) -> List[str]:
         lines: List[str] = []
         ind = self.indent_str * indent
-        registration_type_name = self._registration_helper_name_for_schema(self.schema)
-        lines.append(f"{ind}public enum {registration_type_name} {{")
+        module_type_name = self._module_helper_name_for_schema(self.schema)
+        lines.append(f"{ind}public enum {module_type_name} {{")
 
         lines.append(f"{ind}{self.indent_str}private enum Holder {{")
         lines.append(
@@ -1233,10 +1228,10 @@ class SwiftGenerator(BaseGenerator):
             f"{ind}{self.indent_str * 3}let fory = Fory(config: .init(trackRef: true, compatible: true))"
         )
         lines.append(f"{ind}{self.indent_str * 3}do {{")
-        lines.append(f"{ind}{self.indent_str * 4}try register(fory)")
+        lines.append(f"{ind}{self.indent_str * 4}try install(fory)")
         lines.append(f"{ind}{self.indent_str * 3}}} catch {{")
         lines.append(
-            f'{ind}{self.indent_str * 4}fatalError("failed to register generated types: \\(error)")'
+            f'{ind}{self.indent_str * 4}fatalError("failed to install generated Fory module: \\(error)")'
         )
         lines.append(f"{ind}{self.indent_str * 3}" + "}")
         lines.append(f"{ind}{self.indent_str * 3}return fory")
@@ -1250,24 +1245,24 @@ class SwiftGenerator(BaseGenerator):
         lines.append("")
 
         lines.append(
-            f"{ind}{self.indent_str}public static func register(_ fory: Fory) throws {{"
+            f"{ind}{self.indent_str}public static func install(_ fory: Fory) throws {{"
         )
-        for imported_registration in self._collect_imported_registration_paths():
+        for imported_module in self._collect_imported_module_paths():
             lines.append(
-                f"{ind}{self.indent_str * 2}try {imported_registration}.register(fory)"
+                f"{ind}{self.indent_str * 2}try {imported_module}.install(fory)"
             )
 
         namespace = self.package or ""
         for type_def in self.collect_local_types():
-            type_name = self.registration_swift_type(type_def)
+            type_name = self.schema_swift_type(type_def)
             if self.should_register_by_id(type_def):
                 lines.append(
                     f"{ind}{self.indent_str * 2}fory.register({type_name}.self, id: {type_def.type_id})"
                 )
                 continue
 
-            registration_name = self.registration_type_name(type_def)
-            escaped_name = registration_name.replace('"', '\\"')
+            schema_type_name = self.schema_type_name(type_def)
+            escaped_name = schema_type_name.replace('"', '\\"')
             if namespace:
                 escaped_ns = namespace.replace('"', '\\"')
                 lines.append(

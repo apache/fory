@@ -108,11 +108,11 @@ Apache Fory™ supports three types of enum variants with full schema evolution 
 - **Named**: Struct-like variants (`Event::Click { x: i32, y: i32 }`)
 
 ```rust
-use fory::{Fory, ForyStruct};
+use fory::{Fory, ForyUnion};
 
-#[derive(Default, ForyStruct, Debug, PartialEq)]
+#[derive(ForyUnion, Debug, PartialEq)]
 enum Value {
-    #[default]
+    #[fory(default)]
     Null,
     Bool(bool),
     Number(f64),
@@ -129,6 +129,13 @@ let decoded: Value = fory.deserialize(&bytes)?;
 assert_eq!(value, decoded);
 ```
 
+For typed ADT unions whose schema cases are unit or single-payload variants,
+`#[fory(unknown)] Unknown(::fory::UnknownCase)` is only the runtime
+forward-compatibility carrier. It cannot be the default variant, and the union
+must include at least one real schema case. The marker only selects the carrier
+and does not add an entry to the schema case table; schema cases use
+non-negative IDs.
+
 ### Enum Schema Evolution
 
 Compatible mode enables robust schema evolution with variant type encoding (2 bits):
@@ -136,19 +143,20 @@ Compatible mode enables robust schema evolution with variant type encoding (2 bi
 - `0b0` = Unit, `0b1` = Unnamed, `0b10` = Named
 
 ```rust
-use fory::{Fory, ForyStruct};
+use fory::{Fory, ForyUnion};
 
 // Old version
-#[derive(ForyStruct)]
+#[derive(ForyUnion)]
 enum OldEvent {
+    #[fory(default)]
     Click { x: i32, y: i32 },
     Scroll { delta: f64 },
 }
 
 // New version - added field and variant
-#[derive(Default, ForyStruct)]
+#[derive(ForyUnion)]
 enum NewEvent {
-    #[default]
+    #[fory(default)]
     Unknown,
     Click { x: i32, y: i32, timestamp: u64 },  // Added field
     Scroll { delta: f64 },
@@ -174,7 +182,7 @@ assert!(matches!(new_event, NewEvent::Click { x: 100, y: 200, timestamp: 0 }));
 
 **Best practices:**
 
-- Always mark a default variant with `#[default]`
+- Always mark exactly one union variant with `#[fory(default)]`
 - Named variants provide better evolution than unnamed
 - Use compatible mode for cross-version communication
 

@@ -110,31 +110,31 @@ class CompatibleEnvelopeV2 {
 }
 
 void _registerCommonTypes(Fory fory) {
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     SharedLeaf,
     namespace: 'test',
     typeName: 'SharedLeaf',
   );
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     RefPair,
     namespace: 'test',
     typeName: 'RefPair',
   );
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     NoRefPair,
     namespace: 'test',
     typeName: 'NoRefPair',
   );
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CircularNode,
     namespace: 'test',
     typeName: 'CircularNode',
   );
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     ImmutableRefPair,
     namespace: 'test',
@@ -144,7 +144,7 @@ void _registerCommonTypes(Fory fory) {
 
 void _registerV1Types(Fory fory) {
   _registerCommonTypes(fory);
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CompatibleEnvelopeV1,
     namespace: 'compat',
@@ -154,7 +154,7 @@ void _registerV1Types(Fory fory) {
 
 void _registerV2Types(Fory fory) {
   _registerCommonTypes(fory);
-  ObjectAndCompatibleSerializerTestFory.register(
+  ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CompatibleEnvelopeV2,
     namespace: 'compat',
@@ -219,41 +219,42 @@ void main() {
 
   group('compatible generated structs', () {
     test(
-        'match fields by stable ids across rename, reorder, and missing fields',
-        () {
-      final writer = Fory(compatible: true);
-      final reader = Fory(compatible: true);
-      _registerV1Types(writer);
-      _registerV2Types(reader);
+      'match fields by stable ids across rename, reorder, and missing fields',
+      () {
+        final writer = Fory(compatible: true);
+        final reader = Fory(compatible: true);
+        _registerV1Types(writer);
+        _registerV2Types(reader);
 
-      final shared = SharedLeaf()..label = 'shared';
-      final migrated = reader.deserialize<CompatibleEnvelopeV2>(
-        writer.serialize(
-          CompatibleEnvelopeV1()
-            ..name = 'Ada'
-            ..age = 36
-            ..payload = shared
-            ..first = shared
-            ..second = shared,
-        ),
-      );
+        final shared = SharedLeaf()..label = 'shared';
+        final migrated = reader.deserialize<CompatibleEnvelopeV2>(
+          writer.serialize(
+            CompatibleEnvelopeV1()
+              ..name = 'Ada'
+              ..age = 36
+              ..payload = shared
+              ..first = shared
+              ..second = shared,
+          ),
+        );
 
-      expect(migrated.displayName, equals('Ada'));
-      expect(migrated.city, equals('unknown'));
-      expect(migrated.payload, isA<SharedLeaf>());
-      expect((migrated.payload as SharedLeaf).label, equals('shared'));
-      expect(identical(migrated.original, migrated.duplicate), isTrue);
+        expect(migrated.displayName, equals('Ada'));
+        expect(migrated.city, equals('unknown'));
+        expect(migrated.payload, isA<SharedLeaf>());
+        expect((migrated.payload as SharedLeaf).label, equals('shared'));
+        expect(identical(migrated.original, migrated.duplicate), isTrue);
 
-      final roundTripBack = writer.deserialize<CompatibleEnvelopeV1>(
-        reader.serialize(migrated),
-      );
+        final roundTripBack = writer.deserialize<CompatibleEnvelopeV1>(
+          reader.serialize(migrated),
+        );
 
-      expect(roundTripBack.name, equals('Ada'));
-      expect(roundTripBack.age, equals(0));
-      expect(roundTripBack.payload, isA<SharedLeaf>());
-      expect((roundTripBack.payload as SharedLeaf).label, equals('shared'));
-      expect(identical(roundTripBack.first, roundTripBack.second), isTrue);
-    });
+        expect(roundTripBack.name, equals('Ada'));
+        expect(roundTripBack.age, equals(0));
+        expect(roundTripBack.payload, isA<SharedLeaf>());
+        expect((roundTripBack.payload as SharedLeaf).label, equals('shared'));
+        expect(identical(roundTripBack.first, roundTripBack.second), isTrue);
+      },
+    );
 
     test('reserializes compatible structs with local TypeDef ordering', () {
       final writer = Fory(compatible: true);
@@ -274,12 +275,13 @@ void main() {
       );
 
       final localShared = SharedLeaf()..label = 'shared';
-      final local = CompatibleEnvelopeV2()
-        ..displayName = 'Ada'
-        ..city = 'unknown'
-        ..payload = localShared
-        ..original = localShared
-        ..duplicate = localShared;
+      final local =
+          CompatibleEnvelopeV2()
+            ..displayName = 'Ada'
+            ..city = 'unknown'
+            ..payload = localShared
+            ..original = localShared
+            ..duplicate = localShared;
 
       expect(
         reader.serialize(migrated),

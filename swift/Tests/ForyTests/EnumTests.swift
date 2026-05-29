@@ -28,16 +28,33 @@ private enum Color: Equatable {
 
 @ForyUnion
 private enum StringOrLong: Equatable {
+    @ForyUnknownCase
+    case unknown(UnknownCase)
+    @ForyCase(id: 0)
     case text(String)
+    @ForyCase(id: 1)
+    case number(Int64)
+}
+
+@ForyUnion
+private enum ForwardStringOrLong: Equatable {
+    @ForyUnknownCase
+    case unknown(UnknownCase)
+    @ForyCase(id: 0)
+    case text(String)
+    @ForyCase(id: 1)
     case number(Int64)
 }
 
 @ForyUnion
 private enum FixedPayloadEvent: Equatable {
-    @ForyCase(id: 1)
+    @ForyUnknownCase
+    case unknown(UnknownCase)
+
+    @ForyCase(id: 0)
     case created(String)
 
-    @ForyCase(id: 2, payload: .uint64(encoding: .fixed))
+    @ForyCase(id: 1, payload: .uint64(encoding: .fixed))
     case deleted(UInt64)
 }
 
@@ -55,6 +72,8 @@ private struct StructWithUnion: Equatable {
 
 @ForyUnion
 private indirect enum Token: Equatable {
+    @ForyUnknownCase
+    case unknown(UnknownCase)
     case plus
     case number(Int64)
     case ident(String)
@@ -68,6 +87,29 @@ private indirect enum Token: Equatable {
 func enumTypeIdClassification() {
     #expect(Color.staticTypeId == .enumType)
     #expect(StringOrLong.staticTypeId == .typedUnion)
+}
+
+@Test
+func unionDefaultUsesKnownCase() {
+    #expect(ForwardStringOrLong.foryDefault() == .text(""))
+}
+
+@Test
+func unionCaseIdZeroIsKnownCase() throws {
+    let buffer = ByteBuffer()
+    let typeResolver = TypeResolver(trackRef: false)
+    let writeContext = WriteContext(buffer: buffer, typeResolver: typeResolver, trackRef: false)
+    try ForwardStringOrLong.text("zero").foryWriteData(writeContext, hasGenerics: false)
+    buffer.flip()
+    #expect(try buffer.readVarUInt32() == 0)
+    buffer.flip()
+    let context = ReadContext(
+        buffer: buffer,
+        typeResolver: typeResolver,
+        trackRef: false
+    )
+
+    #expect(try ForwardStringOrLong.foryReadData(context) == .text("zero"))
 }
 
 @Test

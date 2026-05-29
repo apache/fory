@@ -140,10 +140,11 @@ class UnsignedWrapperAsIntFields {
 }
 
 UnsignedFields _uint64ReadMismatchPayload(String encoding) {
-  final value = _smallUnsignedFields()
-    ..u64Var = Uint64(1)
-    ..u64Fixed = Uint64(1)
-    ..u64Tagged = Uint64(1);
+  final value =
+      _smallUnsignedFields()
+        ..u64Var = Uint64(1)
+        ..u64Fixed = Uint64(1)
+        ..u64Tagged = Uint64(1);
   switch (encoding) {
     case 'varint':
       value.u64Var = _uint64Max;
@@ -158,10 +159,11 @@ UnsignedFields _uint64ReadMismatchPayload(String encoding) {
 }
 
 UnsignedWrapperFields _schemaUint64ReadMismatchPayload(String encoding) {
-  final value = UnsignedWrapperFields()
-    ..u64Var = Uint64(1)
-    ..u64Fixed = Uint64(1)
-    ..u64Tagged = Uint64(1);
+  final value =
+      UnsignedWrapperFields()
+        ..u64Var = Uint64(1)
+        ..u64Fixed = Uint64(1)
+        ..u64Tagged = Uint64(1);
   switch (encoding) {
     case 'varint':
       value.u64Var = _uint64Max;
@@ -176,7 +178,7 @@ UnsignedWrapperFields _schemaUint64ReadMismatchPayload(String encoding) {
 }
 
 void _registerUnsignedFields(Fory fory) {
-  UnsignedSerializerTestFory.register(
+  UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedFields,
     namespace: 'test',
@@ -185,7 +187,7 @@ void _registerUnsignedFields(Fory fory) {
 }
 
 void _registerUnsignedMetadataReader(Fory fory) {
-  UnsignedSerializerTestFory.register(
+  UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedMetadataReader,
     namespace: 'test',
@@ -194,7 +196,7 @@ void _registerUnsignedMetadataReader(Fory fory) {
 }
 
 void _registerUnsignedIntFieldsReader(Fory fory) {
-  UnsignedSerializerTestFory.register(
+  UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedIntFieldsReader,
     namespace: 'test',
@@ -203,7 +205,7 @@ void _registerUnsignedIntFieldsReader(Fory fory) {
 }
 
 void _registerUnsignedWrapperFields(Fory fory) {
-  UnsignedSerializerTestFory.register(
+  UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedWrapperFields,
     namespace: 'test',
@@ -212,7 +214,7 @@ void _registerUnsignedWrapperFields(Fory fory) {
 }
 
 void _registerUnsignedWrapperAsIntFields(Fory fory) {
-  UnsignedSerializerTestFory.register(
+  UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedWrapperAsIntFields,
     namespace: 'test',
@@ -331,7 +333,9 @@ UnsignedFields _nullUnsignedFields() {
 }
 
 void _expectUnsignedFieldsEqual(
-    UnsignedFields actual, UnsignedFields expected) {
+  UnsignedFields actual,
+  UnsignedFields expected,
+) {
   expect(actual.u8, equals(expected.u8));
   expect(actual.u16, equals(expected.u16));
   expect(actual.u32Var, equals(expected.u32Var));
@@ -365,8 +369,9 @@ void main() {
         _maxUnsignedFields(),
         _nullUnsignedFields(),
       ]) {
-        final roundTrip =
-            fory.deserialize<UnsignedFields>(fory.serialize(value));
+        final roundTrip = fory.deserialize<UnsignedFields>(
+          fory.serialize(value),
+        );
         _expectUnsignedFieldsEqual(roundTrip, value);
       }
     });
@@ -382,8 +387,9 @@ void main() {
         _maxUnsignedFields(),
         _nullUnsignedFields(),
       ]) {
-        final roundTrip =
-            fory.deserialize<UnsignedFields>(fory.serialize(value));
+        final roundTrip = fory.deserialize<UnsignedFields>(
+          fory.serialize(value),
+        );
         _expectUnsignedFieldsEqual(roundTrip, value);
       }
     });
@@ -403,18 +409,9 @@ void main() {
 
     test('rejects out-of-range annotated unsigned fields', () {
       final cases = <({String name, UnsignedFields value})>[
-        (
-          name: 'u8',
-          value: _smallUnsignedFields()..u8 = 0x100,
-        ),
-        (
-          name: 'u16',
-          value: _smallUnsignedFields()..u16 = 0x10000,
-        ),
-        (
-          name: 'u32Var',
-          value: _smallUnsignedFields()..u32Var = -1,
-        ),
+        (name: 'u8', value: _smallUnsignedFields()..u8 = 0x100),
+        (name: 'u16', value: _smallUnsignedFields()..u16 = 0x10000),
+        (name: 'u32Var', value: _smallUnsignedFields()..u32Var = -1),
         (
           name: 'u32FixedNullable',
           value: _smallUnsignedFields()..u32FixedNullable = 0x100000000,
@@ -480,18 +477,9 @@ void main() {
       }
 
       final cases = <({String name, UnsignedFields value})>[
-        (
-          name: 'varint',
-          value: _smallUnsignedFields()..u64VarInt = -1,
-        ),
-        (
-          name: 'fixed',
-          value: _smallUnsignedFields()..u64FixedInt = -1,
-        ),
-        (
-          name: 'tagged',
-          value: _smallUnsignedFields()..u64TaggedInt = -1,
-        ),
+        (name: 'varint', value: _smallUnsignedFields()..u64VarInt = -1),
+        (name: 'fixed', value: _smallUnsignedFields()..u64FixedInt = -1),
+        (name: 'tagged', value: _smallUnsignedFields()..u64TaggedInt = -1),
         (
           name: 'nullable varint',
           value: _smallUnsignedFields()..u64VarIntNullable = -1,
@@ -512,41 +500,43 @@ void main() {
     });
 
     test(
-        'schema-consistent Dart int uint64 readers reject full-range wrapper payloads',
-        () {
-      final writer = Fory();
-      final reader = Fory();
-      _registerUnsignedWrapperFields(writer);
-      _registerUnsignedWrapperAsIntFields(reader);
+      'schema-consistent Dart int uint64 readers reject full-range wrapper payloads',
+      () {
+        final writer = Fory();
+        final reader = Fory();
+        _registerUnsignedWrapperFields(writer);
+        _registerUnsignedWrapperAsIntFields(reader);
 
-      for (final encoding in <String>['varint', 'fixed', 'tagged']) {
-        expect(
-          () => reader.deserialize<UnsignedWrapperAsIntFields>(
-            writer.serialize(_schemaUint64ReadMismatchPayload(encoding)),
-          ),
-          throwsA(isA<StateError>()),
-          reason: encoding,
-        );
-      }
-    });
+        for (final encoding in <String>['varint', 'fixed', 'tagged']) {
+          expect(
+            () => reader.deserialize<UnsignedWrapperAsIntFields>(
+              writer.serialize(_schemaUint64ReadMismatchPayload(encoding)),
+            ),
+            throwsA(isA<StateError>()),
+            reason: encoding,
+          );
+        }
+      },
+    );
 
     test(
-        'compatible Dart int uint64 readers reject full-range wrapper payloads',
-        () {
-      final writer = Fory(compatible: true);
-      final reader = Fory(compatible: true);
-      _registerUnsignedFields(writer);
-      _registerUnsignedIntFieldsReader(reader);
+      'compatible Dart int uint64 readers reject full-range wrapper payloads',
+      () {
+        final writer = Fory(compatible: true);
+        final reader = Fory(compatible: true);
+        _registerUnsignedFields(writer);
+        _registerUnsignedIntFieldsReader(reader);
 
-      for (final encoding in <String>['varint', 'fixed', 'tagged']) {
-        expect(
-          () => reader.deserialize<UnsignedIntFieldsReader>(
-            writer.serialize(_uint64ReadMismatchPayload(encoding)),
-          ),
-          throwsA(isA<StateError>()),
-          reason: encoding,
-        );
-      }
-    });
+        for (final encoding in <String>['varint', 'fixed', 'tagged']) {
+          expect(
+            () => reader.deserialize<UnsignedIntFieldsReader>(
+              writer.serialize(_uint64ReadMismatchPayload(encoding)),
+            ),
+            throwsA(isA<StateError>()),
+            reason: encoding,
+          );
+        }
+      },
+    );
   });
 }

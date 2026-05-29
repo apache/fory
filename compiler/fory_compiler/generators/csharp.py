@@ -203,15 +203,15 @@ class CSharpGenerator(BaseGenerator):
             return self.schema.package
         return "generated"
 
-    def get_registration_class_name(self) -> str:
-        return self._registration_class_name_for_namespace(self.get_csharp_namespace())
+    def get_module_class_name(self) -> str:
+        return self._module_class_name_for_namespace(self.get_csharp_namespace())
 
-    def _registration_class_name_for_namespace(self, namespace_name: str) -> str:
+    def _module_class_name_for_namespace(self, namespace_name: str) -> str:
         if namespace_name:
             leaf = namespace_name.split(".")[-1]
         else:
             leaf = "generated"
-        return f"{self.to_pascal_case(leaf)}ForyRegistration"
+        return f"{self.to_pascal_case(leaf)}ForyModule"
 
     def _module_file_name(self) -> str:
         if self.schema.source_file and not self.schema.source_file.startswith("<"):
@@ -328,7 +328,7 @@ class CSharpGenerator(BaseGenerator):
             return self.get_csharp_namespace()
         return self._csharp_namespace_for_schema(schema)
 
-    def _collect_imported_registrations(self) -> List[Tuple[str, str]]:
+    def _collect_imported_modules(self) -> List[Tuple[str, str]]:
         file_info: Dict[str, Tuple[str, str]] = {}
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
@@ -344,10 +344,8 @@ class CSharpGenerator(BaseGenerator):
             if imported_schema is None:
                 continue
             namespace_name = self._csharp_namespace_for_schema(imported_schema)
-            registration_name = self._registration_class_name_for_namespace(
-                namespace_name
-            )
-            file_info[normalized] = (namespace_name, registration_name)
+            module_name = self._module_class_name_for_namespace(namespace_name)
+            file_info[normalized] = (namespace_name, module_name)
 
         ordered: List[Tuple[str, str]] = []
         used: Set[str] = set()
@@ -411,7 +409,7 @@ class CSharpGenerator(BaseGenerator):
             lines.extend(self.generate_message(message, parent_stack=[]))
             lines.append("")
 
-        lines.extend(self.generate_registration_class())
+        lines.extend(self.generate_module_class())
         lines.append("")
 
         file_name = self._module_file_name()
@@ -545,6 +543,9 @@ class CSharpGenerator(BaseGenerator):
 
         raise ValueError(f"Unknown field type: {field_type}")
 
+    def _union_case_type_name(self, field: Field) -> str:
+        return self.safe_identifier(self.to_pascal_case(field.name))
+
     def _default_initializer(
         self, field: Field, parent_stack: List[Message]
     ) -> Optional[str]:
@@ -675,7 +676,7 @@ class CSharpGenerator(BaseGenerator):
         comment = self.format_type_id_comment(enum, f"{ind}//")
         if comment:
             lines.append(comment)
-        lines.append(f"{ind}[ForyObject]")
+        lines.append(f"{ind}[ForyEnum]")
         lines.append(f"{ind}public enum {self.safe_type_identifier(enum.name)}")
         lines.append(f"{ind}{{")
 
@@ -697,99 +698,49 @@ class CSharpGenerator(BaseGenerator):
         lines: List[str] = []
         ind = self.indent_str * indent
         type_name = self.safe_type_identifier(union.name)
-        case_enum = self.safe_type_identifier(f"{union.name}Case")
-        registration_class = self.get_registration_class_name()
+        module_class = self.get_module_class_name()
         full_type_ref = self._type_reference_for_local(union)
 
         comment = self.format_type_id_comment(union, f"{ind}//")
         if comment:
             lines.append(comment)
-        lines.append(f"{ind}public sealed class {type_name} : Union")
+        lines.append(f"{ind}[ForyUnion]")
+        lines.append(f"{ind}public abstract partial record {type_name}")
         lines.append(f"{ind}{{")
-        lines.append(f"{ind}{self.indent_str}public enum {case_enum}")
-        lines.append(f"{ind}{self.indent_str}{{")
-        lines.append(f"{ind}{self.indent_str * 2}Unknown = 0,")
-        for i, field in enumerate(union.fields):
-            comma = "," if i < len(union.fields) - 1 else ""
-            case_name = self.safe_identifier(self.to_pascal_case(field.name))
-            lines.append(
-                f"{ind}{self.indent_str * 2}{case_name} = {field.number}{comma}"
-            )
-        lines.append(f"{ind}{self.indent_str}}}")
-        lines.append("")
-
-        lines.append(
-            f"{ind}{self.indent_str}private {type_name}(int index, object? value) : base(index, value)"
-        )
+        lines.append(f"{ind}{self.indent_str}private {type_name}()")
         lines.append(f"{ind}{self.indent_str}{{")
         lines.append(f"{ind}{self.indent_str}}}")
         lines.append("")
 
+        lines.append(f"{ind}{self.indent_str}[ForyUnknownCase]")
         lines.append(
-            f"{ind}{self.indent_str}public static {type_name} Of(int index, object? value)"
+            f"{ind}{self.indent_str}public sealed partial record Unknown(UnknownCase Value) : {type_name};"
         )
-        lines.append(f"{ind}{self.indent_str}{{")
-        lines.append(f"{ind}{self.indent_str * 2}return new {type_name}(index, value);")
-        lines.append(f"{ind}{self.indent_str}}}")
         lines.append("")
 
         for field in union.fields:
-            case_name = self.safe_identifier(self.to_pascal_case(field.name))
+            case_name = self._union_case_type_name(field)
             case_type = self.generate_type(
                 field.field_type,
                 nullable=False,
                 parent_stack=parent_stack,
             )
+            schema_type = self._schema_type_hint(field.field_type)
+            if schema_type:
+                lines.append(
+                    f"{ind}{self.indent_str}[ForyCase({field.number}, Type = typeof({schema_type}))]"
+                )
+            else:
+                lines.append(f"{ind}{self.indent_str}[ForyCase({field.number})]")
             lines.append(
-                f"{ind}{self.indent_str}public static {type_name} {case_name}({case_type} value)"
-            )
-            lines.append(f"{ind}{self.indent_str}{{")
-            lines.append(
-                f"{ind}{self.indent_str * 2}return new {type_name}({field.number}, value);"
-            )
-            lines.append(f"{ind}{self.indent_str}}}")
-            lines.append("")
-
-            lines.append(
-                f"{ind}{self.indent_str}public bool Is{case_name} => Index == {field.number};"
+                f"{ind}{self.indent_str}public sealed partial record {case_name}({case_type} Value) : {type_name};"
             )
             lines.append("")
-            lines.append(f"{ind}{self.indent_str}public {case_type} {case_name}Value()")
-            lines.append(f"{ind}{self.indent_str}{{")
-            lines.append(f"{ind}{self.indent_str * 2}if (!Is{case_name})")
-            lines.append(f"{ind}{self.indent_str * 2}{{")
-            lines.append(
-                f'{ind}{self.indent_str * 3}throw new InvalidOperationException("Union does not hold case {case_name}");'
-            )
-            lines.append(f"{ind}{self.indent_str * 2}}}")
-            lines.append(f"{ind}{self.indent_str * 2}return GetValue<{case_type}>();")
-            lines.append(f"{ind}{self.indent_str}}}")
-            lines.append("")
-
-        lines.append(f"{ind}{self.indent_str}public {case_enum} Case()")
-        lines.append(f"{ind}{self.indent_str}{{")
-        lines.append(f"{ind}{self.indent_str * 2}return Index switch")
-        lines.append(f"{ind}{self.indent_str * 2}{{")
-        for field in union.fields:
-            case_name = self.safe_identifier(self.to_pascal_case(field.name))
-            lines.append(
-                f"{ind}{self.indent_str * 3}{field.number} => {case_enum}.{case_name},"
-            )
-        lines.append(f"{ind}{self.indent_str * 3}_ => {case_enum}.Unknown,")
-        lines.append(f"{ind}{self.indent_str * 2}}};")
-        lines.append(f"{ind}{self.indent_str}}}")
-        lines.append("")
-
-        lines.append(f"{ind}{self.indent_str}public int CaseId()")
-        lines.append(f"{ind}{self.indent_str}{{")
-        lines.append(f"{ind}{self.indent_str * 2}return Index;")
-        lines.append(f"{ind}{self.indent_str}}}")
-        lines.append("")
 
         lines.append(f"{ind}{self.indent_str}public byte[] ToBytes()")
         lines.append(f"{ind}{self.indent_str}{{")
         lines.append(
-            f"{ind}{self.indent_str * 2}return {registration_class}.GetFory().Serialize(this);"
+            f"{ind}{self.indent_str * 2}return {module_class}.GetFory().Serialize(this);"
         )
         lines.append(f"{ind}{self.indent_str}}}")
         lines.append("")
@@ -798,7 +749,7 @@ class CSharpGenerator(BaseGenerator):
         )
         lines.append(f"{ind}{self.indent_str}{{")
         lines.append(
-            f"{ind}{self.indent_str * 2}return {registration_class}.GetFory().Deserialize<{full_type_ref}>(data);"
+            f"{ind}{self.indent_str * 2}return {module_class}.GetFory().Deserialize<{full_type_ref}>(data);"
         )
         lines.append(f"{ind}{self.indent_str}}}")
 
@@ -815,7 +766,7 @@ class CSharpGenerator(BaseGenerator):
         ind = self.indent_str * indent
         parent_stack = parent_stack or []
         lineage = parent_stack + [message]
-        registration_class = self.get_registration_class_name()
+        module_class = self.get_module_class_name()
         type_name = self.safe_type_identifier(message.name)
         full_type_ref = self._type_reference_for_local(message)
 
@@ -823,9 +774,9 @@ class CSharpGenerator(BaseGenerator):
         if comment:
             lines.append(comment)
         if self.get_effective_evolving(message):
-            lines.append(f"{ind}[ForyObject]")
+            lines.append(f"{ind}[ForyStruct]")
         else:
-            lines.append(f"{ind}[ForyObject(Evolving = false)]")
+            lines.append(f"{ind}[ForyStruct(Evolving = false)]")
         lines.append(f"{ind}public sealed partial class {type_name}")
         lines.append(f"{ind}{{")
 
@@ -866,7 +817,7 @@ class CSharpGenerator(BaseGenerator):
         lines.append(f"{ind}{self.indent_str}public byte[] ToBytes()")
         lines.append(f"{ind}{self.indent_str}{{")
         lines.append(
-            f"{ind}{self.indent_str * 2}return {registration_class}.GetFory().Serialize(this);"
+            f"{ind}{self.indent_str * 2}return {module_class}.GetFory().Serialize(this);"
         )
         lines.append(f"{ind}{self.indent_str}}}")
         lines.append("")
@@ -875,7 +826,7 @@ class CSharpGenerator(BaseGenerator):
         )
         lines.append(f"{ind}{self.indent_str}{{")
         lines.append(
-            f"{ind}{self.indent_str * 2}return {registration_class}.GetFory().Deserialize<{full_type_ref}>(data);"
+            f"{ind}{self.indent_str * 2}return {module_class}.GetFory().Deserialize<{full_type_ref}>(data);"
         )
         lines.append(f"{ind}{self.indent_str}}}")
 
@@ -923,10 +874,10 @@ class CSharpGenerator(BaseGenerator):
 
         return local_types
 
-    def generate_registration_class(self) -> List[str]:
+    def generate_module_class(self) -> List[str]:
         lines: List[str] = []
-        class_name = self.safe_type_identifier(self.get_registration_class_name())
-        imported_regs = self._collect_imported_registrations()
+        class_name = self.safe_type_identifier(self.get_module_class_name())
+        imported_modules = self._collect_imported_modules()
         local_types = self._collect_local_types()
 
         lines.append(f"public static class {class_name}")
@@ -946,18 +897,21 @@ class CSharpGenerator(BaseGenerator):
         lines.append(
             f"{self.indent_str * 2}ThreadSafeFory fory = Fory.Builder().TrackRef(true).BuildThreadSafe();"
         )
-        lines.append(f"{self.indent_str * 2}Register(fory);")
+        lines.append(f"{self.indent_str * 2}Install(fory);")
         lines.append(f"{self.indent_str * 2}return fory;")
         lines.append(f"{self.indent_str}}}")
         lines.append("")
 
-        lines.append(f"{self.indent_str}public static void Register(Fory fory)")
+        lines.append(f"{self.indent_str}public static void Install(Fory fory)")
         lines.append(f"{self.indent_str}{{")
-        for namespace_name, reg_name in imported_regs:
-            if namespace_name == self.get_csharp_namespace() and reg_name == class_name:
+        for namespace_name, module_name in imported_modules:
+            if (
+                namespace_name == self.get_csharp_namespace()
+                and module_name == class_name
+            ):
                 continue
             lines.append(
-                f"{self.indent_str * 2}global::{namespace_name}.{self.safe_type_identifier(reg_name)}.Register(fory);"
+                f"{self.indent_str * 2}global::{namespace_name}.{self.safe_type_identifier(module_name)}.Install(fory);"
             )
         for type_def in local_types:
             for register_line in self._register_type_lines(type_def, "fory"):
@@ -966,14 +920,17 @@ class CSharpGenerator(BaseGenerator):
         lines.append("")
 
         lines.append(
-            f"{self.indent_str}public static void Register(ThreadSafeFory fory)"
+            f"{self.indent_str}public static void Install(ThreadSafeFory fory)"
         )
         lines.append(f"{self.indent_str}{{")
-        for namespace_name, reg_name in imported_regs:
-            if namespace_name == self.get_csharp_namespace() and reg_name == class_name:
+        for namespace_name, module_name in imported_modules:
+            if (
+                namespace_name == self.get_csharp_namespace()
+                and module_name == class_name
+            ):
                 continue
             lines.append(
-                f"{self.indent_str * 2}global::{namespace_name}.{self.safe_type_identifier(reg_name)}.Register(fory);"
+                f"{self.indent_str * 2}global::{namespace_name}.{self.safe_type_identifier(module_name)}.Install(fory);"
             )
         for type_def in local_types:
             for register_line in self._register_type_lines(type_def, "fory"):

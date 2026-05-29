@@ -118,7 +118,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     private static bool AnyValueIsRefType(object value, TypeResolver typeResolver)
     {
-        TypeInfo typeInfo = typeResolver.GetTypeInfo(value.GetType());
+        TypeInfo typeInfo = typeResolver.GetTypeInfo(DynamicAnyCodec.ResolveRuntimeType(value));
         return typeInfo.IsRefType;
     }
 
@@ -130,27 +130,15 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
 
     private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo)
     {
-        context.IncreaseReadDepth();
-        bool loadedDynamicTypeInfo = false;
-        try
+        if (!readTypeInfo)
         {
-            if (readTypeInfo)
-            {
-                ReadAnyTypeInfo(context);
-                loadedDynamicTypeInfo = true;
-            }
-
             return ReadData(context);
         }
-        finally
-        {
-            if (loadedDynamicTypeInfo)
-            {
-                context.ClearReadTypeInfo(typeof(object));
-            }
 
-            context.DecreaseReadDepth();
-        }
+        ReadAnyTypeInfo(context);
+        object? value = ReadData(context);
+        context.ClearReadTypeInfo(typeof(object));
+        return value;
     }
 }
 
@@ -169,8 +157,21 @@ public static class DynamicAnyCodec
             return;
         }
 
-        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(ResolveRuntimeType(value));
         context.TypeResolver.WriteTypeInfo(typeInfo, context);
+    }
+
+    internal static Type ResolveRuntimeType(object value)
+    {
+        Type runtimeType = value.GetType();
+        Type? baseType = runtimeType.BaseType;
+        if (baseType is not null &&
+            Attribute.IsDefined(baseType, typeof(ForyUnionAttribute), inherit: false))
+        {
+            return baseType;
+        }
+
+        return runtimeType;
     }
 
     public static object? CastAnyDynamicValue(object? value, Type targetType)
@@ -220,7 +221,7 @@ public static class DynamicAnyCodec
             return;
         }
 
-        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(value.GetType());
+        TypeInfo typeInfo = context.TypeResolver.GetTypeInfo(ResolveRuntimeType(value));
         context.TypeResolver.WriteDataObject(typeInfo, context, value, hasGenerics);
     }
 

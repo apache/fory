@@ -71,6 +71,19 @@ def test_unique_service_names_passes_validation():
     assert v.errors == []
 
 
+def test_empty_union_fails_validation():
+    source = """
+    package test;
+
+    union OnlyUnknown {}
+    """
+    v = validate(parse_fdl(source))
+    assert any(
+        "Union OnlyUnknown must declare at least one schema-defined case" in e.message
+        for e in v.errors
+    )
+
+
 def test_duplicate_method_names_fails_validation():
     source = """
     package test;

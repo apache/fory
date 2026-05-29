@@ -21,10 +21,7 @@ import 'package:fory/fory.dart';
 
 part 'example.fory.dart';
 
-enum Color {
-  red,
-  blue,
-}
+enum Color { red, blue }
 
 @ForyStruct()
 class Person {
@@ -39,24 +36,25 @@ class Person {
 
 void main() {
   final fory = Fory();
-  ExampleFory.register(
+  ExampleForyModule.register(
     fory,
     Color,
     namespace: 'example',
     typeName: 'Color',
   );
-  ExampleFory.register(
+  ExampleForyModule.register(
     fory,
     Person,
     namespace: 'example',
     typeName: 'Person',
   );
 
-  final person = Person()
-    ..name = 'Ada'
-    ..age = 36
-    ..favoriteColor = Color.blue
-    ..tags = <String>['engineer', 'mathematician'];
+  final person =
+      Person()
+        ..name = 'Ada'
+        ..age = 36
+        ..favoriteColor = Color.blue
+        ..tags = <String>['engineer', 'mathematician'];
 
   final bytes = fory.serialize(person);
   final roundTrip = fory.deserialize<Person>(bytes);

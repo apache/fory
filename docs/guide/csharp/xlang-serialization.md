@@ -36,7 +36,7 @@ Fory fory = Fory.Builder()
 ## Register with Stable IDs
 
 ```csharp
-[ForyObject]
+[ForyStruct]
 public sealed class Person
 {
     public string Name { get; set; } = string.Empty;

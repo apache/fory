@@ -16,6 +16,7 @@
 // under the License.
 
 mod derive_enum;
+pub(crate) mod derive_union;
 mod field_codec;
 pub(crate) mod field_meta;
 mod misc;

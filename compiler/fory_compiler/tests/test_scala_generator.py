@@ -52,8 +52,8 @@ def test_scala_generator_emits_case_classes_options_enums_and_unions():
         }
 
         union SearchTarget [id=103] {
-            User user = 1;
-            string note = 2;
+            User user = 0;
+            string note = 1;
         }
         """
     )
@@ -75,13 +75,32 @@ def test_scala_generator_emits_case_classes_options_enums_and_unions():
 
     union = files["demo/SearchTarget.scala"]
     assert "@ForyUnion" in union
+    assert "import org.apache.fory.`type`.union.UnknownCase" in union
     assert "enum SearchTarget derives ForySerializer" in union
+    assert "@ForyUnknownCase" in union
+    assert "case Unknown(value: UnknownCase)" in union
     assert "@ForyCase(id = 0)" in union
-    assert "case UnknownCase(caseId: Int, value: Any)" in union
+    assert "case User(value: _root_.demo.User)" in union
     assert "@ForyCase(id = 1)" in union
-    assert "case UserCase(value: User)" in union
-    assert "@ForyCase(id = 2)" in union
-    assert "case NoteCase(value: String)" in union
+    assert "case Note(value: String)" in union
+
+
+def test_default_package_union_conflict_uses_case_suffix():
+    files = generate_scala(
+        """
+        message Dog {
+            string name = 1;
+        }
+
+        union Animal {
+            Dog dog = 1;
+        }
+        """
+    )
+
+    union = files["Animal.scala"]
+    assert "case DogCase(value: Dog)" in union
+    assert "case Dog(value: Dog)" not in union
 
 
 def test_scala_generator_uses_mutable_normal_class_for_construction_cycles():
@@ -252,10 +271,10 @@ def test_scala_generator_collects_nested_union_payload_imports():
     assert "import org.apache.fory.annotation.Ref" in envelope
     assert "import org.apache.fory.config.Int32Encoding" in envelope
     assert (
-        "case FixedIdCase(value: Int @Int32Type(encoding = Int32Encoding.FIXED))"
+        "case FixedId(value: Int @Int32Type(encoding = Int32Encoding.FIXED))"
         in envelope
     )
-    assert "case UsersCase(value: List[Envelope.User @Ref])" in envelope
+    assert "case Users(value: List[Envelope.User @Ref])" in envelope
 
 
 def test_scala_generator_marks_nested_union_mediated_cycles_mutable():
@@ -282,7 +301,7 @@ def test_scala_generator_marks_nested_union_mediated_cycles_mutable():
     assert "final case class Envelope(" in envelope
     assert "@ForyField(id = 1) root: Option[Envelope.Node]" in envelope
     assert "enum Choice derives ForySerializer" in envelope
-    assert "case NodeCase(value: Envelope.Node)" in envelope
+    assert "case Node(value: Envelope.Node)" in envelope
     assert "final class Node() derives ForySerializer" in envelope
     assert 'var id: String = ""' in envelope
     assert (
@@ -479,6 +498,25 @@ def test_scala_generator_keeps_imported_types_in_owner_package():
     assert "fory.register(addressbook.AddressbookForyModule)" in registration
     assert "fory.register(tree.TreeForyModule)" in registration
     assert "classOf[PrimitiveTypes]" not in registration
+
+
+def test_scala_nested_union_imports_unknown_case():
+    files = generate_scala(
+        """
+        package demo;
+
+        message Envelope {
+            union Detail {
+                string note = 1;
+            }
+            Detail detail = 1;
+        }
+        """
+    )
+
+    envelope = files["demo/Envelope.scala"]
+    assert "import org.apache.fory.`type`.union.UnknownCase" in envelope
+    assert "case Unknown(value: UnknownCase)" in envelope
 
 
 def test_scala_default_package_import_registers_dependency(tmp_path):

@@ -962,11 +962,12 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), Color.White);
   }
 
-  // Union xlang test - Java Union2 <-> Rust enum with single-field variants
+  // Union xlang test - Java Union2 <-> statically typed union field peers
   //
   // Union fields in xlang mode follow a special format:
-  // - Rust writes: ref_flag + union_data (no type_id, since Union fields skip type info)
+  // - Peers write: ref_flag + union_data (no type_id, since Union fields skip type info)
   // - Java reads: null_flag + union_data (directly calls UnionSerializer.read())
+  // - Java Union2 exposes zero-based API indexes, which are valid wire case ids
   //
   // AbstractObjectSerializer.readFinalObjectFieldValue and readOtherFieldValue
   // have special handling for Union types to skip reading type_id.
@@ -983,11 +984,11 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
     fory.register(StructWithUnion2.class, 301);
 
-    // Create Union with String value (index 0)
+    // Create Union with String value (API index 0, wire case id 0)
     StructWithUnion2 struct1 = new StructWithUnion2();
     struct1.union = org.apache.fory.type.union.Union2.ofT1("hello");
 
-    // Create Union with Long value (index 1)
+    // Create Union with Long value (API index 1, wire case id 1)
     StructWithUnion2 struct2 = new StructWithUnion2();
     struct2.union = org.apache.fory.type.union.Union2.ofT2(42L);
 

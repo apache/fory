@@ -37,7 +37,7 @@ Decimal _decimal(String unscaled, int scale) {
 }
 
 void _registerDecimalEnvelope(Fory fory) {
-  DecimalSerializerTestFory.register(
+  DecimalSerializerTestForyModule.register(
     fory,
     DecimalEnvelope,
     namespace: 'test',
@@ -74,9 +74,10 @@ void main() {
       final fory = Fory();
       _registerDecimalEnvelope(fory);
 
-      final value = DecimalEnvelope()
-        ..amount = _decimal('123456789012345678901234567890123456789', 37)
-        ..note = 'principal';
+      final value =
+          DecimalEnvelope()
+            ..amount = _decimal('123456789012345678901234567890123456789', 37)
+            ..note = 'principal';
 
       final roundTrip = fory.deserialize<DecimalEnvelope>(
         fory.serialize(value),

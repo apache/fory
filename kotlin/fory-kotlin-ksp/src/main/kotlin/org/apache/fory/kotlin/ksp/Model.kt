@@ -50,11 +50,14 @@ internal data class KotlinSourceUnion(
 }
 
 internal data class KotlinSourceUnionCase(
-  val id: Int,
+  val id: Int?,
   val className: String,
   val qualifiedClassName: String,
   val valueType: KotlinSourceTypeNode,
-)
+) {
+  val knownId: Int
+    get() = id ?: error("unknown union carrier has no schema case id")
+}
 
 internal enum class KotlinSerializerVisibility(val keyword: String) {
   PUBLIC("public"),

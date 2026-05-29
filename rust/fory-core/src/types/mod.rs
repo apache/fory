@@ -19,8 +19,10 @@ pub mod bfloat16;
 pub mod decimal;
 pub mod float16;
 pub mod temporal;
+pub mod unknown_case;
 pub mod weak;
 
 pub use decimal::Decimal;
 pub use temporal::{Date, Duration, Timestamp};
+pub use unknown_case::UnknownCase;
 pub use weak::{ArcWeak, RcWeak};
