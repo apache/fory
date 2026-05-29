@@ -168,6 +168,13 @@ class GoServiceGeneratorMixin:
                 lines.append("}")
                 lines.append("")
                 stream_index += 1
-            
-            
-
+            else:
+                lines.append(f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{")
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{self.to_pascal_case(service.name)}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append("\tif err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append(f"\treturn &{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Client{{stream}}, nil")
+                lines.append("}")
+                lines.append("")
+                stream_index += 1
