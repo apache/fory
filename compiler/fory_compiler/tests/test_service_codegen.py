@@ -358,6 +358,52 @@ def test_dart_grpc_method_collision():
     assert "sayHello" in msg
 
 
+def test_dart_grpc_proto_and_fbs_service_codegen():
+    from fory_compiler.generators.dart import DartGenerator
+
+    proto_schema = parse_proto(
+        dedent(
+            """
+            syntax = "proto3";
+            package demo.proto;
+
+            message Req {}
+            message Res {}
+
+            service ProtoSvc {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    proto_dart = generate_service_files(proto_schema, DartGenerator)
+    assert "demo_proto_grpc.dart" in proto_dart
+    assert (
+        "'/demo.proto.ProtoSvc/Call',"
+        in proto_dart["demo_proto_grpc.dart"]
+    )
+    assert "class ProtoSvcClient extends Client {" in proto_dart["demo_proto_grpc.dart"]
+
+    fbs_schema = parse_fbs(
+        dedent(
+            """
+            namespace demo.fbs;
+
+            table Req {}
+            table Res {}
+
+            rpc_service FbsSvc {
+                Call(Req):Res;
+            }
+            """
+        )
+    )
+    fbs_dart = generate_service_files(fbs_schema, DartGenerator)
+    assert "demo_fbs_grpc.dart" in fbs_dart
+    assert "'/demo.fbs.FbsSvc/Call'," in fbs_dart["demo_fbs_grpc.dart"]
+    assert "class FbsSvcClient extends Client {" in fbs_dart["demo_fbs_grpc.dart"]
+
+
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(
         dedent(
