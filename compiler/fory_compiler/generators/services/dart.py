@@ -80,8 +80,9 @@ class DartServiceGeneratorMixin:
 
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Emit a grpc-dart companion module for schema services."""
-        models_stem = Path(self.module_file_name()).stem  # e.g. "demo_greeter"
-        grpc_path = f"{models_stem}_grpc.dart"
+        models_output = Path(self.output_file_path())  # e.g. "demo/greeter/demo_greeter.dart"
+        models_stem = models_output.stem  # e.g. "demo_greeter"
+        grpc_path = str(models_output.with_name(f"{models_stem}_grpc.dart"))
 
         lines: List[str] = []
         lines.append(self.get_license_header("//"))
