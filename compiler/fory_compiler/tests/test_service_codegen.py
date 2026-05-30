@@ -327,6 +327,37 @@ def test_dart_grpc_service_class_collision():
     assert "conflicts" in msg
 
 
+def test_dart_grpc_method_collision():
+    from fory_compiler.generators.dart import DartGenerator
+
+    # `SayHello` and `say_hello` both normalize to camelCase `sayHello`.
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.dupes;
+
+            message Req {}
+            message Res {}
+
+            service Greeter {
+                rpc SayHello   (Req) returns (Res);
+                rpc say_hello  (Req) returns (Res);
+            }
+            """
+        )
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError) as excinfo:
+        generate_service_files(schema, DartGenerator)
+    msg = str(excinfo.value)
+    assert "Greeter" in msg
+    assert "SayHello" in msg
+    assert "say_hello" in msg
+    assert "sayHello" in msg
+
+
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(
         dedent(

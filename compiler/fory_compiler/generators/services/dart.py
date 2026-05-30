@@ -37,6 +37,7 @@ class DartServiceGeneratorMixin:
             return []
         self.check_dart_streaming_unsupported(local_services)
         self.check_dart_grpc_service_collisions(local_services)
+        self.check_dart_grpc_method_collisions(local_services)
         return [self.generate_grpc_module(local_services)]
 
     def check_dart_streaming_unsupported(self, services: List[Service]) -> None:
@@ -64,6 +65,18 @@ class DartServiceGeneratorMixin:
                         "type or another service; rename the service or type"
                     )
                 service_names.add(emitted)
+
+    def check_dart_grpc_method_collisions(self, services: List[Service]) -> None:
+        for service in services:
+            seen = {}
+            for method in service.methods:
+                emitted = self.dart_grpc_method_name(method)
+                if emitted in seen:
+                    raise ValueError(
+                        f"Dart gRPC method name collision in service {service.name}: "
+                        f"{seen[emitted]} and {method.name} both generate {emitted}"
+                    )
+                seen[emitted] = method.name
 
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Emit a grpc-dart companion module for schema services."""
