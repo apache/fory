@@ -17,6 +17,7 @@
 
 """Dart gRPC service generator helpers."""
 
+from pathlib import Path
 from typing import List
 
 from fory_compiler.generators.base import GeneratedFile
@@ -36,7 +37,7 @@ class DartServiceGeneratorMixin:
             return []
         self.check_dart_streaming_unsupported(local_services)
 
-        return []
+        return [self.generate_grpc_module(local_services)]
 
     def check_dart_streaming_unsupported(self, services: List[Service]) -> None:
         offenders = []
@@ -51,3 +52,41 @@ class DartServiceGeneratorMixin:
                 "remove `stream` from the following methods or omit --grpc for dart:"
                 + joined
             )
+
+    def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
+        """Emit a grpc-dart companion module for schema services."""
+        models_stem = Path(self.module_file_name()).stem  # e.g. "demo_greeter"
+        grpc_path = f"{models_stem}_grpc.dart"
+
+        lines: List[str] = []
+        lines.append(self.get_license_header("//"))
+        lines.append("")
+        lines.append(
+            "// ignore_for_file: camel_case_types, constant_identifier_names, "
+            "non_constant_identifier_names"
+        )
+        lines.append("")
+        lines.append("import 'dart:async';")
+        lines.append("import 'dart:typed_data';")
+        lines.append("")
+        lines.append("import 'package:grpc/grpc.dart';")
+        lines.append("")
+        lines.append(f"import '{models_stem}.dart' as _models;")
+        lines.append("")
+        lines.append(
+            "// grpc-dart Service self-registers via $methods; "
+            "no separate registration helper needed."
+        )
+        lines.append("")
+        lines.append("List<int> _serialize<T>(T value) =>")
+        lines.append("    _models.ForyRegistration.getFory().serialize(value);")
+        lines.append("")
+        lines.append("T _deserialize<T>(List<int> bytes) {")
+        lines.append(
+            "  final u8 = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);"
+        )
+        lines.append("  return _models.ForyRegistration.getFory().deserialize<T>(u8);")
+        lines.append("}")
+        lines.append("")
+
+        return GeneratedFile(path=grpc_path, content="\n".join(lines))
