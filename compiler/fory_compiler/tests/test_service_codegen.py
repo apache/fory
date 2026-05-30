@@ -33,6 +33,7 @@ from fory_compiler.frontend.proto.translator import ProtoTranslator
 from fory_compiler.generators.base import BaseGenerator, GeneratorOptions
 from fory_compiler.generators.cpp import CppGenerator
 from fory_compiler.generators.csharp import CSharpGenerator
+from fory_compiler.generators.dart import DartGenerator
 from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.java import JavaGenerator
 from fory_compiler.generators.python import PythonGenerator
@@ -50,6 +51,7 @@ GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
     GoGenerator,
     CSharpGenerator,
     SwiftGenerator,
+    DartGenerator,
 )
 
 _GREETER_WITH_SERVICE = dedent(
@@ -129,7 +131,7 @@ def test_service_definition_does_not_affect_message_codegen():
 def test_generate_services_returns_empty_list_for_unsupported_generators():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
-        if generator_cls in (JavaGenerator, PythonGenerator):
+        if generator_cls in (JavaGenerator, PythonGenerator, DartGenerator):
             continue
         options = GeneratorOptions(output_dir=Path("/tmp"))
         generator = generator_cls(schema, options)
