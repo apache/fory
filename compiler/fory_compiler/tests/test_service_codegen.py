@@ -296,6 +296,37 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "ServiceCall call," in content
 
 
+def test_dart_grpc_service_class_collision():
+    from fory_compiler.generators.dart import DartGenerator
+
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.collide;
+
+            message GreeterClient {
+                string name = 1;
+            }
+
+            message HelloRequest {}
+            message HelloReply {}
+
+            service Greeter {
+                rpc SayHello (HelloRequest) returns (HelloReply);
+            }
+            """
+        )
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError) as excinfo:
+        generate_service_files(schema, DartGenerator)
+    msg = str(excinfo.value)
+    assert "GreeterClient" in msg
+    assert "conflicts" in msg
+
+
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(
         dedent(

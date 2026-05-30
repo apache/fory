@@ -36,7 +36,7 @@ class DartServiceGeneratorMixin:
         if not local_services:
             return []
         self.check_dart_streaming_unsupported(local_services)
-
+        self.check_dart_grpc_service_collisions(local_services)
         return [self.generate_grpc_module(local_services)]
 
     def check_dart_streaming_unsupported(self, services: List[Service]) -> None:
@@ -52,6 +52,18 @@ class DartServiceGeneratorMixin:
                 "remove `stream` from the following methods or omit --grpc for dart:"
                 + joined
             )
+
+    def check_dart_grpc_service_collisions(self, services: List[Service]) -> None:
+        generated_names = set(self._top_level_names())
+        service_names = set()
+        for service in services:
+            for emitted in (f"{service.name}Client", f"{service.name}ServiceBase"):
+                if emitted in generated_names or emitted in service_names:
+                    raise ValueError(
+                        f"Dart gRPC class {emitted} conflicts with a generated "
+                        "type or another service; rename the service or type"
+                    )
+                service_names.add(emitted)
 
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Emit a grpc-dart companion module for schema services."""
