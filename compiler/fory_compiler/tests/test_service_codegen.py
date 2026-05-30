@@ -272,6 +272,16 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "_models.ForyRegistration.getFory().deserialize<T>" in content
     assert "is Uint8List ? bytes : Uint8List.fromList(bytes)" in content
 
+    assert "class GreeterClient extends Client {" in content
+    assert (
+        "static final _$sayHello = "
+        "ClientMethod<_models.HelloRequest, _models.HelloReply>("
+    ) in content
+    assert "'/demo.greeter.Greeter/SayHello'," in content
+    assert "GreeterClient(super.channel, {super.options, super.interceptors});" in content
+    assert "ResponseFuture<_models.HelloReply> sayHello(" in content
+    assert "_models.HelloRequest request, {" in content
+    assert "$createUnaryCall(_$sayHello, request, options: options);" in content
 
 
 def test_java_outer_classname_service_references_nested_model_types():

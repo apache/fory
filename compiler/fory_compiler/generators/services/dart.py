@@ -89,4 +89,49 @@ class DartServiceGeneratorMixin:
         lines.append("}")
         lines.append("")
 
+        for service in services:
+            lines.extend(self.generate_dart_grpc_client(service))
+            lines.append("")
+
         return GeneratedFile(path=grpc_path, content="\n".join(lines))
+
+    def generate_dart_grpc_client(self, service: Service) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"class {service.name}Client extends Client {{")
+        for method in service.methods:
+            method_const = f"_${self.dart_grpc_method_name(method)}"
+            req_t = f"_models.{method.request_type.name}"
+            res_t = f"_models.{method.response_type.name}"
+            full_path = self.get_grpc_method_path(service, method)
+            lines.append(
+                f"  static final {method_const} = "
+                f"ClientMethod<{req_t}, {res_t}>("
+            )
+            lines.append(f"    '{full_path}',")
+            lines.append("    _serialize,")
+            lines.append("    _deserialize,")
+            lines.append("  );")
+            lines.append("")
+        lines.append(
+            f"  {service.name}Client(super.channel, "
+            "{super.options, super.interceptors});"
+        )
+        for method in service.methods:
+            method_const = f"_${self.dart_grpc_method_name(method)}"
+            req_t = f"_models.{method.request_type.name}"
+            res_t = f"_models.{method.response_type.name}"
+            method_name = self.dart_grpc_method_name(method)
+            lines.append("")
+            lines.append(f"  ResponseFuture<{res_t}> {method_name}(")
+            lines.append(f"    {req_t} request, {{")
+            lines.append("    CallOptions? options,")
+            lines.append("  }) {")
+            lines.append(
+                f"    return $createUnaryCall({method_const}, request, options: options);"
+            )
+            lines.append("  }")
+        lines.append("}")
+        return lines
+
+    def dart_grpc_method_name(self, method: RpcMethod) -> str:
+        return self.safe_identifier(self.to_camel_case(method.name))
