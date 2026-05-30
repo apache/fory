@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.dart import DartServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -40,7 +41,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class DartGenerator(BaseGenerator):
+class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
     language_name = "dart"
     file_extension = ".dart"
 

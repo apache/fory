@@ -219,6 +219,40 @@ def test_grpc_streaming_method_shapes():
     assert "self.bidi = channel.stream_stream(" in python
 
 
+def test_dart_grpc_rejects_streaming():
+    from fory_compiler.generators.dart import DartGenerator
+
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.streams;
+
+            message Req {}
+            message Res {}
+
+            service Streamer {
+                rpc Unary (Req) returns (Res);
+                rpc Server (Req) returns (stream Res);
+                rpc Client (stream Req) returns (Res);
+                rpc Bidi (stream Req) returns (stream Res);
+            }
+            """
+        )
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError) as excinfo:
+        generate_service_files(schema, DartGenerator)
+
+    msg = str(excinfo.value)
+    assert "Dart gRPC generator does not yet support streaming RPCs" in msg
+    assert "Streamer.Server" in msg
+    assert "Streamer.Client" in msg
+    assert "Streamer.Bidi" in msg
+    assert "Streamer.Unary" not in msg
+
+
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(
         dedent(
