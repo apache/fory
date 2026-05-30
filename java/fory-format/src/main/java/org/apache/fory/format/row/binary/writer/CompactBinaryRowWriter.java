@@ -297,7 +297,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       final int ordinal, final byte[] input, final int offset, final int numBytes) {
     final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
     if (inlineWidth > 0) {
-      buffer.put(getOffset(ordinal), input, 0, numBytes);
+      buffer.put(getOffset(ordinal), input, offset, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
     }
@@ -309,7 +309,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
     if (inlineWidth > 0) {
       assert inlineWidth == numBytes;
-      buffer.copyFrom(getOffset(ordinal), input, 0, numBytes);
+      buffer.copyFrom(getOffset(ordinal), input, offset, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
     }
@@ -320,7 +320,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       final int ordinal, final MemoryBuffer input, final int baseOffset, final int numBytes) {
     final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
     if (inlineWidth > 0) {
-      buffer.copyFrom(getOffset(ordinal), input, 0, numBytes);
+      buffer.copyFrom(getOffset(ordinal), input, baseOffset, numBytes);
     } else {
       super.writeAlignedBytes(ordinal, input, baseOffset, numBytes);
     }
