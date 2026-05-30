@@ -133,5 +133,5 @@ public abstract class BaseBinaryRowWriter extends BinaryWriter {
     return row;
   }
 
-  protected abstract BinaryRow newRow();
+  public abstract BinaryRow newRow();
 }

@@ -62,8 +62,7 @@ public class BinaryRowEncoderPointToTest {
         };
 
     BinaryRowEncoder<Tiny> encoder =
-        new BinaryRowEncoder<>(
-            schema, DefaultCodecFormat.INSTANCE, captor, new BinaryRowWriter(schema), false);
+        new BinaryRowEncoder<>(schema, captor, new BinaryRowWriter(schema), false);
     encoder.decode(payload);
 
     Assert.assertNotNull(captured[0], "decode must hand the row to fromRow");
