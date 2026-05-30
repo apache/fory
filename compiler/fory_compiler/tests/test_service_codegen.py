@@ -283,6 +283,18 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "_models.HelloRequest request, {" in content
     assert "$createUnaryCall(_$sayHello, request, options: options);" in content
 
+    assert "abstract class GreeterServiceBase extends Service {" in content
+    assert "String get $name => 'demo.greeter.Greeter';" in content
+    assert "GreeterServiceBase() {" in content
+    assert (
+        "$addMethod(ServiceMethod<_models.HelloRequest, _models.HelloReply>("
+    ) in content
+    assert "'SayHello'," in content
+    assert "sayHello_Pre," in content
+    assert "Future<_models.HelloReply> sayHello_Pre(" in content
+    assert "Future<_models.HelloReply> sayHello(" in content
+    assert "ServiceCall call," in content
+
 
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(

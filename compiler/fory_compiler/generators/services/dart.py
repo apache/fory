@@ -92,6 +92,8 @@ class DartServiceGeneratorMixin:
         for service in services:
             lines.extend(self.generate_dart_grpc_client(service))
             lines.append("")
+            lines.extend(self.generate_dart_grpc_service_base(service))
+            lines.append("")
 
         return GeneratedFile(path=grpc_path, content="\n".join(lines))
 
@@ -130,6 +132,57 @@ class DartServiceGeneratorMixin:
                 f"    return $createUnaryCall({method_const}, request, options: options);"
             )
             lines.append("  }")
+        lines.append("}")
+        return lines
+
+    def generate_dart_grpc_service_base(self, service: Service) -> List[str]:
+        lines: List[str] = []
+        lines.append(f"abstract class {service.name}ServiceBase extends Service {{")
+        lines.append("  @override")
+        lines.append(
+            f"  String get $name => '{self.get_grpc_service_name(service)}';"
+        )
+        lines.append("")
+        lines.append(f"  {service.name}ServiceBase() {{")
+        for method in service.methods:
+            req_t = f"_models.{method.request_type.name}"
+            res_t = f"_models.{method.response_type.name}"
+            method_name = self.dart_grpc_method_name(method)
+            lines.append(
+                f"    $addMethod(ServiceMethod<{req_t}, {res_t}>("
+            )
+            lines.append(f"      '{method.name}',")
+            lines.append(f"      {method_name}_Pre,")
+            lines.append("      false,")
+            lines.append("      false,")
+            lines.append(
+                f"      (List<int> value) => _deserialize<{req_t}>(value),"
+            )
+            lines.append(f"      ({res_t} value) => _serialize(value),")
+            lines.append("    ));")
+        lines.append("  }")
+        lines.append("")
+        for idx, method in enumerate(service.methods):
+            req_t = f"_models.{method.request_type.name}"
+            res_t = f"_models.{method.response_type.name}"
+            method_name = self.dart_grpc_method_name(method)
+            lines.append(
+                "  // protoc_plugin parity: _Pre shim awaits the request future,"
+            )
+            lines.append("  // then delegates to the user-overridable method.")
+            lines.append(f"  Future<{res_t}> {method_name}_Pre(")
+            lines.append("    ServiceCall $call,")
+            lines.append(f"    Future<{req_t}> $request,")
+            lines.append("  ) async {")
+            lines.append(f"    return {method_name}($call, await $request);")
+            lines.append("  }")
+            lines.append("")
+            lines.append(f"  Future<{res_t}> {method_name}(")
+            lines.append("    ServiceCall call,")
+            lines.append(f"    {req_t} request,")
+            lines.append("  );")
+            if idx != len(service.methods) - 1:
+                lines.append("")
         lines.append("}")
         return lines
 
