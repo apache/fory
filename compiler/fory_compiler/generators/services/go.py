@@ -75,6 +75,7 @@ class GoServiceGeneratorMixin:
             '"google.golang.org/grpc"',
             '"google.golang.org/grpc/codes"',
             '"google.golang.org/grpc/status"',
+            '"github.com/apache/fory/go/fory"',
         ]
         
         for alias, path in tracker._imports.items():
@@ -127,14 +128,15 @@ class GoServiceGeneratorMixin:
         lines: List[str] = []
         lines.append(f"type {self.to_camel_case(service.name)}Client struct {{")
         lines.append("\tcc grpc.ClientConnInterface")
+        lines.append("\tfory *fory.Fory")
         lines.append("}")
         lines.append("")
         return lines
 
     def _generate_new_client(self, service: Service) -> List[str]:
         lines: List[str] = []
-        lines.append(f"func New{service.name}Client(cc grpc.ClientConnInterface) {service.name}Client {{")
-        lines.append(f"\treturn &{self.to_camel_case(service.name)}Client{{cc}}")
+        lines.append(f"func New{service.name}Client(cc grpc.ClientConnInterface, f *fory.Fory) {service.name}Client {{")
+        lines.append(f"\treturn &{self.to_camel_case(service.name)}Client{{cc: cc, fory: f}}")
         lines.append("}")
         lines.append("")
         return lines
@@ -150,7 +152,7 @@ class GoServiceGeneratorMixin:
             if mode is StreamingMode.UNARY:
                 lines.append(f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({res_type}, error) {{")
                 lines.append(f"\tout := new({res_type[1:]})")
-                lines.append(f'\terr := c.cc.Invoke(ctx, "{self.get_grpc_method_path(service, method)}", in, out, grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append(f'\terr := c.cc.Invoke(ctx, "{self.get_grpc_method_path(service, method)}", in, out, grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}}), opts...)')
                 lines.append("\tif err != nil {")
                 lines.append("\t\treturn nil, err")
                 lines.append("\t}")
@@ -159,7 +161,7 @@ class GoServiceGeneratorMixin:
                 lines.append("")
             elif mode is StreamingMode.SERVER_STREAMING:
                 lines.append(f'func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{')
-                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}}), opts...)')
                 lines.append("\tif err != nil {")
                 lines.append("\t\treturn nil, err")
                 lines.append("\t}")
@@ -176,7 +178,7 @@ class GoServiceGeneratorMixin:
                 stream_index += 1
             else:
                 lines.append(f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{")
-                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{}}), opts...)')
+                lines.append(f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}}), opts...)')
                 lines.append("\tif err != nil {")
                 lines.append("\t\treturn nil, err")
                 lines.append("\t}")
