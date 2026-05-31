@@ -69,6 +69,7 @@ import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.CustomTypeHandler;
+import org.apache.fory.format.type.CustomTypeRegistration;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
@@ -768,15 +769,18 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     CustomCollectionFactory<?, ?> customFactory =
         customTypeHandler.findCollectionFactory(clazz, componentClass.getRawType());
     if (customFactory != null) {
+      Reference factoryRef = customCollectionFactoryFieldRef(clazz, componentClass.getRawType());
       collection =
-          new StaticInvoke(
-              customTypeHandler.getClass(),
-              "newCollection",
+          new Cast(
+              new Invoke(
+                  factoryRef,
+                  "newCollection",
+                  "newCollectionObject",
+                  TypeRef.of(Object.class),
+                  false,
+                  size),
               typeRef,
-              false,
-              new Expression.Null(typeRef, true),
-              new Expression.Null(componentClass, true),
-              size);
+              "newCollection");
     } else if (TypeRef.of(clazz).isSupertypeOf(TypeRef.of(ArrayList.class))) {
       collection = new NewInstance(TypeRef.of(ArrayList.class), size);
     } else if (TypeRef.of(clazz).isSupertypeOf(TypeRef.of(HashSet.class))) {
@@ -921,26 +925,69 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     return new Invoke(foryRef, "deserialize", typeRef, value);
   }
 
+  // Static fields the row codec calls into. Initialized once at class load from
+  // CustomTypeEncoderRegistry; encode/decode call sites invoke the cached instance.
+  private final Map<TypeRef<?>, Reference> customCodecFieldRefs = new HashMap<>();
+  private final Map<CustomTypeRegistration, Reference> customCollectionFactoryFieldRefs =
+      new HashMap<>();
+
+  private Reference customCodecFieldRef(TypeRef<?> fieldType) {
+    return customCodecFieldRefs.computeIfAbsent(
+        fieldType,
+        ft -> {
+          String name = ctx.newName("_customCodec");
+          Expression init =
+              new StaticInvoke(
+                  CustomTypeEncoderRegistry.class,
+                  "findCodec",
+                  "",
+                  TypeRef.of(CustomCodec.class),
+                  false,
+                  false,
+                  false,
+                  Literal.ofClass(beanType.getRawType()),
+                  Literal.ofClass(ft.getRawType()));
+          ctx.addField(true, true, ctx.type(CustomCodec.class), name, init);
+          return new Reference(name, TypeRef.of(CustomCodec.class));
+        });
+  }
+
+  private Reference customCollectionFactoryFieldRef(Class<?> collectionType, Class<?> elementType) {
+    return customCollectionFactoryFieldRefs.computeIfAbsent(
+        new CustomTypeRegistration(collectionType, elementType),
+        reg -> {
+          String name = ctx.newName("_customCollectionFactory");
+          Expression init =
+              new StaticInvoke(
+                  CustomTypeEncoderRegistry.class,
+                  "findCollectionFactory",
+                  "",
+                  TypeRef.of(CustomCollectionFactory.class),
+                  false,
+                  false,
+                  false,
+                  Literal.ofClass(reg.getBeanType()),
+                  Literal.ofClass(reg.getFieldType()));
+          ctx.addField(true, true, ctx.type(CustomCollectionFactory.class), name, init);
+          return new Reference(name, TypeRef.of(CustomCollectionFactory.class));
+        });
+  }
+
   protected Expression customEncode(Expression inputObject, TypeRef<?> rewrittenType) {
-    return new Expression.StaticInvoke(
-        customTypeHandler.getClass(),
-        "encode",
-        "rewrittenValue",
+    Reference codecRef = customCodecFieldRef(inputObject.type());
+    return new Cast(
+        new Invoke(
+            codecRef, "encode", "rewrittenObject", TypeRef.of(Object.class), true, inputObject),
         rewrittenType,
-        true,
-        new Expression.Null(beanType, true),
-        inputObject);
+        "rewrittenValue");
   }
 
   protected Expression customDecode(TypeRef<?> typeRef, final Expression deserializedValue) {
-    return new Expression.StaticInvoke(
-        customTypeHandler.getClass(),
-        "decode",
-        "decodedValue",
+    Reference codecRef = customCodecFieldRef(typeRef);
+    return new Cast(
+        new Invoke(
+            codecRef, "decode", "decodedObject", TypeRef.of(Object.class), true, deserializedValue),
         typeRef,
-        true,
-        new Expression.Null(beanType, true),
-        new Expression.Null(typeRef, true),
-        deserializedValue);
+        "decodedValue");
   }
 }

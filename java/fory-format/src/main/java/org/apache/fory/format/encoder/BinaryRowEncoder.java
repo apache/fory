@@ -81,14 +81,16 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
                   + "Please check writer schema.",
               schema, schemaHash, peerSchemaHash));
     }
+    final int rowSize = size - 8;
     final BinaryRow row = codecFactory.newRow(schema);
-    row.pointTo(buffer, buffer.readerIndex(), size);
-    buffer.increaseReaderIndex(size - 8);
+    row.pointTo(buffer, buffer.readerIndex(), rowSize);
+    buffer.increaseReaderIndex(rowSize);
     return fromRow(row);
   }
 
   @Override
   public T decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

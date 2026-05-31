@@ -43,11 +43,7 @@ import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
 
-/**
- * Factory to create {@link Encoder}.
- *
- * <p>, ganrunsheng
- */
+/** Factory to create {@link Encoder}. */
 public class Encoders {
   private static final Logger LOG = LoggerFactory.getLogger(Encoders.class);
 
