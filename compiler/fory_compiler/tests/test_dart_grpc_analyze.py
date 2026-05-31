@@ -115,6 +115,18 @@ def test_dart_analyze_accepts_generated_grpc_file(tmp_path: Path) -> None:
     # this smoke test exists to gate.
     grpc_file = tmp_path / "demo" / "greeter" / "demo_greeter_grpc.dart"
     assert grpc_file.exists(), f"grpc file not emitted: {grpc_file}"
+
+    fmt = subprocess.run(
+        ["dart", "format", "--set-exit-if-changed", str(grpc_file)],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert fmt.returncode == 0, (
+        f"dart format flagged changes:\nstdout:\n{fmt.stdout}\nstderr:\n{fmt.stderr}"
+    )
+
     result = subprocess.run(
         ["dart", "analyze", "--fatal-warnings", str(grpc_file)],
         cwd=tmp_path,

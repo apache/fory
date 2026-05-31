@@ -131,14 +131,12 @@ class DartServiceGeneratorMixin:
             req_t = f"_models.{method.request_type.name}"
             res_t = f"_models.{method.response_type.name}"
             full_path = self.get_grpc_method_path(service, method)
-            lines.append(
-                f"  static final {method_const} = "
-                f"ClientMethod<{req_t}, {res_t}>("
-            )
-            lines.append(f"    '{full_path}',")
-            lines.append("    _serialize,")
-            lines.append("    _deserialize,")
-            lines.append("  );")
+            lines.append(f"  static final {method_const} =")
+            lines.append(f"      ClientMethod<{req_t}, {res_t}>(")
+            lines.append(f"        '{full_path}',")
+            lines.append("        _serialize,")
+            lines.append("        _deserialize,")
+            lines.append("      );")
             lines.append("")
         lines.append(
             f"  {service.name}Client(super.channel, "
@@ -174,18 +172,18 @@ class DartServiceGeneratorMixin:
             req_t = f"_models.{method.request_type.name}"
             res_t = f"_models.{method.response_type.name}"
             method_name = self.dart_grpc_method_name(method)
+            lines.append("    $addMethod(")
+            lines.append(f"      ServiceMethod<{req_t}, {res_t}>(")
+            lines.append(f"        '{method.name}',")
+            lines.append(f"        {method_name}_Pre,")
+            lines.append("        false,")
+            lines.append("        false,")
             lines.append(
-                f"    $addMethod(ServiceMethod<{req_t}, {res_t}>("
+                f"        (List<int> value) => _deserialize<{req_t}>(value),"
             )
-            lines.append(f"      '{method.name}',")
-            lines.append(f"      {method_name}_Pre,")
-            lines.append("      false,")
-            lines.append("      false,")
-            lines.append(
-                f"      (List<int> value) => _deserialize<{req_t}>(value),"
-            )
-            lines.append(f"      ({res_t} value) => _serialize(value),")
-            lines.append("    ));")
+            lines.append(f"        ({res_t} value) => _serialize(value),")
+            lines.append("      ),")
+            lines.append("    );")
         lines.append("  }")
         lines.append("")
         for idx, method in enumerate(service.methods):

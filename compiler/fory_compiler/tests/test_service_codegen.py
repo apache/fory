@@ -275,10 +275,8 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "is Uint8List ? bytes : Uint8List.fromList(bytes)" in content
 
     assert "class GreeterClient extends Client {" in content
-    assert (
-        "static final _$sayHello = "
-        "ClientMethod<_models.HelloRequest, _models.HelloReply>("
-    ) in content
+    assert "static final _$sayHello =" in content
+    assert "ClientMethod<_models.HelloRequest, _models.HelloReply>(" in content
     assert "'/demo.greeter.Greeter/SayHello'," in content
     assert "GreeterClient(super.channel, {super.options, super.interceptors});" in content
     assert "ResponseFuture<_models.HelloReply> sayHello(" in content
@@ -288,8 +286,9 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "abstract class GreeterServiceBase extends Service {" in content
     assert "String get $name => 'demo.greeter.Greeter';" in content
     assert "GreeterServiceBase() {" in content
+    assert "$addMethod(" in content
     assert (
-        "$addMethod(ServiceMethod<_models.HelloRequest, _models.HelloReply>("
+        "ServiceMethod<_models.HelloRequest, _models.HelloReply>("
     ) in content
     assert "'SayHello'," in content
     assert "sayHello_Pre," in content
