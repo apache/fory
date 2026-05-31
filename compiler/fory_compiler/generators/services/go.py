@@ -48,12 +48,17 @@ class GoServiceGeneratorMixin:
         # save the placeholder index for now
         import_placeholder_index = len(lines)
 
-        # Client interface
-        
+        lines.extend(self._generate_client_interface(service, tracker))
+        lines.extend(self._generate_client_struct(service))
+        lines.extend(self._generate_client_methods(service, tracker))
+        lines.extend(self._generate_stream_types(service, tracker))
+        lines.extend(self._generate_server_interface(service, tracker))
+        lines.extend(self._generate_unimplemented_server(service, tracker))
+        lines.extend(self._generate_server_stream_types(service, tracker))
+        lines.extend(self._generate_service_desc(service, tracker))
+        lines.extend(self._generate_register_server(service))
 
-
-
-        # after all the service code gets generated, insert the import block at the placeholder index
+        # insert the import block at the saved placeholder index
         import_lines = self._build_import_block(tracker)
         for i, line in enumerate(import_lines):
             lines.insert(import_placeholder_index + i, line)
@@ -454,7 +459,7 @@ class GoServiceGeneratorMixin:
                 lines.append(f"\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(&{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Server{{stream}}))")
                 lines.append("}")
                 lines.append("")
-        # vars
+        # var
         lines.append(f"var _{service.name}_serviceDesc = grpc.ServiceDesc{{")
         lines.append(f'\tServiceName: "{self.get_grpc_service_name(service)}",')
         lines.append(f"\tHandlerType: (*{service.name}Server)(nil),")
