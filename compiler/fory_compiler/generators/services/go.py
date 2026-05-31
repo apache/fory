@@ -471,7 +471,7 @@ class GoServiceGeneratorMixin:
         lines.append("\tStreams: []grpc.StreamDesc{")
         lines.extend(self._generate_stream_type_desc(service))
         lines.append("\t},")
-        lines.append(f'\tMetadata: "{self.get_file_name()}.fory",')
+        lines.append(f'\tMetadata: "{self.get_file_name()}.fdl",')
         lines.append("}")
         lines.append("")
         return lines
