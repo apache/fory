@@ -50,6 +50,7 @@ class GoServiceGeneratorMixin:
 
         lines.extend(self._generate_client_interface(service, tracker))
         lines.extend(self._generate_client_struct(service))
+        lines.extend(self._generate_new_client(service))
         lines.extend(self._generate_client_methods(service, tracker))
         lines.extend(self._generate_stream_types(service, tracker))
         lines.extend(self._generate_server_interface(service, tracker))
@@ -76,8 +77,8 @@ class GoServiceGeneratorMixin:
             '"google.golang.org/grpc/status"',
         ]
         
-        for path in tracker.go_imports():
-            imports.append(f'"{path}"')
+        for alias, path in tracker._imports.items():
+            imports.append(f'{alias} "{path}"')
         
         sorted_imports = sorted(set(imports))
 

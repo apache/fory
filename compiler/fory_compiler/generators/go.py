@@ -207,6 +207,9 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
         # Generate a single Go file with all types
         files.append(self.generate_file())
 
+        # Generate gRPC service stubs
+        files.extend(self.generate_services())
+
         return files
 
     def get_package_name(self) -> str:
