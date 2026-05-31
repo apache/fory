@@ -105,7 +105,6 @@
         <jdk>[21,]</jdk>
       </activation>
       <modules>
-        <module>fory-simd</module>
         <module>fory-latest-jdk-tests</module>
       </modules>
     </profile>

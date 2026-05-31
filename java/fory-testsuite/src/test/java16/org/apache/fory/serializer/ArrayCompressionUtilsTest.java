@@ -28,7 +28,6 @@ import org.apache.fory.util.PrimitiveArrayCompressionType;
 import org.testng.annotations.Test;
 
 public class ArrayCompressionUtilsTest {
-
   @Test
   public void testIntArrayCompressionDetection() {
     // Test byte range compression - make array size >= 512

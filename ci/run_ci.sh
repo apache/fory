@@ -98,6 +98,7 @@ integration_tests() {
   echo "Start JPMS tests"
   cd "$ROOT"/integration_tests/jpms_tests
   mvn -T10 -B --no-transfer-progress clean compile
+  ./run_jlink_smoke.sh
   echo "Start jdk compatibility tests"
   cd "$ROOT"/integration_tests/jdk_compatibility_tests
   mvn -T10 -B --no-transfer-progress clean test

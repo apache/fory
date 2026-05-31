@@ -25,75 +25,64 @@ import jdk.incubator.vector.VectorOperators;
 import jdk.incubator.vector.VectorSpecies;
 
 /**
- * Utility class for primitive array compression operations. It uses SIMD-accelerated array
- * compression using Java 16+ Vector API.
+ * Utility methods for optional primitive array compression.
  *
- * <p>This utility provides compression for primitive arrays by detecting when values can fit in
- * smaller data types:
+ * <p>The compressed array serializers use these helpers when every value in a primitive array fits
+ * in a narrower primitive type:
  *
  * <ul>
- *   <li>int[] → byte[] when all values are in [-128, 127] range (75% size reduction)
- *   <li>int[] → short[] when all values are in [-32768, 32767] range (50% size reduction)
- *   <li>long[] → int[] when all values fit in integer range (50% size reduction)
+ *   <li>{@code int[]} to {@code byte[]} when all values are in byte range.
+ *   <li>{@code int[]} to {@code short[]} when all values are in short range.
+ *   <li>{@code long[]} to {@code int[]} when all values are in int range.
  * </ul>
- *
- * <p>Uses the best available compression provider via ServiceLoader pattern. SIMD optimizations are
- * used when fory-simd module is available. When no compression provider is available, compression
- * is disabled entirely.
  */
 public final class ArrayCompressionUtils {
+  // Minimum array size to justify compression analysis and the compressed payload marker overhead.
+  static final int MIN_COMPRESSION_SIZE = 1 << 9;
   private static final VectorSpecies<Integer> INT_SPECIES = IntVector.SPECIES_PREFERRED;
   private static final VectorSpecies<Long> LONG_SPECIES = LongVector.SPECIES_PREFERRED;
 
-  // Minimum array size to justify compression overhead
-  private static final int MIN_COMPRESSION_SIZE = 1 << 9; // 512 elements
+  private ArrayCompressionUtils() {}
 
   /**
-   * Determine the best compression type for int array.
+   * Determines the best compression type for an int array.
    *
-   * @param array the int array to analyze
-   * @return compression type (NONE, INT_TO_BYTE, or INT_TO_SHORT)
-   * @throws NullPointerException if array is null
+   * @param array the array to analyze
+   * @return {@link PrimitiveArrayCompressionType#INT_TO_BYTE}, {@link
+   *     PrimitiveArrayCompressionType#INT_TO_SHORT}, or {@link PrimitiveArrayCompressionType#NONE}
+   * @throws NullPointerException if {@code array} is null
    */
   public static PrimitiveArrayCompressionType determineIntCompressionType(int[] array) {
     if (array == null) {
       throw new NullPointerException("Input array cannot be null");
     }
     if (array.length < MIN_COMPRESSION_SIZE) {
-      // No compression for empty or too small arrays
       return PrimitiveArrayCompressionType.NONE;
     }
-
     boolean canCompressToByte = true;
     boolean canCompressToShort = true;
-
     int i = 0;
-    final int upperBound = INT_SPECIES.loopBound(array.length);
+    int upperBound = INT_SPECIES.loopBound(array.length);
 
-    // SIMD loop
+    // Vector loop: test each lane against the target primitive ranges and stop checking a narrower
+    // representation once any lane exceeds its range.
     for (; i < upperBound && (canCompressToByte || canCompressToShort); i += INT_SPECIES.length()) {
       IntVector vector = IntVector.fromArray(INT_SPECIES, array, i);
-
-      // Check byte compression using mask operations
       if (canCompressToByte) {
-        var byteMaxMask = vector.compare(VectorOperators.GT, Byte.MAX_VALUE);
-        var byteMinMask = vector.compare(VectorOperators.LT, Byte.MIN_VALUE);
-        if (byteMaxMask.anyTrue() || byteMinMask.anyTrue()) {
+        if (vector.compare(VectorOperators.GT, Byte.MAX_VALUE).anyTrue()
+            || vector.compare(VectorOperators.LT, Byte.MIN_VALUE).anyTrue()) {
           canCompressToByte = false;
         }
       }
-
-      // Check short compression using mask operations
       if (canCompressToShort) {
-        var shortMaxMask = vector.compare(VectorOperators.GT, Short.MAX_VALUE);
-        var shortMinMask = vector.compare(VectorOperators.LT, Short.MIN_VALUE);
-        if (shortMaxMask.anyTrue() || shortMinMask.anyTrue()) {
+        if (vector.compare(VectorOperators.GT, Short.MAX_VALUE).anyTrue()
+            || vector.compare(VectorOperators.LT, Short.MIN_VALUE).anyTrue()) {
           canCompressToShort = false;
         }
       }
     }
 
-    // Handle remaining elements with scalar code
+    // Scalar tail for elements that do not fill a complete vector.
     for (; i < array.length && (canCompressToByte || canCompressToShort); i++) {
       int value = array[i];
       if (canCompressToByte && (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE)) {
@@ -103,22 +92,21 @@ public final class ArrayCompressionUtils {
         canCompressToShort = false;
       }
     }
-
     if (canCompressToByte) {
       return PrimitiveArrayCompressionType.INT_TO_BYTE;
-    } else if (canCompressToShort) {
-      return PrimitiveArrayCompressionType.INT_TO_SHORT;
-    } else {
-      return PrimitiveArrayCompressionType.NONE;
     }
+    return canCompressToShort
+        ? PrimitiveArrayCompressionType.INT_TO_SHORT
+        : PrimitiveArrayCompressionType.NONE;
   }
 
   /**
-   * Determine the best compression type for long array.
+   * Determines the best compression type for a long array.
    *
-   * @param array the long array to analyze
-   * @return compression type (NONE or LONG_TO_INT)
-   * @throws NullPointerException if array is null
+   * @param array the array to analyze
+   * @return {@link PrimitiveArrayCompressionType#LONG_TO_INT} or {@link
+   *     PrimitiveArrayCompressionType#NONE}
+   * @throws NullPointerException if {@code array} is null
    */
   public static PrimitiveArrayCompressionType determineLongCompressionType(long[] array) {
     if (array == null) {
@@ -127,42 +115,34 @@ public final class ArrayCompressionUtils {
     if (array.length < MIN_COMPRESSION_SIZE) {
       return PrimitiveArrayCompressionType.NONE;
     }
-    boolean canCompressToInt = true;
-
     int i = 0;
     int upperBound = LONG_SPECIES.loopBound(array.length);
 
-    // SIMD loop
-    for (; i < upperBound && canCompressToInt; i += LONG_SPECIES.length()) {
+    // Vector loop: any lane outside int range means long-to-int compression is not safe.
+    for (; i < upperBound; i += LONG_SPECIES.length()) {
       LongVector vector = LongVector.fromArray(LONG_SPECIES, array, i);
-
-      // Check int compression using mask operations
-      var maxMask = vector.compare(VectorOperators.GT, Integer.MAX_VALUE);
-      var minMask = vector.compare(VectorOperators.LT, Integer.MIN_VALUE);
-      if (maxMask.anyTrue() || minMask.anyTrue()) {
-        canCompressToInt = false;
+      if (vector.compare(VectorOperators.GT, Integer.MAX_VALUE).anyTrue()
+          || vector.compare(VectorOperators.LT, Integer.MIN_VALUE).anyTrue()) {
+        return PrimitiveArrayCompressionType.NONE;
       }
     }
 
-    // Handle remaining elements
-    for (; i < array.length && canCompressToInt; i++) {
+    // Scalar tail for elements that do not fill a complete vector.
+    for (; i < array.length; i++) {
       long value = array[i];
       if (value > Integer.MAX_VALUE || value < Integer.MIN_VALUE) {
-        canCompressToInt = false;
+        return PrimitiveArrayCompressionType.NONE;
       }
     }
-
-    return canCompressToInt
-        ? PrimitiveArrayCompressionType.LONG_TO_INT
-        : PrimitiveArrayCompressionType.NONE;
+    return PrimitiveArrayCompressionType.LONG_TO_INT;
   }
 
   /**
-   * Compress int array to byte array.
+   * Compresses an int array to a byte array.
    *
-   * @param array the int array to compress
+   * @param array the int array to compress; values must be in byte range
    * @return compressed byte array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static byte[] compressToBytes(int[] array) {
     if (array == null) {
@@ -176,11 +156,11 @@ public final class ArrayCompressionUtils {
   }
 
   /**
-   * Compress int array to short array.
+   * Compresses an int array to a short array.
    *
-   * @param array the int array to compress (values must be in short range)
+   * @param array the int array to compress; values must be in short range
    * @return compressed short array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static short[] compressToShorts(int[] array) {
     if (array == null) {
@@ -194,11 +174,11 @@ public final class ArrayCompressionUtils {
   }
 
   /**
-   * Compress long array to int array.
+   * Compresses a long array to an int array.
    *
-   * @param array the long array to compress (values must be in int range)
+   * @param array the long array to compress; values must be in int range
    * @return compressed int array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static int[] compressToInts(long[] array) {
     if (array == null) {
@@ -212,11 +192,11 @@ public final class ArrayCompressionUtils {
   }
 
   /**
-   * Decompress byte array to int array.
+   * Decompresses a byte array to an int array.
    *
    * @param array the byte array to decompress
    * @return decompressed int array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static int[] decompressFromBytes(byte[] array) {
     if (array == null) {
@@ -230,11 +210,11 @@ public final class ArrayCompressionUtils {
   }
 
   /**
-   * Decompress short array to int array.
+   * Decompresses a short array to an int array.
    *
    * @param array the short array to decompress
    * @return decompressed int array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static int[] decompressFromShorts(short[] array) {
     if (array == null) {
@@ -248,17 +228,16 @@ public final class ArrayCompressionUtils {
   }
 
   /**
-   * Decompress int array to long array.
+   * Decompresses an int array to a long array.
    *
    * @param array the int array to decompress
    * @return decompressed long array
-   * @throws NullPointerException if array is null
+   * @throws NullPointerException if {@code array} is null
    */
   public static long[] decompressFromInts(int[] array) {
     if (array == null) {
       throw new NullPointerException("Array cannot be null");
     }
-
     long[] decompressed = new long[array.length];
     for (int i = 0; i < array.length; i++) {
       decompressed[i] = array[i];

@@ -36,7 +36,7 @@ import org.apache.fory.util.ArrayCompressionUtils;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
 
 /**
- * Compressed array serializers using Java 16+ Vector API for SIMD acceleration.
+ * Compressed array serializers with optional Java 16+ Vector API acceleration.
  *
  * <p>To use these serializers, simply call {@code CompressedArraySerializers.register(fory)} on
  * your Fory instance. These will override the default array serializers for {@code int[]} and

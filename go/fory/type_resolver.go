@@ -1015,7 +1015,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 			*/
 			serializer, err := r.createSerializer(value.Type(), false)
 			if err != nil {
-				fmt.Errorf("failed to create serializer: %w", err)
+				return nil, fmt.Errorf("failed to create serializer: %w", err)
 			}
 			info.Serializer = serializer
 		}

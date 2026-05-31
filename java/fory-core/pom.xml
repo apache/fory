@@ -78,6 +78,7 @@
           <archive>
             <manifestEntries>
               <Automatic-Module-Name>org.apache.fory.core</Automatic-Module-Name>
+              <Multi-Release>true</Multi-Release>
             </manifestEntries>
           </archive>
         </configuration>
@@ -119,6 +120,7 @@
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <manifestEntries>
                     <Automatic-Module-Name>org.apache.fory.core</Automatic-Module-Name>
+                    <Multi-Release>true</Multi-Release>
                   </manifestEntries>
                 </transformer>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -135,6 +137,195 @@
   </build>
 
   <profiles>
+    <profile>
+      <id>jpms-java9</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java9-module-info</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.build.directory}/jpms-classes/java9"/>
+                    <pathconvert property="compile.module.path" refid="maven.compile.classpath"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/main/java9"
+                           destdir="${project.build.directory}/jpms-classes/java9"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="module-info.java"/>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="9"/>
+                      <compilerarg value="--module-path"/>
+                      <compilerarg path="${compile.module.path}"/>
+                      <compilerarg value="--patch-module"/>
+                      <compilerarg value="org.apache.fory.core=${project.build.outputDirectory}"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java9-module-info</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                      <zipfileset dir="${project.build.outputDirectory}/META-INF/versions/9"
+                                  prefix="META-INF/versions/9"
+                                  includes="module-info.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>copy-java9-module-info</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.outputDirectory}/META-INF/versions/9</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${project.build.directory}/jpms-classes/java9</directory>
+                      <includes>
+                        <include>module-info.class</include>
+                      </includes>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jpms-java16</id>
+      <activation>
+        <jdk>[16,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java16-sources</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${project.build.directory}/jpms-classes/java16"/>
+                    <mkdir dir="${project.build.directory}/jpms-classes/java16"/>
+                    <pathconvert property="compile.module.path" refid="maven.compile.classpath"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/main/java16"
+                           destdir="${project.build.directory}/jpms-classes/java16"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="**/*.java"/>
+                      <compilerarg value="--source"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--target"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--module-path"/>
+                      <compilerarg path="${compile.module.path}"/>
+                      <compilerarg value="--add-modules"/>
+                      <compilerarg value="jdk.incubator.vector"/>
+                      <compilerarg value="--patch-module"/>
+                      <compilerarg value="org.apache.fory.core=${project.build.outputDirectory}"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>clean-java16-package-classes</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${project.build.outputDirectory}/META-INF/versions/16"/>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java16-classes</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                      <zipfileset dir="${project.build.outputDirectory}/META-INF/versions/16"
+                                  prefix="META-INF/versions/16"
+                                  includes="**/*.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-resources-plugin</artifactId>
+            <version>3.3.1</version>
+            <executions>
+              <execution>
+                <id>copy-java16-classes</id>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>copy-resources</goal>
+                </goals>
+                <configuration>
+                  <outputDirectory>${project.build.outputDirectory}/META-INF/versions/16</outputDirectory>
+                  <resources>
+                    <resource>
+                      <directory>${project.build.directory}/jpms-classes/java16</directory>
+                      <includes>
+                        <include>**/*.class</include>
+                      </includes>
+                    </resource>
+                  </resources>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>xlang-parallel</id>
       <activation>

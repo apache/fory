@@ -29,7 +29,6 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class ArrayCompressionTest {
-
   @DataProvider(name = "intArrayData")
   public Object[][] intArrayData() {
     return new Object[][] {

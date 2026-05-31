@@ -106,6 +106,7 @@
           <archive>
             <manifestEntries>
               <Automatic-Module-Name>org.apache.fory.format</Automatic-Module-Name>
+              <Multi-Release>true</Multi-Release>
             </manifestEntries>
           </archive>
         </configuration>
@@ -121,6 +122,71 @@
   </build>
 
   <profiles>
+    <profile>
+      <id>jpms-java11</id>
+      <activation>
+        <jdk>[11,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java11-module-info</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.build.directory}/jpms-classes/java11"/>
+                    <path id="compile.module.path.elements">
+                      <pathelement location="${project.basedir}/../fory-core/target/jpms-classes/java9"/>
+                      <path refid="maven.compile.classpath"/>
+                    </path>
+                    <pathconvert property="compile.module.path" refid="compile.module.path.elements"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/main/java11"
+                           destdir="${project.build.directory}/jpms-classes/java11"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="module-info.java"/>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="11"/>
+                      <compilerarg value="--module-path"/>
+                      <compilerarg path="${compile.module.path}"/>
+                      <compilerarg value="--patch-module"/>
+                      <compilerarg value="org.apache.fory.format=${project.build.outputDirectory}"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java11-module-info</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                      <zipfileset dir="${project.build.directory}/jpms-classes/java11"
+                                  prefix="META-INF/versions/11"
+                                  includes="module-info.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
     <profile>
       <id>releaseShade</id>
       <activation>
@@ -170,6 +236,8 @@
                     <filter>
                       <artifact>*:*</artifact>
                       <excludes>
+                        <exclude>module-info.class</exclude>
+                        <exclude>META-INF/versions/**/module-info.class</exclude>
                         <exclude>META-INF/*.SF</exclude>
                         <exclude>META-INF/*.DSA</exclude>
                         <exclude>META-INF/*.RSA</exclude>

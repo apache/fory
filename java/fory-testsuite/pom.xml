@@ -142,4 +142,63 @@
     </plugins>
   </build>
 
+  <profiles>
+    <profile>
+      <id>java16-compression-tests</id>
+      <activation>
+        <jdk>[16,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java16-compression-tests</id>
+                <phase>test-compile</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.build.testOutputDirectory}"/>
+                    <pathconvert property="java16.test.classpath" refid="maven.test.classpath"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/test/java16"
+                           destdir="${project.build.testOutputDirectory}"
+                           classpath="${project.basedir}/../fory-core/target/jpms-classes/java16${path.separator}${java16.test.classpath}"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="**/*.java"/>
+                      <compilerarg value="--source"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--target"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--add-modules"/>
+                      <compilerarg value="jdk.incubator.vector"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <argLine>--add-modules=jdk.incubator.vector</argLine>
+              <additionalClasspathElements>
+                <additionalClasspathElement>${project.basedir}/../fory-core/target/jpms-classes/java16</additionalClasspathElement>
+              </additionalClasspathElements>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
 </project>

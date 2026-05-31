@@ -23,18 +23,19 @@ package org.apache.fory.util;
  * Compression types for primitive arrays.
  *
  * <p>Defines the available compression strategies for reducing the size of primitive arrays by
- * detecting when values can fit in smaller data types.
+ * detecting when values can be stored with a narrower primitive type.
  */
 public enum PrimitiveArrayCompressionType {
-  // No compression applied
+  /** No compression applied. */
   NONE(0),
 
-  // Compression for int arrays:
-  // int[] → byte[] compression (75% size reduction)
+  /** Compresses {@code int[]} values to {@code byte[]} when every value fits in byte range. */
   INT_TO_BYTE(1),
-  // int[] → short[] compression (50% size reduction)
+
+  /** Compresses {@code int[]} values to {@code short[]} when every value fits in short range. */
   INT_TO_SHORT(2),
-  // Compression for long arrays: long[] → int[] compression (50% size reduction)
+
+  /** Compresses {@code long[]} values to {@code int[]} when every value fits in int range. */
   LONG_TO_INT(3);
 
   private final int value;
@@ -46,7 +47,7 @@ public enum PrimitiveArrayCompressionType {
   /**
    * Gets the numeric value for this compression type.
    *
-   * @return the numeric value
+   * @return the numeric value written to the serialized payload
    */
   public int getValue() {
     return value;
@@ -55,7 +56,7 @@ public enum PrimitiveArrayCompressionType {
   /**
    * Gets the compression type from its numeric value.
    *
-   * @param value the numeric value
+   * @param value the numeric value read from the serialized payload
    * @return the corresponding compression type
    * @throws IllegalArgumentException if the value is not valid
    */
@@ -76,6 +77,8 @@ public enum PrimitiveArrayCompressionType {
 
   /** Compression utilities for int arrays. Supports compression to byte[] and short[] formats. */
   public static final class IntArrayCompression {
+    private IntArrayCompression() {}
+
     /**
      * Determines the best compression type for the given int array.
      *
@@ -97,7 +100,10 @@ public enum PrimitiveArrayCompressionType {
     }
   }
 
+  /** Compression utilities for long arrays. Supports compression to int[] format. */
   public static final class LongArrayCompression {
+    private LongArrayCompression() {}
+
     /**
      * Determines the best compression type for the given long array.
      *
