@@ -403,8 +403,7 @@
               <exclude>**/generated/**/*.java</exclude>
             </excludes>
             <googleJavaFormat>
-              <!-- 1.19.1 support JDK21 -->
-              <version>1.19.1</version>
+              <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>

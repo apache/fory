@@ -74,7 +74,8 @@
     <janino.version>3.1.12</janino.version>
     <commons_codec.version>1.13</commons_codec.version>
     <fory.java.rootdir>${basedir}</fory.java.rootdir>
-    <maven-spotless-plugin.version>3.3.0</maven-spotless-plugin.version>
+    <maven-spotless-plugin.version>3.6.0</maven-spotless-plugin.version>
+    <google-java-format.version>1.35.0</google-java-format.version>
     <lombok.version>1.18.38</lombok.version>
     <mockito.version>4.11.0</mockito.version>
   </properties>
@@ -272,8 +273,7 @@
         <configuration>
           <java>
             <googleJavaFormat>
-              <!-- 1.35 support JDK25 -->
-              <version>1.35.0</version>
+              <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
