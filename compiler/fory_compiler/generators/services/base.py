@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+"Shared utilities for gRPC service stub generators."
 
 from enum import Enum
 from typing import List, Dict

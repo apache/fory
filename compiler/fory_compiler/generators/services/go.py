@@ -413,3 +413,88 @@ class GoServiceGeneratorMixin:
                 lines.append("}")
                 lines.append("")
         return lines
+
+    def _generate_service_desc(self, service: Service, tracker: ImportTracker) -> List[str]:
+        lines: List[str] = []
+        for method in service.methods:
+            req_type = self._resolve_go_type(method.request_type, tracker)
+            res_type = self._resolve_go_type(method.response_type, tracker)
+            mode = streaming_mode(method)
+            # handlers
+            if mode is StreamingMode.UNARY:
+                lines.append(f"func _{service.name}_{self.to_pascal_case(method.name)}_Handler(srv interface{{}}, ctx context.Context, dec func(interface{{}}) error, interceptor grpc.UnaryServerInterceptor) (interface{{}}, error) {{")
+                lines.append(f"\tin := new({req_type[1:]})")
+                lines.append("\tif err := dec(in); err != nil {")
+                lines.append("\t\treturn nil, err")
+                lines.append("\t}")
+                lines.append("\tif interceptor == nil {")
+                lines.append(f"\t\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(ctx, in)")
+                lines.append("\t}")
+                lines.append("\tinfo := &grpc.UnaryServerInfo{")
+                lines.append("\t\tServer:\tsrv,")
+                lines.append(f'\t\tFullMethod:\t"{self.get_grpc_method_path(service, method)}",')
+                lines.append("\t}")
+                lines.append("\thandler := func(ctx context.Context, req interface{}) (interface{}, error) {")
+                lines.append(f"\t\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(ctx, req.({req_type}))")
+                lines.append("\t}")
+                lines.append("\treturn interceptor(ctx, in, info, handler)")
+                lines.append("}")
+                lines.append("")
+            elif mode is StreamingMode.SERVER_STREAMING:
+                lines.append(f"func _{service.name}_{self.to_pascal_case(method.name)}_Handler(srv interface{{}}, stream grpc.ServerStream) error {{")
+                lines.append(f"\tm := new({req_type[1:]})")
+                lines.append("\tif err := stream.RecvMsg(m); err != nil {")
+                lines.append(f"\t\treturn err")
+                lines.append("\t}")
+                lines.append(f"\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(m, &{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Server{{stream}})")
+                lines.append("}")
+                lines.append("")
+            else:
+                lines.append(f"func _{service.name}_{self.to_pascal_case(method.name)}_Handler(srv interface{{}}, stream grpc.ServerStream) error {{")
+                lines.append(f"\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(&{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Server{{stream}}))")
+                lines.append("}")
+                lines.append("")
+        # vars
+        lines.append(f"var _{service.name}_serviceDesc = grpc.ServiceDesc{{")
+        lines.append(f'\tServiceName: "{self.get_grpc_service_name(service)}",')
+        lines.append(f"\tHandlerType: (*{service.name}Server)(nil),")
+        # unary type service descriptors
+        lines.append("\tMethods: []grpc.MethodDesc{")
+        lines.extend(self._generate_unary_type_desc(service))
+        lines.append("\t},")
+        # stream type service descriptors
+        lines.append("\tStreams: []grpc.StreamDesc{")
+        lines.extend(self._generate_stream_type_desc(service))
+        lines.append("\t},")
+        lines.append(f'\tMetadata: "{self.get_file_name()}.fory",')
+        lines.append("}")
+        lines.append("")
+        return lines
+
+    def _generate_unary_type_desc(self, service: Service) -> List[str]:
+        lines: List[str] = []
+        for method in service.methods:
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                lines.append("\t\t{")
+                lines.append(f'\t\t\tMethodName:\t"{self.to_pascal_case(method.name)}",')
+                lines.append(f"\t\t\tHandler:\t_{service.name}_{self.to_pascal_case(method.name)}_Handler,")
+                lines.append("\t\t},")
+        return lines
+
+    def _generate_stream_type_desc(self, service: Service) -> List[str]:
+        lines: List[str] = []
+        for method in service.methods:
+            mode = streaming_mode(method)
+            if mode is StreamingMode.UNARY:
+                continue
+            else:
+                lines.append("\t\t{")
+                lines.append(f'\t\t\tStreamName:\t"{self.to_pascal_case(method.name)}",')
+                lines.append(f"\t\t\tHandler:\t_{service.name}_{self.to_pascal_case(method.name)}_Handler,")
+                if mode is StreamingMode.CLIENT_STREAMING or mode is StreamingMode.BIDIRECTIONAL:
+                    lines.append("\t\t\tClientStreams:\ttrue,")
+                if mode is StreamingMode.SERVER_STREAMING or mode is StreamingMode.BIDIRECTIONAL:
+                    lines.append("\t\t\tServerStreams:\ttrue,")
+                lines.append("\t\t},")
+        return lines
