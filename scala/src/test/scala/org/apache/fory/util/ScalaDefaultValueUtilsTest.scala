@@ -26,7 +26,10 @@ import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 import org.scalatest.Succeeded
 import org.scalatest.matchers.should.Matchers._
+import java.io.{ByteArrayOutputStream, PrintStream}
+import java.nio.charset.StandardCharsets
 import java.util.{List => JavaList, ArrayList}
+import org.apache.fory.logging.{LogLevel, LoggerFactory}
 import scala.jdk.CollectionConverters._
 
 // Test case classes WITH default values for testing DefaultValueUtils
@@ -122,6 +125,18 @@ class TestJavaClass(val name: String, val age: Int) {
   override def toString: String = s"TestJavaClass($name, $age)"
 }
 
+class TestRegularScalaClassMethodDefaultsOnly(val name: String) {
+  def helper(limit: Int = 10): Int = limit
+}
+
+class TestRegularScalaClassOutOfRangeCompanionDefault(val name: String)
+
+object TestRegularScalaClassOutOfRangeCompanionDefault {
+  def `$lessinit$greater$default$2`(): String = {
+    throw new AssertionError("out-of-range constructor default helper should not be invoked")
+  }
+}
+
 // Object to contain truly nested case classes
 object NestedClasses {
   case class NestedCaseClass(
@@ -170,7 +185,42 @@ class ScalaDefaultValueUtilsTest extends AnyWordSpec with Matchers {
     scalaDefaultValueSupport().buildDefaultValueFields(fory, cls, descriptors)
   }
 
+  def assertNoScalaDefaultValuesOrWarnings(classes: Class[_]*): Unit = {
+    val output = new ByteArrayOutputStream()
+    val previousOut = System.out
+    val previousLogLevel = LoggerFactory.getLogLevel
+    val capture = new PrintStream(output, true, StandardCharsets.UTF_8.name())
+    try {
+      System.setOut(capture)
+      LoggerFactory.setLogLevel(LogLevel.WARN_LEVEL)
+
+      classes.foreach { cls =>
+        withClue(s"${cls.getName}: ") {
+          scalaDefaultValueSupport().hasDefaultValues(cls) shouldEqual false
+          scalaDefaultValueSupport().getAllDefaultValues(cls).asScala shouldBe empty
+          buildDefaultValueFields(cls) shouldBe empty
+        }
+      }
+    } finally {
+      LoggerFactory.setLogLevel(previousLogLevel)
+      System.setOut(previousOut)
+      capture.close()
+    }
+
+    val logs = new String(output.toByteArray, StandardCharsets.UTF_8)
+    logs should not include "WARN  DefaultValueUtils"
+    logs should not include "finding default value"
+  }
+
   "DefaultValueUtils" should {
+
+    "ignore non-constructor default-like methods without warnings" in {
+      assertNoScalaDefaultValuesOrWarnings(
+        classOf[LombokDefaultLikeJavaClass],
+        classOf[ConstructorDefaultLikeJavaClass],
+        classOf[TestRegularScalaClassMethodDefaultsOnly],
+        classOf[TestRegularScalaClassOutOfRangeCompanionDefault])
+    }
 
     "detect Scala classes with default values correctly" in {
       // Test case classes with default values

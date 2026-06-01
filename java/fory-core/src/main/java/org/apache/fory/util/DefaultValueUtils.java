@@ -51,6 +51,9 @@ import org.apache.fory.util.unsafe._JDKAccess;
 @Internal
 public class DefaultValueUtils {
   private static final Logger LOG = LoggerFactory.getLogger(DefaultValueUtils.class);
+  private static final String SCALA_APPLY_DEFAULT_METHOD_PREFIX = "apply$default$";
+  private static final String SCALA_CONSTRUCTOR_DEFAULT_METHOD_PREFIX =
+      "$lessinit$greater$default$";
 
   private static final ClassValueCache<Map<Integer, Object>> cachedCtrDefaultValues =
       ClassValueCache.newClassKeySoftCache(32);
@@ -223,8 +226,8 @@ public class DefaultValueUtils {
       }
       Preconditions.checkNotNull(
           primaryConstructor, "Primary constructor not found for class " + cls.getName());
-      Map<Integer, Object> defaultValues = getDefaultValuesForClass(cls);
       int paramCount = primaryConstructor.getParameterCount();
+      Map<Integer, Object> defaultValues = getDefaultValuesForClass(cls, paramCount);
       for (int i = 0; i < paramCount; i++) {
         String paramName = primaryConstructor.getParameters()[i].getName();
         Object defaultValue = defaultValues.get(i + 1); // +1 because default values are 1-indexed
@@ -242,75 +245,42 @@ public class DefaultValueUtils {
      * @param cls the Scala class
      * @return a map from parameter index to method handle
      */
-    private Map<Integer, Object> getDefaultValuesForClass(Class<?> cls) {
+    private Map<Integer, Object> getDefaultValuesForClass(Class<?> cls, int paramCount) {
       if (cachedCtrDefaultValues.getIfPresent(cls) != null) {
         return cachedCtrDefaultValues.getIfPresent(cls);
       }
       Map<Integer, Object> defaultValueMethods;
       if (ScalaTypes.isScalaProductType(cls)) {
-        defaultValueMethods = getDefaultValuesForCaseClass(cls);
+        defaultValueMethods = getDefaultValuesForCaseClass(cls, paramCount);
       } else {
-        defaultValueMethods = getDefaultValuesForRegularScalaClass(cls);
+        defaultValueMethods = getDefaultValuesForRegularScalaClass(cls, paramCount);
       }
       cachedCtrDefaultValues.put(cls, defaultValueMethods);
       return defaultValueMethods;
     }
 
-    private static Map<Integer, Object> getDefaultValuesForCaseClass(Class<?> cls) {
+    private static Map<Integer, Object> getDefaultValuesForCaseClass(Class<?> cls, int paramCount) {
       Map<Integer, Object> values = new HashMap<>();
-      String companionClassName = cls.getName() + "$";
-      Class<?> companionClass = null;
-      Object companionInstance = null;
-      try {
-        companionClass = Class.forName(companionClassName, false, cls.getClassLoader());
-        companionInstance = companionClass.getField("MODULE$").get(null);
-      } catch (Exception e) {
-        // For nested case classes, try to find the companion object in the enclosing class
-        Class<?> enclosingClass = cls.getEnclosingClass();
-        if (enclosingClass != null) {
-          // Look for a companion object field in the enclosing class
-          for (java.lang.reflect.Field field : enclosingClass.getDeclaredFields()) {
-            if (field.getType().getName().equals(companionClassName)) {
-              field.setAccessible(true);
-              try {
-                companionInstance = field.get(null);
-              } catch (Exception e1) {
-                LOG.warn(
-                    "Error {} accessing companion object for {}, default values support is disabled when deserializing object of type {}",
-                    e1.getMessage(),
-                    cls.getName(),
-                    cls.getName());
-                return values;
-              }
-              if (companionInstance != null) {
-                companionClass = companionInstance.getClass();
-                break;
-              }
-            }
-          }
-        }
-      }
-      if (companionClass == null) {
-        LOG.warn(
-            "Companion class not found for {}, default values support is disabled when deserializing object of type {}",
-            cls.getName(),
-            cls.getName());
+      ScalaCompanionObject companionObject = getScalaCompanionObject(cls, true);
+      if (companionObject == null) {
         return values;
       }
       MethodHandles.Lookup lookup =
-          AndroidSupport.IS_ANDROID ? null : _JDKAccess._trustedLookup(companionClass);
+          AndroidSupport.IS_ANDROID ? null : _JDKAccess._trustedLookup(companionObject.cls);
 
-      // Look for methods named `apply$default$1`, `apply$default$2`, etc.
-      Method[] companionMethods = companionClass.getDeclaredMethods();
+      Method[] companionMethods = companionObject.cls.getDeclaredMethods();
       for (Method method : companionMethods) {
-        String methodName = method.getName();
-        if (methodName.contains("$default$")) {
+        int paramIndex =
+            getScalaDefaultParameterIndex(method, SCALA_APPLY_DEFAULT_METHOD_PREFIX, paramCount);
+        if (paramIndex < 0) {
+          paramIndex =
+              getScalaDefaultParameterIndex(
+                  method, SCALA_CONSTRUCTOR_DEFAULT_METHOD_PREFIX, paramCount);
+        }
+        if (paramIndex > 0) {
           try {
-            // Extract the parameter index from the method name
-            String indexStr =
-                methodName.substring(methodName.lastIndexOf("$default$") + "$default$".length());
-            int paramIndex = Integer.parseInt(indexStr);
-            Object defaultValue = invokeDefaultValueMethod(lookup, method, companionInstance);
+            Object defaultValue =
+                invokeDefaultValueMethod(lookup, method, companionObject.instance);
             values.put(paramIndex, defaultValue);
           } catch (Throwable e) {
             LOG.warn(
@@ -325,23 +295,25 @@ public class DefaultValueUtils {
       return values;
     }
 
-    private static Map<Integer, Object> getDefaultValuesForRegularScalaClass(Class<?> cls) {
+    private static Map<Integer, Object> getDefaultValuesForRegularScalaClass(
+        Class<?> cls, int paramCount) {
       Map<Integer, Object> values = new HashMap<>();
+      ScalaCompanionObject companionObject = getScalaCompanionObject(cls, false);
+      if (companionObject == null) {
+        return values;
+      }
       try {
         MethodHandles.Lookup lookup =
-            AndroidSupport.IS_ANDROID ? null : _JDKAccess._trustedLookup(cls);
-        Method[] classMethods = cls.getDeclaredMethods();
-        for (Method method : classMethods) {
-          String methodName = method.getName();
-          if (methodName.contains("$default$")) {
+            AndroidSupport.IS_ANDROID ? null : _JDKAccess._trustedLookup(companionObject.cls);
+        Method[] companionMethods = companionObject.cls.getDeclaredMethods();
+        for (Method method : companionMethods) {
+          int paramIndex =
+              getScalaDefaultParameterIndex(
+                  method, SCALA_CONSTRUCTOR_DEFAULT_METHOD_PREFIX, paramCount);
+          if (paramIndex > 0) {
             try {
-              // Extract the parameter index from the method name
-              String indexStr =
-                  methodName.substring(methodName.lastIndexOf("$default$") + "$default$".length());
-              int paramIndex = Integer.parseInt(indexStr);
-              // For regular Scala classes, we need to create an instance to call instance methods
-              // Since these are default value methods, we can try to call them as static methods
-              Object defaultValue = invokeDefaultValueMethod(lookup, method, null);
+              Object defaultValue =
+                  invokeDefaultValueMethod(lookup, method, companionObject.instance);
               values.put(paramIndex, defaultValue);
             } catch (Throwable e) {
               LOG.warn(
@@ -364,6 +336,48 @@ public class DefaultValueUtils {
       return values;
     }
 
+    private static ScalaCompanionObject getScalaCompanionObject(
+        Class<?> cls, boolean warnIfMissing) {
+      String companionClassName = cls.getName() + "$";
+      try {
+        Class<?> companionClass = Class.forName(companionClassName, false, cls.getClassLoader());
+        Object companionInstance = companionClass.getField("MODULE$").get(null);
+        if (companionInstance != null) {
+          return new ScalaCompanionObject(companionClass, companionInstance);
+        }
+      } catch (Exception e) {
+        // For nested case classes, try to find the companion object in the enclosing class.
+        Class<?> enclosingClass = cls.getEnclosingClass();
+        if (enclosingClass != null) {
+          for (java.lang.reflect.Field field : enclosingClass.getDeclaredFields()) {
+            if (field.getType().getName().equals(companionClassName)) {
+              field.setAccessible(true);
+              try {
+                Object companionInstance = field.get(null);
+                if (companionInstance != null) {
+                  return new ScalaCompanionObject(companionInstance.getClass(), companionInstance);
+                }
+              } catch (Exception e1) {
+                LOG.warn(
+                    "Error {} accessing companion object for {}, default values support is disabled when deserializing object of type {}",
+                    e1.getMessage(),
+                    cls.getName(),
+                    cls.getName());
+                return null;
+              }
+            }
+          }
+        }
+      }
+      if (warnIfMissing) {
+        LOG.warn(
+            "Companion class not found for {}, default values support is disabled when deserializing object of type {}",
+            cls.getName(),
+            cls.getName());
+      }
+      return null;
+    }
+
     private static Object invokeDefaultValueMethod(
         MethodHandles.Lookup lookup, Method method, Object target) throws Throwable {
       if (AndroidSupport.IS_ANDROID) {
@@ -379,6 +393,44 @@ public class DefaultValueUtils {
         return methodHandle.invoke();
       }
       return methodHandle.invoke(target);
+    }
+
+    private static int getScalaDefaultParameterIndex(
+        Method method, String methodPrefix, int maxParamIndex) {
+      if (method.getParameterCount() != 0) {
+        return -1;
+      }
+      String methodName = method.getName();
+      if (!methodName.startsWith(methodPrefix)) {
+        return -1;
+      }
+      int indexStart = methodPrefix.length();
+      if (indexStart == methodName.length()) {
+        return -1;
+      }
+      int paramIndex = 0;
+      for (int i = indexStart; i < methodName.length(); i++) {
+        char c = methodName.charAt(i);
+        if (c < '0' || c > '9') {
+          return -1;
+        }
+        int digit = c - '0';
+        if (paramIndex > (Integer.MAX_VALUE - digit) / 10) {
+          return -1;
+        }
+        paramIndex = paramIndex * 10 + digit;
+      }
+      return paramIndex > 0 && paramIndex <= maxParamIndex ? paramIndex : -1;
+    }
+
+    private static final class ScalaCompanionObject {
+      private final Class<?> cls;
+      private final Object instance;
+
+      private ScalaCompanionObject(Class<?> cls, Object instance) {
+        this.cls = cls;
+        this.instance = instance;
+      }
     }
   }
 
