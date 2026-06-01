@@ -29,7 +29,6 @@ import org.apache.fory.memory.MemoryUtils;
 
 class BinaryRowEncoder<T> implements RowEncoder<T> {
   private final Schema schema;
-  private final Encoding codecFactory;
   private final GeneratedRowEncoder codec;
   private final BaseBinaryRowWriter writer;
   private final boolean sizeEmbedded;
@@ -38,12 +37,10 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   BinaryRowEncoder(
       final Schema schema,
-      final Encoding codecFactory,
       final GeneratedRowEncoder codec,
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded) {
     this.schema = schema;
-    this.codecFactory = codecFactory;
     this.codec = codec;
     this.writer = writer;
     this.sizeEmbedded = sizeEmbedded;
@@ -82,7 +79,7 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
               schema, schemaHash, peerSchemaHash));
     }
     final int rowSize = size - 8;
-    final BinaryRow row = codecFactory.newRow(schema);
+    final BinaryRow row = writer.newRow();
     row.pointTo(buffer, buffer.readerIndex(), rowSize);
     buffer.increaseReaderIndex(rowSize);
     return fromRow(row);

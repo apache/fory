@@ -183,6 +183,12 @@ def bump_version(**kwargs):
                 _normalize_js_version(new_version),
                 _update_js_version,
             )
+            _bump_version(
+                "integration_tests/idl_tests/javascript",
+                "package.json",
+                _normalize_js_version(new_version),
+                _update_js_version,
+            )
         elif lang == "cpp":
             bump_cpp_version(new_version)
         elif lang == "go":
@@ -213,13 +219,13 @@ def bump_java_version(new_version):
     new_version = _normalize_java_version(new_version)
     for p in [
         "integration_tests/graalvm_tests",
+        "integration_tests/grpc_tests/java",
         "integration_tests/jdk_compatibility_tests",
         "integration_tests/jpms_tests",
         "integration_tests/idl_tests/java",
         "benchmarks/java",
         "java/fory-core",
         "java/fory-format",
-        "java/fory-simd",
         "java/fory-extensions",
         "java/fory-graalvm-feature",
         "java/fory-test-core",
@@ -253,6 +259,12 @@ def bump_python_version(new_version):
         new_version,
         _update_pyproject_version,
     )
+    _bump_version(
+        "integration_tests/grpc_tests/python",
+        "pyproject.toml",
+        new_version,
+        _update_pyproject_version,
+    )
 
 
 def bump_rust_version(new_version):
@@ -278,6 +290,7 @@ def bump_kotlin_version(new_version):
         "kotlin/fory-kotlin",
         "kotlin/fory-kotlin-ksp",
         "kotlin/fory-kotlin-tests",
+        "integration_tests/idl_tests/kotlin",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
 
@@ -289,6 +302,7 @@ def bump_cpp_version(new_version):
         "integration_tests/idl_tests/cpp",
     ]:
         _bump_version(p, "CMakeLists.txt", new_version, _update_cmake_project_version)
+    _bump_version("", "MODULE.bazel", new_version, _update_bazel_module_version)
 
 
 def bump_go_version(new_version):
@@ -297,6 +311,7 @@ def bump_go_version(new_version):
         "integration_tests/idl_tests/go",
     ]:
         _bump_version(p, "go.mod", new_version, _update_go_mod_version)
+    _bump_version("go/fory/cmd/fory", "main.go", new_version, _update_go_cli_version)
 
 
 def bump_dart_version(new_version):
@@ -304,6 +319,7 @@ def bump_dart_version(new_version):
         "dart",
         "dart/packages/fory",
         "dart/packages/fory-test",
+        "integration_tests/idl_tests/dart",
     ]:
         _bump_version(p, "pubspec.yaml", new_version, _update_pubspec_version)
     _bump_version(
@@ -503,6 +519,24 @@ def _update_cmake_project_version(lines, v: str):
     return lines
 
 
+def _update_bazel_module_version(lines, v: str):
+    bazel_version = _normalize_cmake_version(v)
+    in_module = False
+    for index, line in enumerate(lines):
+        if re.search(r"^\s*module\(", line):
+            in_module = True
+        if in_module and re.search(r"^\s*version\s*=", line):
+            lines[index] = re.sub(
+                r'(version\s*=\s*")[^"]+(")',
+                r"\g<1>" + bazel_version + r"\2",
+                line,
+            )
+            return lines
+        if in_module and ")" in line:
+            in_module = False
+    raise ValueError("No MODULE.bazel module version found")
+
+
 def _update_go_mod_version(lines, v: str):
     go_version = _normalize_go_version(v)
     for index, line in enumerate(lines):
@@ -516,12 +550,23 @@ def _update_go_mod_version(lines, v: str):
     return lines
 
 
+def _update_go_cli_version(lines, v: str):
+    v = v.strip()
+    if v.startswith("v"):
+        v = v[1:]
+    for index, line in enumerate(lines):
+        if line.startswith("const version = "):
+            lines[index] = f'const version = "{v}"\n'
+            return lines
+    raise ValueError("No Go CLI version constant found")
+
+
 def _update_pubspec_version(lines, v: str):
     for index, line in enumerate(lines):
         if re.match(r"^version\s*:", line):
             lines[index] = f"version: {v}\n"
             continue
-        if re.match(r"^\s*fory\s*:", line):
+        if re.match(r"^\s*fory\s*:\s+\S+", line):
             prefix = re.match(r"^(\s*fory\s*:)\s*.*", line)
             if prefix:
                 lines[index] = f"{prefix.group(1)} {v}\n"

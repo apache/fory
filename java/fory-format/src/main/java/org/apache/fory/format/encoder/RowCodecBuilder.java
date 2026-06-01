@@ -63,7 +63,7 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
         return new BinaryRowEncoder<T>(
-            schema, codecFormat, rowEncoderFactory.apply(writer), writer, sizeEmbedded);
+            schema, rowEncoderFactory.apply(writer), writer, sizeEmbedded);
       }
     };
   }

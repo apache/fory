@@ -122,7 +122,7 @@ public class BinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   @Override
-  protected BinaryRow newRow() {
+  public BinaryRow newRow() {
     return new BinaryRow(getSchema());
   }
 }

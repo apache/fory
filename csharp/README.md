@@ -31,7 +31,7 @@ From NuGet, reference the single `Apache.Fory` package. It includes the runtime 
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.0.0" />
+  <PackageReference Include="Apache.Fory" Version="1.1.0" />
 </ItemGroup>
 ```
 

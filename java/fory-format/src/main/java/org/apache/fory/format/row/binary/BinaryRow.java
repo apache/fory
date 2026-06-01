@@ -76,6 +76,14 @@ public class BinaryRow extends UnsafeTrait implements Row {
     initializeExtData(numFields);
   }
 
+  /** Skips {@code extData}; subclass must override {@code getStruct(int, Field, int)}. */
+  protected BinaryRow(Schema schema, int bitmapWidthInBytes) {
+    this.schema = schema;
+    this.numFields = schema.numFields();
+    Preconditions.checkArgument(numFields > 0);
+    this.bitmapWidthInBytes = bitmapWidthInBytes;
+  }
+
   protected int computeBitmapWidthInBytes() {
     return BitUtils.calculateBitmapWidthInBytes(numFields);
   }

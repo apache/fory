@@ -61,28 +61,28 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 
 <!-- Optional: Row format support -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 
 <!-- Optional: Serializers for Protobuf data -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-extensions</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 
 <!-- Optional: SIMD acceleration (Java 16+) -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-simd</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
@@ -90,11 +90,11 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ```gradle
 dependencies {
-    implementation 'org.apache.fory:fory-core:1.0.0'
+    implementation 'org.apache.fory:fory-core:1.1.0'
     // Optional modules
-    implementation 'org.apache.fory:fory-format:1.0.0'
-    implementation 'org.apache.fory:fory-simd:1.0.0'
-    implementation 'org.apache.fory:fory-extensions:1.0.0'
+    implementation 'org.apache.fory:fory-format:1.1.0'
+    implementation 'org.apache.fory:fory-simd:1.1.0'
+    implementation 'org.apache.fory:fory-extensions:1.1.0'
 }
 ```
 

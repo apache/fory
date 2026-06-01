@@ -21,7 +21,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fory-compiler"
-version = "1.1.0.dev0"
+version = "1.2.0.dev0"
 description = "FDL (Fory Definition Language) compiler for Apache Fory cross-language serialization"
 readme = "README.md"
 license = {text = "Apache-2.0"}

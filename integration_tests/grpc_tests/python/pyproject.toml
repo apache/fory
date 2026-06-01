@@ -21,7 +21,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fory-grpc-tests"
-version = "0.18.0.dev0"
+version = "1.2.0.dev0"
 description = "gRPC compiler integration tests for Apache Fory"
 requires-python = ">=3.8"
 license = {text = "Apache-2.0"}

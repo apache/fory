@@ -24,7 +24,6 @@ import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
-import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 
 public class CompactBinaryArray extends BinaryArray {
@@ -33,12 +32,30 @@ public class CompactBinaryArray extends BinaryArray {
   private final boolean elementNullable;
   private int headerInBytes;
 
+  /** {@code null} when the element is not a struct. */
+  private final CompactRowLayout elementLayout;
+
+  /** Cold path. Hot reads use {@link #CompactBinaryArray(Field, CompactRowLayout)}. */
   public CompactBinaryArray(final Field field) {
+    this(field, null);
+  }
+
+  /** {@code prebuiltElementLayout} may be {@code null}; built on demand for struct elements. */
+  CompactBinaryArray(final Field field, final CompactRowLayout prebuiltElementLayout) {
     super(field, CompactBinaryArrayWriter.elementWidth(field));
     DataTypes.ListType listType = (DataTypes.ListType) field.type();
     elementField = listType.valueField();
     fixedWidth = CompactBinaryRowWriter.fixedWidthFor(elementField);
     elementNullable = elementField.nullable();
+    if (elementField.type() instanceof DataTypes.StructType) {
+      elementLayout =
+          prebuiltElementLayout != null
+              ? prebuiltElementLayout
+              : new CompactRowLayout(
+                  CompactBinaryRowWriter.sortSchema(DataTypes.createSchema(elementField)));
+    } else {
+      elementLayout = null;
+    }
   }
 
   @Override
@@ -105,26 +122,16 @@ public class CompactBinaryArray extends BinaryArray {
       return null;
     }
     assert field == elementField;
+    final CompactBinaryRow row = elementLayout.newRow();
     if (fixedWidth == -1) {
-      return super.getStruct(ordinal, field, extDataSlot);
+      final long offsetAndSize = getInt64(ordinal);
+      final int relativeOffset = (int) (offsetAndSize >> 32);
+      final int size = (int) offsetAndSize;
+      row.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
+    } else {
+      row.pointTo(getBuffer(), getOffset(ordinal), fixedWidth);
     }
-    if (extData[extDataSlot] == null) {
-      extData[extDataSlot] = newSchema(field);
-    }
-    final BinaryRow row = newRow((Schema) extData[extDataSlot]);
-    row.pointTo(getBuffer(), getOffset(ordinal), fixedWidth);
     return row;
-  }
-
-  @Override
-  protected Schema newSchema(final Field field) {
-    return CompactBinaryRowWriter.sortSchema(super.newSchema(field));
-  }
-
-  @Override
-  protected BinaryRow newRow(final Schema schema) {
-    // TODO: don't re-compute fixed offsets
-    return new CompactBinaryRow(schema, CompactBinaryRowWriter.fixedOffsets(schema));
   }
 
   @Override

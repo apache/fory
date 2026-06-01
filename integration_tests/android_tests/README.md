@@ -4,8 +4,8 @@ This project runs Android API 26+ instrumented tests for Java `fory-core`. The
 instrumented tests run against the release build type so R8/minification covers
 the static generated serializer path.
 
-The tests consume `org.apache.fory:fory-core:1.1.0-SNAPSHOT` and
-`org.apache.fory:fory-annotation-processor:1.1.0-SNAPSHOT` from the local Maven
+The tests consume `org.apache.fory:fory-core:1.2.0-SNAPSHOT` and
+`org.apache.fory:fory-annotation-processor:1.2.0-SNAPSHOT` from the local Maven
 repository, so install the Java artifacts before running Gradle:
 
 ```bash

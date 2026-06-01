@@ -58,12 +58,13 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
 
   public BinaryArray(Field field) {
     this(field, elementSize(field));
+    initializeExtData(1); // Only require at most one slot to cache the schema for array type.
   }
 
+  /** Skips {@code extData}; subclass must override {@code getStruct(int, Field, int)}. */
   protected BinaryArray(Field field, int elementSize) {
     this.field = field;
     this.elementSize = elementSize;
-    initializeExtData(1); // Only require at most one slot to cache the schema for array type.
   }
 
   private static int elementSize(Field field) {

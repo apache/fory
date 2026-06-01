@@ -33,7 +33,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "1.0.0"
+fory = "1.1.0"
 ```
 
 ### Basic Example
