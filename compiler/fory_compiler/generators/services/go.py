@@ -459,7 +459,7 @@ class GoServiceGeneratorMixin:
                 lines.append("")
             else:
                 lines.append(f"func _{service.name}_{self.to_pascal_case(method.name)}_Handler(srv interface{{}}, stream grpc.ServerStream) error {{")
-                lines.append(f"\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(&{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Server{{stream}}))")
+                lines.append(f"\treturn srv.({service.name}Server).{self.to_pascal_case(method.name)}(&{self.to_camel_case(service.name)}{self.to_pascal_case(method.name)}Server{{stream}})")
                 lines.append("}")
                 lines.append("")
         # var
