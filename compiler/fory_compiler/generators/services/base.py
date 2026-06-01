@@ -21,6 +21,7 @@ from enum import Enum
 from typing import List, Dict
 from fory_compiler.ir.ast import RpcMethod
 
+
 class StreamingMode(Enum):
     UNARY = 1
     CLIENT_STREAMING = 2
@@ -42,9 +43,10 @@ def streaming_mode(method: RpcMethod) -> StreamingMode:
 
 class ImportTracker:
     """Accumulates cross-package Go imports for generated service stubs."""
+
     def __init__(self):
         self._imports: Dict[str, str] = {}
-    
+
     def add(self, alias: str, import_path: str) -> None:
         self._imports[alias] = import_path
 
