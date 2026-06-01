@@ -426,7 +426,6 @@ class GoServiceGeneratorMixin:
         lines: List[str] = []
         for method in service.methods:
             req_type = self._resolve_go_type(method.request_type, tracker)
-            res_type = self._resolve_go_type(method.response_type, tracker)
             mode = streaming_mode(method)
             # handlers
             if mode is StreamingMode.UNARY:
