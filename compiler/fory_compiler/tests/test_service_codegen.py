@@ -129,7 +129,7 @@ def test_service_definition_does_not_affect_message_codegen():
 def test_generate_services_returns_empty_list_for_unsupported_generators():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
-        if generator_cls in (JavaGenerator, PythonGenerator):
+        if generator_cls in (JavaGenerator, PythonGenerator, GoGenerator):
             continue
         options = GeneratorOptions(output_dir=Path("/tmp"))
         generator = generator_cls(schema, options)
@@ -217,6 +217,27 @@ def test_grpc_streaming_method_shapes():
     assert "self.server = channel.unary_stream(" in python
     assert "self.client = channel.stream_unary(" in python
     assert "self.bidi = channel.stream_stream(" in python
+
+    go = next(iter(generate_service_files(schema, GoGenerator).values()))
+    assert "ClientStreams:\ttrue" in go
+    assert "ServerStreams:\ttrue" in go
+    assert "grpc.ClientStream" in go
+    assert "grpc.ServerStream" in go
+
+
+def test_go_grpc_service_codegen():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    files = generate_service_files(schema, GoGenerator)
+    assert len(files) == 1
+    content = next(iter(files.values()))
+    assert "func NewGreeterClient(" in content
+    assert "func RegisterGreeterServer(" in content
+    assert "type GreeterClient interface" in content
+    assert "type GreeterServer interface" in content
+    assert "type UnimplementedGreeterServer struct" in content
+    assert "forygrpc.CodecV2{Fory: c.fory}" in content
+    assert '"/demo.greeter.Greeter/SayHello"' in content
+    assert "mustEmbedUnimplementedGreeterServer()" in content
 
 
 def test_java_outer_classname_service_references_nested_model_types():
