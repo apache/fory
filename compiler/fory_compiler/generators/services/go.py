@@ -45,7 +45,7 @@ class GoServiceGeneratorMixin:
         lines.append("")
 
         # Imports
-        # save the placeholder index for now
+        # save the placeholder index
         import_placeholder_index = len(lines)
 
         lines.extend(self._generate_client_interface(service, tracker))
