@@ -278,7 +278,9 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "static final _$sayHello =" in content
     assert "ClientMethod<_models.HelloRequest, _models.HelloReply>(" in content
     assert "'/demo.greeter.Greeter/SayHello'," in content
-    assert "GreeterClient(super.channel, {super.options, super.interceptors});" in content
+    assert (
+        "GreeterClient(super.channel, {super.options, super.interceptors});" in content
+    )
     assert "ResponseFuture<_models.HelloReply> sayHello(" in content
     assert "_models.HelloRequest request, {" in content
     assert "$createUnaryCall(_$sayHello, request, options: options);" in content
@@ -287,9 +289,7 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "String get $name => 'demo.greeter.Greeter';" in content
     assert "GreeterServiceBase() {" in content
     assert "$addMethod(" in content
-    assert (
-        "ServiceMethod<_models.HelloRequest, _models.HelloReply>("
-    ) in content
+    assert ("ServiceMethod<_models.HelloRequest, _models.HelloReply>(") in content
     assert "'SayHello'," in content
     assert "sayHello_Pre," in content
     assert "Future<_models.HelloReply> sayHello_Pre(" in content
@@ -380,10 +380,12 @@ def test_dart_grpc_proto_and_fbs_service_codegen():
     proto_dart = generate_service_files(proto_schema, DartGenerator)
     assert "demo/proto/demo_proto_grpc.dart" in proto_dart
     assert (
-        "'/demo.proto.ProtoSvc/Call',"
+        "'/demo.proto.ProtoSvc/Call'," in proto_dart["demo/proto/demo_proto_grpc.dart"]
+    )
+    assert (
+        "class ProtoSvcClient extends Client {"
         in proto_dart["demo/proto/demo_proto_grpc.dart"]
     )
-    assert "class ProtoSvcClient extends Client {" in proto_dart["demo/proto/demo_proto_grpc.dart"]
 
     fbs_schema = parse_fbs(
         dedent(
@@ -402,7 +404,9 @@ def test_dart_grpc_proto_and_fbs_service_codegen():
     fbs_dart = generate_service_files(fbs_schema, DartGenerator)
     assert "demo/fbs/demo_fbs_grpc.dart" in fbs_dart
     assert "'/demo.fbs.FbsSvc/Call'," in fbs_dart["demo/fbs/demo_fbs_grpc.dart"]
-    assert "class FbsSvcClient extends Client {" in fbs_dart["demo/fbs/demo_fbs_grpc.dart"]
+    assert (
+        "class FbsSvcClient extends Client {" in fbs_dart["demo/fbs/demo_fbs_grpc.dart"]
+    )
 
 
 def test_java_outer_classname_service_references_nested_model_types():

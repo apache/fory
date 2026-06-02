@@ -80,7 +80,9 @@ class DartServiceGeneratorMixin:
 
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Emit a grpc-dart companion module for schema services."""
-        models_output = Path(self.output_file_path())  # e.g. "demo/greeter/demo_greeter.dart"
+        models_output = Path(
+            self.output_file_path()
+        )  # e.g. "demo/greeter/demo_greeter.dart"
         models_stem = models_output.stem  # e.g. "demo_greeter"
         grpc_path = str(models_output.with_name(f"{models_stem}_grpc.dart"))
 
@@ -163,9 +165,7 @@ class DartServiceGeneratorMixin:
         lines: List[str] = []
         lines.append(f"abstract class {service.name}ServiceBase extends Service {{")
         lines.append("  @override")
-        lines.append(
-            f"  String get $name => '{self.get_grpc_service_name(service)}';"
-        )
+        lines.append(f"  String get $name => '{self.get_grpc_service_name(service)}';")
         lines.append("")
         lines.append(f"  {service.name}ServiceBase() {{")
         for method in service.methods:
@@ -178,9 +178,7 @@ class DartServiceGeneratorMixin:
             lines.append(f"        {method_name}_Pre,")
             lines.append("        false,")
             lines.append("        false,")
-            lines.append(
-                f"        (List<int> value) => _deserialize<{req_t}>(value),"
-            )
+            lines.append(f"        (List<int> value) => _deserialize<{req_t}>(value),")
             lines.append(f"        ({res_t} value) => _serialize(value),")
             lines.append("      ),")
             lines.append("    );")

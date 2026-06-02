@@ -88,8 +88,9 @@ def test_dart_analyze_accepts_generated_grpc_file(tmp_path: Path) -> None:
         out.write_text(file.content)
 
     fory_path = REPO_ROOT / "dart" / "packages" / "fory"
-    pubspec = textwrap.dedent(
-        f"""
+    pubspec = (
+        textwrap.dedent(
+            f"""
         name: fory_grpc_smoke
         environment:
           sdk: ^3.7.0
@@ -98,7 +99,9 @@ def test_dart_analyze_accepts_generated_grpc_file(tmp_path: Path) -> None:
           fory:
             path: {fory_path}
         """
-    ).strip() + "\n"
+        ).strip()
+        + "\n"
+    )
     (tmp_path / "pubspec.yaml").write_text(pubspec)
 
     subprocess.run(
