@@ -205,6 +205,43 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
     assert "::fory::Duration" not in rust_output
 
 
+def test_rust_nested_container_ref_uses_correct_pointer_type():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Node {
+                string value = 1;
+            }
+
+            message Request {
+                list<list<ref(thread_safe=true) Node>> groups = 1;
+                map<string, map<string, ref(thread_safe=true) Node>> nodes = 2;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+
+    assert (
+        "pub groups: ::std::vec::Vec<::std::vec::Vec<::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert "::std::vec::Vec<::std::vec::Vec<::std::rc::Rc<Node>>>" not in rust_output
+    assert (
+        "pub nodes: ::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert (
+        "::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::rc::Rc<Node>>>"
+        not in rust_output
+    )
+
+
 def test_generated_code_integer_encoding_variants_equivalent():
     fdl = dedent(
         """
