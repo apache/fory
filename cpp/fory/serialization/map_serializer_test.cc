@@ -97,6 +97,46 @@ TEST(MapSerializerTest, NestedMapRoundtrip) {
   test_map_roundtrip(nested);
 }
 
+struct MapsInStruct {
+  std::map<int, std::string> map{};
+  std::unordered_map<std::string, std::string> unordered_map{};
+
+  auto operator==(const MapsInStruct &rhs) const -> bool {
+    return map == rhs.map && unordered_map == rhs.unordered_map;
+  }
+
+  FORY_STRUCT(MapsInStruct, map, unordered_map);
+};
+
+TEST(MapSerializerTest, UnorderedMapInStruct) {
+  MapsInStruct original{};
+  original.map[1] = "1";
+  original.map[2] = "2";
+  original.unordered_map["1"] = "2";
+  original.unordered_map["2"] = "2";
+
+  // Create Fory instance with default config
+  auto fory = Fory::builder().xlang(true).compatible(true).build();
+
+  fory.register_struct<MapsInStruct>(0);
+
+  // Serialize
+  auto serialize_result = fory.serialize(original);
+  ASSERT_TRUE(serialize_result.ok())
+      << "Serialization failed: " << serialize_result.error().message();
+  auto bytes = serialize_result.value();
+
+  // Deserialize
+  auto deserialize_result =
+      fory.deserialize<MapsInStruct>(bytes.data(), bytes.size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << "Deserialization failed: " << deserialize_result.error().message();
+  auto deserialized = deserialize_result.value();
+
+  // Compare
+  EXPECT_EQ(original, deserialized);
+}
+
 // ============================================================================
 // Map with Optional Values (Polymorphic-like behavior)
 // ============================================================================

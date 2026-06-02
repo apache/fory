@@ -1080,22 +1080,15 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
   using MapType = std::unordered_map<K, V, Args...>;
 
   static inline void write(const MapType &map, WriteContext &ctx,
-                           RefMode ref_mode, bool write_type) {
+                           RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
-    constexpr bool is_fast_path =
-        !is_polymorphic_v<K> && !is_polymorphic_v<V> && !is_shared_ref_v<K> &&
-        !is_shared_ref_v<V> && !is_nullable_v<K> && !is_nullable_v<V>;
-
-    if constexpr (is_fast_path) {
-      write_map_data_fast<K, V>(map, ctx, false);
-    } else {
-      write_map_data_slow<K, V>(map, ctx, true);
-    }
+    write_data_generic(map, ctx, has_generics);
   }
 
   static inline void write_data(const MapType &map, WriteContext &ctx) {
