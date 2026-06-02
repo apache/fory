@@ -68,9 +68,9 @@ def parse_fbs(source: str) -> Schema:
 
 
 def generate_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
+    schema: Schema, generator_cls: Type[BaseGenerator], grpc: bool = False
 ) -> Dict[str, str]:
-    options = GeneratorOptions(output_dir=Path("/tmp"))
+    options = GeneratorOptions(output_dir=Path("/tmp"), grpc=grpc)
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
 
@@ -224,6 +224,184 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
     )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
+
+    assert (
+        "pub groups: ::std::vec::Vec<::std::vec::Vec<::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert "::std::vec::Vec<::std::vec::Vec<::std::rc::Rc<Node>>>" not in rust_output
+    assert (
+        "pub nodes: ::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert (
+        "::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::rc::Rc<Node>>>"
+        not in rust_output
+    )
+
+
+def test_rust_grpc_reachable_union_has_no_unknown_case():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Dog {
+                string name = 1;
+            }
+
+            union Animal {
+                Dog dog = 1;
+            }
+
+            message Request {
+                Animal animal = 1;
+            }
+
+            message Response {
+                Animal animal = 1;
+            }
+
+            service Zoo {
+                rpc Echo(Request) returns (Response);
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator, grpc=True))
+    assert "#[fory(no_unknown_case)]" in rust_output
+    assert "#[fory(unknown)]" not in rust_output
+    assert "Unknown(" not in rust_output
+
+
+def test_rust_grpc_rejects_non_thread_safe_payload():
+    with pytest.raises(
+        ValueError,
+        match="Rust gRPC payload type Request.groups uses non-thread-safe list element ref",
+    ):
+        generate_files(
+            parse_fdl(
+                dedent(
+                    """
+                    package gen;
+
+                    message Node {
+                        string value = 1;
+                    }
+
+                    message Request {
+                        list<list<ref Node>> groups = 1;
+                    }
+
+                    message Response {
+                        string ok = 1;
+                    }
+
+                    service S {
+                        rpc Call(Request) returns (Response);
+                    }
+                    """
+                )
+            ),
+            RustGenerator,
+            grpc=True,
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="Rust gRPC payload type Request.nodes uses non-thread-safe map value ref",
+    ):
+        generate_files(
+            parse_fdl(
+                dedent(
+                    """
+                    package gen;
+
+                    message Node {
+                        string value = 1;
+                    }
+
+                    message Request {
+                        map<string, map<string, ref Node>> nodes = 1;
+                    }
+
+                    message Response {
+                        string ok = 1;
+                    }
+
+                    service S {
+                        rpc Call(Request) returns (Response);
+                    }
+                    """
+                )
+            ),
+            RustGenerator,
+            grpc=True,
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="Rust gRPC payload type Request.payload uses non-thread-safe any",
+    ):
+        generate_files(
+            parse_fdl(
+                dedent(
+                    """
+                    package gen;
+
+                    message Request {
+                        any payload = 1;
+                    }
+
+                    message Response {
+                        string ok = 1;
+                    }
+
+                    service S {
+                        rpc Call(Request) returns (Response);
+                    }
+                    """
+                )
+            ),
+            RustGenerator,
+            grpc=True,
+        )
+
+
+def test_rust_grpc_allows_thread_safe_payload():
+    rust_output = render_files(
+        generate_files(
+            parse_fdl(
+                dedent(
+                    """
+                    package gen;
+
+                    message Node {
+                        string value = 1;
+                    }
+
+                    message Request {
+                        list<list<ref(thread_safe=true) Node>> groups = 1;
+                        map<string, map<string, ref(thread_safe=true) Node>> nodes = 2;
+                    }
+
+                    message Response {
+                        string ok = 1;
+                    }
+
+                    service S {
+                        rpc Call(Request) returns (Response);
+                    }
+                    """
+                )
+            ),
+            RustGenerator,
+            grpc=True,
+        )
+    )
 
     assert (
         "pub groups: ::std::vec::Vec<::std::vec::Vec<::std::sync::Arc<Node>>>,"

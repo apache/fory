@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::object::util::is_default_value_variant;
+use crate::object::util::{has_fory_no_unknown_case_attr, is_default_value_variant};
 use crate::object::{derive_enum, misc, read, write};
 use crate::util::{extract_fields, source_fields};
 use crate::ForyAttrs;
@@ -125,17 +125,20 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 quote! { ::fory_core::TypeId::STRUCT },
             )
         }
-        syn::Data::Enum(e) => (
-            derive_enum::gen_write(e),
-            derive_enum::gen_write_data(e),
-            derive_enum::gen_write_type_info(e),
-            derive_enum::gen_read(e),
-            derive_enum::gen_read_with_type_info(e),
-            derive_enum::gen_read_data(e),
-            derive_enum::gen_read_type_info(e),
-            derive_enum::gen_reserved_space(),
-            derive_enum::gen_static_type_id(e),
-        ),
+        syn::Data::Enum(e) => {
+            let no_unknown_case = has_fory_no_unknown_case_attr(&ast.attrs);
+            (
+                derive_enum::gen_write(e),
+                derive_enum::gen_write_data(e),
+                derive_enum::gen_write_type_info(e),
+                derive_enum::gen_read(e),
+                derive_enum::gen_read_with_type_info(e),
+                derive_enum::gen_read_data(e, no_unknown_case),
+                derive_enum::gen_read_type_info(e),
+                derive_enum::gen_reserved_space(),
+                derive_enum::gen_static_type_id(e),
+            )
+        }
         syn::Data::Union(_) => {
             panic!("Union is not supported")
         }

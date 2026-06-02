@@ -979,7 +979,7 @@ fn rust_compatible_variant_read_branches(
         .collect()
 }
 
-pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
+pub fn gen_read_data(data_enum: &DataEnum, no_unknown_case: bool) -> TokenStream {
     let is_union_compatible = is_union_compatible_enum(data_enum);
     let has_data_variants = data_enum
         .variants
@@ -1037,16 +1037,29 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         // ForyUnion validation guarantees xlang-compatible ADTs have the
         // runtime Unknown carrier. A skip/default fallback here would drop
         // forward-compatible payload metadata instead of preserving it.
-        let variant = data_enum
+        match data_enum
             .variants
             .iter()
             .find(|variant| is_runtime_unknown_variant(variant))
-            .expect("xlang-compatible ForyUnion requires Unknown(UnknownCase)");
-        let ident = &variant.ident;
-        quote! {
-            _ => {
-                let value = ::fory_core::serializer::unknown_case::read_payload(context, ordinal)?;
-                Ok(Self::#ident(value))
+        {
+            Some(variant) => {
+                let ident = &variant.ident;
+                quote! {
+                    _ => {
+                        let value = ::fory_core::serializer::unknown_case::read_payload(context, ordinal)?;
+                        Ok(Self::#ident(value))
+                    }
+                }
+            }
+            None if no_unknown_case => {
+                quote! {
+                    _ => return Err(::fory_core::error::Error::unknown_enum(
+                        "unknown union variant: union has no UnknownCase carrier"
+                    ))
+                }
+            }
+            None => {
+                panic!("xlang-compatible ForyUnion requires Unknown(UnknownCase)");
             }
         }
     } else {

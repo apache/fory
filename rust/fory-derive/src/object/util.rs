@@ -909,6 +909,25 @@ pub(crate) fn has_fory_unknown_attr(variant: &syn::Variant) -> bool {
     })
 }
 
+pub(crate) fn has_fory_no_unknown_case_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("fory") {
+            return false;
+        }
+        let mut no_unknown_case = false;
+        let _ = attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("no_unknown_case") {
+                no_unknown_case = true;
+            } else if !meta.input.is_empty() {
+                let value = meta.value()?;
+                let _ = value.parse::<syn::Expr>()?;
+            }
+            Ok(())
+        });
+        no_unknown_case
+    })
+}
+
 pub(crate) fn is_unknown_case_type(ty: &Type) -> bool {
     let Type::Path(type_path) = ty else {
         return false;

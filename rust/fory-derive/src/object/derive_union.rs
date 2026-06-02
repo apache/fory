@@ -15,7 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use super::util::{enum_variant_id, has_fory_unknown_attr, is_runtime_unknown_variant};
+use super::util::{
+    enum_variant_id, has_fory_no_unknown_case_attr, has_fory_unknown_attr,
+    is_runtime_unknown_variant,
+};
 use syn::{Attribute, Data, DataEnum, DeriveInput, Fields};
 
 pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
@@ -44,10 +47,18 @@ pub(crate) fn validate_input(input: &DeriveInput) -> syn::Result<()> {
             "ForyUnion unknown case must be #[fory(unknown)] Unknown(UnknownCase) without an id",
         ));
     }
-    if is_typed_adt_union(data_enum) && !data_enum.variants.iter().any(is_runtime_unknown_variant) {
+    let has_runtime_unknown_case = data_enum.variants.iter().any(is_runtime_unknown_variant);
+    let no_unknown_case = has_fory_no_unknown_case_attr(&input.attrs);
+    if no_unknown_case && has_runtime_unknown_case {
         return Err(syn::Error::new(
             input.ident.span(),
-            "ForyUnion typed ADT unions require #[fory(unknown)] Unknown(UnknownCase)",
+            "ForyUnion #[fory(no_unknown_case)] cannot be combined with #[fory(unknown)] Unknown(UnknownCase)",
+        ));
+    }
+    if is_typed_adt_union(data_enum) && !no_unknown_case && !has_runtime_unknown_case {
+        return Err(syn::Error::new(
+            input.ident.span(),
+            "ForyUnion typed ADT unions require #[fory(unknown)] Unknown(UnknownCase) unless #[fory(no_unknown_case)] is set",
         ));
     }
     let non_unknown_count = data_enum
@@ -278,5 +289,18 @@ mod tests {
 
         let error = validate_input(&input).unwrap_err();
         assert!(error.to_string().contains("duplicate ForyUnion case id 0"));
+    }
+
+    #[test]
+    fn no_unknown_case_allows_closed_union() {
+        let input: DeriveInput = parse_quote!(
+            #[fory(no_unknown_case)]
+            enum ClosedUnion {
+                #[fory(default)]
+                Dog(String),
+            }
+        );
+
+        validate_input(&input).unwrap();
     }
 }

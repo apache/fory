@@ -93,11 +93,127 @@ class RustGenerator(BaseGenerator):
     def generate(self) -> List[GeneratedFile]:
         """Generate Rust files for the schema."""
         files = []
+        self._grpc_reachable_type_ids = (
+            self.validate_grpc_payload_safe() if self.options.grpc else set()
+        )
 
         # Generate a single module file with all types
         files.append(self.generate_module())
 
         return files
+
+    def is_grpc_reachable_type(self, type_def: object) -> bool:
+        if not hasattr(self, "_grpc_reachable_type_ids"):
+            raise AttributeError(
+                "RustGenerator gRPC reachability is initialized by generate()"
+            )
+        return id(type_def) in self._grpc_reachable_type_ids
+
+    def grpc_payload_root_names(self) -> Set[str]:
+        names: Set[str] = set()
+        for service in self.schema.services:
+            if self.is_imported_type(service):
+                continue
+            for method in service.methods:
+                names.add(method.request_type.name)
+                names.add(method.response_type.name)
+        return names
+
+    def validate_grpc_payload_safe(self) -> Set[int]:
+        reachable: Set[int] = set()
+
+        def require_thread_safe_ref(
+            path: List[str], description: str, ref_options: dict
+        ) -> None:
+            if ref_options.get("thread_safe_pointer") is not True:
+                raise ValueError(
+                    f"Rust gRPC payload type {'.'.join(path)} uses non-thread-safe {description}; "
+                    "consider using ref(thread_safe=true)"
+                )
+
+        def visit_named(
+            type_name: str,
+            path: List[str],
+            parent_stack: Optional[List[Message]] = None,
+        ) -> None:
+            resolved = self.resolve_named_type(type_name, parent_stack)
+            if resolved is None:
+                return
+            key = id(resolved)
+            if key in reachable:
+                return
+            reachable.add(key)
+            owner_stack = self._parent_stack_for_type(resolved)
+            if isinstance(resolved, Message):
+                if self.is_imported_type(resolved):
+                    raise ValueError(
+                        f"Rust gRPC payload type {'.'.join(path)} is an imported message. "
+                        "Consider moving the message definition into the "
+                        "current schema or remove it from the gRPC service payload."
+                    )
+                lineage = owner_stack + [resolved]
+                for field in resolved.fields:
+                    visit_field(field, path + [field.name], lineage)
+            elif isinstance(resolved, Union):
+                if self.is_imported_type(resolved):
+                    raise ValueError(
+                        f"Rust gRPC payload type {'.'.join(path)} is an imported union. "
+                        "Consider moving the union definition into the "
+                        "current schema or remove it from the gRPC service payload."
+                    )
+                for field in resolved.fields:
+                    visit_field(
+                        field,
+                        path + [self.to_pascal_case(field.name)],
+                        owner_stack,
+                    )
+
+        def visit_field(
+            field: Field,
+            path: List[str],
+            parent_stack: Optional[List[Message]],
+        ) -> None:
+            if field.ref:
+                require_thread_safe_ref(path, "ref", field.ref_options)
+            if isinstance(field.field_type, ListType) and field.element_ref:
+                require_thread_safe_ref(
+                    path, "list element ref", field.element_ref_options
+                )
+            visit_field_type(field.field_type, path, parent_stack)
+
+        def visit_field_type(
+            field_type: FieldType,
+            path: List[str],
+            parent_stack: Optional[List[Message]],
+        ) -> None:
+            if isinstance(field_type, PrimitiveType):
+                # All primitive types but `any` is safe (`Send` + `Sync`).
+                if field_type.kind == PrimitiveKind.ANY:
+                    raise ValueError(
+                        f"Rust gRPC payload type {'.'.join(path)} uses non-thread-safe any"
+                    )
+            elif isinstance(field_type, NamedType):
+                visit_named(field_type.name, path + [field_type.name], parent_stack)
+            elif isinstance(field_type, ListType):
+                if field_type.element_ref:
+                    require_thread_safe_ref(
+                        path, "list element ref", field_type.element_ref_options
+                    )
+                visit_field_type(field_type.element_type, path, parent_stack)
+            elif isinstance(field_type, ArrayType):
+                visit_field_type(field_type.element_type, path, parent_stack)
+            elif isinstance(field_type, MapType):
+                if field_type.value_ref:
+                    require_thread_safe_ref(
+                        path, "map value ref", field_type.value_ref_options
+                    )
+                visit_field_type(field_type.key_type, path, parent_stack)
+                visit_field_type(field_type.value_type, path, parent_stack)
+
+        for root in self.grpc_payload_root_names():
+            visit_named(root, [root])
+
+        return reachable
 
     def get_module_name(self) -> str:
         """Get the Rust module name."""
@@ -374,10 +490,14 @@ class RustGenerator(BaseGenerator):
         for trait in ("Clone", "Debug", "PartialEq", "Eq", "Hash"):
             if self.union_supports_trait(union, trait, parent_stack):
                 derives.append(trait)
+        if self.is_grpc_reachable_type(union):
+            # Tell the derive macro that this union intentionally omits UnknownCase.
+            lines.append("#[fory(no_unknown_case)]")
         lines.append(f"#[derive({', '.join(derives)})]")
         lines.append(f"pub enum {union.name} {{")
-        lines.append("    #[fory(unknown)]")
-        lines.append("    Unknown(::fory::UnknownCase),")
+        if not self.is_grpc_reachable_type(union):
+            lines.append("    #[fory(unknown)]")
+            lines.append("    Unknown(::fory::UnknownCase),")
 
         for index, field in enumerate(union.fields):
             variant_name = self.to_pascal_case(field.name)
@@ -543,21 +663,32 @@ class RustGenerator(BaseGenerator):
         )
 
     def _lineage_for_message(self, message: Message) -> List[Message]:
-        lineage: List[Message] = []
+        return self._parent_stack_for_type(message) + [message]
 
-        def visit(current: Message, parents: List[Message]) -> bool:
-            if current is message:
-                lineage.extend(parents + [current])
+    def _parent_stack_for_type(self, type_def: object) -> List[Message]:
+        found: List[Message] = []
+
+        def visit(current: Message, stack: List[Message]) -> bool:
+            if current is type_def:
+                found.extend(stack)
                 return True
+            for nested_union in current.nested_unions:
+                if nested_union is type_def:
+                    found.extend(stack + [current])
+                    return True
+            for nested_enum in current.nested_enums:
+                if nested_enum is type_def:
+                    found.extend(stack + [current])
+                    return True
             for nested in current.nested_messages:
-                if visit(nested, parents + [current]):
+                if visit(nested, stack + [current]):
                     return True
             return False
 
         for top in self.schema.messages:
             if visit(top, []):
                 break
-        return lineage
+        return found
 
     def union_supports_trait(
         self,
