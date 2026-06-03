@@ -24,11 +24,11 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.Fory;
+import org.apache.fory.TestUtils;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.meta.MetaCompressor;
 import org.testng.Assert;
@@ -155,15 +155,12 @@ public class ForyBuilderTest {
 
   @Test
   public void testGraalvmRuntimeForcesCodegenOff() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
     Process process =
         new ProcessBuilder(
-                javaBin,
-                "-Dorg.graalvm.nativeimage.imagecode=runtime",
-                "-cp",
-                System.getProperty("java.class.path"),
-                GraalvmCodegenConfigMain.class.getName())
+                TestUtils.javaCommand(
+                    System.getProperty("java.class.path"),
+                    GraalvmCodegenConfigMain.class,
+                    "-Dorg.graalvm.nativeimage.imagecode=runtime"))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());

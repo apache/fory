@@ -33,7 +33,7 @@ import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.memory.NativeByteOrder;
 
 /**
  * Writer for binary array. See {@link BinaryArray}
@@ -45,6 +45,8 @@ import org.apache.fory.platform.UnsafeOps;
  * fromPrimitiveArray.
  */
 public class BinaryArrayWriter extends BinaryWriter {
+  private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
+
   public static int MAX_ROUNDED_ARRAY_LENGTH = Integer.MAX_VALUE - 15;
 
   protected final Field field;
@@ -184,7 +186,7 @@ public class BinaryArrayWriter extends BinaryWriter {
     // no need to increasewriterIndex, because reset has already increased writerIndex
   }
 
-  private void fromPrimitiveArray(Object arr, int offset, int numElements, Field type) {
+  private void checkPrimitiveArrayType(Field type) {
     DataTypes.ListType inputListType = (DataTypes.ListType) type.type();
     DataTypes.ListType thisListType = (DataTypes.ListType) this.field.type();
     if (DataTypes.getTypeId(inputListType.valueType())
@@ -194,39 +196,88 @@ public class BinaryArrayWriter extends BinaryWriter {
               "Element type %s is not %s", inputListType.valueType(), thisListType.valueType());
       throw new IllegalArgumentException(msg);
     }
+  }
+
+  private void finishPrimitiveArray(int numElements) {
     int size = numElements * elementSize;
-    buffer.copyFromUnsafe(startIndex + headerInBytes, arr, offset, size);
     primitiveArrayAdvance(size);
   }
 
   public void fromPrimitiveArray(byte[] arr) {
-    fromPrimitiveArray(arr, UnsafeOps.BYTE_ARRAY_OFFSET, arr.length, PRIMITIVE_BYTE_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_BYTE_ARRAY_FIELD);
+    buffer.copyFromByteArray(startIndex + headerInBytes, arr, 0, arr.length);
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(boolean[] arr) {
-    fromPrimitiveArray(
-        arr, UnsafeOps.BOOLEAN_ARRAY_OFFSET, arr.length, PRIMITIVE_BOOLEAN_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_BOOLEAN_ARRAY_FIELD);
+    buffer.copyFromBooleanArray(startIndex + headerInBytes, arr, 0, arr.length);
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(short[] arr) {
-    fromPrimitiveArray(arr, UnsafeOps.SHORT_ARRAY_OFFSET, arr.length, PRIMITIVE_SHORT_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_SHORT_ARRAY_FIELD);
+    int offset = startIndex + headerInBytes;
+    if (LITTLE_ENDIAN) {
+      buffer.copyFromShortArray(offset, arr, 0, arr.length * 2);
+    } else {
+      for (int i = 0; i < arr.length; i++, offset += 2) {
+        buffer.putInt16(offset, arr[i]);
+      }
+    }
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(int[] arr) {
-    fromPrimitiveArray(arr, UnsafeOps.INT_ARRAY_OFFSET, arr.length, PRIMITIVE_INT_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_INT_ARRAY_FIELD);
+    int offset = startIndex + headerInBytes;
+    if (LITTLE_ENDIAN) {
+      buffer.copyFromIntArray(offset, arr, 0, arr.length * 4);
+    } else {
+      for (int i = 0; i < arr.length; i++, offset += 4) {
+        buffer.putInt32(offset, arr[i]);
+      }
+    }
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(long[] arr) {
-    fromPrimitiveArray(arr, UnsafeOps.LONG_ARRAY_OFFSET, arr.length, PRIMITIVE_LONG_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_LONG_ARRAY_FIELD);
+    int offset = startIndex + headerInBytes;
+    if (LITTLE_ENDIAN) {
+      buffer.copyFromLongArray(offset, arr, 0, arr.length * 8);
+    } else {
+      for (int i = 0; i < arr.length; i++, offset += 8) {
+        buffer.putInt64(offset, arr[i]);
+      }
+    }
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(float[] arr) {
-    fromPrimitiveArray(arr, UnsafeOps.FLOAT_ARRAY_OFFSET, arr.length, PRIMITIVE_FLOAT_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_FLOAT_ARRAY_FIELD);
+    int offset = startIndex + headerInBytes;
+    if (LITTLE_ENDIAN) {
+      buffer.copyFromFloatArray(offset, arr, 0, arr.length * 4);
+    } else {
+      for (int i = 0; i < arr.length; i++, offset += 4) {
+        buffer.putFloat32(offset, arr[i]);
+      }
+    }
+    finishPrimitiveArray(arr.length);
   }
 
   public void fromPrimitiveArray(double[] arr) {
-    fromPrimitiveArray(
-        arr, UnsafeOps.DOUBLE_ARRAY_OFFSET, arr.length, PRIMITIVE_DOUBLE_ARRAY_FIELD);
+    checkPrimitiveArrayType(PRIMITIVE_DOUBLE_ARRAY_FIELD);
+    int offset = startIndex + headerInBytes;
+    if (LITTLE_ENDIAN) {
+      buffer.copyFromDoubleArray(offset, arr, 0, arr.length * 8);
+    } else {
+      for (int i = 0; i < arr.length; i++, offset += 8) {
+        buffer.putFloat64(offset, arr[i]);
+      }
+    }
+    finishPrimitiveArray(arr.length);
   }
 
   public BinaryArray toArray() {

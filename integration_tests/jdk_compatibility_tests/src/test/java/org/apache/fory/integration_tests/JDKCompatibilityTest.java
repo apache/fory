@@ -85,12 +85,10 @@ public class JDKCompatibilityTest {
     Fory fory = builder().build();
     fory.register(CustomObject.class);
     File dir = new File(".");
-    File[] files = dir.listFiles((d, name) -> name.startsWith("object_schema_consistent"));
-    assert files != null;
+    File[] files = preJdk25Files(dir, "object_schema_consistent");
     check(object, fory, files);
     CustomObject customObject = createCustomObject();
-    File[] files1 = dir.listFiles((d, name) -> name.startsWith("custom_object_schema_consistent"));
-    assert files1 != null;
+    File[] files1 = preJdk25Files(dir, "custom_object_schema_consistent");
     check(customObject, fory, files1);
   }
 
@@ -100,13 +98,30 @@ public class JDKCompatibilityTest {
     Fory fory = builder().withCompatible(true).build();
     fory.register(CustomObject.class);
     File dir = new File(".");
-    File[] files = dir.listFiles((d, name) -> name.startsWith("object_schema_compatible"));
-    assert files != null;
+    File[] files = preJdk25Files(dir, "object_schema_compatible");
     check(object, fory, files);
     CustomObject customObject = createCustomObject();
-    File[] files1 = dir.listFiles((d, name) -> name.startsWith("custom_object_schema_compatible"));
-    assert files1 != null;
+    File[] files1 = preJdk25Files(dir, "custom_object_schema_compatible");
     check(customObject, fory, files1);
+  }
+
+  private static File[] preJdk25Files(File dir, String prefix) {
+    File[] files =
+        dir.listFiles((d, name) -> name.startsWith(prefix) && isPreJdk25Fixture(name, prefix));
+    assert files != null;
+    return files;
+  }
+
+  private static boolean isPreJdk25Fixture(String name, String prefix) {
+    String suffix = name.substring(prefix.length());
+    if (suffix.isEmpty()) {
+      return false;
+    }
+    try {
+      return Integer.parseInt(suffix) < 25;
+    } catch (NumberFormatException e) {
+      return false;
+    }
   }
 
   private static void check(Object object, Fory fory, File[] files) throws IOException {

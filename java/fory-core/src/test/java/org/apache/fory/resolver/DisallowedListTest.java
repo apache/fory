@@ -19,12 +19,12 @@
 
 package org.apache.fory.resolver;
 
+import java.beans.Expression;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.exception.InsecureException;
-import org.apache.fory.platform.UnsafeOps;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -85,7 +85,7 @@ public class DisallowedListTest extends ForyTestBase {
               .build();
       if (requireClassRegistration) {
         // Registered or unregistered Classes should be subject to disallowed list restrictions.
-        fory.register(UnicastRemoteObject.class);
+        fory.register(Expression.class);
       }
       allFory[i] = fory;
     }
@@ -93,7 +93,7 @@ public class DisallowedListTest extends ForyTestBase {
     for (Fory fory : allFory) {
       Assert.assertThrows(
           InsecureException.class,
-          () -> fory.serialize(UnsafeOps.newInstance(UnicastRemoteObject.class)));
+          () -> fory.serialize(new Expression(System.class, "exit", new Object[] {0})));
       serDe(fory, new String[] {"a", "b"});
     }
   }

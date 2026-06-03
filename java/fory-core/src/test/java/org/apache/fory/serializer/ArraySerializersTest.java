@@ -517,6 +517,10 @@ public class ArraySerializersTest extends ForyTestBase {
     public GenericArrayWrapper(Class<T> clazz, int capacity) {
       this.array = (T[]) Array.newInstance(clazz, capacity);
     }
+
+    public GenericArrayWrapper(T[] array) {
+      this.array = array;
+    }
   }
 
   @SuppressWarnings("unchecked")

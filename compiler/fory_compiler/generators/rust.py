@@ -1039,12 +1039,18 @@ class RustGenerator(BaseGenerator):
         elif isinstance(field_type, ListType):
             effective_element_optional = element_optional or field_type.element_optional
             effective_element_ref = element_ref or field_type.element_ref
+            element_pointer_type = pointer_type
+            if field_type.element_ref:
+                element_pointer_type = self.get_pointer_type(
+                    field_type.element_ref_options,
+                    field_type.element_ref_options.get("weak_ref") is True,
+                )
             element_type = self.generate_type(
                 field_type.element_type,
                 nullable=effective_element_optional,
                 ref=effective_element_ref,
                 parent_stack=parent_stack,
-                pointer_type=pointer_type,
+                pointer_type=element_pointer_type,
             )
             list_type = f"::std::vec::Vec<{element_type}>"
             if ref:
@@ -1076,12 +1082,18 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
+            value_pointer_type = pointer_type
+            if field_type.value_ref:
+                value_pointer_type = self.get_pointer_type(
+                    field_type.value_ref_options,
+                    field_type.value_ref_options.get("weak_ref") is True,
+                )
             value_type = self.generate_type(
                 field_type.value_type,
                 nullable=False,
                 ref=field_type.value_ref,
                 parent_stack=parent_stack,
-                pointer_type=pointer_type,
+                pointer_type=value_pointer_type,
             )
             map_type = f"::std::collections::HashMap<{key_type}, {value_type}>"
             if ref:

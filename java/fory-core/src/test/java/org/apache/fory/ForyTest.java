@@ -50,7 +50,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.WeakHashMap;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.annotation.Expose;
@@ -72,6 +71,7 @@ import org.apache.fory.serializer.ArraySerializersTest;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.ExceptionSerializers;
 import org.apache.fory.serializer.ObjectSerializer;
+import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.Struct;
@@ -94,6 +94,49 @@ public class ForyTest extends ForyTestBase {
     byte[] bytes = fory.serialize(7);
     bytes[0] |= 0x02;
     assertThrows(IllegalArgumentException.class, () -> fory.deserialize(bytes, Integer.class));
+  }
+
+  @Test
+  public void testReverseComparatorSerializer() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Comparator<Integer> comparator = Comparator.reverseOrder();
+    Serializer<?> serializer =
+        fory.getTypeResolver().getTypeInfo(comparator.getClass()).getSerializer();
+    assertTrue(serializer instanceof ReplaceResolveSerializer);
+    Comparator<Integer> roundTrip =
+        (Comparator<Integer>) fory.deserialize(fory.serialize(comparator));
+    Assert.assertEquals(roundTrip.getClass(), comparator.getClass());
+    Assert.assertEquals(roundTrip.compare(1, 2), comparator.compare(1, 2));
+    Comparator<Integer> copy = fory.copy(comparator);
+    Assert.assertEquals(copy.getClass(), comparator.getClass());
+    Assert.assertEquals(copy.compare(2, 1), comparator.compare(2, 1));
+  }
+
+  @Test
+  public void testRegistrationFreezesOnUse() {
+    byte[] bytes = newNativeFory().serialize(1);
+
+    Fory writer = newNativeFory();
+    writer.serialize(1);
+    assertRegistrationFrozen(writer);
+
+    Fory reader = newNativeFory();
+    reader.deserialize(bytes);
+    assertRegistrationFrozen(reader);
+
+    Fory copier = newNativeFory();
+    copier.copy(1);
+    assertRegistrationFrozen(copier);
+  }
+
+  private static Fory newNativeFory() {
+    return Fory.builder().withXlang(false).requireClassRegistration(false).build();
+  }
+
+  private static void assertRegistrationFrozen(Fory fory) {
+    assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+    assertThrows(
+        ForyException.class, () -> fory.registerSerializer(BeanA.class, ObjectSerializer.class));
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
@@ -434,11 +477,20 @@ public class ForyTest extends ForyTestBase {
   }
 
   @Data
-  @AllArgsConstructor
   private static class IgnoreFields {
     @Ignore int f1;
     @Ignore long f2;
     long f3;
+
+    IgnoreFields(int f1, long f2, long f3) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+    }
+
+    IgnoreFields(long f3) {
+      this.f3 = f3;
+    }
   }
 
   @Test
@@ -451,13 +503,31 @@ public class ForyTest extends ForyTestBase {
   }
 
   @Data
-  @AllArgsConstructor
   private static class ExposeFields {
     @Expose int f1;
     @Expose long f2;
     long f3;
     @Expose ImmutableMap<String, Integer> map1;
     ImmutableMap<String, Integer> map2;
+
+    ExposeFields(
+        int f1,
+        long f2,
+        long f3,
+        ImmutableMap<String, Integer> map1,
+        ImmutableMap<String, Integer> map2) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+      this.map1 = map1;
+      this.map2 = map2;
+    }
+
+    ExposeFields(int f1, long f2, ImmutableMap<String, Integer> map1) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.map1 = map1;
+    }
   }
 
   @Test
@@ -474,11 +544,16 @@ public class ForyTest extends ForyTestBase {
   }
 
   @Data
-  @AllArgsConstructor
   private static class ExposeFields2 {
     @Expose int f1;
     @Ignore long f2;
     long f3;
+
+    ExposeFields2(int f1, long f2, long f3) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+    }
   }
 
   @Test
@@ -596,7 +671,7 @@ public class ForyTest extends ForyTestBase {
             .build();
     HashBasedTable<Object, Object, Object> table = HashBasedTable.create(2, 4);
     table.put("r", "c", 100);
-    serDeCheckSerializer(fory, table, "Codec");
+    serDeCheckSerializer(fory, table, "HashBasedTableSerializer");
   }
 
   @Data
@@ -732,10 +807,14 @@ public class ForyTest extends ForyTestBase {
     assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
   }
 
-  @AllArgsConstructor
   static class MaxDepth {
     int f1;
     Object f2;
+
+    MaxDepth(int f1, Object f2) {
+      this.f1 = f1;
+      this.f2 = f2;
+    }
   }
 
   @Test

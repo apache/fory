@@ -72,8 +72,10 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatibleCollectionSerializer;
@@ -95,6 +97,24 @@ public class CollectionSerializersTest extends ForyTestBase {
     public int compare(String left, String right) {
       int delta = left.length() - right.length();
       return delta != 0 ? delta : left.compareTo(right);
+    }
+  }
+
+  public static final class NonComparableSetItem {
+    public int id;
+
+    public NonComparableSetItem() {}
+
+    private NonComparableSetItem(int id) {
+      this.id = id;
+    }
+  }
+
+  public static final class SetItemComparator
+      implements Comparator<NonComparableSetItem>, Serializable {
+    @Override
+    public int compare(NonComparableSetItem left, NonComparableSetItem right) {
+      return Integer.compare(left.id, right.id);
     }
   }
 
@@ -289,6 +309,66 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.assertEquals(Arrays.toString(copy.toArray()), "[str, str2, str11]");
   }
 
+  @Test
+  public void testXlangTreeSetCopy() {
+    Fory fory =
+        builder().withXlang(true).withRefTracking(false).requireClassRegistration(true).build();
+    TreeSet<String> set = new TreeSet<>(Collections.reverseOrder());
+    set.addAll(sortedCollectionInput());
+
+    Assert.assertTrue(
+        fory.getSerializer(TreeSet.class) instanceof CollectionSerializers.SortedSetSerializer);
+    TreeSet<String> copy = fory.copy(set);
+
+    Assert.assertNotSame(copy, set);
+    Assert.assertEquals(copy, set);
+    Assert.assertNotNull(copy.comparator());
+    Assert.assertTrue(copy.comparator().compare("a", "b") > 0);
+  }
+
+  @Test
+  public void testXlangTreeSetNaturalComparator() {
+    Fory fory =
+        builder().withXlang(true).withRefTracking(false).requireClassRegistration(true).build();
+    TreeSet<String> set = new TreeSet<>(Comparator.naturalOrder());
+    set.addAll(sortedCollectionInput());
+
+    Object decoded = fory.deserialize(fory.serialize(set));
+
+    Assert.assertEquals(decoded, set);
+  }
+
+  @Test
+  public void testXlangTreeSetComparatorWrite() {
+    Fory fory =
+        builder().withXlang(true).withRefTracking(false).requireClassRegistration(true).build();
+    TreeSet<NonComparableSetItem> set = new TreeSet<>(new SetItemComparator());
+    set.add(new NonComparableSetItem(1));
+
+    SerializationException exception =
+        Assert.expectThrows(SerializationException.class, () -> fory.serialize(set));
+    Assert.assertTrue(exception.getCause() instanceof UnsupportedOperationException);
+  }
+
+  @Test
+  public void testXlangTreeSetObjectCopy() {
+    Fory fory =
+        builder().withXlang(true).withRefTracking(false).requireClassRegistration(true).build();
+    fory.register(NonComparableSetItem.class);
+    fory.register(SetItemComparator.class);
+    TreeSet<NonComparableSetItem> set = new TreeSet<>(new SetItemComparator());
+    set.add(new NonComparableSetItem(2));
+    set.add(new NonComparableSetItem(1));
+
+    TreeSet<NonComparableSetItem> copy = fory.copy(set);
+
+    Assert.assertNotSame(copy, set);
+    Assert.assertEquals(copy.size(), set.size());
+    Assert.assertNotNull(copy.comparator());
+    Assert.assertEquals(copy.first().id, 1);
+    Assert.assertEquals(copy.last().id, 2);
+  }
+
   private class TestComparator implements Comparator<String> {
     AtomicInteger i;
 
@@ -343,7 +423,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testConcurrentSkipListSetConstructorMatrix(boolean referenceTrackingConfig) {
+  public void testSkipListSetCtorSerde(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -361,7 +441,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "foryCopyConfig")
-  public void testConcurrentSkipListSetConstructorMatrix(Fory fory) {
+  public void testSkipListSetCtorCopy(Fory fory) {
     for (SortedSetConstructorCase testCase : concurrentSkipListSetConstructorCases()) {
       SortedSet<String> original = testCase.factory.get();
       assertSortedSetState(testCase, original);
@@ -422,7 +502,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testSortedSetSubclassWithoutComparatorCtor(boolean referenceTrackingConfig) {
+  public void testSortedSetSubclassNoComparatorCtor(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -456,8 +536,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testSortedSetSubclassRegisteredWithSortedSetSerializer(
-      boolean referenceTrackingConfig) {
+  public void testSortedSetSubclassRegistered(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -480,8 +559,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
-  public void testSortedSetSubclassWithComparatorRegisteredWithSortedSetSerializer(
-      boolean referenceTrackingConfig) {
+  public void testSortedSetComparatorRegistered(boolean referenceTrackingConfig) {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -881,10 +959,14 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Data
-  @AllArgsConstructor
   public static class CollectionViewTestStruct {
     Collection<String> collection;
     Set<String> set;
+
+    public CollectionViewTestStruct(Collection<String> collection, Set<String> set) {
+      this.collection = collection;
+      this.set = set;
+    }
   }
 
   @Test(dataProvider = "javaFory")
@@ -909,10 +991,15 @@ public class CollectionSerializersTest extends ForyTestBase {
     if (fory.getConfig().trackingRef()) {
       assertSame(struct2.collection, struct2.set);
     }
+    Map<String, Boolean> synchronizedMap = Collections.synchronizedMap(new HashMap<>());
+    set = Collections.newSetFromMap(synchronizedMap);
+    set.add("a");
+    set.add("b");
+    serDeCheck(fory, set);
   }
 
   @Test
-  public void testSetFromMapNestedInExternalizablePreservesRefIds() {
+  public void testSetFromMapExternalizableRefs() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -971,12 +1058,28 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "foryCopyConfig")
-  public void testSetFromMapCopy(Fory fory) {
+  public void testSetFromMapCopy(Fory fory) throws Exception {
     final Set<Object> set = Collections.newSetFromMap(Maps.newConcurrentMap());
     set.add("a");
     set.add("b");
     set.add(Cyclic.create(true));
     copyCheck(fory, set);
+
+    final Map<Object, Boolean> synchronizedMap = Collections.synchronizedMap(new HashMap<>());
+    final Set<Object> synchronizedSet = Collections.newSetFromMap(synchronizedMap);
+    synchronizedSet.add("a");
+    synchronizedSet.add("b");
+    synchronizedSet.add(Cyclic.create(true));
+    Set<?> copied = fory.copy(synchronizedSet);
+    assertEquals(copied, synchronizedSet);
+    if (MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
+      assertEquals(setFromMapBackingMap(copied).getClass(), synchronizedMap.getClass());
+    }
+  }
+
+  private static Map<?, Boolean> setFromMapBackingMap(Set<?> set) throws Exception {
+    Field mapField = set.getClass().getDeclaredField("m");
+    return (Map<?, Boolean>) FieldAccessor.createAccessor(mapField).getObject(set);
   }
 
   @Test(dataProvider = "javaFory")
@@ -1041,7 +1144,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testDeserializeJavaBlockingQueueRejectsMalformedCapacity() {
+  public void testBlockingQueueBadCapacity() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -1072,7 +1175,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testCollectionReadRejectsOversizedElementCount() {
+  public void testCollectionRejectsTooManyElements() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -1090,7 +1193,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testBitSetReadRejectsNegativeDecodedBinaryPayload() {
+  public void testBitSetRejectsNegativeBinary() {
     Fory fory = Fory.builder().withXlang(false).build();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
@@ -1369,7 +1472,15 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   public static class TestClassForDefaultCollectionSerializer extends AbstractCollection<String> {
-    private final List<String> data = new ArrayList<>();
+    private final List<String> data;
+
+    public TestClassForDefaultCollectionSerializer() {
+      this(new ArrayList<>());
+    }
+
+    public TestClassForDefaultCollectionSerializer(List<String> data) {
+      this.data = data;
+    }
 
     @Override
     public Iterator<String> iterator() {
@@ -1423,7 +1534,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testDefaultCollectionSerializerAsyncCompilation() {
+  public void testDefaultCollectionAsyncCompile() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -1549,7 +1660,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void testAbstractCollectionElementsSerialization(boolean enableCodegen) {
+  public void testAbstractCollectionElementsSerde(boolean enableCodegen) {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -1569,7 +1680,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "foryCopyConfig")
-  public void testAbstractCollectionElementsSerialization(Fory fory) {
+  public void testAbstractCollectionElementsCopy(Fory fory) {
     {
       CollectionAbstractTest test = new CollectionAbstractTest();
       test.fooList = new ArrayList<>(ImmutableList.of(new Foo1(), new Foo1()));

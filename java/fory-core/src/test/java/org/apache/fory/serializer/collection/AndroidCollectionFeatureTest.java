@@ -69,6 +69,8 @@ public class AndroidCollectionFeatureTest {
     String jvmEnumMapPayload = encode(jvmFory, newEnumMapValue());
     String jvmEmptyEnumMapPayload =
         encode(jvmFory, new EnumMap<>(AndroidCollectionFeatureProbe.TestEnum.class));
+    String jvmArrayQueuePayload = encode(jvmFory, newArrayBlockingQueueValue());
+    String jvmLinkedQueuePayload = encode(jvmFory, newLinkedBlockingQueueValue());
 
     String javaBin =
         System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
@@ -77,6 +79,8 @@ public class AndroidCollectionFeatureTest {
     if (!System.getProperty("java.specification.version").startsWith("1.")) {
       command.add("--add-opens");
       command.add("java.base/java.util=ALL-UNNAMED");
+      command.add("--add-opens");
+      command.add("java.base/java.lang.invoke=ALL-UNNAMED");
     }
     command.add("-cp");
     command.add(System.getProperty("java.class.path"));
@@ -85,7 +89,11 @@ public class AndroidCollectionFeatureTest {
     command.add(jvmSubListPayload);
     command.add(jvmEnumMapPayload);
     command.add(jvmEmptyEnumMapPayload);
-    Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+    command.add(jvmArrayQueuePayload);
+    command.add(jvmLinkedQueuePayload);
+    ProcessBuilder processBuilder = new ProcessBuilder(command).redirectErrorStream(true);
+    processBuilder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = processBuilder.start();
     String output = readFully(process.getInputStream());
     Assert.assertEquals(process.waitFor(), 0, output);
 
@@ -169,11 +177,25 @@ public class AndroidCollectionFeatureTest {
     return map;
   }
 
+  private static ArrayBlockingQueue<String> newArrayBlockingQueueValue() {
+    ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<>(5);
+    queue.add("a");
+    queue.add("b");
+    return queue;
+  }
+
+  private static LinkedBlockingQueue<String> newLinkedBlockingQueueValue() {
+    LinkedBlockingQueue<String> queue = new LinkedBlockingQueue<>(6);
+    queue.add("a");
+    queue.add("b");
+    return queue;
+  }
+
   public static final class AndroidCollectionFeatureProbe {
     public static void main(String[] args) throws Exception {
       check(
-          args.length == 4,
-          "Expected JVM child-container, sublist, enum-map, and empty-enum-map payloads");
+          args.length == 6,
+          "Expected JVM child-container, sublist, enum-map, empty-enum-map, and queue payloads");
       System.setProperty("java.vm.name", "Dalvik");
       System.setProperty("java.runtime.name", "Android Runtime");
       check(AndroidSupport.IS_ANDROID, "AndroidSupport should detect Dalvik runtime");
@@ -193,7 +215,6 @@ public class AndroidCollectionFeatureTest {
       verifySubList(fory);
       verifyArraysAsList(fory);
       verifySetFromMap(fory);
-      verifyQueues(fory);
       verifyEnumMap(fory);
       if (JdkVersion.MAJOR_VERSION >= 9) {
         verifyImmutableCollections(fory);
@@ -202,6 +223,8 @@ public class AndroidCollectionFeatureTest {
       verifyJvmSubListPayload(fory, Base64.getDecoder().decode(args[1]));
       verifyJvmEnumMapPayloads(
           fory, Base64.getDecoder().decode(args[2]), Base64.getDecoder().decode(args[3]));
+      verifyJvmQueuePayloads(
+          fory, Base64.getDecoder().decode(args[4]), Base64.getDecoder().decode(args[5]));
       writeAndroidFeaturePayloads(fory);
     }
 
@@ -314,23 +337,24 @@ public class AndroidCollectionFeatureTest {
       checkEquals(copy, set, "SetFromMap copy");
     }
 
-    private static void verifyQueues(Fory fory) {
-      ArrayBlockingQueue<String> arrayQueue = new ArrayBlockingQueue<>(5);
-      arrayQueue.add("a");
-      arrayQueue.add("b");
+    private static void verifyJvmQueuePayloads(
+        Fory fory, byte[] jvmArrayQueuePayload, byte[] jvmLinkedQueuePayload) {
+      ArrayBlockingQueue<String> arrayQueue = newArrayBlockingQueueValue();
       ArrayBlockingQueue<String> arrayRestored =
-          (ArrayBlockingQueue<String>) roundTrip(fory, arrayQueue);
+          (ArrayBlockingQueue<String>) fory.deserialize(jvmArrayQueuePayload);
       checkEquals(
-          new ArrayList<>(arrayRestored), new ArrayList<>(arrayQueue), "ArrayBlockingQueue");
+          new ArrayList<>(arrayRestored),
+          new ArrayList<>(arrayQueue),
+          "JVM ArrayBlockingQueue payload");
       checkEquals(arrayRestored.remainingCapacity(), 3, "ArrayBlockingQueue capacity");
 
-      LinkedBlockingQueue<String> linkedQueue = new LinkedBlockingQueue<>(6);
-      linkedQueue.add("a");
-      linkedQueue.add("b");
+      LinkedBlockingQueue<String> linkedQueue = newLinkedBlockingQueueValue();
       LinkedBlockingQueue<String> linkedRestored =
-          (LinkedBlockingQueue<String>) roundTrip(fory, linkedQueue);
+          (LinkedBlockingQueue<String>) fory.deserialize(jvmLinkedQueuePayload);
       checkEquals(
-          new ArrayList<>(linkedRestored), new ArrayList<>(linkedQueue), "LinkedBlockingQueue");
+          new ArrayList<>(linkedRestored),
+          new ArrayList<>(linkedQueue),
+          "JVM LinkedBlockingQueue payload");
       checkEquals(linkedRestored.remainingCapacity(), 4, "LinkedBlockingQueue capacity");
     }
 

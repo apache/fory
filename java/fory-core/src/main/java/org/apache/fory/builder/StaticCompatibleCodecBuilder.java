@@ -59,6 +59,9 @@ import org.apache.fory.util.record.RecordUtils;
  */
 public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
   private static final int DISPATCH_GROUP_SIZE = 8;
+  // Hidden generated serializers cannot use private split helpers because Janino emits private
+  // self-invokes against the source binary name, which Lookup#defineHiddenClass cannot resolve.
+  private static final String DISPATCH_METHOD_MODIFIERS = "final";
 
   private final List<Descriptor> localDescriptors;
   private final boolean debug;
@@ -216,7 +219,8 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
       ctx.clearExprState();
       Reference values = new Reference(recordValues, objectArrayTypeRef, false);
       Code.ExprCode newRecord =
-          new Invoke(getObjectCreator(beanClass), "newInstanceWithArguments", OBJECT_TYPE, values)
+          new Invoke(
+                  getObjectInstantiator(beanClass), "newInstanceWithArguments", OBJECT_TYPE, values)
               .genCode(ctx);
       if (StringUtils.isNotBlank(newRecord.code())) {
         code.append(newRecord.code()).append('\n');
@@ -233,7 +237,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
     int groupCount = (localDescriptors.size() + DISPATCH_GROUP_SIZE - 1) / DISPATCH_GROUP_SIZE;
     if (isRecord) {
       ctx.addMethod(
-          "private",
+          DISPATCH_METHOD_MODIFIERS,
           "readMatchedRecordField",
           genDispatchRouter("readMatchedRecordField", groupCount),
           void.class,
@@ -245,7 +249,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
           "_f_remoteField");
       for (int group = 0; group < groupCount; group++) {
         ctx.addMethod(
-            "private",
+            DISPATCH_METHOD_MODIFIERS,
             "readMatchedRecordField" + group,
             genRecordDispatchGroup(group),
             void.class,
@@ -259,7 +263,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
       return;
     }
     ctx.addMethod(
-        "private",
+        DISPATCH_METHOD_MODIFIERS,
         "readMatchedField",
         genDispatchRouter("readMatchedField", groupCount),
         void.class,
@@ -271,7 +275,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
         "_f_remoteField");
     for (int group = 0; group < groupCount; group++) {
       ctx.addMethod(
-          "private",
+          DISPATCH_METHOD_MODIFIERS,
           "readMatchedField" + group,
           genObjectDispatchGroup(group, valueTypeRef),
           void.class,

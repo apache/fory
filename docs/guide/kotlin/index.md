@@ -62,6 +62,21 @@ See [Java Features](../java/index.md#features) for complete feature list.
 implementation("org.apache.fory:fory-kotlin:1.1.0")
 ```
 
+### JDK25+
+
+Kotlin uses the Fory Java core at runtime. On JDK25+, open `java.lang.invoke`
+to Fory. Use `ALL-UNNAMED` when Fory is on the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
+```
+
 ## Quick Start
 
 ```kotlin

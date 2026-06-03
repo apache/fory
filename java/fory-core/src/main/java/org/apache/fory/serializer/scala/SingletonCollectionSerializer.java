@@ -19,17 +19,16 @@
 
 package org.apache.fory.serializer.scala;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
-import org.apache.fory.util.Preconditions;
 
 /**
  * Singleton serializer for scala collection. We need this serializer for fory jit serialization,
@@ -39,8 +38,7 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings("rawtypes")
 public class SingletonCollectionSerializer extends CollectionLikeSerializer {
   private final Field field;
-  private Object base = null;
-  private long offset = -1;
+  private MethodHandle accessor;
 
   public SingletonCollectionSerializer(TypeResolver typeResolver, Class cls) {
     super(typeResolver, cls, false);
@@ -78,13 +76,24 @@ public class SingletonCollectionSerializer extends CollectionLikeSerializer {
         throw new ForyException("Failed to read Scala singleton field: " + type, e);
       }
     }
-    long offset = this.offset;
-    if (offset == -1) {
-      Preconditions.checkArgument(!GraalvmSupport.isGraalBuildTime());
-      offset = this.offset = UnsafeOps.UNSAFE.staticFieldOffset(field);
-      base = UnsafeOps.UNSAFE.staticFieldBase(field);
+    MethodHandle accessor = this.accessor;
+    if (accessor == null) {
+      accessor = this.accessor = staticGetter();
     }
-    return UnsafeOps.getObject(base, offset);
+    try {
+      return accessor.invoke();
+    } catch (Throwable e) {
+      throw new ForyException("Failed to read Scala singleton field: " + type, e);
+    }
+  }
+
+  private MethodHandle staticGetter() {
+    try {
+      return _JDKAccess._trustedLookup(field.getDeclaringClass())
+          .findStaticGetter(field.getDeclaringClass(), field.getName(), field.getType());
+    } catch (NoSuchFieldException | IllegalAccessException | RuntimeException e) {
+      throw new ForyException("Failed to access Scala singleton field: " + type, e);
+    }
   }
 
   @Override

@@ -19,36 +19,55 @@
 
 package org.apache.fory.test.bean;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
 
 public class AccessBeans {
   @Data
-  @AllArgsConstructor
   private static class PrivateClass {
     public int f1;
     int f2;
     private int f3;
+
+    PrivateClass() {}
+
+    PrivateClass(int f1, int f2, int f3) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+    }
   }
 
   @Data
-  @AllArgsConstructor
   private static final class FinalPrivateClass {
     public int f1;
     int f2;
     private int f3;
+
+    FinalPrivateClass() {}
+
+    FinalPrivateClass(int f1, int f2, int f3) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+    }
   }
 
   @Data
-  @AllArgsConstructor
   static class DefaultLevelClass {
     public int f1;
     int f2;
     private int f3;
+
+    DefaultLevelClass() {}
+
+    DefaultLevelClass(int f1, int f2, int f3) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+    }
   }
 
   @Data
-  @AllArgsConstructor
   public static class PublicClass {
     public int f1;
     int f2;
@@ -56,6 +75,18 @@ public class AccessBeans {
     private DefaultLevelClass f4;
     private PrivateClass f5;
     private FinalPrivateClass f6;
+
+    public PublicClass() {}
+
+    public PublicClass(
+        int f1, int f2, int f3, DefaultLevelClass f4, PrivateClass f5, FinalPrivateClass f6) {
+      this.f1 = f1;
+      this.f2 = f2;
+      this.f3 = f3;
+      this.f4 = f4;
+      this.f5 = f5;
+      this.f6 = f6;
+    }
   }
 
   public static PrivateClass createPrivateClassObject() {

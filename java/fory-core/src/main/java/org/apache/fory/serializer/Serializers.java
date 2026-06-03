@@ -48,9 +48,11 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
@@ -65,8 +67,6 @@ import org.apache.fory.serializer.scala.SingletonCollectionSerializer;
 import org.apache.fory.serializer.scala.SingletonMapSerializer;
 import org.apache.fory.serializer.scala.SingletonObjectSerializer;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.StringUtils;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /** Serialization utils and common serializers. */
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -273,7 +273,55 @@ public class Serializers {
       return createSerializerReflectively(typeResolver, type, serializerClass);
     }
     try {
+      // Public serializers in exported JPMS packages should not require private package opens.
+      Serializer<T> serializer =
+          tryCreateSerializer(
+              typeResolver, type, serializerClass, MethodHandles.publicLookup(), false);
+      if (serializer != null) {
+        return serializer;
+      }
+      if (!hasSupportedConstructor(serializerClass)) {
+        throw new IllegalArgumentException(
+            "Serializer "
+                + serializerClass.getName()
+                + " doesn't define a supported constructor for "
+                + type);
+      }
       MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(serializerClass);
+      return tryCreateSerializer(typeResolver, type, serializerClass, lookup, true);
+    } catch (Throwable t) {
+      ExceptionUtils.throwException(t);
+      throw new IllegalStateException("unreachable");
+    }
+  }
+
+  private static boolean hasSupportedConstructor(Class<? extends Serializer> serializerClass) {
+    return hasConstructor(serializerClass, TypeResolver.class, Class.class)
+        || hasConstructor(serializerClass, TypeResolver.class)
+        || hasConstructor(serializerClass, Config.class, Class.class)
+        || hasConstructor(serializerClass, Config.class)
+        || hasConstructor(serializerClass, Class.class)
+        || hasConstructor(serializerClass);
+  }
+
+  private static boolean hasConstructor(
+      Class<? extends Serializer> serializerClass, Class<?>... parameterTypes) {
+    try {
+      serializerClass.getDeclaredConstructor(parameterTypes);
+      return true;
+    } catch (NoSuchMethodException e) {
+      return false;
+    }
+  }
+
+  private static <T> Serializer<T> tryCreateSerializer(
+      TypeResolver typeResolver,
+      Class<?> type,
+      Class<? extends Serializer> serializerClass,
+      MethodHandles.Lookup lookup,
+      boolean checked)
+      throws Throwable {
+    try {
       Config config = typeResolver.getConfig();
       try {
         MethodHandle ctr = lookup.findConstructor(serializerClass, SIG1);
@@ -281,6 +329,11 @@ public class Serializers {
         return (Serializer<T>) ctr.invoke(typeResolver, type);
       } catch (NoSuchMethodException e) {
         ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
       }
       try {
         MethodHandle ctr = lookup.findConstructor(serializerClass, SIG2);
@@ -288,6 +341,11 @@ public class Serializers {
         return (Serializer<T>) ctr.invoke(typeResolver);
       } catch (NoSuchMethodException e) {
         ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
       }
       try {
         MethodHandle ctr = lookup.findConstructor(serializerClass, SIG3);
@@ -295,6 +353,11 @@ public class Serializers {
         return (Serializer<T>) ctr.invoke(config, type);
       } catch (NoSuchMethodException e) {
         ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
       }
       try {
         MethodHandle ctr = lookup.findConstructor(serializerClass, SIG4);
@@ -302,6 +365,11 @@ public class Serializers {
         return (Serializer<T>) ctr.invoke(config);
       } catch (NoSuchMethodException e) {
         ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
       }
       try {
         MethodHandle ctr = lookup.findConstructor(serializerClass, SIG5);
@@ -309,13 +377,38 @@ public class Serializers {
         return (Serializer<T>) ctr.invoke(type);
       } catch (NoSuchMethodException e) {
         ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
       }
-      MethodHandle ctr = ReflectionUtils.getCtrHandle(serializerClass);
+      try {
+        MethodHandle ctr = lookup.findConstructor(serializerClass, SIG6);
+        CTR_MAP.put(serializerClass, Tuple2.of(SIG6, ctr));
+        return (Serializer<T>) ctr.invoke();
+      } catch (NoSuchMethodException e) {
+        ExceptionUtils.ignore(e);
+      } catch (IllegalAccessException e) {
+        if (!checked) {
+          return null;
+        }
+        throw e;
+      }
+      if (!checked) {
+        return null;
+      }
+      MethodHandle ctr = ReflectionUtils.getCtrHandle(serializerClass, true);
+      if (ctr == null) {
+        return null;
+      }
       CTR_MAP.put(serializerClass, Tuple2.of(SIG6, ctr));
       return (Serializer<T>) ctr.invoke();
-    } catch (Throwable t) {
-      ExceptionUtils.throwException(t);
-      throw new IllegalStateException("unreachable");
+    } catch (IllegalAccessException e) {
+      if (!checked) {
+        return null;
+      }
+      throw e;
     }
   }
 
@@ -404,7 +497,7 @@ public class Serializers {
   private static final Function GET_VALUE;
 
   static {
-    if (AndroidSupport.IS_ANDROID) {
+    if (!MemoryUtils.JDK_LANG_FIELD_ACCESS) {
       GET_VALUE = null;
       GET_CODER = null;
     } else {
@@ -437,7 +530,7 @@ public class Serializers {
         stringSerializer.writeString(buffer, value.toString());
         return;
       }
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_LANG_FIELD_ACCESS) {
         stringSerializer.writeString(buffer, value.toString());
         return;
       }
@@ -456,7 +549,7 @@ public class Serializers {
         buffer.writeBytes(v, 0, bytesLen);
       } else {
         char[] v = (char[]) GET_VALUE.apply(value);
-        if (StringUtils.isLatin(v)) {
+        if (StringEncodingUtils.isLatin(v)) {
           stringSerializer.writeCharsLatin1(buffer, v, value.length());
         } else {
           stringSerializer.writeCharsUTF16(buffer, v, value.length());

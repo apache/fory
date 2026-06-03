@@ -57,7 +57,7 @@ public class ExternalizableSerializer<T extends Externalizable>
 
   @Override
   public T read(ReadContext readContext) {
-    T t = objectCreator.newInstance();
+    T t = objectInstantiator.newInstance();
     readContext.reference(t);
     objectInput.setReadContext(readContext);
     try {

@@ -53,6 +53,4 @@ module org.apache.fory.core {
   exports org.apache.fory.util;
   exports org.apache.fory.util.function;
   exports org.apache.fory.util.record;
-  exports org.apache.fory.util.unsafe to
-      org.apache.fory.format;
 }

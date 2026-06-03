@@ -19,7 +19,10 @@
 
 package org.apache.fory.serializer.kotlin
 
+import java.lang.reflect.Array
+import java.lang.reflect.Modifier
 import java.lang.reflect.Type
+import java.util.IdentityHashMap
 import kotlin.reflect.KParameter
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.primaryConstructor
@@ -28,7 +31,7 @@ import org.apache.fory.collection.ClassValueCache
 import org.apache.fory.logging.Logger
 import org.apache.fory.logging.LoggerFactory
 import org.apache.fory.platform.AndroidSupport
-import org.apache.fory.platform.UnsafeOps
+import org.apache.fory.reflect.ObjectInstantiators
 import org.apache.fory.util.DefaultValueUtils
 
 /**
@@ -68,7 +71,7 @@ internal class KotlinDefaultValueSupport : DefaultValueUtils.DefaultValueSupport
       // Provide default values for all required (non-optional) parameters
       for (parameter in parameters) {
         if (!parameter.isOptional) {
-          val defaultValue = getDefaultValueForType(parameter.type.javaType)
+          val defaultValue = getDefaultValueForType(parameter.type.javaType, IdentityHashMap())
           if (defaultValue != null) {
             argsMap[parameter] = defaultValue
           } else {
@@ -87,7 +90,7 @@ internal class KotlinDefaultValueSupport : DefaultValueUtils.DefaultValueSupport
           val property = kClass.memberProperties.find { it.name == parameter.name }
           property?.let { prop ->
             @Suppress("UNCHECKED_CAST")
-            val value = (prop as kotlin.reflect.KProperty1<Any, *>).get(instance as Any)
+            val value = (prop as kotlin.reflect.KProperty1<Any, *>).get(instance)
             if (value != null) {
               defaultValues[parameter.name!!] = value
             }
@@ -114,7 +117,7 @@ internal class KotlinDefaultValueSupport : DefaultValueUtils.DefaultValueSupport
     return cls.kotlin.isData
   }
 
-  private fun getDefaultValueForType(type: Type): Any? {
+  private fun getDefaultValueForType(type: Type, seen: IdentityHashMap<Class<*>, Boolean>): Any? {
     val clazz =
       when (type) {
         is Class<*> -> type
@@ -140,7 +143,59 @@ internal class KotlinDefaultValueSupport : DefaultValueUtils.DefaultValueSupport
       Char::class.java,
       Char::class.javaPrimitiveType -> '\u0000'
       String::class.java -> ""
-      else -> if (AndroidSupport.IS_ANDROID) null else UnsafeOps.newInstance(clazz)
+      else -> getDefaultValueForClass(clazz, seen)
     }
+  }
+
+  private fun getDefaultValueForClass(
+    clazz: Class<*>,
+    seen: IdentityHashMap<Class<*>, Boolean>
+  ): Any? {
+    if (clazz.isArray) {
+      return Array.newInstance(clazz.componentType, 0)
+    }
+    if (clazz.isEnum) {
+      return clazz.enumConstants?.firstOrNull()
+    }
+    if (List::class.java.isAssignableFrom(clazz)) {
+      return emptyList<Any>()
+    }
+    if (Set::class.java.isAssignableFrom(clazz)) {
+      return emptySet<Any>()
+    }
+    if (Map::class.java.isAssignableFrom(clazz)) {
+      return emptyMap<Any, Any>()
+    }
+    if (clazz.isInterface || Modifier.isAbstract(clazz.modifiers) || seen.containsKey(clazz)) {
+      return null
+    }
+    seen[clazz] = true
+    try {
+      if (!AndroidSupport.IS_ANDROID) {
+        return newDefaultInstance(clazz)
+      }
+      return newPublicDefaultInstance(clazz, seen)
+    } finally {
+      seen.remove(clazz)
+    }
+  }
+
+  private fun newDefaultInstance(clazz: Class<*>): Any? {
+    return ObjectInstantiators.getObjectInstantiator(clazz).newInstance()
+  }
+
+  private fun newPublicDefaultInstance(
+    clazz: Class<*>,
+    seen: IdentityHashMap<Class<*>, Boolean>
+  ): Any? {
+    val constructor =
+      clazz.constructors.minWithOrNull(
+        compareBy<java.lang.reflect.Constructor<*>> { it.parameterCount }
+      ) ?: return null
+    val args =
+      constructor.genericParameterTypes.map { parameterType ->
+        getDefaultValueForType(parameterType, seen) ?: return null
+      }
+    return constructor.newInstance(*args.toTypedArray())
   }
 }

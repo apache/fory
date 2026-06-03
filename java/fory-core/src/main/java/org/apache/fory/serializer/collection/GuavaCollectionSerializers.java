@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer.collection;
 
+import com.google.common.collect.HashBasedTable;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -26,16 +27,23 @@ import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
+import com.google.common.collect.Table;
+import com.google.common.primitives.ImmutableIntArray;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.Serializer;
 
 /** Serializers for common guava types. */
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -44,9 +52,16 @@ public class GuavaCollectionSerializers {
   private static final String IMMUTABLE_BI_MAP_CLASS_NAME = PKG + ".ImmutableBiMap";
   private static final String IMMUTABLE_LIST_CLASS_NAME = PKG + ".ImmutableList";
   private static final String IMMUTABLE_MAP_CLASS_NAME = PKG + ".ImmutableMap";
+  private static final String IMMUTABLE_MAP_FORM_CLASS_NAME =
+      IMMUTABLE_MAP_CLASS_NAME + "$SerializedForm";
+  private static final String IMMUTABLE_BI_MAP_FORM_CLASS_NAME =
+      IMMUTABLE_BI_MAP_CLASS_NAME + "$SerializedForm";
   private static final String IMMUTABLE_SET_CLASS_NAME = PKG + ".ImmutableSet";
   private static final String IMMUTABLE_SORTED_MAP_CLASS_NAME = PKG + ".ImmutableSortedMap";
   private static final String IMMUTABLE_SORTED_SET_CLASS_NAME = PKG + ".ImmutableSortedSet";
+  private static final String HASH_BASED_TABLE_CLASS_NAME = PKG + ".HashBasedTable";
+  private static final String IMMUTABLE_INT_ARRAY_CLASS_NAME =
+      "com.google.common.primitives.ImmutableIntArray";
   private static final int NUM_RESERVED_TYPE_IDS = 13;
   private static final boolean GUAVA_AVAILABLE =
       isClassAvailable(IMMUTABLE_BI_MAP_CLASS_NAME)
@@ -203,7 +218,7 @@ public class GuavaCollectionSerializers {
 
     @Override
     public T copy(CopyContext copyContext, T originCollection) {
-      Comparator comparator = copyContext.copyObject(originCollection.comparator());
+      Comparator comparator = ComparatorCopy.copy(copyContext, originCollection.comparator());
       Object[] elements = new Object[originCollection.size()];
       copyElements(copyContext, originCollection, elements);
       return (T) new ImmutableSortedSet.Builder<>(comparator).add(elements).build();
@@ -353,6 +368,187 @@ public class GuavaCollectionSerializers {
     }
   }
 
+  public abstract static class GuavaMapFormSerializer extends Serializer {
+    private final Constructor<?> constructor;
+    private final Method readResolveMethod;
+    private final boolean biMap;
+
+    public GuavaMapFormSerializer(TypeResolver typeResolver, Class<?> cls, boolean biMap) {
+      super(typeResolver.getConfig(), cls);
+      this.biMap = biMap;
+      try {
+        Class<?> mapClass = biMap ? ImmutableBiMap.class : ImmutableMap.class;
+        constructor = cls.getDeclaredConstructor(mapClass);
+        constructor.setAccessible(true);
+        readResolveMethod = findReadResolve(cls);
+        readResolveMethod.setAccessible(true);
+      } catch (ReflectiveOperationException e) {
+        throw new ForyException(
+            "Failed to initialize Guava serialized-form serializer for " + cls, e);
+      }
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Object value) {
+      Map<?, ?> map = readFormMap(value);
+      MemoryBuffer buffer = writeContext.getBuffer();
+      buffer.writeVarUInt32Small7(map.size());
+      for (Entry<?, ?> entry : map.entrySet()) {
+        writeContext.writeRef(entry.getKey());
+        writeContext.writeRef(entry.getValue());
+      }
+    }
+
+    @Override
+    public Object read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      int size = buffer.readVarUInt32Small7();
+      ImmutableMap.Builder builder =
+          biMap ? newImmutableBiMapBuilder(size) : newImmutableMapBuilder(size);
+      for (int i = 0; i < size; i++) {
+        builder.put(readContext.readRef(), readContext.readRef());
+      }
+      return builder.build();
+    }
+
+    @Override
+    public Object copy(CopyContext copyContext, Object value) {
+      Map<?, ?> map = readFormMap(value);
+      ImmutableMap.Builder builder =
+          biMap ? newImmutableBiMapBuilder(map.size()) : newImmutableMapBuilder(map.size());
+      for (Entry<?, ?> entry : map.entrySet()) {
+        Object key = entry.getKey();
+        Object copyKey = key == null ? null : copyContext.copyObject(key);
+        Object itemValue = entry.getValue();
+        Object copyValue = itemValue == null ? null : copyContext.copyObject(itemValue);
+        builder.put(copyKey, copyValue);
+      }
+      return newForm(builder.build());
+    }
+
+    private Map<?, ?> readFormMap(Object value) {
+      try {
+        return (Map<?, ?>) readResolveMethod.invoke(value);
+      } catch (ReflectiveOperationException e) {
+        throw new ForyException("Failed to resolve Guava serialized form " + type, e);
+      }
+    }
+
+    private Object newForm(Map<?, ?> map) {
+      try {
+        Object guavaMap = biMap ? ImmutableBiMap.copyOf(map) : ImmutableMap.copyOf(map);
+        return constructor.newInstance(guavaMap);
+      } catch (ReflectiveOperationException e) {
+        throw new ForyException("Failed to create Guava serialized form " + type, e);
+      }
+    }
+
+    private static Method findReadResolve(Class<?> cls) throws NoSuchMethodException {
+      Class<?> current = cls;
+      while (current != null) {
+        try {
+          return current.getDeclaredMethod("readResolve");
+        } catch (NoSuchMethodException e) {
+          current = current.getSuperclass();
+        }
+      }
+      throw new NoSuchMethodException(cls.getName() + ".readResolve()");
+    }
+  }
+
+  public static final class ImmutableMapFormSerializer extends GuavaMapFormSerializer {
+    public ImmutableMapFormSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls, false);
+    }
+  }
+
+  public static final class ImmutableBiMapFormSerializer extends GuavaMapFormSerializer {
+    public ImmutableBiMapFormSerializer(TypeResolver typeResolver, Class<?> cls) {
+      super(typeResolver, cls, true);
+    }
+  }
+
+  public static final class ImmutableIntArraySerializer extends Serializer<ImmutableIntArray> {
+
+    public ImmutableIntArraySerializer(TypeResolver typeResolver, Class<ImmutableIntArray> cls) {
+      super(typeResolver.getConfig(), cls);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, ImmutableIntArray value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
+      int length = value.length();
+      buffer.writeVarUInt32Small7(length);
+      for (int i = 0; i < length; i++) {
+        buffer.writeVarInt32(value.get(i));
+      }
+    }
+
+    @Override
+    public ImmutableIntArray read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      int length = buffer.readVarUInt32Small7();
+      int[] values = new int[length];
+      for (int i = 0; i < length; i++) {
+        values[i] = buffer.readVarInt32();
+      }
+      return ImmutableIntArray.copyOf(values);
+    }
+
+    @Override
+    public ImmutableIntArray copy(CopyContext copyContext, ImmutableIntArray value) {
+      return value;
+    }
+  }
+
+  public static final class HashBasedTableSerializer extends Serializer<HashBasedTable> {
+
+    public HashBasedTableSerializer(TypeResolver typeResolver, Class<HashBasedTable> cls) {
+      super(typeResolver.getConfig(), cls);
+      typeResolver.setSerializer(cls, this);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, HashBasedTable value) {
+      MemoryBuffer buffer = writeContext.getBuffer();
+      buffer.writeVarUInt32Small7(value.size());
+      for (Table.Cell<?, ?, ?> cell : ((HashBasedTable<?, ?, ?>) value).cellSet()) {
+        writeContext.writeRef(cell.getRowKey());
+        writeContext.writeRef(cell.getColumnKey());
+        writeContext.writeRef(cell.getValue());
+      }
+    }
+
+    @Override
+    public HashBasedTable read(ReadContext readContext) {
+      MemoryBuffer buffer = readContext.getBuffer();
+      int size = buffer.readVarUInt32Small7();
+      HashBasedTable table = HashBasedTable.create();
+      if (needToWriteRef) {
+        readContext.setReadRef(readContext.lastPreservedRefId(), table);
+      }
+      for (int i = 0; i < size; i++) {
+        table.put(readContext.readRef(), readContext.readRef(), readContext.readRef());
+      }
+      return table;
+    }
+
+    @Override
+    public HashBasedTable copy(CopyContext copyContext, HashBasedTable value) {
+      HashBasedTable table = HashBasedTable.create();
+      if (needToCopyRef) {
+        copyContext.reference(value, table);
+      }
+      for (Table.Cell<?, ?, ?> cell : ((HashBasedTable<?, ?, ?>) value).cellSet()) {
+        table.put(
+            copyContext.copyObject(cell.getRowKey()),
+            copyContext.copyObject(cell.getColumnKey()),
+            copyContext.copyObject(cell.getValue()));
+      }
+      return table;
+    }
+  }
+
   public static final class ImmutableSortedMapSerializer<T extends ImmutableSortedMap>
       extends MapSerializer<T> {
 
@@ -380,7 +576,7 @@ public class GuavaCollectionSerializers {
 
     @Override
     public T copy(CopyContext copyContext, T originMap) {
-      Comparator comparator = copyContext.copyObject(originMap.comparator());
+      Comparator comparator = ComparatorCopy.copy(copyContext, originMap.comparator());
       ImmutableSortedMap.Builder builder = new ImmutableSortedMap.Builder(comparator);
       copyEntries(typeResolver, mapTypeCache(), copyContext, originMap, builder::put);
       return (T) builder.build();
@@ -403,13 +599,8 @@ public class GuavaCollectionSerializers {
   // TODO guava serializers
   // guava/ArrayListMultimapSerializer - serializer for guava-libraries' ArrayListMultimap
   // guava/ArrayTableSerializer - serializer for guava-libraries' ArrayTable
-  // guava/HashBasedTableSerializer - serializer for guava-libraries' HashBasedTable
   // guava/HashMultimapSerializer -- serializer for guava-libraries' HashMultimap
-  // guava/ImmutableListSerializer - serializer for guava-libraries' ImmutableList
-  // guava/ImmutableSetSerializer - serializer for guava-libraries' ImmutableSet
-  // guava/ImmutableMapSerializer - serializer for guava-libraries' ImmutableMap
   // guava/ImmutableMultimapSerializer - serializer for guava-libraries' ImmutableMultimap
-  // guava/ImmutableSortedSetSerializer - serializer for guava-libraries' ImmutableSortedSet
   // guava/ImmutableTableSerializer - serializer for guava-libraries' ImmutableTable
   // guava/LinkedHashMultimapSerializer - serializer for guava-libraries' LinkedHashMultimap
   // guava/LinkedListMultimapSerializer - serializer for guava-libraries' LinkedListMultimap
@@ -488,6 +679,21 @@ public class GuavaCollectionSerializers {
 
       cls = GuavaEmptySortedMap.class;
       resolver.registerInternalSerializer(cls, new ImmutableSortedMapSerializer(resolver, cls));
+    }
+  }
+
+  public static Class<? extends Serializer> getSerializerClass(Class<?> cls) {
+    switch (cls.getName()) {
+      case IMMUTABLE_INT_ARRAY_CLASS_NAME:
+        return ImmutableIntArraySerializer.class;
+      case IMMUTABLE_MAP_FORM_CLASS_NAME:
+        return ImmutableMapFormSerializer.class;
+      case IMMUTABLE_BI_MAP_FORM_CLASS_NAME:
+        return ImmutableBiMapFormSerializer.class;
+      case HASH_BASED_TABLE_CLASS_NAME:
+        return HashBasedTableSerializer.class;
+      default:
+        return null;
     }
   }
 

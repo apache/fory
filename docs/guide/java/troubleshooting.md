@@ -148,6 +148,23 @@ Fory fory = Fory.builder()
 fory.registerSerializer(MyClass.class, new MyClassSerializer(fory.getTypeResolver()));
 ```
 
+### JDK25+ access errors
+
+On JDK25+, if an error names `java.base/java.lang.invoke`, open `java.lang.invoke` to Fory. Use
+`ALL-UNNAMED` when Fory is on the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
+```
+
+Fory does not require application package opens for private-field access.
+
 ## Performance Issues
 
 ### Slow Initial Serialization

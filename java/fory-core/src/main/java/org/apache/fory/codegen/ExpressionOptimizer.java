@@ -68,13 +68,12 @@ public class ExpressionOptimizer {
       Expression groupExpressions,
       String methodPrefix,
       boolean inlineInvoke) {
+    // Janino lowers private instance helpers to static bridge methods with the original binary
+    // class as receiver. Hidden classes have a different runtime identity, so JDK25 hidden
+    // generated serializers must keep split helpers non-private.
+    String modifier = ctx.hasSamePackageAccess() ? "final" : "private";
     return invokeGenerated(
-        ctx,
-        new LinkedHashSet<>(cutPoint),
-        groupExpressions,
-        "private",
-        methodPrefix,
-        inlineInvoke);
+        ctx, new LinkedHashSet<>(cutPoint), groupExpressions, modifier, methodPrefix, inlineInvoke);
   }
 
   /**
@@ -133,6 +132,7 @@ public class ExpressionOptimizer {
     // instance field name.
     CodegenContext codegenContext =
         new CodegenContext(ctx.getPackage(), ctx.getValNames(), ctx.getImports());
+    codegenContext.setSamePackageAccess(ctx.hasSamePackageAccess());
     for (Reference reference : cutExprMap.values()) {
       Preconditions.checkArgument(codegenContext.containName(reference.name()));
     }

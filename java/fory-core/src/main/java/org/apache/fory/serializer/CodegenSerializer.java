@@ -25,15 +25,23 @@ import java.lang.reflect.Modifier;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.builder.Generated;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.resolver.TypeResolver;
 
 /** Util for JIT Serialization. */
 public final class CodegenSerializer {
 
   public static boolean supportCodegenForJavaSerialization(Class<?> cls) {
+    if (cls.getClassLoader() == null
+        && (!_JDKAccess.isExported(cls) || !CodeGenerator.sourcePublicAccessible(cls))) {
+      // Source generated into the unnamed module cannot legally name concealed or package-private
+      // JDK implementation classes. Field-access serializers own those cases.
+      return false;
+    }
     // bean class can be static nested class, but can't be a non-static inner class.
     // Check modifiers first to avoid loading the enclosing class unnecessarily —
     // in classloader-isolated environments (e.g. OSGi, module systems) the enclosing

@@ -457,6 +457,15 @@ public class StreamTest extends ForyTestBase {
       Assert.assertEquals((long[]) fory.deserialize(channel), longs);
       assertTrue(channel.readLongsCalled);
     }
+
+    ByteBuffer limitedDirectBuffer = ByteBuffer.allocateDirect(serialized.length + 8);
+    limitedDirectBuffer.limit(5);
+    try (TrackingForyReadableChannel channel =
+        new TrackingForyReadableChannel(
+            new ChunkedReadableByteChannel(serialized, 1), limitedDirectBuffer)) {
+      Assert.assertEquals((long[]) fory.deserialize(channel), longs);
+      assertTrue(channel.readLongsCalled);
+    }
   }
 
   @Test

@@ -64,12 +64,8 @@ public final class AndroidForyRuntimeScenarios {
         "async compilation must be disabled on Android");
 
     MemoryBuffer buffer = MemoryUtils.buffer(16);
-    try {
-      buffer.copyToUnsafe(0, new byte[16], 0, 1);
-      fail("copyToUnsafe should fail on Android");
-    } catch (UnsupportedOperationException expected) {
-      check(expected.getMessage().contains("Android"), expected.getMessage());
-    }
+    byte[] target = new byte[16];
+    buffer.copyToByteArray(0, target, 0, 1);
   }
 
   public static void structEnumCollectionAndMapRoundTrip() {

@@ -22,6 +22,7 @@ package org.apache.fory.kotlin.ksp
 import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.Modifier
 import org.testng.Assert.assertEquals
+import org.testng.Assert.assertFalse
 import org.testng.Assert.assertNull
 import org.testng.Assert.assertTrue
 import org.testng.annotations.Test
@@ -76,6 +77,560 @@ class ProcessorValidationTest {
   }
 
   @Test
+  fun constructorNamesArguments() {
+    val stringType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "String::class.java",
+        kotlinTypeName = "kotlin.String",
+        valueTypeName = "String",
+        typeName = "java.lang.String",
+        typeId = "Types.STRING",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+      )
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "User",
+            qualifiedTypeName = "example.User",
+            serializerName = "User_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields =
+              listOf(
+                KotlinSourceField(
+                  id = 0,
+                  name = "name",
+                  type = stringType,
+                  hasForyField = true,
+                  foryFieldId = 1,
+                  trackingRef = false,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "String",
+                  constructorParameterName = "userName",
+                )
+              ),
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+
+    assertTrue(source.contains("writeContext.writeString(value.name)"))
+    assertTrue(source.contains("this.constructorFieldIds = intArrayOf(0)"))
+    assertTrue(source.contains("return User(userName = (fieldValues[0] as String))"))
+    assertTrue(!source.contains("return User(name = field0!!)"))
+    assertTrue(source.contains("fieldValues[0] = value.name"))
+    assertFalse(source.contains("NATURAL_ORDER_COMPARATOR"))
+    assertFalse(source.contains("requireXlangNaturalOrdering"))
+    assertFalse(source.contains("trackConstructorRefRead(readContext, buffer)"))
+  }
+
+  @Test
+  fun tracksCtorRefs() {
+    val childType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "Child::class.java",
+        kotlinTypeName = "example.Child",
+        valueTypeName = "Child",
+        typeName = "example.Child",
+        typeId = null,
+        nullable = false,
+        trackingRef = true,
+        primitive = false,
+        unsigned = false,
+      )
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "Node",
+            qualifiedTypeName = "example.Node",
+            serializerName = "Node_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields =
+              listOf(
+                KotlinSourceField(
+                  id = 0,
+                  name = "child",
+                  type = childType,
+                  hasForyField = true,
+                  foryFieldId = 1,
+                  trackingRef = true,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "Child",
+                  constructorParameterName = "child",
+                )
+              ),
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+
+    assertTrue(source.contains("private fun readSchemaConstructorField"))
+    assertTrue(source.contains("private fun readCompatibleConstructorField"))
+    assertTrue(source.contains("trackConstructorRefRead(readContext, buffer)"))
+  }
+
+  @Test
+  fun copyUsesDirectScalarValues() {
+    fun scalar(name: String, typeName: String, typeId: String) =
+      KotlinSourceTypeNode(
+        rawClassExpression = "$typeName::class.java",
+        kotlinTypeName = typeName,
+        valueTypeName = name,
+        typeName = typeName,
+        typeId = typeId,
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+      )
+
+    val fields =
+      listOf(
+        KotlinSourceField(
+          id = 0,
+          name = "date",
+          type = scalar("java.time.LocalDate", "java.time.LocalDate", "Types.DATE"),
+          hasForyField = true,
+          foryFieldId = 1,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "java.time.LocalDate",
+        ),
+        KotlinSourceField(
+          id = 1,
+          name = "instant",
+          type = scalar("java.time.Instant", "java.time.Instant", "Types.TIMESTAMP"),
+          hasForyField = true,
+          foryFieldId = 2,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "java.time.Instant",
+        ),
+        KotlinSourceField(
+          id = 2,
+          name = "duration",
+          type = scalar("kotlin.time.Duration", "java.time.Duration", "Types.DURATION"),
+          hasForyField = true,
+          foryFieldId = 3,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "kotlin.time.Duration",
+        ),
+        KotlinSourceField(
+          id = 3,
+          name = "decimal",
+          type = scalar("java.math.BigDecimal", "java.math.BigDecimal", "Types.DECIMAL"),
+          hasForyField = true,
+          foryFieldId = 4,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "java.math.BigDecimal",
+        ),
+        KotlinSourceField(
+          id = 4,
+          name = "float16",
+          type =
+            scalar("org.apache.fory.type.Float16", "org.apache.fory.type.Float16", "Types.FLOAT16"),
+          hasForyField = true,
+          foryFieldId = 5,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "org.apache.fory.type.Float16",
+        ),
+        KotlinSourceField(
+          id = 5,
+          name = "bfloat16",
+          type =
+            scalar(
+              "org.apache.fory.type.BFloat16",
+              "org.apache.fory.type.BFloat16",
+              "Types.BFLOAT16",
+            ),
+          hasForyField = true,
+          foryFieldId = 6,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "org.apache.fory.type.BFloat16",
+        ),
+        KotlinSourceField(
+          id = 6,
+          name = "child",
+          type =
+            KotlinSourceTypeNode(
+              rawClassExpression = "example.Child::class.java",
+              kotlinTypeName = "example.Child",
+              valueTypeName = "Child",
+              typeName = "example.Child",
+              typeId = null,
+              nullable = false,
+              trackingRef = false,
+              primitive = false,
+              unsigned = false,
+            ),
+          hasForyField = true,
+          foryFieldId = 7,
+          trackingRef = false,
+          dynamic = "AUTO",
+          arrayType = false,
+          hasDefault = false,
+          nullable = false,
+          propertyTypeName = "Child",
+        ),
+      )
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "Scalars",
+            qualifiedTypeName = "example.Scalars",
+            serializerName = "Scalars_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields = fields,
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+
+    for (field in fields.take(6)) {
+      assertTrue(source.contains("fieldValues[${field.id}] = value.${field.name}"))
+    }
+    assertTrue(source.contains("fieldValues[6] = copyFieldValue(copyContext, value.child"))
+  }
+
+  @Test
+  fun constructorFieldsAdaptCollections() {
+    val stringType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "String::class.java",
+        kotlinTypeName = "kotlin.String",
+        valueTypeName = "String",
+        typeName = "java.lang.String",
+        typeId = "Types.STRING",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+      )
+    val intType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "Int::class.javaPrimitiveType!!",
+        kotlinTypeName = "kotlin.Int",
+        valueTypeName = "Int",
+        typeName = "int32",
+        typeId = "Types.VARINT32",
+        nullable = false,
+        trackingRef = false,
+        primitive = true,
+        unsigned = false,
+      )
+    val intArrayType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "IntArray::class.java",
+        kotlinTypeName = "kotlin.IntArray",
+        valueTypeName = "IntArray",
+        typeName = "int[]",
+        typeId = "Types.INT32_ARRAY",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        componentType = intType,
+      )
+    val setType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "java.util.Set::class.java",
+        kotlinTypeName = "java.util.TreeSet<kotlin.String>",
+        valueTypeName = "kotlin.collections.Set<String>",
+        typeName = "java.util.Set",
+        typeId = "Types.SET",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        collectionFactory = CollectionFactory.TREE_SET,
+        typeArguments = listOf(stringType),
+      )
+    val listType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "java.util.List::class.java",
+        kotlinTypeName = "java.util.List<java.util.TreeSet<kotlin.String>>",
+        valueTypeName = "kotlin.collections.List<java.util.TreeSet<String>>",
+        typeName = "java.util.List",
+        typeId = "Types.LIST",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        typeArguments = listOf(setType),
+      )
+    val arrayListType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "java.util.List::class.java",
+        kotlinTypeName = "java.util.List<kotlin.IntArray>",
+        valueTypeName = "kotlin.collections.List<IntArray>",
+        typeName = "java.util.List",
+        typeId = "Types.LIST",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        typeArguments = listOf(intArrayType),
+      )
+    val mapType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "java.util.Map::class.java",
+        kotlinTypeName = "java.util.TreeMap<kotlin.String, kotlin.Int>",
+        valueTypeName = "kotlin.collections.Map<String, Int>",
+        typeName = "java.util.Map",
+        typeId = "Types.MAP",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        collectionFactory = CollectionFactory.TREE_MAP,
+        typeArguments = listOf(stringType, intType),
+      )
+    val nestedMapType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "java.util.Map::class.java",
+        kotlinTypeName = "java.util.TreeMap<kotlin.String, java.util.TreeSet<kotlin.String>>",
+        valueTypeName = "java.util.TreeMap<String, java.util.TreeSet<String>>",
+        typeName = "java.util.Map",
+        typeId = "Types.MAP",
+        nullable = false,
+        trackingRef = false,
+        primitive = false,
+        unsigned = false,
+        collectionFactory = CollectionFactory.TREE_MAP,
+        typeArguments = listOf(stringType, setType),
+      )
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "User",
+            qualifiedTypeName = "example.User",
+            serializerName = "User_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields =
+              listOf(
+                KotlinSourceField(
+                  id = 0,
+                  name = "counts",
+                  type = mapType,
+                  hasForyField = true,
+                  foryFieldId = 1,
+                  trackingRef = true,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "java.util.TreeMap<String, Int>",
+                  constructorParameterName = "counts",
+                ),
+                KotlinSourceField(
+                  id = 1,
+                  name = "names",
+                  type = listType,
+                  hasForyField = true,
+                  foryFieldId = 2,
+                  trackingRef = false,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "java.util.List<java.util.TreeSet<String>>",
+                  constructorParameterName = "names",
+                ),
+                KotlinSourceField(
+                  id = 2,
+                  name = "arrays",
+                  type = arrayListType,
+                  hasForyField = true,
+                  foryFieldId = 3,
+                  trackingRef = false,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "java.util.List<IntArray>",
+                  constructorParameterName = "arrays",
+                ),
+                KotlinSourceField(
+                  id = 3,
+                  name = "nestedCounts",
+                  type = nestedMapType,
+                  hasForyField = true,
+                  foryFieldId = 4,
+                  trackingRef = false,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = false,
+                  nullable = false,
+                  propertyTypeName = "java.util.TreeMap<String, java.util.TreeSet<String>>",
+                  constructorParameterName = "nestedCounts",
+                )
+              ),
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+
+    assertTrue(
+      source.contains(
+        "return User(counts = (fieldValues[0] as java.util.TreeMap<String, Int>), names = (fieldValues[1] as java.util.List<java.util.TreeSet<String>>), arrays = (fieldValues[2] as java.util.List<IntArray>), nestedCounts = (fieldValues[3] as java.util.TreeMap<String, java.util.TreeSet<String>>))"
+      )
+    )
+    assertTrue(
+      source.contains("KotlinCollectionAdapters.toTreeSet((readElement0 as Collection<*>))")
+    )
+    assertTrue(
+      source.contains(
+        "KotlinCollectionAdapters.toTreeMap((readFieldValue(readContext, fieldInfo) as kotlin.collections.Map<String, Int>))"
+      )
+    )
+    assertTrue(source.contains("0 -> {\n        trackConstructorRefRead(readContext, buffer)"))
+    assertTrue(
+      source.contains(
+        "1 -> run { val readSource0 = ((readFieldValue(readContext, fieldInfo) as kotlin.collections.List<java.util.TreeSet<String>>) as Collection<*>);"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "KotlinCollectionAdapters.toTreeMap((readCompatibleFieldValue(readContext, remoteField, localField) as kotlin.collections.Map<String, Int>))"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "1 -> run { val readSource0 = ((readCompatibleFieldValue(readContext, remoteField, localField) as kotlin.collections.List<java.util.TreeSet<String>>) as Collection<*>);"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "3 -> run { val readSource0 = ((readCompatibleFieldValue(readContext, remoteField, localField) as java.util.TreeMap<String, java.util.TreeSet<String>>) as Map<*, *>); val readTarget0 = java.util.TreeMap<Any?, Any?>();"
+      )
+    )
+    assertTrue(
+      source.contains("KotlinCollectionAdapters.toTreeSet((readEntry0.value as Collection<*>))")
+    )
+    val comparatorGuardIndex = source.indexOf("requireXlangNaturalOrdering(\"example.User.counts\"")
+    assertTrue(comparatorGuardIndex >= 0)
+    assertTrue(comparatorGuardIndex < source.indexOf("val buffer = writeContext.buffer"))
+    assertTrue(source.contains("requireXlangNaturalOrdering(\"example.User.names element\""))
+    assertTrue(source.contains("requireXlangNaturalOrdering(\"example.User.nestedCounts value\""))
+    assertTrue(source.contains("private val NATURAL_ORDER_COMPARATOR"))
+    assertTrue(source.contains("if (guard1List0 is java.util.RandomAccess)"))
+    assertTrue(source.contains("for (guard1Element0 in guard1List0)"))
+    assertTrue(
+      source.contains(
+        "fieldValues[0] = (copyContext.copyObject(value.counts) as kotlin.collections.Map<String, Int>)"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "fieldValues[1] = run { val copySource0 = value.names; val copyTarget0 = java.util.ArrayList<Any?>(copySource0.size); copyContext.reference<Any>(copySource0, copyTarget0); for (copyElement0 in copySource0) { copyTarget0.add((copyContext.copyObject(copyElement0) as kotlin.collections.Set<String>))"
+      )
+    )
+    assertTrue(
+      source.contains(
+        "fieldValues[3] = (copyContext.copyObject(value.nestedCounts) as java.util.TreeMap<String, java.util.TreeSet<String>>)"
+      )
+    )
+    assertTrue(source.contains("fieldValues[2] = run { val copySource0 = value.arrays;"))
+    assertTrue(source.contains("copyTarget0.add(copyElement0.copyOf())"))
+    assertFalse(source.contains("fieldValues[0] = KotlinCollectionAdapters.toTreeMap(run"))
+    assertFalse(source.contains("java.util.TreeMap<Any?, Any?>((copySource0.comparator()"))
+  }
+
+  @Test
+  fun defaultsUseGeneratedCompatibleRead() {
+    val stringType =
+      KotlinSourceTypeNode(
+        rawClassExpression = "String::class.java",
+        kotlinTypeName = "kotlin.String",
+        valueTypeName = "String",
+        typeName = "java.lang.String",
+        typeId = "Types.STRING",
+        nullable = false,
+        trackingRef = true,
+        primitive = false,
+        unsigned = false,
+      )
+    val source =
+      KotlinSerializerSourceWriter(
+          KotlinSourceStruct(
+            packageName = "example",
+            typeName = "User",
+            qualifiedTypeName = "example.User",
+            serializerName = "User_ForySerializer",
+            serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            fields =
+              listOf(
+                KotlinSourceField(
+                  id = 0,
+                  name = "name",
+                  type = stringType,
+                  hasForyField = true,
+                  foryFieldId = 1,
+                  trackingRef = true,
+                  dynamic = "AUTO",
+                  arrayType = false,
+                  hasDefault = true,
+                  nullable = false,
+                  propertyTypeName = "String",
+                  constructorParameterName = "name",
+                )
+              ),
+            originatingFiles = emptyList(),
+          )
+        )
+        .write()
+    val compatibleStart = source.indexOf("override fun readCompatible")
+    val copyStart = source.indexOf("override fun copy")
+    val compatibleSource = source.substring(compatibleStart, copyStart)
+
+    assertFalse(compatibleSource.contains("return readCompatibleConstructor(readContext)"))
+    assertTrue(compatibleSource.contains("return readCompatibleDefaultConstructor(readContext)"))
+    assertTrue(compatibleSource.contains("beginConstructorRef(readContext)"))
+    assertTrue(compatibleSource.contains("checkNoUnresolvedReadRef(readContext)"))
+    assertTrue(
+      compatibleSource.contains("trackConstructorRefRead(readContext, readContext.buffer)")
+    )
+    assertTrue(compatibleSource.contains("referenceConstructorRef(readContext, constructed)"))
+    assertTrue(compatibleSource.contains("endConstructorRef(readContext)"))
+    assertTrue(compatibleSource.contains("missingDefaultMask"))
+    assertTrue(compatibleSource.contains("val constructed = when (missingDefaultMask)"))
+  }
+
+  @Test
   fun tracksWidePresence() {
     val intType =
       KotlinSourceTypeNode(
@@ -97,6 +652,7 @@ class ProcessorValidationTest {
             qualifiedTypeName = "example.WideStruct",
             serializerName = "WideStruct_ForySerializer",
             serializerVisibility = KotlinSerializerVisibility.PUBLIC,
+            construction = KotlinStructConstruction.MUTABLE,
             fields =
               (0 until 70).map { id ->
                 KotlinSourceField(
@@ -358,6 +914,8 @@ class ProcessorValidationTest {
     assertTrue(source.contains("presentMask0 = presentMask0 or (1L shl 0)"))
     assertTrue(source.contains("Required Kotlin field example.Node.id is missing"))
     assertTrue(source.contains("copyContext.reference(value, copy)"))
+    assertFalse(source.contains("readCompatibleConstructor("))
+    assertFalse(source.contains("newConstructorObject("))
     assertTrue(!source.contains("return Node(parent ="))
   }
 

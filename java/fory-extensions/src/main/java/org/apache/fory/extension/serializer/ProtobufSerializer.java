@@ -35,7 +35,6 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Shareable;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class ProtobufSerializer extends Serializer<Message> implements Shareable {
@@ -46,7 +45,7 @@ public class ProtobufSerializer extends Serializer<Message> implements Shareable
         @Override
         protected MethodHandle[] computeValue(Class<?> type) {
           try {
-            MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(type);
+            MethodHandles.Lookup lookup = MethodHandles.publicLookup();
             MethodHandle parseFrom1 =
                 lookup.findStatic(
                     type, "parseFrom", MethodType.methodType(type, CodedInputStream.class));

@@ -140,6 +140,7 @@ public class CodegenContext {
   String pkg;
   LinkedHashSet<String> imports = new LinkedHashSet<>();
   String className;
+  private boolean samePackageAccess;
   String classModifiers = "public final";
   String[] superClasses;
   String[] interfaces;
@@ -353,6 +354,17 @@ public class CodegenContext {
 
   public String getPackage() {
     return pkg;
+  }
+
+  public void setSamePackageAccess(boolean samePackageAccess) {
+    if (this.samePackageAccess != samePackageAccess) {
+      sourcePublicAccessibleCache.clear();
+    }
+    this.samePackageAccess = samePackageAccess;
+  }
+
+  public boolean hasSamePackageAccess() {
+    return samePackageAccess;
   }
 
   public Set<String> getValNames() {
@@ -729,7 +741,12 @@ public class CodegenContext {
 
   /** Returns true if class is public accessible from source. */
   public boolean sourcePublicAccessible(Class<?> clz) {
-    return sourcePublicAccessibleCache.computeIfAbsent(clz, CodeGenerator::sourcePublicAccessible);
+    return sourcePublicAccessibleCache.computeIfAbsent(
+        clz,
+        c ->
+            samePackageAccess
+                ? CodeGenerator.sourceAccessibleFrom(c, pkg)
+                : CodeGenerator.sourcePublicAccessible(c));
   }
 
   /** Returns true if class is package level accessible from source. */

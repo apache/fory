@@ -21,13 +21,15 @@ package org.apache.fory.integration_tests;
 
 import static org.apache.fory.integration_tests.TestUtils.serDeCheck;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.test.bean.CollectionFields;
 import org.apache.fory.test.bean.MapFields;
 import org.testng.Assert;
@@ -93,10 +95,47 @@ public class ImmutableCollectionSerializersTest {
     serDeCheck(fory, collectionFields);
   }
 
+  @Test
+  public void testSetFromMapIdentityJdk25() {
+    if (JdkVersion.MAJOR_VERSION < 25) {
+      return;
+    }
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Set<String> set = Collections.newSetFromMap(new IdentityHashMap<>());
+    set.add(new String("a"));
+    set.add(new String("a"));
+    Assert.assertEquals(set.size(), 2);
+
+    Set<?> restored = (Set<?>) fory.deserialize(fory.serialize(set));
+    assertIdentitySet(restored);
+
+    Set<?> copied = fory.copy(set);
+    assertIdentitySet(copied);
+  }
+
+  private static void assertIdentitySet(Set<?> set) {
+    Assert.assertEquals(set.size(), 2);
+    Object first = null;
+    Object second = null;
+    for (Object value : set) {
+      if (first == null) {
+        first = value;
+      } else {
+        second = value;
+      }
+    }
+    Assert.assertEquals(first, "a");
+    Assert.assertEquals(second, "a");
+    Assert.assertNotSame(first, second);
+  }
+
   @Data
-  @AllArgsConstructor
   public static class Pojo {
     List<List<Object>> data;
+
+    public Pojo(List<List<Object>> data) {
+      this.data = data;
+    }
   }
 
   @DataProvider

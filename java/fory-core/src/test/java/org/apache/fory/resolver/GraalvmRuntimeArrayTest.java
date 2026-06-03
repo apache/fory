@@ -22,26 +22,23 @@ package org.apache.fory.resolver;
 import static org.testng.Assert.assertEquals;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.Fory;
+import org.apache.fory.TestUtils;
 import org.apache.fory.serializer.ArraySerializers;
 import org.testng.annotations.Test;
 
 public class GraalvmRuntimeArrayTest {
   @Test
   public void testGraalvmRuntimeFallsBackForUnregisteredArrayClass() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
     Process process =
         new ProcessBuilder(
-                javaBin,
-                "-Dorg.graalvm.nativeimage.imagecode=runtime",
-                "-cp",
-                System.getProperty("java.class.path"),
-                GraalvmRuntimeArrayMain.class.getName())
+                TestUtils.javaCommand(
+                    System.getProperty("java.class.path"),
+                    GraalvmRuntimeArrayMain.class,
+                    "-Dorg.graalvm.nativeimage.imagecode=runtime"))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());

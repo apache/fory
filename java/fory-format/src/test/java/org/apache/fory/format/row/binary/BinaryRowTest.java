@@ -31,7 +31,6 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.platform.UnsafeOps;
 import org.testng.annotations.Test;
 
 public class BinaryRowTest {
@@ -86,13 +85,14 @@ public class BinaryRowTest {
       offsetsArray[i] = i;
     }
 
-    byte[] bytes = new byte[numFields];
+    int headerInBytes = 64;
+    byte[] bytes = new byte[headerInBytes + 8 * numFields];
     int iterNums = 1000_000_000;
     // warm
     for (int i = 0; i < iterNums; i++) {
       for (int j = 0; j < numFields; j++) {
         int tmp = offsetsArray[j];
-        UnsafeOps.getByte(bytes, tmp);
+        byte ignored = bytes[tmp];
       }
     }
     // test access offset array
@@ -100,18 +100,17 @@ public class BinaryRowTest {
     for (int i = 0; i < iterNums; i++) {
       for (int j = 0; j < numFields; j++) {
         int tmp = offsetsArray[j];
-        UnsafeOps.getByte(bytes, tmp);
+        byte ignored = bytes[tmp];
       }
     }
     long duration = System.nanoTime() - startTime;
     LOG.info("Array access offset take " + duration + "ns, " + duration / 1000_000 + " ms\n");
 
-    int headerInBytes = 64;
     // warm
     for (int i = 0; i < iterNums; i++) {
       for (int j = 0; j < numFields; j++) {
         int tmp = headerInBytes + 8 * j;
-        UnsafeOps.getByte(bytes, tmp);
+        byte ignored = bytes[tmp];
       }
     }
     // test calc offset
@@ -119,7 +118,7 @@ public class BinaryRowTest {
     for (int i = 0; i < iterNums; i++) {
       for (int j = 0; j < numFields; j++) {
         int tmp = headerInBytes + 8 * j;
-        UnsafeOps.getByte(bytes, tmp);
+        byte ignored = bytes[tmp];
       }
     }
     duration = System.nanoTime() - startTime;

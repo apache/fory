@@ -19,9 +19,7 @@
 
 package org.apache.fory.serializer;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -37,6 +35,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.ToIntFunction;
 import org.apache.fory.Fory;
+import org.apache.fory.TestUtils;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryUtils;
@@ -54,16 +53,11 @@ import org.testng.annotations.Test;
 public class AndroidDynamicFeatureTest {
   @Test
   public void testAndroidDynamicFeaturePaths() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-    Process process =
-        new ProcessBuilder(
-                javaBin,
-                "-cp",
-                System.getProperty("java.class.path"),
-                AndroidDynamicFeatureProbe.class.getName())
-            .redirectErrorStream(true)
-            .start();
+    ProcessBuilder processBuilder =
+        new ProcessBuilder(TestUtils.javaCommand(AndroidDynamicFeatureProbe.class))
+            .redirectErrorStream(true);
+    processBuilder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = processBuilder.start();
     String output = readFully(process.getInputStream());
     Assert.assertEquals(process.waitFor(), 0, output);
   }
@@ -87,7 +81,7 @@ public class AndroidDynamicFeatureTest {
           LambdaSerializer.STUB_LAMBDA_CLASS == LambdaSerializer.ReplaceStub.class,
           "Android must not create a runtime lambda stub class");
       verifyReflectiveGetter();
-      verifyMemoryUtilsStreamWrapGuards();
+      verifyJdkInternalFieldAccessDisabled();
       verifyXlangUnion();
 
       verifyFory(false);
@@ -172,18 +166,10 @@ public class AndroidDynamicFeatureTest {
       checkEquals(fory.deserialize(outputStream.toByteArray()), value, "OutputStream round trip");
     }
 
-    private static void verifyMemoryUtilsStreamWrapGuards() {
-      expectUnsupportedAndroidWrap(
-          () -> MemoryUtils.wrap(new ByteArrayOutputStream(), MemoryUtils.buffer(8)),
-          "ByteArrayOutputStream direct wrapping");
-      expectUnsupportedAndroidWrap(
-          () -> MemoryUtils.wrap(MemoryUtils.buffer(8), new ByteArrayOutputStream()),
-          "ByteArrayOutputStream direct wrapping");
-      expectUnsupportedAndroidWrap(
-          () ->
-              MemoryUtils.wrap(
-                  new ByteArrayInputStream(new byte[] {1, 2, 3}), MemoryUtils.buffer(8)),
-          "ByteArrayInputStream direct wrapping");
+    private static void verifyJdkInternalFieldAccessDisabled() {
+      check(
+          !MemoryUtils.JDK_INTERNAL_FIELD_ACCESS,
+          "Android must report JDK internal field access unsupported");
     }
 
     private static void verifyXlangUnion() {
@@ -253,17 +239,6 @@ public class AndroidDynamicFeatureTest {
       } catch (UnsupportedOperationException expected) {
         check(
             expected.getMessage().contains("Lambda serialization is unsupported on Android"),
-            "Unexpected unsupported message: " + expected.getMessage());
-      }
-    }
-
-    private static void expectUnsupportedAndroidWrap(Runnable operation, String messageFragment) {
-      try {
-        operation.run();
-        throw new AssertionError("Expected Android unsafe stream wrapping to fail");
-      } catch (UnsupportedOperationException expected) {
-        check(
-            expected.getMessage().contains(messageFragment),
             "Unexpected unsupported message: " + expected.getMessage());
       }
     }

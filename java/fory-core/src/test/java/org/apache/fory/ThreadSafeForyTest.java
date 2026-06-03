@@ -51,14 +51,14 @@ import org.testng.annotations.Test;
 public class ThreadSafeForyTest extends ForyTestBase {
 
   @Test
-  public void testBuildThreadSafeForyUsesThreadPoolFory() {
+  public void testBuildThreadSafeForyPool() {
     ThreadSafeFory fory =
         Fory.builder().withXlang(false).requireClassRegistration(false).buildThreadSafeFory();
     assertTrue(fory instanceof ThreadPoolFory);
   }
 
   @Test
-  public void testThreadSafeBuildersAssignGeneratedNames() {
+  public void testThreadSafeBuilderNames() {
     ThreadSafeFory threadSafe =
         Fory.builder().withXlang(false).requireClassRegistration(false).buildThreadSafeFory();
     ThreadSafeFory threadLocal =
@@ -86,7 +86,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testFunctionFactoryConstructorsUseBuilderProvidedClassLoader() {
+  public void testFactoryConstructorsClassLoader() {
     ClassLoader custom = new ClassLoader(ClassLoader.getSystemClassLoader()) {};
     ThreadLocalFory threadLocal =
         new ThreadLocalFory(
@@ -99,7 +99,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testThreadSafeRuntimesShareRegistryAcrossRawForyInstances() throws Exception {
+  public void testThreadSafeRuntimesShareRegistry() throws Exception {
     ThreadLocalFory threadLocal =
         Fory.builder().withXlang(false).requireClassRegistration(false).buildThreadLocalFory();
     AtomicReference<SharedRegistry> threadLocalRegistry1 = new AtomicReference<>();
@@ -316,7 +316,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testThreadLocalMetaShareWithPerThreadMetaContexts() throws InterruptedException {
+  public void testThreadLocalMetaShare() throws InterruptedException {
     ThreadSafeFory fory =
         Fory.builder()
             .withXlang(false)
@@ -380,7 +380,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testDeserializeByteBufferPreservesPositionAndLimit() {
+  public void testByteBufferPositionLimit() {
     Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
     String value = "thread-safe-byte-buffer";
     byte[] payload = writer.serialize(value);
@@ -505,7 +505,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisterAfterSerializeThrowsException() {
+  public void testRegisterAfterSerializeThrows() {
     ThreadSafeFory fory =
         Fory.builder().withXlang(false).requireClassRegistration(true).buildThreadLocalFory();
     fory.register(BeanA.class);
@@ -514,7 +514,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisterAfterSerializeThrowsExceptionWithFory() {
+  public void testForyRegisterAfterSerializeThrows() {
     Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
     fory.register(BeanA.class);
     fory.serialize("ok");
@@ -522,7 +522,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisterAfterSerializeThrowsExceptionWithForyPool() {
+  public void testPoolRegisterAfterSerializeThrows() {
     ThreadSafeFory fory =
         Fory.builder().withXlang(false).requireClassRegistration(true).buildThreadSafeForyPool(2);
     fory.register(BeanA.class);

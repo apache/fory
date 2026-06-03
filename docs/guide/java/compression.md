@@ -76,17 +76,7 @@ Fory fory = Fory.builder()
 CompressedArraySerializers.registerSerializers(fory);
 ```
 
-**Note**: The `fory-simd` module must be included in your dependencies for compressed array serializers to be available.
-
-### Maven Dependency
-
-```xml
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-simd</artifactId>
-  <version>1.1.0</version>
-</dependency>
-```
+Compressed array serializers are included in `fory-core` and use the Java 16+ Vector API when it is available.
 
 ## String Compression
 

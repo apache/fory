@@ -25,6 +25,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.memory.MemoryBuffer;
@@ -44,6 +45,61 @@ public class DuplicateFieldsTest extends ForyTestBase {
   @EqualsAndHashCode(callSuper = true)
   public static class C extends B {
     int f1;
+  }
+
+  public static class PrivateBase {
+    @ForyField(id = 1)
+    private int value;
+
+    @ForyField(id = 2)
+    private final long finalValue;
+
+    public PrivateBase() {
+      this(0, 0);
+    }
+
+    public PrivateBase(@ForyField(id = 1) int value, @ForyField(id = 2) long finalValue) {
+      this.value = value;
+      this.finalValue = finalValue;
+    }
+
+    int baseValue() {
+      return value;
+    }
+
+    long baseFinalValue() {
+      return finalValue;
+    }
+  }
+
+  public static class PrivateChild extends PrivateBase {
+    @ForyField(id = 3)
+    private int value;
+
+    @ForyField(id = 4)
+    private final long finalValue;
+
+    public PrivateChild() {
+      this(0, 0, 0, 0);
+    }
+
+    public PrivateChild(
+        @ForyField(id = 1) int baseValue,
+        @ForyField(id = 2) long baseFinalValue,
+        @ForyField(id = 3) int value,
+        @ForyField(id = 4) long finalValue) {
+      super(baseValue, baseFinalValue);
+      this.value = value;
+      this.finalValue = finalValue;
+    }
+
+    int childValue() {
+      return value;
+    }
+
+    long childFinalValue() {
+      return finalValue;
+    }
   }
 
   @Test()
@@ -94,6 +150,30 @@ public class DuplicateFieldsTest extends ForyTestBase {
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);
     }
+  }
+
+  @Test
+  public void testPrivateDuplicateFieldsNoCompatible() {
+    PrivateChild value = new PrivateChild(10, 20, -10, -20);
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(false)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .build();
+    Serializer<PrivateChild> serializer =
+        Serializers.newSerializer(
+            fory,
+            PrivateChild.class,
+            CodecUtils.loadOrGenObjectCodecClass(PrivateChild.class, fory));
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    writeSerializer(fory, serializer, buffer, value);
+    PrivateChild newValue = readSerializer(fory, serializer, buffer);
+    assertEquals(newValue.baseValue(), value.baseValue());
+    assertEquals(newValue.baseFinalValue(), value.baseFinalValue());
+    assertEquals(newValue.childValue(), value.childValue());
+    assertEquals(newValue.childFinalValue(), value.childFinalValue());
   }
 
   @Test

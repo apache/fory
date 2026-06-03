@@ -45,6 +45,10 @@ public final class Float16Array implements Iterable<Float16>, Serializable {
     }
   }
 
+  private Float16Array(short[] bits) {
+    this.bits = bits;
+  }
+
   private Float16Array(short[] bits, boolean copy) {
     this.bits = copy ? Arrays.copyOf(bits, bits.length) : bits;
   }

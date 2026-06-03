@@ -36,6 +36,7 @@ import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
@@ -43,6 +44,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Cast;
@@ -57,9 +59,10 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ObjectCreator;
-import org.apache.fory.reflect.ObjectCreators;
+import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.reflect.InstanceFieldAccessors.InstanceAccessor;
+import org.apache.fory.reflect.ObjectInstantiator;
+import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeInfo;
@@ -198,8 +201,8 @@ public abstract class CodecBuilder {
   }
 
   protected Expression buildDefaultComponentsArray() {
-    return new StaticInvoke(
-        UnsafeOps.class, "copyObjectArray", OBJECT_ARRAY_TYPE, recordComponentDefaultValues);
+    return new Cast(
+        new Invoke(recordComponentDefaultValues, "clone", OBJECT_TYPE), OBJECT_ARRAY_TYPE);
   }
 
   /** Returns an expression that get field value from <code>bean</code>. */
@@ -214,7 +217,7 @@ public abstract class CodecBuilder {
     if (isRecord) {
       return getRecordFieldValue(inputBeanExpr, descriptor);
     }
-    if (duplicatedFields.contains(fieldName) || !Modifier.isPublic(beanClass.getModifiers())) {
+    if (duplicatedFields.contains(fieldName) || !sourcePublicAccessible(beanClass)) {
       return unsafeAccessField(inputBeanExpr, beanClass, descriptor);
     }
     if (!sourcePublicAccessible(rawType)) {
@@ -310,30 +313,37 @@ public abstract class CodecBuilder {
   private Expression unsafeAccessField(
       Expression inputObject, Class<?> cls, Descriptor descriptor) {
     String fieldName = descriptor.getName();
-    Expression fieldOffsetExpr = getFieldOffset(cls, descriptor);
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      Reference fieldAccessor = getFieldAccessor(descriptor);
+      boolean fieldNullable = fieldNullable(descriptor);
+      if (descriptor.getTypeRef().isPrimitive()) {
+        Preconditions.checkArgument(!fieldNullable);
+        TypeRef<?> returnType = descriptor.getTypeRef();
+        String funcName = "get" + StringUtils.capitalize(descriptor.getRawType().toString());
+        return new Invoke(fieldAccessor, funcName, returnType, false, inputObject);
+      } else {
+        Invoke getObj =
+            new Invoke(fieldAccessor, "getObject", OBJECT_TYPE, fieldNullable, inputObject);
+        return tryCastIfPublic(getObj, descriptor.getTypeRef(), fieldName);
+      }
+    }
+    Expression fieldOffsetExpr = fieldOffsetExpr(cls, descriptor);
     boolean fieldNullable = fieldNullable(descriptor);
     if (descriptor.getTypeRef().isPrimitive()) {
-      // ex: UnsafeOps.getFloat(obj, fieldOffset)
+      // ex: Unsafe.getFloat(obj, fieldOffset)
       Preconditions.checkArgument(!fieldNullable);
       TypeRef<?> returnType = descriptor.getTypeRef();
       String funcName = "get" + StringUtils.capitalize(descriptor.getRawType().toString());
-      return new StaticInvoke(
-          UnsafeOps.class, funcName, returnType, false, inputObject, fieldOffsetExpr);
+      return unsafeInvoke(funcName, returnType, false, inputObject, fieldOffsetExpr);
     } else {
-      // ex: UnsafeOps.getObject(obj, fieldOffset)
-      StaticInvoke getObj =
-          new StaticInvoke(
-              UnsafeOps.class,
-              "getObject",
-              OBJECT_TYPE,
-              fieldNullable,
-              inputObject,
-              fieldOffsetExpr);
+      // ex: Unsafe.getObject(obj, fieldOffset)
+      Invoke getObj =
+          unsafeInvoke("getObject", OBJECT_TYPE, fieldNullable, inputObject, fieldOffsetExpr);
       return tryCastIfPublic(getObj, descriptor.getTypeRef(), fieldName);
     }
   }
 
-  private Expression getFieldOffset(Class<?> cls, Descriptor descriptor) {
+  private Expression fieldOffsetExpr(Class<?> cls, Descriptor descriptor) {
     Field field = descriptor.getField();
     String fieldName = descriptor.getName();
     // Use Field in case the class has duplicate field name as `fieldName`.
@@ -345,16 +355,106 @@ public abstract class CodecBuilder {
           () -> {
             Expression classExpr = beanClassExpr(field.getDeclaringClass());
             new Invoke(classExpr, "getDeclaredField", TypeRef.of(Field.class));
-            Expression reflectFieldRef = getReflectField(cls, field, false);
-            return new StaticInvoke(
-                    UnsafeOps.class, "objectFieldOffset", PRIMITIVE_LONG_TYPE, reflectFieldRef)
-                .inline();
+            Expression reflectFieldRef = getReflectField(field.getDeclaringClass(), field, false);
+            return unsafeInvoke("objectFieldOffset", PRIMITIVE_LONG_TYPE, reflectFieldRef).inline();
           });
     } else {
-      long fieldOffset = ReflectionUtils.getFieldOffset(field);
-      Preconditions.checkArgument(fieldOffset != -1);
-      return Literal.ofLong(fieldOffset);
+      return Literal.ofLong(UnsafeCodegenSupport.objectFieldOffset(field));
     }
+  }
+
+  private Reference getUnsafe() {
+    String fieldName = "_unsafe_";
+    Reference fieldRef = fieldMap.get(fieldName);
+    if (fieldRef == null) {
+      String uniqueFieldName = ctx.newName(fieldName);
+      ctx.addField(
+          true,
+          true,
+          UnsafeCodegenSupport.unsafeTypeName(),
+          uniqueFieldName,
+          new UnsafeInitExpression());
+      fieldRef = new Reference(uniqueFieldName, OBJECT_TYPE);
+      fieldMap.put(fieldName, fieldRef);
+    }
+    return fieldRef;
+  }
+
+  private Invoke unsafeInvoke(String functionName, TypeRef<?> returnType, Expression... arguments) {
+    return unsafeInvoke(functionName, returnType, false, arguments);
+  }
+
+  private Invoke unsafeInvoke(
+      String functionName, TypeRef<?> returnType, boolean returnNullable, Expression... arguments) {
+    return new Invoke(
+        getUnsafe(),
+        functionName,
+        "",
+        returnType,
+        returnNullable,
+        "allocateInstance".equals(functionName),
+        arguments);
+  }
+
+  private Invoke unsafeInvoke(String functionName, Expression... arguments) {
+    return new Invoke(getUnsafe(), functionName, "", PRIMITIVE_VOID_TYPE, false, false, arguments);
+  }
+
+  private static final class UnsafeInitExpression extends Expression.AbstractExpression {
+    private UnsafeInitExpression() {
+      super(new Expression[0]);
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return OBJECT_TYPE;
+    }
+
+    @Override
+    public Code.ExprCode doGenCode(CodegenContext ctx) {
+      return new Code.ExprCode(
+          Code.LiteralValue.FalseLiteral,
+          Code.exprValue(Object.class, UnsafeCodegenSupport.unsafeInitCode()));
+    }
+  }
+
+  private Reference getFieldAccessor(Descriptor descriptor) {
+    Field field = descriptor.getField();
+    String fieldName = descriptor.getName();
+    String fieldAccessorName =
+        (duplicatedFields.contains(fieldName)
+                ? field.getDeclaringClass().getName().replaceAll("\\.|\\$", "_") + "_"
+                : "")
+            + fieldName
+            + "_accessor_";
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      // JDK25+ field writes go through the VarHandle-backed instance accessor. Keep the generated
+      // static field typed as the concrete final accessor so hot-path putX calls do not pay a
+      // FieldAccessor virtual dispatch. FieldAccessor.createAccessor still owns platform dispatch;
+      // this one-time cast happens only during generated-class initialization.
+      return getOrCreateField(
+          true,
+          InstanceAccessor.class,
+          fieldAccessorName,
+          () ->
+              new Cast(
+                  new StaticInvoke(
+                      FieldAccessor.class,
+                      "createAccessor",
+                      TypeRef.of(FieldAccessor.class),
+                      getReflectField(field.getDeclaringClass(), field, false)),
+                  TypeRef.of(InstanceAccessor.class)));
+    }
+    return getOrCreateField(
+        true,
+        FieldAccessor.class,
+        fieldAccessorName,
+        () ->
+            new StaticInvoke(
+                FieldAccessor.class,
+                "createAccessor",
+                TypeRef.of(FieldAccessor.class),
+                getReflectField(field.getDeclaringClass(), field, false)));
   }
 
   /**
@@ -366,6 +466,8 @@ public abstract class CodecBuilder {
   /** Returns an expression that set field <code>value</code> to <code>bean</code>. */
   protected Expression setFieldValue(Expression bean, Descriptor d, Expression value) {
     String fieldName = d.getName();
+    TypeRef<?> memberType = memberTypeRef(d);
+    Class<?> memberRawType = getRawType(memberType);
     if (value instanceof Inlineable) {
       ((Inlineable) value).inline();
     }
@@ -374,22 +476,22 @@ public abstract class CodecBuilder {
     }
     if (!d.isFinalField()
         && Modifier.isPublic(d.getModifiers())
-        && Modifier.isPublic(d.getRawType().getModifiers())) {
-      if (!d.getRawType().isAssignableFrom(value.type().getRawType())) {
-        value = tryInlineCast(value, d.getTypeRef());
+        && sourcePublicAccessible(memberRawType)) {
+      if (!memberRawType.isAssignableFrom(value.type().getRawType())) {
+        value = tryInlineCast(value, memberType);
       }
       return new Expression.SetField(bean, fieldName, value);
     } else if (d.getWriteMethod() != null && Modifier.isPublic(d.getWriteMethod().getModifiers())) {
-      if (!d.getRawType().isAssignableFrom(value.type().getRawType())) {
-        value = tryInlineCast(value, d.getTypeRef());
+      if (!memberRawType.isAssignableFrom(value.type().getRawType())) {
+        value = tryInlineCast(value, memberType);
       }
       return new Invoke(bean, d.getWriteMethod().getName(), value);
     } else {
       if (!d.isFinalField() && !Modifier.isPrivate(d.getModifiers())) {
         if (AccessorHelper.defineSetter(d.getField())) {
           Class<?> accessorClass = AccessorHelper.getAccessorClass(d.getField());
-          if (!d.getRawType().isAssignableFrom(value.type().getRawType())) {
-            value = tryInlineCast(value, d.getTypeRef());
+          if (!memberRawType.isAssignableFrom(value.type().getRawType())) {
+            value = tryInlineCast(value, memberType);
           }
           return new StaticInvoke(
               accessorClass, d.getName(), PRIMITIVE_VOID_TYPE, false, bean, value);
@@ -398,8 +500,8 @@ public abstract class CodecBuilder {
       if (d.getWriteMethod() != null && !Modifier.isPrivate(d.getWriteMethod().getModifiers())) {
         if (AccessorHelper.defineSetter(d.getWriteMethod())) {
           Class<?> accessorClass = AccessorHelper.getAccessorClass(d.getWriteMethod());
-          if (!d.getRawType().isAssignableFrom(value.type().getRawType())) {
-            value = tryInlineCast(value, d.getTypeRef());
+          if (!memberRawType.isAssignableFrom(value.type().getRawType())) {
+            value = tryInlineCast(value, memberType);
           }
           return new StaticInvoke(
               accessorClass, d.getWriteMethod().getName(), PRIMITIVE_VOID_TYPE, false, bean, value);
@@ -407,6 +509,18 @@ public abstract class CodecBuilder {
       }
       return unsafeSetField(bean, d, value);
     }
+  }
+
+  private TypeRef<?> memberTypeRef(Descriptor descriptor) {
+    Field field = descriptor.getField();
+    if (field != null) {
+      return TypeRef.of(field.getGenericType());
+    }
+    Method method = descriptor.getWriteMethod();
+    if (method != null) {
+      return TypeRef.of(method.getGenericParameterTypes()[0]);
+    }
+    return descriptor.getTypeRef();
   }
 
   /**
@@ -425,14 +539,24 @@ public abstract class CodecBuilder {
    */
   private Expression unsafeSetField(Expression bean, Descriptor descriptor, Expression value) {
     TypeRef<?> fieldType = descriptor.getTypeRef();
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      Reference fieldAccessor = getFieldAccessor(descriptor);
+      if (descriptor.getTypeRef().isPrimitive()) {
+        Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
+        String funcName = "put" + StringUtils.capitalize(getRawType(fieldType).toString());
+        return new Invoke(fieldAccessor, funcName, bean, value);
+      } else {
+        return new Invoke(fieldAccessor, "putObject", bean, value);
+      }
+    }
     // Use Field in case the class has duplicate field name as `fieldName`.
-    Expression fieldOffsetExpr = getFieldOffset(beanClass, descriptor);
+    Expression fieldOffsetExpr = fieldOffsetExpr(beanClass, descriptor);
     if (descriptor.getTypeRef().isPrimitive()) {
       Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
       String funcName = "put" + StringUtils.capitalize(getRawType(fieldType).toString());
-      return new StaticInvoke(UnsafeOps.class, funcName, bean, fieldOffsetExpr, value);
+      return unsafeInvoke(funcName, bean, fieldOffsetExpr, value);
     } else {
-      return new StaticInvoke(UnsafeOps.class, "putObject", bean, fieldOffsetExpr, value);
+      return unsafeInvoke("putObject", bean, fieldOffsetExpr, value);
     }
   }
 
@@ -444,7 +568,11 @@ public abstract class CodecBuilder {
     String fieldName = field.getName();
     String fieldRefName;
     if (duplicatedFields.contains(fieldName)) {
-      fieldRefName = cls.getName().replaceAll("\\.|\\$", "_") + "_" + fieldName + "_Field";
+      fieldRefName =
+          field.getDeclaringClass().getName().replaceAll("\\.|\\$", "_")
+              + "_"
+              + fieldName
+              + "_Field";
     } else {
       fieldRefName = fieldName + "_Field";
     }
@@ -454,7 +582,11 @@ public abstract class CodecBuilder {
         fieldRefName,
         () -> {
           TypeRef<Field> fieldTypeRef = TypeRef.of(Field.class);
-          Expression classExpr = beanClassExpr(field.getDeclaringClass());
+          Class<?> declaringClass = field.getDeclaringClass();
+          Expression classExpr =
+              staticClassFieldExpr(
+                  declaringClass,
+                  declaringClass.getName().replaceAll("\\.|\\$", "_") + "__class__");
           Expression fieldExpr;
           if (GraalvmSupport.isGraalBuildTime()) {
             fieldExpr =
@@ -488,28 +620,37 @@ public abstract class CodecBuilder {
   /** Returns an Expression that create a new java object of type {@link CodecBuilder#beanClass}. */
   protected Expression newBean() {
     // TODO allow default access-level class.
-    if (sourcePublicAccessible(beanClass)) {
+    if (sourcePublicAccessible(beanClass)
+        && (JdkVersion.MAJOR_VERSION < 25
+            || ReflectionUtils.hasPublicNoArgConstructor(beanClass))) {
       return new Expression.NewInstance(beanType);
     } else {
-      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25) {
-        ObjectCreators.getObjectCreator(beanClass); // trigger cache
-        return new Invoke(getObjectCreator(beanClass), "newInstance", OBJECT_TYPE);
+      if (JdkVersion.MAJOR_VERSION >= 25) {
+        cacheObjectInstantiator(beanClass); // trigger cache
+        Invoke newInstance =
+            new Invoke(getObjectInstantiator(beanClass), "newInstance", OBJECT_TYPE);
+        return sourcePublicAccessible(beanClass) ? new Cast(newInstance, beanType) : newInstance;
       }
-      return new StaticInvoke(UnsafeOps.class, "newInstance", OBJECT_TYPE, beanClassExpr());
+      Invoke newInstance = unsafeInvoke("allocateInstance", OBJECT_TYPE, beanClassExpr());
+      return sourcePublicAccessible(beanClass) ? new Cast(newInstance, beanType) : newInstance;
     }
   }
 
-  protected Expression getObjectCreator(Class<?> type) {
-    ObjectCreators.getObjectCreator(type); // trigger cache
+  protected void cacheObjectInstantiator(Class<?> type) {
+    ObjectInstantiators.getObjectInstantiator(type);
+  }
+
+  protected Expression getObjectInstantiator(Class<?> type) {
+    cacheObjectInstantiator(type);
     return getOrCreateField(
         true,
-        ObjectCreator.class,
-        ctx.newName("objectCreator_" + type.getSimpleName()),
+        ObjectInstantiator.class,
+        ctx.newName("objectInstantiator_" + type.getSimpleName()),
         () ->
             new StaticInvoke(
-                ObjectCreators.class,
-                "getObjectCreator",
-                TypeRef.of(ObjectCreator.class),
+                ObjectInstantiators.class,
+                "getObjectInstantiator",
+                TypeRef.of(ObjectInstantiator.class),
                 staticBeanClassExpr()));
   }
 
@@ -594,50 +735,49 @@ public abstract class CodecBuilder {
 
   /** Build unsafePut operation. */
   protected Expression unsafePut(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putByte", base, pos, value);
+    return unsafeInvoke("putByte", base, pos, value);
   }
 
   protected Expression unsafePutBoolean(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putBoolean", base, pos, value);
+    return unsafeInvoke("putBoolean", base, pos, value);
   }
 
   protected Expression unsafePutChar(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putChar", base, pos, value);
+    return unsafeInvoke("putChar", base, pos, value);
   }
 
   protected Expression unsafePutShort(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putShort", base, pos, value);
+    return unsafeInvoke("putShort", base, pos, value);
   }
 
   protected Expression unsafePutInt(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putInt", base, pos, value);
+    return unsafeInvoke("putInt", base, pos, value);
   }
 
   protected Expression unsafePutLong(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putLong", base, pos, value);
+    return unsafeInvoke("putLong", base, pos, value);
   }
 
   protected Expression unsafePutFloat(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putFloat", base, pos, value);
+    return unsafeInvoke("putFloat", base, pos, value);
   }
 
   /** Build unsafePutDouble operation. */
   protected Expression unsafePutDouble(Expression base, Expression pos, Expression value) {
-    return new StaticInvoke(UnsafeOps.class, "putDouble", base, pos, value);
+    return unsafeInvoke("putDouble", base, pos, value);
   }
 
   /** Build unsafeGet operation. */
   protected Expression unsafeGet(Expression base, Expression pos) {
-    return new StaticInvoke(UnsafeOps.class, "getByte", PRIMITIVE_BYTE_TYPE, base, pos);
+    return unsafeInvoke("getByte", PRIMITIVE_BYTE_TYPE, base, pos);
   }
 
   protected Expression unsafeGetBoolean(Expression base, Expression pos) {
-    return new StaticInvoke(UnsafeOps.class, "getBoolean", PRIMITIVE_BOOLEAN_TYPE, base, pos);
+    return unsafeInvoke("getBoolean", PRIMITIVE_BOOLEAN_TYPE, base, pos);
   }
 
   protected Expression unsafeGetChar(Expression base, Expression pos) {
-    StaticInvoke expr =
-        new StaticInvoke(UnsafeOps.class, "getChar", PRIMITIVE_CHAR_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getChar", PRIMITIVE_CHAR_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Character.class, "reverseBytes", PRIMITIVE_CHAR_TYPE, expr.inline());
     }
@@ -645,8 +785,7 @@ public abstract class CodecBuilder {
   }
 
   protected Expression unsafeGetShort(Expression base, Expression pos) {
-    StaticInvoke expr =
-        new StaticInvoke(UnsafeOps.class, "getShort", PRIMITIVE_SHORT_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getShort", PRIMITIVE_SHORT_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Short.class, "reverseBytes", PRIMITIVE_SHORT_TYPE, expr.inline());
     }
@@ -654,7 +793,7 @@ public abstract class CodecBuilder {
   }
 
   protected Expression unsafeGetInt(Expression base, Expression pos) {
-    StaticInvoke expr = new StaticInvoke(UnsafeOps.class, "getInt", PRIMITIVE_INT_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getInt", PRIMITIVE_INT_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Integer.class, "reverseBytes", PRIMITIVE_INT_TYPE, expr.inline());
     }
@@ -662,8 +801,7 @@ public abstract class CodecBuilder {
   }
 
   protected Expression unsafeGetLong(Expression base, Expression pos) {
-    StaticInvoke expr =
-        new StaticInvoke(UnsafeOps.class, "getLong", PRIMITIVE_LONG_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getLong", PRIMITIVE_LONG_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Long.class, "reverseBytes", PRIMITIVE_LONG_TYPE, expr.inline());
     }
@@ -671,7 +809,7 @@ public abstract class CodecBuilder {
   }
 
   protected Expression unsafeGetFloat(Expression base, Expression pos) {
-    StaticInvoke expr = new StaticInvoke(UnsafeOps.class, "getInt", PRIMITIVE_INT_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getInt", PRIMITIVE_INT_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Integer.class, "reverseBytes", PRIMITIVE_INT_TYPE, expr.inline());
     }
@@ -679,8 +817,7 @@ public abstract class CodecBuilder {
   }
 
   protected Expression unsafeGetDouble(Expression base, Expression pos) {
-    StaticInvoke expr =
-        new StaticInvoke(UnsafeOps.class, "getLong", PRIMITIVE_LONG_TYPE, base, pos);
+    Inlineable expr = unsafeInvoke("getLong", PRIMITIVE_LONG_TYPE, base, pos);
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       expr = new StaticInvoke(Long.class, "reverseBytes", PRIMITIVE_LONG_TYPE, expr.inline());
     }

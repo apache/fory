@@ -40,6 +40,9 @@ fory.register(SomeClass1.class, 1);
 ```
 
 Note that class registration order is important. Serialization and deserialization peers should have the same registration order.
+Register classes and custom serializers before the first top-level `serialize`, `deserialize`, or
+`copy` call on a `Fory` instance. Fory freezes registration at that point so runtime lookups can use
+the finalized registration state.
 
 Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
 `Types.NONE + 1`, and user IDs are encoded as `(user_id << 8) | internal_type_id`.

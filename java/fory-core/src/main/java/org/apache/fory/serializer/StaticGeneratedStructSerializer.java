@@ -227,6 +227,52 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     return ids;
   }
 
+  protected final long[] buildConstructorFieldBits(int size, int[] indexes) {
+    if (indexes == null) {
+      return null;
+    }
+    long[] bits = newFieldBits(size);
+    for (int index : indexes) {
+      if (index >= 0) {
+        markField(bits, index);
+      }
+    }
+    return bits;
+  }
+
+  protected static long[] newFieldBits(int size) {
+    return new long[(size + Long.SIZE - 1) / Long.SIZE];
+  }
+
+  protected static boolean hasField(long[] bits, int fieldId) {
+    return (bits[fieldId / Long.SIZE] & (1L << (fieldId % Long.SIZE))) != 0;
+  }
+
+  protected static void markField(long[] bits, int fieldId) {
+    bits[fieldId / Long.SIZE] |= 1L << (fieldId % Long.SIZE);
+  }
+
+  protected static int countConstructorFields(long[] constructorFieldBits) {
+    int count = 0;
+    for (long constructorFields : constructorFieldBits) {
+      count += Long.bitCount(constructorFields);
+    }
+    return count;
+  }
+
+  protected final void setGeneratedFieldValue(
+      Object targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
+    if (fieldInfo.fieldAccessor != null) {
+      fieldInfo.fieldAccessor.putObject(targetObject, fieldValue);
+      return;
+    }
+    if (fieldInfo.fieldConverter != null) {
+      fieldInfo.fieldConverter.set(targetObject, fieldValue);
+      return;
+    }
+    throw new ForyException("Generated field " + fieldInfo.getName() + " is not writable");
+  }
+
   protected final void writeBuildInFieldValue(
       WriteContext writeContext, SerializationFieldInfo fieldInfo, Object fieldValue) {
     // Some schema-built-in fields still use container-shaped Java accessors, such as

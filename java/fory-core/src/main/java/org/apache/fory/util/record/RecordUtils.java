@@ -35,7 +35,7 @@ import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.util.unsafe._JDKAccess;
+import org.apache.fory.platform.internal._JDKAccess;
 
 /** Utils for java.lang.Record. */
 @SuppressWarnings({"rawtypes"})

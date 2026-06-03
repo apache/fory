@@ -168,7 +168,7 @@
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/test/java16"
                            destdir="${project.build.testOutputDirectory}"
-                           classpath="${project.basedir}/../fory-core/target/jpms-classes/java16${path.separator}${java16.test.classpath}"
+                           classpath="${project.basedir}/../fory-core/target/multi-release-classes/16${path.separator}${java16.test.classpath}"
                            includeantruntime="false"
                            fork="true"
                            executable="${java.home}/bin/javac"
@@ -192,7 +192,7 @@
             <configuration>
               <argLine>--add-modules=jdk.incubator.vector</argLine>
               <additionalClasspathElements>
-                <additionalClasspathElement>${project.basedir}/../fory-core/target/jpms-classes/java16</additionalClasspathElement>
+                <additionalClasspathElement>${project.basedir}/../fory-core/target/multi-release-classes/16</additionalClasspathElement>
               </additionalClasspathElements>
             </configuration>
           </plugin>

@@ -95,9 +95,16 @@ class Container implements Serializable {
     private String containerLabel = "";
     private List<Item> items;
 
+    private SerializationProxy() {}
+
     public SerializationProxy(Container c) {
       this.containerLabel = c.getLabel();
-      this.items = new ArrayList<>(c.getItems());
+      this.items = new ArrayList<>();
+      for (Item item : c.getItems()) {
+        // The proxy reconstructs parent links in readResolve; serializing the original back-link
+        // would point Item.parent at the proxy object after writeReplace.
+        this.items.add(new Item(item.getName()));
+      }
     }
 
     private Object readResolve() {

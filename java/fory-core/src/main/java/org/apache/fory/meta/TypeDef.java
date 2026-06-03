@@ -19,14 +19,11 @@
 
 package org.apache.fory.meta;
 
-import static org.apache.fory.meta.NativeTypeDefEncoder.buildDescriptors;
-
 import java.io.ObjectStreamClass;
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,8 +35,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeResolver;
@@ -67,7 +62,6 @@ import org.apache.fory.util.StringUtils;
  * @see ForyBuilder#withCompatible(boolean)
  * @see CompatibleSerializer
  * @see ForyBuilder#withMetaShare
- * @see ReflectionUtils#getFieldOffset
  */
 public class TypeDef implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDef.class);
@@ -77,30 +71,6 @@ public class TypeDef implements Serializable {
   // low 8 bits
   static final int META_SIZE_MASKS = 0xff;
   static final int NUM_HASH_BITS = 52;
-
-  // TODO use field offset to sort field, which will hit l1-cache more. Since
-  // `objectFieldOffset` is not part of jvm-specification, it may change between different jdk
-  // vendor. But the deserialization peer use the class definition to create deserializer, it's OK
-  // even field offset or fields order change between jvm process.
-  public static final Comparator<Field> FIELD_COMPARATOR =
-      (f1, f2) -> {
-        long offset1 = UnsafeOps.objectFieldOffset(f1);
-        long offset2 = UnsafeOps.objectFieldOffset(f2);
-        long diff = offset1 - offset2;
-        if (diff != 0) {
-          return (int) diff;
-        } else {
-          if (!f1.equals(f2)) {
-            LOG.warn(
-                "Field {} has same offset with {}, please an issue with jdk info to fory", f1, f2);
-          }
-          int compare = f1.getDeclaringClass().getName().compareTo(f2.getName());
-          if (compare != 0) {
-            return compare;
-          }
-          return f1.getName().compareTo(f2.getName());
-        }
-      };
 
   private final ClassSpec classSpec;
   private final List<FieldInfo> fieldsInfo;

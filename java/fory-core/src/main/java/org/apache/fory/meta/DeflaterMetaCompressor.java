@@ -34,9 +34,13 @@ public class DeflaterMetaCompressor implements MetaCompressor {
     deflater.finish();
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     byte[] buffer = new byte[128];
-    while (!deflater.finished()) {
-      int compressedSize = deflater.deflate(buffer);
-      outputStream.write(buffer, 0, compressedSize);
+    try {
+      while (!deflater.finished()) {
+        int compressedSize = deflater.deflate(buffer);
+        outputStream.write(buffer, 0, compressedSize);
+      }
+    } finally {
+      deflater.end();
     }
     return outputStream.toByteArray();
   }

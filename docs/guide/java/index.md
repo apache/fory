@@ -38,7 +38,7 @@ Apache Fory™ provides blazingly fast Java object serialization with JIT compil
 ### Drop-in Replacement
 
 - **100% JDK Serialization Compatible**: Supports `writeObject`/`readObject`/`writeReplace`/`readResolve`/`readObjectNoData`/`Externalizable`
-- **Java 8-24 Support**: Works across all modern Java versions including Java 17+ records
+- **Java 8+ Support**: Works across all modern Java versions including Java 17+ records
 - **GraalVM Native Image**: AOT compilation support without reflection configuration
 - **Android API 26+ Support**: Core object serialization works on Android without runtime code generation.
 
@@ -49,6 +49,39 @@ Apache Fory™ provides blazingly fast Java object serialization with JIT compil
 - **Polymorphism**: Full support for inheritance hierarchies and interfaces
 - **Deep Copy**: Efficient deep cloning of complex object graphs with reference preservation
 - **Security**: Class registration and configurable deserialization policies
+
+## Installation
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-core</artifactId>
+  <version>1.1.0</version>
+</dependency>
+```
+
+### Gradle
+
+```kotlin
+implementation("org.apache.fory:fory-core:1.1.0")
+```
+
+### JDK25+
+
+On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
+the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
+```
 
 ## Quick Start
 

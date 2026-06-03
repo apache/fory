@@ -21,8 +21,8 @@ package org.apache.fory.meta;
 
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.meta.MetaString.Encoding;
+import org.apache.fory.serializer.StringEncodingUtils;
 import org.apache.fory.util.Preconditions;
-import org.apache.fory.util.StringUtils;
 
 /** Encodes plain text strings into MetaString objects with specified encoding mechanisms. */
 public class MetaStringEncoder {
@@ -78,7 +78,7 @@ public class MetaStringEncoder {
     if (input.isEmpty()) {
       return EncodedMetaString.EMPTY;
     }
-    if (!StringUtils.isLatin(input.toCharArray())) {
+    if (!StringEncodingUtils.isLatin(input.toCharArray())) {
       return new EncodedMetaString(input.getBytes(StandardCharsets.UTF_8), Encoding.UTF_8);
     }
     Encoding encoding = computeEncoding(input, encodings);
@@ -88,7 +88,7 @@ public class MetaStringEncoder {
   public EncodedMetaString encodeBinary(String input, Encoding encoding) {
     Preconditions.checkArgument(
         input.length() < Short.MAX_VALUE, "Long meta string than 32767 is not allowed");
-    if (encoding != Encoding.UTF_8 && !StringUtils.isLatin(input.toCharArray())) {
+    if (encoding != Encoding.UTF_8 && !StringEncodingUtils.isLatin(input.toCharArray())) {
       throw new IllegalArgumentException("Non-ASCII characters in meta string are not allowed");
     }
     if (input.isEmpty()) {

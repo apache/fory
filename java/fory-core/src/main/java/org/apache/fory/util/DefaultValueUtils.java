@@ -34,13 +34,12 @@ import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Utility class for detecting Scala classes with default values and their default value methods.
@@ -87,6 +86,10 @@ public class DefaultValueUtils {
 
     public FieldAccessor getFieldAccessor() {
       return fieldAccessor;
+    }
+
+    public Class<?> getDeclaringClass() {
+      return fieldAccessor == null ? null : fieldAccessor.getField().getDeclaringClass();
     }
 
     public int getDispatchId() {
@@ -467,44 +470,79 @@ public class DefaultValueUtils {
    */
   public static void setDefaultValues(Object obj, DefaultValueField[] defaultValueFields) {
     for (DefaultValueField defaultField : defaultValueFields) {
-      FieldAccessor fieldAccessor = defaultField.getFieldAccessor();
-      if (fieldAccessor != null) {
-        Object defaultValue = defaultField.getDefaultValue();
-        if (AndroidSupport.IS_ANDROID) {
-          fieldAccessor.set(obj, defaultValue);
-          continue;
-        }
-        long fieldOffset = fieldAccessor.getFieldOffset();
-        switch (defaultField.dispatchId) {
-          case Types.BOOL:
-            UnsafeOps.putBoolean(obj, fieldOffset, (Boolean) defaultValue);
-            break;
-          case Types.INT8:
-            UnsafeOps.putByte(obj, fieldOffset, (Byte) defaultValue);
-            break;
-          case Types.INT16:
-            UnsafeOps.putShort(obj, fieldOffset, (Short) defaultValue);
-            break;
-          case Types.INT32:
-          case Types.VARINT32:
-            UnsafeOps.putInt(obj, fieldOffset, (Integer) defaultValue);
-            break;
-          case Types.INT64:
-          case Types.VARINT64:
-          case Types.TAGGED_INT64:
-            UnsafeOps.putLong(obj, fieldOffset, (Long) defaultValue);
-            break;
-          case Types.FLOAT32:
-            UnsafeOps.putFloat(obj, fieldOffset, (Float) defaultValue);
-            break;
-          case Types.FLOAT64:
-            UnsafeOps.putDouble(obj, fieldOffset, (Double) defaultValue);
-            break;
-          default:
-            // Object type (including String, char, boxed types not covered above)
-            fieldAccessor.putObject(obj, defaultValue);
-        }
+      setDefaultValue(obj, defaultField);
+    }
+  }
+
+  public static void setDefaultValues(
+      Object obj, DefaultValueField[] defaultValueFields, String[] skippedFieldNames) {
+    setDefaultValues(obj, defaultValueFields, skippedFieldNames, null);
+  }
+
+  public static void setDefaultValues(
+      Object obj,
+      DefaultValueField[] defaultValueFields,
+      String[] skippedFieldNames,
+      Class<?>[] skippedDeclaringClasses) {
+    for (DefaultValueField defaultField : defaultValueFields) {
+      if (!contains(skippedFieldNames, skippedDeclaringClasses, defaultField)) {
+        setDefaultValue(obj, defaultField);
       }
+    }
+  }
+
+  private static boolean contains(
+      String[] values, Class<?>[] declaringClasses, DefaultValueField defaultField) {
+    if (values == null) {
+      return false;
+    }
+    Class<?> declaringClass = defaultField.getDeclaringClass();
+    for (int i = 0; i < values.length; i++) {
+      if (values[i].equals(defaultField.fieldName)
+          && (declaringClasses == null
+              || i >= declaringClasses.length
+              || declaringClasses[i] == null
+              || declaringClasses[i] == declaringClass)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void setDefaultValue(Object obj, DefaultValueField defaultField) {
+    FieldAccessor fieldAccessor = defaultField.getFieldAccessor();
+    if (fieldAccessor == null) {
+      return;
+    }
+    Object defaultValue = defaultField.getDefaultValue();
+    switch (defaultField.dispatchId) {
+      case Types.BOOL:
+        fieldAccessor.putBoolean(obj, (Boolean) defaultValue);
+        break;
+      case Types.INT8:
+        fieldAccessor.putByte(obj, (Byte) defaultValue);
+        break;
+      case Types.INT16:
+        fieldAccessor.putShort(obj, (Short) defaultValue);
+        break;
+      case Types.INT32:
+      case Types.VARINT32:
+        fieldAccessor.putInt(obj, (Integer) defaultValue);
+        break;
+      case Types.INT64:
+      case Types.VARINT64:
+      case Types.TAGGED_INT64:
+        fieldAccessor.putLong(obj, (Long) defaultValue);
+        break;
+      case Types.FLOAT32:
+        fieldAccessor.putFloat(obj, (Float) defaultValue);
+        break;
+      case Types.FLOAT64:
+        fieldAccessor.putDouble(obj, (Double) defaultValue);
+        break;
+      default:
+        // Object type (including String, char, boxed types not covered above)
+        fieldAccessor.putObject(obj, defaultValue);
     }
   }
 

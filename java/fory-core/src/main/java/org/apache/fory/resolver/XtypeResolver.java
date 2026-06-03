@@ -41,9 +41,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -103,11 +111,20 @@ import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.ArrayListSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializers.ConcurrentSkipListSetSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializers.CopyOnWriteArrayListSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializers.CopyOnWriteArraySetSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.HashSetSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializers.LinkedHashSetSerializer;
+import org.apache.fory.serializer.collection.CollectionSerializers.SortedSetSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.XlangListDefaultSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.XlangSetDefaultSerializer;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.serializer.collection.MapSerializer;
+import org.apache.fory.serializer.collection.MapSerializers.ConcurrentHashMapSerializer;
+import org.apache.fory.serializer.collection.MapSerializers.ConcurrentSkipListMapSerializer;
+import org.apache.fory.serializer.collection.MapSerializers.LinkedHashMapSerializer;
+import org.apache.fory.serializer.collection.MapSerializers.SortedMapSerializer;
 import org.apache.fory.serializer.collection.MapSerializers.XlangMapSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.BFloat16Array;
@@ -1100,6 +1117,11 @@ public class XtypeResolver extends TypeResolver {
         new PrimitiveArraySerializers.DoubleArraySerializer(this));
     // Collections
     registerType(Types.LIST, ArrayList.class, new ArrayListSerializer(this));
+    registerType(Types.LIST, LinkedList.class, new CollectionSerializer(this, LinkedList.class));
+    registerType(
+        Types.LIST,
+        CopyOnWriteArrayList.class,
+        new CopyOnWriteArrayListSerializer(this, CopyOnWriteArrayList.class));
     registerType(
         Types.LIST,
         Object[].class,
@@ -1127,22 +1149,30 @@ public class XtypeResolver extends TypeResolver {
 
     // Sets
     registerType(Types.SET, HashSet.class, new HashSetSerializer(this));
+    registerType(Types.SET, LinkedHashSet.class, new LinkedHashSetSerializer(this));
+    registerType(Types.SET, TreeSet.class, new SortedSetSerializer<>(this, TreeSet.class));
     registerType(
         Types.SET,
-        LinkedHashSet.class,
-        new org.apache.fory.serializer.collection.CollectionSerializers.LinkedHashSetSerializer(
-            this));
+        ConcurrentSkipListSet.class,
+        new ConcurrentSkipListSetSerializer(this, ConcurrentSkipListSet.class));
+    registerType(
+        Types.SET,
+        CopyOnWriteArraySet.class,
+        new CopyOnWriteArraySetSerializer(this, CopyOnWriteArraySet.class));
     registerType(Types.SET, Set.class, new XlangSetDefaultSerializer(this, Set.class));
 
     // Maps
+    registerType(Types.MAP, HashMap.class, new HashMapSerializer(this));
+    registerType(Types.MAP, LinkedHashMap.class, new LinkedHashMapSerializer(this));
+    registerType(Types.MAP, TreeMap.class, new SortedMapSerializer<>(this, TreeMap.class));
     registerType(
         Types.MAP,
-        HashMap.class,
-        new org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer(this));
+        ConcurrentHashMap.class,
+        new ConcurrentHashMapSerializer(this, ConcurrentHashMap.class));
     registerType(
         Types.MAP,
-        LinkedHashMap.class,
-        new org.apache.fory.serializer.collection.MapSerializers.LinkedHashMapSerializer(this));
+        ConcurrentSkipListMap.class,
+        new ConcurrentSkipListMapSerializer(this, ConcurrentSkipListMap.class));
     registerType(Types.MAP, Map.class, new XlangMapSerializer(this, Map.class));
 
     registerUnionTypes();

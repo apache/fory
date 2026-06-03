@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInputStream;
@@ -30,6 +32,7 @@ import java.lang.reflect.Modifier;
 import java.nio.ByteBuffer;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.ClassValueCache;
+import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.io.ClassLoaderObjectInputStream;
@@ -51,14 +54,16 @@ import org.apache.fory.util.ExceptionUtils;
  * <p>When a serializer not found and {@link ClassResolver#requireJavaSerialization(Class)} return
  * true, this serializer will be used.
  */
-@SuppressWarnings({"rawtypes", "unchecked"})
-public class JavaSerializer extends AbstractObjectSerializer {
+@SuppressWarnings({"unchecked"})
+public class JavaSerializer extends Serializer<Object> {
   private static final Logger LOG = LoggerFactory.getLogger(JavaSerializer.class);
+  private final TypeResolver typeResolver;
   private final MemoryBufferObjectInput objectInput;
   private final MemoryBufferObjectOutput objectOutput;
 
   public JavaSerializer(TypeResolver typeResolver, Class<?> cls) {
-    super(typeResolver, cls);
+    super(typeResolver.getConfig(), (Class<Object>) cls);
+    this.typeResolver = typeResolver;
     // TODO(chgaokunyang) enable this check when ObjectSerializer is implemented.
     // Preconditions.checkArgument(ClassResolver.requireJavaSerialization(cls));
     if (cls != SerializedLambda.class) {
@@ -69,8 +74,8 @@ public class JavaSerializer extends AbstractObjectSerializer {
           Serializer.class.getName(),
           Externalizable.class.getName());
     }
-    objectInput = new MemoryBufferObjectInput(config, null);
-    objectOutput = new MemoryBufferObjectOutput(config, null);
+    objectInput = new MemoryBufferObjectInput(typeResolver.getConfig(), null);
+    objectOutput = new MemoryBufferObjectOutput(typeResolver.getConfig(), null);
   }
 
   @Override
@@ -111,6 +116,26 @@ public class JavaSerializer extends AbstractObjectSerializer {
       objectInput.clearReadContext();
     }
     throw new IllegalStateException("unreachable code");
+  }
+
+  @Override
+  public Object copy(CopyContext copyContext, Object value) {
+    // JavaSerializer copy must run the Java serialization lifecycle because readObject can rebuild
+    // transient state that object-field copy cannot infer.
+    try {
+      ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+      try (ObjectOutputStream output = new ObjectOutputStream(bytes)) {
+        output.writeObject(value);
+      }
+      try (ObjectInputStream input =
+          new ClassLoaderObjectInputStream(
+              typeResolver, new ByteArrayInputStream(bytes.toByteArray()))) {
+        return input.readObject();
+      }
+    } catch (IOException | ClassNotFoundException e) {
+      ExceptionUtils.throwException(e);
+      throw new IllegalStateException("unreachable code");
+    }
   }
 
   private static final ClassValueCache<Method> writeObjectMethodCache =

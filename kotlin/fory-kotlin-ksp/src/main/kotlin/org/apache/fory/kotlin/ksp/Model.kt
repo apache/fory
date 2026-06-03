@@ -81,6 +81,7 @@ internal data class KotlinSourceField(
   val hasDefault: Boolean,
   val nullable: Boolean,
   val propertyTypeName: String,
+  val constructorParameterName: String = name,
 ) {
   val localName: String = "field$id"
 }

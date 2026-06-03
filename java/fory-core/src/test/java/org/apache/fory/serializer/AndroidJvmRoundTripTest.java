@@ -158,8 +158,8 @@ public class AndroidJvmRoundTripTest {
     if (System.getProperty("java.specification.version").startsWith("1.")) {
       return;
     }
-    addAddOpens(command, "java.base/java.io=ALL-UNNAMED");
     addAddOpens(command, "java.base/java.lang=ALL-UNNAMED");
+    addAddOpens(command, "java.base/java.lang.reflect=ALL-UNNAMED");
     addAddOpens(command, "java.base/java.util=ALL-UNNAMED");
   }
 

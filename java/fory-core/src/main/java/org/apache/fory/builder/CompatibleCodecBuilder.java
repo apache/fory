@@ -295,6 +295,12 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
 
     Expression.ListExpression setDefaultsExpr = new Expression.ListExpression();
     setDefaultsExpr.add(bean);
+    addDefaultValueSetters(setDefaultsExpr, bean);
+    setDefaultsExpr.add(bean);
+    return setDefaultsExpr;
+  }
+
+  private void addDefaultValueSetters(Expression.ListExpression expressions, Expression bean) {
     Map<Member, Descriptor> descriptors = Descriptor.getAllDescriptorsMap(beanClass);
     for (DefaultValueUtils.DefaultValueField defaultField : defaultValueFields) {
       Object defaultValue = defaultField.getDefaultValue();
@@ -322,9 +328,7 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
                   return new Expression.Cast(expr, typeRef);
                 });
       }
-      setDefaultsExpr.add(super.setFieldValue(bean, descriptor, defaultValueExpr));
+      expressions.add(super.setFieldValue(bean, descriptor, defaultValueExpr));
     }
-    setDefaultsExpr.add(bean);
-    return setDefaultsExpr;
   }
 }

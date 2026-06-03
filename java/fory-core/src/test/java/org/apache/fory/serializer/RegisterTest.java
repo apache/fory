@@ -19,11 +19,14 @@
 
 package org.apache.fory.serializer;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.fory.Fory;
+import org.apache.fory.ForyModule;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.resolver.TypeResolver;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -161,6 +164,31 @@ public class RegisterTest extends ForyTestBase {
 
   public static class MyExt {
     public String id;
+  }
+
+  @Test
+  public void testFrozenFacadeRegistration() {
+    Fory fory =
+        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
+    fory.serialize(new MyExt());
+
+    AtomicBoolean moduleInstalled = new AtomicBoolean();
+    Assert.assertThrows(
+        ForyException.class,
+        () -> fory.register((ForyModule) runtime -> moduleInstalled.set(true)));
+    Assert.assertFalse(moduleInstalled.get());
+
+    AtomicBoolean creatorCalled = new AtomicBoolean();
+    Assert.assertThrows(
+        ForyException.class,
+        () ->
+            fory.registerSerializer(
+                MyExt.class,
+                resolver -> {
+                  creatorCalled.set(true);
+                  return new MyExtSerializer(resolver);
+                }));
+    Assert.assertFalse(creatorCalled.get());
   }
 
   public static class MyExtSerializer extends Serializer<MyExt> {

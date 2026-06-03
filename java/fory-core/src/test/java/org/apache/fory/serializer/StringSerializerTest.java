@@ -37,8 +37,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.MathUtils;
 import org.apache.fory.util.StringUtils;
 import org.testng.Assert;
@@ -139,8 +137,7 @@ public class StringSerializerTest extends ForyTestBase {
   }
 
   static void writeJDK8String(MemoryBuffer buffer, String value) {
-    final char[] chars =
-        (char[]) UnsafeOps.getObject(value, ReflectionUtils.getFieldOffset(String.class, "value"));
+    final char[] chars = (char[]) PlatformStringUtils.getStringValue(value);
     int numBytes = MathUtils.doubleExact(value.length());
     buffer.writeCharsWithSize(chars);
   }

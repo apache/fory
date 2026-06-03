@@ -142,6 +142,19 @@ Gradle:
 implementation "org.apache.fory:fory-core:1.1.0"
 ```
 
+On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
+the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
+```
+
 **Scala**
 
 sbt:

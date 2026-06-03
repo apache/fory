@@ -20,14 +20,14 @@
 package org.apache.fory.reflect;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import lombok.AllArgsConstructor;
+import org.apache.fory.TestUtils;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.reflect.FieldAccessor.GeneratedAccessor;
+import org.apache.fory.reflect.InstanceFieldAccessors.GeneratedAccessor;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -46,26 +46,63 @@ public class FieldAccessorTest {
     Assert.assertEquals(f1.get(struct), 10);
     f1.set(struct, 20);
     Assert.assertEquals(f1.get(struct), 20);
+    Assert.assertEquals(f1.getInt(struct), 20);
+    f1.putInt(struct, 30);
+    Assert.assertEquals(f1.getInt(struct), 30);
     GeneratedAccessor f2 = new GeneratedAccessor(TestStruct.class.getDeclaredField("f2"));
     Assert.assertEquals(f2.get(struct), true);
     f2.set(struct, false);
     Assert.assertEquals(f2.get(struct), false);
+    Assert.assertFalse(f2.getBoolean(struct));
+    f2.putBoolean(struct, true);
+    Assert.assertTrue(f2.getBoolean(struct));
     GeneratedAccessor f3 = new GeneratedAccessor(TestStruct.class.getDeclaredField("f3"));
     Assert.assertEquals(f3.get(struct), "str");
     f3.set(struct, "a");
     Assert.assertEquals(f3.get(struct), "a");
+    Assert.assertEquals(f3.getObject(struct), "a");
+    f3.putObject(struct, "b");
+    Assert.assertEquals(f3.getObject(struct), "b");
+  }
+
+  @Test
+  public void testHiddenAccessor() throws Exception {
+    HiddenFields fields = new HiddenFields();
+    FieldAccessor intAccessor =
+        FieldAccessor.createAccessor(HiddenFields.class.getDeclaredField("i"));
+    Assert.assertEquals(intAccessor.getInt(fields), 1);
+    intAccessor.putInt(fields, 2);
+    Assert.assertEquals(intAccessor.getInt(fields), 2);
+
+    FieldAccessor objectAccessor =
+        FieldAccessor.createAccessor(HiddenFields.class.getDeclaredField("text"));
+    Assert.assertEquals(objectAccessor.getObject(fields), "a");
+    objectAccessor.putObject(fields, "b");
+    Assert.assertEquals(objectAccessor.getObject(fields), "b");
+
+    FieldAccessor finalAccessor =
+        FieldAccessor.createAccessor(HiddenFields.class.getDeclaredField("finalValue"));
+    Assert.assertEquals(finalAccessor.getLong(fields), 3L);
+  }
+
+  @Test
+  public void testFinalFieldWrites() throws Exception {
+    FinalFields fields = new FinalFields(1, "a");
+    FieldAccessor intAccessor =
+        FieldAccessor.createAccessor(FinalFields.class.getDeclaredField("intValue"));
+    intAccessor.putInt(fields, 2);
+    Assert.assertEquals(intAccessor.getInt(fields), 2);
+
+    FieldAccessor objectAccessor =
+        FieldAccessor.createAccessor(FinalFields.class.getDeclaredField("objectValue"));
+    objectAccessor.putObject(fields, "b");
+    Assert.assertEquals(objectAccessor.getObject(fields), "b");
   }
 
   @Test
   public void testAndroidReflectionFieldAccessorPaths() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
     Process process =
-        new ProcessBuilder(
-                javaBin,
-                "-cp",
-                System.getProperty("java.class.path"),
-                AndroidReflectionFieldAccessorProbe.class.getName())
+        new ProcessBuilder(TestUtils.javaCommand(AndroidReflectionFieldAccessorProbe.class))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());
@@ -106,8 +143,8 @@ public class FieldAccessorTest {
       Field field = AndroidFields.class.getDeclaredField(fieldName);
       FieldAccessor accessor = FieldAccessor.createAccessor(field);
       check(
-          accessor instanceof ReflectionFieldAccessor, "Expected reflection accessor for " + field);
-      check(accessor.getFieldOffset() == -1, "Android field accessor should not expose offsets");
+          accessor.getClass().getEnclosingClass() == InstanceFieldAccessors.class,
+          "Expected instance accessor owner for " + field);
       checkEquals(accessor.get(fields), expected, "initial " + fieldName);
       accessor.set(fields, replacement);
       checkEquals(accessor.get(fields), replacement, "updated " + fieldName);
@@ -136,5 +173,21 @@ public class FieldAccessorTest {
     private float floatValue = 1.25f;
     private double doubleValue = 3.5d;
     private Object objectValue = "before";
+  }
+
+  private static final class HiddenFields {
+    private int i = 1;
+    private String text = "a";
+    private final long finalValue = 3;
+  }
+
+  private static final class FinalFields {
+    private final int intValue;
+    private final Object objectValue;
+
+    private FinalFields(int value, Object object) {
+      intValue = value;
+      objectValue = object;
+    }
   }
 }

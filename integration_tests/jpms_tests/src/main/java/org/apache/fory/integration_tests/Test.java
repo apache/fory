@@ -20,20 +20,19 @@
 package org.apache.fory.integration_tests;
 
 import org.apache.fory.Fory;
-import org.apache.fory.benchmark.Benchmark;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.test.bean.Foo;
 
 /**
- * A test class that simply references classes from the various Fory artifacts to check whether
- * they specify the module names referenced in the module-info descriptor.
+ * A test class that simply references classes from the various Fory artifacts to check whether they
+ * specify the module names referenced in the module-info descriptor.
  */
 public class Test {
 
-    public static void main(String[] args) {
-        final Fory fory = Fory.builder().build();
-        fory.serialize(Foo.create());
+  public static void main(String[] args) {
+    final Fory fory = Fory.builder().build();
+    fory.serialize(Foo.create());
 
-        Encoders.bean(Benchmark.class, fory);
-    }
+    Encoders.bean(Foo.class, fory);
+  }
 }

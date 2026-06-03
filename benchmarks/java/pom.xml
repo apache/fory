@@ -212,13 +212,6 @@
           </plugin>
         </plugins>
       </build>
-      <dependencies>
-        <dependency>
-          <groupId>org.apache.fory</groupId>
-          <artifactId>fory-simd</artifactId>
-          <version>${project.version}</version>
-        </dependency>
-      </dependencies>
     </profile>
     <profile>
       <id>jmh</id>
@@ -235,6 +228,136 @@
           <scope>provided</scope>
         </dependency>
       </dependencies>
+    </profile>
+    <profile>
+      <id>jdk25-benchmark-mrjar-check</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>verify-benchmark-mrjar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <property
+                      name="jdk25.benchmark.check.dir"
+                      value="${project.build.directory}/jdk25-benchmark-check"/>
+                    <delete dir="${jdk25.benchmark.check.dir}"/>
+                    <mkdir dir="${jdk25.benchmark.check.dir}"/>
+                    <unzip
+                      src="${project.build.directory}/${uberjar.name}.jar"
+                      dest="${jdk25.benchmark.check.dir}">
+                      <patternset>
+                        <include
+                          name="org/apache/fory/platform/UnsafeOps.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/platform/UnsafeOps.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/memory/LittleEndian.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/memory/MemoryBuffer.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/platform/internal/_UnsafeUtils.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/serializer/PlatformStringUtils.class"/>
+                      </patternset>
+                    </unzip>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/org/apache/fory/platform/UnsafeOps.class"
+                      property="jdk25.benchmark.rootunsafeops.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/platform/UnsafeOps.class"
+                      property="jdk25.benchmark.unsafeops.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/memory/LittleEndian.class"
+                      property="jdk25.benchmark.littleendian.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/memory/MemoryBuffer.class"
+                      property="jdk25.benchmark.memorybuffer.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/platform/internal/_UnsafeUtils.class"
+                      property="jdk25.benchmark.unsafeutils.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
+                      property="jdk25.benchmark.instancefieldaccessors.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/serializer/PlatformStringUtils.class"
+                      property="jdk25.benchmark.platformstring.present"/>
+                    <fail
+                      if="jdk25.benchmark.rootunsafeops.present"
+                      message="JDK25 benchmark jar must not contain root UnsafeOps class."/>
+                    <fail
+                      if="jdk25.benchmark.unsafeops.present"
+                      message="JDK25 benchmark jar must not contain versioned UnsafeOps class."/>
+                    <fail
+                      unless="jdk25.benchmark.littleendian.present"
+                      message="JDK25 benchmark jar is missing the versioned LittleEndian class."/>
+                    <fail
+                      unless="jdk25.benchmark.memorybuffer.present"
+                      message="JDK25 benchmark jar is missing the versioned MemoryBuffer class."/>
+                    <fail
+                      unless="jdk25.benchmark.unsafeutils.present"
+                      message="JDK25 benchmark jar is missing the versioned _UnsafeUtils class."/>
+                    <fail
+                      unless="jdk25.benchmark.instancefieldaccessors.present"
+                      message="JDK25 benchmark jar is missing the versioned InstanceFieldAccessors class."/>
+                    <fail
+                      unless="jdk25.benchmark.platformstring.present"
+                      message="JDK25 benchmark jar is missing the versioned PlatformStringUtils class."/>
+                    <exec
+                      executable="${java.home}/bin/jdeps"
+                      failonerror="true"
+                      outputproperty="jdk25.benchmark.jdeps.output">
+                      <arg value="--multi-release"/>
+                      <arg value="25"/>
+                      <arg value="--ignore-missing-deps"/>
+                      <arg value="-include"/>
+                      <arg value="org\.apache\.fory\..*"/>
+                      <arg value="-verbose:class"/>
+                      <arg value="${project.build.directory}/${uberjar.name}.jar"/>
+                    </exec>
+                    <condition property="jdk25.benchmark.jdeps.sunmisc.present">
+                      <contains string="${jdk25.benchmark.jdeps.output}" substring="-&gt; sun.misc"/>
+                    </condition>
+                    <condition property="jdk25.benchmark.jdeps.jdkinternalreflect.present">
+                      <contains
+                        string="${jdk25.benchmark.jdeps.output}"
+                        substring="-&gt; jdk.internal.reflect"/>
+                    </condition>
+                    <fail
+                      if="jdk25.benchmark.jdeps.sunmisc.present"
+                      message="JDK25 benchmark jar must not expose sun.misc dependencies in the resolved class graph."/>
+                    <fail
+                      if="jdk25.benchmark.jdeps.jdkinternalreflect.present"
+                      message="JDK25 benchmark jar must not expose jdk.internal.reflect dependencies in the resolved class graph."/>
+                    <java
+                      classname="org.apache.fory.benchmark.Jdk25MrJarCheck"
+                      fork="true"
+                      failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.directory}/${uberjar.name}.jar"/>
+                      </classpath>
+                      <jvmarg value="--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"/>
+                      <jvmarg value="--sun-misc-unsafe-memory-access=deny"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 
@@ -266,6 +389,7 @@
         <configuration>
           <archive>
             <manifestEntries>
+              <Multi-Release>true</Multi-Release>
               <Automatic-Module-Name>org.apache.fory.benchmark</Automatic-Module-Name>
             </manifestEntries>
           </archive>
@@ -287,6 +411,10 @@
                 <transformer
                   implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>org.openjdk.jmh.Main</mainClass>
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                    <Automatic-Module-Name>org.apache.fory.benchmark</Automatic-Module-Name>
+                  </manifestEntries>
                 </transformer>
               </transformers>
               <filters>
@@ -296,6 +424,18 @@
                     <exclude>META-INF/*.SF</exclude>
                     <exclude>META-INF/*.DSA</exclude>
                     <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>org.apache.logging.log4j:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/versions/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>com.fasterxml.jackson.core:jackson-core</artifact>
+                  <excludes>
+                    <exclude>META-INF/versions/**</exclude>
                   </excludes>
                 </filter>
               </filters>
