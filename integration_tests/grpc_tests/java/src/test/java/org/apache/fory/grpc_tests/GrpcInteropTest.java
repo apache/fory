@@ -111,6 +111,18 @@ public class GrpcInteropTest {
     assertFdlUnions(blocking, async, unions);
   }
 
+  // exerciseFdlMessages exercises the four FDL message streaming modes without union methods.
+  private void exerciseFdlMessages(ManagedChannel channel) throws InterruptedException {
+    grpc_fdl.FdlGrpcServiceGrpc.FdlGrpcServiceBlockingStub blocking =
+        grpc_fdl.FdlGrpcServiceGrpc.newBlockingStub(channel);
+    grpc_fdl.FdlGrpcServiceGrpc.FdlGrpcServiceStub async =
+        grpc_fdl.FdlGrpcServiceGrpc.newStub(channel);
+
+    List<grpc_fdl.GrpcFdlRequest> messages =
+        Arrays.asList(fdlRequest("fdl-a", 1, "alpha"), fdlRequest("fdl-b", 2, "beta"));
+    assertFdlMessages(blocking, async, messages);
+  }
+
   private void assertFdlMessages(
       grpc_fdl.FdlGrpcServiceGrpc.FdlGrpcServiceBlockingStub blocking,
       grpc_fdl.FdlGrpcServiceGrpc.FdlGrpcServiceStub async,
@@ -264,6 +276,88 @@ public class GrpcInteropTest {
         bidiObserver.await(),
         Arrays.asList(
             pbResponse(requests.get(0), "bidi-0", 0), pbResponse(requests.get(1), "bidi-1", 1)));
+  }
+
+  @Test
+  public void testJavaServerGoClient() throws Exception {
+    Server server =
+        ServerBuilder.forPort(0)
+            .addService(new FdlService())
+            .build()
+            .start();
+    try {
+      runGo("go-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+    } finally {
+      server.shutdownNow();
+      server.awaitTermination(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  public void testGoServerJavaClient() throws Exception {
+    Path portFile = Files.createTempFile("fory-grpc-go-", ".port");
+    Files.deleteIfExists(portFile);
+    PeerCommand command = goCommand("server", "--port-file", portFile.toString());
+    Process process = startPeer(command);
+    PeerOutputCollector outputCollector =
+        new PeerOutputCollector(process.getInputStream(), "go-grpc-server");
+    outputCollector.start();
+    try {
+      int port = waitForPort(process, outputCollector, portFile);
+      ManagedChannel channel =
+          ManagedChannelBuilder.forAddress("127.0.0.1", port).usePlaintext().build();
+      try {
+        exerciseFdlMessages(channel);
+      } finally {
+        channel.shutdownNow();
+        channel.awaitTermination(10, TimeUnit.SECONDS);
+      }
+    } finally {
+      process.destroy();
+      process.waitFor(10, TimeUnit.SECONDS);
+      if (process.isAlive()) {
+        process.destroyForcibly();
+        process.waitFor(10, TimeUnit.SECONDS);
+      }
+      outputCollector.awaitOutput();
+      Files.deleteIfExists(portFile);
+    }
+  }
+
+  private PeerCommand goCommand(String... args) {
+    Path grpcRoot = repoRoot().resolve("integration_tests").resolve("grpc_tests");
+    Path goRoot = grpcRoot.resolve("go");
+    List<String> command = new ArrayList<>();
+    command.add(goRoot.resolve("grpc-interop").toString());
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = new PeerCommand();
+    peerCommand.command = command;
+    peerCommand.workDir = goRoot;
+    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
+    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
+    return peerCommand;
+  }
+
+  private void runGo(String peer, String... args) throws IOException, InterruptedException {
+    Process process = startPeer(goCommand(args));
+    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
+    outputCollector.start();
+    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
+    if (!finished) {
+      process.destroyForcibly();
+      process.waitFor(10, TimeUnit.SECONDS);
+      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
+    }
+    int exitCode = process.exitValue();
+    if (exitCode != 0) {
+      Assert.fail(
+          "Peer process failed for "
+              + peer
+              + " with exit code "
+              + exitCode
+              + peerOutput(outputCollector));
+    }
+    outputCollector.awaitOutput();
   }
 
   private PeerCommand pythonCommand(String... args) {
