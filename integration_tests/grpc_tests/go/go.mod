@@ -17,7 +17,7 @@
 
 module github.com/apache/fory/integration_tests/grpc_tests/go
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/apache/fory/go/fory v0.0.0
