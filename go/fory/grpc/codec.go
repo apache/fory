@@ -58,4 +58,3 @@ func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error {
 func (CodecV2) Name() string {
 	return "fory"
 }
-

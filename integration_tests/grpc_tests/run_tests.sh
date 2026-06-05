@@ -27,7 +27,9 @@ python -m pip install -v -e "${ROOT_DIR}/python"
 
 python "${SCRIPT_DIR}/generate_grpc.py"
 
+cd "${SCRIPT_DIR}/go"
+go build -o grpc-interop .
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
-ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 --no-transfer-progress \
+mvn -T16 --no-transfer-progress \
   -Dtest=GrpcInteropTest \
   test
