@@ -33,6 +33,7 @@ SCHEMAS = [
 OUTPUTS = {
     "java": TEST_DIR / "java/src/main/java/generated",
     "python": TEST_DIR / "python/grpc_tests/generated",
+    "go": TEST_DIR / "go/generated",
 }
 
 
@@ -66,6 +67,7 @@ def main() -> int:
                 str(schema),
                 f"--java_out={OUTPUTS['java']}",
                 f"--python_out={OUTPUTS['python']}",
+                f"--go_out={OUTPUTS['go']}",
                 "--grpc",
             ],
             env=env,
