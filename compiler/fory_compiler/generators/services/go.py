@@ -70,9 +70,8 @@ class GoServiceGeneratorMixin:
         for i, line in enumerate(import_lines):
             lines.insert(import_placeholder_index + i, line)
 
-        pkg = self.get_file_name()
         return GeneratedFile(
-            path=f"{pkg}/{pkg}_grpc.go", content="\n".join(lines)
+            path=f"{self.get_file_name()}_grpc.go", content="\n".join(lines)
         )
 
     def _build_import_block(self, tracker: ImportTracker) -> List[str]:
@@ -171,7 +170,7 @@ class GoServiceGeneratorMixin:
                 )
                 lines.append(f"\tout := new({res_type[1:]})")
                 lines.append(
-                    f"\tcallOpts := append([]grpc.CallOption{{grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}})}}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(forygrpc.CodecV2{Fory: c.fory})}, opts...)"
                 )
                 lines.append(
                     f'\terr := c.cc.Invoke(ctx, "{self.get_grpc_method_path(service, method)}", in, out, callOpts...)'
@@ -187,7 +186,7 @@ class GoServiceGeneratorMixin:
                     f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{"
                 )
                 lines.append(
-                    f"\tcallOpts := append([]grpc.CallOption{{grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}})}}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(forygrpc.CodecV2{Fory: c.fory})}, opts...)"
                 )
                 lines.append(
                     f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", callOpts...)'
@@ -213,7 +212,7 @@ class GoServiceGeneratorMixin:
                     f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{"
                 )
                 lines.append(
-                    f"\tcallOpts := append([]grpc.CallOption{{grpc.ForceCodecV2(forygrpc.CodecV2{{Fory: c.fory}})}}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(forygrpc.CodecV2{Fory: c.fory})}, opts...)"
                 )
                 lines.append(
                     f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", callOpts...)'
