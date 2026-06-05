@@ -22,33 +22,40 @@ import (
 	"google.golang.org/grpc/mem"
 )
 
-// CodecV2 implements grpc/encoding.CodecV2, replacing the default protobuf
-// codec with Fory binary serialization on both client and server sides.
+// CodecV2 implements grpc/encoding.CodecV2 using Fory serialization.
 // Pass a configured *fory.Fory instance with all message types registered.
 type CodecV2 struct {
 	Fory *fory.Fory
 }
 
-// Marshal serializes the message using Fory and wraps the resulting bytes
-// in a single-buffer BufferSlice for gRPC transport.
+// Marshal serializes v with Fory. The result is copied before being handed to
+// gRPC because Fory reuses its internal write buffer across calls — streaming
+// handlers may buffer multiple frames before sending, and without a copy all
+// frames would alias the last serialized value.
 func (c CodecV2) Marshal(v any) (mem.BufferSlice, error) {
 	b, err := c.Fory.Marshal(v)
 	if err != nil {
 		return nil, err
 	}
-	return mem.BufferSlice{mem.NewBuffer(&b, nil)}, nil
+	out := make([]byte, len(b))
+	copy(out, b)
+	return mem.BufferSlice{mem.NewBuffer(&out, nil)}, nil
 }
 
-// Unmarshal materializes the incoming buffer slice into a contiguous byte
-// slice and deserializes it into v using Fory.
+// Unmarshal deserializes the gRPC frame into v. Each buffer segment is copied
+// into a fresh slice because the transport may reclaim the underlying memory
+// before Fory finishes reading it.
 func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error {
-	buf := data.MaterializeToBuffer(mem.DefaultBufferPool())
-	defer buf.Free()
-	return c.Fory.Unmarshal(buf.ReadOnlyData(), v)
+	b := make([]byte, data.Len())
+	n := 0
+	for _, buf := range data {
+		n += copy(b[n:], buf.ReadOnlyData())
+	}
+	return c.Fory.Unmarshal(b, v)
 }
 
-// Name returns the codec identifier registered with gRPC. Using "fory"
-// ensures this codec does not conflict with the default "proto" codec.
+// Name returns "fory", the codec identifier used with grpc.ForceCodecV2.
 func (CodecV2) Name() string {
 	return "fory"
 }
+

@@ -73,6 +73,36 @@ func TestUnmarshalError(t *testing.T) {
 }
 
 // TestName verifies the codec identifier matches the value used in grpc.ForceCodecV2 calls.
+// TestMarshalBufferReuse verifies that consecutive Marshal calls return
+// independent byte slices. Fory reuses its internal write buffer across
+// calls, so the codec must copy the bytes before returning them to gRPC,
+// which may buffer multiple frames before transmitting.
+func TestMarshalBufferReuse(t *testing.T) {
+	codec := CodecV2{Fory: newTestFory(t)}
+	msgs := []*testMessage{
+		{Name: "first", Value: 1},
+		{Name: "second", Value: 2},
+		{Name: "third", Value: 3},
+	}
+	bufs := make([]mem.BufferSlice, len(msgs))
+	for i, m := range msgs {
+		buf, err := codec.Marshal(m)
+		if err != nil {
+			t.Fatalf("Marshal[%d]: %v", i, err)
+		}
+		bufs[i] = buf
+	}
+	for i, buf := range bufs {
+		got := &testMessage{}
+		if err := codec.Unmarshal(buf, got); err != nil {
+			t.Fatalf("Unmarshal[%d]: %v", i, err)
+		}
+		if *got != *msgs[i] {
+			t.Errorf("buf[%d]: got %+v, want %+v", i, got, msgs[i])
+		}
+	}
+}
+
 func TestName(t *testing.T) {
 	if name := (CodecV2{}).Name(); name != "fory" {
 		t.Errorf("Name() = %q, want %q", name, "fory")
