@@ -15,7 +15,7 @@ The C# implementation provides high-performance object graph serialization for .
 - Optional shared/circular reference tracking (`TrackRef(true)`)
 - Compatible mode for schema evolution
 - Reduced-precision carriers for `Half` / `BFloat16` scalars and `Half[]` / `List<Half>` / `BFloat16[]` / `List<BFloat16>` array payloads
-- Thread-safe runtime wrapper (`ThreadSafeFory`) for concurrent workloads
+- Thread-safe wrapper (`ThreadSafeFory`) for concurrent workloads
 - Dynamic object serialization APIs for heterogeneous payloads
 
 ## Quick Start
@@ -27,7 +27,7 @@ The C# implementation provides high-performance object graph serialization for .
 
 ### Add Apache Fory™ C\#
 
-From NuGet, reference the single `Apache.Fory` package. It includes the runtime plus the source generator for `[ForyStruct]`, `[ForyEnum]`, and `[ForyUnion]` types.
+From NuGet, reference the single `Apache.Fory` package. It includes the Fory library plus the source generator for `[ForyStruct]`, `[ForyEnum]`, and `[ForyUnion]` types.
 
 ```xml
 <ItemGroup>
@@ -35,7 +35,7 @@ From NuGet, reference the single `Apache.Fory` package. It includes the runtime 
 </ItemGroup>
 ```
 
-For local development against this repository, reference the runtime project and generator project directly:
+For local development against this repository, reference the Fory project and generator project directly:
 
 ```xml
 <ItemGroup>
@@ -141,10 +141,10 @@ public sealed class TwoFields
     public string F2 { get; set; } = string.Empty;
 }
 
-Fory fory1 = Fory.Builder().Compatible(true).Build();
+Fory fory1 = Fory.Builder().Build();
 fory1.Register<OneField>(300);
 
-Fory fory2 = Fory.Builder().Compatible(true).Build();
+Fory fory2 = Fory.Builder().Build();
 fory2.Register<TwoFields>(300);
 
 TwoFields decoded = fory2.Deserialize<TwoFields>(fory1.Serialize(new OneField { F1 = "hello" }));
@@ -168,7 +168,7 @@ byte[] payload = fory.Serialize<object?>(map);
 object? decoded = fory.Deserialize<object?>(payload);
 ```
 
-### 5. Thread-Safe Runtime
+### 5. Thread-Safe Fory
 
 `Fory` is single-thread optimized. Use `ThreadSafeFory` for concurrent access.
 
@@ -218,7 +218,6 @@ Use consistent registration mappings across languages.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 
 fory.Register<Person>(100); // same ID on other language peers

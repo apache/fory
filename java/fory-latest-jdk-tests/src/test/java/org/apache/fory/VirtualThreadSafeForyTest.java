@@ -49,6 +49,7 @@ public class VirtualThreadSafeForyTest {
             .withXlang(false)
             .withClassLoader(classLoader)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .buildThreadSafeFory();
     AtomicReference<Throwable> error = new AtomicReference<>();
     Thread thread =
@@ -76,6 +77,7 @@ public class VirtualThreadSafeForyTest {
             Fory.builder()
                 .withXlang(false)
                 .requireClassRegistration(false)
+                .withCompatible(false)
                 .buildThreadSafeForyPool(2);
     int threadCount = 8;
     CountDownLatch acquired = new CountDownLatch(2);

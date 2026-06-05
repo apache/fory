@@ -101,8 +101,7 @@ void _registerSignedFields(Fory fory) {
   SignedSerializerTestForyModule.register(
     fory,
     SignedFields,
-    namespace: 'test',
-    typeName: 'SignedFields',
+    name: 'test.SignedFields',
   );
 }
 
@@ -110,8 +109,7 @@ void _registerSignedMetadataReader(Fory fory) {
   SignedSerializerTestForyModule.register(
     fory,
     SignedMetadataReader,
-    namespace: 'test',
-    typeName: 'SignedFields',
+    name: 'test.SignedFields',
   );
 }
 
@@ -119,8 +117,7 @@ void _registerSignedIntFieldsReader(Fory fory) {
   SignedSerializerTestForyModule.register(
     fory,
     SignedIntFieldsReader,
-    namespace: 'test',
-    typeName: 'SignedFields',
+    name: 'test.SignedFields',
   );
 }
 

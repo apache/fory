@@ -552,6 +552,18 @@ impl Error {
     }
 }
 
+#[cold]
+#[inline(never)]
+pub(crate) fn unsupported_send_sync_type<T>() -> Error
+where
+    T: ?Sized,
+{
+    Error::type_error(format!(
+        "{} cannot be represented as Arc<dyn Any + Send + Sync>",
+        std::any::type_name::<T>()
+    ))
+}
+
 /// Ensures a condition is true; otherwise returns an [`enum@Error`].
 ///
 /// # Examples

@@ -51,7 +51,7 @@ func TestDateUsesVarint64InXlangAndInt32InNative(t *testing.T) {
 		},
 		{
 			name: "native",
-			fory: NewFory(WithTrackRef(false), WithXlang(false)),
+			fory: NewFory(WithTrackRef(false), WithXlang(false), WithCompatible(false)),
 			check: func(t *testing.T, buf *ByteBuffer) {
 				var err Error
 				require.Equal(t, byte(0), buf.ReadByte(&err))

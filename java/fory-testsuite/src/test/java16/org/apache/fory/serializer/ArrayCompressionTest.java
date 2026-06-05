@@ -56,7 +56,11 @@ public class ArrayCompressionTest {
   @Test(dataProvider = "intArrayData")
   public void testIntArrayCompressionRoundTrip(String description, int[] originalArray) {
     Fory foryWithCompression =
-        new ForyBuilder().withXlang(false).withIntArrayCompressed(true).build();
+        new ForyBuilder()
+            .withXlang(false)
+            .withIntArrayCompressed(true)
+            .withCompatible(false)
+            .build();
     CompressedArraySerializers.registerSerializers(foryWithCompression);
     byte[] serializedWithCompression = foryWithCompression.serialize(originalArray);
     int[] deserializedWithCompression =
@@ -70,7 +74,11 @@ public class ArrayCompressionTest {
   @Test(dataProvider = "longArrayData")
   public void testLongArrayCompressionRoundTrip(String description, long[] originalArray) {
     Fory foryWithCompression =
-        new ForyBuilder().withXlang(false).withLongArrayCompressed(true).build();
+        new ForyBuilder()
+            .withXlang(false)
+            .withLongArrayCompressed(true)
+            .withCompatible(false)
+            .build();
     CompressedArraySerializers.registerSerializers(foryWithCompression);
     byte[] serializedWithCompression = foryWithCompression.serialize(originalArray);
     long[] deserializedWithCompression =
@@ -88,6 +96,7 @@ public class ArrayCompressionTest {
             .withXlang(false)
             .withIntArrayCompressed(true)
             .withLongArrayCompressed(true)
+            .withCompatible(false)
             .build();
     CompressedArraySerializers.registerSerializers(foryWithCompression);
 
@@ -96,6 +105,7 @@ public class ArrayCompressionTest {
             .withXlang(false)
             .withIntArrayCompressed(false)
             .withLongArrayCompressed(false)
+            .withCompatible(false)
             .build();
 
     // Test byte-range int array compression (should achieve ~4x compression)
@@ -136,6 +146,7 @@ public class ArrayCompressionTest {
             .withXlang(false)
             .withIntArrayCompressed(true)
             .withLongArrayCompressed(true)
+            .withCompatible(false)
             .build();
     CompressedArraySerializers.registerSerializers(fory);
 

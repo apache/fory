@@ -239,15 +239,22 @@ public static class FieldSkipper
             case (uint)TypeId.Int32:
             case (uint)TypeId.UInt32:
             case (uint)TypeId.Float32:
-            case (uint)TypeId.Date:
                 context.Reader.Skip(4);
                 return;
             case (uint)TypeId.Int64:
             case (uint)TypeId.UInt64:
             case (uint)TypeId.Float64:
-            case (uint)TypeId.Timestamp:
-            case (uint)TypeId.Duration:
                 context.Reader.Skip(8);
+                return;
+            case (uint)TypeId.Date:
+                _ = context.Reader.ReadVarInt64();
+                return;
+            case (uint)TypeId.Timestamp:
+                context.Reader.Skip(12);
+                return;
+            case (uint)TypeId.Duration:
+                _ = context.Reader.ReadVarInt64();
+                context.Reader.Skip(4);
                 return;
             case (uint)TypeId.VarInt32:
                 _ = context.Reader.ReadVarInt32();

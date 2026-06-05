@@ -223,6 +223,20 @@ def _construct_serializer(serializer_factory, type_resolver, cls):
     raise TypeError(f"Unsupported serializer constructor for {serializer_factory!r}; expected `(type_resolver, cls)`, `(type_resolver)`, or `()`.")
 
 
+def _split_registration_name(name: str):
+    if name is None:
+        return None, None
+    if not isinstance(name, str):
+        raise TypeError(f"name must be a string, got {type(name).__name__}")
+    if not name or name.endswith("."):
+        raise ValueError("name must not be empty or end with '.'")
+    namespace, separator, typename = name.rpartition(".")
+    if not separator:
+        namespace = ""
+        typename = name
+    return namespace, typename
+
+
 if ENABLE_FORY_CYTHON_SERIALIZATION:
     from pyfory.serialization import TypeInfo
 else:
@@ -540,10 +554,10 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
+        namespace, typename = _split_registration_name(name)
         return self._register_type(
             cls,
             type_id=type_id,
@@ -557,10 +571,10 @@ class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
+        namespace, typename = _split_registration_name(name)
         if serializer is None:
             raise TypeError("register_union requires a serializer")
         if serializer is not None and not isinstance(serializer, Serializer):
@@ -729,6 +743,8 @@ class TypeResolver:
                     namespace, typename = splits
                 else:
                     namespace = ""  # Use empty string for consistency with lookup
+            if not typename:
+                raise ValueError("type name must not be empty")
             ns_metastr = self.namespace_encoder.encode(namespace or "")
             ns_meta_bytes = self.shared_registry.get_encoded_meta_string(ns_metastr)
             type_metastr = self.typename_encoder.encode(typename)

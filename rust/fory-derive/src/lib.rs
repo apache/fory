@@ -143,6 +143,11 @@
 //! **Custom Types:**
 //! - Any type that implements `Serializer` (for `Fory`) or `Row` (for `ForyRow`)
 //!
+//! Derived structs, enums, and unions can be used behind
+//! `Arc<dyn Any + Send + Sync>` when the concrete type satisfies `Send + Sync`.
+//! Known non-`Send + Sync` field types such as `Rc<T>` and `RefCell<T>` are not
+//! eligible for that carrier.
+//!
 //! ## Usage with Fory
 //!
 //! After deriving the macros, you can use the types with the Fory serialization
@@ -160,7 +165,7 @@
 //!
 //! fn main() -> Result<(), Error> {
 //!     let mut fory = Fory::builder().xlang(true).build();
-//!     fory.register_by_name::<MyData>("example", "MyData")?;
+//!     fory.register_by_name::<MyData>("example.MyData")?;
 //!     
 //!     let data = MyData {
 //!         value: 42,
@@ -340,6 +345,8 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
                         Some(_) => evolving_flag,
                         None => Some(value),
                     };
+                } else {
+                    return Err(meta.error("unsupported type-level fory attribute"));
                 }
                 Ok(())
             })?;

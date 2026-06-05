@@ -31,14 +31,12 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
+import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
@@ -231,10 +229,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     if (!hasDefaultValues) {
       return newBean();
     }
-    T obj =
-        AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
-            ? newBean()
-            : UnsafeOps.newInstance(type);
+    T obj = newBean();
     // Set default values for missing fields in Scala case classes
     DefaultValueUtils.setDefaultValues(obj, defaultValueFields);
     return obj;
@@ -250,7 +245,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
         readFields(readContext, fieldValues);
       }
       fieldValues = RecordUtils.remapping(recordInfo, fieldValues);
-      T t = objectCreator.newInstanceWithArguments(fieldValues);
+      T t = objectInstantiator.newInstanceWithArguments(fieldValues);
       Arrays.fill(recordInfo.getRecordComponents(), null);
       return t;
     }
@@ -264,6 +259,14 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
       readFields(readContext, targetObject);
     }
     return targetObject;
+  }
+
+  private void setFieldValue(T targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
+    if (fieldInfo.fieldAccessor != null) {
+      fieldInfo.fieldAccessor.putObject(targetObject, fieldValue);
+    } else if (fieldInfo.fieldConverter != null) {
+      fieldInfo.fieldConverter.set(targetObject, fieldValue);
+    }
   }
 
   private void readFields(ReadContext readContext, T targetObject) {
@@ -287,10 +290,8 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
 
   private void compatibleRead(
       ReadContext readContext, SerializationFieldInfo fieldInfo, Object obj) {
-    MemoryBuffer buffer = readContext.getBuffer();
     Object fieldValue =
-        AbstractObjectSerializer.readBuildInFieldValue(
-            readContext, typeResolver, readContext.getRefReader(), fieldInfo, buffer);
+        FieldConverters.readSourceScalar(readContext, fieldInfo, fieldInfo.fieldConverter);
     fieldInfo.fieldConverter.set(obj, fieldValue);
   }
 
@@ -367,6 +368,11 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     }
     switch (fieldInfo.codecCategory) {
       case BUILD_IN:
+        if (fieldInfo.fieldConverter != null && action == null) {
+          Object sourceValue =
+              FieldConverters.readSourceScalar(readContext, fieldInfo, fieldInfo.fieldConverter);
+          return fieldInfo.fieldConverter.convert(sourceValue);
+        }
         if (fieldInfo.fieldAccessor == null) {
           FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
           return null;

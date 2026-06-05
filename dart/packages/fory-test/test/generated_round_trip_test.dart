@@ -36,18 +36,8 @@ void main() {
   group('generated registration', () {
     test('round-trips struct and enum data', () {
       final fory = Fory();
-      PersonForyModule.register(
-        fory,
-        Color,
-        namespace: 'fory_test.person',
-        typeName: 'Color',
-      );
-      PersonForyModule.register(
-        fory,
-        Person,
-        namespace: 'fory_test.person',
-        typeName: 'Person',
-      );
+      PersonForyModule.register(fory, Color, name: 'fory_test.person.Color');
+      PersonForyModule.register(fory, Person, name: 'fory_test.person.Person');
 
       final person =
           Person()
@@ -73,8 +63,7 @@ void main() {
       PersonForyModule.register(
         fory,
         RefNode,
-        namespace: 'fory_test.person',
-        typeName: 'RefNode',
+        name: 'fory_test.person.RefNode',
       );
 
       // `trackRef` is the root-level escape hatch for graphs without field
@@ -92,8 +81,7 @@ void main() {
       PersonForyModule.register(
         fory,
         RefNode,
-        namespace: 'fory_test.person',
-        typeName: 'RefNode',
+        name: 'fory_test.person.RefNode',
       );
 
       final node =
@@ -114,14 +102,12 @@ void main() {
         PersonForyModule.register(
           fory,
           EvolvingPayload,
-          namespace: 'fory_test.person',
-          typeName: 'EvolvingPayload',
+          name: 'fory_test.person.EvolvingPayload',
         );
         PersonForyModule.register(
           fory,
           FixedPayload,
-          namespace: 'fory_test.person',
-          typeName: 'FixedPayload',
+          name: 'fory_test.person.FixedPayload',
         );
 
         final evolving = EvolvingPayload()..value = 'payload';
@@ -147,8 +133,7 @@ void main() {
       PersonForyModule.register(
         fory,
         PrivatePayload,
-        namespace: 'fory_test.person',
-        typeName: 'PrivatePayload',
+        name: 'fory_test.person.PrivatePayload',
       );
 
       final mutable = PrivatePayload()..updateSecret('hidden');
@@ -164,8 +149,7 @@ void main() {
       PersonForyModule.register(
         fory,
         PrivateImmutablePayload,
-        namespace: 'fory_test.person',
-        typeName: 'PrivateImmutablePayload',
+        name: 'fory_test.person.PrivateImmutablePayload',
       );
 
       final immutable = PrivateImmutablePayload('sealed');

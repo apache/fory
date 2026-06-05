@@ -26,10 +26,10 @@ func TestMaxCollectionSizeGuardrail(t *testing.T) {
 	// 1. Test slice exceeding limit
 	t.Run("Slice exceeds MaxCollectionSize", func(t *testing.T) {
 		config := WithMaxCollectionSize(2)
-		f := NewFory(WithXlang(false), config)
+		f := NewFory(WithXlang(false), config, WithCompatible(false))
 
 		slice := []string{"a", "b", "c"}
-		fBase := NewFory(WithXlang(false))
+		fBase := NewFory(WithXlang(false), WithCompatible(false))
 		bytes, _ := fBase.Serialize(slice)
 
 		var decoded []string
@@ -41,10 +41,10 @@ func TestMaxCollectionSizeGuardrail(t *testing.T) {
 	// 2. Test map exceeding limit
 	t.Run("Map exceeds MaxCollectionSize", func(t *testing.T) {
 		config := WithMaxCollectionSize(2)
-		f := NewFory(WithXlang(false), config)
+		f := NewFory(WithXlang(false), config, WithCompatible(false))
 
 		m := map[int32]int32{1: 1, 2: 2, 3: 3}
-		fBase := NewFory(WithXlang(false))
+		fBase := NewFory(WithXlang(false), WithCompatible(false))
 		bytes, _ := fBase.Serialize(m)
 
 		var decoded map[int32]int32
@@ -56,7 +56,7 @@ func TestMaxCollectionSizeGuardrail(t *testing.T) {
 	// 3. Test string is not affected by MaxCollectionSize
 	t.Run("String unaffected by MaxCollectionSize", func(t *testing.T) {
 		config := WithMaxCollectionSize(2)
-		f := NewFory(WithXlang(false), config)
+		f := NewFory(WithXlang(false), config, WithCompatible(false))
 
 		str := "hello world" // length 11
 		bytes, err := f.Serialize(str)
@@ -73,11 +73,11 @@ func TestMaxBinarySizeGuardrail(t *testing.T) {
 	// 1. Test binary (byte slice) exceeding limit
 	t.Run("Byte slice exceeds MaxBinarySize", func(t *testing.T) {
 		config := WithMaxBinarySize(5)
-		f := NewFory(WithXlang(false), config)
+		f := NewFory(WithXlang(false), config, WithCompatible(false))
 
 		// We can serialize a byte slice using standard serializer, then decode with the f instance
 		slice := []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-		fBase := NewFory(WithXlang(false))
+		fBase := NewFory(WithXlang(false), WithCompatible(false))
 		bytes, _ := fBase.Serialize(slice)
 
 		var decoded []byte
@@ -89,7 +89,7 @@ func TestMaxBinarySizeGuardrail(t *testing.T) {
 	// 2. Test string is not affected by MaxBinarySize
 	t.Run("String unaffected by MaxBinarySize", func(t *testing.T) {
 		config := WithMaxBinarySize(2)
-		f := NewFory(WithXlang(false), config)
+		f := NewFory(WithXlang(false), config, WithCompatible(false))
 
 		str := "hello world" // length 11
 		bytes, err := f.Serialize(str)

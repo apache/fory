@@ -90,7 +90,12 @@ public class DTOTest {
 
   @Test
   public void testFory() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     UserDTO obj = BeanMock.mockBean(UserDTO.class);
     obj.setColorEnum(ColorEnum.RED);
     Assert.assertEquals(fory.deserialize(fory.serialize(obj)), obj);

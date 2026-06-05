@@ -45,8 +45,7 @@ void _registerTimeTypes(Fory fory) {
   TimeSerializerTestForyModule.register(
     fory,
     TimeEnvelope,
-    namespace: 'time',
-    typeName: 'TimeEnvelope',
+    name: 'time.TimeEnvelope',
   );
 }
 

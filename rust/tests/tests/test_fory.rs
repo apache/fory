@@ -33,7 +33,7 @@ fn test_nested_struct_register_order() {
         value: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     // outer struct registered first. building fields info should be executed lazily,
     // otherwise the inner struct won't be found.
     fory.register::<Data1>(100).unwrap();
@@ -55,7 +55,7 @@ fn test_serialize_to_appends_bytes() {
         y: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let p1 = Point { x: 1, y: 2 };
     let p2 = Point { x: -3, y: 4 };
@@ -90,7 +90,7 @@ fn test_serialize_to_detailed() {
         name: String,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     fory.register::<Line>(101).unwrap();
 
@@ -265,7 +265,7 @@ fn test_unregistered_type_error_message() {
         inner: Inner,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     // Register only the outer type; inner type is intentionally not registered
     fory.register::<Outer>(200).unwrap();
     let obj = Outer {
@@ -331,7 +331,7 @@ fn test_type_mismatch_error_shows_type_name() {
 
 #[test]
 fn test_size_guardrail_configuration_accessors() {
-    let default_fory = Fory::builder().xlang(false).build();
+    let default_fory = Fory::builder().xlang(false).compatible(false).build();
     assert_eq!(default_fory.get_max_binary_size(), 64 * 1024 * 1024);
     assert_eq!(default_fory.get_max_collection_size(), 1024 * 1024);
 
@@ -339,6 +339,7 @@ fn test_size_guardrail_configuration_accessors() {
         .xlang(false)
         .max_binary_size(4096)
         .max_collection_size(128)
+        .compatible(false)
         .build();
     assert_eq!(configured_fory.get_max_binary_size(), 4096);
     assert_eq!(configured_fory.get_max_collection_size(), 128);
@@ -346,11 +347,15 @@ fn test_size_guardrail_configuration_accessors() {
 
 #[test]
 fn test_max_binary_size_does_not_limit_string_reads() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let original = "this string should not be treated as binary".repeat(4);
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::builder().xlang(false).max_binary_size(4).build();
+    let limited_fory = Fory::builder()
+        .xlang(false)
+        .max_binary_size(4)
+        .compatible(false)
+        .build();
     let deserialized: String = limited_fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized, original);

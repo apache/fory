@@ -22,8 +22,8 @@
 //! nested collection configuration without creating wrapper value types.
 
 use super::collection::{
-    read_primitive_array_vec_compatible_mismatch, read_vec_compatible_mismatch,
-    CompatibleListArrayElement,
+    compatible_list_array_field, read_primitive_array_vec_compatible_mismatch,
+    read_vec_compatible_mismatch, CompatibleListArrayElement,
 };
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
@@ -219,6 +219,23 @@ pub(super) fn collection_type_with_fallback_generics(type_id: u32) -> bool {
 
 #[inline(always)]
 pub fn field_types_compatible(local: &FieldType, remote: &FieldType) -> bool {
+    let local_scalar = super::scalar_conversion::is_compatible_scalar_type(local.type_id);
+    let remote_scalar = super::scalar_conversion::is_compatible_scalar_type(remote.type_id);
+    if local_scalar && remote_scalar {
+        if local.track_ref != remote.track_ref {
+            return false;
+        }
+        if (local.track_ref || remote.track_ref)
+            && (local.type_id != remote.type_id || local.nullable != remote.nullable)
+        {
+            return false;
+        }
+        if !local.track_ref
+            && (local.type_id != remote.type_id || local.nullable != remote.nullable)
+        {
+            return false;
+        }
+    }
     if local.compatible_fingerprint() == remote.compatible_fingerprint() {
         return true;
     }
@@ -229,6 +246,14 @@ pub fn field_types_compatible(local: &FieldType, remote: &FieldType) -> bool {
         return true;
     }
     false
+}
+
+#[cold]
+#[inline(never)]
+pub fn compatible_field_pair(local: &FieldType, remote: &FieldType) -> bool {
+    field_types_compatible(local, remote)
+        || super::scalar_conversion::scalar_field_types_compatible(local, remote)
+        || compatible_list_array_field(local, remote)
 }
 
 #[inline(always)]
@@ -314,10 +339,14 @@ pub trait Codec<T: 'static>: 'static {
         local_field_type: &FieldType,
         remote_field_type: &FieldType,
     ) -> Result<Option<T>, Error> {
-        if !field_types_compatible(local_field_type, remote_field_type) {
-            return Ok(None);
+        if field_types_compatible(local_field_type, remote_field_type) {
+            return Self::read_field_with_type(context, remote_field_type).map(Some);
         }
-        Self::read_field_with_type(context, remote_field_type).map(Some)
+        super::scalar_conversion::read_scalar_field::<T, Self>(
+            context,
+            local_field_type,
+            remote_field_type,
+        )
     }
 
     fn write_data(value: &T, context: &mut WriteContext) -> Result<(), Error>;
@@ -890,6 +919,22 @@ where
         } else {
             Ok(Some(C::read_data_with_type(context, remote_field_type)?))
         }
+    }
+
+    #[inline(always)]
+    fn read_compatible(
+        context: &mut ReadContext,
+        local_field_type: &FieldType,
+        remote_field_type: &FieldType,
+    ) -> Result<Option<Option<T>>, Error> {
+        if field_types_compatible(local_field_type, remote_field_type) {
+            return Self::read_field_with_type(context, remote_field_type).map(Some);
+        }
+        super::scalar_conversion::read_scalar_option_field::<T>(
+            context,
+            local_field_type,
+            remote_field_type,
+        )
     }
 
     #[inline(always)]
@@ -2748,11 +2793,11 @@ macro_rules! any_codec {
 
 any_codec!(AnyBoxCodec, Box<dyn Any>);
 any_codec!(AnyRcCodec, Rc<dyn Any>);
-any_codec!(AnyArcCodec, Arc<dyn Any>);
+any_codec!(AnyArcCodec, Arc<dyn Any + Send + Sync>);
 
 #[cfg(test)]
 mod tests {
-    use super::field_types_compatible;
+    use super::{compatible_field_pair, field_types_compatible};
     use crate::meta::FieldType;
     use crate::type_id;
 
@@ -2766,5 +2811,53 @@ mod tests {
         assert!(field_types_compatible(&uint8_array, &bytes));
         assert!(!field_types_compatible(&bytes, &int8_array));
         assert!(!field_types_compatible(&int8_array, &bytes));
+    }
+
+    #[test]
+    fn scalar_ref_tracking_rules() {
+        let bool_value = FieldType::new(type_id::BOOL, false, vec![]);
+        let ref_bool = FieldType::new_with_ref(type_id::BOOL, false, true, vec![]);
+
+        assert!(!field_types_compatible(&bool_value, &ref_bool));
+        assert!(!field_types_compatible(&ref_bool, &bool_value));
+        assert!(field_types_compatible(&ref_bool, &ref_bool));
+        let nullable_ref_bool = FieldType::new_with_ref(type_id::BOOL, true, true, vec![]);
+        assert!(field_types_compatible(
+            &nullable_ref_bool,
+            &nullable_ref_bool
+        ));
+        assert!(!field_types_compatible(&ref_bool, &nullable_ref_bool));
+        assert!(!field_types_compatible(&nullable_ref_bool, &ref_bool));
+
+        let fixed_i32 = FieldType::new(type_id::INT32, false, vec![]);
+        let var_i32 = FieldType::new(type_id::VARINT32, false, vec![]);
+        assert!(!field_types_compatible(&fixed_i32, &var_i32));
+
+        let ref_fixed_i32 = FieldType::new_with_ref(type_id::INT32, false, true, vec![]);
+        let ref_var_i32 = FieldType::new_with_ref(type_id::VARINT32, false, true, vec![]);
+        assert!(!field_types_compatible(&ref_fixed_i32, &ref_var_i32));
+    }
+
+    #[test]
+    fn compatible_field_pair_rules() {
+        let int8 = FieldType::new(type_id::INT8, false, vec![]);
+        let int16 = FieldType::new(type_id::INT16, false, vec![]);
+        assert!(compatible_field_pair(&int16, &int8));
+
+        let ref_int16 = FieldType::new_with_ref(type_id::INT16, false, true, vec![]);
+        assert!(!compatible_field_pair(&ref_int16, &int8));
+
+        let list_i8 = FieldType::new(type_id::LIST, false, vec![int8]);
+        let list_i16 = FieldType::new(type_id::LIST, false, vec![int16]);
+        assert!(!compatible_field_pair(&list_i16, &list_i8));
+
+        let int32_array = FieldType::new(type_id::INT32_ARRAY, false, vec![]);
+        let list_i32 = FieldType::new(
+            type_id::LIST,
+            false,
+            vec![FieldType::new(type_id::INT32, false, vec![])],
+        );
+        assert!(compatible_field_pair(&list_i32, &int32_array));
+        assert!(compatible_field_pair(&int32_array, &list_i32));
     }
 }

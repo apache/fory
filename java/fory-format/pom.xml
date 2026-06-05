@@ -39,7 +39,7 @@
     <maven.compiler.source>11</maven.compiler.source>
     <maven.compiler.target>11</maven.compiler.target>
     <arrow.version>18.3.0</arrow.version>
-    <jackson-bom.version>2.16.0</jackson-bom.version>
+    <jackson-bom.version>2.18.6</jackson-bom.version>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
   </properties>
 
@@ -111,13 +111,6 @@
           </archive>
         </configuration>
       </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-surefire-plugin</artifactId>
-        <configuration>
-          <argLine>--add-opens=java.base/java.nio=ALL-UNNAMED</argLine>
-        </configuration>
-      </plugin>
     </plugins>
   </build>
 
@@ -143,9 +136,24 @@
                 <configuration>
                   <target>
                     <mkdir dir="${project.build.directory}/jpms-classes/java11"/>
+                    <condition
+                        property="fory.core.module.jar"
+                        value="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"
+                        else="${settings.localRepository}/org/apache/fory/fory-core/${project.version}/fory-core-${project.version}.jar">
+                      <available
+                          file="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"/>
+                    </condition>
+                    <path id="fory.core.compile.path">
+                      <pathelement location="${project.basedir}/../fory-core/target/classes"/>
+                      <pathelement
+                          location="${settings.localRepository}/org/apache/fory/fory-core/${project.version}/fory-core-${project.version}.jar"/>
+                    </path>
                     <path id="compile.module.path.elements">
-                      <pathelement location="${project.basedir}/../fory-core/target/jpms-classes/java9"/>
-                      <path refid="maven.compile.classpath"/>
+                      <pathelement location="${fory.core.module.jar}"/>
+                      <difference>
+                        <path refid="maven.compile.classpath"/>
+                        <path refid="fory.core.compile.path"/>
+                      </difference>
                     </path>
                     <pathconvert property="compile.module.path" refid="compile.module.path.elements"
                                  pathsep="${path.separator}"/>
@@ -245,6 +253,15 @@
                       </excludes>
                     </filter>
                   </filters>
+                  <transformers>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                      <manifestEntries>
+                        <Multi-Release>true</Multi-Release>
+                        <Automatic-Module-Name>org.apache.fory.format</Automatic-Module-Name>
+                      </manifestEntries>
+                    </transformer>
+                    <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                  </transformers>
                 </configuration>
               </execution>
             </executions>

@@ -87,7 +87,12 @@ public class LambdaSerializerTest extends ForyTestBase {
 
   @Test
   public void testLambdaUnserializableMsg() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Function<Object, String> function = String::valueOf;
     assertThrowsCause(UnsupportedOperationException.class, () -> fory.serialize(function));
     try {
@@ -113,8 +118,13 @@ public class LambdaSerializerTest extends ForyTestBase {
     int delta = 7;
     Function<Integer, Integer> function =
         (Serializable & Function<Integer, Integer>) (x) -> x + delta;
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
-    Fory reader = Fory.builder().withXlang(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Fory reader = Fory.builder().withXlang(false).withCompatible(false).build();
     byte[] bytes = writer.serialize(extractSerializedLambda(function));
     Assert.assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
   }
@@ -124,12 +134,18 @@ public class LambdaSerializerTest extends ForyTestBase {
     int delta = 7;
     Function<Integer, Integer> function =
         (Serializable & Function<Integer, Integer>) (x) -> x + delta;
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Fory reader =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(false)
             .withMaxCollectionSize(0)
+            .withCompatible(false)
             .build();
     byte[] bytes = writer.serialize(extractSerializedLambda(function));
     Assert.assertThrows(DeserializationException.class, () -> reader.deserialize(bytes));

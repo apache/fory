@@ -37,7 +37,43 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+    <spark.version>3.5.7</spark.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>2.18.6</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.protobuf</groupId>
+        <artifactId>protobuf-java</artifactId>
+        <version>3.25.5</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.avro</groupId>
+        <artifactId>avro</artifactId>
+        <version>1.11.5</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-compress</artifactId>
+        <version>1.26.0</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.ivy</groupId>
+        <artifactId>ivy</artifactId>
+        <version>2.5.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xerial.snappy</groupId>
+        <artifactId>snappy-java</artifactId>
+        <version>1.1.10.4</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -92,6 +128,12 @@
       <artifactId>fst</artifactId>
       <version>2.57</version>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-core</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>it.unimi.dsi</groupId>
@@ -102,7 +144,7 @@
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-sql_2.13</artifactId>
-      <version>3.2.1</version>
+      <version>${spark.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -168,7 +210,7 @@
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/test/java16"
                            destdir="${project.build.testOutputDirectory}"
-                           classpath="${project.basedir}/../fory-core/target/jpms-classes/java16${path.separator}${java16.test.classpath}"
+                           classpath="${project.basedir}/../fory-core/target/multi-release-classes/16${path.separator}${java16.test.classpath}"
                            includeantruntime="false"
                            fork="true"
                            executable="${java.home}/bin/javac"
@@ -192,7 +234,7 @@
             <configuration>
               <argLine>--add-modules=jdk.incubator.vector</argLine>
               <additionalClasspathElements>
-                <additionalClasspathElement>${project.basedir}/../fory-core/target/jpms-classes/java16</additionalClasspathElement>
+                <additionalClasspathElement>${project.basedir}/../fory-core/target/multi-release-classes/16</additionalClasspathElement>
               </additionalClasspathElements>
             </configuration>
           </plugin>

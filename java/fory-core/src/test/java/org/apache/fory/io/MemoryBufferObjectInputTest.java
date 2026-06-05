@@ -35,7 +35,12 @@ public class MemoryBufferObjectInputTest extends ForyTestBase {
 
   @Test(dataProvider = "compressNumber")
   public void testForyStructInput(boolean compressNumber) throws IOException {
-    Fory fory = Fory.builder().withXlang(false).withNumberCompressed(compressNumber).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withNumberCompressed(compressNumber)
+            .withCompatible(false)
+            .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     buffer.writeByte(1);
     if (compressNumber) {

@@ -237,6 +237,41 @@ public class StaticCompatibleCodecBuilderTest {
   }
 
   @Test
+  public void testCompatibleRecordSerializerConvertsRemoteField() throws Exception {
+    assumeRecordSupport();
+    CompilationResult writerResult =
+        compile(
+            "test.CompatibleRecordPayload",
+            "package test;\n"
+                + "public class CompatibleRecordPayload {\n"
+                + "  public String id;\n"
+                + "  public CompatibleRecordPayload() {}\n"
+                + "}\n");
+    CompilationResult readerResult =
+        compile(
+            "test.CompatibleRecordPayload",
+            "package test;\n" + "public record CompatibleRecordPayload(int id) {}\n");
+    Assert.assertTrue(writerResult.success, writerResult.diagnostics());
+    Assert.assertTrue(readerResult.success, readerResult.diagnostics());
+    try (URLClassLoader writerLoader = writerResult.classLoader();
+        URLClassLoader readerLoader = readerResult.classLoader()) {
+      Class<?> writerType = writerLoader.loadClass("test.CompatibleRecordPayload");
+      Class<?> readerType = readerLoader.loadClass("test.CompatibleRecordPayload");
+      Fory writer = compatibleFory(writerLoader, writerType, false, "record-reflect-writer", false);
+      Fory reader = compatibleFory(readerLoader, readerType, false, "record-reflect-reader", false);
+      Object writerValue = writerType.getConstructor().newInstance();
+      setField(writerType, writerValue, "id", "73");
+
+      writer.setMetaWriteContext(new MetaWriteContext());
+      byte[] bytes = writer.serialize(writerValue);
+      reader.setMetaReadContext(new MetaReadContext());
+      Object result = reader.deserialize(bytes);
+      Assert.assertSame(result.getClass(), readerType);
+      Assert.assertEquals(invoke(readerType, result, "id"), 73);
+    }
+  }
+
+  @Test
   public void testStaticCompatibleSerializerUsesListArrayAction() throws Exception {
     CompilationResult writerResult =
         compile(
@@ -473,12 +508,17 @@ public class StaticCompatibleCodecBuilderTest {
 
   private static Fory compatibleFory(
       ClassLoader classLoader, Class<?> type, boolean xlang, String role) {
+    return compatibleFory(classLoader, type, xlang, role, true);
+  }
+
+  private static Fory compatibleFory(
+      ClassLoader classLoader, Class<?> type, boolean xlang, String role, boolean codegen) {
     Fory fory =
         Fory.builder()
             .withName("static-compatible-" + role + "-" + (xlang ? "xlang" : "native"))
             .withClassLoader(classLoader)
             .withXlang(xlang)
-            .withCodegen(true)
+            .withCodegen(codegen)
             .withMetaShare(true)
             .withScopedMetaShare(false)
             .withCompatible(true)

@@ -37,8 +37,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.MathUtils;
 import org.apache.fory.util.StringUtils;
 import org.testng.Assert;
@@ -139,8 +137,7 @@ public class StringSerializerTest extends ForyTestBase {
   }
 
   static void writeJDK8String(MemoryBuffer buffer, String value) {
-    final char[] chars =
-        (char[]) UnsafeOps.getObject(value, ReflectionUtils.getFieldOffset(String.class, "value"));
+    final char[] chars = (char[]) PlatformStringUtils.getStringValue(value);
     int numBytes = MathUtils.doubleExact(value.length());
     buffer.writeCharsWithSize(chars);
   }
@@ -152,6 +149,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withStringCompressed(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     StringSerializer serializer = new StringSerializer(fory.getConfig());
@@ -171,8 +169,9 @@ public class StringSerializerTest extends ForyTestBase {
 
   @Test
   public void testStringSizeLimit() {
-    Fory writer = Fory.builder().withXlang(false).build();
-    Fory reader = Fory.builder().withXlang(false).withMaxBinarySize(2).build();
+    Fory writer = Fory.builder().withXlang(false).withCompatible(false).build();
+    Fory reader =
+        Fory.builder().withXlang(false).withMaxBinarySize(2).withCompatible(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     new StringSerializer(writer.getConfig()).writeString(buffer, "abcd");
 
@@ -199,10 +198,12 @@ public class StringSerializerTest extends ForyTestBase {
             .withWriteNumUtf16BytesForUtf8Encoding(b)
             .withXlang(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Simple a =
         new Simple(
-            "STG@ON DEMAND Solutions@GeoComputing Switch/ Hub@Digi Edgeport/216 – 16 port Serial Hub");
+            "STG@ON DEMAND Solutions@GeoComputing Switch/ Hub@Digi Edgeport/216 – 16 port Serial"
+                + " Hub");
     serDeCheck(fory, a);
   }
 
@@ -214,6 +215,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withWriteNumUtf16BytesForUtf8Encoding(false)
             .withXlang(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     // estimated 41 bytes, header needs 2 byte.
     // encoded utf8 is 31 bytes, took 1 byte for header.
@@ -231,6 +233,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withStringCompressed(stringCompress)
             .withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     StringSerializer serializer = new StringSerializer(fory.getConfig());
@@ -258,6 +261,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withStringCompressed(stringCompress)
             .withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.allocateDirect(1024));
     Object o1 = "你好, Fory" + StringUtils.random(64);
@@ -297,7 +301,12 @@ public class StringSerializerTest extends ForyTestBase {
 
     public DataProducer(BlockingQueue<Tuple2<String, byte[]>> dataQueue) {
       this.dataQueue = dataQueue;
-      this.fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      this.fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
     }
 
     public void run() {
@@ -328,7 +337,12 @@ public class StringSerializerTest extends ForyTestBase {
     public DataConsumer(
         BlockingQueue<Tuple2<String, byte[]>> dataQueue,
         ConcurrentLinkedQueue<Tuple2<String, String>> results) {
-      this.fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      this.fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       this.dataQueue = dataQueue;
       this.results = results;
     }
@@ -357,6 +371,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withStringCompressed(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     StringSerializer stringSerializer =
         (StringSerializer) fory.getTypeResolver().getSerializer(String.class);
@@ -386,6 +401,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     for (MemoryBuffer buffer :
         new MemoryBuffer[] {

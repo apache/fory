@@ -102,12 +102,9 @@ public final class Fory {
     typeResolver.register(type, id: id)
   }
 
+  /// Registers a user type by name. The last `.` separates namespace from the final type name.
   public func register<T: Serializer>(_ type: T.Type, name: String) throws {
     try typeResolver.register(type, name: name)
-  }
-
-  public func register<T: Serializer>(_ type: T.Type, namespace: String, name: String) throws {
-    try typeResolver.register(type, namespace: namespace, typeName: name)
   }
 
   public func serialize<T: Serializer>(_ value: T) throws -> Data {

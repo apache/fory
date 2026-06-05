@@ -1031,7 +1031,7 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         else:
             ns = self.package or "default"
             lines.append(
-                f'    fory.register_type({class_ref}, namespace="{ns}", typename="{type_name}")'
+                f'    fory.register_type({class_ref}, name="{ns}.{type_name}")'
             )
 
     def generate_message_registration(
@@ -1048,7 +1048,7 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         else:
             ns = self.package or "default"
             lines.append(
-                f'    fory.register_type({class_ref}, namespace="{ns}", typename="{type_name}")'
+                f'    fory.register_type({class_ref}, name="{ns}.{type_name}")'
             )
 
         # Register nested enums
@@ -1081,5 +1081,5 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         else:
             ns = self.package or "default"
             lines.append(
-                f'    fory.register_union({class_ref}, namespace="{ns}", typename="{type_name}", serializer={serializer_ref}(fory.type_resolver))'
+                f'    fory.register_union({class_ref}, name="{ns}.{type_name}", serializer={serializer_ref}(fory.type_resolver))'
             )

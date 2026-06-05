@@ -156,8 +156,8 @@ foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./g
 The generated gRPC service code uses Fory to serialize request and response
 payloads. Java output imports grpc-java APIs and Python output imports `grpc`;
 applications that compile or run those generated service files must provide
-their own gRPC dependencies. Fory's Java and Python runtime packages do not add a
-hard gRPC dependency for this feature.
+their own gRPC dependencies. Fory's Java and Python packages do not add a hard
+gRPC dependency for this feature.
 
 **Use import search paths:**
 
@@ -453,7 +453,7 @@ cd integration_tests/idl_tests
 ./run_csharp_tests.sh
 ```
 
-This runner executes schema-consistent and compatible roundtrips across:
+This runner executes same-schema and compatible roundtrips across:
 
 - `addressbook`, `auto_id`, `complex_pb` primitives
 - `collection` and union/list variants
@@ -475,7 +475,7 @@ cd integration_tests/idl_tests
 
 This runs:
 
-- local Swift IDL roundtrip tests in both compatible and schema-consistent modes
+- local Swift IDL roundtrip tests in both compatible and same-schema modes
 - Java-driven peer roundtrip validation with `IDL_PEER_LANG=swift`
 
 The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.

@@ -25,6 +25,7 @@ def test_union_basic_types():
     """Test Union with basic types like int and str"""
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
 
     # Test with int value
@@ -46,6 +47,7 @@ def test_union_multiple_types():
     """Test Union with more than two types"""
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
 
     # Test with int
@@ -74,6 +76,7 @@ def test_union_with_collections():
     """Test Union with collection types"""
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
 
     # Test with list
@@ -93,7 +96,7 @@ def test_union_with_collections():
 
 def test_union_with_optional():
     """Test Union with Optional (Union[T, None])"""
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
 
     # Test with non-None value
     value: Union[int, None] = 42
@@ -123,6 +126,7 @@ def test_union_with_dataclass():
 
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
     fory.register(Person)
     fory.register(Company)
@@ -154,6 +158,7 @@ def test_union_nested_in_dataclass():
 
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
     fory.register(Container)
 
@@ -178,6 +183,7 @@ def test_union_with_bytes():
     """Test Union with bytes type"""
     fory = Fory(
         xlang=False,
+        compatible=False,
     )
 
     # Test with bytes

@@ -45,6 +45,10 @@ public final class BFloat16Array implements Iterable<BFloat16>, Serializable {
     }
   }
 
+  private BFloat16Array(short[] bits) {
+    this.bits = bits;
+  }
+
   private BFloat16Array(short[] bits, boolean copy) {
     this.bits = copy ? Arrays.copyOf(bits, bits.length) : bits;
   }

@@ -27,7 +27,7 @@ struct Simple {
 
 #[test]
 fn test_rc_refcell_simple() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Simple>(3000).unwrap();
 
     let node = Rc::new(RefCell::new(Simple { value: 42 }));
@@ -44,7 +44,7 @@ struct Parent {
 
 #[test]
 fn test_rc_refcell_in_struct() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Simple>(3001).unwrap();
     fory.register::<Parent>(3002).unwrap();
 

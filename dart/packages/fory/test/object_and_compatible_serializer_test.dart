@@ -113,32 +113,27 @@ void _registerCommonTypes(Fory fory) {
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     SharedLeaf,
-    namespace: 'test',
-    typeName: 'SharedLeaf',
+    name: 'test.SharedLeaf',
   );
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     RefPair,
-    namespace: 'test',
-    typeName: 'RefPair',
+    name: 'test.RefPair',
   );
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     NoRefPair,
-    namespace: 'test',
-    typeName: 'NoRefPair',
+    name: 'test.NoRefPair',
   );
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CircularNode,
-    namespace: 'test',
-    typeName: 'CircularNode',
+    name: 'test.CircularNode',
   );
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     ImmutableRefPair,
-    namespace: 'test',
-    typeName: 'ImmutableRefPair',
+    name: 'test.ImmutableRefPair',
   );
 }
 
@@ -147,8 +142,7 @@ void _registerV1Types(Fory fory) {
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CompatibleEnvelopeV1,
-    namespace: 'compat',
-    typeName: 'Envelope',
+    name: 'compat.Envelope',
   );
 }
 
@@ -157,8 +151,7 @@ void _registerV2Types(Fory fory) {
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
     CompatibleEnvelopeV2,
-    namespace: 'compat',
-    typeName: 'Envelope',
+    name: 'compat.Envelope',
   );
 }
 

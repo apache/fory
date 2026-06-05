@@ -66,7 +66,8 @@ struct UnsignedArrayStruct {
 template <typename T> void test_roundtrip_native(const T &original) {
   // Test with xlang=false (native mode) - the only supported mode for unsigned
   // types
-  auto fory = Fory::builder().xlang(false).track_ref(false).build();
+  auto fory =
+      Fory::builder().xlang(false).track_ref(false).compatible(false).build();
 
   // Serialize
   auto serialize_result = fory.serialize(original);
@@ -180,7 +181,8 @@ TEST(UnsignedSerializerTest, ArrayUint64NativeRoundtrip) {
 // ============================================================================
 
 TEST(UnsignedSerializerTest, UnsignedStructNativeRoundtrip) {
-  auto fory = Fory::builder().xlang(false).track_ref(false).build();
+  auto fory =
+      Fory::builder().xlang(false).track_ref(false).compatible(false).build();
   fory.register_struct<UnsignedStruct>(1);
 
   UnsignedStruct original{42, 1234, 567890, 9876543210ULL};
@@ -200,7 +202,8 @@ TEST(UnsignedSerializerTest, UnsignedStructNativeRoundtrip) {
 }
 
 TEST(UnsignedSerializerTest, UnsignedArrayStructNativeRoundtrip) {
-  auto fory = Fory::builder().xlang(false).track_ref(false).build();
+  auto fory =
+      Fory::builder().xlang(false).track_ref(false).compatible(false).build();
   fory.register_struct<UnsignedArrayStruct>(1);
 
   UnsignedArrayStruct original{
@@ -273,7 +276,11 @@ TEST(UnsignedSerializerTest, UnsignedArrayTypeIdsAreDistinct) {
 
 TEST(UnsignedSerializerTest, MaxBinarySizeNativeGuardrail) {
   // Set limit to 10 bytes
-  auto fory = Fory::builder().xlang(false).max_binary_size(10).build();
+  auto fory = Fory::builder()
+                  .xlang(false)
+                  .max_binary_size(10)
+                  .compatible(false)
+                  .build();
 
   // 10 elements of uint32_t = 40 bytes > 10 byte limit
   std::vector<uint32_t> large_data(10, 42);

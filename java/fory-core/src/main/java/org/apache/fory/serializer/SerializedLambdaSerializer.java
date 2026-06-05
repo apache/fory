@@ -31,7 +31,6 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Serializer for {@link SerializedLambda}. It writes the JDK lambda payload through the public
@@ -54,7 +53,7 @@ public class SerializedLambdaSerializer extends Serializer {
         Preconditions.checkNotNull(
             readResolveMethod, "Missing readResolve for " + SERIALIZED_LAMBDA);
         READ_RESOLVE_HANDLE =
-            _JDKAccess._trustedLookup(SERIALIZED_LAMBDA).unreflect(readResolveMethod);
+            SerializationHookLookup.readResolveHandle(SERIALIZED_LAMBDA, readResolveMethod);
       } catch (IllegalAccessException e) {
         throw new ForyException(e);
       }

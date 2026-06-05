@@ -139,6 +139,21 @@ public class ForyGraalVMFeature implements Feature {
         current != null && current != Object.class && Serializable.class.isAssignableFrom(current);
         current = current.getSuperclass()) {
       RuntimeSerialization.registerIncludingAssociatedClasses(current);
+      registerSerializationConstructor(current);
+    }
+  }
+
+  private void registerSerializationConstructor(Class<?> clazz) {
+    Class<?> targetConstructorClass = clazz.getSuperclass();
+    while (targetConstructorClass != null
+        && Serializable.class.isAssignableFrom(targetConstructorClass)) {
+      targetConstructorClass = targetConstructorClass.getSuperclass();
+    }
+    if (targetConstructorClass != null) {
+      // JDK25+ Fory can lazily build ObjectStreamClass descriptors at image runtime. GraalVM needs
+      // the matching serialization constructor accessor pre-registered for that target superclass,
+      // or ObjectStreamClass.lookupAny can fail for JDK classes such as TreeMap and TreeSet.
+      RuntimeSerialization.registerWithTargetConstructorClass(clazz, targetConstructorClass);
     }
   }
 

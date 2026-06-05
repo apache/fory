@@ -563,7 +563,7 @@ object ScalaXlangPeer {
   private def simpleStructFory(named: Boolean): Fory = {
     val fory = newFory()
     if named then {
-      ScalaSerializers.registerEnum(fory, classOf[Color], "demo", "color")
+      ScalaSerializers.registerEnum(fory, classOf[Color], "demo.color")
       registerStruct(fory, classOf[Item], "demo", "item")
       registerStruct(fory, classOf[SimpleStruct], "demo", "simple_struct")
     } else {

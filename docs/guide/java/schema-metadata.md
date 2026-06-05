@@ -220,7 +220,7 @@ public class Container {
     @ForyField(id = 1, dynamic = ForyField.Dynamic.FALSE)
     private Dog dog;  // Concrete - no type info
 
-    // TRUE: Type info written to support runtime subtypes
+    // TRUE: Type info written to support subtypes
     @ForyField(id = 2, dynamic = ForyField.Dynamic.TRUE)
     private Object data;  // Force polymorphic
 }
@@ -232,7 +232,7 @@ public class Container {
 | ------- | ------------------------------------------------------------------- |
 | `AUTO`  | Auto-detect: interface/abstract are dynamic, concrete types are not |
 | `FALSE` | No type info written, uses declared type's serializer directly      |
-| `TRUE`  | Type info written to support subtypes at runtime                    |
+| `TRUE`  | Type info written to support subtypes                               |
 
 ## Skipping Fields
 
@@ -470,7 +470,6 @@ public class Main {
     public static void main(String[] args) {
         Fory fory = Fory.builder()
             .withXlang(true)
-            .withCompatible(true)
             .withRefTracking(true)
             .build();
 
@@ -610,7 +609,7 @@ Fory fory = Fory.builder()
     .build();
 ```
 
-This runtime option does not change xlang enum encoding; xlang uses numeric enum tags. Prefer
+This Java native-mode option does not change xlang enum encoding; xlang uses numeric enum tags. Prefer
 `@ForyEnumId` for cross-language payloads or any schema where numeric wire ids must stay stable.
 
 ## Native Mode vs Xlang Mode
@@ -712,6 +711,6 @@ public class User {
 ## Related Topics
 
 - [Basic Serialization](basic-serialization.md) - Getting started with Fory serialization
-- [Configuration](configuration.md) - Runtime builder options
+- [Configuration](configuration.md) - `ForyBuilder` options
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema evolution
 - [Xlang Serialization](xlang-serialization.md) - Interoperability with Python, Rust, C++, Go

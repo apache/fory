@@ -53,13 +53,13 @@ where
     assert_eq!(result.downcast_ref::<T>().unwrap(), &value);
 }
 
-/// Generic helper for testing Arc<dyn Any> serialization
+/// Generic helper for testing Arc<dyn Any + Send + Sync> serialization
 pub fn test_arc_any<T>(fory: &Fory, value: T)
 where
-    T: 'static + PartialEq + std::fmt::Debug + Clone,
+    T: 'static + PartialEq + std::fmt::Debug + Clone + Send + Sync,
 {
-    let wrapped: Arc<dyn Any> = Arc::new(value.clone());
+    let wrapped: Arc<dyn Any + Send + Sync> = Arc::new(value.clone());
     let bytes = fory.serialize(&wrapped).unwrap();
-    let result: Arc<dyn Any> = fory.deserialize(&bytes).unwrap();
+    let result: Arc<dyn Any + Send + Sync> = fory.deserialize(&bytes).unwrap();
     assert_eq!(result.downcast_ref::<T>().unwrap(), &value);
 }

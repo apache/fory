@@ -47,14 +47,13 @@ Confirm that:
 
 **Solution**:
 
-- Enable compatible mode for schema evolution
+- Keep compatible mode enabled for schema evolution
 - Ensure field types match across versions
 
 ```rust
-// Add compatible(true) to the same builder configuration on every peer.
+// Remove any compatible(false) override from the peers.
 let fory = Fory::builder()
     // existing options
-    .compatible(true)
     .build();
 ```
 

@@ -22,6 +22,7 @@ import 'package:meta/meta.dart';
 import 'package:fory/src/context/read_context.dart';
 import 'package:fory/src/meta/field_info.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
+import 'package:fory/src/serializer/scalar_conversion.dart';
 import 'package:fory/src/serializer/serialization_field_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_support.dart';
@@ -38,11 +39,13 @@ abstract interface class GeneratedStructSerializer<T> implements Serializer<T> {
 final class CompatibleStructReadLayout {
   final List<FieldInfo> remoteFields;
   final List<SerializationFieldInfo?> fields;
+  final List<CompatibleScalarConversion?>? _scalarConversions;
   final List<bool>? _topLevelListArrayPairs;
 
   const CompatibleStructReadLayout(
     this.remoteFields,
     this.fields, [
+    this._scalarConversions,
     this._topLevelListArrayPairs,
   ]);
 
@@ -51,6 +54,9 @@ final class CompatibleStructReadLayout {
   FieldInfo remoteFieldAt(int index) => remoteFields[index];
 
   SerializationFieldInfo? localFieldAt(int index) => fields[index];
+
+  CompatibleScalarConversion? scalarConversionAt(int index) =>
+      _scalarConversions?[index];
 
   bool topLevelListArrayPairAt(int index) =>
       _topLevelListArrayPairs?[index] ?? false;
@@ -64,6 +70,10 @@ Object? readGeneratedCompatibleStructField(
   int index,
 ) {
   final localField = layout.localFieldAt(index)!;
+  final scalarConversion = layout.scalarConversionAt(index);
+  if (scalarConversion != null) {
+    return readCompatibleScalarField(context, scalarConversion);
+  }
   if (layout.topLevelListArrayPairAt(index)) {
     return readCompatibleMatchedCollectionArrayField(
       context,

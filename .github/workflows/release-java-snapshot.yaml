@@ -32,15 +32,15 @@ jobs:
       - name: Set up Maven Central Repository
         uses: actions/setup-java@v4
         with:
-          java-version: "11"
-          distribution: "adopt"
+          java-version: "25"
+          distribution: "temurin"
           architecture: x64
           cache: maven
           server-id: apache.snapshots.https
           server-username: NEXUS_USERNAME
           server-password: NEXUS_PASSWORD
       - name: Publish Fory Java Snapshot
-        run: python ./ci/run_ci.py java --version 11 --release
+        run: python ./ci/run_ci.py java --version 25 --release
         env:
           NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PW }}

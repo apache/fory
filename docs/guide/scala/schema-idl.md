@@ -20,7 +20,7 @@ license: |
 ---
 
 The Fory schema IDL Scala target generates Scala 3 source for xlang payloads.
-The runtime artifact remains cross-built for Scala 2.13 and Scala 3; only the
+The Fory Scala artifact remains cross-built for Scala 2.13 and Scala 3; only the
 schema IDL output and quoted macro derivation require Scala 3.
 
 ## Setup
@@ -41,8 +41,8 @@ val fory = ForyScala.builder()
 ```
 
 Generated schema modules are also Fory modules. Use `.withModule(...)` when
-creating a custom runtime, or use the generated no-argument `toBytes` and
-`fromBytes` helpers when the default xlang-compatible runtime is sufficient.
+creating a custom Fory instance, or use the generated no-argument `toBytes` and
+`fromBytes` helpers when the generated default Fory instance is sufficient.
 
 Generated helpers register message type identities before installing message
 serializers. This two-phase order lets mutually recursive message graphs build
@@ -98,8 +98,8 @@ type-use `T @Ref` only for nested element/value/payload refs, such as
 `list<ref T>`.
 
 Generated xlang collection fields use immutable Scala collection types:
-`List[T]`, `Set[T]`, and `Map[K, V]`. The runtime xlang serializers can also
-rebuild supported mutable collection interfaces such as `scala.collection.Seq`
+`List[T]`, `Set[T]`, and `Map[K, V]`. Fory's xlang serializers can also rebuild
+supported mutable collection interfaces such as `scala.collection.Seq`
 and `scala.collection.Map`, but concrete mutable collection classes are outside
 the schema IDL surface unless explicitly generated.
 

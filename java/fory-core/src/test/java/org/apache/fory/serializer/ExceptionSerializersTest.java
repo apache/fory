@@ -62,8 +62,9 @@ public class ExceptionSerializersTest extends ForyTestBase {
 
   @Test
   public void testSuppressedCountLimit() {
-    Fory writer = Fory.builder().withXlang(false).build();
-    Fory reader = Fory.builder().withXlang(false).withMaxCollectionSize(1).build();
+    Fory writer = Fory.builder().withXlang(false).withCompatible(false).build();
+    Fory reader =
+        Fory.builder().withXlang(false).withMaxCollectionSize(1).withCompatible(false).build();
     RuntimeException value = new RuntimeException("outer");
     RuntimeException suppressed1 = new RuntimeException("suppressed-1");
     RuntimeException suppressed2 = new RuntimeException("suppressed-2");

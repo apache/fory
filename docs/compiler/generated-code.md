@@ -186,7 +186,7 @@ public final class Animal extends Union {
 ### Schema Module
 
 Each JVM schema generates a `ForyModule`. Imported schema modules are installed
-through `fory.register(...)`, so shared imports are deduplicated by the runtime.
+through `fory.register(...)`, so shared imports are deduplicated by the Fory instance.
 
 ```java
 public final class AddressbookForyModule implements org.apache.fory.ForyModule {
@@ -218,7 +218,7 @@ resolver.registerUnion(Envelope.Detail.class, 1609214087L, new org.apache.fory.s
 resolver.register(Envelope.Payload.class, 2862577837L);
 ```
 
-If `option enable_auto_type_id = false;` is set, registration uses namespace and type name:
+If `option enable_auto_type_id = false;` is set, registration uses symbolic names:
 
 ```java
 resolver.register(Config.class, "myapp.models", "Config");
@@ -264,7 +264,7 @@ public final class AddressBookServiceGrpc {
 The generated marshaller serializes each request or response with the schema
 module's `ThreadSafeFory`. It uses grpc-java's `MethodDescriptor.Marshaller`
 API, so applications compiling these files must provide grpc-java dependencies.
-Those dependencies are not added to Fory Java runtime artifacts.
+Those dependencies are not added to Fory Java artifacts.
 
 ## Python
 
@@ -347,11 +347,10 @@ fory.register_type(Envelope.Payload, type_id=2862577837)
 If `option enable_auto_type_id = false;` is set:
 
 ```python
-fory.register_type(Config, namespace="myapp.models", typename="Config")
+fory.register_type(Config, name="myapp.models.Config")
 fory.register_union(
     Holder,
-    namespace="myapp.models",
-    typename="Holder",
+    name="myapp.models.Holder",
     serializer=HolderSerializer(fory),
 )
 ```
@@ -408,7 +407,7 @@ Rust output is one module file per schema, for example:
 ### Type Generation
 
 Unions map to Rust enums with `#[fory(id = ...)]` schema case attributes.
-`#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the runtime
+`#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the Fory-provided
 forward-compatibility carrier. The marker only selects the carrier and does not
 add an entry to the schema case table; schema cases still use the full `0..N`
 ID range. A generated typed union must have at least one non-`Unknown` case. The
@@ -500,8 +499,8 @@ fory.register::<envelope::Payload>(2862577837)?;
 If `option enable_auto_type_id = false;` is set:
 
 ```rust
-fory.register_by_name::<Config>("myapp.models", "Config")?;
-fory.register_union_by_name::<Holder>("myapp.models", "Holder")?;
+fory.register_by_name::<Config>("myapp.models.Config")?;
+fory.register_union_by_name::<Holder>("myapp.models.Holder")?;
 ```
 
 ### Usage
@@ -636,8 +635,8 @@ fory.register_struct<Envelope::Payload>(2862577837);
 If `option enable_auto_type_id = false;` is set:
 
 ```cpp
-fory.register_struct<Config>("myapp.models", "Config");
-fory.register_union<Holder>("myapp.models", "Holder");
+fory.register_struct<Config>("myapp.models.Config");
+fory.register_union<Holder>("myapp.models.Holder");
 ```
 
 ### Usage
@@ -804,7 +803,7 @@ public sealed partial class Person
 ```
 
 Unions generate `[ForyUnion]` ADTs. `Unknown(UnknownCase)` is the
-runtime-owned forward-compatibility carrier marked with `[ForyUnknownCase]`.
+Fory-provided forward-compatibility carrier marked with `[ForyUnknownCase]`.
 The marker only selects the carrier and does not add an entry to the schema case
 table. Schema-defined cases use non-negative `[ForyCase]` IDs. If a case needs
 non-default schema encoding, the generated `[ForyCase]` carries `Type`. Known
@@ -909,7 +908,7 @@ Swift output is one `.swift` file per schema, for example:
 The generator creates Swift models with split model macros and stable field/case IDs.
 A typed union must include `@ForyUnknownCase case unknown(UnknownCase)` and at
 least one non-`unknown` case; `unknown(UnknownCase)` is only the
-runtime-owned forward-compatibility carrier. The marker only selects the carrier
+Fory-provided forward-compatibility carrier. The marker only selects the carrier
 and does not add an entry to the schema case table.
 
 When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
@@ -1222,7 +1221,7 @@ Generated Kotlin IDL sources express nullability with Kotlin `?`, not Fory
 construction cycles.
 
 Enums generate Kotlin enum classes with stable Fory enum IDs. Unions generate
-sealed classes with `@ForyUnion`; the runtime-owned `Unknown(UnknownCase)`
+sealed classes with `@ForyUnion`; the Fory-provided `Unknown(UnknownCase)`
 carrier is marked with `@ForyUnknownCase`. The marker only selects the carrier
 and does not add an entry to the schema case table. Schema-defined cases may use
 case IDs `0..N` and hold a single `value` property. A typed union must have at
@@ -1263,9 +1262,9 @@ including nested positions.
 ### Schema Module
 
 Generated schema modules register schema types and resolve KSP-generated
-serializers from the target class name. The package-owned helper runtime uses
+serializers from the target class name. The package-owned helper Fory instance uses
 `ForyKotlin.builder().withXlang(true)` with the schema module installed, so message
-`toBytes`/`fromBytes` helpers work without caller-managed runtime setup. For
+`toBytes`/`fromBytes` helpers work without caller-managed Fory setup. For
 `addressbook.fdl`:
 
 ```kotlin
@@ -1293,9 +1292,9 @@ not pass a serializer instance.
 
 ## Scala
 
-The Scala target emits Scala 3 source only. The `fory-scala` runtime artifact
-still supports Scala 2.13 and Scala 3, but generated IDL source and macro
-derivation require Scala 3.
+The Scala target emits Scala 3 source only. The `fory-scala` artifact still
+supports Scala 2.13 and Scala 3, but generated IDL source and macro derivation
+require Scala 3.
 
 ### Output Layout
 
@@ -1370,7 +1369,7 @@ enum PhoneType {
 }
 ```
 
-Unions generate Scala 3 ADT enums. `Unknown(UnknownCase)` is the runtime-owned
+Unions generate Scala 3 ADT enums. `Unknown(UnknownCase)` is the Fory-provided
 forward-compatibility carrier marked with `@ForyUnknownCase`. It is omitted
 from the schema case table because the marker only selects the carrier and does
 not add a schema entry. Schema-defined cases use non-negative `@ForyCase` IDs.
@@ -1409,9 +1408,9 @@ use type-use annotations such as `List[Node @Ref]`.
 ### Schema Module
 
 Generated schema modules register schema serializers, enums, structs, and
-unions. The package-owned helper runtime uses
+unions. The package-owned helper Fory instance uses
 `ForyScala.builder().withXlang(true)` with the schema module installed, so
-message `toBytes`/`fromBytes` helpers work without caller-managed runtime setup:
+message `toBytes`/`fromBytes` helpers work without caller-managed Fory setup:
 
 ```scala
 object AddressbookForyModule extends org.apache.fory.ForyModule {

@@ -157,8 +157,8 @@ if (!result.ok()) {
 // Or register with type name for named type systems
 fory.register_extension_type<MyExt>("my_ext");
 
-// Or with namespace and type name
-fory.register_extension_type<MyExt>("com.example", "MyExt");
+// Or with a namespace prefix
+fory.register_extension_type<MyExt>("com.example.MyExt");
 ```
 
 ## Complete Example

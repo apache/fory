@@ -44,16 +44,15 @@ thread_local! {
         UnsafeCell::new(ContextCache::new());
 }
 
-/// Builder for configuring a [`Fory`] runtime before first use.
+/// Builder for configuring a [`Fory`] instance before first use.
 ///
 /// `ForyBuilder` owns the configuration phase. Call [`build`](Self::build) to create the
-/// runtime, then use [`Fory`] for registration and serialization operations.
+/// instance, then use [`Fory`] for registration and serialization operations.
 ///
 /// ```rust
 /// use fory_core::Fory;
 ///
 /// let fory = Fory::builder()
-///     .xlang(true)
 ///     .compress_string(true)
 ///     .max_dyn_depth(10)
 ///     .build();
@@ -70,8 +69,8 @@ impl ForyBuilder {
     /// # Arguments
     ///
     /// * `compatible` - The serialization compatible mode to use. Options are:
-    ///   - `false`: Schema must be consistent between serialization and deserialization.
-    ///     No metadata is shared. This is the fastest mode.
+    ///   - `false`: Every reader and writer must use the same schema.
+    ///     Use only for smaller, faster same-schema payloads.
     ///   - `true`: Supports schema evolution and type metadata sharing for better
     ///     cross-version compatibility.
     ///
@@ -90,7 +89,8 @@ impl ForyBuilder {
     /// ```rust
     /// use fory_core::Fory;
     ///
-    /// let fory = Fory::builder().xlang(true).compatible(true).build();
+    /// // Same-schema optimization.
+    /// let fory = Fory::builder().compatible(false).build();
     /// ```
     pub fn compatible(mut self, compatible: bool) -> Self {
         self.compatible_set = true;
@@ -133,7 +133,7 @@ impl ForyBuilder {
     /// ```
     pub fn xlang(mut self, xlang: bool) -> Self {
         self.config.xlang = xlang;
-        if xlang && !self.compatible_set {
+        if !self.compatible_set {
             self.config.share_meta = true;
             self.config.compatible = true;
             self.config.check_struct_version = false;
@@ -171,7 +171,7 @@ impl ForyBuilder {
     /// ```rust
     /// use fory_core::Fory;
     ///
-    /// let fory = Fory::builder().xlang(true).compress_string(true).build();
+    /// let fory = Fory::builder().compress_string(true).build();
     /// ```
     pub fn compress_string(mut self, compress_string: bool) -> Self {
         self.config.compress_string = compress_string;
@@ -192,12 +192,12 @@ impl ForyBuilder {
         self
     }
 
-    /// Enables or disables class version checking for schema consistency.
+    /// Enables or disables schema hash checking for same-schema payloads.
     ///
     /// # Arguments
     ///
-    /// * `check_struct_version` - If `true`, enables class version checking to ensure
-    ///   schema consistency between serialization and deserialization. When enabled,
+    /// * `check_struct_version` - If `true`, enables schema hash checking for same-schema
+    ///   serialization and deserialization. When enabled,
     ///   a version hash computed from field types is written/read to detect schema mismatches.
     ///   If `false`, no version checking is performed.
     ///
@@ -219,7 +219,7 @@ impl ForyBuilder {
     /// ```rust
     /// use fory_core::Fory;
     ///
-    /// let fory = Fory::builder().xlang(false)
+    /// let fory = Fory::builder()
     ///     .compatible(false)
     ///     .check_struct_version(true)
     ///     .build();
@@ -254,7 +254,7 @@ impl ForyBuilder {
     /// ```rust
     /// use fory_core::Fory;
     ///
-    /// let fory = Fory::builder().xlang(true).track_ref(true).build();
+    /// let fory = Fory::builder().track_ref(true).build();
     /// ```
     pub fn track_ref(mut self, track_ref: bool) -> Self {
         self.config.track_ref = track_ref;
@@ -288,10 +288,10 @@ impl ForyBuilder {
     /// use fory_core::Fory;
     ///
     /// // Allow deeper nesting for complex object graphs
-    /// let fory = Fory::builder().xlang(true).max_dyn_depth(10).build();
+    /// let fory = Fory::builder().max_dyn_depth(10).build();
     ///
     /// // Restrict nesting for safer deserialization
-    /// let fory = Fory::builder().xlang(true).max_dyn_depth(3).build();
+    /// let fory = Fory::builder().max_dyn_depth(3).build();
     /// ```
     pub fn max_dyn_depth(mut self, max_dyn_depth: u32) -> Self {
         self.config.max_dyn_depth = max_dyn_depth;
@@ -320,7 +320,7 @@ impl ForyBuilder {
     /// use fory_core::Fory;
     ///
     /// // Limit binary payloads to 1 MB
-    /// let fory = Fory::builder().xlang(true).max_binary_size(1024 * 1024).build();
+    /// let fory = Fory::builder().max_binary_size(1024 * 1024).build();
     /// ```
     pub fn max_binary_size(mut self, max_binary_size: u32) -> Self {
         self.config.max_binary_size = max_binary_size;
@@ -350,21 +350,26 @@ impl ForyBuilder {
     /// use fory_core::Fory;
     ///
     /// // Limit collections to 10000 elements
-    /// let fory = Fory::builder().xlang(true).max_collection_size(10000).build();
+    /// let fory = Fory::builder().max_collection_size(10000).build();
     /// ```
     pub fn max_collection_size(mut self, max_collection_size: u32) -> Self {
         self.config.max_collection_size = max_collection_size;
         self
     }
 
-    /// Builds a [`Fory`] runtime with the current builder configuration.
-    pub fn build(self) -> Fory {
+    fn finish_config(self) -> Config {
         let mut config = self.config;
-        if config.xlang && !self.compatible_set {
+        if !self.compatible_set {
             config.share_meta = true;
             config.compatible = true;
             config.check_struct_version = false;
         }
+        config
+    }
+
+    /// Builds a [`Fory`] instance with the current builder configuration.
+    pub fn build(self) -> Fory {
+        let config = self.finish_config();
         Fory::from_config(config)
     }
 }
@@ -378,7 +383,7 @@ impl ForyBuilder {
 ///
 /// - **Xlang mode**: Default wire format for cross-language payloads
 /// - **Native mode**: Rust-only wire format selected with `.xlang(false)`
-/// - **Schema evolution**: Compatible and schema-consistent payload choices
+/// - **Schema evolution**: Compatible mode by default, with a same-schema optimization available
 /// - **Reference tracking**: Handles shared and circular references
 /// - **Trait object serialization**: Supports serializing polymorphic trait objects
 /// - **Dynamic depth limiting**: Configurable limit for nested dynamic object serialization
@@ -398,7 +403,7 @@ impl ForyBuilder {
 /// }
 ///
 /// let mut fory = Fory::builder().xlang(true).build();
-/// fory.register_by_name::<User>("example", "User").unwrap();
+/// fory.register_by_name::<User>("example.User").unwrap();
 /// let user = User { name: "Alice".to_string(), age: 30 };
 /// let bytes = fory.serialize(&user).unwrap();
 /// let deserialized: User = fory.deserialize(&bytes).unwrap();
@@ -410,7 +415,6 @@ impl ForyBuilder {
 /// use fory_core::Fory;
 ///
 /// let fory = Fory::builder()
-///     .xlang(true)
 ///     .compress_string(true)
 ///     .max_dyn_depth(10)
 ///     .build();
@@ -432,7 +436,7 @@ impl Default for Fory {
 }
 
 impl Fory {
-    /// Creates a builder for configuring a [`Fory`] runtime.
+    /// Creates a builder for configuring a [`Fory`] instance.
     pub fn builder() -> ForyBuilder {
         ForyBuilder::default()
     }
@@ -560,7 +564,7 @@ impl Fory {
     /// struct Point { x: i32, y: i32 }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let point = Point { x: 10, y: 20 };
     /// let bytes = fory.serialize(&point).unwrap();
     /// ```
@@ -618,7 +622,7 @@ impl Fory {
     /// }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let point = Point { x: 1, y: 2 };
     ///
     /// let mut buf = Vec::new();
@@ -639,7 +643,7 @@ impl Fory {
     /// }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let p1 = Point { x: 1, y: 2 };
     /// let p2 = Point { x: -3, y: 4 };
     ///
@@ -681,7 +685,7 @@ impl Fory {
     /// }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let point = Point { x: 1, y: 2 };
     ///
     /// let mut buf = Vec::with_capacity(1024);
@@ -837,7 +841,7 @@ impl Fory {
         self.type_resolver.register_union::<T>(id)
     }
 
-    /// Registers a struct type with a namespace and type name for xlang serialization.
+    /// Registers a struct type with a qualified type name for xlang serialization.
     ///
     /// # Type Parameters
     ///
@@ -845,9 +849,9 @@ impl Fory {
     ///
     /// # Arguments
     ///
-    /// * `namespace` - The namespace or package name for the type (e.g., "com.example.types").
-    ///   Use an empty string for the default namespace.
-    /// * `type_name` - The name of the type (e.g., "User").
+    /// * `name` - The type name, optionally prefixed with a namespace separated by `.`.
+    ///   For example, `"com.example.User"` uses namespace `"com.example"` and type name `"User"`.
+    ///   Use `"User"` for the default namespace.
     ///
     /// # Notes
     ///
@@ -868,29 +872,25 @@ impl Fory {
     /// struct User { name: String, age: u32 }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<User>("com.example", "User").unwrap();
+    /// fory.register_by_name::<User>("com.example.User").unwrap();
     /// ```
     pub fn register_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver
-            .register_by_name::<T>(namespace, type_name)
+        self.type_resolver.register_by_name::<T>(name)
     }
 
-    /// Register a union type with namespace and type name.
+    /// Register a union type with a qualified type name.
     ///
     /// This is intended for union-compatible enums generated by the compiler.
     pub fn register_union_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver
-            .register_union_by_name::<T>(namespace, type_name)
+        self.type_resolver.register_union_by_name::<T>(name)
     }
 
     /// Registers a custom serializer type with a numeric type ID.
@@ -928,7 +928,7 @@ impl Fory {
         self.type_resolver.register_serializer::<T>(id)
     }
 
-    /// Registers a custom serializer type with a namespace and type name.
+    /// Registers a custom serializer type with a qualified type name.
     ///
     /// # Type Parameters
     ///
@@ -936,8 +936,7 @@ impl Fory {
     ///
     /// # Arguments
     ///
-    /// * `namespace` - The namespace or package name for the type.
-    /// * `type_name` - The name of the type.
+    /// * `name` - The type name, optionally prefixed with a namespace separated by `.`.
     ///
     /// # Notes
     ///
@@ -946,22 +945,10 @@ impl Fory {
     ///
     pub fn register_serializer_by_name<T: Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
         self.check_registration_allowed()?;
-        self.type_resolver
-            .register_serializer_by_name::<T>(namespace, type_name)
-    }
-
-    /// Registers a generic trait object type for serialization.
-    /// This method should be used to register collection types such as `Vec<T>`, `HashMap<K, V>`, etc.
-    /// Don't register concrete struct types with this method. Use `register()` instead.
-    pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
-        &mut self,
-    ) -> Result<(), Error> {
-        self.check_registration_allowed()?;
-        self.type_resolver.register_generic_trait::<T>()
+        self.type_resolver.register_serializer_by_name::<T>(name)
     }
 
     /// Writes the serialization header to the writer.
@@ -1007,7 +994,7 @@ impl Fory {
     /// struct Point { x: i32, y: i32 }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let point = Point { x: 10, y: 20 };
     /// let bytes = fory.serialize(&point).unwrap();
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
@@ -1061,7 +1048,7 @@ impl Fory {
     /// struct Point { x: i32, y: i32 }
     ///
     /// let mut fory = Fory::builder().xlang(true).build();
-    /// fory.register_by_name::<Point>("example", "Point").unwrap();
+    /// fory.register_by_name::<Point>("example.Point").unwrap();
     /// let point = Point { x: 10, y: 20 };
     ///
     /// let mut buf = Vec::new();
@@ -1178,21 +1165,30 @@ mod tests {
     use super::Fory;
 
     #[test]
-    fn xlang_defaults_to_compatible_unless_explicitly_set() {
-        let default_xlang = Fory::builder().xlang(true).build();
-        let explicit_schema_consistent = Fory::builder().compatible(false).xlang(true).build();
-        let explicit_schema_consistent_reverse_order =
-            Fory::builder().xlang(true).compatible(false).build();
+    fn compatible_defaults_and_overrides() {
+        let default_xlang = Fory::builder().xlang(true).finish_config();
+        let default_native = Fory::builder().xlang(false).finish_config();
+        let explicit_same_schema = Fory::builder()
+            .compatible(false)
+            .xlang(true)
+            .finish_config();
+        let explicit_same_schema_reverse_order = Fory::builder()
+            .xlang(true)
+            .compatible(false)
+            .finish_config();
 
-        assert!(default_xlang.is_compatible());
-        assert!(default_xlang.is_share_meta());
-        assert!(!default_xlang.is_check_struct_version());
+        assert!(default_xlang.compatible);
+        assert!(default_xlang.share_meta);
+        assert!(!default_xlang.check_struct_version);
+        assert!(default_native.compatible);
+        assert!(default_native.share_meta);
+        assert!(!default_native.check_struct_version);
 
-        assert!(!explicit_schema_consistent.is_compatible());
-        assert!(!explicit_schema_consistent.is_share_meta());
-        assert!(explicit_schema_consistent.is_check_struct_version());
-        assert!(!explicit_schema_consistent_reverse_order.is_compatible());
-        assert!(!explicit_schema_consistent_reverse_order.is_share_meta());
-        assert!(explicit_schema_consistent_reverse_order.is_check_struct_version());
+        assert!(!explicit_same_schema.compatible);
+        assert!(!explicit_same_schema.share_meta);
+        assert!(explicit_same_schema.check_struct_version);
+        assert!(!explicit_same_schema_reverse_order.compatible);
+        assert!(!explicit_same_schema_reverse_order.share_meta);
+        assert!(explicit_same_schema_reverse_order.check_struct_version);
     }
 }

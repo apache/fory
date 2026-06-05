@@ -37,8 +37,8 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
-  public void register(Class<?> cls, String typeName) {
-    registerCallback(fory -> fory.register(cls, typeName));
+  public void register(Class<?> cls, String name) {
+    registerCallback(fory -> fory.register(cls, name));
   }
 
   @Override
@@ -57,6 +57,11 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
+  public void register(String className, String name) {
+    registerCallback(fory -> fory.register(className, name));
+  }
+
+  @Override
   public void register(String className, String namespace, String typeName) {
     registerCallback(fory -> fory.register(className, namespace, typeName));
   }
@@ -69,6 +74,12 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   public void registerUnion(
       Class<?> cls, int id, org.apache.fory.serializer.Serializer<?> serializer) {
     registerCallback(fory -> fory.registerUnion(cls, id, serializer));
+  }
+
+  @Override
+  public void registerUnion(
+      Class<?> cls, String name, org.apache.fory.serializer.Serializer<?> serializer) {
+    registerCallback(fory -> fory.registerUnion(cls, name, serializer));
   }
 
   public void registerUnion(

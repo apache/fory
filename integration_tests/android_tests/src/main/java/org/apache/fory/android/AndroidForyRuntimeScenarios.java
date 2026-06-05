@@ -64,12 +64,8 @@ public final class AndroidForyRuntimeScenarios {
         "async compilation must be disabled on Android");
 
     MemoryBuffer buffer = MemoryUtils.buffer(16);
-    try {
-      buffer.copyToUnsafe(0, new byte[16], 0, 1);
-      fail("copyToUnsafe should fail on Android");
-    } catch (UnsupportedOperationException expected) {
-      check(expected.getMessage().contains("Android"), expected.getMessage());
-    }
+    byte[] target = new byte[16];
+    buffer.copyToByteArray(0, target, 0, 1);
   }
 
   public static void structEnumCollectionAndMapRoundTrip() {
@@ -90,7 +86,8 @@ public final class AndroidForyRuntimeScenarios {
   }
 
   public static void xlangUnionRoundTrip() {
-    Fory fory = Fory.builder().withXlang(true).registerGuavaTypes(false).build();
+    Fory fory =
+        Fory.builder().withXlang(true).registerGuavaTypes(false).withCompatible(true).build();
 
     Union2<String, Integer> value = Union2.ofT2(26);
     Object copy = roundTrip(fory, value);
@@ -107,7 +104,8 @@ public final class AndroidForyRuntimeScenarios {
               false,
               AndroidGeneratedStruct.class.getClassLoader());
     } catch (ClassNotFoundException e) {
-      throw new AssertionError("static generated serializer was removed by release minification", e);
+      throw new AssertionError(
+          "static generated serializer was removed by release minification", e);
     }
 
     Fory fory =
@@ -115,6 +113,7 @@ public final class AndroidForyRuntimeScenarios {
             .withXlang(true)
             .requireClassRegistration(true)
             .registerGuavaTypes(false)
+            .withCompatible(true)
             .build();
     fory.register(AndroidGeneratedStruct.class, "android", "GeneratedStruct");
 
@@ -181,7 +180,8 @@ public final class AndroidForyRuntimeScenarios {
     EnumMap<AndroidEnum, String> enumMap = new EnumMap<>(AndroidEnum.class);
     enumMap.put(AndroidEnum.BLUE, "blue");
     checkEquals(enumMap, roundTrip(fory, enumMap));
-    checkEquals(new EnumMap<>(AndroidEnum.class), roundTrip(fory, new EnumMap<>(AndroidEnum.class)));
+    checkEquals(
+        new EnumMap<>(AndroidEnum.class), roundTrip(fory, new EnumMap<>(AndroidEnum.class)));
   }
 
   public static void byteBufferStreamChannelAndOutOfBandRoundTrip() throws Exception {
@@ -230,6 +230,7 @@ public final class AndroidForyRuntimeScenarios {
         .withXlang(false)
         .withRefTracking(true)
         .requireClassRegistration(false)
+        .withCompatible(false)
         .registerGuavaTypes(false);
   }
 

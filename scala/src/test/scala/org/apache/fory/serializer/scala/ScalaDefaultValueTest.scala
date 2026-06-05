@@ -23,6 +23,7 @@ import org.apache.fory.Fory
 import org.apache.fory.scala.ForyScala
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
+import java.util.Arrays
 
 object NestedCases {
   // Classes WITHOUT default values for serialization
@@ -182,6 +183,15 @@ class ScalaDefaultValueTest extends AnyWordSpec with Matchers {
         deserialized.age shouldEqual 25 // Should use default value
         deserialized.city shouldEqual "Unknown" // Should use default value
       }
+
+      s"ignore Java Lombok-style default helper methods in $modeName" in {
+        val fory = createFory(codegen)
+        val original = new LombokDefaultLikeJavaPojo("1", Arrays.asList("thumbnail", "hero"))
+        val deserialized =
+          fory.deserialize(fory.serialize(original), classOf[LombokDefaultLikeJavaPojo])
+
+        deserialized shouldEqual original
+      }
     }
   }
 }
@@ -194,4 +204,4 @@ case class CaseClassComplexDefaultsNoDefaults(v: String) // No list field at all
 // Test case classes WITH default values (for deserialization)
 case class CaseClassWithDefaults(v: String, x: Int = 1)
 case class CaseClassMultipleDefaultsWithDefaults(v: String, x: Int = 1, y: Double = 2.0)
-case class CaseClassComplexDefaultsWithDefaults(v: String, list: List[Int] = List(1, 2, 3)) 
+case class CaseClassComplexDefaultsWithDefaults(v: String, list: List[Int] = List(1, 2, 3))

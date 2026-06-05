@@ -50,7 +50,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testSimpleValueObject() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Point point = new Point(3.14, 2.71);
     byte[] bytes = fory.serialize(point);
     Point deserialized = (Point) fory.deserialize(bytes);
@@ -83,7 +88,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testEntityWithOptionalFields() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     User user = new User(123L, "john_doe", "john@example.com", null, System.currentTimeMillis());
     byte[] bytes = fory.serialize(user);
     User deserialized = (User) fory.deserialize(bytes);
@@ -95,7 +105,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testEntityWithAllNullOptionalFields() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     User user = new User(456L, "jane_doe", null, null, System.currentTimeMillis());
     byte[] bytes = fory.serialize(user);
     User deserialized = (User) fory.deserialize(bytes);
@@ -140,6 +155,7 @@ public class ForyFieldTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Customer customer = new Customer(1L, "Alice");
     Order order1 = new Order(100L, customer, "First order");
@@ -178,7 +194,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testNullableDefaults() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     DefaultNullableTest obj = new DefaultNullableTest("value1", null);
     byte[] bytes = fory.serialize(obj);
     DefaultNullableTest deserialized = (DefaultNullableTest) fory.deserialize(bytes);
@@ -206,6 +227,7 @@ public class ForyFieldTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     DefaultRefTest obj = new DefaultRefTest("value1", "value2");
     byte[] bytes = fory.serialize(obj);
@@ -231,7 +253,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testMixedAnnotatedAndRegularFields() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     MixedFieldsTest obj = new MixedFieldsTest("annotated", "regular", null);
     byte[] bytes = fory.serialize(obj);
     MixedFieldsTest deserialized = (MixedFieldsTest) fory.deserialize(bytes);
@@ -258,6 +285,7 @@ public class ForyFieldTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<Descriptor> descriptors =
         fory.getTypeResolver().getFieldDescriptors(RefOwnerDefaults.class, true);
@@ -295,7 +323,12 @@ public class ForyFieldTest extends ForyTestBase {
 
   @Test
   public void testPrimitiveFields() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     PrimitiveFieldsTest obj = new PrimitiveFieldsTest(42, 123456789L, true, 99);
     byte[] bytes = fory.serialize(obj);
     PrimitiveFieldsTest deserialized = (PrimitiveFieldsTest) fory.deserialize(bytes);

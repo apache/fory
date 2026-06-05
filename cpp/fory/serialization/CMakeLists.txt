@@ -16,6 +16,7 @@
 # under the License.
 
 set(FORY_SERIALIZATION_SOURCES
+    compatible_scalar.cc
     context.cc
     skip.cc
     type_resolver.cc
@@ -26,7 +27,9 @@ set(FORY_SERIALIZATION_HEADERS
     array_serializer.h
     basic_serializer.h
     collection_serializer.h
+    compatible_scalar.h
     config.h
+    decimal_serializers.h
     context.h
     enum_serializer.h
     fory.h

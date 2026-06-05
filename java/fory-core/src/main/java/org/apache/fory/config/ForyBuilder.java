@@ -320,17 +320,16 @@ public final class ForyBuilder {
   }
 
   boolean isCompatible() {
-    return compatible != null ? compatible : xlang;
+    return compatible != null ? compatible : true;
   }
 
   /**
-   * Whether check class schema consistency. This is disabled automatically when compatible mode is
-   * enabled. Do not disable this option unless you can ensure the class won't evolve.
+   * Whether to check class-version hashes for same-schema payloads. This is disabled automatically
+   * when compatible mode is enabled.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
     if (xlang && !isCompatible() && !checkClassVersion) {
-      throw new IllegalArgumentException(
-          "XLANG Schema consistent mode must enable class version check");
+      throw new IllegalArgumentException("Xlang same-schema mode must enable class version check");
     }
     this.checkClassVersion = checkClassVersion;
     recordAction(b -> b.withClassVersionCheck(checkClassVersion));
@@ -375,9 +374,9 @@ public final class ForyBuilder {
   }
 
   /**
-   * Configure a {@link TypeChecker} during build time so it is installed on every created runtime.
-   * This checker is only consulted for unknown class names when class registration checks are
-   * disabled.
+   * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
+   * created by this builder. This checker is only consulted for unknown class names when class
+   * registration checks are disabled.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;
@@ -725,7 +724,7 @@ public final class ForyBuilder {
   }
 
   /**
-   * Builds a thread-safe {@link Fory} using the default runtime for the current JDK.
+   * Builds a thread-safe {@link Fory} backed by {@link ThreadPoolFory}.
    *
    * <p>This variant uses {@link ThreadPoolFory} with a shared {@link SharedRegistry} and a fixed
    * pool sized to 4x the current JVM's available processors.

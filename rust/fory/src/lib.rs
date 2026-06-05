@@ -68,7 +68,7 @@
 //!
 //! # fn main() -> Result<(), Error> {
 //! let mut fory = Fory::builder().xlang(true).build();
-//! fory.register_by_name::<User>("example", "User")?;
+//! fory.register_by_name::<User>("example.User")?;
 //!
 //! let user = User {
 //!     name: "Alice".to_string(),
@@ -140,8 +140,8 @@
 //!
 //! # fn main() -> Result<(), Error> {
 //! let mut fory = Fory::builder().xlang(true).build();
-//! fory.register_by_name::<Address>("example", "Address")?;
-//! fory.register_by_name::<Person>("example", "Person")?;
+//! fory.register_by_name::<Address>("example.Address")?;
+//! fory.register_by_name::<Person>("example.Person")?;
 //!
 //! let person = Person {
 //!     name: "John Doe".to_string(),
@@ -340,7 +340,8 @@
 //! - `Box<dyn Trait>` - Owned trait objects
 //! - `Rc<dyn Trait>` - Reference-counted trait objects
 //! - `Arc<dyn Trait>` - Thread-safe reference-counted trait objects
-//! - `Rc<dyn Any>` / `Arc<dyn Any>` - Runtime type dispatch without custom traits
+//! - `Box<dyn Any>` / `Rc<dyn Any>` / `Arc<dyn Any + Send + Sync>` - Runtime type
+//!   dispatch without custom traits for registered non-container payloads
 //! - Collections: `Vec<Box<dyn Trait>>`, `HashMap<K, Box<dyn Trait>>`
 //!
 //! #### Basic Trait Object Serialization
@@ -378,7 +379,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //! fory.register::<Cat>(101)?;
 //! fory.register::<Zoo>(102)?;
@@ -401,15 +402,16 @@
 //!
 //! #### Serializing `dyn Any` Trait Objects
 //!
-//! **What it does:** Supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for maximum
-//! runtime type flexibility without defining custom traits.
+//! **What it does:** Supports serializing `Box<dyn Any>`, `Rc<dyn Any>`, and
+//! `Arc<dyn Any + Send + Sync>` for maximum runtime type flexibility without
+//! defining custom traits.
 //!
 //! **When to use:** Plugin systems, dynamic type handling, or when you need runtime type
 //! dispatch without compile-time trait definitions.
 //!
 //! **Key points:**
 //!
-//! - Works with any type that implements `Serializer`
+//! - Works with registered concrete non-container types that implement `Serializer`
 //! - Requires downcasting after deserialization to access the concrete type
 //! - Type information is preserved during serialization
 //!
@@ -440,7 +442,7 @@
 //! # }
 //! ```
 //!
-//! For thread-safe scenarios, use `Arc<dyn Any>`:
+//! For thread-safe scenarios, use `Arc<dyn Any + Send + Sync>`:
 //!
 //! ```rust
 //! use fory::Fory;
@@ -456,18 +458,30 @@
 //! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Cat>(101)?;
 //!
-//! let cat: Arc<dyn Any> = Arc::new(Cat {
+//! let cat: Arc<dyn Any + Send + Sync> = Arc::new(Cat {
 //!     name: "Whiskers".to_string()
 //! });
 //!
 //! let bytes = fory.serialize(&cat)?;
-//! let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
+//! let decoded: Arc<dyn Any + Send + Sync> = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped = decoded.downcast_ref::<Cat>().unwrap();
 //! assert_eq!(unwrapped.name, "Whiskers");
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! `Box<dyn Any>`, `Rc<dyn Any>`, and `Arc<dyn Any + Send + Sync>` are supported
+//! erased `Any` carriers for registered concrete non-container payloads.
+//! Use `Arc<dyn Any + Send + Sync>` when the erased payload must be shareable
+//! across threads; the concrete payload type must also satisfy `Send + Sync`.
+//! Registered structs, enums, and unions that satisfy those bounds can be used
+//! as the erased payload.
+//! Generic containers such as `Vec<T>`, `HashMap<K, V>`, `HashSet<T>`, and
+//! `LinkedList<T>` are not supported directly as top-level erased `Any`
+//! payloads behind any of those carriers. This also includes primitive vector
+//! encodings such as `Vec<u8>`. Wrap the container in a registered derived type
+//! when it needs to travel behind an erased `Any` carrier.
 //!
 //! #### Rc/Arc-Based Trait Objects in Structs
 //!
@@ -505,7 +519,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //! fory.register::<Cat>(101)?;
 //! fory.register::<AnimalShelter>(102)?;
@@ -535,8 +549,9 @@
 //! `Serializer` directly. For standalone serialization (not inside struct fields),
 //! the `register_trait_type!` macro generates wrapper types.
 //!
-//! **Note:** If you don't want to use wrapper types, you can serialize as `Rc<dyn Any>`
-//! or `Arc<dyn Any>` instead (see the `dyn Any` section above).
+//! **Note:** If you don't want to use wrapper types for concrete non-container payloads,
+//! you can serialize as `Box<dyn Any>`, `Rc<dyn Any>`, or
+//! `Arc<dyn Any + Send + Sync>` instead (see the `dyn Any` section above).
 //!
 //! The `register_trait_type!` macro generates `AnimalRc` and `AnimalArc` wrapper types:
 //!
@@ -559,7 +574,7 @@
 //! register_trait_type!(Animal, Dog);
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //!
 //! // For Rc<dyn Trait>
@@ -634,11 +649,11 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory1 = Fory::builder().xlang(true).compatible(true).build();
-//! fory1.register_by_name::<PersonV1>("example", "Person")?;
+//! let mut fory1 = Fory::builder().xlang(true).build();
+//! fory1.register_by_name::<PersonV1>("example.Person")?;
 //!
-//! let mut fory2 = Fory::builder().xlang(true).compatible(true).build();
-//! fory2.register_by_name::<PersonV2>("example", "Person")?;
+//! let mut fory2 = Fory::builder().xlang(true).build();
+//! fory2.register_by_name::<PersonV2>("example.Person")?;
 //!
 //! let person_v1 = PersonV1 {
 //!     name: "Alice".to_string(),
@@ -733,10 +748,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory_old = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory_old = Fory::builder().xlang(false).build();
 //! fory_old.register::<OldEvent>(5)?;
 //!
-//! let mut fory_new = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory_new = Fory::builder().xlang(false).build();
 //! fory_new.register::<NewEvent>(5)?;
 //!
 //! // Serialize with old schema (2 fields)
@@ -771,8 +786,9 @@
 //! useful for temporary groupings, function return values, and ad-hoc data structures.
 //!
 //! **Technical approach:** Each tuple size (1-22) has a specialized `Serializer` implementation.
-//! In schema-consistent mode, elements are serialized sequentially without overhead. In compatible
-//! mode, the tuple is serialized as a heterogeneous collection with type metadata for each element.
+//! With the same-schema optimization, elements are serialized sequentially without overhead. In
+//! compatible mode, the tuple is serialized as a heterogeneous collection with type metadata for
+//! each element.
 //!
 //! **Features:**
 //!
@@ -1004,8 +1020,11 @@
 //! - `Box<dyn Trait>` - Owned trait objects
 //! - `Rc<dyn Trait>` - Reference-counted trait objects
 //! - `Arc<dyn Trait>` - Thread-safe reference-counted trait objects
-//! - `Rc<dyn Any>` - Runtime type dispatch without custom traits
-//! - `Arc<dyn Any>` - Thread-safe runtime type dispatch
+//! - `Box<dyn Any>` - Runtime type dispatch for registered non-container payloads
+//! - `Rc<dyn Any>` - Reference-counted runtime type dispatch for registered
+//!   non-container payloads
+//! - `Arc<dyn Any + Send + Sync>` - Thread-safe runtime type dispatch for
+//!   registered non-container payloads
 //!
 //! ## Wire Modes And Schema Evolution
 //!
@@ -1016,8 +1035,8 @@
 //!   xlang mode uses compatible schema evolution so independently deployed
 //!   peers can add, remove, or reorder fields.
 //! - **Native mode** is selected with `.xlang(false)`. Use it for Rust-only
-//!   payloads. When `compatible` is omitted, native mode uses
-//!   schema-consistent payloads for the smaller same-schema format.
+//!   payloads. When `compatible` is omitted, native mode also uses compatible
+//!   schema evolution.
 //!
 //! ```rust
 //! use fory::Fory;
@@ -1025,11 +1044,11 @@
 //! // Xlang mode with compatible schema evolution.
 //! let xlang = Fory::builder().xlang(true).build();
 //!
-//! // Native mode with schema-consistent payloads.
+//! // Native mode with compatible schema evolution.
 //! let native = Fory::builder().xlang(false).build();
 //!
-//! // Native mode with compatible schema evolution.
-//! let native_compatible = Fory::builder().xlang(false).compatible(true).build();
+//! // Same-schema optimization for Rust-only payloads.
+//! let native_same_schema = Fory::builder().xlang(false).compatible(false).build();
 //! ```
 //!
 //! ## Cross-Language Serialization
@@ -1054,13 +1073,13 @@
 //!     field2: String,
 //! }
 //!
-//! fory.register_by_name::<MyStruct>("com.example", "MyStruct").unwrap();
+//! fory.register_by_name::<MyStruct>("com.example.MyStruct").unwrap();
 //! ```
 //!
 //! **Type registration strategies:**
 //!
 //! - **ID-based registration**: `fory.register::<T>(id)` - Fastest, requires coordination
-//! - **Name-based registration**: `fory.register_by_name::<T>(namespace, name)` - Automatic cross-language mapping
+//! - **Name-based registration**: `fory.register_by_name::<T>(name)` - Automatic cross-language mapping
 //!
 //! ## Performance Characteristics
 //!
@@ -1102,7 +1121,7 @@
 //!
 //! fn process_data(bytes: &[u8]) -> Result<Data, Error> {
 //!     let mut fory = Fory::builder().xlang(true).build();
-//!     fory.register_by_name::<Data>("example", "Data")?;
+//!     fory.register_by_name::<Data>("example.Data")?;
 //!
 //!     let data: Data = fory.deserialize(bytes)?;
 //!     Ok(data)
@@ -1128,7 +1147,7 @@
 //! }
 //!
 //! let mut fory = Fory::builder().xlang(true).build();
-//! fory.register_by_name::<Item>("example", "Item").unwrap();
+//! fory.register_by_name::<Item>("example.Item").unwrap();
 //! let fory = Arc::new(fory);
 //! let handles: Vec<_> = (0..8)
 //!     .map(|i| {

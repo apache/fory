@@ -31,8 +31,8 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeResolver;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -210,18 +210,19 @@ public class SubListSerializers {
   }
 
   private static final class ViewFields {
-    private final long sourceOffset;
-    private final long offsetOffset;
-    private final long sizeOffset;
+    private final FieldAccessor sourceAccessor;
+    private final FieldAccessor offsetAccessor;
+    private final FieldAccessor sizeAccessor;
 
-    private ViewFields(long sourceOffset, long offsetOffset, long sizeOffset) {
-      this.sourceOffset = sourceOffset;
-      this.offsetOffset = offsetOffset;
-      this.sizeOffset = sizeOffset;
+    private ViewFields(
+        FieldAccessor sourceAccessor, FieldAccessor offsetAccessor, FieldAccessor sizeAccessor) {
+      this.sourceAccessor = sourceAccessor;
+      this.offsetAccessor = offsetAccessor;
+      this.sizeAccessor = sizeAccessor;
     }
 
     private static ViewFields create(Class<?> type) {
-      if (AndroidSupport.IS_ANDROID || Stub.class.isAssignableFrom(type)) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS || Stub.class.isAssignableFrom(type)) {
         return null;
       }
       Class<?> cls = type;
@@ -282,18 +283,18 @@ public class SubListSerializers {
         return null;
       }
       return new ViewFields(
-          UnsafeOps.objectFieldOffset(sourceField),
-          UnsafeOps.objectFieldOffset(offsetField),
-          UnsafeOps.objectFieldOffset(sizeField));
+          FieldAccessor.createAccessor(sourceField),
+          FieldAccessor.createAccessor(offsetField),
+          FieldAccessor.createAccessor(sizeField));
     }
 
     private ViewPayload get(Collection value) {
-      List source = (List) UnsafeOps.getObject(value, sourceOffset);
+      List source = (List) sourceAccessor.getObject(value);
       if (source == null) {
         return null;
       }
-      int offset = UnsafeOps.getInt(value, offsetOffset);
-      int size = UnsafeOps.getInt(value, sizeOffset);
+      int offset = offsetAccessor.getInt(value);
+      int size = sizeAccessor.getInt(value);
       return new ViewPayload(source, offset, size);
     }
   }

@@ -51,7 +51,12 @@ public class TypeInfoTest {
 
   @Test
   public void testEncodePackageNameAndTypeName() {
-    Fory fory1 = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory1 =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeInfo info1 = fory1.getTypeResolver().getTypeInfo(org.apache.fory.test.bean.Foo.class);
     assertNotNull(info1.namespace);
     assertNotNull(info1.typeName);

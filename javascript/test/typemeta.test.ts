@@ -20,13 +20,16 @@
 import Fory, {
   BFloat16Array,
   BoolArray,
+  Decimal,
   Float16Array,
   Type,
 } from "../packages/core/index";
+import type { TypeInfo } from "../packages/core/index";
 import { ReadContext } from "../packages/core/lib/context";
 import { TypeMeta } from "../packages/core/lib/meta/TypeMeta";
 import { x64hash128 } from "../packages/core/lib/murmurHash3";
 import { BinaryReader } from "../packages/core/lib/reader";
+import { RefFlags, TypeId } from "../packages/core/lib/type";
 import { BinaryWriter } from "../packages/core/lib/writer";
 import { describe, expect, test } from "@jest/globals";
 
@@ -38,7 +41,61 @@ const LOW_HEADER_BITS_MASK = (1n << HASH_SHIFT_BITS) - 1n;
 const UINT64_MASK = (1n << 64n) - 1n;
 const HEADER_HASH_MASK = UINT64_MASK ^ LOW_HEADER_BITS_MASK;
 
+function decimal(
+  unscaledValue: string | bigint | number,
+  scale: number,
+): Decimal {
+  return new Decimal(unscaledValue, scale);
+}
+
+function readCompatibleScalar(
+  typeId: number,
+  writerField: TypeInfo,
+  readerField: TypeInfo,
+  value: unknown,
+): any {
+  const writerFory = new Fory({ compatible: true });
+  const readerFory = new Fory({ compatible: true });
+  const writer = writerFory.register(
+    Type.struct(typeId, {
+      value: writerField,
+    }),
+  );
+  const reader = readerFory.register(
+    Type.struct(typeId, {
+      value: readerField,
+    }),
+  );
+
+  return reader.deserialize(writer.serialize({ value }));
+}
+
 describe("typemeta", () => {
+  test("splits dotted names", () => {
+    const structInfo = Type.struct({ typeName: "com.example.User" }, {});
+    expect(structInfo.namespace).toBe("com.example");
+    expect(structInfo.typeName).toBe("User");
+
+    const enumInfo = Type.enum("com.example.Color", { Red: 1 });
+    expect(enumInfo.namespace).toBe("com.example");
+    expect(enumInfo.typeName).toBe("Color");
+
+    const extInfo = Type.ext("com.example.External");
+    expect(extInfo.namespace).toBe("com.example");
+    expect(extInfo.typeName).toBe("External");
+
+    const unionInfo = Type.union("com.example.Payload", { 1: Type.string() });
+    expect(unionInfo.namespace).toBe("com.example");
+    expect(unionInfo.typeName).toBe("Payload");
+
+    const explicitInfo = Type.struct(
+      { namespace: "", typeName: "com.example.Raw" },
+      {},
+    );
+    expect(explicitInfo.namespace).toBe("");
+    expect(explicitInfo.typeName).toBe("com.example.Raw");
+  });
+
   test("writes TypeMeta header bits in the xlang layout", () => {
     const typeInfo = Type.struct(7001, {
       fullName: Type.string().setId(1),
@@ -236,10 +293,10 @@ describe("typemeta", () => {
       value: Type.int32(),
     });
 
-    const bytes = writerFory.register(writerType).serialize({ value: "hello" });
+    const bytes = writerFory.register(writerType).serialize({ value: "123" });
     const result = readerFory.register(readerType).deserialize(bytes);
 
-    expect(result).toEqual({ value: "hello" });
+    expect(result).toEqual({ value: 123 });
   });
 
   test("does not retain regenerated compatible serializer after a schema mismatch read", () => {
@@ -260,14 +317,14 @@ describe("typemeta", () => {
     const changedBytes = changedWriterFory
       .register(changedWriterType)
       .serialize({
-        value: "hello",
+        value: "456",
       });
     const localBytes = localWriterFory.register(localWriterType).serialize({
       value: 123,
     });
     const reader = readerFory.register(readerType);
 
-    expect(reader.deserialize(changedBytes)).toEqual({ value: "hello" });
+    expect(reader.deserialize(changedBytes)).toEqual({ value: 456 });
     expect(reader.deserialize(localBytes)).toEqual({ value: 123 });
   });
 
@@ -326,7 +383,7 @@ describe("typemeta", () => {
     };
 
     const stringBytes = stringWriter.serialize({
-      child: { value: "hello" },
+      child: { value: "7" },
     });
     const boolBytes = boolWriter.serialize({
       child: { value: true },
@@ -336,13 +393,13 @@ describe("typemeta", () => {
     });
 
     expect(reader.deserialize(stringBytes)).toEqual({
-      child: { value: "hello" },
+      child: { value: 7 },
     });
     expect(reader.deserialize(boolBytes)).toEqual({
-      child: { value: true },
+      child: { value: 1 },
     });
     expect(reader.deserialize(stringBytes)).toEqual({
-      child: { value: "hello" },
+      child: { value: 7 },
     });
     expect(reader.deserialize(localBytes)).toEqual({
       child: { value: 123 },
@@ -360,7 +417,7 @@ describe("typemeta", () => {
     });
     const readerType = Type.struct(7002, {
       name: Type.string().setId(1),
-      alias: Type.int32().setId(2),
+      alias: Type.string().setId(2),
     });
 
     const bytes = writerFory.register(writerType).serialize({
@@ -373,6 +430,317 @@ describe("typemeta", () => {
       name: "Alice",
       alias: "ally",
     });
+  });
+
+  test("converts compatible bool scalars", () => {
+    expect(
+      readCompatibleScalar(7220, Type.string(), Type.bool(), "true"),
+    ).toEqual({ value: true });
+    expect(
+      readCompatibleScalar(7221, Type.bool(), Type.string(), false),
+    ).toEqual({ value: "false" });
+    expect(
+      readCompatibleScalar(
+        7222,
+        Type.int32({ encoding: "fixed" }),
+        Type.bool(),
+        1,
+      ),
+    ).toEqual({ value: true });
+    expect(
+      readCompatibleScalar(
+        7223,
+        Type.bool(),
+        Type.int32({ encoding: "fixed" }),
+        true,
+      ),
+    ).toEqual({ value: 1 });
+
+    const decimalResult = readCompatibleScalar(
+      7224,
+      Type.bool(),
+      Type.decimal(),
+      false,
+    );
+    expect(decimalResult.value).toBeInstanceOf(Decimal);
+    expect(decimalResult.value.equals(decimal(0n, 0))).toBe(true);
+  });
+
+  test("rejects invalid bool scalars", () => {
+    expect(() =>
+      readCompatibleScalar(7225, Type.string(), Type.bool(), "yes"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(
+        7226,
+        Type.int32({ encoding: "fixed" }),
+        Type.bool(),
+        2,
+      ),
+    ).toThrow(/compatible field value/);
+  });
+
+  test("converts exact number scalars", () => {
+    expect(
+      readCompatibleScalar(
+        7227,
+        Type.int32({ encoding: "fixed" }),
+        Type.int16(),
+        300,
+      ),
+    ).toEqual({ value: 300 });
+    expect(
+      readCompatibleScalar(
+        7228,
+        Type.string(),
+        Type.int64({ encoding: "fixed" }),
+        "9223372036854775807",
+      ),
+    ).toEqual({ value: 9223372036854775807n });
+    expect(
+      readCompatibleScalar(7229, Type.string(), Type.float64(), "0.5"),
+    ).toEqual({ value: 0.5 });
+
+    const decimalResult = readCompatibleScalar(
+      7230,
+      Type.string(),
+      Type.decimal(),
+      "12.340",
+    );
+    expect(decimalResult.value).toBeInstanceOf(Decimal);
+    expect(decimalResult.value.equals(decimal(1234n, 2))).toBe(true);
+
+    expect(
+      readCompatibleScalar(
+        7231,
+        Type.decimal(),
+        Type.string(),
+        decimal(12340n, 3),
+      ),
+    ).toEqual({ value: "12.34" });
+
+    const digitBound = readCompatibleScalar(
+      7255,
+      Type.string(),
+      Type.decimal(),
+      "1".repeat(256),
+    );
+    expect(digitBound.value).toBeInstanceOf(Decimal);
+    expect(digitBound.value.equals(decimal("1".repeat(256), 0))).toBe(true);
+
+    const exponentBound = readCompatibleScalar(
+      7256,
+      Type.string(),
+      Type.decimal(),
+      "1e255",
+    );
+    expect(exponentBound.value).toBeInstanceOf(Decimal);
+    expect(exponentBound.value.unscaledValue.toString()).toHaveLength(256);
+    expect(exponentBound.value.scale).toBe(0);
+  });
+
+  test("rejects inexact number scalars", () => {
+    expect(() =>
+      readCompatibleScalar(7232, Type.string(), Type.float64(), "0.1"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7248, Type.string(), Type.int32(), "+1"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7249, Type.string(), Type.float64(), ".5"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7250, Type.string(), Type.float64(), "1."),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(
+        7251,
+        Type.string(),
+        Type.decimal(),
+        "1".repeat(257),
+      ),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(
+        7253,
+        Type.string(),
+        Type.decimal(),
+        `0.${"0".repeat(319)}`,
+      ),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7257, Type.string(), Type.decimal(), "1e1000000"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7258, Type.string(), Type.decimal(), "1e256"),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7233, Type.decimal(), Type.int32(), decimal(5n, 1)),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(
+        7259,
+        Type.decimal(),
+        Type.string(),
+        decimal(1n, -256),
+      ),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(
+        7234,
+        Type.int32({ encoding: "fixed" }),
+        Type.int8(),
+        128,
+      ),
+    ).toThrow(/compatible field value/);
+    expect(() =>
+      readCompatibleScalar(7235, Type.float64(), Type.string(), Number.NaN),
+    ).toThrow(/compatible field value/);
+  });
+
+  test("composes scalar conversion with nulls", () => {
+    expect(
+      readCompatibleScalar(
+        7236,
+        Type.string().setNullable(true),
+        Type.bool(),
+        "false",
+      ),
+    ).toEqual({ value: false });
+    expect(
+      readCompatibleScalar(
+        7237,
+        Type.string().setNullable(true),
+        Type.bool(),
+        null,
+      ),
+    ).toEqual({ value: null });
+    expect(
+      readCompatibleScalar(
+        7252,
+        Type.string(),
+        Type.bool().setNullable(true),
+        "true",
+      ),
+    ).toEqual({ value: true });
+  });
+
+  test("applies tracking-ref scalar rules", () => {
+    const writerFory = new Fory({ compatible: true, ref: true });
+    const readerFory = new Fory({ compatible: true, ref: true });
+    class RemoteScalars {
+      flag = "true";
+      count = "1";
+      same = true;
+      remoteNullable = true;
+      localNullable = true;
+      bothNullable = true;
+    }
+    class LocalScalars {
+      flag = false;
+      count = 0;
+      same = false;
+      remoteNullable = false;
+      localNullable = false;
+      bothNullable = false;
+    }
+    Type.struct(7254, {
+      flag: Type.string().setId(1).setTrackingRef(true),
+      count: Type.string().setId(2),
+      same: Type.bool().setId(3).setTrackingRef(true),
+      remoteNullable: Type.bool()
+        .setId(4)
+        .setTrackingRef(true)
+        .setNullable(true),
+      localNullable: Type.bool().setId(5).setTrackingRef(true),
+      bothNullable: Type.bool().setId(6).setTrackingRef(true).setNullable(true),
+    })(RemoteScalars);
+    Type.struct(7254, {
+      flag: Type.bool().setId(1),
+      count: Type.int32().setId(2).setTrackingRef(true),
+      same: Type.bool().setId(3).setTrackingRef(true),
+      remoteNullable: Type.bool().setId(4).setTrackingRef(true),
+      localNullable: Type.bool()
+        .setId(5)
+        .setTrackingRef(true)
+        .setNullable(true),
+      bothNullable: Type.bool().setId(6).setTrackingRef(true).setNullable(true),
+    })(LocalScalars);
+    const writer = writerFory.register(RemoteScalars);
+    const reader = readerFory.register(LocalScalars);
+
+    const result = reader.deserialize(writer.serialize(new RemoteScalars()));
+    expect(result).toBeInstanceOf(LocalScalars);
+    expect(result.flag).toBe(false);
+    expect(result.count).toBe(0);
+    expect(result.same).toBe(true);
+    expect(result.remoteNullable).toBe(false);
+    expect(result.localNullable).toBe(false);
+    expect(result.bothNullable).toBe(true);
+  });
+
+  test("keeps nested scalars unconverted", () => {
+    expect(
+      readCompatibleScalar(
+        7238,
+        Type.list(Type.string()),
+        Type.list(Type.int32()),
+        ["1", "2"],
+      ),
+    ).toEqual({ value: ["1", "2"] });
+  });
+
+  test("keeps same-schema scalar reads direct", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const typeInfo = Type.struct(7239, {
+      value: Type.float64(),
+    });
+    const writer = writerFory.register(typeInfo);
+    const reader = readerFory.register(typeInfo);
+    const typeResolver = (readerFory as any).typeResolver;
+    const generateReadSerializer =
+      typeResolver.generateReadSerializer.bind(typeResolver);
+    let generatedReaders = 0;
+    typeResolver.generateReadSerializer = (changedTypeInfo: any) => {
+      generatedReaders++;
+      return generateReadSerializer(changedTypeInfo);
+    };
+
+    const result = reader.deserialize(writer.serialize({ value: Number.NaN }));
+
+    expect(Number.isNaN(result.value)).toBe(true);
+    expect(generatedReaders).toBe(0);
+  });
+
+  test("strictly reads same-type nullable compatible scalar fields", () => {
+    const writerFory = new Fory({ compatible: true });
+    const readerFory = new Fory({ compatible: true });
+    const writer = writerFory.register(
+      Type.struct(7260, {
+        value: Type.bool().setNullable(true),
+      }),
+    );
+    const reader = readerFory.register(
+      Type.struct(7260, {
+        value: Type.bool(),
+      }),
+    );
+    const bytes = writer.serialize({ value: true });
+    const flag = bytes.lastIndexOf(RefFlags.NotNullValueFlag & 0xff);
+    expect(flag).toBeGreaterThanOrEqual(0);
+
+    const badFlag = new Uint8Array(bytes);
+    badFlag[flag] = RefFlags.RefValueFlag & 0xff;
+    expect(() => reader.deserialize(badFlag)).toThrow(
+      /Invalid reference flag for compatible scalar field value/,
+    );
+
+    const badPayload = new Uint8Array(bytes);
+    badPayload[badPayload.length - 1] = 2;
+    expect(() => reader.deserialize(badPayload)).toThrow(
+      /Invalid boolean scalar value/,
+    );
   });
 
   test("adapts only immediate compatible list and dense array field pairs", () => {

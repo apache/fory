@@ -20,28 +20,30 @@ license: |
 ---
 
 Apache Fory™ supports schema evolution in compatible mode, allowing fields to be added or removed
-while maintaining compatibility. Xlang mode enables compatible mode by default. In native mode,
-set `compatible=True` explicitly when Python-only payloads need schema evolution.
+while maintaining compatibility. Compatible mode is enabled by default in both xlang and native mode.
 
-## Xlang Default
+Compatible readers also tolerate selected scalar field type changes when the value is lossless. A
+matched field can read between `bool`, `str`, numeric scalars, and `Decimal` when the converted value
+has the same logical value. For example, `"true"`, `"false"`, `"0"`, and `"1"` can be read as
+booleans; `"123"` can be read as a numeric field that can hold `123`; numbers and decimals can be
+read as canonical strings; and numeric widening or narrowing succeeds only when no precision or range
+is lost.
+
+Scalar conversion is only applied to matched compatible fields, not to root values or collection
+elements. String-to-number conversion accepts finite ASCII decimal literals without whitespace, a
+leading `+`, Unicode digits, underscores, or special values such as `NaN` and `Infinity`. Invalid
+strings, out-of-range values, and lossy conversions fail with `pyfory.error.ForyInvalidDataError`
+during deserialization.
+Optional and nullable fields still compose with these conversions, but reference-tracked scalar type
+changes are incompatible.
+
+## Default Compatible Mode
 
 ```python
 import pyfory
 
-f = pyfory.Fory(xlang=True)
-```
-
-## Disable Evolution for Stable Classes
-
-If a dataclass schema is stable and will not change, you can disable evolution for that class to avoid compatible metadata overhead. Use `pyfory.dataclass` with `evolving=False`:
-
-```python
-import pyfory
-
-@pyfory.dataclass(evolving=False)
-class StableMessage:
-    id: int
-    name: str
+f = pyfory.Fory()
+native_f = pyfory.Fory(xlang=False)
 ```
 
 `pyfory.dataclass` also supports `slots=True`:
@@ -65,7 +67,7 @@ class User:
     age: pyfory.Int32
 
 f = pyfory.Fory(xlang=True)
-f.register(User, typename="User")
+f.register(User, name="User")
 data = f.dumps(User("Alice", 30))
 
 # Version 2: Add new field (backward compatible)
@@ -86,10 +88,30 @@ print(user.email)  # "unknown@example.com"
 - **Remove fields**: Old data with extra fields will be skipped
 - **Reorder fields**: Fields are matched by name, not position
 
+## Same-Schema Class Optimization
+
+Use `compatible=False` only when the class schema used to deserialize every payload is always the same
+as the class schema used to serialize it, and you want faster serialization and smaller size. For xlang payloads, set `compatible=False` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
+```python
+f = pyfory.Fory(xlang=False, compatible=False)
+```
+
+For one dataclass, you can opt out of evolution metadata with `pyfory.dataclass(evolving=False)`:
+
+```python
+import pyfory
+
+@pyfory.dataclass(evolving=False)
+class SameSchemaMessage:
+    id: int
+    name: str
+```
+
 ## Best Practices
 
 1. **Always provide default values** for new fields
-2. **Use typename for cross-language compatibility**
+2. **Use name for cross-language compatibility**
 3. **Test schema changes** before deploying
 4. **Document schema versions** for your team
 

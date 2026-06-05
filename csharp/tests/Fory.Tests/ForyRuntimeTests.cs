@@ -19,6 +19,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Numerics;
 using System.Threading.Tasks;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
@@ -197,6 +198,124 @@ public sealed class SemanticScalarSchema
 
     [ForyField(Type = typeof(S.Tagged<S.Int64>))]
     public long TaggedI64 { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarBoolField
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableBoolField
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarStringField
+{
+    [ForyField(1, Type = typeof(S.String))]
+    public string? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarInt16Field
+{
+    [ForyField(1, Type = typeof(S.Int16))]
+    public short Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarInt32Field
+{
+    [ForyField(1, Type = typeof(S.Int32))]
+    public int Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableInt32Field
+{
+    [ForyField(1, Type = typeof(S.Int32))]
+    public int? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarUInt32Field
+{
+    [ForyField(1, Type = typeof(S.UInt32))]
+    public uint Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFixedUInt32Field
+{
+    [ForyField(1, Type = typeof(S.Fixed<S.UInt32>))]
+    public uint Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableFixedUInt32Field
+{
+    [ForyField(1, Type = typeof(S.Fixed<S.UInt32>))]
+    public uint? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFloat32Field
+{
+    [ForyField(1, Type = typeof(S.Float32))]
+    public float Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFloat64Field
+{
+    [ForyField(1, Type = typeof(S.Float64))]
+    public double Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarDecimalField
+{
+    [ForyField(1, Type = typeof(S.Decimal))]
+    public ForyDecimal Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarStringListField
+{
+    [ForyField(1, Type = typeof(S.List<S.String>))]
+    public List<string> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class ScalarInt32ListField
+{
+    [ForyField(1, Type = typeof(S.List<S.Int32>))]
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class ScalarTwoStringFields
+{
+    [ForyField(1, Type = typeof(S.String))]
+    public string? Flag { get; set; }
+
+    [ForyField(2, Type = typeof(S.String))]
+    public string? Count { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarBoolIntFields
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool Flag { get; set; }
+
+    [ForyField(2, Type = typeof(S.Int32))]
+    public int Count { get; set; }
 }
 
 [ForyStruct]
@@ -1188,6 +1307,302 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void CompatibleScalarBoolString()
+    {
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "0" }).Value);
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "1" }).Value);
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "false" }).Value);
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "true" }).Value);
+
+        Assert.Equal("true", CompatibleRead<ScalarBoolField, ScalarStringField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal("false", CompatibleRead<ScalarBoolField, ScalarStringField>(
+            new ScalarBoolField { Value = false }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "TRUE" }));
+    }
+
+    [Fact]
+    public void CompatibleScalarBoolNumber()
+    {
+        Assert.False(CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 0 }).Value);
+        Assert.True(CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 1 }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarBoolField, ScalarInt32Field>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal(0u, CompatibleRead<ScalarBoolField, ScalarUInt32Field>(
+            new ScalarBoolField { Value = false }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 2 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarBoolField>(
+            new ScalarFloat64Field { Value = 0.5d }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarBoolField>(
+            new ScalarFloat64Field { Value = double.NaN }));
+    }
+
+    [Fact]
+    public void CompatibleScalarNumberBounds()
+    {
+        Assert.Equal((short)123, CompatibleRead<ScalarInt32Field, ScalarInt16Field>(
+            new ScalarInt32Field { Value = 123 }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarFloat64Field, ScalarInt32Field>(
+            new ScalarFloat64Field { Value = 1.0d }).Value);
+        Assert.Equal(double.PositiveInfinity, CompatibleRead<ScalarFloat32Field, ScalarFloat64Field>(
+            new ScalarFloat32Field { Value = float.PositiveInfinity }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarInt16Field>(
+            new ScalarInt32Field { Value = 40_000 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarInt32Field>(
+            new ScalarFloat64Field { Value = 1.5d }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarFloat32Field>(
+            new ScalarInt32Field { Value = 16_777_217 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat32Field, ScalarFloat64Field>(
+            new ScalarFloat32Field { Value = float.NaN }));
+    }
+
+    [Fact]
+    public void CompatibleScalarStringNumber()
+    {
+        Assert.Equal(100, CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "1e2" }).Value);
+        Assert.Equal(0.5d, CompatibleRead<ScalarStringField, ScalarFloat64Field>(
+            new ScalarStringField { Value = "0.5" }).Value);
+
+        double negativeZero = CompatibleRead<ScalarStringField, ScalarFloat64Field>(
+            new ScalarStringField { Value = "-0" }).Value;
+        Assert.Equal(BitConverter.DoubleToUInt64Bits(-0.0d), BitConverter.DoubleToUInt64Bits(negativeZero));
+
+        Assert.Equal("-12", CompatibleRead<ScalarInt32Field, ScalarStringField>(
+            new ScalarInt32Field { Value = -12 }).Value);
+        Assert.Equal("125.0", CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = 125.0d }).Value);
+        Assert.Equal("-0.0", CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = -0.0d }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "1.5" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarFloat32Field>(
+            new ScalarStringField { Value = "0.1" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "+1" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = double.PositiveInfinity }));
+    }
+
+    [Fact]
+    public void CompatibleScalarDecimal()
+    {
+        Assert.True(CompatibleRead<ScalarDecimalField, ScalarBoolField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(10), 1) }).Value);
+        Assert.Equal(new ForyDecimal(BigInteger.One, 0), CompatibleRead<ScalarBoolField, ScalarDecimalField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal(new ForyDecimal(new BigInteger(1234), 2), CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "12.340" }).Value);
+        Assert.Equal("12.34", CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(12340), 3) }).Value);
+
+        string digits256 = new('1', 256);
+        ForyDecimal digitBound = CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = digits256 }).Value;
+        Assert.Equal(BigInteger.Parse(digits256), digitBound.UnscaledValue);
+        Assert.Equal(0, digitBound.Scale);
+
+        ForyDecimal exponentBound = CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e255" }).Value;
+        Assert.Equal(256, exponentBound.UnscaledValue.ToString().Length);
+        Assert.Equal(0, exponentBound.Scale);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarBoolField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(5), 1) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarInt32Field>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(5), 1) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = new string('1', 257) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "0." + new string('0', 319) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e1000000" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e256" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(BigInteger.One, -256) }));
+
+        InvalidDataException expansionError = Assert.Throws<InvalidDataException>(() =>
+            CompatibleRead<ScalarFloat64Field, ScalarDecimalField>(
+                new ScalarFloat64Field { Value = double.Epsilon }));
+        Assert.Contains("field 'value' from Float64 to Decimal", expansionError.Message);
+    }
+
+    [Fact]
+    public void CompatibleScalarNullable()
+    {
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "1" }).Value);
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = null }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarBoolField, ScalarNullableInt32Field>(
+            new ScalarBoolField { Value = true }).Value);
+    }
+
+    [Fact]
+    public void CompatibleScalarRejectsInvalidBoolPayload()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
+        writer.Register<ScalarBoolField>(813);
+        byte[] payload = writer.Serialize(new ScalarBoolField { Value = true });
+        payload[^1] = 2;
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
+        reader.Register<ScalarNullableBoolField>(813);
+        Assert.Throws<InvalidDataException>(() => reader.Deserialize<ScalarNullableBoolField>(payload));
+    }
+
+    [Fact]
+    public void CompatibleScalarSchemaOverride()
+    {
+        Assert.Equal(4_000_000_000u, CompatibleRead<ScalarFixedUInt32Field, ScalarUInt32Field>(
+            new ScalarFixedUInt32Field { Value = 4_000_000_000u }).Value);
+        Assert.Equal(4_000_000_000u, CompatibleRead<ScalarFixedUInt32Field, ScalarNullableFixedUInt32Field>(
+            new ScalarFixedUInt32Field { Value = 4_000_000_000u }).Value);
+    }
+
+    [Fact]
+    public void CompatibleScalarTrackingRefRules()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, false)),
+        ];
+
+        TypeMeta remoteTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false, true))]);
+        TypeMeta.AssignFieldIds(remoteTrackingTypeMeta, localFields);
+        Assert.Equal(-1, remoteTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        List<TypeMetaFieldInfo> localTrackingFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, false, true)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false))]);
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localTrackingFields);
+        Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolTrackingTypeMeta, localFields);
+        Assert.Equal(-1, remoteBoolTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false))]);
+        TypeMeta.AssignFieldIds(remoteBoolTypeMeta, localTrackingFields);
+        Assert.Equal(-1, remoteBoolTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolBothTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolBothTrackingTypeMeta, localTrackingFields);
+        Assert.Equal(0, remoteBoolBothTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        List<TypeMetaFieldInfo> localNullableTrackingFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, true, true)),
+        ];
+        TypeMeta remoteBoolNullableTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, true, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolNullableTrackingTypeMeta, localNullableTrackingFields);
+        Assert.Equal(0, remoteBoolNullableTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolTrackingNullableTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, true, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolTrackingNullableTypeMeta, localTrackingFields);
+        Assert.Equal(-1, remoteBoolTrackingNullableTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolTrackingRequiredTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolTrackingRequiredTypeMeta, localNullableTrackingFields);
+        Assert.Equal(-1, remoteBoolTrackingRequiredTypeMeta.Fields[0].AssignedFieldId);
+
+        List<TypeMetaFieldInfo> localTrackingUIntFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.VarUInt32, false, true)),
+        ];
+        TypeMeta remoteFixedUIntTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.UInt32, false, true))]);
+        TypeMeta.AssignFieldIds(remoteFixedUIntTrackingTypeMeta, localTrackingUIntFields);
+        Assert.Equal(-1, remoteFixedUIntTrackingTypeMeta.Fields[0].AssignedFieldId);
+    }
+
+    [Fact]
+    public void NestedScalarConversionNotApplied()
+    {
+        ScalarInt32ListField decoded = CompatibleRead<ScalarStringListField, ScalarInt32ListField>(
+            new ScalarStringListField { Values = ["1"] });
+
+        Assert.Empty(decoded.Values);
+    }
+
+    [Fact]
+    public void SameSchemaScalarRoundTrip()
+    {
+        Assert.True(CompatibleRead<ScalarBoolField, ScalarBoolField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.True(double.IsNaN(CompatibleRead<ScalarFloat64Field, ScalarFloat64Field>(
+            new ScalarFloat64Field { Value = double.NaN }).Value));
+    }
+
+    [Fact]
     public void NestedSchemaAnnotationControlsMapAndListPayload()
     {
         ForyRuntime fory = ForyRuntime.Builder().Build();
@@ -1958,7 +2373,7 @@ public sealed class ForyRuntimeTests
         ];
         List<TypeMetaFieldInfo> remoteFields =
         [
-            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Binary, false)),
         ];
         TypeMeta remoteTypeMeta = new(
             (uint)TypeId.CompatibleStruct,
@@ -1970,6 +2385,29 @@ public sealed class ForyRuntimeTests
 
         TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
         Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+    }
+
+    [Fact]
+    public void TypeMetaAssignScalarConversion()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            501,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        Assert.Equal(0, remoteTypeMeta.Fields[0].AssignedFieldId);
     }
 
     [Fact]
@@ -2064,6 +2502,15 @@ public sealed class ForyRuntimeTests
         Buffer.BlockCopy(rewrittenTypeMetaBytes, 0, rewrittenPayload, typeMetaStart, rewrittenTypeMetaBytes.Length);
         Buffer.BlockCopy(payload, typeMetaEnd, rewrittenPayload, typeMetaStart + rewrittenTypeMetaBytes.Length, payload.Length - typeMetaEnd);
         return rewrittenPayload;
+    }
+
+    private static TReader CompatibleRead<TWriter, TReader>(TWriter value, bool trackRef = false)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        writer.Register<TWriter>(812);
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        reader.Register<TReader>(812);
+        return reader.Deserialize<TReader>(writer.Serialize(value));
     }
 
     private static byte[] CorruptCompatibleTypeMetaBody(byte[] payload)

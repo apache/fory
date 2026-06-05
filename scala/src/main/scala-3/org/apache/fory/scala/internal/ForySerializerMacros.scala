@@ -609,7 +609,7 @@ object ForySerializerMacros {
               val matchedId = remoteField.matchedId
               if matchedId >= 0 then {
                 val localField = $fieldsByIdExpr(matchedId)
-                if $serializerExpr.canReadRemoteField(remoteField, localField) then {
+                if $serializerExpr.canReadGeneratedField(remoteField, localField) then {
                   val fieldValue =
                     $serializerExpr.readCompatibleFieldValue($readContextExpr, remoteField, localField)
                   ${ assignValueById('obj, 'matchedId, 'fieldValue) }
@@ -637,7 +637,7 @@ object ForySerializerMacros {
               val matchedId = remoteField.matchedId
               if matchedId >= 0 then {
                 val localField = $fieldsByIdExpr(matchedId)
-                if $serializerExpr.canReadRemoteField(remoteField, localField) then {
+                if $serializerExpr.canReadGeneratedField(remoteField, localField) then {
                   values(matchedId) =
                     $serializerExpr.readCompatibleFieldValue($readContextExpr, remoteField, localField)
                 } else {

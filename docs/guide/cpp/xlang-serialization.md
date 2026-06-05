@@ -27,7 +27,7 @@ Apache Fory™ enables seamless data exchange between C++, Java, Python, Go, Rus
 JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Xlang mode ensures
 binary compatibility across all supported languages.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
 C++ defaults to xlang mode. Compatible schema evolution is also the xlang default. Set the mode explicitly in xlang examples:
 

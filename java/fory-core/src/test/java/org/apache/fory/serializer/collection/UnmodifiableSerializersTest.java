@@ -45,7 +45,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.CollectionFields;
@@ -54,17 +54,15 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class UnmodifiableSerializersTest extends ForyTestBase {
-  static long SOURCE_COLLECTION_FIELD_OFFSET =
-      ReflectionUtils.getFieldOffset(
-          Collections.synchronizedCollection(Collections.emptyList()).getClass(), "c");
-  static long SOURCE_MAP_FIELD_OFFSET =
-      ReflectionUtils.getFieldOffset(
-          Collections.synchronizedMap(Collections.emptyMap()).getClass(), "m");
-
   @SuppressWarnings("unchecked")
   @Test
   public void testWrite() throws Exception {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     Object[] values =
         new Object[] {
@@ -84,17 +82,14 @@ public class UnmodifiableSerializersTest extends ForyTestBase {
       writeSerializer(fory, serializer, buffer, value);
       Object newObj = readSerializer(fory, serializer, buffer);
       assertEquals(newObj.getClass(), value.getClass());
-      long sourceCollectionFieldOffset =
-          Collection.class.isAssignableFrom(value.getClass())
-              ? SOURCE_COLLECTION_FIELD_OFFSET
-              : SOURCE_MAP_FIELD_OFFSET;
-      Object innerValue = UnsafeOps.getObject(value, sourceCollectionFieldOffset);
-      Object newValue = UnsafeOps.getObject(newObj, sourceCollectionFieldOffset);
+      FieldAccessor sourceAccessor = sourceAccessor(value.getClass());
+      Object innerValue = sourceAccessor.getObject(value);
+      Object newValue = sourceAccessor.getObject(newObj);
       assertEquals(innerValue, newValue);
 
       newObj = serDe(fory, value);
-      innerValue = UnsafeOps.getObject(value, sourceCollectionFieldOffset);
-      newValue = UnsafeOps.getObject(newObj, sourceCollectionFieldOffset);
+      innerValue = sourceAccessor.getObject(value);
+      newValue = sourceAccessor.getObject(newObj);
       assertEquals(innerValue, newValue);
       assertTrue(
           fory.getTypeResolver()
@@ -102,6 +97,11 @@ public class UnmodifiableSerializersTest extends ForyTestBase {
               .getName()
               .contains("Unmodifiable"));
     }
+  }
+
+  private static FieldAccessor sourceAccessor(Class<?> cls) {
+    String fieldName = Collection.class.isAssignableFrom(cls) ? "c" : "m";
+    return FieldAccessor.createAccessor(ReflectionUtils.getField(cls, fieldName));
   }
 
   public static CollectionFields createCollectionFields() {

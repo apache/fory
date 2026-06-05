@@ -77,14 +77,15 @@ public sealed class Fory
     }
 
     /// <summary>
-    /// Registers a user type by name using an empty namespace.
+    /// Registers a user type by name.
     /// </summary>
     /// <typeparam name="T">Type to register.</typeparam>
-    /// <param name="typeName">Type name used on the wire.</param>
+    /// <param name="name">Name used on the wire. A dotted name is split at the last dot.</param>
     /// <returns>The same runtime instance.</returns>
-    public Fory Register<T>(string typeName)
+    public Fory Register<T>(string name)
     {
-        _typeResolver.Register(typeof(T), string.Empty, typeName);
+        (string namespaceName, string typeName) = TypeResolver.SplitTypeName(name);
+        _typeResolver.Register(typeof(T), namespaceName, typeName);
         return this;
     }
 
@@ -117,6 +118,22 @@ public sealed class Fory
     }
 
     /// <summary>
+    /// Registers a user type by name with a custom serializer.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <typeparam name="TSerializer">Serializer implementation used for <typeparamref name="T"/>.</typeparam>
+    /// <param name="name">Name used on the wire. A dotted name is split at the last dot.</param>
+    /// <returns>The same runtime instance.</returns>
+    public Fory Register<T, TSerializer>(string name)
+        where TSerializer : Serializer<T>, new()
+    {
+        (string namespaceName, string typeName) = TypeResolver.SplitTypeName(name);
+        TypeInfo typeInfo = _typeResolver.RegisterSerializer<T, TSerializer>();
+        _typeResolver.Register(typeof(T), namespaceName, typeName, typeInfo);
+        return this;
+    }
+
+    /// <summary>
     /// Registers a user type by namespace and name with a custom serializer.
     /// </summary>
     /// <typeparam name="T">Type to register.</typeparam>
@@ -127,6 +144,7 @@ public sealed class Fory
     public Fory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : Serializer<T>, new()
     {
+        TypeResolver.ValidateSplitTypeName(typeNamespace, typeName);
         TypeInfo typeInfo = _typeResolver.RegisterSerializer<T, TSerializer>();
         _typeResolver.Register(typeof(T), typeNamespace, typeName, typeInfo);
         return this;

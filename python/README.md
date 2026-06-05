@@ -124,7 +124,7 @@ class Person:
     metadata: Dict[str, str]
 
 fory = pyfory.Fory(xlang=True, ref=True)
-fory.register(Person, typename="example.Person")
+fory.register(Person, name="example.Person")
 person = Person("Bob", 25, [88, 92, 85], {"team": "engineering"})
 data = fory.serialize(person)
 result = fory.deserialize(data)
@@ -470,7 +470,7 @@ class Person:
     name: str
     age: pyfory.Int32
 
-f.register(Person, typename="example.Person")
+f.register(Person, name="example.Person")
 
 person = Person("Charlie", 35)
 binary_data = f.serialize(person)
@@ -742,7 +742,7 @@ for t in threads: t.join()
 - **`xlang`** (`bool`, default=`True`): Use xlang mode. Set `False` for Python native mode supporting Python-specific objects.
 - **`ref`** (`bool`, default=`False`): Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.
 - **`strict`** (`bool`, default=`True`): Require type registration for security. **Highly recommended** for production. Only disable in trusted environments.
-- **`compatible`** (`bool`, default follows `xlang`): Enable schema evolution. Xlang mode defaults to compatible mode; native mode defaults to schema-consistent mode.
+- **`compatible`** (`bool | None`, default `None`): Enable schema evolution. `None` enables compatible mode in both xlang and native mode. Set `False` only when every reader and writer always uses the same Python class schema and you want faster serialization and smaller size.
 - **`max_depth`** (`int`, default=`50`): Maximum deserialization depth for security, preventing stack overflow attacks.
 
 **Key Methods:**
@@ -761,8 +761,8 @@ fory.register(MyClass, type_id=123)
 fory.register(MyClass, type_id=123, serializer=custom_serializer)
 
 # Type registration by name
-fory.register(MyClass, typename="my.package.MyClass")
-fory.register(MyClass, typename="my.package.MyClass", serializer=custom_serializer)
+fory.register(MyClass, name="my.package.MyClass")
+fory.register(MyClass, name="my.package.MyClass", serializer=custom_serializer)
 ```
 
 ### Xlang And Native Mode Comparison
@@ -775,7 +775,7 @@ fory.register(MyClass, typename="my.package.MyClass", serializer=custom_serializ
 | Functions/lambdas   | Supported with trusted dynamic deserialization | Not allowed                           |
 | Local classes       | Supported with trusted dynamic deserialization | Not allowed                           |
 | Dynamic classes     | Supported with trusted dynamic deserialization | Not allowed                           |
-| Schema mode default | Schema-consistent                              | Compatible                            |
+| Schema mode default | Compatible                                     | Compatible                            |
 
 #### Native Mode (`xlang=False`)
 
@@ -817,7 +817,7 @@ import pyfory
 f = pyfory.Fory(xlang=True, ref=True)
 
 # Only supports cross-language compatible types
-f.register(MyDataClass, typename="com.example.MyDataClass")
+f.register(MyDataClass, name="com.example.MyDataClass")
 
 # Data can be read by Java, Go, Rust, etc.
 data = f.serialize(MyDataClass(field1="value", field2=42))
@@ -867,7 +867,7 @@ class SafeClass:
         self.data = data
 
 # Must register types in strict mode
-f.register(SafeClass, typename="com.example.SafeClass")
+f.register(SafeClass, name="com.example.SafeClass")
 
 # Now serialization works
 obj = SafeClass("safe data")
@@ -961,7 +961,6 @@ fory = pyfory.Fory(
     xlang=False,        # Native mode for Python-only traffic
     ref=False,           # Enable if you have shared/circular references
     strict=True,        # CRITICAL: Always True in production
-    compatible=False,   # Native mode defaults to schema-consistent payloads
     max_depth=20       # Adjust based on your data structure depth
 )
 
@@ -976,10 +975,11 @@ fory.register(ProductModel, type_id=102)
 Optimize serialization speed and memory usage with these guidelines:
 
 1. **Disable `ref=True` if not needed**: Reference tracking has overhead
-2. **Use type_id instead of typename**: Integer IDs are faster than string names
+2. **Use type_id instead of name**: Integer IDs are faster than string names
 3. **Reuse Fory instances**: Create once, use many times
-4. **Enable Cython**: Make sure `ENABLE_FORY_CYTHON_SERIALIZATION=1`, should be enabled by default
-5. **Use row format for large arrays**: Zero-copy access for analytics
+4. **Use `compatible=False` only for same-schema data**: Disable compatible mode only when every reader and writer always uses the same Python class schema and you want faster serialization and smaller size
+5. **Enable Cython**: Make sure `ENABLE_FORY_CYTHON_SERIALIZATION=1`, should be enabled by default
+6. **Use row format for large arrays**: Zero-copy access for analytics
 
 ```python
 # Good: Reuse instance
@@ -1001,8 +1001,8 @@ Choose the right registration approach for your use case:
 # Pattern 1: Simple registration
 fory.register(MyClass, type_id=100)
 
-# Pattern 2: Cross-language with typename
-fory.register(MyClass, typename="com.example.MyClass")
+# Pattern 2: Cross-language with name
+fory.register(MyClass, name="com.example.MyClass")
 
 # Pattern 3: With custom serializer
 fory.register(MyClass, type_id=100, serializer=MySerializer(fory, MyClass))
@@ -1190,7 +1190,7 @@ import pyfory  # Now uses the pure Python implementation
 ```python
 # A: Use explicit type registration with consistent naming
 f = pyfory.Fory(xlang=True)
-f.register(MyClass, typename="com.package.MyClass")  # Use same name in all languages
+f.register(MyClass, name="com.package.MyClass")  # Use same name in all languages
 ```
 
 **Q: Circular reference errors or duplicate data**
@@ -1250,7 +1250,7 @@ class User:
     name: str
     age: int
 
-f.register(User, typename="User")
+f.register(User, name="User")
 data = f.dumps(User("Alice", 30))
 
 # Version 2: Add new field (backward compatible)

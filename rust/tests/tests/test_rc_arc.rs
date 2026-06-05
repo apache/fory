@@ -31,7 +31,7 @@ struct NestedData {
 
 #[test]
 fn test_rc_string_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let data = String::from("Hello, Rc!");
     let rc_data = Rc::new(data);
@@ -45,7 +45,7 @@ fn test_rc_string_serialization() {
 
 #[test]
 fn test_arc_string_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let data = String::from("Hello, Arc!");
     let arc_data = Arc::new(data);
@@ -59,7 +59,7 @@ fn test_arc_string_serialization() {
 
 #[test]
 fn test_rc_number_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let rc_number = Rc::new(42i32);
 
@@ -72,7 +72,7 @@ fn test_rc_number_serialization() {
 
 #[test]
 fn test_arc_number_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let arc_number = Arc::new(100i64);
 
@@ -85,7 +85,7 @@ fn test_arc_number_serialization() {
 
 #[test]
 fn test_rc_in_collections() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let string1 = Rc::new(String::from("First"));
     let string2 = Rc::new(String::from("Second"));
@@ -106,7 +106,7 @@ fn test_rc_in_collections() {
 
 #[test]
 fn test_arc_in_collections() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let number1 = Arc::new(123i32);
     let number2 = Arc::new(456i32);
@@ -127,7 +127,7 @@ fn test_arc_in_collections() {
 
 #[test]
 fn test_rc_vec_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let data = vec![1, 2, 3, 4, 5];
     let rc_data = Rc::new(data);
@@ -141,7 +141,7 @@ fn test_rc_vec_serialization() {
 
 #[test]
 fn test_arc_vec_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let data = vec![String::from("a"), String::from("b"), String::from("c")];
     let arc_data = Arc::new(data);
@@ -155,7 +155,7 @@ fn test_arc_vec_serialization() {
 
 #[test]
 fn test_mixed_rc_arc_serialization() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test basic types wrapped in Rc/Arc
     let rc_number = Rc::new(42i32);
@@ -173,7 +173,7 @@ fn test_mixed_rc_arc_serialization() {
 
 #[test]
 fn test_nested_rc_arc() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<NestedData>(100).unwrap();
 
     // Test Rc containing Arc with allowed struct type
@@ -190,7 +190,7 @@ fn test_nested_rc_arc() {
 
 #[test]
 fn test_rc_arc_with_hashmaps() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let string_data = Arc::new(String::from("shared"));
 
@@ -212,7 +212,7 @@ fn test_rc_arc_with_hashmaps() {
 
 #[test]
 fn test_arc_serialization_basic() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arc = Arc::new(42i32);
 
     let serialized = fory.serialize(&arc).unwrap();
@@ -223,7 +223,7 @@ fn test_arc_serialization_basic() {
 
 #[test]
 fn test_arc_shared_reference() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arc1 = Arc::new(String::from("shared"));
 
     let serialized = fory.serialize(&arc1).unwrap();
@@ -234,7 +234,7 @@ fn test_arc_shared_reference() {
 
 #[test]
 fn test_arc_shared_reference_in_vec() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared = Arc::new(String::from("shared_value"));
     let vec = vec![shared.clone(), shared.clone(), shared.clone()];
@@ -254,7 +254,7 @@ fn test_arc_shared_reference_in_vec() {
 
 #[test]
 fn test_arc_multiple_shared_references() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared1 = Arc::new(42i32);
     let shared2 = Arc::new(100i32);
@@ -287,14 +287,14 @@ fn test_arc_multiple_shared_references() {
 fn test_arc_thread_safety() {
     use std::thread;
 
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arc = Arc::new(vec![1, 2, 3, 4, 5]);
 
     let serialized = fory.serialize(&arc).unwrap();
 
     // Test that Arc can be sent across threads
     let handle = thread::spawn(move || {
-        let fory = Fory::builder().xlang(false).build();
+        let fory = Fory::builder().xlang(false).compatible(false).build();
         let deserialized: Arc<Vec<i32>> = fory.deserialize(&serialized).unwrap();
         assert_eq!(*deserialized, vec![1, 2, 3, 4, 5]);
     });
@@ -304,7 +304,7 @@ fn test_arc_thread_safety() {
 
 #[test]
 fn test_rc_serialization_basic() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let rc = Rc::new(42i32);
 
     let serialized = fory.serialize(&rc).unwrap();
@@ -315,7 +315,7 @@ fn test_rc_serialization_basic() {
 
 #[test]
 fn test_rc_shared_reference() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let rc1 = Rc::new(String::from("shared"));
 
     let serialized = fory.serialize(&rc1).unwrap();
@@ -326,7 +326,7 @@ fn test_rc_shared_reference() {
 
 #[test]
 fn test_rc_shared_reference_in_vec() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared = Rc::new(String::from("shared_value"));
     let vec = vec![shared.clone(), shared.clone(), shared.clone()];
@@ -346,7 +346,7 @@ fn test_rc_shared_reference_in_vec() {
 
 #[test]
 fn test_rc_multiple_shared_references() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared1 = Rc::new(42i32);
     let shared2 = Rc::new(100i32);

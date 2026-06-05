@@ -269,7 +269,7 @@ func TestSerializeArray(t *testing.T) {
 func TestSerializeStructSimple(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		// Use WithXlang(false) for native Go mode where nil slices/maps are preserved
-		fory := NewFory(WithXlang(false), WithRefTracking(referenceTracking))
+		fory := NewFory(WithXlang(false), WithRefTracking(referenceTracking), WithCompatible(false))
 		type A struct {
 			F1 []string
 		}
@@ -293,6 +293,46 @@ func TestSerializeStructSimple(t *testing.T) {
 			},
 		})
 	}
+}
+
+type explicitRegistrationUser struct {
+	Name string
+}
+
+func TestNamedStructRegistrationCoversPointer(t *testing.T) {
+	fory := NewFory(WithXlang(true), WithCompatible(false), WithRefTracking(false))
+	require.NoError(t, fory.RegisterStructByName(explicitRegistrationUser{}, "example.User"))
+
+	value := explicitRegistrationUser{Name: "alice"}
+	buf := NewByteBuffer(nil)
+	require.NoError(t, fory.SerializeWithCallback(buf, value, nil))
+	var decodedValue explicitRegistrationUser
+	require.NoError(t, fory.DeserializeWithCallbackBuffers(
+		NewByteBuffer(buf.GetByteSlice(0, buf.WriterIndex())),
+		&decodedValue,
+		nil))
+	require.Equal(t, value, decodedValue)
+
+	data, err := fory.Marshal(&value)
+	require.NoError(t, err)
+	var decodedPointer explicitRegistrationUser
+	require.NoError(t, fory.Unmarshal(data, &decodedPointer))
+	require.Equal(t, value, decodedPointer)
+}
+
+func TestUnregisteredStructSerializationFails(t *testing.T) {
+	value := explicitRegistrationUser{Name: "bob"}
+
+	fory := NewFory(WithXlang(true), WithCompatible(false), WithRefTracking(false))
+	buf := NewByteBuffer(nil)
+	err := fory.SerializeWithCallback(buf, value, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be registered explicitly")
+
+	fory = NewFory(WithXlang(true), WithCompatible(false), WithRefTracking(false))
+	_, err = fory.Marshal(&value)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "must be registered explicitly")
 }
 
 func TestRegisterById(t *testing.T) {

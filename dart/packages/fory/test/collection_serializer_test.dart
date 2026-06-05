@@ -43,8 +43,7 @@ void _registerNumericContainerEnvelope(Fory fory) {
   CollectionSerializerTestForyModule.register(
     fory,
     NumericContainerEnvelope,
-    namespace: 'test',
-    typeName: 'NumericContainerEnvelope',
+    name: 'test.NumericContainerEnvelope',
   );
 }
 

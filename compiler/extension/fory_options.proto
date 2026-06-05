@@ -179,10 +179,11 @@ message ForyFieldOptions {
   optional bool weak_ref = 4;
 
   // Generate thread-safe Rust pointer carriers for ref fields.
-  // When true, Rust codegen uses Arc/ArcWeak instead of Rc/RcWeak.
+  // Rust codegen uses Arc/ArcWeak by default. Set this to false to generate
+  // Rc/RcWeak for ref fields that must stay single-threaded.
   // This does not change the wire format and does not make the referenced
   // value itself thread-safe.
-  // Default: false
+  // Default: true
   optional bool thread_safe_pointer = 5;
 }
 

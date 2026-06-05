@@ -57,7 +57,7 @@ f := fory.New(
 Enable reference tracking to handle circular references and shared objects:
 
 ```go
-f := fory.New(fory.WithXlang(true), fory.WithTrackRef(true))
+f := fory.New(fory.WithTrackRef(true))
 ```
 
 **When enabled:**
@@ -84,11 +84,12 @@ See [References](references.md) for details.
 
 ### WithCompatible
 
-Enable compatible mode explicitly. Xlang mode enables it by default; use this option when
-native-mode Go-only payloads need schema evolution:
+Compatible mode is enabled by default in both xlang and native mode. Set
+`WithCompatible(false)` only when every reader and writer always uses the same schema and you want
+faster serialization and smaller size:
 
 ```go
-f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f := fory.New(fory.WithCompatible(false))
 ```
 
 **When enabled:**
@@ -100,19 +101,18 @@ f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
 
 **When disabled:**
 
-- Compact serialization without field metadata
-- Faster serialization and smaller output
+- Faster serialization and smaller size
 - Fields matched by sorted order
 - Requires consistent struct definitions across all services
 
-See [Schema Evolution](schema-evolution.md) for details.
+For xlang payloads, use `WithCompatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md) for details.
 
 ### WithMaxDepth
 
 Set the maximum nesting depth to prevent stack overflow:
 
 ```go
-f := fory.New(fory.WithXlang(true), fory.WithMaxDepth(30))
+f := fory.New(fory.WithMaxDepth(30))
 ```
 
 - Default: 20
@@ -140,7 +140,6 @@ xlang := fory.New(fory.WithXlang(true))
 - Go-native serialization mode
 - Supports more Go-native type behavior
 - Not compatible with other language implementations
-- Defaults to schema-consistent mode unless `WithCompatible(true)` is set
 
 ## Thread Safety
 
@@ -290,13 +289,13 @@ type UserV2 struct {
     Email string  // New field
 }
 
-// Serialize with V1 in native mode plus compatible schema evolution.
-f1 := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+// Serialize with V1 in native mode. Compatible mode is the default.
+f1 := fory.New(fory.WithXlang(false))
 f1.RegisterStruct(UserV1{}, 1)
 data, _ := f1.Serialize(&UserV1{ID: 1, Name: "Alice"})
 
 // Deserialize into V2 - Email will have zero value
-f2 := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f2 := fory.New(fory.WithXlang(false))
 f2.RegisterStruct(UserV2{}, 1)
 var user UserV2
 f2.Deserialize(data, &user)
@@ -339,7 +338,7 @@ for req := range requests {
 
 5. **Set appropriate max depth**: Increase for deeply nested structures, but be aware of memory usage.
 
-6. **Use compatible mode for evolving schemas**: Enable when struct definitions may change between service versions.
+6. **Keep compatible mode for evolving schemas**: Use the default when struct definitions may change between service versions.
 
 ## Security
 

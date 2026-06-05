@@ -23,7 +23,7 @@ This page covers basic object graph serialization and supported types.
 
 ## Object Graph Serialization
 
-Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating reflection overhead.
 
 **Key capabilities:**
 
@@ -55,8 +55,8 @@ struct Address {
 }
 
 let mut fory = Fory::builder().xlang(true).build();
-fory.register_by_name::<Address>("example", "Address").unwrap();
-fory.register_by_name::<Person>("example", "Person").unwrap();
+fory.register_by_name::<Address>("example.Address").unwrap();
+fory.register_by_name::<Person>("example.Person").unwrap();
 
 let person = Person {
     name: "John Doe".to_string(),

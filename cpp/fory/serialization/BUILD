@@ -3,6 +3,7 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 cc_library(
     name = "fory_serialization",
     srcs = [
+        "compatible_scalar.cc",
         "context.cc",
         "type_resolver.cc",
         "skip.cc",
@@ -12,6 +13,7 @@ cc_library(
         "array_serializer.h",
         "basic_serializer.h",
         "collection_serializer.h",
+        "compatible_scalar.h",
         "config.h",
         "context.h",
         "decimal_serializers.h",

@@ -144,7 +144,7 @@ def test_block_class_type_deserialization():
         pass
 
     policy = BlockClassPolicy(blocked_class_names=["UnsafeClass"])
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     # Serialize and deserialize the class type itself (not an instance)
     safe_data = fory.serialize(SafeClass)
@@ -168,7 +168,7 @@ def test_block_reduce_call():
             return (ReducibleClass, (self.value,))
 
     policy = BlockReduceCallPolicy(blocked_names=["ReducibleClass"])
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     data = fory.serialize(ReducibleClass(42))
 
     with pytest.raises(ValueError, match="ReducibleClass is blocked"):
@@ -186,7 +186,7 @@ def test_replace_reduced_object():
             return (ReducibleClass, (self.value,))
 
     policy = ReplaceObjectPolicy(replacement_value="REPLACED")
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     data = fory.serialize(ReducibleClass(42))
 
     result = fory.deserialize(data)
@@ -208,7 +208,7 @@ def test_sanitize_state():
             self.__dict__.update(state)
 
     policy = SanitizeStatePolicy()
-    fory = Fory(xlang=False, ref=False, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=False, strict=False, policy=policy, compatible=False)
     data = fory.serialize(SecretHolder("admin", "secret123"))
 
     result = fory.deserialize(data)
@@ -241,7 +241,7 @@ def test_reduce_state_sanitizes_state():
             self.__dict__.update(state)
 
     policy = CountingSanitizePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     data = fory.serialize(SecretReduceHolder())
 
     result = fory.deserialize(data)
@@ -258,7 +258,7 @@ def test_stateful_intercepts_falsey_state_before_bool():
             raise ValueError("state blocked")
 
     FalseyState.bool_called = False
-    fory = Fory(xlang=False, ref=True, strict=False, policy=BlockSetStatePolicy())
+    fory = Fory(xlang=False, ref=True, strict=False, policy=BlockSetStatePolicy(), compatible=False)
     data = fory.serialize(FalseyStatePayload())
 
     with pytest.raises(ValueError, match="state blocked"):
@@ -277,8 +277,8 @@ def test_object_serializer_intercepts_state_before_setattr():
     obj.value = 1
     ObjectSetAttrPayload.setattr_called = False
 
-    writer = Fory(xlang=False, ref=True, strict=False)
-    reader = Fory(xlang=False, ref=True, strict=False, policy=BlockSetStatePolicy())
+    writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+    reader = Fory(xlang=False, ref=True, strict=False, policy=BlockSetStatePolicy(), compatible=False)
     writer.register(ObjectSetAttrPayload)
     reader.register(ObjectSetAttrPayload)
 
@@ -299,7 +299,7 @@ def test_policy_with_local_class():
     LocalCls = make_local_class()
 
     policy = BlockClassPolicy(blocked_class_names=["LocalClass"])
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     # Serialize the local class type
     data = fory.serialize(LocalCls)
@@ -319,7 +319,7 @@ def test_policy_with_ref_tracking():
             return (ReducibleClass, (self.value,))
 
     policy = BlockReduceCallPolicy(blocked_names=["ReducibleClass"])
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     data = fory.serialize(ReducibleClass(42))
 
@@ -330,7 +330,7 @@ def test_policy_with_ref_tracking():
 def test_policy_allows_safe_operations():
     """Test that policy doesn't interfere with safe built-in types."""
     policy = BlockClassPolicy(blocked_class_names=[])
-    fory = Fory(xlang=False, ref=False, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=False, strict=False, policy=policy, compatible=False)
 
     assert fory.deserialize(fory.serialize(42)) == 42
     assert fory.deserialize(fory.serialize("test")) == "test"
@@ -365,7 +365,7 @@ def test_multiple_policy_hooks():
             return (TestClass, (self.value,))
 
     policy = MultiHookPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     data = fory.serialize(TestClass(42))
     result = fory.deserialize(data)
@@ -394,7 +394,7 @@ def test_policy_with_nested_reduce():
             return (Outer, (self.inner,))
 
     policy = BlockReduceCallPolicy(blocked_names=["Inner"])
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     data = fory.serialize(Outer(Inner(42)))
 
@@ -426,7 +426,7 @@ def test_stateful_authorizes_instantiation():
             return None
 
     policy = BlockInstantiationPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="StatefulPayload blocked"):
         fory.deserialize(fory.serialize(StatefulPayload()))
     assert policy.authorize_instantiation_calls == 1
@@ -455,7 +455,7 @@ def test_reduce_class_callable_authorizes_instantiation():
             return None
 
     policy = BlockInstantiationPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="ReduceTarget blocked"):
         fory.deserialize(fory.serialize(ReducePayload()))
     assert policy.reduce_target_calls == 1
@@ -480,8 +480,8 @@ def test_registered_dataclass_authorizes_instantiation_in_strict_mode():
             return None
 
     policy = BlockInstantiationPolicy()
-    writer = Fory(xlang=False, ref=True, strict=True)
-    reader = Fory(xlang=False, ref=True, strict=True, policy=policy)
+    writer = Fory(xlang=False, ref=True, strict=True, compatible=False)
+    reader = Fory(xlang=False, ref=True, strict=True, policy=policy, compatible=False)
     writer.register(StrictDataClass)
     reader.register(StrictDataClass)
 
@@ -500,7 +500,7 @@ def test_validate_module():
             assert not is_local
             return collections
 
-    fory1 = Fory(xlang=False, ref=True, strict=False, policy=ReturnModulePolicy())
+    fory1 = Fory(xlang=False, ref=True, strict=False, policy=ReturnModulePolicy(), compatible=False)
     data = fory1.serialize(json)
     assert fory1.deserialize(data) is json
 
@@ -509,7 +509,7 @@ def test_validate_module():
             assert not is_local
             return "collections" if module_name == "json" else None
 
-    fory2 = Fory(xlang=False, ref=True, strict=False, policy=RedirectPolicy())
+    fory2 = Fory(xlang=False, ref=True, strict=False, policy=RedirectPolicy(), compatible=False)
     assert fory2.deserialize(fory2.serialize(json)).__name__ == "json"
 
     class BlockPolicy(DeserializationPolicy):
@@ -517,7 +517,7 @@ def test_validate_module():
             assert not is_local
             raise ValueError(f"Module {module_name} blocked")
 
-    fory3 = Fory(xlang=False, ref=True, strict=False, policy=BlockPolicy())
+    fory3 = Fory(xlang=False, ref=True, strict=False, policy=BlockPolicy(), compatible=False)
     with pytest.raises(ValueError, match="blocked"):
         fory3.deserialize(fory3.serialize(json))
 
@@ -544,7 +544,7 @@ def test_validator_returns_ignored():
             return policy_replacement_function
 
     policy = ReturnPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     assert fory.deserialize(fory.serialize(json)) is json
     assert fory.deserialize(fory.serialize(PolicyGlobalClass)) is PolicyGlobalClass
     assert fory.deserialize(fory.serialize(policy_global_function)) is policy_global_function
@@ -572,7 +572,7 @@ def test_local_class_return_ignored():
         def validate_class(self, cls, is_local, **kwargs):
             return SafeClass if is_local else None
 
-    fory = Fory(xlang=False, ref=True, strict=False, policy=ReturnClassPolicy())
+    fory = Fory(xlang=False, ref=True, strict=False, policy=ReturnClassPolicy(), compatible=False)
     decoded = fory.deserialize(fory.serialize(make_payload_class()))
     assert decoded is not SafeClass
     assert decoded.run() == "payload"
@@ -596,7 +596,7 @@ def test_type_deserialization_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="subprocess blocked"):
         fory.deserialize(fory.serialize(subprocess.Popen))
     assert policy.validate_module_calls == 1
@@ -620,7 +620,7 @@ def test_native_bound_method_uses_validate_method():
             return None
 
     policy = BlockMethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
 
     with pytest.raises(ValueError, match="method blocked"):
         fory.deserialize(fory.serialize([].append))
@@ -648,7 +648,7 @@ def test_bound_method_policy_runs_before_getattribute_side_effect():
 
     obj = GuardedMethod()
     method = types.MethodType(GuardedMethod.run, obj)
-    fory = Fory(xlang=False, ref=True, strict=False, policy=BlockMethodPolicy())
+    fory = Fory(xlang=False, ref=True, strict=False, policy=BlockMethodPolicy(), compatible=False)
     data = fory.serialize(method)
 
     GuardedMethod.getattribute_called = False
@@ -670,7 +670,7 @@ def test_type_global_path_reports_main_class_as_local():
     PolicyGlobalClass.__module__ = "__main__"
     try:
         policy = CaptureClassPolicy()
-        fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+        fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
         serializer = TypeSerializer(fory.type_resolver, type)
         read_context = FakeReadContext(policy, [0, __name__, "PolicyGlobalClass"])
 
@@ -694,7 +694,7 @@ def test_function_bound_method_reports_receiver_locality_to_policy():
             raise ValueError("method blocked")
 
     policy = CaptureMethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, [0, LocalReceiver(), "run"])
 
@@ -717,7 +717,7 @@ def test_native_bound_method_reports_receiver_locality_to_policy():
             raise ValueError("method blocked")
 
     policy = CaptureMethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, ["run", False, LocalReceiver()])
 
@@ -743,7 +743,7 @@ def test_function_serializer_rejects_class_resolution():
             return None
 
     policy = BlockClassPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, [1, "subprocess", "Popen"])
 
@@ -768,7 +768,7 @@ def test_function_global_method_resolution_uses_validate_method():
             return None
 
     policy = MethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, [1, __name__, "policy_global_bound_method"])
 
@@ -791,7 +791,7 @@ def test_function_global_path_reports_main_function_as_local():
     policy_global_function.__module__ = "__main__"
     try:
         policy = CaptureFunctionPolicy()
-        fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+        fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
         serializer = FunctionSerializer(fory.type_resolver, type(policy_global_function))
         read_context = FakeReadContext(policy, [1, __name__, "policy_global_function"])
 
@@ -818,7 +818,7 @@ def test_native_function_serializer_rejects_class_resolution():
             return None
 
     policy = BlockClassPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, ["Popen", True, "subprocess"])
 
@@ -843,7 +843,7 @@ def test_native_function_global_method_resolution_uses_validate_method():
             return None
 
     policy = MethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
     read_context = FakeReadContext(policy, ["policy_global_bound_method", True, __name__])
 
@@ -866,7 +866,7 @@ def test_native_function_global_path_reports_main_function_as_local():
     policy_global_function.__module__ = "__main__"
     try:
         policy = CaptureFunctionPolicy()
-        fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+        fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
         serializer = NativeFuncMethodSerializer(fory.type_resolver, type(policy_global_function))
         read_context = FakeReadContext(policy, ["policy_global_function", True, __name__])
 
@@ -892,7 +892,7 @@ def test_global_function_deserialization_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="function module blocked"):
         fory.deserialize(fory.serialize(policy_global_function))
     assert policy.validate_module_calls == 1
@@ -918,7 +918,7 @@ def test_local_function_deserialization_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="local function module blocked"):
         fory.deserialize(fory.serialize(local_function))
     assert policy.validate_module_calls == 1
@@ -942,7 +942,7 @@ def test_native_function_deserialization_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="time blocked"):
         fory.deserialize(fory.serialize(time.time))
     assert policy.validate_module_calls == 1
@@ -965,7 +965,7 @@ def test_type_metadata_load_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     from pyfory.registry import SharedRegistry, TypeResolver
 
     resolver = TypeResolver(fory.config, shared_registry=SharedRegistry())
@@ -994,7 +994,7 @@ def test_type_metadata_load_validates_class():
             return None
 
     policy = BlockClassPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     from pyfory.registry import SharedRegistry, TypeResolver
 
     resolver = TypeResolver(fory.config, shared_registry=SharedRegistry())
@@ -1028,7 +1028,7 @@ def test_reduce_global_name_validates_module():
             return None
 
     policy = BlockModulePolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="subprocess blocked"):
         fory.deserialize(fory.serialize(GlobalNamePayload()))
     assert policy.validate_module_calls == 1
@@ -1059,7 +1059,7 @@ def test_reduce_global_name_validates_class():
             return None
 
     policy = BlockClassPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="subprocess.Popen blocked"):
         fory.deserialize(fory.serialize(GlobalNamePayload()))
     assert policy.validate_module_calls == 1
@@ -1090,7 +1090,7 @@ def test_reduce_global_name_validates_function():
             return None
 
     policy = BlockFunctionPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="eval blocked"):
         fory.deserialize(fory.serialize(GlobalNamePayload()))
     assert policy.validate_module_calls == 1
@@ -1124,7 +1124,7 @@ def test_reduce_global_method_resolution_uses_validate_method():
             return None
 
     policy = MethodPolicy()
-    fory = Fory(xlang=False, ref=True, strict=False, policy=policy)
+    fory = Fory(xlang=False, ref=True, strict=False, policy=policy, compatible=False)
     with pytest.raises(ValueError, match="method blocked"):
         fory.deserialize(fory.serialize(GlobalNamePayload()))
     assert policy.validate_module_calls == 1

@@ -1,7 +1,8 @@
 package org.apache.fory.memory;
 
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.platform.internal._UnsafeUtils;
+import sun.misc.Unsafe;
 
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
@@ -23,6 +24,18 @@ import org.apache.fory.platform.UnsafeOps;
  */
 
 public class LittleEndian {
+  private static final Unsafe UNSAFE = AndroidSupport.IS_ANDROID ? null : _UnsafeUtils.UNSAFE;
+  private static final int BYTE_ARRAY_OFFSET;
+
+  // Keep arrayBaseOffset as a direct static-field store for GraalVM native-image recomputation.
+  static {
+    if (AndroidSupport.IS_ANDROID) {
+      BYTE_ARRAY_OFFSET = 0;
+    } else {
+      BYTE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
+    }
+  }
+
   public static int putVarUint36Small(byte[] arr, int index, long v) {
     if (v >>> 7 == 0) {
       arr[index] = (byte) v;
@@ -58,28 +71,13 @@ public class LittleEndian {
     return 5;
   }
 
-  public static void putInt32(Object o, long pos, int value) {
-    if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
-      value = Integer.reverseBytes(value);
-    }
-    UnsafeOps.putInt(o, pos, value);
-  }
-
-  public static int getInt32(Object o, long pos) {
-    int i = UnsafeOps.getInt(o, pos);
-    return NativeByteOrder.IS_LITTLE_ENDIAN ? i : Integer.reverseBytes(i);
-  }
-
-  public static long getInt64(Object o, long pos) {
-    long v = UnsafeOps.getLong(o, pos);
-    return NativeByteOrder.IS_LITTLE_ENDIAN ? v : Long.reverseBytes(v);
-  }
-
   public static long getInt64(byte[] o, int index) {
     if (AndroidSupport.IS_ANDROID) {
       return MemoryOps.getInt64(o, index);
     }
-    long v = UnsafeOps.getLong(o, UnsafeOps.BYTE_ARRAY_OFFSET + index);
+    // Unsafe object offsets are long. Keep the cast so JDK8-compiled bytecode calls
+    // getLong(Object, long) when the artifact runs on JDK9+.
+    long v = UNSAFE.getLong(o, (long) BYTE_ARRAY_OFFSET + index);
     return NativeByteOrder.IS_LITTLE_ENDIAN ? v : Long.reverseBytes(v);
   }
 
@@ -91,22 +89,7 @@ public class LittleEndian {
     if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
       value = Long.reverseBytes(value);
     }
-    UnsafeOps.putLong(o, UnsafeOps.BYTE_ARRAY_OFFSET + index, value);
-  }
-
-  public static void putFloat32(Object o, long pos, float value) {
-    int v = Float.floatToRawIntBits(value);
-    if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
-      v = Integer.reverseBytes(v);
-    }
-    UnsafeOps.putInt(o, pos, v);
-  }
-
-  public static void putFloat64(Object o, long pos, double value) {
-    long v = Double.doubleToRawLongBits(value);
-    if (!NativeByteOrder.IS_LITTLE_ENDIAN) {
-      v = Long.reverseBytes(v);
-    }
-    UnsafeOps.putLong(o, pos, v);
+    // See getInt64: the cast controls the Unsafe method descriptor in bytecode.
+    UNSAFE.putLong(o, (long) BYTE_ARRAY_OFFSET + index, value);
   }
 }

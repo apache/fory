@@ -27,7 +27,12 @@ import org.testng.annotations.Test;
 public class ProtobufSerializerTest {
   @Test
   public void testByteString() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Assert.assertEquals(fory.deserialize(fory.serialize(ByteString.empty())), ByteString.empty());
     ByteString bytes = ByteString.copyFrom(new byte[] {1, 2, 3});
     Assert.assertEquals(fory.deserialize(fory.serialize(bytes)), bytes);

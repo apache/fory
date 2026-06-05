@@ -293,8 +293,43 @@ public sealed class TypeResolver
         InvalidateFinalizedVersion();
     }
 
+    internal static (string NamespaceName, string TypeName) SplitTypeName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (name.Length == 0)
+        {
+            throw new ArgumentException("registration name must not be empty", nameof(name));
+        }
+
+        int separator = name.LastIndexOf('.');
+        if (separator == name.Length - 1)
+        {
+            throw new ArgumentException("registration name must end with a non-empty type name", nameof(name));
+        }
+
+        return separator < 0
+            ? (string.Empty, name)
+            : (name[..separator], name[(separator + 1)..]);
+    }
+
+    internal static void ValidateSplitTypeName(string namespaceName, string typeName)
+    {
+        ArgumentNullException.ThrowIfNull(namespaceName);
+        ArgumentNullException.ThrowIfNull(typeName);
+        if (typeName.Length == 0)
+        {
+            throw new ArgumentException("typeName must not be empty", nameof(typeName));
+        }
+
+        if (typeName.Contains(".", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("typeName must not contain '.'", nameof(typeName));
+        }
+    }
+
     internal void Register(Type type, string namespaceName, string typeName, TypeInfo? explicitTypeInfo = null)
     {
+        ValidateSplitTypeName(namespaceName, typeName);
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);

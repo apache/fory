@@ -22,7 +22,7 @@ license: |
 Apache Fory™ supports seamless data exchange across Java, Python, C++, Go,
 Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
 Rust defaults to xlang mode with compatible schema evolution. Set the mode explicitly in xlang examples:
 
@@ -36,7 +36,7 @@ let mut fory = Fory::builder().xlang(true).build();
 fory.register::<MyStruct>(100)?;
 
 // Or use name-based registration
-fory.register_by_name::<MyStruct>("com.example", "MyStruct")?;
+fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
 ```
 
 ## Type Registration for Xlang
@@ -56,7 +56,7 @@ fory.register::<User>(100)?;  // Same ID in Java, Python, etc.
 For more flexible type naming:
 
 ```rust
-fory.register_by_name::<User>("com.example", "User")?;
+fory.register_by_name::<User>("com.example.User")?;
 ```
 
 ## Xlang Example

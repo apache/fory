@@ -115,7 +115,12 @@ public class CodeGeneratorTest {
     CodeGenerator codeGenerator = CodeGenerator.getSharedCodeGenerator(loader);
     ObjectCodecBuilder codecBuilder =
         new ObjectCodecBuilder(
-            Foo.class, Fory.builder().withXlang(false).requireClassRegistration(false).build());
+            Foo.class,
+            Fory.builder()
+                .withXlang(false)
+                .requireClassRegistration(false)
+                .withCompatible(false)
+                .build());
     CompileUnit compileUnit =
         new CompileUnit(
             Foo.class.getPackage().getName(),
@@ -132,7 +137,12 @@ public class CodeGeneratorTest {
     ByteArrayClassLoader loader = new ByteArrayClassLoader(new HashMap<>());
     ObjectCodecBuilder codecBuilder =
         new ObjectCodecBuilder(
-            Foo.class, Fory.builder().withXlang(false).requireClassRegistration(false).build());
+            Foo.class,
+            Fory.builder()
+                .withXlang(false)
+                .requireClassRegistration(false)
+                .withCompatible(false)
+                .build());
     CompileUnit compileUnit =
         new CompileUnit(
             Foo.class.getPackage().getName(),

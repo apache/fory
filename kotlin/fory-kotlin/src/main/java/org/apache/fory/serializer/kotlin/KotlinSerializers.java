@@ -21,6 +21,7 @@ package org.apache.fory.serializer.kotlin;
 
 import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.WeakHashMap;
 import kotlin.*;
 import kotlin.UByteArray;
@@ -178,11 +179,38 @@ public class KotlinSerializers {
     }
   }
 
+  private static String[] splitName(String name) {
+    Objects.requireNonNull(name, "name");
+    int idx = name.lastIndexOf('.');
+    String namespace = "";
+    String typeName = name;
+    if (idx >= 0) {
+      namespace = name.substring(0, idx);
+      typeName = name.substring(idx + 1);
+    }
+    if (typeName.isEmpty()) {
+      throw new IllegalArgumentException("Name must include a non-empty type name");
+    }
+    return new String[] {namespace, typeName};
+  }
+
+  private static void checkTypeName(String typeName) {
+    if (typeName == null || typeName.isEmpty() || typeName.contains(".")) {
+      throw new IllegalArgumentException(
+          "typeName must be non-empty and must not contain `.` when namespace is provided");
+    }
+  }
+
   public static void registerType(Fory fory, Class<?> cls, long typeId) {
     fory.getTypeResolver().register(cls, typeId);
   }
 
+  public static void registerType(Fory fory, Class<?> cls, String name) {
+    fory.register(cls, name);
+  }
+
   public static void registerType(Fory fory, Class<?> cls, String namespace, String typeName) {
+    checkTypeName(typeName);
     fory.getTypeResolver().register(cls, namespace, typeName);
   }
 
@@ -193,6 +221,11 @@ public class KotlinSerializers {
 
   public static void register(Fory fory, Class<?> cls, long typeId) {
     registerType(fory, cls, typeId);
+    registerSerializer(fory, cls);
+  }
+
+  public static void register(Fory fory, Class<?> cls, String name) {
+    registerType(fory, cls, name);
     registerSerializer(fory, cls);
   }
 
@@ -217,9 +250,17 @@ public class KotlinSerializers {
   }
 
   public static void registerEnum(Fory fory, Class<?> cls, String namespace, String typeName) {
+    checkTypeName(typeName);
     TypeResolver resolver = fory.getTypeResolver();
     resolver.registerEnum(
         cls, namespace, typeName, new EnumSerializer(resolver.getConfig(), enumClass(cls)));
+  }
+
+  public static void registerEnum(Fory fory, Class<?> cls, String name) {
+    TypeResolver resolver = fory.getTypeResolver();
+    String[] parts = splitName(name);
+    resolver.registerEnum(
+        cls, parts[0], parts[1], new EnumSerializer(resolver.getConfig(), enumClass(cls)));
   }
 
   public static void registerUnion(Fory fory, Class<?> cls, long typeId) {
@@ -229,8 +270,16 @@ public class KotlinSerializers {
   }
 
   public static void registerUnion(Fory fory, Class<?> cls, String namespace, String typeName) {
+    checkTypeName(typeName);
     TypeResolver resolver = fory.getTypeResolver();
     resolver.registerUnion(cls, namespace, typeName, newGeneratedSerializer(resolver, cls));
+    registerCaseAliases(fory, cls);
+  }
+
+  public static void registerUnion(Fory fory, Class<?> cls, String name) {
+    TypeResolver resolver = fory.getTypeResolver();
+    String[] parts = splitName(name);
+    resolver.registerUnion(cls, parts[0], parts[1], newGeneratedSerializer(resolver, cls));
     registerCaseAliases(fory, cls);
   }
 

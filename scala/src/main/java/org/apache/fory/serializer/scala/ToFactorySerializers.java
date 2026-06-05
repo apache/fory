@@ -19,31 +19,33 @@
 
 package org.apache.fory.serializer.scala;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
-import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.exception.ForyException;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Shareable;
 import org.apache.fory.serializer.Serializer;
 
-import java.lang.reflect.Field;
-
-public class ToFactorySerializers  {
-  static final Class<?> IterableToFactoryClass = ReflectionUtils.loadClass(
-    "scala.collection.IterableFactory$ToFactory");
-  static final Class<?> MapToFactoryClass = ReflectionUtils.loadClass(
-    "scala.collection.MapFactory$ToFactory");
+public class ToFactorySerializers {
+  static final Class<?> IterableToFactoryClass =
+      ReflectionUtils.loadClass("scala.collection.IterableFactory$ToFactory");
+  static final Class<?> MapToFactoryClass =
+      ReflectionUtils.loadClass("scala.collection.MapFactory$ToFactory");
 
   public static class IterableToFactorySerializer extends Serializer implements Shareable {
-    private static final long fieldOffset;
+    private static final FieldAccessor FACTORY_ACCESSOR;
+    private static final Constructor<?> CONSTRUCTOR;
 
     static {
       try {
-        // for graalvm field offset auto rewrite
-        Field field = Class.forName("scala.collection.IterableFactory$ToFactory").getDeclaredField("factory");
-        fieldOffset = UnsafeOps.objectFieldOffset(field);
+        Field field = IterableToFactoryClass.getDeclaredField("factory");
+        FACTORY_ACCESSOR = FieldAccessor.createAccessor(field);
+        CONSTRUCTOR = IterableToFactoryClass.getDeclaredConstructor(field.getType());
+        CONSTRUCTOR.setAccessible(true);
       } catch (final Exception e) {
         throw new RuntimeException(e);
       }
@@ -55,25 +57,29 @@ public class ToFactorySerializers  {
 
     @Override
     public void write(WriteContext writeContext, Object value) {
-      writeContext.writeRef(UnsafeOps.getObject(value, fieldOffset));
+      writeContext.writeRef(FACTORY_ACCESSOR.getObject(value));
     }
 
     @Override
     public Object read(ReadContext readContext) {
-      Object o = UnsafeOps.newInstance(type);
-      UnsafeOps.putObject(o, fieldOffset, readContext.readRef());
-      return o;
+      try {
+        return CONSTRUCTOR.newInstance(readContext.readRef());
+      } catch (Exception e) {
+        throw new ForyException("Failed to create Scala IterableFactory.ToFactory", e);
+      }
     }
   }
 
   public static class MapToFactorySerializer extends Serializer implements Shareable {
-    private static final long fieldOffset;
+    private static final FieldAccessor FACTORY_ACCESSOR;
+    private static final Constructor<?> CONSTRUCTOR;
 
     static {
       try {
-        // for graalvm field offset auto rewrite
-        Field field = Class.forName("scala.collection.MapFactory$ToFactory").getDeclaredField("factory");
-        fieldOffset = UnsafeOps.objectFieldOffset(field);
+        Field field = MapToFactoryClass.getDeclaredField("factory");
+        FACTORY_ACCESSOR = FieldAccessor.createAccessor(field);
+        CONSTRUCTOR = MapToFactoryClass.getDeclaredConstructor(field.getType());
+        CONSTRUCTOR.setAccessible(true);
       } catch (final Exception e) {
         throw new RuntimeException(e);
       }
@@ -85,14 +91,16 @@ public class ToFactorySerializers  {
 
     @Override
     public void write(WriteContext writeContext, Object value) {
-      writeContext.writeRef(UnsafeOps.getObject(value, fieldOffset));
+      writeContext.writeRef(FACTORY_ACCESSOR.getObject(value));
     }
 
     @Override
     public Object read(ReadContext readContext) {
-      Object o = UnsafeOps.newInstance(type);
-      UnsafeOps.putObject(o, fieldOffset, readContext.readRef());
-      return o;
+      try {
+        return CONSTRUCTOR.newInstance(readContext.readRef());
+      } catch (Exception e) {
+        throw new ForyException("Failed to create Scala MapFactory.ToFactory", e);
+      }
     }
   }
 }

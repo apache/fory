@@ -20,7 +20,6 @@
 package org.apache.fory.meta;
 
 import java.io.Serializable;
-import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Objects;
 import org.apache.fory.annotation.ForyField;
@@ -87,9 +86,9 @@ public final class FieldInfo implements Serializable {
   }
 
   /**
-   * Convert this field into a {@link Descriptor}, the corresponding {@link Field} field will be
-   * null. Don't invoke this method if class does have <code>fieldName</code> field. In such case,
-   * reflection should be used to get the descriptor.
+   * Convert this field into a {@link Descriptor}, the corresponding {@link java.lang.reflect.Field}
+   * field will be null. Don't invoke this method if class does have <code>fieldName</code> field.
+   * In such case, reflection should be used to get the descriptor.
    */
   @Internal
   public Descriptor toDescriptor(TypeResolver resolver, Descriptor descriptor) {
@@ -126,10 +125,10 @@ public final class FieldInfo implements Serializable {
         }
         return builder.build();
       }
-      FieldTypes.FieldType localFieldType =
-          descriptor.getField() == null
-              ? null
-              : FieldTypes.buildFieldType(resolver, descriptor.getField());
+      // The local descriptor owns normalized wrapper nullability/ref-tracking bits. Rebuilding from
+      // the raw field can make same-schema writer descriptors look incompatible and drop the field
+      // accessor in compatible mode.
+      FieldTypes.FieldType localFieldType = FieldTypes.buildFieldType(resolver, descriptor);
       int peerArrayTypeId = arrayTypeId(fieldType);
       // Static @ArrayType List<T> descriptors are fieldless, but the generated accessor still
       // reads and writes a List. Preserve the local descriptor so field metadata installs the
@@ -154,10 +153,14 @@ public final class FieldInfo implements Serializable {
       if (localFieldType != null && isListArrayRootPair(fieldType, localFieldType)) {
         throw new IllegalArgumentException(
             StringUtils.format(
-                "Unsupported list/array compatible field mismatch for field {}.{}: peer={}, local={}",
+                "Unsupported list/array compatible field mismatch for field ${definedClass}.${fieldName}: peer=${peer}, local=${local}",
+                "definedClass",
                 definedClass,
+                "fieldName",
                 fieldName,
+                "peer",
                 fieldType,
+                "local",
                 localFieldType));
       }
       if (localFieldType != null && hasNestedListArrayShapeMismatch(fieldType, localFieldType)) {
@@ -181,13 +184,20 @@ public final class FieldInfo implements Serializable {
           return descriptor;
         }
       }
-      if (FieldTypes.useFieldType(rawType, descriptor)) {
-        return new DescriptorBuilder(descriptor)
-            .typeName(typeName)
-            .trackingRef(remoteTrackingRef)
-            .nullable(remoteNullable)
-            .typeRef(typeRef)
+      Descriptor remoteDescriptor = builder.build();
+      if (localFieldType != null && isRefTrackedScalarSchemaMismatch(fieldType, localFieldType)) {
+        return new DescriptorBuilder(remoteDescriptor).field(null).build();
+      }
+      FieldConverter<?> converter =
+          FieldConverters.getConverter(resolver, remoteDescriptor, descriptor);
+      if (converter != null) {
+        return new DescriptorBuilder(remoteDescriptor)
+            .field(null)
+            .fieldConverter(converter)
             .build();
+      }
+      if (FieldTypes.useFieldType(rawType, descriptor)) {
+        return remoteDescriptor;
       }
       // Local field exists - check if we need to update nullable/trackingRef
       boolean typeMismatch = !typeRef.equals(declared);
@@ -202,13 +212,6 @@ public final class FieldInfo implements Serializable {
           // Set field to null if types are incompatible (not the same primitive type)
           if (!samePrimitiveType) {
             builder.field(null);
-          }
-        }
-        if (descriptor.getField() != null) {
-          FieldConverter<?> converter =
-              FieldConverters.getConverter(rawType, descriptor.getField());
-          if (converter != null) {
-            builder.fieldConverter(converter);
           }
         }
       }
@@ -234,11 +237,10 @@ public final class FieldInfo implements Serializable {
 
   private boolean isTopLevelListArrayCompatibleReadPair(
       TypeResolver resolver, Descriptor localDescriptor) {
-    Field localField = localDescriptor.getField();
-    if (localField == null || !resolver.isCrossLanguage()) {
+    if (!resolver.isCrossLanguage()) {
       return false;
     }
-    FieldTypes.FieldType localFieldType = FieldTypes.buildFieldType(resolver, localField);
+    FieldTypes.FieldType localFieldType = FieldTypes.buildFieldType(resolver, localDescriptor);
     int peerListElementTypeId = listElementTypeId(fieldType);
     if (peerListElementTypeId != Types.UNKNOWN) {
       int localArrayTypeId = arrayTypeId(localFieldType);
@@ -309,6 +311,26 @@ public final class FieldInfo implements Serializable {
           ((FieldTypes.ArrayFieldType) localFieldType).getComponentType());
     }
     return false;
+  }
+
+  private static boolean isRefTrackedScalarSchemaMismatch(
+      FieldTypes.FieldType remoteFieldType, FieldTypes.FieldType localFieldType) {
+    if (!compatibleScalarType(remoteFieldType.typeId)
+        || !compatibleScalarType(localFieldType.typeId)) {
+      return false;
+    }
+    if (remoteFieldType.trackingRef() != localFieldType.trackingRef()) {
+      return true;
+    }
+    return remoteFieldType.trackingRef()
+        && (remoteFieldType.typeId != localFieldType.typeId
+            || remoteFieldType.nullable() != localFieldType.nullable());
+  }
+
+  private static boolean compatibleScalarType(int typeId) {
+    return (typeId >= Types.BOOL && typeId <= Types.TAGGED_UINT64)
+        || (typeId >= Types.FLOAT16 && typeId <= Types.STRING)
+        || typeId == Types.DECIMAL;
   }
 
   private static boolean isListArrayRootPair(

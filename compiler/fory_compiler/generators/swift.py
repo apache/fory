@@ -1262,16 +1262,12 @@ class SwiftGenerator(BaseGenerator):
                 continue
 
             schema_type_name = self.schema_type_name(type_def)
-            escaped_name = schema_type_name.replace('"', '\\"')
             if namespace:
-                escaped_ns = namespace.replace('"', '\\"')
-                lines.append(
-                    f'{ind}{self.indent_str * 2}try fory.register({type_name}.self, namespace: "{escaped_ns}", name: "{escaped_name}")'
-                )
-            else:
-                lines.append(
-                    f'{ind}{self.indent_str * 2}try fory.register({type_name}.self, name: "{escaped_name}")'
-                )
+                schema_type_name = f"{namespace}.{schema_type_name}"
+            escaped_name = schema_type_name.replace('"', '\\"')
+            lines.append(
+                f'{ind}{self.indent_str * 2}try fory.register({type_name}.self, name: "{escaped_name}")'
+            )
         lines.append(f"{ind}{self.indent_str}" + "}")
 
         lines.append(f"{ind}" + "}")

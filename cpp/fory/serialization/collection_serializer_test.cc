@@ -622,7 +622,11 @@ TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
 
 // Test max_collection_size using objects (e.g., strings)
 TEST(CollectionSerializerTest, MaxCollectionSizeNativeGuardrail) {
-  auto fory = Fory::builder().xlang(false).max_collection_size(2).build();
+  auto fory = Fory::builder()
+                  .xlang(false)
+                  .max_collection_size(2)
+                  .compatible(false)
+                  .build();
   fory.register_struct<VectorStringHolder>(200);
 
   VectorStringHolder original;
@@ -641,7 +645,11 @@ TEST(CollectionSerializerTest, MaxCollectionSizeNativeGuardrail) {
 
 // Test max_binary_size using primitive numbers
 TEST(CollectionSerializerTest, MaxBinarySizeNativeGuardrail) {
-  auto fory = Fory::builder().xlang(false).max_binary_size(10).build();
+  auto fory = Fory::builder()
+                  .xlang(false)
+                  .max_binary_size(10)
+                  .compatible(false)
+                  .build();
 
   std::vector<int32_t> large_data = {1, 2, 3, 4, 5};
 

@@ -233,7 +233,7 @@ public class FieldGroups {
         this.fieldAccessor = null;
       }
       // Use local field type to determine if field is primitive.
-      // This determines how to write the value to the object (UnsafeOps.putInt vs putObject).
+      // This determines how to write the value to the object (unboxed putInt vs putObject).
       isPrimitiveField = typeRef.getRawType().isPrimitive();
       fieldConverter = d.getFieldConverter();
       // TypeExtMeta is xlang field-wrapper metadata. Native local descriptors keep native

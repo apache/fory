@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ Dart serializes to the same binary format as the Java, Go, C#, Python, Rust, and Swift Fory runtimes. You can write a message in Dart and read it in Java — or any other direction — without any conversion layer.
+Apache Fory™ Dart serializes to the same binary format as the Java, Go, C#, Python, Rust, and Swift Fory implementations. You can write a message in Dart and read it in Java — or any other direction — without any conversion layer.
 
 ## Setup
 
@@ -53,12 +53,11 @@ Better when multiple teams define types independently:
 ModelsForyModule.register(
   fory,
   Person,
-  namespace: 'example',
-  typeName: 'Person',
+  name: 'example.Person',
 );
 ```
 
-Do not mix the two strategies for the same type across runtimes.
+Do not mix the two strategies for the same type across implementations.
 
 ## Dart to Java Example
 
@@ -120,7 +119,6 @@ public sealed class Person
 }
 
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 
 fory.Register<Person>(100);
@@ -158,7 +156,7 @@ _ = f.Deserialize(bytesFromDart, &person)
 
 Fory matches fields by name or by stable field ID. For robust cross-language interop:
 
-1. Use the same type identity on every side (same numeric ID or same `namespace + typeName`).
+1. Use the same type identity on every side (same numeric ID or same `name`).
 2. Assign stable `@ForyField(id: ...)` values to all fields before shipping the first payload.
 3. Keep field names consistent or rely on IDs, since Dart typically uses `lowerCamelCase` while Go uses `PascalCase` for exported fields and C# often uses `PascalCase` properties.
 4. Use explicit numeric field metadata: `@ForyField(type: Int32Type())` in Dart for Java `int`, Go `int32`, and C# `int`; `double` in Dart for 64-bit floats; `double` plus `Float16Type` or `Bfloat16Type` for 16-bit floats; `Float32` for 32-bit; `Int64` / `Uint64` for full-range 64-bit values.
@@ -204,7 +202,7 @@ See [Supported Types](supported-types.md) and [xlang type mapping](../../specifi
 
 ## Validation
 
-Before relying on a cross-language contract in production, test a payload end-to-end through every runtime you support.
+Before relying on a cross-language contract in production, test a payload end-to-end through every implementation you support.
 
 Run the Dart side:
 

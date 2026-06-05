@@ -49,8 +49,8 @@ Fory supports default values for:
 
 This feature is available when:
 
-- Native mode is explicitly configured with compatible mode
-  (`withXlang(false).withCompatible(true)`)
+- Compatible mode is enabled for the native-mode Fory instance. This is the default with
+  `withXlang(false)`.
 - The target class is detected as a Scala class with default values
 - A field is missing from the serialized data but exists in the target class
 
@@ -70,7 +70,6 @@ case class PersonV1(name: String)
 case class PersonV2(name: String, age: Int = 25, city: String = "Unknown")
 
 val fory = ForyScala.builder().withXlang(false)
-  .withCompatible(true)
   .build()
 
 // Serialize using class without default values
@@ -99,7 +98,6 @@ class EmployeeV2(
 )
 
 val fory = ForyScala.builder().withXlang(false)
-  .withCompatible(true)
   .build()
 
 // Serialize using class without default values
@@ -130,7 +128,6 @@ case class ConfigV2(
 )
 
 val fory = ForyScala.builder().withXlang(false)
-  .withCompatible(true)
   .build()
 
 val original = ConfigV1("myConfig")
@@ -156,7 +153,6 @@ object Models {
 }
 
 val fory = ForyScala.builder().withXlang(false)
-  .withCompatible(true)
   .build()
 
 val original = Models.PersonV1("Alice")

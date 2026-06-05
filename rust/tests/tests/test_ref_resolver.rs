@@ -20,6 +20,7 @@
 use fory_core::buffer::Writer;
 use fory_core::resolver::{RefReader, RefWriter};
 use fory_core::{ArcWeak, RcWeak};
+use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -76,6 +77,20 @@ fn test_arc_storage_and_retrieval() {
 
     let retrieved = ref_reader.get_arc_ref::<String>(ref_id).unwrap();
     assert_eq!(*retrieved, "test");
+    assert!(Arc::ptr_eq(&arc, &retrieved));
+}
+
+#[test]
+fn test_arc_any_send_sync_storage_and_retrieval() {
+    let mut ref_reader = RefReader::new();
+    let arc: Arc<dyn Any + Send + Sync> = Arc::new(String::from("test"));
+
+    let ref_id = ref_reader.store_arc_ref(arc.clone());
+
+    let retrieved = ref_reader
+        .get_arc_ref::<dyn Any + Send + Sync>(ref_id)
+        .unwrap();
+    assert_eq!(retrieved.downcast_ref::<String>().unwrap(), "test");
     assert!(Arc::ptr_eq(&arc, &retrieved));
 }
 

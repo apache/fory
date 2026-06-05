@@ -21,22 +21,22 @@ license: |
 
 ## Overview
 
-This guide describes the current xlang runtime ownership model used by the
-reference Java runtime and mirrored by the Dart runtime rewrite.
+This guide describes the current xlang implementation ownership model used by
+the reference Java implementation and mirrored by the Dart implementation rewrite.
 
 The wire format is defined by
 [Xlang Serialization Spec](xlang_serialization_spec.md). This document is about
-service boundaries, operation flow, and internal ownership. New runtimes do not
+service boundaries, operation flow, and internal ownership. New language implementations do not
 need the same class names, but they should preserve the same control flow:
 
-- root operations stay on the runtime facade
+- root operations stay on the `Fory` facade
 - nested payload work stays on explicit read and write contexts
 - type metadata stays in the type resolver layer
 - serializers stay payload-focused
 
 When this guide conflicts with the wire-format specification, follow
 `docs/specification/xlang_serialization_spec.md`. When it conflicts with a
-runtime-specific implementation detail, follow the current runtime code for
+language-specific implementation detail, follow the current implementation code for
 that language.
 
 ## Source Of Truth
@@ -44,10 +44,10 @@ that language.
 Use these sources in this order:
 
 1. `docs/specification/xlang_serialization_spec.md`
-2. the current runtime implementation for the language
+2. the current implementation for the language
 3. cross-language tests under `integration_tests/`
 
-For Dart, the runtime shape is centered on:
+For Dart, the implementation shape is centered on:
 
 - `Fory`
 - `WriteContext`
@@ -57,20 +57,20 @@ For Dart, the runtime shape is centered on:
 - `TypeResolver`
 - `StructSerializer`
 
-## Runtime Ownership Model
+## Implementation Ownership Model
 
 ### `Fory` is the root-operation facade
 
-`Fory` owns the reusable runtime services for one runtime instance.
+`Fory` owns the reusable services for one Fory instance.
 
-In Dart, `Fory` owns exactly four runtime members:
+In Dart, `Fory` owns exactly four reusable members:
 
 - `Buffer`
 - `WriteContext`
 - `ReadContext`
 - `TypeResolver`
 
-In Java, `Fory` also owns runtime-local services such as `JITContext` and
+In Java, `Fory` also owns instance-local services such as `JITContext` and
 `CopyContext`, but the ownership rule is the same: `Fory` is the root facade,
 not the place where nested serializers do their work.
 
@@ -104,7 +104,7 @@ That operation-local state includes:
 - logical object-graph depth
 
 Generated and hand-written serializers should treat these contexts as the only
-source of operation-local services. Serializers must not keep ambient runtime
+source of operation-local services. Serializers must not keep ambient instance
 state in thread locals, globals, or serializer instance fields.
 
 ### `WriteContext`
@@ -306,19 +306,39 @@ In Dart that internal owner is `StructSerializer`.
 - caching compatible read layouts
 - skipping unknown compatible fields
 - passing compatible read layouts explicitly to generated serializers
+- classifying matched compatible fields that require top-level scalar
+  conversion and routing those fields through cold conversion helpers
 
 When `Config.compatible` is enabled and the struct is marked evolving:
 
 - the wire type uses the compatible struct form
-- the runtime writes shared TypeDef metadata
+- the writer emits shared TypeDef metadata
 - reads map incoming fields by identifier and skip unknown fields
 - generated serializers apply matched fields directly while preserving their own
   object construction and default-value rules
+- matched scalar fields may use compatible scalar conversion only when the
+  layout has classified a remote/local top-level scalar pair as lossless
+  convertible and both field schemas have `trackingRef = false`
 
 When `compatible` is disabled and `checkStructVersion` is enabled:
 
-- the runtime writes the schema hash for struct payloads
+- the writer emits the schema hash for struct payloads
 - the read side checks that hash before reading fields
+
+Compatible scalar conversion is owned by the compatible struct field reader or
+the generated compatible layout action. Root facades, read/write contexts, type
+resolvers, class resolvers, xlang type resolvers, and raw buffer utilities must
+not expose public conversion APIs or carry conversion state. Resolvers may
+provide field schema metadata for layout classification, but the conversion
+decision and value adaptation stay with the serializer-owned compatible field
+layout. Layout classification must reject top-level scalar conversions when
+either matched schema has `trackingRef = true` and must reject same scalar type
+pairs whose top-level `trackingRef` framing differs; converters must not add a
+reference-table path for scalar mismatches. Same-schema readers with matching
+reference and null/optional framing must keep direct scalar read paths without conversion branches or per-field conversion
+objects. Same raw scalar types with different null/optional framing may still
+use the compatible nullable/optional composition path when both fields are not
+reference-tracked.
 
 ## Meta Strings And Shared Type Metadata
 
@@ -345,7 +365,7 @@ In Java:
 - `@ForyEnumId` can override that with a stable explicit tag
 - `serializeEnumByName(true)` affects native Java mode, not xlang mode
 
-Other runtimes should preserve the same wire rule even if the configuration or
+Other language implementations should preserve the same wire rule even if the configuration or
 annotation surface differs.
 
 ## Out-Of-Band Buffer Objects
@@ -355,7 +375,7 @@ Buffer-object handling follows the same split:
 - one root bit advertises whether out-of-band buffers are in play
 - nested buffer-object payloads still decide in-band vs out-of-band one value at
   a time
-- serializers use read/write context helpers rather than bypassing the runtime
+- serializers use read/write context helpers rather than bypassing the context layer
 
 ## Code Generation
 
@@ -375,9 +395,9 @@ Generated code should emit:
 - a public per-library registration helper that users call from application code
 - private generated installation helpers that keep serializer factories private
 
-The public helper should be a thin generated wrapper around the runtime
-registration API, not a public global registry or a second unrelated runtime API
-family.
+The public helper should be a thin generated wrapper around the Fory
+registration API, not a public global registry or a second unrelated
+registration API family.
 
 ## Directory Layout
 
@@ -393,19 +413,19 @@ Not allowed:
 
 - `lib/src/<area>/<subarea>/<file>.dart`
 
-## Serializer Design Rules For New Runtimes
+## Serializer Design Rules For New Implementations
 
-Any new xlang runtime should follow these rules even if its surface API looks
+Any new xlang implementation should follow these rules even if its surface API looks
 different:
 
-1. Keep root operations on the runtime facade and nested payload work on
+1. Keep root operations on the `Fory` facade and nested payload work on
    explicit read and write contexts.
 2. Keep reference tracking behind dedicated read-side and write-side services
    so the disabled path stays cheap.
 3. Make serializers payload-only. Type metadata, registration, and root
-   framing belong to the runtime and type resolver layers.
+   framing belong to the `Fory` and type resolver layers.
 4. Track per-operation state explicitly. Do not rely on ambient thread-local
-   runtime state.
+   instance state.
 5. Reserve read reference IDs before materializing new objects, and bind
    partially built objects as soon as a nested child may refer back to them.
 6. Keep operation setup and operation cleanup separate. `prepare(...)` binds
@@ -421,7 +441,7 @@ different:
 
 ## Validation
 
-For Dart runtime changes, run at minimum:
+For Dart implementation changes, run at minimum:
 
 ```bash
 cd dart

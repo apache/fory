@@ -77,7 +77,6 @@ case class UserV2(name: String, age: Int, email: String = "unknown", active: Boo
 
 object DefaultValueExample {
   val fory: Fory = ForyScala.builder().withXlang(false)
-    .withCompatible(true)
     .build()
 
   def main(args: Array[String]): Unit = {
@@ -141,8 +140,7 @@ import org.apache.fory.scala.ForyScala
 val fory = ForyScala.builder().withXlang(false)
   // Enable reference tracking for circular references
   .withRefTracking(true)
-  // Enable schema evolution support for native-mode payloads
-  .withCompatible(true)
+  // Compatible schema evolution is enabled by default
   // Enable async compilation for better startup performance
   .withAsyncCompilation(true)
   // Compression options

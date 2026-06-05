@@ -19,9 +19,9 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ C# provides two runtime forms with different threading guarantees.
+Apache Fory™ C# provides two Fory instance forms with different threading guarantees.
 
-## `Fory` (Single-Threaded Runtime)
+## `Fory` (Single-Threaded Instance)
 
 `Fory` is optimized for single-threaded reuse and must not be used concurrently by multiple threads.
 
@@ -39,7 +39,6 @@ Use one `Fory` instance per thread when managing thread affinity explicitly.
 using Apache.Fory;
 
 using ThreadSafeFory fory = Fory.Builder()
-    .Compatible(true)
     .TrackRef(true)
     .BuildThreadSafe();
 
@@ -55,7 +54,7 @@ Parallel.For(0, 64, i =>
 ## Registration Behavior
 
 - `ThreadSafeFory.Register(...)` stores registrations centrally.
-- Existing per-thread runtimes are updated.
+- Existing per-thread Fory instances are updated.
 - New threads receive all previous registrations automatically.
 
 ## Disposal

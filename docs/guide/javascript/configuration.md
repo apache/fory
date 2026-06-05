@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Fory JavaScript is an xlang-only runtime. `new Fory()` writes xlang payloads and uses compatible
+Fory JavaScript is an xlang-only implementation. `new Fory()` writes xlang payloads and uses compatible
 schema evolution by default. There is no native-mode switch in the JavaScript API.
 
 ## Basic Configuration
@@ -74,15 +74,19 @@ Then mark reference-tracked fields in the schema, for example with
 
 ## Compatible Schema Evolution
 
-Compatible mode is the default:
+Compatible mode is the default. To use faster serialization and smaller size:
 
 ```ts
-const fory = new Fory();
+const fory = new Fory({ compatible: false });
 ```
 
-Use this default for rolling upgrades, independently deployed services, and cross-language payloads.
-You can opt out for one stable struct with `evolving: false`; see
-[Schema Evolution](schema-evolution.md).
+Use compatible mode for rolling upgrades, independently deployed services, and
+cross-language payloads. Use `compatible: false` only when every reader and
+writer always uses the same struct schema and you want faster serialization and
+smaller size. For individual structs, `evolving: false` applies the same opt-out
+to that struct. For cross-language payloads, set `compatible: false` only after
+verifying that every language uses the same schema, or when native types are
+generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 
 ## Optional HPS String Path
 
@@ -104,7 +108,7 @@ Security-related configuration:
 - Set `maxDepth`, `maxBinarySize`, and `maxCollectionSize` for the maximum payload shape your
   service accepts.
 - Prefer explicit `Type.struct(...)` schemas over `Type.any()` for untrusted input.
-- Pass `hps` only from the official package version you deploy with the runtime.
+- Pass `hps` only from the official package version you deploy with Fory.
 
 ## Related Topics
 

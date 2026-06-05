@@ -2,6 +2,7 @@
 
 package org.apache.fory.benchmark.state.generated;
 
+@SuppressWarnings("unused")
 public final class FBSPlayer {
   private FBSPlayer() { }
   public static final byte JAVA = 0;
@@ -11,4 +12,3 @@ public final class FBSPlayer {
 
   public static String name(int e) { return names[e]; }
 }
-

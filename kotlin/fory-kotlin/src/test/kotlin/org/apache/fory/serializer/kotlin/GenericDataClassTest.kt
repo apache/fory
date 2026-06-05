@@ -21,6 +21,7 @@ package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
 import org.testng.Assert.assertEquals
+import org.testng.Assert.assertThrows
 import org.testng.annotations.Test
 
 /** Test class for generic Kotlin data classes. See https://github.com/apache/fory/issues/2768 */
@@ -92,5 +93,31 @@ class GenericDataClassTest {
     val deserializedChange = fory.deserialize(serializedChange, Change::class.java)
 
     assertEquals(change, deserializedChange)
+  }
+
+  @Test
+  fun testRegisterDottedName() {
+    val fory =
+      Fory.builder()
+        .requireClassRegistration(true)
+        .withCodegen(true)
+        .withXlang(false)
+        .withRefTracking(false)
+        .withCompatible(false)
+        .build()
+
+    KotlinSerializers.registerType(fory, Change::class.java, "kotlin.Change")
+
+    val typeInfo = fory.typeResolver.getTypeInfo(Change::class.java)
+    assertEquals(typeInfo.decodeNamespace(), "kotlin")
+    assertEquals(typeInfo.decodeTypeName(), "Change")
+    assertThrows(IllegalArgumentException::class.java) {
+      KotlinSerializers.registerType(
+        Fory.builder().withXlang(false).requireClassRegistration(true).withCompatible(false).build(),
+        Change::class.java,
+        "kotlin",
+        "Bad.Name",
+      )
+    }
   }
 }

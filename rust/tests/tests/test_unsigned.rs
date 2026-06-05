@@ -19,11 +19,68 @@ mod test_helpers;
 
 use fory_core::fory::Fory;
 use fory_derive::ForyStruct;
+use std::any::Any;
+use std::rc::Rc;
+use std::sync::Arc;
 use test_helpers::{test_arc_any, test_box_any, test_rc_any, test_roundtrip};
+
+fn assert_erased_container_error(message: String) {
+    assert!(
+        message.contains("top-level erased Any")
+            || message.contains("Erased Any payloads require")
+            || message.contains("cannot be represented as Arc<dyn Any + Send + Sync>"),
+        "unexpected error: {message}"
+    );
+}
+
+fn test_box_any_unsupported<T>(fory: &Fory, value: T)
+where
+    T: 'static,
+{
+    let wrapped: Box<dyn Any> = Box::new(value);
+    match fory.serialize(&wrapped) {
+        Ok(bytes) => {
+            let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
+            let err = result.expect_err("expected Box<dyn Any> container read to fail");
+            assert_erased_container_error(err.to_string());
+        }
+        Err(err) => assert_erased_container_error(err.to_string()),
+    }
+}
+
+fn test_rc_any_unsupported<T>(fory: &Fory, value: T)
+where
+    T: 'static,
+{
+    let wrapped: Rc<dyn Any> = Rc::new(value);
+    match fory.serialize(&wrapped) {
+        Ok(bytes) => {
+            let result: Result<Rc<dyn Any>, _> = fory.deserialize(&bytes);
+            let err = result.expect_err("expected Rc<dyn Any> container read to fail");
+            assert_erased_container_error(err.to_string());
+        }
+        Err(err) => assert_erased_container_error(err.to_string()),
+    }
+}
+
+fn test_arc_any_unsupported<T>(fory: &Fory, value: T)
+where
+    T: 'static + Send + Sync,
+{
+    let wrapped: Arc<dyn Any + Send + Sync> = Arc::new(value);
+    match fory.serialize(&wrapped) {
+        Ok(bytes) => {
+            let result: Result<Arc<dyn Any + Send + Sync>, _> = fory.deserialize(&bytes);
+            let err = result.expect_err("expected Arc<dyn Any> container read to fail");
+            assert_erased_container_error(err.to_string());
+        }
+        Err(err) => assert_erased_container_error(err.to_string()),
+    };
+}
 
 #[test]
 fn test_unsigned_numbers() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     test_roundtrip(&fory, u8::MAX);
     test_roundtrip(&fory, u16::MAX);
     test_roundtrip(&fory, u32::MAX);
@@ -34,7 +91,7 @@ fn test_unsigned_numbers() {
 
 #[test]
 fn test_unsigned_arrays() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     test_roundtrip(&fory, vec![0u8, 1, 2, u8::MAX]);
     test_roundtrip(&fory, vec![0u16, 100, 1000, u16::MAX]);
     test_roundtrip(&fory, vec![0u32, 1000, 1000000, u32::MAX]);
@@ -74,11 +131,15 @@ fn test_binary_when_xlang() {
 
 #[test]
 fn test_binary_max_size_guardrail_for_vec_u8() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let original = vec![1_u8, 2, 3, 4, 5];
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::builder().xlang(false).max_binary_size(4).build();
+    let limited_fory = Fory::builder()
+        .xlang(false)
+        .max_binary_size(4)
+        .compatible(false)
+        .build();
     let err = limited_fory
         .deserialize::<Vec<u8>>(&serialized)
         .expect_err("expected binary size guardrail to reject the payload");
@@ -95,11 +156,15 @@ fn test_binary_max_size_guardrail_for_vec_u8() {
 
 #[test]
 fn test_binary_max_size_guardrail_for_vec_u32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let original = vec![10_u32, 20, 30];
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::builder().xlang(false).max_binary_size(8).build();
+    let limited_fory = Fory::builder()
+        .xlang(false)
+        .max_binary_size(8)
+        .compatible(false)
+        .build();
     let err = limited_fory
         .deserialize::<Vec<u32>>(&serialized)
         .expect_err("expected primitive array size guardrail to reject the payload");
@@ -132,7 +197,7 @@ fn test_unsigned_struct_non_compatible() {
         vec_u128: Vec<u128>,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<UnsignedData>(100).unwrap();
 
     let data = UnsignedData {
@@ -258,7 +323,7 @@ fn test_unsigned_struct_compatible_remove_field() {
 
 #[test]
 fn test_unsigned_edge_cases() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test minimum values
     test_roundtrip(&fory, 0u8);
@@ -297,7 +362,7 @@ fn test_unsigned_with_option_non_compatible() {
         opt_u128: Option<u128>,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<OptionalUnsigned>(103).unwrap();
 
     // Test with Some values
@@ -417,7 +482,7 @@ fn test_unsigned_mixed_fields_compatible() {
 
 #[test]
 fn test_unsigned_with_smart_pointers() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test Box<dyn Any> with unsigned types
     test_box_any(&fory, u8::MAX);
@@ -435,7 +500,7 @@ fn test_unsigned_with_smart_pointers() {
     test_rc_any(&fory, usize::MAX);
     test_rc_any(&fory, u128::MAX);
 
-    // Test Arc<dyn Any> with unsigned types
+    // Test Arc<dyn Any + Send + Sync> with unsigned types
     test_arc_any(&fory, u8::MAX);
     test_arc_any(&fory, u16::MAX);
     test_arc_any(&fory, u32::MAX);
@@ -443,27 +508,25 @@ fn test_unsigned_with_smart_pointers() {
     test_arc_any(&fory, usize::MAX);
     test_arc_any(&fory, u128::MAX);
 
-    // Test Box<dyn Any> with unsigned arrays
-    test_box_any(&fory, vec![0u8, 127, u8::MAX]);
-    test_box_any(&fory, vec![0u16, 1000, u16::MAX]);
-    test_box_any(&fory, vec![0u32, 1000000, u32::MAX]);
-    test_box_any(&fory, vec![0u64, 1000000000000, u64::MAX]);
-    test_box_any(&fory, vec![0usize, 1000000000000, usize::MAX]);
-    test_box_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
+    // Direct vectors are not supported as top-level erased Any payloads.
+    test_box_any_unsupported(&fory, vec![0u8, 127, u8::MAX]);
+    test_box_any_unsupported(&fory, vec![0u16, 1000, u16::MAX]);
+    test_box_any_unsupported(&fory, vec![0u32, 1000000, u32::MAX]);
+    test_box_any_unsupported(&fory, vec![0u64, 1000000000000, u64::MAX]);
+    test_box_any_unsupported(&fory, vec![0usize, 1000000000000, usize::MAX]);
+    test_box_any_unsupported(&fory, vec![0u128, 1000000000000, u128::MAX]);
 
-    // Test Rc<dyn Any> with unsigned arrays
-    test_rc_any(&fory, vec![0u8, 127, u8::MAX]);
-    test_rc_any(&fory, vec![100u16, 200, 300, u16::MAX]);
-    test_rc_any(&fory, vec![1000u32, 2000, 3000, u32::MAX]);
-    test_rc_any(&fory, vec![0u64, 1000000000000, u64::MAX]);
-    test_rc_any(&fory, vec![0usize, 1000000000000, usize::MAX]);
-    test_rc_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
+    test_rc_any_unsupported(&fory, vec![0u8, 127, u8::MAX]);
+    test_rc_any_unsupported(&fory, vec![100u16, 200, 300, u16::MAX]);
+    test_rc_any_unsupported(&fory, vec![1000u32, 2000, 3000, u32::MAX]);
+    test_rc_any_unsupported(&fory, vec![0u64, 1000000000000, u64::MAX]);
+    test_rc_any_unsupported(&fory, vec![0usize, 1000000000000, usize::MAX]);
+    test_rc_any_unsupported(&fory, vec![0u128, 1000000000000, u128::MAX]);
 
-    // Test Arc<dyn Any> with unsigned arrays
-    test_arc_any(&fory, vec![0u8, 127, u8::MAX]);
-    test_arc_any(&fory, vec![100u16, 200, 300, u16::MAX]);
-    test_arc_any(&fory, vec![999u32, 888, 777, u32::MAX]);
-    test_arc_any(&fory, vec![123u64, 456789, 987654321, u64::MAX]);
-    test_arc_any(&fory, vec![123usize, 456789, 987654321, usize::MAX]);
-    test_arc_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
+    test_arc_any_unsupported(&fory, vec![0u8, 127, u8::MAX]);
+    test_arc_any_unsupported(&fory, vec![100u16, 200, 300, u16::MAX]);
+    test_arc_any_unsupported(&fory, vec![999u32, 888, 777, u32::MAX]);
+    test_arc_any_unsupported(&fory, vec![123u64, 456789, 987654321, u64::MAX]);
+    test_arc_any_unsupported(&fory, vec![123usize, 456789, 987654321, usize::MAX]);
+    test_arc_any_unsupported(&fory, vec![0u128, 1000000000000, u128::MAX]);
 }

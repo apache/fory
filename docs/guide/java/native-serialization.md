@@ -29,7 +29,7 @@ Native serialization in this page means Fory's `xlang=false` wire mode. It is se
 native image support, which is covered in [GraalVM Support](graalvm-support.md).
 
 Use [Xlang Serialization](xlang-serialization.md), the default Java mode, when bytes must be read by
-non-Java Fory runtimes.
+non-Java Fory implementations.
 
 ## When To Use Native Serialization
 
@@ -46,9 +46,9 @@ Use native serialization when:
 
 Use xlang serialization instead when the payload must be read by Python, C++, Go,
 Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin, or another
-non-Java runtime.
+non-Java implementation.
 
-## Create a Native Runtime
+## Create a Native-Mode Fory Instance
 
 ```java
 import org.apache.fory.Fory;
@@ -64,7 +64,7 @@ Object decoded = fory.deserialize(bytes);
 ```
 
 Create and reuse a `Fory` or `ThreadSafeFory` instance for each configuration. Fory creation is not
-cheap because the runtime caches class metadata, serializers, and generated code.
+cheap because Fory caches class metadata, serializers, and generated code.
 
 ```java
 import org.apache.fory.Fory;
@@ -80,28 +80,26 @@ fory.register(Order.class, 100);
 ```
 
 Register classes and serializers during startup before concurrent serialization starts. Use a
-separate runtime when class loader, registration, security, schema evolution, or reference-tracking
+separate Fory instance when class loader, registration, security, schema evolution, or reference-tracking
 settings differ.
 
 ## Schema Evolution
 
-Native serialization defaults to schema-consistent mode. In schema-consistent mode, writer and
-reader classes are expected to have the same schema. This is the most direct native-mode path and is
-the right default for lockstep deployments.
-
-Enable compatible mode when Java classes can evolve independently across writer and reader
-deployments:
+Native serialization defaults to compatible mode, so readers can tolerate schema changes during
+rolling deployments when the schema metadata remains compatible:
 
 ```java
 Fory fory = Fory.builder()
     .withXlang(false)
-    .withCompatible(true)
     .build();
 ```
 
 Compatible mode lets readers tolerate added, removed, or reordered fields when the schema metadata
 remains compatible. It also enables metadata sharing by default. See [Schema Evolution](schema-evolution.md)
 for field IDs, class version checks, meta sharing, and unknown-class handling.
+
+For faster serialization and smaller size, set `.withCompatible(false)` only when
+every reader and writer always uses the same class schema.
 
 ## Registration And Security
 
@@ -206,7 +204,7 @@ When replacing JDK serialization, Kryo, FST, Hessian, or a Java-only Protocol Bu
 
 1. Start with `.withXlang(false)` because the data is Java-only.
 2. Keep `requireClassRegistration(true)` and register application classes with explicit IDs.
-3. Use `.withCompatible(true)` if writer and reader deployments roll independently.
+3. Keep compatible mode enabled when writer and reader deployments roll independently.
 4. Enable `.withRefTracking(true)` only when identity or circular references matter.
 5. Add custom serializers for hot classes that would otherwise use expensive JDK serialization hooks.
 6. Keep old and new byte streams separated when possible.
@@ -322,15 +320,15 @@ Fory fory = Fory.builder()
 ```
 
 Each `Fory` instance is tied to one class loader because class metadata and serializers are cached.
-Build a separate runtime for each application, plugin, or tenant class loader instead of switching
-loaders on an existing runtime.
+Build a separate Fory instance for each application, plugin, or tenant class loader instead of switching
+loaders on an existing instance.
 
 ## Performance Guidelines
 
 - Reuse `Fory` or `ThreadSafeFory` instances instead of rebuilding them per request.
 - Register classes with explicit numeric IDs for compact type metadata and stable deployments.
-- Keep schema-consistent mode for lockstep Java services; enable compatible mode only when schema
-  evolution requires it.
+- Use `.withCompatible(false)` only when every reader and writer always uses the same class schema
+  and the application wants faster serialization and smaller size.
 - Disable reference tracking for value-shaped graphs with no identity or cycles.
 - Use async compilation on ordinary JVMs when startup latency can tolerate interpreter-first
   serialization:
@@ -351,23 +349,23 @@ loaders on an existing runtime.
 
 ## Native And Xlang Comparison
 
-| Requirement                                 | Use native serialization | Use xlang serialization |
-| ------------------------------------------- | ------------------------ | ----------------------- |
-| Java/JVM-only payloads                      | Yes                      | Optional                |
-| Non-Java readers or writers                 | No                       | Yes                     |
-| Broad Java object surface                   | Yes                      | Limited to xlang types  |
-| JDK serialization hooks                     | Yes                      | No                      |
-| Java object copy                            | Yes                      | No                      |
-| Portable type mapping across runtimes       | No                       | Yes                     |
-| Compatible schema evolution by default      | No                       | Yes                     |
-| Schema-consistent same-language performance | Yes                      | No                      |
+| Requirement                            | Use native serialization | Use xlang serialization |
+| -------------------------------------- | ------------------------ | ----------------------- |
+| Java/JVM-only payloads                 | Yes                      | Optional                |
+| Non-Java readers or writers            | No                       | Yes                     |
+| Broad Java object surface              | Yes                      | Limited to xlang types  |
+| JDK serialization hooks                | Yes                      | No                      |
+| Java object copy                       | Yes                      | No                      |
+| Portable type mapping across languages | No                       | Yes                     |
+| Compatible schema evolution by default | Yes                      | Yes                     |
+| Same-schema performance optimization   | Yes                      | No                      |
 
 ## Troubleshooting
 
-### A non-Java runtime cannot read the payload
+### A non-Java implementation cannot read the payload
 
 The writer is using native serialization. Rebuild the writer with `.withXlang(true)` and align type
-registration with every peer runtime.
+registration with every peer.
 
 ### A class is rejected during deserialization
 
@@ -377,8 +375,8 @@ loading is intentional, use `requireClassRegistration(false)` only with an allow
 
 ### A rolling deployment fails after a field change
 
-Native serialization defaults to schema-consistent mode. Use `.withCompatible(true)` when writer and
-reader versions can differ, and add stable field metadata for long-lived schemas.
+Native serialization defaults to compatible mode. Keep that default when writer and reader versions
+can differ, and add stable field metadata for long-lived schemas.
 
 ### Object identity is not preserved
 
@@ -393,9 +391,9 @@ Use `JavaSerializer.serializedByJDK(...)` only at the mixed-format boundary, the
 ## Related Topics
 
 - [Basic Serialization](basic-serialization.md) - Xlang-first Java quickstart
-- [Xlang Serialization](xlang-serialization.md) - Cross-runtime Java payloads
+- [Xlang Serialization](xlang-serialization.md) - Cross-language Java payloads
 - [Configuration](configuration.md) - Java builder options
-- [Schema Evolution](schema-evolution.md) - Compatible and schema-consistent mode
+- [Schema Evolution](schema-evolution.md) - compatible mode and same-schema optimization
 - [Type Registration](type-registration.md) - Registration and security
 - [Object Copy](object-copy.md) - Deep-copy semantics
 - [Custom Serializers](custom-serializers.md) - Custom Java serializers

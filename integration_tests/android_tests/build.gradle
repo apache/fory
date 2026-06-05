@@ -17,9 +17,33 @@
  * under the License.
  */
 
-plugins {
-    id 'com.android.application' version '8.13.2'
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    configurations.classpath {
+        resolutionStrategy {
+            eachDependency { details ->
+                if (details.requested.group == 'io.netty') {
+                    details.useVersion '4.1.133.Final'
+                }
+                if (details.requested.group == 'org.bouncycastle') {
+                    details.useVersion '1.84'
+                }
+            }
+            force 'org.apache.commons:commons-compress:1.26.0'
+            force 'org.bitbucket.b_c:jose4j:0.9.6'
+            force 'org.jdom:jdom2:2.0.6.1'
+        }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.2'
+    }
 }
+
+apply plugin: 'com.android.application'
 
 android {
     namespace 'org.apache.fory.android.tests'

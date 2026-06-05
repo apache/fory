@@ -36,11 +36,11 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 ## Crates
 
-| Crate                                                                       | Description                       | Version                                                                                               |
-| --------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
+| Crate                                                                       | Description                       | Version                                       |
+| --------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------- |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [1.1.0](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [1.1.0](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [1.1.0](https://crates.io/crates/fory-derive) |
 
 ## Quick Start
 
@@ -93,9 +93,9 @@ fn main() -> Result<(), Error> {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with other Fory runtimes. Xlang mode is the default Rust wire mode, and Rust examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default Rust wire mode, and Rust examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and keeps Rust object serialization on the Rust runtime path. It is optimized for Rust's type system and covers Rust-specific object features such as trait objects and shared-reference patterns that are not portable xlang payloads.
+Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)` and keeps Rust object serialization in Rust-native form. It is optimized for Rust's type system and covers Rust-specific object features such as trait objects and shared-reference patterns that are not portable xlang payloads. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same Rust schema and you want faster serialization and smaller size.
 
 See [Xlang Serialization](xlang-serialization.md) for Rust xlang registration and interoperability rules, and [Native Serialization](native-serialization.md) for Rust-only payloads.
 

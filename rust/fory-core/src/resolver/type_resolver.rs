@@ -28,7 +28,6 @@ use crate::types::{Date, Duration, Timestamp};
 use crate::TypeId;
 #[cfg(feature = "chrono")]
 use chrono::{Duration as ChronoDuration, NaiveDate, NaiveDateTime};
-use std::collections::{HashSet, LinkedList};
 use std::rc::Rc;
 use std::vec;
 
@@ -63,7 +62,10 @@ type ReadFn =
 
 type WriteDataFn = fn(&dyn Any, &mut WriteContext, has_generics: bool) -> Result<(), Error>;
 type ReadDataFn = fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>;
+type ReadDataAsSendSyncAnyFn = fn(&mut ReadContext) -> Result<Box<dyn Any + Send + Sync>, Error>;
 type ReadCompatibleFn = fn(&mut ReadContext, Rc<TypeInfo>) -> Result<Box<dyn Any>, Error>;
+type ReadCompatibleAsSendSyncAnyFn =
+    fn(&mut ReadContext, Rc<TypeInfo>) -> Result<Box<dyn Any + Send + Sync>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 type BuildTypeInfosFn = fn(&TypeResolver) -> Result<Vec<(std::any::TypeId, TypeInfo)>, Error>;
 const EMPTY_STRING: String = String::new();
@@ -71,14 +73,23 @@ const INTERNAL_TYPE_ID_LIMIT: usize = 256;
 const MAX_USER_TYPE_ID: u32 = 0xfffffffe;
 pub(crate) const NO_USER_TYPE_ID: u32 = u32::MAX;
 
-fn validate_named_registration(type_name: &str, api: &str) -> Result<(), Error> {
-    if type_name.is_empty() {
+fn validate_named_registration(name: &str, api: &str) -> Result<(), Error> {
+    if name.is_empty() {
         return Err(Error::not_allowed(format!(
-            "type_name must be non-empty for {}",
+            "name must be non-empty for {}",
             api
         )));
     }
     Ok(())
+}
+
+fn split_named_registration<'a>(name: &'a str, api: &str) -> Result<(&'a str, &'a str), Error> {
+    let (namespace, type_name) = match name.rsplit_once('.') {
+        Some((namespace, name)) => (namespace, name),
+        None => ("", name),
+    };
+    validate_named_registration(type_name, api)?;
+    Ok((namespace, type_name))
 }
 
 #[derive(Clone, Debug)]
@@ -87,42 +98,26 @@ pub struct Harness {
     read_fn: ReadFn,
     write_data_fn: WriteDataFn,
     read_data_fn: ReadDataFn,
+    read_data_as_send_sync_any_fn: ReadDataAsSendSyncAnyFn,
     read_compatible_fn: Option<ReadCompatibleFn>,
+    read_compatible_as_send_sync_any_fn: Option<ReadCompatibleAsSendSyncAnyFn>,
     to_serializer: ToSerializerFn,
     build_type_infos: BuildTypeInfosFn,
 }
 
 impl Harness {
-    pub fn new(
-        write_fn: WriteFn,
-        read_fn: ReadFn,
-        write_data_fn: WriteDataFn,
-        read_data_fn: ReadDataFn,
-        read_compatible_fn: Option<ReadCompatibleFn>,
-        to_serializer: ToSerializerFn,
-        build_type_infos: BuildTypeInfosFn,
-    ) -> Harness {
-        Harness {
-            write_fn,
-            read_fn,
-            write_data_fn,
-            read_data_fn,
-            read_compatible_fn,
-            to_serializer,
-            build_type_infos,
-        }
-    }
-
     pub fn stub() -> Harness {
-        Harness::new(
-            stub_write_fn,
-            stub_read_fn,
-            stub_write_data_fn,
-            stub_read_data_fn,
-            None,
-            stub_to_serializer_fn,
-            stub_build_type_infos,
-        )
+        Harness {
+            write_fn: stub_write_fn,
+            read_fn: stub_read_fn,
+            write_data_fn: stub_write_data_fn,
+            read_data_fn: stub_read_data_fn,
+            read_data_as_send_sync_any_fn: stub_read_data_as_send_sync_any_fn,
+            read_compatible_fn: None,
+            read_compatible_as_send_sync_any_fn: None,
+            to_serializer: stub_to_serializer_fn,
+            build_type_infos: stub_build_type_infos,
+        }
     }
 
     #[inline(always)]
@@ -171,6 +166,23 @@ impl Harness {
             }
         }
         (self.read_data_fn)(context)
+    }
+
+    /// Reads polymorphic data for `Arc<dyn Any + Send + Sync>` carriers.
+    /// This path never upgrades an ordinary `Box<dyn Any>`; it delegates to
+    /// type-owned readers that construct the send-sync trait object directly.
+    #[inline(always)]
+    pub fn read_polymorphic_data_as_send_sync_any(
+        &self,
+        context: &mut ReadContext,
+        typeinfo: &Rc<TypeInfo>,
+    ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+        if context.is_compatible() {
+            if let Some(read_compatible_fn) = self.read_compatible_as_send_sync_any_fn {
+                return read_compatible_fn(context, typeinfo.clone());
+            }
+        }
+        (self.read_data_as_send_sync_any_fn)(context)
     }
 }
 
@@ -314,15 +326,17 @@ impl TypeInfo {
             h.clone()
         } else {
             // Create a stub harness that returns errors when called
-            Harness::new(
-                stub_write_fn,
-                stub_read_fn,
-                stub_write_data_fn,
-                stub_read_data_fn,
-                None,
-                stub_to_serializer_fn,
-                stub_build_type_infos,
-            )
+            Harness {
+                write_fn: stub_write_fn,
+                read_fn: stub_read_fn,
+                write_data_fn: stub_write_data_fn,
+                read_data_fn: stub_read_data_fn,
+                read_data_as_send_sync_any_fn: stub_read_data_as_send_sync_any_fn,
+                read_compatible_fn: None,
+                read_compatible_as_send_sync_any_fn: None,
+                to_serializer: stub_to_serializer_fn,
+                build_type_infos: stub_build_type_infos,
+            }
         };
 
         TypeInfo {
@@ -366,6 +380,14 @@ fn stub_write_data_fn(_: &dyn Any, _: &mut WriteContext, _: bool) -> Result<(), 
 fn stub_read_data_fn(_: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
     Err(Error::type_error(
         "Cannot deserialize unknown remote type - type not registered locally",
+    ))
+}
+
+fn stub_read_data_as_send_sync_any_fn(
+    _: &mut ReadContext,
+) -> Result<Box<dyn Any + Send + Sync>, Error> {
+    Err(Error::type_error(
+        "Cannot deserialize unknown remote type as Arc<dyn Any + Send + Sync> - type not registered locally",
     ))
 }
 
@@ -805,15 +827,6 @@ impl TypeResolver {
         self.register_internal_serializer::<Vec<u128>>(TypeId::U128_ARRAY)?;
         self.register_internal_serializer::<Vec<isize>>(TypeId::ISIZE_ARRAY)?;
         self.register_internal_serializer::<Vec<i128>>(TypeId::INT128_ARRAY)?;
-        self.register_generic_trait::<Vec<String>>()?;
-        self.register_generic_trait::<LinkedList<i32>>()?;
-        self.register_generic_trait::<LinkedList<String>>()?;
-        self.register_generic_trait::<HashSet<String>>()?;
-        self.register_generic_trait::<HashSet<i32>>()?;
-        self.register_generic_trait::<HashSet<i64>>()?;
-        self.register_generic_trait::<HashMap<String, String>>()?;
-        self.register_generic_trait::<HashMap<String, i32>>()?;
-        self.register_generic_trait::<HashMap<String, i64>>()?;
 
         Ok(())
     }
@@ -839,19 +852,17 @@ impl TypeResolver {
 
     pub fn register_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
-        validate_named_registration(type_name, "register_by_name")?;
+        let (namespace, type_name) = split_named_registration(name, "register_by_name")?;
         self.register_struct_type::<T>(0, namespace, type_name, true)
     }
 
     pub fn register_union_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
-        validate_named_registration(type_name, "register_union_by_name")?;
+        let (namespace, type_name) = split_named_registration(name, "register_union_by_name")?;
         if T::fory_static_type_id() != TypeId::UNION {
             return Err(Error::not_allowed(
                 "register_union_by_name requires a union-compatible enum type",
@@ -893,6 +904,13 @@ impl TypeResolver {
         } else {
             id
         };
+        let supports_compatible_read = matches!(
+            actual_type_id,
+            x if x == TypeId::STRUCT as u32
+                || x == TypeId::COMPATIBLE_STRUCT as u32
+                || x == TypeId::NAMED_STRUCT as u32
+                || x == TypeId::NAMED_COMPATIBLE_STRUCT as u32
+        );
 
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
@@ -945,6 +963,12 @@ impl TypeResolver {
             }
         }
 
+        fn read_data_as_send_sync_any<T2: 'static + Serializer + ForyDefault>(
+            context: &mut ReadContext,
+        ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            T2::fory_read_data_as_send_sync_any(context)
+        }
+
         fn to_serializer<T2: 'static + Serializer>(
             boxed_any: Box<dyn Any>,
         ) -> Result<Box<dyn Serializer>, Error> {
@@ -967,15 +991,32 @@ impl TypeResolver {
             Ok(Box::new(T2::fory_read_compatible(context, type_info)?))
         }
 
-        let harness = Harness::new(
-            write::<T>,
-            read::<T>,
-            write_data::<T>,
-            read_data::<T>,
-            Some(read_compatible::<T>),
-            to_serializer::<T>,
-            build_type_infos::<T>,
-        );
+        fn read_compatible_as_send_sync_any<T2: 'static + StructSerializer + ForyDefault>(
+            context: &mut ReadContext,
+            type_info: Rc<TypeInfo>,
+        ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            T2::fory_read_compatible_as_send_sync_any(context, type_info)
+        }
+
+        let harness = Harness {
+            write_fn: write::<T>,
+            read_fn: read::<T>,
+            write_data_fn: write_data::<T>,
+            read_data_fn: read_data::<T>,
+            read_data_as_send_sync_any_fn: read_data_as_send_sync_any::<T>,
+            read_compatible_fn: if supports_compatible_read {
+                Some(read_compatible::<T>)
+            } else {
+                None
+            },
+            read_compatible_as_send_sync_any_fn: if supports_compatible_read {
+                Some(read_compatible_as_send_sync_any::<T>)
+            } else {
+                None
+            },
+            to_serializer: to_serializer::<T>,
+            build_type_infos: build_type_infos::<T>,
+        };
         let type_info = TypeInfo::new(
             actual_type_id,
             user_type_id,
@@ -1060,10 +1101,9 @@ impl TypeResolver {
 
     pub fn register_serializer_by_name<T: Serializer + ForyDefault>(
         &mut self,
-        namespace: &str,
-        type_name: &str,
+        name: &str,
     ) -> Result<(), Error> {
-        validate_named_registration(type_name, "register_serializer_by_name")?;
+        let (namespace, type_name) = split_named_registration(name, "register_serializer_by_name")?;
         let actual_type_id = get_ext_actual_type_id(0, true);
         let static_type_id = T::fory_static_type_id();
         if static_type_id != TypeId::EXT && static_type_id != TypeId::NAMED_EXT {
@@ -1166,6 +1206,12 @@ impl TypeResolver {
             }
         }
 
+        fn read_data_as_send_sync_any<T2: 'static + Serializer + ForyDefault>(
+            context: &mut ReadContext,
+        ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            T2::fory_read_data_as_send_sync_any(context)
+        }
+
         fn to_serializer<T2: 'static + Serializer>(
             boxed_any: Box<dyn Any>,
         ) -> Result<Box<dyn Serializer>, Error> {
@@ -1191,15 +1237,17 @@ impl TypeResolver {
         }
 
         // EXT types don't support fory_read_compatible
-        let harness = Harness::new(
-            write::<T>,
-            read::<T>,
-            write_data::<T>,
-            read_data::<T>,
-            None,
-            to_serializer::<T>,
-            build_type_infos::<T>,
-        );
+        let harness = Harness {
+            write_fn: write::<T>,
+            read_fn: read::<T>,
+            write_data_fn: write_data::<T>,
+            read_data_fn: read_data::<T>,
+            read_data_as_send_sync_any_fn: read_data_as_send_sync_any::<T>,
+            read_compatible_fn: None,
+            read_compatible_as_send_sync_any_fn: None,
+            to_serializer: to_serializer::<T>,
+            build_type_infos: build_type_infos::<T>,
+        };
 
         let user_type_id = if register_by_name {
             NO_USER_TYPE_ID
@@ -1253,27 +1301,6 @@ impl TypeResolver {
             .insert(rs_type_id, Rc::new(type_info.clone()));
         self.partial_type_infos.insert(rs_type_id, type_info);
         Ok(())
-    }
-
-    /// Register a generic trait type like List, Map, Set
-    pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
-        &mut self,
-    ) -> Result<(), Error> {
-        let rs_type_id = std::any::TypeId::of::<T>();
-        if self.type_info_map.contains_key(&rs_type_id) {
-            return Err(Error::type_error(format!(
-                "Type:{:?} already registered",
-                rs_type_id
-            )));
-        }
-        let type_id = T::fory_static_type_id();
-        if type_id != TypeId::LIST && type_id != TypeId::MAP && type_id != TypeId::SET {
-            return Err(Error::not_allowed(format!(
-                "register_generic_trait can only be used for generic trait types: List, Map, Set, but got type {}",
-                type_id as u32
-            )));
-        }
-        self.register_internal_serializer::<T>(type_id)
     }
 
     pub(crate) fn set_compatible(&mut self, compatible: bool) {

@@ -40,7 +40,7 @@ The same number must be used in every other language:
 fory.register(User.class, 100);
 ```
 
-### Strategy 2: Namespace + Type Name
+### Strategy 2: Name
 
 More self-describing. Good when multiple teams or packages define types independently and numeric ID coordination is impractical.
 
@@ -48,12 +48,12 @@ More self-describing. Good when multiple teams or packages define types independ
 ModelsForyModule.register(
   fory,
   User,
-  namespace: 'example',
-  typeName: 'User',
+  name: 'example.User',
 );
 ```
 
-Every runtime that reads or writes this type must use the same `namespace` and `typeName`.
+Every peer that reads or writes this type must use the same name. Use `.` inside `name`
+to add a namespace prefix.
 
 > **Do not mix strategies for the same type.** If one side uses a numeric ID and the other uses a name, deserialization will fail.
 
@@ -73,8 +73,7 @@ For types that you cannot annotate with `@ForyStruct()`, pass a serializer insta
 fory.registerSerializer(
   ExternalType,
   const ExternalTypeSerializer(),
-  namespace: 'example',
-  typeName: 'ExternalType',
+  name: 'example.ExternalType',
 );
 ```
 
@@ -89,7 +88,7 @@ See [Custom Serializers](custom-serializers.md) for how to implement a serialize
 
 ## Xlang Requirements
 
-The same numeric ID or `namespace + typeName` pair must be used in every runtime that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
+The same numeric ID or name must be used in every peer that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
 
 ## Related Topics
 

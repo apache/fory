@@ -34,7 +34,7 @@ val fory = ForyKotlin.builder()
   .requireClassRegistration(true)
   .build()
 
-fory.register<User>("example", "User")
+fory.register<User>("example.User")
 ```
 
 Application code should not reference generated serializer classes directly.

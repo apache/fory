@@ -40,15 +40,15 @@ class ObjectPayload:
 
 def roundtrip(data, limit, xlang=False, ref=False):
     """Serialize and deserialize with given collection size limit."""
-    writer = Fory(xlang=xlang, ref=ref)
-    reader = Fory(xlang=xlang, ref=ref, max_collection_size=limit)
+    writer = Fory(xlang=xlang, ref=ref, compatible=xlang)
+    reader = Fory(xlang=xlang, ref=ref, max_collection_size=limit, compatible=xlang)
     return reader.deserialize(writer.serialize(data))
 
 
 def roundtrip_binary(data, max_binary_size, xlang=False, ref=False):
     """Serialize and deserialize with given binary size limit."""
-    writer = Fory(xlang=xlang, ref=ref)
-    reader = Fory(xlang=xlang, ref=ref, max_binary_size=max_binary_size)
+    writer = Fory(xlang=xlang, ref=ref, compatible=xlang)
+    reader = Fory(xlang=xlang, ref=ref, max_binary_size=max_binary_size, compatible=xlang)
     return reader.deserialize(writer.serialize(data))
 
 
@@ -104,6 +104,7 @@ class TestCollectionSizeLimit:
         assert (
             Fory(
                 xlang=False,
+                compatible=False,
             ).max_collection_size
             == 1_000_000
         )
@@ -124,8 +125,8 @@ class TestCollectionSizeLimit:
     def test_object_field_count_exceeds_limit(self):
         obj = ObjectPayload()
         obj.value = 1
-        writer = Fory(xlang=False, ref=True, strict=False)
-        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0)
+        writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0, compatible=False)
         writer.register(ObjectPayload)
         reader.register(ObjectPayload)
 
@@ -139,8 +140,8 @@ class TestCollectionSizeLimit:
 
             return LocalPayload
 
-        writer = Fory(xlang=False, ref=True, strict=False)
-        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0)
+        writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0, compatible=False)
 
         with pytest.raises(ValueError, match="local class base size 1 exceeds"):
             reader.deserialize(writer.serialize(make_local_class()))
@@ -149,8 +150,8 @@ class TestCollectionSizeLimit:
         def local_function(value=1):
             return value
 
-        writer = Fory(xlang=False, ref=True, strict=False)
-        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0)
+        writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=0, compatible=False)
 
         with pytest.raises(ValueError, match="function default size 1 exceeds"):
             reader.deserialize(writer.serialize(local_function))
@@ -158,8 +159,8 @@ class TestCollectionSizeLimit:
     def test_object_ndarray_length_exceeds_limit(self):
         np = pytest.importorskip("numpy")
         arr = np.array([object(), object()], dtype=object)
-        writer = Fory(xlang=False, ref=True, strict=False)
-        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=1)
+        writer = Fory(xlang=False, ref=True, strict=False, compatible=False)
+        reader = Fory(xlang=False, ref=True, strict=False, max_collection_size=1, compatible=False)
 
         with pytest.raises(ValueError, match="ndarray object size 2 exceeds"):
             reader.deserialize(writer.serialize(arr))
@@ -172,6 +173,7 @@ class TestBinarySizeLimit:
         assert (
             Fory(
                 xlang=False,
+                compatible=False,
             ).max_binary_size
             == 64 * 1024 * 1024
         )
@@ -187,8 +189,8 @@ class TestBinarySizeLimit:
 
     @pytest.mark.parametrize("xlang", [False, True])
     def test_string_exceeds_limit_fails(self, xlang):
-        writer = Fory(xlang=xlang)
-        reader = Fory(xlang=xlang, max_binary_size=1)
+        writer = Fory(xlang=xlang, compatible=xlang)
+        reader = Fory(xlang=xlang, max_binary_size=1, compatible=xlang)
         with pytest.raises(ValueError, match="String size 2 exceeds"):
             reader.deserialize(writer.serialize("xx"))
 
@@ -197,17 +199,18 @@ class TestBinarySizeLimit:
 
         payload = Fory(
             xlang=False,
+            compatible=False,
         ).serialize(b"x" * 200)
         buf = Buffer.from_stream(io.BytesIO(payload), max_binary_size=100)
         with pytest.raises(ValueError, match="exceeds the configured limit"):
-            Fory(xlang=False, max_binary_size=100).deserialize(buf)
+            Fory(xlang=False, max_binary_size=100, compatible=False).deserialize(buf)
 
     def test_in_band_buffer_object_respects_limit(self):
         payload = b"x" * 200
-        data = Fory(xlang=False, ref=True).serialize(payload, buffer_callback=lambda _buffer: True)
+        data = Fory(xlang=False, ref=True, compatible=False).serialize(payload, buffer_callback=lambda _buffer: True)
 
         with pytest.raises(ValueError, match="exceeds the configured limit"):
-            Fory(xlang=False, ref=True, max_binary_size=100).deserialize(data, buffers=[])
+            Fory(xlang=False, ref=True, max_binary_size=100, compatible=False).deserialize(data, buffers=[])
 
     def test_malformed_metastring_ref_raises_value_error(self):
         payload = bytes([1, 255, TypeId.NAMED_STRUCT, 3])

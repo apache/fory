@@ -436,13 +436,15 @@ class DartGenerator(BaseGenerator):
         escaped = value.replace("\\", "\\\\").replace("'", "\\'")
         return f"'{escaped}'"
 
-    def _registration_defaults(self, type_def: object) -> Tuple[str, str, str]:
+    def _registration_defaults(self, type_def: object) -> Tuple[str, str]:
         if self.should_register_by_id(type_def):
-            return str(type_def.type_id), "null", "null"
+            return str(type_def.type_id), "null"
+        name = self.registration_type_name(type_def)
+        if self.package:
+            name = f"{self.package}.{name}"
         return (
             "null",
-            self._dart_string_literal(self.package or ""),
-            self._dart_string_literal(self.registration_type_name(type_def)),
+            self._dart_string_literal(name),
         )
 
     def _supports_direct_container_cast(
@@ -1300,12 +1302,10 @@ class DartGenerator(BaseGenerator):
 
         def registration_lines(type_def: object, call_line: str) -> List[str]:
             n = self.local_name(type_def)
-            default_id, default_namespace, default_type_name = (
-                self._registration_defaults(type_def)
-            )
+            default_id, default_name = self._registration_defaults(type_def)
             return [
                 f"{self.indent_str * (indent + 2)}if (type == {n}) {{",
-                f"{self.indent_str * (indent + 3)}{call_line.format(id=default_id, namespace=default_namespace, type_name=default_type_name)}",
+                f"{self.indent_str * (indent + 3)}{call_line.format(id=default_id, name=default_name)}",
                 f"{self.indent_str * (indent + 3)}return;",
                 f"{self.indent_str * (indent + 2)}}}",
             ]
@@ -1318,7 +1318,7 @@ class DartGenerator(BaseGenerator):
             lines.extend(
                 registration_lines(
                     enum,
-                    f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                    f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, name: {{name}});",
                 )
             )
         for union in self.schema.unions:
@@ -1328,7 +1328,7 @@ class DartGenerator(BaseGenerator):
             lines.extend(
                 registration_lines(
                     union,
-                    f"fory.registerSerializer({n}, const _{n}ForySerializer(), id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                    f"fory.registerSerializer({n}, const _{n}ForySerializer(), id: {{id}}, name: {{name}});",
                 )
             )
 
@@ -1340,7 +1340,7 @@ class DartGenerator(BaseGenerator):
             lines.extend(
                 registration_lines(
                     message,
-                    f"registerGeneratedStruct(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                    f"registerGeneratedStruct(fory, {schema_name}, id: {{id}}, name: {{name}});",
                 )
             )
             for enum in message.nested_enums:
@@ -1349,7 +1349,7 @@ class DartGenerator(BaseGenerator):
                 lines.extend(
                     registration_lines(
                         enum,
-                        f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                        f"registerGeneratedEnum(fory, {schema_name}, id: {{id}}, name: {{name}});",
                     )
                 )
             for union in message.nested_unions:
@@ -1357,7 +1357,7 @@ class DartGenerator(BaseGenerator):
                 lines.extend(
                     registration_lines(
                         union,
-                        f"fory.registerSerializer({un}, const _{un}ForySerializer(), id: {{id}}, namespace: {{namespace}}, typeName: {{type_name}});",
+                        f"fory.registerSerializer({un}, const _{un}ForySerializer(), id: {{id}}, name: {{name}});",
                     )
                 )
             for nested in message.nested_messages:

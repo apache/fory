@@ -2,40 +2,52 @@
 
 package org.apache.fory.benchmark.state.generated;
 
-import java.nio.*;
-import java.lang.*;
-
-import com.google.flatbuffers.*;
+import com.google.flatbuffers.BaseVector;
+import com.google.flatbuffers.BooleanVector;
+import com.google.flatbuffers.ByteVector;
+import com.google.flatbuffers.Constants;
+import com.google.flatbuffers.DoubleVector;
+import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.flatbuffers.FloatVector;
+import com.google.flatbuffers.IntVector;
+import com.google.flatbuffers.LongVector;
+import com.google.flatbuffers.ShortVector;
+import com.google.flatbuffers.StringVector;
+import com.google.flatbuffers.Struct;
+import com.google.flatbuffers.Table;
+import com.google.flatbuffers.UnionVector;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 @SuppressWarnings("unused")
 public final class FBSBar extends Table {
-  public static void ValidateVersion() { Constants.FLATBUFFERS_2_0_0(); }
+  public static void ValidateVersion() { Constants.FLATBUFFERS_25_2_10(); }
   public static FBSBar getRootAsFBSBar(ByteBuffer _bb) { return getRootAsFBSBar(_bb, new FBSBar()); }
   public static FBSBar getRootAsFBSBar(ByteBuffer _bb, FBSBar obj) { _bb.order(ByteOrder.LITTLE_ENDIAN); return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb)); }
   public void __init(int _i, ByteBuffer _bb) { __reset(_i, _bb); }
   public FBSBar __assign(int _i, ByteBuffer _bb) { __init(_i, _bb); return this; }
 
-  public FBSFoo f1() { return f1(new FBSFoo()); }
-  public FBSFoo f1(FBSFoo obj) { int o = __offset(4); return o != 0 ? obj.__assign(__indirect(o + bb_pos), bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f1() { return f1(new org.apache.fory.benchmark.state.generated.FBSFoo()); }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f1(org.apache.fory.benchmark.state.generated.FBSFoo obj) { int o = __offset(4); return o != 0 ? obj.__assign(__indirect(o + bb_pos), bb) : null; }
   public String f2() { int o = __offset(6); return o != 0 ? __string(o + bb_pos) : null; }
   public ByteBuffer f2AsByteBuffer() { return __vector_as_bytebuffer(6, 1); }
   public ByteBuffer f2InByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 6, 1); }
-  public FBSFoo f3(int j) { return f3(new FBSFoo(), j); }
-  public FBSFoo f3(FBSFoo obj, int j) { int o = __offset(8); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f3(int j) { return f3(new org.apache.fory.benchmark.state.generated.FBSFoo(), j); }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f3(org.apache.fory.benchmark.state.generated.FBSFoo obj, int j) { int o = __offset(8); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
   public int f3Length() { int o = __offset(8); return o != 0 ? __vector_len(o) : 0; }
-  public FBSFoo.Vector f3Vector() { return f3Vector(new FBSFoo.Vector()); }
-  public FBSFoo.Vector f3Vector(FBSFoo.Vector obj) { int o = __offset(8); return o != 0 ? obj.__assign(__vector(o), 4, bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSFoo.Vector f3Vector() { return f3Vector(new org.apache.fory.benchmark.state.generated.FBSFoo.Vector()); }
+  public org.apache.fory.benchmark.state.generated.FBSFoo.Vector f3Vector(org.apache.fory.benchmark.state.generated.FBSFoo.Vector obj) { int o = __offset(8); return o != 0 ? obj.__assign(__vector(o), 4, bb) : null; }
   public int f4Key(int j) { int o = __offset(10); return o != 0 ? bb.getInt(__vector(o) + j * 4) : 0; }
   public int f4KeyLength() { int o = __offset(10); return o != 0 ? __vector_len(o) : 0; }
   public IntVector f4KeyVector() { return f4KeyVector(new IntVector()); }
   public IntVector f4KeyVector(IntVector obj) { int o = __offset(10); return o != 0 ? obj.__assign(__vector(o), bb) : null; }
   public ByteBuffer f4KeyAsByteBuffer() { return __vector_as_bytebuffer(10, 4); }
   public ByteBuffer f4KeyInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 10, 4); }
-  public FBSFoo f4Value(int j) { return f4Value(new FBSFoo(), j); }
-  public FBSFoo f4Value(FBSFoo obj, int j) { int o = __offset(12); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f4Value(int j) { return f4Value(new org.apache.fory.benchmark.state.generated.FBSFoo(), j); }
+  public org.apache.fory.benchmark.state.generated.FBSFoo f4Value(org.apache.fory.benchmark.state.generated.FBSFoo obj, int j) { int o = __offset(12); return o != 0 ? obj.__assign(__indirect(__vector(o) + j * 4), bb) : null; }
   public int f4ValueLength() { int o = __offset(12); return o != 0 ? __vector_len(o) : 0; }
-  public FBSFoo.Vector f4ValueVector() { return f4ValueVector(new FBSFoo.Vector()); }
-  public FBSFoo.Vector f4ValueVector(FBSFoo.Vector obj) { int o = __offset(12); return o != 0 ? obj.__assign(__vector(o), 4, bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSFoo.Vector f4ValueVector() { return f4ValueVector(new org.apache.fory.benchmark.state.generated.FBSFoo.Vector()); }
+  public org.apache.fory.benchmark.state.generated.FBSFoo.Vector f4ValueVector(org.apache.fory.benchmark.state.generated.FBSFoo.Vector obj) { int o = __offset(12); return o != 0 ? obj.__assign(__vector(o), 4, bb) : null; }
   public int f5() { int o = __offset(14); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
   public long f6() { int o = __offset(16); return o != 0 ? bb.getLong(o + bb_pos) : 0L; }
   public float f7() { int o = __offset(18); return o != 0 ? bb.getFloat(o + bb_pos) : 0.0f; }
@@ -57,8 +69,8 @@ public final class FBSBar extends Table {
       int f1Offset,
       int f2Offset,
       int f3Offset,
-      int f4_keyOffset,
-      int f4_valueOffset,
+      int f4KeyOffset,
+      int f4ValueOffset,
       int f5,
       long f6,
       float f7,
@@ -72,8 +84,8 @@ public final class FBSBar extends Table {
     FBSBar.addF9(builder, f9Offset);
     FBSBar.addF7(builder, f7);
     FBSBar.addF5(builder, f5);
-    FBSBar.addF4Value(builder, f4_valueOffset);
-    FBSBar.addF4Key(builder, f4_keyOffset);
+    FBSBar.addF4Value(builder, f4ValueOffset);
+    FBSBar.addF4Key(builder, f4KeyOffset);
     FBSBar.addF3(builder, f3Offset);
     FBSBar.addF2(builder, f2Offset);
     FBSBar.addF1(builder, f1Offset);
@@ -114,4 +126,3 @@ public final class FBSBar extends Table {
     public FBSBar get(FBSBar obj, int j) {  return obj.__assign(__indirect(__element(j), bb), bb); }
   }
 }
-

@@ -19,6 +19,7 @@
 
 #include "fory/serialization/type_resolver.h"
 #include "fory/meta/meta_string.h"
+#include "fory/serialization/compatible_scalar.h"
 #include "fory/serialization/context.h"
 #include "fory/thirdparty/MurmurHash3.h"
 #include "fory/type/type.h"
@@ -866,8 +867,8 @@ TypeMeta::check_struct_version(int32_t read_version, int32_t local_version,
     return Unexpected(Error::type_error(
         "Read class " + type_name + " version " + std::to_string(read_version) +
         " is not consistent with " + std::to_string(local_version) +
-        ", please align struct field types and names, or use compatible mode "
-        "of Fory by Fory#compatible(true)"));
+        ", please align struct field types and names, or keep compatible mode "
+        "enabled on every Fory peer"));
   }
   return {};
 }
@@ -986,7 +987,165 @@ bool name_sorter(const FieldInfo &a, const FieldInfo &b) {
   return compare_field_sort_key(a, b) < 0;
 }
 
+bool allows_empty_generic_fallback(uint32_t type_id) {
+  return type_id == static_cast<uint32_t>(TypeId::LIST) ||
+         type_id == static_cast<uint32_t>(TypeId::SET) ||
+         type_id == static_cast<uint32_t>(TypeId::MAP);
+}
+
+bool union_type_ids_compatible(uint32_t local_type_id,
+                               uint32_t remote_type_id) {
+  auto is_union = [](uint32_t type_id) {
+    TypeId tid = static_cast<TypeId>(type_id);
+    return tid == TypeId::UNION || tid == TypeId::TYPED_UNION ||
+           tid == TypeId::NAMED_UNION;
+  };
+  return is_union(local_type_id) && is_union(remote_type_id);
+}
+
+bool direct_field_types_compatible(const FieldType &local,
+                                   const FieldType &remote) {
+  if (compatible_scalar_field_types(local.type_id, remote.type_id)) {
+    if (local.track_ref != remote.track_ref) {
+      return false;
+    }
+    if ((local.track_ref || remote.track_ref) &&
+        (local.type_id != remote.type_id ||
+         local.nullable != remote.nullable)) {
+      return false;
+    }
+    if (!local.track_ref && (local.type_id != remote.type_id ||
+                             local.nullable != remote.nullable)) {
+      return false;
+    }
+  }
+
+  if (field_types_compatible(local, remote)) {
+    return true;
+  }
+
+  uint32_t array_element_type_id = 0;
+  if (local.type_id == static_cast<uint32_t>(TypeId::LIST) &&
+      remote.generics.size() == 0 &&
+      primitive_array_element_type_id(remote.type_id, array_element_type_id) &&
+      local.generics.size() == 1) {
+    return compatible_fingerprint_type_id(local.generics[0].type_id) ==
+           compatible_fingerprint_type_id(array_element_type_id);
+  }
+  if (remote.type_id == static_cast<uint32_t>(TypeId::LIST) &&
+      local.generics.size() == 0 &&
+      primitive_array_element_type_id(local.type_id, array_element_type_id) &&
+      remote.generics.size() == 1) {
+    return compatible_fingerprint_type_id(remote.generics[0].type_id) ==
+           compatible_fingerprint_type_id(array_element_type_id);
+  }
+  return false;
+}
+
 } // anonymous namespace
+
+uint32_t compatible_fingerprint_type_id(uint32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::UNKNOWN:
+    return static_cast<uint32_t>(TypeId::STRUCT);
+  case TypeId::ENUM:
+  case TypeId::NAMED_ENUM:
+    return static_cast<uint32_t>(TypeId::ENUM);
+  case TypeId::EXT:
+  case TypeId::NAMED_EXT:
+    return static_cast<uint32_t>(TypeId::EXT);
+  case TypeId::BINARY:
+  case TypeId::INT8_ARRAY:
+  case TypeId::UINT8_ARRAY:
+    return static_cast<uint32_t>(TypeId::BINARY);
+  case TypeId::INT32:
+  case TypeId::VARINT32:
+    return static_cast<uint32_t>(TypeId::VARINT32);
+  case TypeId::INT64:
+  case TypeId::VARINT64:
+  case TypeId::TAGGED_INT64:
+    return static_cast<uint32_t>(TypeId::VARINT64);
+  case TypeId::UINT32:
+  case TypeId::VAR_UINT32:
+    return static_cast<uint32_t>(TypeId::VAR_UINT32);
+  case TypeId::UINT64:
+  case TypeId::VAR_UINT64:
+  case TypeId::TAGGED_UINT64:
+    return static_cast<uint32_t>(TypeId::VAR_UINT64);
+  default:
+    return type_id;
+  }
+}
+
+bool field_types_compatible(const FieldType &local, const FieldType &remote) {
+  if (local.compatible_fingerprint == remote.compatible_fingerprint) {
+    return true;
+  }
+  if (union_type_ids_compatible(local.type_id, remote.type_id)) {
+    return true;
+  }
+  return local.type_id == remote.type_id &&
+         allows_empty_generic_fallback(local.type_id) &&
+         (local.generics.empty() || remote.generics.empty());
+}
+
+bool primitive_array_element_type_id(uint32_t array_type_id,
+                                     uint32_t &element_type_id) {
+  switch (static_cast<TypeId>(array_type_id)) {
+  case TypeId::BOOL_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::BOOL);
+    return true;
+  case TypeId::INT8_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::INT8);
+    return true;
+  case TypeId::INT16_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::INT16);
+    return true;
+  case TypeId::INT32_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::VARINT32);
+    return true;
+  case TypeId::INT64_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::VARINT64);
+    return true;
+  case TypeId::FLOAT16_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::FLOAT16);
+    return true;
+  case TypeId::FLOAT32_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::FLOAT32);
+    return true;
+  case TypeId::FLOAT64_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::FLOAT64);
+    return true;
+  case TypeId::UINT8_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::UINT8);
+    return true;
+  case TypeId::UINT16_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::UINT16);
+    return true;
+  case TypeId::UINT32_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::UINT32);
+    return true;
+  case TypeId::UINT64_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::UINT64);
+    return true;
+  case TypeId::BFLOAT16_ARRAY:
+    element_type_id = static_cast<uint32_t>(TypeId::BFLOAT16);
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool field_types_compatible_top_level(const FieldType &local,
+                                      const FieldType &remote) {
+  return direct_field_types_compatible(local, remote) ||
+         (!local.track_ref && !remote.track_ref &&
+          compatible_scalar_field_types(local.type_id, remote.type_id));
+}
 
 std::vector<FieldInfo>
 TypeMeta::sort_field_infos(std::vector<FieldInfo> fields) {
@@ -1098,8 +1257,11 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
           if (used[i] || local_fields[i].field_id >= 0) {
             continue;
           }
-          if (field_types_compatible_top_level(local_fields[i].field_type,
-                                               remote_field.field_type)) {
+          // Scalar conversion requires a tag or canonical-name match; the
+          // type-only fallback is only for schemas whose scalar identity
+          // already matches, otherwise unrelated fields can bind by value type.
+          if (direct_field_types_compatible(local_fields[i].field_type,
+                                            remote_field.field_type)) {
             local_index = i;
             break;
           }

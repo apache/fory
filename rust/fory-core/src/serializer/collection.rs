@@ -536,6 +536,13 @@ fn list_element_type_matches_array(list: &FieldType, array: &FieldType) -> bool 
     })
 }
 
+pub(super) fn compatible_list_array_field(local: &FieldType, remote: &FieldType) -> bool {
+    (local.type_id == type_id::LIST && list_element_type_matches_array(local, remote))
+        || (remote.type_id == type_id::LIST
+            && !remote.generics.is_empty()
+            && list_element_type_matches_array(remote, local))
+}
+
 fn primitive_array_element_type_matches(
     array_element_type_id: u32,
     list_element_type_id: u32,

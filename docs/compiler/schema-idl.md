@@ -888,8 +888,8 @@ message Person [id=100] {
 ### Rules
 
 - Case IDs must be non-negative and unique within the union
-- Runtime unknown-case markers only select the carrier and do not add entries to
-  the schema case table
+- Language-specific unknown-case markers only select the carrier and do not add
+  entries to the schema case table
 - Cases cannot be `optional` or `ref`
 - Union cases support field options for payload metadata, such as scalar encoding
   and collection element metadata
@@ -1052,30 +1052,30 @@ message Node {
 | Java                  | `Node parent`  | `Node parent` with `@Ref`                  |
 | Python                | `parent: Node` | `parent: Node = pyfory.field(ref=True)`    |
 | Go                    | `Parent Node`  | `Parent *Node` with `fory:"ref"`           |
-| Rust                  | `parent: Node` | `parent: Rc<Node>`                         |
+| Rust                  | `parent: Node` | `parent: Arc<Node>`                        |
 | C++                   | `Node parent`  | `std::shared_ptr<Node> parent`             |
-| C#                    | `Node parent`  | `Node? parent` with runtime ref tracking   |
+| C#                    | `Node parent`  | `Node? parent` with reference tracking     |
 | JavaScript/TypeScript | `parent: Node` | `parent: Node` (no ref distinction)        |
-| Swift                 | `Node parent`  | class reference with runtime ref tracking  |
+| Swift                 | `Node parent`  | class reference with reference tracking    |
 | Dart                  | `Node parent`  | `Node parent` with `@ForyField(ref: true)` |
 | Scala                 | `parent: Node` | `@Ref parent: Node`                        |
 | Kotlin                | `parent: Node` | `@Ref parent: Node?`                       |
 
-Rust uses `Rc` and `RcWeak` by default for ref-tracked fields. Use
-`ref(thread_safe=true)` when the generated Rust type must use `Arc` or
-`ArcWeak` for cross-thread shared ownership. This setting is a Rust codegen
-carrier choice; it does not change the wire format or make the referenced value
-itself thread-safe. For protobuf option syntax, see
+Rust uses `Arc` and `ArcWeak` by default for ref-tracked fields. Use
+`ref(thread_safe=false)` when a generated Rust type must use single-threaded
+`Rc` or `RcWeak` carriers. This setting is a Rust codegen carrier choice; it
+does not change the wire format or make the referenced value itself
+thread-safe. For protobuf option syntax, see
 [Protocol Buffers IDL Support](protobuf-idl.md#field-level-options).
 
 Rust pointer carrier mapping:
 
-| Fory IDL                                       | Rust type       |
-| ---------------------------------------------- | --------------- |
-| `ref Node parent`                              | `Rc<Node>`      |
-| `ref(thread_safe=true) Node parent`            | `Arc<Node>`     |
-| `ref(weak=true) Node parent`                   | `RcWeak<Node>`  |
-| `ref(weak=true, thread_safe=true) Node parent` | `ArcWeak<Node>` |
+| Fory IDL                                        | Rust type       |
+| ----------------------------------------------- | --------------- |
+| `ref Node parent`                               | `Arc<Node>`     |
+| `ref(thread_safe=false) Node parent`            | `Rc<Node>`      |
+| `ref(weak=true) Node parent`                    | `ArcWeak<Node>` |
+| `ref(weak=true, thread_safe=false) Node parent` | `RcWeak<Node>`  |
 
 #### `list`
 
@@ -1127,10 +1127,11 @@ accepted as an alias for `list`.
 | ----------------------- | ---------------------------------- | --------------------- | ----------------------- | --------------------- | ----------------------------------------- | ------------------------------------------------------------- | ---------------------- |
 | `optional list<string>` | `@Nullable List<String>`           | `Optional[List[str]]` | `[]string` + `nullable` | `Option<Vec<String>>` | `std::optional<std::vector<std::string>>` | `List<String>?`                                               | `Option[List[String]]` |
 | `list<optional string>` | `List<String>` (nullable elements) | `List[Optional[str]]` | `[]*string`             | `Vec<Option<String>>` | `std::vector<std::optional<std::string>>` | `List<String?>`                                               | `List[Option[String]]` |
-| `list<ref User>`        | `List<@Ref User>`                  | `List[User]`          | `[]*User` + `ref=false` | `Vec<Rc<User>>`       | `std::vector<std::shared_ptr<User>>`      | `List<User>` + `@ListField(element: DeclaredType(ref: true))` | `List[User @Ref]`      |
+| `list<ref User>`        | `List<@Ref User>`                  | `List[User]`          | `[]*User` + `ref=false` | `Vec<Arc<User>>`      | `std::vector<std::shared_ptr<User>>`      | `List<User>` + `@ListField(element: DeclaredType(ref: true))` | `List[User @Ref]`      |
 
-Use `ref(thread_safe=true)` in Fory IDL (or `[(fory).thread_safe_pointer = true]` in protobuf)
-to generate `Arc` instead of `Rc` in Rust.
+Use `ref(thread_safe=false)` in Fory IDL (or
+`[(fory).thread_safe_pointer = false]` in protobuf) to generate `Rc` instead of
+`Arc` in Rust.
 
 ## Field Numbers
 
@@ -1160,7 +1161,7 @@ reference tracking, while `list<T>` and `array<T>` choose collection schema kind
 (see [Field Modifiers](#field-modifiers)).
 
 The compact tables in this section show common generated carriers. For the
-complete 1.0 runtime surface, including C#, Swift, Dart, Scala, and Kotlin, see
+complete 1.0 language support surface, including C#, Swift, Dart, Scala, and Kotlin, see
 the [xlang type-mapping specification](../specification/xlang_type_mapping.md).
 
 ### Primitive Types
@@ -1186,7 +1187,7 @@ the [xlang type-mapping specification](../specification/xlang_type_mapping.md).
 | `timestamp` | Date and time with timezone                    | Variable |
 | `duration`  | Duration                                       | Variable |
 | `decimal`   | Decimal value                                  | Variable |
-| `any`       | Dynamic value (runtime type)                   | Variable |
+| `any`       | Dynamic value (concrete type)                  | Variable |
 
 #### Boolean
 
@@ -1339,15 +1340,15 @@ Underscore spellings for integer encoding are not FDL type names.
 
 #### Any
 
-| Language              | Type           | Notes                |
-| --------------------- | -------------- | -------------------- |
-| Java                  | `Object`       | Runtime type written |
-| Python                | `Any`          | Runtime type written |
-| Go                    | `any`          | Runtime type written |
-| Rust                  | `Box<dyn Any>` | Runtime type written |
-| C++                   | `std::any`     | Runtime type written |
-| JavaScript/TypeScript | `any`          | Runtime type written |
-| Dart                  | `Object?`      | Runtime type written |
+| Language              | Type                         | Notes                                |
+| --------------------- | ---------------------------- | ------------------------------------ |
+| Java                  | `Object`                     | Concrete value type metadata written |
+| Python                | `Any`                        | Concrete value type metadata written |
+| Go                    | `any`                        | Concrete value type metadata written |
+| Rust                  | `Arc<dyn Any + Send + Sync>` | Concrete value type metadata written |
+| C++                   | `std::any`                   | Concrete value type metadata written |
+| JavaScript/TypeScript | `any`                        | Concrete value type metadata written |
+| Dart                  | `Object?`                    | Concrete value type metadata written |
 
 **Example:**
 
@@ -1369,25 +1370,25 @@ message Envelope [id=122] {
 
 **Generated Code (`Envelope.payload`):**
 
-| Language              | Generated Field Type    |
-| --------------------- | ----------------------- |
-| Java                  | `Object payload`        |
-| Python                | `payload: Any`          |
-| Go                    | `Payload any`           |
-| Rust                  | `payload: Box<dyn Any>` |
-| C++                   | `std::any payload`      |
-| JavaScript/TypeScript | `payload: any`          |
-| Dart                  | `Object? payload`       |
+| Language              | Generated Field Type                  |
+| --------------------- | ------------------------------------- |
+| Java                  | `Object payload`                      |
+| Python                | `payload: Any`                        |
+| Go                    | `Payload any`                         |
+| Rust                  | `payload: Arc<dyn Any + Send + Sync>` |
+| C++                   | `std::any payload`                    |
+| JavaScript/TypeScript | `payload: any`                        |
+| Dart                  | `Object? payload`                     |
 
 **Notes:**
 
 - `any` always writes a null flag (same as `nullable`) because values may be empty.
-- Allowed runtime values are limited to `bool`, `string`, `enum`, `message`, and `union`.
+- Allowed dynamic values are limited to `bool`, `string`, `enum`, `message`, and `union`.
   Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
   message or use explicit fields instead.
 - `ref` is not allowed on `any` fields (including list/map values). Wrap `any` in a message
   if you need reference tracking.
-- The runtime type must be registered in the target language schema/IDL registration; unknown
+- The concrete type must be registered in the target language schema/IDL registration; unknown
   types fail to deserialize.
 
 ### Named Types

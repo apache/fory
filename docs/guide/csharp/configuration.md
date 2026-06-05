@@ -20,9 +20,9 @@ license: |
 ---
 
 This page covers `ForyBuilder` options and default configuration values for Apache Fory™ C#.
-`Config` is an immutable runtime snapshot created by `ForyBuilder`.
+`Config` is an immutable configuration snapshot created by `ForyBuilder`.
 
-## Build a Runtime
+## Build a Fory Instance
 
 ```csharp
 using Apache.Fory;
@@ -59,21 +59,23 @@ Fory fory = Fory.Builder()
 ### `Compatible(bool enabled = false)`
 
 Enables schema evolution mode. C# uses the xlang wire format only, so compatible mode is enabled by
-default for independently deployed peers. Passing `false` opts into schema-consistent payloads when
-every writer and reader uses the same schema.
+default for independently deployed peers. Use `.Build()` without calling this method for the
+default compatible mode. Passing `false`, or calling `Compatible()` without an argument, opts into
+same-schema payloads. Use that only when every reader and writer always uses the same schema and you want faster serialization and smaller size. For cross-language payloads, call `Compatible(false)` only after verifying that every peer uses the same schema, or when native types are generated from Fory schema IDL.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Compatible(true)
+    .Compatible(false)
     .Build();
 ```
 
 ### `CheckStructVersion(bool enabled = false)`
 
-Enables strict schema hash validation for generated struct serializers.
+Checks the schema hash when you intentionally use same-schema payloads.
 
 ```csharp
 Fory fory = Fory.Builder()
+    .Compatible(false)
     .CheckStructVersion(true)
     .Build();
 ```
@@ -92,16 +94,7 @@ Fory fory = Fory.Builder()
 
 ## Common Configurations
 
-### Schema-consistent service
-
-```csharp
-Fory fory = Fory.Builder()
-    .TrackRef(false)
-    .Compatible(false)
-    .Build();
-```
-
-### Compatible cross-language service
+### Compatible service
 
 ```csharp
 Fory fory = Fory.Builder()
@@ -109,11 +102,20 @@ Fory fory = Fory.Builder()
     .Build();
 ```
 
+### Same-schema optimization
+
+Use this only when every reader and writer always uses the same schema.
+
+```csharp
+Fory fory = Fory.Builder()
+    .Compatible(false)
+    .Build();
+```
+
 ### Thread-safe service instance
 
 ```csharp
 ThreadSafeFory fory = Fory.Builder()
-    .Compatible(true)
     .TrackRef(true)
     .BuildThreadSafe();
 ```
@@ -123,7 +125,7 @@ ThreadSafeFory fory = Fory.Builder()
 Security-related configuration:
 
 - Register only the expected types before deserializing untrusted payloads.
-- Use `CheckStructVersion(true)` with `Compatible(false)` when exact schema matching is required.
+- Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 - Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
 - Prefer generated or registered concrete models over broad dynamic fields for untrusted input.
 

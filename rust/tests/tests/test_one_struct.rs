@@ -54,7 +54,7 @@ fn test_simple() {
         f1: HashMap::from([(1, vec![2])]),
         f2: String::from("hello"),
         f3: vec![1, 2, 3],
-        f5: String::from("f5"),
+        f5: String::from("5"),
         f6: vec![42],
         f7: 43,
         last: 44,
@@ -65,8 +65,8 @@ fn test_simple() {
     assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
-    assert_eq!(obj.f5, i8::default());
+    assert_eq!(obj.f5, 5);
     assert_eq!(obj.f6, Vec::<i16>::default());
-    assert_eq!(obj.f7, i16::default());
+    assert_eq!(obj.f7, 43);
     assert_eq!(animal.last, obj.last);
 }

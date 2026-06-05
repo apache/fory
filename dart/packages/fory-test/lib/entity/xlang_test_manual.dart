@@ -25,20 +25,13 @@ import 'package:fory/fory.dart';
 
 import 'xlang_test_models.dart';
 
-bool registerXlangManualType(
-  Fory fory,
-  Type type, {
-  int? id,
-  String? namespace,
-  String? typeName,
-}) {
+bool registerXlangManualType(Fory fory, Type type, {int? id, String? name}) {
   if (type == MyExt) {
     fory.registerSerializer(
       MyExt,
       const _MyExtSerializer(),
       id: id,
-      namespace: namespace,
-      typeName: typeName,
+      name: name,
     );
     return true;
   }
@@ -47,8 +40,7 @@ bool registerXlangManualType(
       Union2,
       const _Union2Serializer(),
       id: id,
-      namespace: namespace,
-      typeName: typeName,
+      name: name,
     );
     return true;
   }
@@ -57,8 +49,7 @@ bool registerXlangManualType(
       fory,
       _refOverrideContainerForySchema,
       id: id,
-      namespace: namespace,
-      typeName: typeName,
+      name: name,
     );
     return true;
   }

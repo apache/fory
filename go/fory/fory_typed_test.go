@@ -26,7 +26,7 @@ import (
 // TestSerializeGenericPrimitives tests Serialize[T]/DeserializeWithCallbackBuffers[T] with primitives.
 // Both functions take pointers to avoid interface heap allocation and struct copy.
 func TestSerializeGenericPrimitives(t *testing.T) {
-	f := NewFory(WithXlang(false), WithRefTracking(true))
+	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 
 	t.Run("Bool", func(t *testing.T) {
 		val := true
@@ -133,7 +133,7 @@ func TestSerializeGenericPrimitives(t *testing.T) {
 }
 
 func TestDeserializeRejectsRootTypeMismatch(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	data := []byte{0, 0xff, byte(STRING)}
 	var result bool
@@ -145,7 +145,7 @@ func TestDeserializeRejectsRootTypeMismatch(t *testing.T) {
 }
 
 func TestDeserializeRejectsRootPrimitiveSliceTypeMismatch(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	data := []byte{0, 0xff, byte(BINARY)}
 	var int32Result []int32
@@ -157,7 +157,7 @@ func TestDeserializeRejectsRootPrimitiveSliceTypeMismatch(t *testing.T) {
 }
 
 func TestDeserializeByteSliceAcceptsUint8ArrayRootType(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 	buf := NewByteBuffer(nil)
 	buf.WriteByte(0)
 	buf.WriteInt8(NotNullValueFlag)
@@ -171,9 +171,9 @@ func TestDeserializeByteSliceAcceptsUint8ArrayRootType(t *testing.T) {
 }
 
 // TestSerializeGenericComplex tests Serialize[T]/DeserializeWithCallbackBuffers[T] with complex types.
-// These fall back to reflection-based serialization.
+// Struct wrappers must be registered explicitly before reflection-based serialization.
 func TestSerializeGenericComplex(t *testing.T) {
-	f := NewFory(WithXlang(false), WithRefTracking(true))
+	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 
 	t.Run("Struct", func(t *testing.T) {
 		type TestStruct struct {
@@ -199,6 +199,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 		type SliceWrapper struct {
 			Items []int32
 		}
+		require.NoError(t, f.RegisterStructByName(SliceWrapper{}, "example.SliceWrapper"))
 		original := SliceWrapper{Items: []int32{1, 2, 3, 4, 5}}
 		data, err := Serialize(f, &original)
 		require.NoError(t, err)
@@ -214,6 +215,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 		type MapWrapper struct {
 			Items map[string]int32
 		}
+		require.NoError(t, f.RegisterStructByName(MapWrapper{}, "example.MapWrapper"))
 		original := MapWrapper{Items: map[string]int32{"a": 1, "b": 2, "c": 3}}
 		data, err := Serialize(f, &original)
 		require.NoError(t, err)
@@ -227,7 +229,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 
 // TestSerializeDeserializeRoundTrip tests that serialized data can be correctly deserialized.
 func TestSerializeDeserializeRoundTrip(t *testing.T) {
-	f := NewFory(WithXlang(false), WithRefTracking(true))
+	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 
 	// Test that SerializeWithCallback[T] uses pointer-based fast path when available
 	t.Run("TypedSerializerPath", func(t *testing.T) {

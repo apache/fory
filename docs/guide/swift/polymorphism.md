@@ -56,7 +56,7 @@ struct DynamicHolder {
 
 ## Concrete Type Registration Still Applies
 
-If dynamic values contain user-defined runtime types, register those concrete types.
+If dynamic values contain user-defined types, register those concrete types.
 
 ```swift
 @ForyStruct
@@ -77,4 +77,4 @@ fory.register(Address.self, id: 100)
 
 ## Current Limitations
 
-- `AnyHashable` keys must wrap runtime values that are both `Hashable` and supported by Fory dynamic serialization
+- `AnyHashable` keys must wrap values that are both `Hashable` and supported by Fory dynamic serialization

@@ -127,8 +127,8 @@ fory = pyfory.Fory(xlang=False)
 # Register with type_id
 fory.register(MyClass, type_id=100, serializer=MySerializer(fory.type_resolver, MyClass))
 
-# Register with typename (for xlang)
-fory.register(MyClass, typename="com.example.MyClass", serializer=MySerializer(fory.type_resolver, MyClass))
+# Register with name (for xlang)
+fory.register(MyClass, name="com.example.MyClass", serializer=MySerializer(fory.type_resolver, MyClass))
 ```
 
 ## Related Topics

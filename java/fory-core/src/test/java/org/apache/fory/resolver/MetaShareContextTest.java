@@ -55,6 +55,7 @@ public class MetaShareContextTest extends ForyTestBase {
             .withRefTracking(true)
             .withMetaShare(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     for (Object o : new Object[] {Foo.create(), BeanB.createBeanB(2), BeanA.createBeanA(2)}) {
       checkMetaShare(fory, o);

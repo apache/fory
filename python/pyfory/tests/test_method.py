@@ -75,7 +75,7 @@ class TestMethodSerialization:
 
     def test_instance_method_serialization(self):
         """Test serialization of instance methods."""
-        fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+        fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
         class TestClass:
             def __init__(self, value):
@@ -96,7 +96,7 @@ class TestMethodSerialization:
 
     def test_classmethod_serialization(self):
         """Test serialization of class methods."""
-        fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+        fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
         class TestClass:
             class_var = 42
@@ -116,7 +116,7 @@ class TestMethodSerialization:
 
     def test_staticmethod_serialization(self):
         """Test serialization of static methods."""
-        fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+        fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
         class TestClass:
             @staticmethod
@@ -134,7 +134,7 @@ class TestMethodSerialization:
 
     def test_method_with_args_serialization(self):
         """Test serialization of methods with arguments."""
-        fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+        fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
         class TestClass:
             def __init__(self, base):
@@ -176,7 +176,7 @@ class TestMethodSerialization:
 
     def test_nested_class_method_serialization(self):
         """Test serialization of methods from nested classes."""
-        fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+        fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
         class OuterClass:
             class InnerClass:
@@ -196,7 +196,7 @@ class TestMethodSerialization:
 
 def test_classmethod_serialization():
     """Standalone test for classmethod serialization - reproduces the original error."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     class A:
         @classmethod
@@ -225,7 +225,7 @@ def test_classmethod_serialization():
 
 def test_staticmethod_serialization():
     """Standalone test for staticmethod serialization."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     class A:
         @staticmethod
@@ -243,7 +243,7 @@ def test_staticmethod_serialization():
 # Global class method tests
 def test_global_classmethod_serialization():
     """Test serialization of global class methods."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     method = GlobalTestClass.class_method
     serialized = fory.serialize(method)
@@ -256,7 +256,7 @@ def test_global_classmethod_serialization():
 
 def test_global_classmethod_with_args():
     """Test serialization of global class methods with arguments."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     method = GlobalTestClass.class_method_with_args
     serialized = fory.serialize(method)
@@ -269,7 +269,7 @@ def test_global_classmethod_with_args():
 
 def test_global_staticmethod_serialization():
     """Test serialization of global static methods."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     method = GlobalTestClass.static_method
     serialized = fory.serialize(method)
@@ -281,7 +281,7 @@ def test_global_staticmethod_serialization():
 
 def test_global_staticmethod_with_args():
     """Test serialization of global static methods with arguments."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     method = GlobalTestClass.static_method_with_args
     serialized = fory.serialize(method)
@@ -294,7 +294,7 @@ def test_global_staticmethod_with_args():
 
 def test_global_instance_method_serialization():
     """Test serialization of global instance methods."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     obj = GlobalTestClass("test_value")
     method = obj.instance_method
@@ -307,7 +307,7 @@ def test_global_instance_method_serialization():
 
 def test_multiple_global_classes():
     """Test serialization of methods from multiple global classes."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     # Test methods from different global classes
     method1 = GlobalTestClass.class_method
@@ -327,7 +327,7 @@ def test_multiple_global_classes():
 
 def test_global_class_inheritance():
     """Test serialization of methods from global classes with inheritance."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     # Test inherited class method
     method = GlobalClassWithInheritance.inherited_class_method
@@ -348,7 +348,7 @@ def test_global_class_inheritance():
 
 def test_global_methods_without_ref_tracking():
     """Test serialization of global class methods without reference tracking."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=False)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=False, compatible=False)
 
     # Global classes should work even without track_ref
     method = GlobalTestClass.class_method
@@ -361,7 +361,7 @@ def test_global_methods_without_ref_tracking():
 
 def test_global_method_collection():
     """Test serialization of collections containing global methods."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     methods = [
         GlobalTestClass.class_method,
@@ -379,7 +379,7 @@ def test_global_method_collection():
 
 def test_global_method_in_dict():
     """Test serialization of dictionaries containing global methods."""
-    fory = pyfory.Fory(xlang=False, strict=False, ref=True)
+    fory = pyfory.Fory(xlang=False, strict=False, ref=True, compatible=False)
 
     method_dict = {
         "class_method": GlobalTestClass.class_method,

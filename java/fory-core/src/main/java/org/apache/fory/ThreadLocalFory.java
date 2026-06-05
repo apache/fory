@@ -79,10 +79,10 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   @Override
   public void registerCallback(Consumer<Fory> callback) {
     synchronized (callbackLock) {
-      factoryCallback = factoryCallback.andThen(callback);
       synchronized (allFory) {
         allFory.keySet().forEach(callback);
       }
+      factoryCallback = factoryCallback.andThen(callback);
     }
   }
 

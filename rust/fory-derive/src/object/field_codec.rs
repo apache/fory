@@ -20,7 +20,9 @@ use super::field_meta::{
     ForyFieldMeta, IntEncoding,
 };
 use super::read::create_private_field_name;
-use super::util::get_type_id_by_type_ast;
+use super::util::{
+    get_type_id_by_type_ast, trait_object_is_any_send_sync, trait_object_is_any_without_auto_traits,
+};
 use crate::util::{is_arc_dyn_trait, is_box_dyn_trait, is_rc_dyn_trait, SourceField};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, ToTokens};
@@ -235,18 +237,28 @@ impl<'a> ResolvedField<'a> {
                 let call = self.codec_call();
                 quote! {
                     let remote_field_type = &_field.field_type;
-                    if let Some(value) = #call::read_compatible(
-                        context,
+                    if ::fory_core::serializer::codec::field_types_compatible(
                         local_field_type,
                         remote_field_type,
-                    )? {
-                        #var = Some(value);
+                    ) {
+                        #var = Some(#call::read_field_with_type(context, remote_field_type)?);
                     } else {
-                        let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
-                            remote_field_type.type_id,
-                            remote_field_type.nullable,
-                        );
-                        ::fory_core::serializer::skip::skip_field_value(context, remote_field_type, read_ref_flag)?;
+                        if let Some(value) = #call::read_compatible(
+                            context,
+                            local_field_type,
+                            remote_field_type,
+                        ).map_err(|err| ::fory_core::Error::invalid_data(
+                            format!("compatible field '{}': {}", _field.field_name.as_str(), err)
+                        ))? {
+                            #var = Some(value);
+                        } else {
+                            return Err(::fory_core::Error::invalid_data(format!(
+                                "compatible field '{}' cannot convert remote type {} to local type {}",
+                                _field.field_name.as_str(),
+                                remote_field_type.type_id,
+                                local_field_type.type_id,
+                            )));
+                        }
                     }
                 }
             }
@@ -273,11 +285,12 @@ impl<'a> ResolvedField<'a> {
                             read_type_info,
                         )?);
                     } else {
-                        let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
+                        return Err(::fory_core::Error::invalid_data(format!(
+                            "compatible field '{}' cannot convert remote type {} to local type {}",
+                            _field.field_name.as_str(),
                             remote_field_type.type_id,
-                            remote_field_type.nullable,
-                        );
-                        ::fory_core::serializer::skip::skip_field_value(context, remote_field_type, read_ref_flag)?;
+                            local_field_type.type_id,
+                        )));
                     }
                 }
             }
@@ -388,7 +401,7 @@ fn field_dispatch_for(
         && is_container_type(ty)
         && !is_vec_type(ty)
         && !contains_custom_trait_object(ty)
-        && !contains_exact_any_object(ty)
+        && !contains_any_object(ty)
     {
         return Ok(FieldDispatch::Serializer {
             field_type: field_type_expr_for(ty, nullable, track_ref)?,
@@ -531,8 +544,8 @@ pub(crate) fn codec_type_for(
                 )?;
                 if contains_custom_trait_object(key_ty)
                     || contains_custom_trait_object(value_ty)
-                    || contains_exact_any_object(key_ty)
-                    || contains_exact_any_object(value_ty)
+                    || contains_any_object(key_ty)
+                    || contains_any_object(value_ty)
                 {
                     return Ok(quote! {
                         ::fory_core::serializer::codec::HashMapCodec<#key_ty, #value_ty, #key_codec, #value_codec, #nullable, #track_ref>
@@ -737,14 +750,35 @@ pub(crate) fn codec_type_for(
         }
     }
 
-    if is_exact_any(ty, "Box") {
-        return Ok(quote! { ::fory_core::serializer::codec::AnyBoxCodec<#nullable, #track_ref> });
+    if let Some(trait_obj) = any_trait_object_for(ty, "Box") {
+        if trait_object_is_any_without_auto_traits(trait_obj) {
+            return Ok(
+                quote! { ::fory_core::serializer::codec::AnyBoxCodec<#nullable, #track_ref> },
+            );
+        }
+        return Ok(quote! {
+            compile_error!("Box<dyn Any> is the supported owned Any carrier")
+        });
     }
-    if is_exact_any(ty, "Rc") {
-        return Ok(quote! { ::fory_core::serializer::codec::AnyRcCodec<#nullable, #track_ref> });
+    if let Some(trait_obj) = any_trait_object_for(ty, "Rc") {
+        if trait_object_is_any_without_auto_traits(trait_obj) {
+            return Ok(
+                quote! { ::fory_core::serializer::codec::AnyRcCodec<#nullable, #track_ref> },
+            );
+        }
+        return Ok(quote! {
+            compile_error!("Rc<dyn Any> is the supported single-thread Any carrier")
+        });
     }
-    if is_exact_any(ty, "Arc") {
-        return Ok(quote! { ::fory_core::serializer::codec::AnyArcCodec<#nullable, #track_ref> });
+    if let Some(trait_obj) = any_trait_object_for(ty, "Arc") {
+        if trait_object_is_any_send_sync(trait_obj) {
+            return Ok(
+                quote! { ::fory_core::serializer::codec::AnyArcCodec<#nullable, #track_ref> },
+            );
+        }
+        return Ok(quote! {
+            compile_error!("Arc<dyn Any> is not a shared Send + Sync carrier; use Arc<dyn Any + Send + Sync>")
+        });
     }
 
     if let Some((_, trait_name)) = is_box_dyn_trait(ty) {
@@ -943,7 +977,7 @@ fn is_container_type(ty: &Type) -> bool {
 }
 
 fn contains_custom_trait_object(ty: &Type) -> bool {
-    if !is_exact_any(ty, "Box") && is_box_dyn_trait(ty).is_some() {
+    if any_trait_object_for(ty, "Box").is_none() && is_box_dyn_trait(ty).is_some() {
         return true;
     }
     if is_rc_dyn_trait(ty).is_some() || is_arc_dyn_trait(ty).is_some() {
@@ -967,22 +1001,25 @@ fn contains_custom_trait_object(ty: &Type) -> bool {
     })
 }
 
-fn contains_exact_any_object(ty: &Type) -> bool {
-    if is_exact_any(ty, "Box") || is_exact_any(ty, "Rc") || is_exact_any(ty, "Arc") {
+fn contains_any_object(ty: &Type) -> bool {
+    if any_trait_object_for(ty, "Box").is_some()
+        || any_trait_object_for(ty, "Rc").is_some()
+        || any_trait_object_for(ty, "Arc").is_some()
+    {
         return true;
     }
     if let Some(inner) = extract_option_inner_type(ty) {
-        return contains_exact_any_object(&inner);
+        return contains_any_object(&inner);
     }
     if let Type::Array(array) = ty {
-        return contains_exact_any_object(array.elem.as_ref());
+        return contains_any_object(array.elem.as_ref());
     }
     let Some((_, Some(args))) = type_name_and_args(ty) else {
         return false;
     };
     args.iter().any(|arg| {
         if let GenericArgument::Type(ty) = arg {
-            contains_exact_any_object(ty)
+            contains_any_object(ty)
         } else {
             false
         }
@@ -1252,17 +1289,17 @@ fn validate_serializer_backed_map_meta(
     Ok(())
 }
 
-fn is_exact_any(ty: &Type, owner: &str) -> bool {
+fn any_trait_object_for<'a>(ty: &'a Type, owner: &str) -> Option<&'a syn::TypeTraitObject> {
     let Some((name, Some(args))) = type_name_and_args(ty) else {
-        return false;
+        return None;
     };
     if name != owner {
-        return false;
+        return None;
     }
     let Some(GenericArgument::Type(Type::TraitObject(trait_obj))) = args.first() else {
-        return false;
+        return None;
     };
-    trait_obj.bounds.iter().any(|bound| {
+    if trait_obj.bounds.iter().any(|bound| {
         if let syn::TypeParamBound::Trait(trait_bound) = bound {
             trait_bound
                 .path
@@ -1272,7 +1309,11 @@ fn is_exact_any(ty: &Type, owner: &str) -> bool {
         } else {
             false
         }
-    })
+    }) {
+        Some(trait_obj)
+    } else {
+        None
+    }
 }
 
 fn is_primitive_array_type(ty: &Type) -> bool {

@@ -21,6 +21,7 @@ use fory_core::util::to_snake_case;
 use proc_macro2::TokenStream;
 use quote::{quote, ToTokens};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use syn::{Field, Fields, GenericArgument, Index, PathArguments, Type};
 
 /// Get field name for a field, handling both named and tuple struct fields.
@@ -122,7 +123,7 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
 
                 // Check smart pointers: Rc<T> / Arc<T>
                 // Only return true if:
-                // 1. Inner type is Rc<dyn Any> (polymorphic)
+                // 1. Inner type is dyn Any (polymorphic)
                 // 2. Inner type references the containing struct (forward reference)
                 if seg.ident == "Rc" || seg.ident == "Arc" {
                     if let PathArguments::AngleBracketed(args) = &seg.arguments {
@@ -133,12 +134,12 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
                                     if trait_obj
                                         .bounds
                                         .iter()
-                                        .any(|b| b.to_token_stream().to_string() == "Any")
+                                        .any(|b| trait_bound_ident(b).as_deref() == Some("Any"))
                                     {
-                                        // Rc<dyn Any> → return true
+                                        // Rc/Arc<dyn Any ...> needs polymorphic ref handling.
                                         return true;
                                     } else {
-                                        // Rc<dyn SomethingElse> → return false
+                                        // Rc/Arc<dyn SomethingElse> uses generated wrapper handling.
                                         return false;
                                     }
                                 }
@@ -927,6 +928,155 @@ pub(crate) fn is_unknown_case_type(ty: &Type) -> bool {
         segments.as_slice(),
         [owner, "types", "UnknownCase"] if *owner == "fory_core"
     )
+}
+
+pub(crate) fn type_param_send_sync_bounds(generics: &syn::Generics) -> HashSet<String> {
+    let mut params = HashSet::new();
+    for param in generics.type_params() {
+        if bounds_include_send_sync(&param.bounds) {
+            params.insert(param.ident.to_string());
+        }
+    }
+    if let Some(where_clause) = &generics.where_clause {
+        for predicate in &where_clause.predicates {
+            let syn::WherePredicate::Type(predicate_ty) = predicate else {
+                continue;
+            };
+            let Type::Path(type_path) = &predicate_ty.bounded_ty else {
+                continue;
+            };
+            let Some(segment) = type_path.path.segments.last() else {
+                continue;
+            };
+            if bounds_include_send_sync(&predicate_ty.bounds) {
+                params.insert(segment.ident.to_string());
+            }
+        }
+    }
+    params
+}
+
+pub(crate) fn all_type_params_send_sync(generics: &syn::Generics) -> bool {
+    let bounded = type_param_send_sync_bounds(generics);
+    generics
+        .type_params()
+        .all(|param| bounded.contains(&param.ident.to_string()))
+}
+
+pub(crate) fn type_is_send_sync(ty: &Type, send_sync_params: &HashSet<String>) -> bool {
+    match ty {
+        Type::Array(array) => type_is_send_sync(array.elem.as_ref(), send_sync_params),
+        Type::Tuple(tuple) => tuple
+            .elems
+            .iter()
+            .all(|elem| type_is_send_sync(elem, send_sync_params)),
+        Type::Path(type_path) => {
+            let Some(segment) = type_path.path.segments.last() else {
+                return false;
+            };
+            let name = segment.ident.to_string();
+            if send_sync_params.contains(&name) && matches!(segment.arguments, PathArguments::None)
+            {
+                return true;
+            }
+            match name.as_str() {
+                "bool" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize" | "u8" | "u16" | "u32"
+                | "u64" | "u128" | "usize" | "f32" | "f64" | "String" | "Date" | "Timestamp"
+                | "Duration" | "Decimal" | "float16" | "bfloat16" | "Float16" | "BFloat16"
+                | "UnknownCase" => true,
+                "Rc" | "RcWeak" | "RefCell" | "Cell" => false,
+                "Option" | "Vec" | "VecDeque" | "LinkedList" | "HashSet" | "BTreeSet"
+                | "BinaryHeap" | "Box" | "Arc" | "ArcWeak" | "Mutex" => {
+                    let Some(inner) = first_type_arg(&segment.arguments) else {
+                        return false;
+                    };
+                    match (name.as_str(), inner) {
+                        ("Box", Type::TraitObject(_)) => false,
+                        ("Arc", Type::TraitObject(trait_obj)) => {
+                            trait_object_is_any_send_sync(trait_obj)
+                        }
+                        (_, Type::TraitObject(_)) => false,
+                        _ => type_is_send_sync(inner, send_sync_params),
+                    }
+                }
+                "HashMap" | "BTreeMap" => {
+                    let Some((key, value)) = two_path_type_args(&segment.arguments) else {
+                        return false;
+                    };
+                    type_is_send_sync(key, send_sync_params)
+                        && type_is_send_sync(value, send_sync_params)
+                }
+                _ => true,
+            }
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn trait_object_is_any_send_sync(trait_obj: &syn::TypeTraitObject) -> bool {
+    trait_object_has_trait(trait_obj, "Any")
+        && trait_object_has_trait(trait_obj, "Send")
+        && trait_object_has_trait(trait_obj, "Sync")
+}
+
+pub(crate) fn trait_object_is_any_without_auto_traits(trait_obj: &syn::TypeTraitObject) -> bool {
+    trait_object_has_trait(trait_obj, "Any")
+        && !trait_object_has_trait(trait_obj, "Send")
+        && !trait_object_has_trait(trait_obj, "Sync")
+}
+
+fn first_type_arg(arguments: &PathArguments) -> Option<&Type> {
+    let PathArguments::AngleBracketed(args) = arguments else {
+        return None;
+    };
+    args.args.iter().find_map(|arg| match arg {
+        GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    })
+}
+
+fn two_path_type_args(arguments: &PathArguments) -> Option<(&Type, &Type)> {
+    let PathArguments::AngleBracketed(args) = arguments else {
+        return None;
+    };
+    let mut iter = args.args.iter().filter_map(|arg| match arg {
+        GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    });
+    Some((iter.next()?, iter.next()?))
+}
+
+fn bounds_include_send_sync(
+    bounds: &syn::punctuated::Punctuated<syn::TypeParamBound, syn::token::Plus>,
+) -> bool {
+    let mut has_send = false;
+    let mut has_sync = false;
+    for bound in bounds {
+        match trait_bound_ident(bound).as_deref() {
+            Some("Send") => has_send = true,
+            Some("Sync") => has_sync = true,
+            _ => {}
+        }
+    }
+    has_send && has_sync
+}
+
+fn trait_object_has_trait(trait_obj: &syn::TypeTraitObject, ident: &str) -> bool {
+    trait_obj
+        .bounds
+        .iter()
+        .any(|bound| trait_bound_ident(bound).as_deref() == Some(ident))
+}
+
+fn trait_bound_ident(bound: &syn::TypeParamBound) -> Option<String> {
+    let syn::TypeParamBound::Trait(trait_bound) = bound else {
+        return None;
+    };
+    trait_bound
+        .path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
 }
 
 // The typed-ADT forward-compatibility carrier is selected by a runtime marker,

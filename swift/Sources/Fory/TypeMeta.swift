@@ -34,20 +34,20 @@ private let noUserTypeID: UInt32 = UInt32.max
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
-  .lowerUpperDigitSpecial
+  .lowerUpperDigitSpecial,
 ]
 
 public let typeNameMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
   .lowerUpperDigitSpecial,
-  .firstToLowerSpecial
+  .firstToLowerSpecial,
 ]
 
 public let fieldNameMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
-  .lowerUpperDigitSpecial
+  .lowerUpperDigitSpecial,
 ]
 
 public final class TypeMeta: Equatable, @unchecked Sendable {
@@ -408,7 +408,8 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       throw ForyError.invalidData("unexpected trailing bytes in TypeMeta body")
     }
     if (header & Self.hashMask())
-      != Self.typeMetaHeaderHash(encodedBody, headerLowBits: header & ~Self.hashMask()) {
+      != Self.typeMetaHeaderHash(encodedBody, headerLowBits: header & ~Self.hashMask())
+    {
       throw ForyError.invalidData("invalid TypeMeta metadata hash")
     }
 
@@ -623,21 +624,27 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       var localMatch: (Int, FieldInfo)?
       if let fieldID = field.fieldID, fieldID >= 0 {
         if let candidate = fieldIndexByID[fieldID],
-          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType) {
+          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType)
+        {
           localMatch = candidate
         }
       }
 
       if localMatch == nil {
         if let candidate = fieldIndexByName[toSnakeCase(field.fieldName)],
-          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType) {
+          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType)
+        {
           localMatch = candidate
         }
       }
 
       if localMatch == nil {
         for localIndex in localFields.indices where !usedLocalFields[localIndex] {
-          if Self.isCompatibleFieldType(field.fieldType, localFields[localIndex].fieldType) {
+          if Self.isCompatibleFieldType(
+            field.fieldType,
+            localFields[localIndex].fieldType,
+            allowScalarConversion: false
+          ) {
             localMatch = (localIndex, localFields[localIndex])
             break
           }
@@ -681,20 +688,45 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
   private static func isCompatibleFieldType(
     _ remoteType: FieldType,
     _ localType: FieldType,
-    topLevel: Bool = true
+    topLevel: Bool = true,
+    allowScalarConversion: Bool = true
   ) -> Bool {
     if topLevel, isCompatibleTopLevelListArrayFieldType(remoteType, localType) {
       return true
     }
+    if topLevel,
+      remoteType.trackRef != localType.trackRef,
+      compatibleScalarKind(remoteType.typeID) != nil,
+      compatibleScalarKind(localType.typeID) != nil
+    {
+      return false
+    }
+    if topLevel,
+      remoteType.trackRef || localType.trackRef,
+      compatibleScalarKind(remoteType.typeID) != nil,
+      compatibleScalarKind(localType.typeID) != nil,
+      remoteType.typeID != localType.typeID || remoteType.nullable != localType.nullable
+    {
+      return false
+    }
+    if topLevel, allowScalarConversion, isCompatibleScalarFieldType(remoteType, localType) {
+      return true
+    }
     if normalizeCompatibleTypeIDForComparison(remoteType.typeID)
-      != normalizeCompatibleTypeIDForComparison(localType.typeID) {
+      != normalizeCompatibleTypeIDForComparison(localType.typeID)
+    {
       return false
     }
     if remoteType.generics.count != localType.generics.count {
       return false
     }
     for (remoteGeneric, localGeneric) in zip(remoteType.generics, localType.generics)
-    where !isCompatibleFieldType(remoteGeneric, localGeneric, topLevel: false) {
+    where !isCompatibleFieldType(
+      remoteGeneric,
+      localGeneric,
+      topLevel: false,
+      allowScalarConversion: false
+    ) {
       return false
     }
     return true
@@ -705,17 +737,17 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     _ localType: FieldType
   ) -> Bool {
     if remoteType.typeID == TypeId.list.rawValue {
-      return listFieldType(remoteType, matchesDenseArrayTypeID: localType.typeID)
+      return listElementMatchesDenseArrayTypeID(remoteType, arrayTypeID: localType.typeID)
     }
     if localType.typeID == TypeId.list.rawValue {
-      return listFieldType(localType, matchesDenseArrayTypeID: remoteType.typeID)
+      return listElementMatchesDenseArrayTypeID(localType, arrayTypeID: remoteType.typeID)
     }
     return false
   }
 
-  private static func listFieldType(
+  private static func listElementMatchesDenseArrayTypeID(
     _ listType: FieldType,
-    matchesDenseArrayTypeID arrayTypeID: UInt32
+    arrayTypeID: UInt32
   ) -> Bool {
     guard listType.typeID == TypeId.list.rawValue,
       let elementType = listType.generics.first
@@ -723,6 +755,87 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       return false
     }
     return TypeId.listElementTypeID(elementType.typeID, matchesDenseArrayTypeID: arrayTypeID)
+  }
+
+  private static func isCompatibleScalarFieldType(
+    _ remoteType: FieldType,
+    _ localType: FieldType
+  ) -> Bool {
+    guard remoteType.generics.isEmpty,
+      localType.generics.isEmpty,
+      !remoteType.trackRef,
+      !localType.trackRef,
+      remoteType.typeID != localType.typeID,
+      let remoteKind = compatibleScalarKind(remoteType.typeID),
+      let localKind = compatibleScalarKind(localType.typeID)
+    else {
+      return false
+    }
+    if remoteKind == .bool {
+      return localKind == .string || localKind.isNumeric
+    }
+    if localKind == .bool {
+      return remoteKind == .string || remoteKind.isNumeric
+    }
+    if remoteKind == .string {
+      return localKind.isNumeric
+    }
+    if localKind == .string {
+      return remoteKind.isNumeric
+    }
+    return remoteKind.isNumeric && localKind.isNumeric
+  }
+
+  private enum CompatibleScalarKind {
+    case bool
+    case string
+    case signedInteger
+    case unsignedInteger
+    case floatingPoint
+    case decimal
+
+    var isNumeric: Bool {
+      switch self {
+      case .signedInteger, .unsignedInteger, .floatingPoint, .decimal:
+        return true
+      case .bool, .string:
+        return false
+      }
+    }
+  }
+
+  private static func compatibleScalarKind(_ typeID: UInt32) -> CompatibleScalarKind? {
+    switch typeID {
+    case TypeId.bool.rawValue:
+      return .bool
+    case TypeId.string.rawValue:
+      return .string
+    case TypeId.int8.rawValue,
+      TypeId.int16.rawValue,
+      TypeId.int32.rawValue,
+      TypeId.varint32.rawValue,
+      TypeId.int64.rawValue,
+      TypeId.varint64.rawValue,
+      TypeId.taggedInt64.rawValue:
+      return .signedInteger
+    case TypeId.uint8.rawValue,
+      TypeId.uint16.rawValue,
+      TypeId.uint32.rawValue,
+      TypeId.varUInt32.rawValue,
+      TypeId.uint64.rawValue,
+      TypeId.varUInt64.rawValue,
+      TypeId.taggedUInt64.rawValue:
+      return .unsignedInteger
+    case TypeId.float16.rawValue,
+      TypeId.bfloat16.rawValue,
+      TypeId.float32.rawValue,
+      TypeId.float64.rawValue:
+      return .floatingPoint
+    case TypeId.decimal.rawValue:
+      return .decimal
+    default:
+      return nil
+    }
   }
 
   private static func normalizeCompatibleTypeIDForComparison(_ typeID: UInt32) -> UInt32 {

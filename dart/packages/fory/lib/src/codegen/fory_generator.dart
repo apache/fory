@@ -926,23 +926,8 @@ final class ForyGenerator extends Generator {
       ..writeln('    Fory fory,')
       ..writeln('    Type type, {')
       ..writeln('    int? id,')
-      ..writeln('    String? namespace,')
-      ..writeln('    String? typeName,')
-      ..writeln('  }) {')
-      ..writeln('    final hasNumeric = id != null;')
-      ..writeln('    final hasNamed = namespace != null || typeName != null;')
-      ..writeln('    if (hasNumeric == hasNamed) {')
-      ..writeln(
-        "      throw ArgumentError('Exactly one registration mode is required: id, or namespace + typeName.');",
-      )
-      ..writeln('    }')
-      ..writeln(
-        '    if (hasNamed && (namespace == null || typeName == null)) {',
-      )
-      ..writeln(
-        "      throw ArgumentError('Both namespace and typeName are required for named registration.');",
-      )
-      ..writeln('    }');
+      ..writeln('    String? name,')
+      ..writeln('  }) {');
 
     for (final enumSpec in enumSpecs) {
       final schemaName = '_${_toCamelCase(enumSpec.name)}ForySchema';
@@ -951,8 +936,7 @@ final class ForyGenerator extends Generator {
       output.writeln('      fory,');
       output.writeln('      $schemaName,');
       output.writeln('      id: id,');
-      output.writeln('      namespace: namespace,');
-      output.writeln('      typeName: typeName,');
+      output.writeln('      name: name,');
       output.writeln('    );');
       output.writeln('    return;');
       output.writeln('  }');
@@ -964,8 +948,7 @@ final class ForyGenerator extends Generator {
       output.writeln('      fory,');
       output.writeln('      $schemaName,');
       output.writeln('      id: id,');
-      output.writeln('      namespace: namespace,');
-      output.writeln('      typeName: typeName,');
+      output.writeln('      name: name,');
       output.writeln('    );');
       output.writeln('    return;');
       output.writeln('  }');

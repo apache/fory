@@ -22,6 +22,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
+import { CompatibleScalarConverter } from "../compatible/scalar";
 import "./array";
 import "./struct";
 import "./string";
@@ -38,6 +39,8 @@ import "./any";
 import "./union";
 import "./ext";
 import TypeResolver from "../typeResolver";
+
+CodegenRegistry.registerExternal(CompatibleScalarConverter);
 
 export class Gen {
   static external = CodegenRegistry.getExternal();

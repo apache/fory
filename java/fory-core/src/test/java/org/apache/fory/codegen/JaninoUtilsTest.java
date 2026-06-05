@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import org.apache.fory.platform.UnsafeOps;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.test.bean.Struct;
 import org.apache.fory.util.ClassLoaderUtils;
@@ -254,12 +253,8 @@ public class JaninoUtilsTest {
     // Compile all sources
     compiler.compile(sourceFinder.resources().toArray(new Resource[0]));
     // See https://github.com/janino-compiler/janino/issues/173
-    UnsafeOps.putObject(
-        classLoader, ReflectionUtils.getFieldOffset(classLoader.getClass(), "classLoader"), null);
-    UnsafeOps.putObject(
-        classLoader,
-        ReflectionUtils.getFieldOffset(classLoader.getClass(), "loadedIClasses"),
-        null);
+    ReflectionUtils.setObjectFieldValue(classLoader, "classLoader", null);
+    ReflectionUtils.setObjectFieldValue(classLoader, "loadedIClasses", null);
     byte[] byteCodes = classes.entrySet().iterator().next().getValue();
     ClassLoaderUtils.tryDefineClassesInClassLoader("B", dep, dep.getClassLoader(), byteCodes);
     Class<?> cls = dep.getClassLoader().loadClass("B");

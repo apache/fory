@@ -21,11 +21,11 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 ## Crates
 
-| Crate                                                                       | Description                       | Version                                                                                               |
-| --------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
+| Crate                                                                       | Description                       | Version                                       |
+| --------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------- |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [1.1.0](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [1.1.0](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [1.1.0](https://crates.io/crates/fory-derive) |
 
 ## Quick Start
 
@@ -112,8 +112,8 @@ struct Address {
 }
 
 let mut fory = Fory::builder().xlang(true).build();
-fory.register_by_name::<Address>("example", "Address").unwrap();
-fory.register_by_name::<Person>("example", "Person").unwrap();
+fory.register_by_name::<Address>("example.Address").unwrap();
+fory.register_by_name::<Person>("example.Person").unwrap();
 
 let person = Person {
     name: "John Doe".to_string(),
@@ -248,8 +248,20 @@ The examples in this section use native mode because Rust trait objects and `dyn
 - `Box<dyn Trait>` - Owned trait objects
 - `Rc<dyn Trait>` - Reference-counted trait objects
 - `Arc<dyn Trait>` - Thread-safe reference-counted trait objects
-- `Box<dyn Any>`/`Rc<dyn Any>`/`Arc<dyn Any>` - Any trait type objects
+- `Box<dyn Any>`/`Rc<dyn Any>`/`Arc<dyn Any + Send + Sync>` - Any trait type objects
 - `Vec<Box<dyn Trait>>`, `HashMap<K, Box<dyn Trait>>` - Collections of trait objects
+
+`Box<dyn Any>`, `Rc<dyn Any>`, and `Arc<dyn Any + Send + Sync>` are supported
+erased `Any` carriers for registered concrete non-container payloads.
+Use `Arc<dyn Any + Send + Sync>` when the erased payload must be shareable
+across threads; the concrete payload type must also satisfy `Send + Sync`.
+Registered structs, enums, and unions that satisfy those bounds can be used as
+the erased payload.
+Generic containers such as `Vec<T>`, `HashMap<K, V>`, `HashSet<T>`, and
+`LinkedList<T>` are not supported directly as top-level erased `Any` payloads
+behind any of those carriers. This also includes primitive vector encodings such
+as `Vec<u8>`. Wrap the container in a registered derived type when it needs to
+travel behind an erased `Any` carrier.
 
 **Basic Trait Object Serialization Example:**
 
@@ -287,7 +299,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<Zoo>(102)?;
@@ -308,7 +320,7 @@ assert_eq!(decoded.star_animal.speak(), "Woof!");
 
 ### 4. Schema Evolution
 
-Apache Fory™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. Xlang mode uses compatible schema evolution by default. In native mode, add `.compatible(true)` when Rust-only payloads need independent schema evolution.
+Apache Fory™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. Compatible mode is the default for both xlang and native mode. Set `.compatible(false)` only when every reader and writer always uses the same schema and you want faster serialization and smaller size. For xlang payloads, use `.compatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
 
 **Features:**
 
@@ -346,11 +358,11 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::builder().xlang(true).compatible(true).build();
-fory1.register_by_name::<PersonV1>("example", "Person").unwrap();
+let mut fory1 = Fory::builder().xlang(true).build();
+fory1.register_by_name::<PersonV1>("example.Person").unwrap();
 
-let mut fory2 = Fory::builder().xlang(true).compatible(true).build();
-fory2.register_by_name::<PersonV2>("example", "Person").unwrap();
+let mut fory2 = Fory::builder().xlang(true).build();
+fory2.register_by_name::<PersonV2>("example.Person").unwrap();
 
 let person_v1 = PersonV1 {
     name: "Alice".to_string(),
@@ -422,7 +434,7 @@ assert_eq!(value, decoded);
 
 ### 6. Native-Mode Tuple Support
 
-Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible and schema-consistent modes.
+Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible mode and same-schema mode.
 
 **Features:**
 
@@ -432,7 +444,7 @@ Apache Fory™ supports tuples up to 22 elements out of the box with efficient s
 
 **Schema modes:**
 
-1. **Schema-consistent mode**: Serializes elements sequentially without collection headers for minimal overhead
+1. **Same-schema mode**: Serializes elements sequentially without collection headers for minimal overhead
 2. **Compatible mode**: Uses collection protocol with type metadata for schema evolution
 
 ```rust
@@ -614,7 +626,7 @@ let mut fory = Fory::builder().xlang(true).build();
 fory.register::<MyStruct>(100)?;
 
 // Or use name-based registration
-fory.register_by_name::<MyStruct>("com.example", "MyStruct")?;
+fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
 ```
 
 See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/xlang_type_mapping) for type mapping across languages.

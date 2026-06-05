@@ -160,7 +160,7 @@ class TestValidation:
             field2: Int32 = pyfory.field(0)  # Duplicate ID
 
         fory = Fory(xlang=True, compatible=False)
-        fory.register_type(TestClass, typename="test.TestClass")
+        fory.register_type(TestClass, name="test.TestClass")
         obj = TestClass(field1="a", field2=1)
         # Validation happens when serializer is created
         with pytest.raises(ValueError, match="Duplicate tag ID"):
@@ -175,7 +175,7 @@ class TestValidation:
             name: Optional[str] = pyfory.field(0, nullable=False)
 
         fory = Fory(xlang=True, compatible=False)
-        fory.register_type(TestClass, typename="test.TestClass")
+        fory.register_type(TestClass, name="test.TestClass")
         obj = TestClass(name="test")
         # Validation happens when serializer is created
         with pytest.raises(ValueError, match="Optional"):
@@ -204,7 +204,7 @@ class TestSerialization:
             name: str = pyfory.field(1)
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(User, typename="test.User")
+        fory.register_type(User, name="test.User")
 
         user = User(id=42, name="Alice")
         data = fory.serialize(user)
@@ -222,7 +222,7 @@ class TestSerialization:
             email: Optional[str] = pyfory.field(1, nullable=True)
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(Profile, typename="test.Profile")
+        fory.register_type(Profile, name="test.Profile")
 
         # Test with value
         profile1 = Profile(name="Bob", email="bob@test.com")
@@ -245,7 +245,7 @@ class TestSerialization:
             _cache: dict = pyfory.field(ignore=True, default_factory=dict)
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(CachedData, typename="test.CachedData")
+        fory.register_type(CachedData, name="test.CachedData")
 
         obj = CachedData(value=100)
         obj._cache = {"key": "should_not_serialize"}
@@ -268,7 +268,7 @@ class TestSerialization:
             items: List[str] = pyfory.field(1, ref=True, default_factory=list)
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(Container, typename="test.Container")
+        fory.register_type(Container, name="test.Container")
 
         # Create shared list reference
         shared_list = ["a", "b", "c"]
@@ -293,7 +293,7 @@ class TestSerialization:
             count: int = 0
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(MixedClass, typename="test.MixedClass")
+        fory.register_type(MixedClass, name="test.MixedClass")
 
         obj = MixedClass(id=1, description="test", count=5)
         data = fory.serialize(obj)
@@ -319,7 +319,7 @@ class TestInheritance:
             child_field: Int32 = pyfory.field(1)
 
         fory = Fory(xlang=True, compatible=False, ref=True)
-        fory.register_type(Child, typename="test.Child")
+        fory.register_type(Child, name="test.Child")
 
         obj = Child(parent_field="parent", child_field=42)
         data = fory.serialize(obj)
@@ -346,8 +346,8 @@ class TestFingerprint:
         fory1 = Fory(xlang=True, compatible=False)
         fory2 = Fory(xlang=True, compatible=False)
 
-        fory1.register_type(V1, typename="test.Type")
-        fory2.register_type(V2, typename="test.Type")
+        fory1.register_type(V1, name="test.Type")
+        fory2.register_type(V2, name="test.Type")
 
         # Serialize to trigger actual serializer creation
         fory1.serialize(V1(name="a"))
@@ -374,8 +374,8 @@ class TestFingerprint:
         fory1 = Fory(xlang=True, compatible=False, ref=True)
         fory2 = Fory(xlang=True, compatible=False, ref=True)
 
-        fory1.register_type(WithRef, typename="test.Type")
-        fory2.register_type(WithoutRef, typename="test.Type")
+        fory1.register_type(WithRef, name="test.Type")
+        fory2.register_type(WithoutRef, name="test.Type")
 
         # Serialize to trigger actual serializer creation
         fory1.serialize(WithRef())
@@ -402,7 +402,7 @@ class TestTypeDefEncoding:
             field2: Float64 = pyfory.field(15)  # Overflow threshold
 
         fory = Fory(xlang=True, compatible=True)
-        fory.register_type(TestClass, typename="test.TestClass")
+        fory.register_type(TestClass, name="test.TestClass")
 
         obj = TestClass(field0=1, field1="test", field2=3.14)
         data = fory.serialize(obj)
@@ -420,7 +420,7 @@ class TestTypeDefEncoding:
             field: Int32 = pyfory.field(100)
 
         fory = Fory(xlang=True, compatible=True)
-        fory.register_type(TestClass, typename="test.TestClass")
+        fory.register_type(TestClass, name="test.TestClass")
 
         obj = TestClass(field=42)
         data = fory.serialize(obj)

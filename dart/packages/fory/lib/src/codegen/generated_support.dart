@@ -154,8 +154,7 @@ void registerGeneratedEnum(
   Fory fory,
   GeneratedEnumSchema schema, {
   int? id,
-  String? namespace,
-  String? typeName,
+  String? name,
 }) {
   GeneratedTypeCatalog.remember(
     schema.type,
@@ -164,7 +163,7 @@ void registerGeneratedEnum(
       serializerFactory: schema.serializerFactory,
     ),
   );
-  fory.register(schema.type, id: id, namespace: namespace, typeName: typeName);
+  fory.register(schema.type, id: id, name: name);
 }
 
 @internal
@@ -172,8 +171,7 @@ void registerGeneratedStruct<T>(
   Fory fory,
   GeneratedStructSchema<T> schema, {
   int? id,
-  String? namespace,
-  String? typeName,
+  String? name,
 }) {
   GeneratedTypeCatalog.remember(
     schema.type,
@@ -186,7 +184,7 @@ void registerGeneratedStruct<T>(
       fields: schema.fieldInfos,
     ),
   );
-  fory.register(schema.type, id: id, namespace: namespace, typeName: typeName);
+  fory.register(schema.type, id: id, name: name);
 }
 
 @internal

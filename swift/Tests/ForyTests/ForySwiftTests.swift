@@ -627,6 +627,53 @@ func duplicateNameRegistrationIsRejected() throws {
 }
 
 @Test
+func nameRegistrationSplitsLastDot() throws {
+  let resolver = TypeResolver(trackRef: false)
+  try resolver.register(Address.self, name: "com.example.Address")
+
+  let info = try resolver.requireTypeInfo(namespace: "com.example", typeName: "Address")
+  #expect(info.namespace.value == "com.example")
+  #expect(info.typeName.value == "Address")
+}
+
+@Test
+func nameRegistrationAllowsSimpleName() throws {
+  let resolver = TypeResolver(trackRef: false)
+  try resolver.register(Address.self, name: "Address")
+
+  let info = try resolver.requireTypeInfo(namespace: "", typeName: "Address")
+  #expect(info.namespace.value == "")
+  #expect(info.typeName.value == "Address")
+}
+
+@Test
+func nameRegistrationRejectsEmptyName() throws {
+  let fory = Fory()
+
+  #expect(throws: ForyError.self) {
+    try fory.register(Address.self, name: "")
+  }
+}
+
+@Test
+func nameRegistrationRejectsTrailingDot() throws {
+  let fory = Fory()
+
+  #expect(throws: ForyError.self) {
+    try fory.register(Address.self, name: "com.example.")
+  }
+}
+
+@Test
+func splitNameRegistrationRejectsDottedTypeName() throws {
+  let resolver = TypeResolver(trackRef: false)
+
+  #expect(throws: ForyError.self) {
+    try resolver.register(Address.self, namespace: "com", typeName: "example.Address")
+  }
+}
+
+@Test
 func registrationIsRejectedAfterFirstTopLevelUse() throws {
   let fory = Fory()
   _ = try fory.serialize(Int32(7))

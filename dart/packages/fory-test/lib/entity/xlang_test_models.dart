@@ -27,29 +27,11 @@ import 'xlang_test_manual.dart' as manual;
 
 part 'xlang_test_models.fory.dart';
 
-void registerXlangType(
-  Fory fory,
-  Type type, {
-  int? id,
-  String? namespace,
-  String? typeName,
-}) {
-  if (manual.registerXlangManualType(
-    fory,
-    type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  )) {
+void registerXlangType(Fory fory, Type type, {int? id, String? name}) {
+  if (manual.registerXlangManualType(fory, type, id: id, name: name)) {
     return;
   }
-  XlangTestModelsForyModule.register(
-    fory,
-    type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  );
+  XlangTestModelsForyModule.register(fory, type, id: id, name: name);
 }
 
 @ForyStruct()

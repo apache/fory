@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -42,15 +43,12 @@ public class AndroidSupportStaticCheckTest {
   private static final Pattern ANDROID_GATED_FIELD_GET_ANNOTATED_TYPE =
       Pattern.compile(
           "AndroidSupport\\.IS_ANDROID[\\s\\S]{0,160}\\.getAnnotatedType\\s*\\(", Pattern.DOTALL);
-  private static final Pattern ANDROID_GATED_SCALA_COMPANION_LOOKUP =
+  private static final Pattern SCALA_TRUSTED_LOOKUP =
+      Pattern.compile("_JDKAccess\\._trustedLookup\\(");
+  private static final Pattern ANDROID_GATED_SCALA_TRUSTED_LOOKUP =
       Pattern.compile(
           "AndroidSupport\\.IS_ANDROID\\s*\\?\\s*null\\s*:\\s*"
-              + "_JDKAccess\\._trustedLookup\\(companionClass\\)",
-          Pattern.DOTALL);
-  private static final Pattern ANDROID_GATED_SCALA_CLASS_LOOKUP =
-      Pattern.compile(
-          "AndroidSupport\\.IS_ANDROID\\s*\\?\\s*null\\s*:\\s*"
-              + "_JDKAccess\\._trustedLookup\\(cls\\)",
+              + "_JDKAccess\\._trustedLookup\\([^)]*\\)",
           Pattern.DOTALL);
   private static final Pattern ANDROID_REFLECTIVE_SCALA_DEFAULT_INVOKE =
       Pattern.compile(
@@ -155,12 +153,19 @@ public class AndroidSupportStaticCheckTest {
   public void testScalaDefaultValuesDoNotUseTrustedLookupOnAndroid() throws IOException {
     Path sourcePath = Paths.get("src/main/java/org/apache/fory/util/DefaultValueUtils.java");
     String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
+    List<String> violations = new ArrayList<>();
+    Matcher matcher = SCALA_TRUSTED_LOOKUP.matcher(source);
+    while (matcher.find()) {
+      int start = Math.max(0, matcher.start() - 120);
+      int end = Math.min(source.length(), matcher.end() + 160);
+      String context = source.substring(start, end);
+      if (!ANDROID_GATED_SCALA_TRUSTED_LOOKUP.matcher(context).find()) {
+        violations.add(context);
+      }
+    }
     assertTrue(
-        ANDROID_GATED_SCALA_COMPANION_LOOKUP.matcher(source).find(),
-        "Scala companion default values must not use _JDKAccess trusted lookup on Android");
-    assertTrue(
-        ANDROID_GATED_SCALA_CLASS_LOOKUP.matcher(source).find(),
-        "Regular Scala default values must not use _JDKAccess trusted lookup on Android");
+        violations.isEmpty(),
+        "Scala default values must not use _JDKAccess trusted lookup on Android: " + violations);
     assertTrue(
         ANDROID_REFLECTIVE_SCALA_DEFAULT_INVOKE.matcher(source).find(),
         "Android Scala default values must invoke default methods through direct reflection");

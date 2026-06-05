@@ -216,8 +216,8 @@ def test_dynamic_field_type():
 def test_encode_decode_typedef():
     """Test encoding and decoding a TypeDef."""
     fory = Fory(xlang=True, compatible=False)
-    fory.register(SimpleTypeDef, namespace="example", typename="SimpleTypeDef")
-    fory.register(TestTypeDef, namespace="example", typename="TestTypeDef")
+    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
+    fory.register(TestTypeDef, name="example.TestTypeDef")
     # Create a mock resolver
     resolver = fory.type_resolver
 
@@ -250,7 +250,7 @@ def test_encode_decode_typedef():
 
 def test_decode_typedef_rejects_parsed_body_with_mismatched_hash():
     fory = Fory(xlang=True, compatible=False)
-    fory.register(SimpleTypeDef, namespace="example", typename="SimpleTypeDef")
+    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
     typedef = encode_typedef(fory.type_resolver, SimpleTypeDef)
     malformed = _corrupt_encoded_field_name(typedef, "value")
 
@@ -260,7 +260,7 @@ def test_decode_typedef_rejects_parsed_body_with_mismatched_hash():
 
 def test_decode_typedef_rejects_body_only_header_hash():
     fory = Fory(xlang=True, compatible=False)
-    fory.register(SimpleTypeDef, namespace="example", typename="SimpleTypeDef")
+    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
     typedef = encode_typedef(fory.type_resolver, SimpleTypeDef)
     malformed = _rewrite_header_with_body_only_hash(typedef.encoded)
 
@@ -278,7 +278,7 @@ def test_decode_typedef_rejects_hash_consistent_malformed_body():
 
 def test_decode_typedef_rejects_compressed_xlang_metadata():
     fory = Fory(xlang=True, compatible=False)
-    fory.register(SimpleTypeDef, namespace="example", typename="SimpleTypeDef")
+    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
     typedef = encode_typedef(fory.type_resolver, SimpleTypeDef)
     source = Buffer(typedef.encoded)
     header = source.read_int64()
@@ -305,7 +305,7 @@ def test_id_registered_typedef_extended_field_count_header():
 
 def test_meta_shared_typedef_cache_is_bounded():
     fory = Fory(xlang=True, compatible=True)
-    fory.register(SimpleTypeDef, namespace="example", typename="SimpleTypeDef")
+    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
     resolver = fory.type_resolver
     read_and_build = getattr(resolver, "_read_and_build_type_info", None)
     if read_and_build is None:
@@ -364,7 +364,7 @@ def _body_only_typedef_hash_bits(encoded_body):
 
 def test_nested_container_typedef_preserves_declared_encoding():
     fory = Fory(xlang=True, compatible=False)
-    fory.register(NestedEncodingTypeDef, namespace="example", typename="NestedEncodingTypeDef")
+    fory.register(NestedEncodingTypeDef, name="example.NestedEncodingTypeDef")
 
     typedef = encode_typedef(fory.type_resolver, NestedEncodingTypeDef)
     values_field = next(field for field in typedef.fields if field.name == "values")
@@ -383,7 +383,7 @@ def test_nested_container_typedef_preserves_declared_encoding():
 
 def test_python_array_typehint_lowering_keeps_list_schema_distinct():
     fory = Fory(xlang=True, compatible=False)
-    fory.register(PythonArrayTypeHints, namespace="example", typename="PythonArrayTypeHints")
+    fory.register(PythonArrayTypeHints, name="example.PythonArrayTypeHints")
 
     typedef = encode_typedef(fory.type_resolver, PythonArrayTypeHints)
     fields = {field.name: field.field_type for field in typedef.fields}
@@ -406,15 +406,14 @@ def test_python_array_typehint_rejects_scalar_encoding_modifier():
     fory = Fory(xlang=True, compatible=False)
     fory.register(
         InvalidArrayModifierTypeDef,
-        namespace="example",
-        typename="InvalidArrayModifierTypeDef",
+        name="example.InvalidArrayModifierTypeDef",
     )
     with pytest.raises(TypeError, match="array<T> does not allow scalar encoding modifier"):
         encode_typedef(fory.type_resolver, InvalidArrayModifierTypeDef)
 
 
 def _register_byte_sequence(fory, cls):
-    fory.register(cls, namespace="example", typename="ByteSequence")
+    fory.register(cls, name="example.ByteSequence")
 
 
 def _uint8_array_value(values):
@@ -453,7 +452,7 @@ def test_compatible_uint8_array_assigns_to_bytes():
 
 
 def _register_int32_payload(fory, cls):
-    fory.register(cls, namespace="example", typename="Int32Sequence")
+    fory.register(cls, name="example.Int32Sequence")
 
 
 def _pyarray_int32_value(values):

@@ -68,6 +68,7 @@ public class SerializationBenchmark {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     RowEncoder<Foo> encoder = Encoders.bean(Foo.class, fory, 64);
     Foo data = Foo.create();
@@ -101,6 +102,7 @@ public class SerializationBenchmark {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     fory.register(obj.getClass());
     MemoryBuffer buffer = MemoryUtils.buffer(32);

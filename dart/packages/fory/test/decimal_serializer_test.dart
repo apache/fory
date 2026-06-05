@@ -40,8 +40,7 @@ void _registerDecimalEnvelope(Fory fory) {
   DecimalSerializerTestForyModule.register(
     fory,
     DecimalEnvelope,
-    namespace: 'test',
-    typeName: 'DecimalEnvelope',
+    name: 'test.DecimalEnvelope',
   );
 }
 

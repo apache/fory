@@ -25,6 +25,7 @@
 #include "fory/meta/preprocessor.h"
 #include "fory/meta/type_traits.h"
 #include "fory/serialization/collection_serializer.h"
+#include "fory/serialization/compatible_scalar.h"
 #include "fory/serialization/map_serializer.h"
 #include "fory/serialization/serializer.h"
 #include "fory/serialization/serializer_traits.h"
@@ -115,6 +116,15 @@ template <> struct is_raw_primitive<float> : std::true_type {};
 template <> struct is_raw_primitive<double> : std::true_type {};
 template <typename T>
 inline constexpr bool is_raw_primitive_v = is_raw_primitive<T>::value;
+
+template <typename T>
+struct is_compatible_scalar_carrier : is_raw_primitive<T> {};
+template <>
+struct is_compatible_scalar_carrier<std::string> : std::true_type {};
+template <> struct is_compatible_scalar_carrier<Decimal> : std::true_type {};
+template <typename T>
+inline constexpr bool is_compatible_scalar_carrier_v =
+    is_compatible_scalar_carrier<decay_t<T>>::value;
 
 template <typename TargetType>
 FORY_ALWAYS_INLINE TargetType read_primitive_by_type_id(ReadContext &ctx,
@@ -2852,6 +2862,55 @@ FORY_ALWAYS_INLINE bfloat16_t read_primitive_by_type_id<bfloat16_t>(
       read_primitive_by_type_id<float>(ctx, type_id, error));
 }
 
+template <typename TargetType>
+FORY_ALWAYS_INLINE TargetType read_compatible_scalar_by_type_id(
+    ReadContext &ctx, uint32_t remote_type_id, std::string_view field) {
+  using Decayed = decay_t<TargetType>;
+  if constexpr (std::is_same_v<Decayed, bool>) {
+    return read_compatible_bool(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, int8_t>) {
+    return read_compatible_int8(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, uint8_t>) {
+    return read_compatible_uint8(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, int16_t>) {
+    return read_compatible_int16(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, uint16_t>) {
+    return read_compatible_uint16(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, int32_t> ||
+                       std::is_same_v<Decayed, int>) {
+    return static_cast<Decayed>(
+        read_compatible_int32(ctx, remote_type_id, field));
+  } else if constexpr (std::is_same_v<Decayed, uint32_t> ||
+                       std::is_same_v<Decayed, unsigned int>) {
+    return static_cast<Decayed>(
+        read_compatible_uint32(ctx, remote_type_id, field));
+  } else if constexpr (std::is_same_v<Decayed, int64_t> ||
+                       std::is_same_v<Decayed, long long>) {
+    return static_cast<Decayed>(
+        read_compatible_int64(ctx, remote_type_id, field));
+  } else if constexpr (std::is_same_v<Decayed, uint64_t> ||
+                       std::is_same_v<Decayed, unsigned long long>) {
+    return static_cast<Decayed>(
+        read_compatible_uint64(ctx, remote_type_id, field));
+  } else if constexpr (std::is_same_v<Decayed, float16_t>) {
+    return read_compatible_float16(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, bfloat16_t>) {
+    return read_compatible_bfloat16(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, float>) {
+    return read_compatible_float32(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, double>) {
+    return read_compatible_float64(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, Decimal>) {
+    return read_compatible_decimal(ctx, remote_type_id, field);
+  } else if constexpr (std::is_same_v<Decayed, std::string>) {
+    return read_compatible_string(ctx, remote_type_id, field);
+  } else {
+    static_assert(sizeof(TargetType) == 0,
+                  "Unsupported compatible scalar carrier");
+    return TargetType{};
+  }
+}
+
 /// Helper to read a primitive field directly using Error* pattern.
 /// This bypasses Serializer<FieldType>::read for better performance.
 /// Returns the read value; sets error on failure.
@@ -3117,6 +3176,11 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // get dynamic value: -1=AUTO, 0=FALSE (no type info), 1=TRUE (write type
   // info)
   constexpr int dynamic_val = Helpers::template field_dynamic_value<Index>();
+  constexpr bool is_nullable = Helpers::template field_nullable<Index>();
+  constexpr bool track_ref = Helpers::template field_track_ref<Index>();
+  constexpr bool field_type_is_nullable = is_nullable_v<FieldType>;
+  constexpr RefMode local_ref_mode =
+      make_ref_mode(is_nullable || field_type_is_nullable, track_ref);
 
   // Polymorphic types need type info based on dynamic_val:
   // - TRUE (1): always read type info
@@ -3134,8 +3198,76 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // between sender/receiver.
   constexpr bool is_raw_prim = is_raw_primitive_v<FieldType>;
   constexpr bool is_local_optional = is_optional_v<FieldType>;
+  constexpr std::string_view field_name = decltype(field_info)::Names[Index];
 
-  // Case 1: Local raw primitive, any remote ref mode
+  if constexpr (is_compatible_scalar_carrier_v<FieldType>) {
+    const bool exact_scalar_schema =
+        remote_type_id == static_cast<uint32_t>(field_type_id) &&
+        remote_ref_mode == local_ref_mode;
+    if (!exact_scalar_schema) {
+      if (remote_ref_mode != RefMode::None) {
+        bool has_value = read_compatible_scalar_present(ctx, remote_ref_mode);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return;
+        }
+        if (!has_value) {
+          ctx.set_error(Error::invalid(
+              "Cannot deserialize null value to non-nullable field"));
+          return;
+        }
+      }
+      FieldType result = read_compatible_scalar_by_type_id<FieldType>(
+          ctx, remote_type_id, field_name);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return;
+      }
+      if constexpr (is_fory_field_v<RawFieldType>) {
+        (obj.*field_ptr).value = std::move(result);
+      } else {
+        obj.*field_ptr = std::move(result);
+      }
+      return;
+    }
+  }
+
+  if constexpr (is_local_optional) {
+    using InnerType = typename FieldType::value_type;
+    if constexpr (is_compatible_scalar_carrier_v<InnerType>) {
+      const bool exact_scalar_schema =
+          remote_type_id ==
+              static_cast<uint32_t>(Serializer<InnerType>::type_id) &&
+          remote_ref_mode == local_ref_mode;
+      if (!exact_scalar_schema) {
+        if (remote_ref_mode != RefMode::None) {
+          bool has_value = read_compatible_scalar_present(ctx, remote_ref_mode);
+          if (FORY_PREDICT_FALSE(ctx.has_error())) {
+            return;
+          }
+          if (!has_value) {
+            if constexpr (is_fory_field_v<RawFieldType>) {
+              (obj.*field_ptr).value = std::nullopt;
+            } else {
+              obj.*field_ptr = std::nullopt;
+            }
+            return;
+          }
+        }
+        InnerType value = read_compatible_scalar_by_type_id<InnerType>(
+            ctx, remote_type_id, field_name);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return;
+        }
+        if constexpr (is_fory_field_v<RawFieldType>) {
+          (obj.*field_ptr).value = std::optional<InnerType>(std::move(value));
+        } else {
+          obj.*field_ptr = std::optional<InnerType>(std::move(value));
+        }
+        return;
+      }
+    }
+  }
+
+  // Case 1: Local raw primitive, using the accepted remote ref mode
   // For primitives, we must use remote_type_id encoding regardless of
   // nullability
   if constexpr (is_raw_prim && is_primitive_field) {

@@ -75,6 +75,17 @@ bump_javascript_version() {
 }
 
 deploy_jars() {
+  local java_version java_major
+  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
+  if [[ "$java_version" == 1.* ]]; then
+    java_major=$(echo "$java_version" | cut -d. -f2)
+  else
+    java_major=$(echo "$java_version" | cut -d. -f1)
+  fi
+  if [[ "$java_major" -lt 25 ]]; then
+    echo "Java releases must run on JDK25+ so MR-JAR entries are packaged"
+    exit 1
+  fi
   cd "$ROOT/java"
   mvn -T10 clean deploy --no-transfer-progress -DskipTests -Prelease
 }

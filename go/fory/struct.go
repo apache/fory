@@ -2319,6 +2319,10 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			s.skipField(ctx, field)
 			return
 		}
+		if field.Meta.CompatibleScalar != nil {
+			readCompatibleScalarField(ctx, field, unsafe.Add(ptr, field.Offset))
+			return
+		}
 
 		// Fast path for fixed-size primitive types (no ref flag from remote schema)
 		if isFixedSizePrimitive(field.DispatchId) {

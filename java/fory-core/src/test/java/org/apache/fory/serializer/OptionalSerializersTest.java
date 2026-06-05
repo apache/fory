@@ -31,7 +31,12 @@ public class OptionalSerializersTest extends ForyTestBase {
 
   @Test
   void testOptionals() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(fory, Optional.empty(), "Optional");
     serDeCheckSerializerAndEqual(fory, Optional.of("abc"), "Optional");
     serDeCheckSerializerAndEqual(fory, OptionalInt.empty(), "Optional");

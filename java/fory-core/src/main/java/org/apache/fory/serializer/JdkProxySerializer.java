@@ -26,9 +26,9 @@ import java.lang.reflect.Proxy;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
-import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
@@ -73,10 +73,9 @@ public class JdkProxySerializer extends Serializer {
   }
 
   private static final class ProxyHandlerField {
-    // Make offset compatible with graalvm native image, but load it only on the JVM Unsafe path.
     private static final Field FIELD =
         ReflectionUtils.getField(Proxy.class, InvocationHandler.class);
-    private static final long OFFSET = UnsafeOps.objectFieldOffset(FIELD);
+    private static final FieldAccessor ACCESSOR = FieldAccessor.createAccessor(FIELD);
   }
 
   private interface StubInterface {
@@ -118,7 +117,7 @@ public class JdkProxySerializer extends Serializer {
       Preconditions.checkNotNull(copyHandler);
       return Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, copyHandler);
     }
-    if (AndroidSupport.IS_ANDROID) {
+    if (!MemoryUtils.JDK_PROXY_FIELD_ACCESS) {
       DeferredInvocationHandler deferredHandler = new DeferredInvocationHandler();
       Object proxy =
           Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, deferredHandler);
@@ -130,7 +129,7 @@ public class JdkProxySerializer extends Serializer {
     }
     Object proxy = Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, STUB_HANDLER);
     copyContext.reference(value, proxy);
-    UnsafeOps.putObject(proxy, ProxyHandlerField.OFFSET, copyContext.copyObject(invocationHandler));
+    ProxyHandlerField.ACCESSOR.putObject(proxy, copyContext.copyObject(invocationHandler));
     return proxy;
   }
 
@@ -144,7 +143,7 @@ public class JdkProxySerializer extends Serializer {
           unwrapInvocationHandler((InvocationHandler) readContext.readRef());
       return Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, invocationHandler);
     }
-    if (AndroidSupport.IS_ANDROID) {
+    if (!MemoryUtils.JDK_PROXY_FIELD_ACCESS) {
       DeferredInvocationHandler deferredHandler = new DeferredInvocationHandler();
       Object proxy =
           Proxy.newProxyInstance(typeResolver.getClassLoader(), interfaces, deferredHandler);
@@ -158,7 +157,7 @@ public class JdkProxySerializer extends Serializer {
     readContext.setReadRef(refId, proxy);
     InvocationHandler invocationHandler =
         unwrapInvocationHandler((InvocationHandler) readContext.readRef());
-    UnsafeOps.putObject(proxy, ProxyHandlerField.OFFSET, invocationHandler);
+    ProxyHandlerField.ACCESSOR.putObject(proxy, invocationHandler);
     return proxy;
   }
 

@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 #[test]
 fn test_rc_shared_in_nested_vec() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared1 = Rc::new(String::from("shared_1"));
     let shared2 = Rc::new(String::from("shared_2"));
@@ -55,7 +55,7 @@ fn test_rc_shared_in_nested_vec() {
 
 #[test]
 fn test_arc_shared_in_nested_vec() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared1 = Arc::new(String::from("shared_1"));
     let shared2 = Arc::new(String::from("shared_2"));
@@ -87,7 +87,7 @@ fn test_arc_shared_in_nested_vec() {
 
 #[test]
 fn test_mixed_rc_arc_sharing() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test both Rc and Arc sharing within the same structure
     let shared_rc = Rc::new(42i32);
@@ -114,7 +114,7 @@ fn test_mixed_rc_arc_sharing() {
 
 #[test]
 fn test_deep_sharing_stress_test() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Create a stress test with deep nesting and many shared references
     let shared = Rc::new(String::from("deep_shared"));

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers `Config` and recommended runtime presets.
+This page covers `Config` and recommended Fory presets.
 
 ## Config
 
@@ -67,17 +67,20 @@ let fory = Fory(ref: true)
 
 Enables compatible schema mode for evolution across versions.
 
-- `false`: Schema-consistent mode (stricter, lower metadata overhead)
+- `false`: Faster serialization and smaller size
 - `true`: Compatible mode (supports add/remove/reorder fields)
 
+Use `compatible: false` only when every reader and writer always uses the same schema and you want faster serialization and smaller size. For cross-language payloads, set `compatible: false` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
 ```swift
-let fory = Fory()
+let fory = Fory(compatible: false)
 ```
 
 ### `checkClassVersion`
 
-Controls class-version validation in schema-consistent mode. When omitted, it
-defaults to `true` when `compatible=false` and `false` when `compatible=true`.
+Controls class-version validation when compatible mode is disabled. When
+omitted, it defaults to `true` when `compatible: false` and `false` when
+`compatible: true`.
 
 ```swift
 let fory = Fory(compatible: false, checkClassVersion: true)
@@ -94,13 +97,7 @@ let fory = Fory(maxCollectionSize: 1_000_000, maxBinarySize: 64 * 1024 * 1024, m
 
 ## Recommended Presets
 
-### Local, strict schema
-
-```swift
-let fory = Fory(ref: false, compatible: false)
-```
-
-### Cross-language service payloads
+### Default service payloads
 
 ```swift
 let fory = Fory()
@@ -112,11 +109,19 @@ let fory = Fory()
 let fory = Fory(ref: true)
 ```
 
+### Same-schema optimization
+
+Use this only when every reader and writer always uses the same schema.
+
+```swift
+let fory = Fory(compatible: false)
+```
+
 ## Security
 
 Security-related configuration:
 
 - Register only the expected generated models before deserializing untrusted payloads.
-- Use `checkClassVersion` with `compatible: false` when exact schema matching is required.
+- Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
 - Set `maxCollectionSize`, `maxBinarySize`, and `maxDepth` for the largest payload shape your
   service accepts.

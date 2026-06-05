@@ -65,7 +65,8 @@ public class SerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(xlang)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     assertEquals("str", serDe(fory1, fory2, "str"));
@@ -79,7 +80,8 @@ public class SerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(false)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     assertEquals(BigInteger.valueOf(100), serDe(fory1, fory2, BigInteger.valueOf(100)));
@@ -98,6 +100,7 @@ public class SerializersTest extends ForyTestBase {
             .withXlang(false)
             .withMaxBinarySize(1)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
 
     assertThrows(
@@ -220,7 +223,12 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testDecimalSerializerSelectionByLanguage() {
-    Fory nativeFory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory nativeFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Fory xlangFory =
         Fory.builder()
             .withXlang(true)
@@ -260,7 +268,12 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testCharset() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Assert.assertEquals(
         serDeCheckSerializer(fory, Charset.defaultCharset(), "Charset"), Charset.defaultCharset());
   }
@@ -302,7 +315,12 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testSerializeClass() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     // serialize both TestReplaceClassSerialization object and class.
     // Scala `object` native serialization will return ModuleSerializationProxy will write original
     // class.
@@ -319,7 +337,12 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testDefaultSafeClassTokens() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     assertSame(serDe(fory, Serializable.class), Serializable.class);
     assertSame(serDe(fory, Externalizable.class), Externalizable.class);
     assertSame(serDe(fory, Function.class), Function.class);
@@ -335,7 +358,12 @@ public class SerializersTest extends ForyTestBase {
 
   @Test
   public void testEmptyObject() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     assertSame(serDe(fory, new Object()).getClass(), Object.class);
   }
 }

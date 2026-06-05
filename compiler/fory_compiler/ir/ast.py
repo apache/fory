@@ -22,6 +22,13 @@ from typing import List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.types import PrimitiveKind
 
+THREAD_SAFE_POINTER_DEFAULT = True
+
+
+def thread_safe_pointer_enabled(ref_options: dict) -> bool:
+    """Return the effective Rust pointer-carrier default for ref options."""
+    return ref_options.get("thread_safe_pointer", THREAD_SAFE_POINTER_DEFAULT) is True
+
 
 @dataclass(frozen=True)
 class SourceLocation:

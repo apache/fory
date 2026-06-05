@@ -62,10 +62,10 @@ class ThreadSafeFory;
 /// Example:
 /// ```cpp
 /// // Single-threaded xlang Fory (not thread-safe)
-/// auto fory = Fory::builder().xlang(true).build();
+/// auto fory = Fory::builder().build();
 ///
 /// // Thread-safe Fory (uses context pools)
-/// auto fory = Fory::builder().xlang(true).build_thread_safe();
+/// auto fory = Fory::builder().build_thread_safe();
 /// ```
 class ForyBuilder {
 public:
@@ -136,11 +136,11 @@ public:
 
 private:
   const Config &normalized_config() {
-    if (config_.xlang && !compatible_set_) {
+    if (!compatible_set_) {
       config_.compatible = true;
     }
     // Compatible mode carries field metadata for evolution; schema hash checks
-    // belong only to schema-consistent mode.
+    // are only useful for same-schema payloads.
     if (config_.compatible) {
       config_.check_struct_version = false;
     }
@@ -268,7 +268,8 @@ public:
   ///
   /// @tparam T The struct type to register (must be defined with FORY_STRUCT).
   /// @param ns Namespace for the type (can be empty string).
-  /// @param type_name Name of the type within the namespace.
+  /// @param type_name Name of the type within the namespace; must not
+  /// contain `.`.
   /// @return Success or error if registration fails.
   ///
   /// Example:
@@ -283,23 +284,23 @@ public:
     });
   }
 
-  /// Register a struct type with type name only (no namespace).
+  /// Register a struct type with a name.
   ///
-  /// Convenience method for registering types without a namespace.
+  /// If the name contains `.`, Fory splits the namespace from the final
+  /// type-name segment.
   ///
   /// @tparam T The struct type to register (must be defined with FORY_STRUCT).
-  /// @param type_name Name of the type.
+  /// @param name Name of the type, optionally prefixed with a namespace.
   /// @return Success or error if registration fails.
   ///
   /// Example:
   /// ```cpp
-  /// fory.register_struct<MyStruct>("MyStruct");
+  /// fory.register_struct<MyStruct>("com.example.MyStruct");
   /// ```
   template <typename T>
-  Result<void, Error> register_struct(const std::string &type_name) {
-    return register_type([this, &type_name]() {
-      return type_resolver_->template register_by_name<T>("", type_name);
-    });
+  Result<void, Error> register_struct(const std::string &name) {
+    FORY_TRY(parts, split_name(name));
+    return register_struct<T>(parts.first, parts.second);
   }
 
   /// Register an enum type with a numeric type ID.
@@ -332,7 +333,8 @@ public:
   ///
   /// @tparam T The enum type to register (must be defined with FORY_ENUM).
   /// @param ns Namespace for the type (can be empty string).
-  /// @param type_name Name of the type within the namespace.
+  /// @param type_name Name of the type within the namespace; must not
+  /// contain `.`.
   /// @return Success or error if registration fails.
   ///
   /// Example:
@@ -347,23 +349,23 @@ public:
     });
   }
 
-  /// Register an enum type with type name only (no namespace).
+  /// Register an enum type with a name.
   ///
-  /// Convenience method for registering enum types without a namespace.
+  /// If the name contains `.`, Fory splits the namespace from the final
+  /// type-name segment.
   ///
   /// @tparam T The enum type to register (must be defined with FORY_ENUM).
-  /// @param type_name Name of the type.
+  /// @param name Name of the type, optionally prefixed with a namespace.
   /// @return Success or error if registration fails.
   ///
   /// Example:
   /// ```cpp
-  /// fory.register_enum<Color>("Color");
+  /// fory.register_enum<Color>("com.example.Color");
   /// ```
   template <typename T>
-  Result<void, Error> register_enum(const std::string &type_name) {
-    return register_type([this, &type_name]() {
-      return type_resolver_->template register_by_name<T>("", type_name);
-    });
+  Result<void, Error> register_enum(const std::string &name) {
+    FORY_TRY(parts, split_name(name));
+    return register_enum<T>(parts.first, parts.second);
   }
 
   /// Register a union type with a numeric type ID.
@@ -383,7 +385,8 @@ public:
   ///
   /// @tparam T The union type to register (must provide Serializer<T>).
   /// @param ns Namespace for the type (can be empty string).
-  /// @param type_name Name of the type within the namespace.
+  /// @param type_name Name of the type within the namespace; must not
+  /// contain `.`.
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_union(const std::string &ns,
@@ -393,16 +396,15 @@ public:
     });
   }
 
-  /// Register a union type with type name only (no namespace).
+  /// Register a union type with a name.
   ///
   /// @tparam T The union type to register (must provide Serializer<T>).
-  /// @param type_name Name of the type.
+  /// @param name Name of the type, optionally prefixed with a namespace.
   /// @return Success or error if registration fails.
   template <typename T>
-  Result<void, Error> register_union(const std::string &type_name) {
-    return register_type([this, &type_name]() {
-      return type_resolver_->template register_union_by_name<T>("", type_name);
-    });
+  Result<void, Error> register_union(const std::string &name) {
+    FORY_TRY(parts, split_name(name));
+    return register_union<T>(parts.first, parts.second);
   }
 
   /// Register an extension type with a numeric type ID.
@@ -424,7 +426,8 @@ public:
   ///
   /// @tparam T The extension type to register.
   /// @param ns Namespace for the type (can be empty string).
-  /// @param type_name Name of the type within the namespace.
+  /// @param type_name Name of the type within the namespace; must not
+  /// contain `.`.
   /// @return Success or error if registration fails.
   template <typename T>
   Result<void, Error> register_extension_type(const std::string &ns,
@@ -435,20 +438,34 @@ public:
     });
   }
 
-  /// Register an extension type with type name only (no namespace).
+  /// Register an extension type with a name.
   ///
   /// @tparam T The extension type to register.
-  /// @param type_name Name of the type.
+  /// @param name Name of the type, optionally prefixed with a namespace.
   /// @return Success or error if registration fails.
   template <typename T>
-  Result<void, Error> register_extension_type(const std::string &type_name) {
-    return register_type([this, &type_name]() {
-      return type_resolver_->template register_ext_type_by_name<T>("",
-                                                                   type_name);
-    });
+  Result<void, Error> register_extension_type(const std::string &name) {
+    FORY_TRY(parts, split_name(name));
+    return register_extension_type<T>(parts.first, parts.second);
   }
 
 private:
+  static Result<std::pair<std::string, std::string>, Error>
+  split_name(const std::string &name) {
+    auto pos = name.rfind('.');
+    std::string ns;
+    std::string type_name = name;
+    if (pos != std::string::npos) {
+      ns = name.substr(0, pos);
+      type_name = name.substr(pos + 1);
+    }
+    if (type_name.empty()) {
+      return Unexpected(
+          Error::invalid("name must include a non-empty type name"));
+    }
+    return std::make_pair(std::move(ns), std::move(type_name));
+  }
+
   template <typename RegisterFn>
   Result<void, Error> register_type(RegisterFn &&fn) {
     std::lock_guard<std::mutex> lock(registration_mutex_);
@@ -496,7 +513,7 @@ protected:
 ///
 /// Example:
 /// ```cpp
-/// auto fory = Fory::builder().xlang(true).build();
+/// auto fory = Fory::builder().build();
 /// fory.register_struct<MyStruct>(1);
 ///
 /// MyStruct obj{...};
@@ -887,7 +904,7 @@ private:
 ///
 /// Example:
 /// ```cpp
-/// auto fory = Fory::builder().xlang(true).build_thread_safe();
+/// auto fory = Fory::builder().build_thread_safe();
 /// fory.register_struct<MyStruct>(1);
 ///
 /// // Can be used from multiple threads safely

@@ -21,6 +21,9 @@
 
 package org.apache.fory.kotlin.xlang
 
+import java.math.BigDecimal
+import java.time.Instant
+import java.time.LocalDate
 import java.util.TreeMap
 import java.util.TreeSet
 import java.util.concurrent.ConcurrentHashMap
@@ -37,6 +40,7 @@ import org.apache.fory.annotation.ForyUnion
 import org.apache.fory.annotation.ForyUnknownCase
 import org.apache.fory.annotation.Ref
 import org.apache.fory.exception.ForyException
+import org.apache.fory.exception.SerializationException
 import org.apache.fory.kotlin.Fixed
 import org.apache.fory.kotlin.ForyKotlin
 import org.apache.fory.kotlin.VarInt
@@ -44,26 +48,31 @@ import org.apache.fory.kotlin.register
 import org.apache.fory.memory.MemoryUtils
 import org.apache.fory.serializer.StaticGeneratedStructSerializer
 import org.apache.fory.serializer.kotlin.KotlinSerializers
+import org.apache.fory.type.BFloat16
 import org.apache.fory.type.BFloat16Array
+import org.apache.fory.type.Float16
 import org.apache.fory.type.Float16Array
 import org.apache.fory.type.Types
 import org.apache.fory.type.union.UnknownCase
 
 @ForyStruct
-public data class KotlinUser(
+public data class KotlinUser
+constructor(
   @ForyField(id = 1) val id: @Fixed UInt,
   @ForyField(id = 2) val name: String = "anonymous",
   @ForyField(id = 3) val score: @VarInt Long,
 )
 
 @ForyStruct
-internal data class KotlinInternalUser(
+internal data class KotlinInternalUser
+constructor(
   @ForyField(id = 1) val id: UInt,
   @ForyField(id = 2) val name: String = "internal",
 )
 
 @ForyStruct
-public data class KotlinConcreteCollections(
+public data class KotlinConcreteCollections
+constructor(
   @ForyField(id = 1) val names: ArrayList<String>,
   @ForyField(id = 2) val values: java.util.LinkedList<Int>,
   @ForyField(id = 3) val tags: CopyOnWriteArrayList<Long>,
@@ -76,7 +85,8 @@ public data class KotlinConcreteCollections(
 )
 
 @ForyStruct
-public data class KotlinUnsignedCollections(
+public data class KotlinUnsignedCollections
+constructor(
   @ForyField(id = 1) val ids: List<UInt>,
   @ForyField(id = 2) val optionalIds: List<UInt?>,
   @ForyField(id = 3) val totals: Set<ULong>,
@@ -85,7 +95,8 @@ public data class KotlinUnsignedCollections(
 )
 
 @ForyStruct
-public data class KotlinSchemaSurface(
+public data class KotlinSchemaSurface
+constructor(
   @ForyField(id = 1) val nullableNames: List<String?>?,
   @ForyField(id = 2) val dynamicList: List<*>,
   @ForyField(id = 3) val dynamicValues: Map<String, *>,
@@ -98,10 +109,12 @@ public data class KotlinSchemaSurface(
   @ForyField(id = 10) val noRefUsers: List<KotlinUser>,
   @ForyField(id = 11) val chunks: List<@ArrayType ByteArray>,
   @ForyField(id = 12) val chunksByName: Map<String, @ArrayType ByteArray>,
+  @ForyField(id = 13) val nestedSortedNames: List<TreeSet<String>>,
 )
 
 @ForyStruct
-public data class KotlinDenseArrays(
+public data class KotlinDenseArrays
+constructor(
   @ForyField(id = 1) val ubytes: UByteArray,
   @ForyField(id = 2) val ushorts: UShortArray,
   @ForyField(id = 3) val uints: UIntArray,
@@ -116,10 +129,12 @@ public data class KotlinDenseArrays(
   @ForyField(id = 12) val nullableUInts: UIntArray?,
 )
 
-@ForyStruct public data class KotlinNullableCompatibleWriter(@ForyField(id = 1) val anchor: String)
+@ForyStruct
+public data class KotlinNullableCompatibleWriter constructor(@ForyField(id = 1) val anchor: String)
 
 @ForyStruct
-public data class KotlinNullableCompatibleReader(
+public data class KotlinNullableCompatibleReader
+constructor(
   @ForyField(id = 1) val anchor: String,
   @ForyField(id = 2) val maybeBoolean: Boolean?,
   @ForyField(id = 3) val maybeInt: Int?,
@@ -129,10 +144,41 @@ public data class KotlinNullableCompatibleReader(
 )
 
 @ForyStruct
-public data class KotlinDurationAndHalfArrays(
+public data class KotlinDefaultCompatibleWriter constructor(@ForyField(id = 1) val id: Int)
+
+@ForyStruct
+public data class KotlinDefaultCompatibleReader
+constructor(
+  @ForyField(id = 1) val id: Int,
+  @ForyField(id = 2) val name: String = "generated-default",
+)
+
+@ForyStruct
+public data class KotlinDefaultRefWriter
+constructor(
+  @ForyField(id = 1) val id: Int,
+  @Ref @ForyField(id = 2) var next: KotlinDefaultRefWriter?,
+)
+
+@ForyStruct
+public data class KotlinDefaultRefReader
+constructor(
+  @ForyField(id = 1) val id: Int,
+  @ForyField(id = 3) val name: String = "generated-default",
+  @Ref @ForyField(id = 2) var next: KotlinDefaultRefReader?,
+)
+
+@ForyStruct
+public data class KotlinDurationAndHalfArrays
+constructor(
   @ForyField(id = 1) val duration: kotlin.time.Duration,
-  @ForyField(id = 2) val float16s: Float16Array,
-  @ForyField(id = 3) val bfloat16s: BFloat16Array,
+  @ForyField(id = 2) val date: LocalDate,
+  @ForyField(id = 3) val instant: Instant,
+  @ForyField(id = 4) val decimal: BigDecimal,
+  @ForyField(id = 5) val float16: Float16,
+  @ForyField(id = 6) val bfloat16: BFloat16,
+  @ForyField(id = 7) val float16s: Float16Array,
+  @ForyField(id = 8) val bfloat16s: BFloat16Array,
 )
 
 @ForyStruct
@@ -140,6 +186,15 @@ public class KotlinMutableNode() {
   @ForyField(id = 1) public var id: String = ""
 
   @Ref @ForyField(id = 2) public var parent: KotlinMutableNode? = null
+}
+
+@ForyStruct
+public class KotlinCtorBackrefRoot
+constructor(@ForyField(id = 1) val child: KotlinCtorBackrefChild)
+
+@ForyStruct
+public class KotlinCtorBackrefChild {
+  @ForyField(id = 1) public var root: KotlinCtorBackrefRoot? = null
 }
 
 @ForyUnion
@@ -157,6 +212,8 @@ public fun main(args: Array<String>) {
   }
   when (args[0]) {
     "static_serializer_round_trip" -> staticSerializerRoundTrip(args[1])
+    "compatible_default_round_trip" -> compatibleDefaultRoundTrip()
+    "constructor_backref_copy" -> constructorBackrefCopy()
     "dense_array_round_trip" -> denseArrayRoundTrip(args[1])
     "unsigned_collection_round_trip" -> unsignedCollectionRoundTrip(args[1])
     else -> throw IllegalArgumentException("Unsupported Kotlin xlang case ${args[0]}")
@@ -167,14 +224,14 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   checkNoArgRegisterReceivers()
 
   val fory = newFory()
-  fory.register<KotlinUser>("kotlin", "KotlinUser")
-  fory.register<KotlinInternalUser>("kotlin", "KotlinInternalUser")
-  fory.register<KotlinConcreteCollections>("kotlin", "KotlinConcreteCollections")
-  fory.register<KotlinUnsignedCollections>("kotlin", "KotlinUnsignedCollections")
-  fory.register<KotlinSchemaSurface>("kotlin", "KotlinSchemaSurface")
-  fory.register<KotlinDenseArrays>("kotlin", "KotlinDenseArrays")
-  fory.register<KotlinDurationAndHalfArrays>("kotlin", "KotlinDurationAndHalfArrays")
-  KotlinSerializers.registerUnion(fory, KotlinPet::class.java, "kotlin", "KotlinPet")
+  fory.register<KotlinUser>("kotlin.KotlinUser")
+  fory.register<KotlinInternalUser>("kotlin.KotlinInternalUser")
+  fory.register<KotlinConcreteCollections>("kotlin.KotlinConcreteCollections")
+  fory.register<KotlinUnsignedCollections>("kotlin.KotlinUnsignedCollections")
+  fory.register<KotlinSchemaSurface>("kotlin.KotlinSchemaSurface")
+  fory.register<KotlinDenseArrays>("kotlin.KotlinDenseArrays")
+  fory.register<KotlinDurationAndHalfArrays>("kotlin.KotlinDurationAndHalfArrays")
+  KotlinSerializers.registerUnion(fory, KotlinPet::class.java, "kotlin.KotlinPet")
 
   val javaRequest =
     fory.deserialize(MemoryUtils.wrap(java.io.File(dataFile).readBytes()), KotlinUser::class.java)
@@ -218,6 +275,7 @@ private fun staticSerializerRoundTrip(dataFile: String) {
       noRefUsers = emptyList(),
       chunks = listOf(byteArrayOf(1, 2), byteArrayOf(3, 4)),
       chunksByName = mapOf("left" to byteArrayOf(5, 6)),
+      nestedSortedNames = listOf(TreeSet(listOf("blue", "green"))),
     )
   val decodedSchemaSurface =
     fory.deserialize(fory.serialize(schemaSurface), KotlinSchemaSurface::class.java)
@@ -239,6 +297,25 @@ private fun staticSerializerRoundTrip(dataFile: String) {
     checkNotNull(decodedSchemaSurface.chunksByName["left"]) contentEquals
       schemaSurface.chunksByName["left"]!!
   )
+  check(decodedSchemaSurface.nestedSortedNames == schemaSurface.nestedSortedNames)
+  check(decodedSchemaSurface.nestedSortedNames[0].javaClass == TreeSet::class.java)
+  val copiedSchemaSurface = fory.copy(schemaSurface)
+  check(copiedSchemaSurface.bytesAsArray !== schemaSurface.bytesAsArray)
+  check(copiedSchemaSurface.chunks !== schemaSurface.chunks)
+  check(copiedSchemaSurface.chunks[0] !== schemaSurface.chunks[0])
+  check(copiedSchemaSurface.chunksByName !== schemaSurface.chunksByName)
+  check(
+    checkNotNull(copiedSchemaSurface.chunksByName["left"]) !== schemaSurface.chunksByName["left"]
+  )
+  check(copiedSchemaSurface.nestedSortedNames !== schemaSurface.nestedSortedNames)
+  check(copiedSchemaSurface.nestedSortedNames[0] !== schemaSurface.nestedSortedNames[0])
+  check(copiedSchemaSurface.nestedSortedNames[0].javaClass == TreeSet::class.java)
+  schemaSurface.bytesAsArray[0] = 99.toByte()
+  schemaSurface.chunks[0][0] = 98.toByte()
+  checkNotNull(schemaSurface.chunksByName["left"])[0] = 97.toByte()
+  check(copiedSchemaSurface.bytesAsArray[0] == 1.toByte())
+  check(copiedSchemaSurface.chunks[0][0] == 1.toByte())
+  check(checkNotNull(copiedSchemaSurface.chunksByName["left"])[0] == 5.toByte())
   val schemaDescriptors =
     checkNotNull(
         fory.getSerializer(KotlinSchemaSurface::class.java) as? StaticGeneratedStructSerializer<*>
@@ -279,6 +356,23 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   decoded.mutableCounts["round-trip-mutable-map"] = 14L
   check(decoded.sortedNames.javaClass == TreeSet::class.java)
   check(decoded.concurrentCounts.javaClass == ConcurrentHashMap::class.java)
+  val reverseCounts = TreeMap<String, Int>(java.util.Collections.reverseOrder<String>())
+  reverseCounts.putAll(mapOf("x" to 7, "y" to 8))
+  val reverseSortedNames = TreeSet<String>(java.util.Collections.reverseOrder<String>())
+  reverseSortedNames.addAll(listOf("e", "f"))
+  val copyCollections = collections.copy(counts = reverseCounts, sortedNames = reverseSortedNames)
+  try {
+    fory.serialize(copyCollections)
+    error("Kotlin concrete sorted collections with custom comparators were serialized")
+  } catch (e: SerializationException) {
+    check(e.cause is UnsupportedOperationException)
+  }
+  val copiedCollections = fory.copy(copyCollections)
+  check(copiedCollections == copyCollections)
+  check(copiedCollections.counts !== copyCollections.counts)
+  check(checkNotNull(copiedCollections.counts.comparator()).compare("a", "b") > 0)
+  check(copiedCollections.sortedNames !== copyCollections.sortedNames)
+  check(checkNotNull(copiedCollections.sortedNames.comparator()).compare("a", "b") > 0)
 
   val unsignedCollections =
     KotlinUnsignedCollections(
@@ -339,9 +433,9 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   check(decodedNullArrays.nullableUInts == null)
 
   val writer = newCompatibleFory()
-  writer.register<KotlinNullableCompatibleWriter>("kotlin", "NullableCompatible")
+  writer.register<KotlinNullableCompatibleWriter>("kotlin.NullableCompatible")
   val reader = newCompatibleFory()
-  reader.register<KotlinNullableCompatibleReader>("kotlin", "NullableCompatible")
+  reader.register<KotlinNullableCompatibleReader>("kotlin.NullableCompatible")
   val compatibleDecoded =
     reader.deserialize(
       writer.serialize(KotlinNullableCompatibleWriter("anchor")),
@@ -354,9 +448,16 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   check(compatibleDecoded.maybeUInt == null)
   check(compatibleDecoded.maybeULong == null)
 
+  compatibleDefaultRoundTrip()
+
   val durationAndHalfArrays =
     KotlinDurationAndHalfArrays(
       duration = (-500).milliseconds,
+      date = LocalDate.of(2026, 6, 2),
+      instant = Instant.parse("2026-06-02T04:00:00Z"),
+      decimal = BigDecimal("12345.6789"),
+      float16 = Float16.valueOf(1.5f),
+      bfloat16 = BFloat16.valueOf(-2.5f),
       float16s = Float16Array.of(1.0f, -2.0f),
       bfloat16s = BFloat16Array.of(3.0f, -4.0f),
     )
@@ -366,17 +467,28 @@ private fun staticSerializerRoundTrip(dataFile: String) {
       KotlinDurationAndHalfArrays::class.java,
     )
   check(decodedDurationAndHalfArrays.duration == durationAndHalfArrays.duration)
+  check(decodedDurationAndHalfArrays.date == durationAndHalfArrays.date)
+  check(decodedDurationAndHalfArrays.instant == durationAndHalfArrays.instant)
+  check(decodedDurationAndHalfArrays.decimal == durationAndHalfArrays.decimal)
+  check(decodedDurationAndHalfArrays.float16 == durationAndHalfArrays.float16)
+  check(decodedDurationAndHalfArrays.bfloat16 == durationAndHalfArrays.bfloat16)
   check(decodedDurationAndHalfArrays.float16s == durationAndHalfArrays.float16s)
   check(decodedDurationAndHalfArrays.bfloat16s == durationAndHalfArrays.bfloat16s)
+  val copiedDurationAndHalfArrays = fory.copy(durationAndHalfArrays)
+  check(copiedDurationAndHalfArrays.date === durationAndHalfArrays.date)
+  check(copiedDurationAndHalfArrays.instant === durationAndHalfArrays.instant)
+  check(copiedDurationAndHalfArrays.decimal === durationAndHalfArrays.decimal)
+  check(copiedDurationAndHalfArrays.float16 === durationAndHalfArrays.float16)
+  check(copiedDurationAndHalfArrays.bfloat16 === durationAndHalfArrays.bfloat16)
   try {
     fory.serialize(durationAndHalfArrays.copy(duration = Duration.INFINITE))
     error("Infinite Kotlin xlang duration was serialized")
   } catch (_: ForyException) {}
 
   val refFory = newRefFory()
-  refFory.register<KotlinMutableNode>("kotlin", "KotlinMutableNode")
-  refFory.register<KotlinUser>("kotlin", "KotlinUser")
-  KotlinSerializers.registerUnion(refFory, KotlinPet::class.java, "kotlin", "KotlinPet")
+  refFory.register<KotlinMutableNode>("kotlin.KotlinMutableNode")
+  refFory.register<KotlinUser>("kotlin.KotlinUser")
+  KotlinSerializers.registerUnion(refFory, KotlinPet::class.java, "kotlin.KotlinPet")
   val node = KotlinMutableNode()
   node.id = "root"
   node.parent = node
@@ -406,6 +518,53 @@ private fun staticSerializerRoundTrip(dataFile: String) {
   }
 }
 
+private fun constructorBackrefCopy() {
+  val refFory =
+    ForyKotlin.builder()
+      .withXlang(false)
+      .requireClassRegistration(true)
+      .withRefTracking(true)
+      .withRefCopy(true)
+      .build()
+  refFory.register<KotlinCtorBackrefChild>()
+  refFory.register<KotlinCtorBackrefRoot>()
+  checkConstructorBackrefCopy(refFory)
+}
+
+private fun checkConstructorBackrefCopy(fory: Fory) {
+  val child = KotlinCtorBackrefChild()
+  val root = KotlinCtorBackrefRoot(child)
+  child.root = root
+  try {
+    fory.copy(root)
+    error("Constructor back-reference was copied")
+  } catch (_: ForyException) {}
+}
+
+private fun compatibleDefaultRoundTrip() {
+  val writer = newCompatibleFory()
+  writer.register<KotlinDefaultCompatibleWriter>("kotlin.DefaultCompatible")
+  val reader = newCompatibleFory()
+  reader.register<KotlinDefaultCompatibleReader>("kotlin.DefaultCompatible")
+  val decoded =
+    reader.deserialize(
+      writer.serialize(KotlinDefaultCompatibleWriter(7)),
+      KotlinDefaultCompatibleReader::class.java,
+    )
+  check(decoded == KotlinDefaultCompatibleReader(id = 7))
+
+  val refWriter = newRefCompatibleFory()
+  refWriter.register<KotlinDefaultRefWriter>("kotlin.DefaultRef")
+  val refReader = newRefCompatibleFory()
+  refReader.register<KotlinDefaultRefReader>("kotlin.DefaultRef")
+  val node = KotlinDefaultRefWriter(id = 9, next = null)
+  node.next = node
+  try {
+    refReader.deserialize(refWriter.serialize(node), KotlinDefaultRefReader::class.java)
+    error("Constructor self-reference with a defaulted compatible field was deserialized")
+  } catch (_: ForyException) {}
+}
+
 private fun checkNoArgRegisterReceivers() {
   checkNoArgRegister(newFory())
   checkNoArgRegister(
@@ -432,7 +591,7 @@ private fun checkNoArgRegister(fory: BaseFory) {
 
 private fun denseArrayRoundTrip(dataFile: String) {
   val fory = newFory()
-  fory.register<KotlinDenseArrays>("kotlin", "KotlinDenseArrays")
+  fory.register<KotlinDenseArrays>("kotlin.KotlinDenseArrays")
   val request =
     fory.deserialize(
       MemoryUtils.wrap(java.io.File(dataFile).readBytes()),
@@ -470,7 +629,7 @@ private fun denseArrayRoundTrip(dataFile: String) {
 
 private fun unsignedCollectionRoundTrip(dataFile: String) {
   val fory = newFory()
-  fory.register<KotlinUnsignedCollections>("kotlin", "KotlinUnsignedCollections")
+  fory.register<KotlinUnsignedCollections>("kotlin.KotlinUnsignedCollections")
   val request =
     fory.deserialize(
       MemoryUtils.wrap(java.io.File(dataFile).readBytes()),
@@ -501,6 +660,14 @@ private fun newCompatibleFory(): Fory =
     .withCompatible(true)
     .requireClassRegistration(true)
     .withRefTracking(false)
+    .build()
+
+private fun newRefCompatibleFory(): Fory =
+  ForyKotlin.builder()
+    .withXlang(true)
+    .withCompatible(true)
+    .requireClassRegistration(true)
+    .withRefTracking(true)
     .build()
 
 private fun newRefFory(): Fory =

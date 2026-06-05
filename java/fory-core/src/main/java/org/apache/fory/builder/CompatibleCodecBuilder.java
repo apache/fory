@@ -25,10 +25,12 @@ import static org.apache.fory.type.TypeUtils.STRING_TYPE;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.Generated.GeneratedCompatibleSerializer;
 import org.apache.fory.codegen.CodeGenerator;
@@ -46,10 +48,12 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
+import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.converter.FieldConverter;
+import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.DescriptorGrouper;
@@ -261,14 +265,86 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
   }
 
   @Override
+  protected List<Expression> deserializePrimitives(
+      Expression bean, Expression buffer, List<List<Descriptor>> primitiveGroups) {
+    boolean hasConverter = false;
+    for (List<Descriptor> group : primitiveGroups) {
+      for (Descriptor descriptor : group) {
+        if (descriptor.getFieldConverter() != null) {
+          hasConverter = true;
+          break;
+        }
+      }
+      if (hasConverter) {
+        break;
+      }
+    }
+    if (!hasConverter) {
+      return super.deserializePrimitives(bean, buffer, primitiveGroups);
+    }
+
+    List<Expression> expressions = new ArrayList<>();
+    List<List<Descriptor>> bulkGroups = new ArrayList<>();
+    for (List<Descriptor> group : primitiveGroups) {
+      if (!hasFieldConverter(group)) {
+        bulkGroups.add(group);
+        continue;
+      }
+      appendPrimitiveBulkReads(expressions, bean, buffer, bulkGroups);
+      for (Descriptor descriptor : group) {
+        expressions.add(
+            deserializeField(
+                buffer,
+                descriptor,
+                value ->
+                    setFieldValue(
+                        bean, descriptor, tryInlineCast(value, descriptor.getTypeRef()))));
+      }
+    }
+    appendPrimitiveBulkReads(expressions, bean, buffer, bulkGroups);
+    return expressions;
+  }
+
+  @Override
+  protected Expression deserializeField(
+      Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
+    FieldConverter<?> converter = descriptor.getFieldConverter();
+    if (converter == null) {
+      return super.deserializeField(buffer, descriptor, callback);
+    }
+    StaticInvoke sourceValue =
+        new StaticInvoke(
+            FieldConverters.class,
+            "readSourceScalar",
+            OBJECT_TYPE,
+            readContextRef(),
+            Literal.ofInt(FieldConverters.fromDispatchId(converter)),
+            Literal.ofClass(FieldConverters.fromType(converter)),
+            Literal.ofBoolean(descriptor.isNullable()),
+            Literal.ofBoolean(
+                new SerializationFieldInfo(typeResolver, descriptor).useDeclaredTypeInfo),
+            Literal.ofString(FieldConverters.fieldName(converter)));
+    return new Expression.ListExpression(sourceValue, callback.apply(sourceValue));
+  }
+
+  @Override
   protected Expression setFieldValue(Expression bean, Descriptor descriptor, Expression value) {
     if (descriptor.getField() == null) {
       FieldConverter<?> converter = descriptor.getFieldConverter();
       if (converter != null) {
         Field field = converter.getField();
-        StaticInvoke converted =
+        StaticInvoke convertedValue =
             new StaticInvoke(
-                converter.getClass(), "convertFrom", TypeRef.of(field.getType()), value);
+                FieldConverters.class,
+                "convertValue",
+                OBJECT_TYPE,
+                Literal.ofInt(FieldConverters.fromDispatchId(converter)),
+                Literal.ofClass(FieldConverters.fromType(converter)),
+                Literal.ofInt(FieldConverters.toDispatchId(converter)),
+                Literal.ofClass(FieldConverters.toType(converter)),
+                Literal.ofString(FieldConverters.fieldName(converter)),
+                value);
+        Expression converted = new Expression.Cast(convertedValue, TypeRef.of(field.getType()));
         Descriptor newDesc =
             new DescriptorBuilder(descriptor)
                 .field(field)
@@ -286,6 +362,26 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     return super.setFieldValue(bean, descriptor, value);
   }
 
+  private static boolean hasFieldConverter(List<Descriptor> descriptors) {
+    for (Descriptor descriptor : descriptors) {
+      if (descriptor.getFieldConverter() != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private void appendPrimitiveBulkReads(
+      List<Expression> expressions,
+      Expression bean,
+      Expression buffer,
+      List<List<Descriptor>> bulkGroups) {
+    if (!bulkGroups.isEmpty()) {
+      expressions.addAll(super.deserializePrimitives(bean, buffer, bulkGroups));
+      bulkGroups.clear();
+    }
+  }
+
   @Override
   protected Expression newBean() {
     Expression bean = super.newBean();
@@ -295,6 +391,12 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
 
     Expression.ListExpression setDefaultsExpr = new Expression.ListExpression();
     setDefaultsExpr.add(bean);
+    addDefaultValueSetters(setDefaultsExpr, bean);
+    setDefaultsExpr.add(bean);
+    return setDefaultsExpr;
+  }
+
+  private void addDefaultValueSetters(Expression.ListExpression expressions, Expression bean) {
     Map<Member, Descriptor> descriptors = Descriptor.getAllDescriptorsMap(beanClass);
     for (DefaultValueUtils.DefaultValueField defaultField : defaultValueFields) {
       Object defaultValue = defaultField.getDefaultValue();
@@ -322,9 +424,7 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
                   return new Expression.Cast(expr, typeRef);
                 });
       }
-      setDefaultsExpr.add(super.setFieldValue(bean, descriptor, defaultValueExpr));
+      expressions.add(super.setFieldValue(bean, descriptor, defaultValueExpr));
     }
-    setDefaultsExpr.add(bean);
-    return setDefaultsExpr;
   }
 }

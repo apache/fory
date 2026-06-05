@@ -112,6 +112,7 @@ public class StreamTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     byte[] bytes = fory.serialize(new byte[1000 * 1000]);
     checkBuffer(fory);
@@ -155,7 +156,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testOutputStream() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     BeanA beanA = BeanA.createBeanA(2);
     fory.serialize(bas, beanA);
@@ -173,7 +179,12 @@ public class StreamTest extends ForyTestBase {
     newObj = fory.deserialize(buf);
     assertEquals(newObj, beanA);
 
-    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
@@ -190,7 +201,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testBufferedStream() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     BeanA beanA = BeanA.createBeanA(2);
     fory.serialize(bas, beanA);
@@ -210,7 +226,12 @@ public class StreamTest extends ForyTestBase {
     newObj = fory.deserialize(stream);
     assertEquals(newObj, beanA);
 
-    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
@@ -228,7 +249,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testOutputStreamWithType() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     fory.serialize(bas, beanA);
@@ -249,7 +275,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testReadableChannel() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     {
       ByteArrayOutputStream bas = new ByteArrayOutputStream();
@@ -283,7 +314,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testReadableChannelRequiresExactReads() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     byte[] serialized = fory.serialize(beanA);
 
@@ -454,6 +490,15 @@ public class StreamTest extends ForyTestBase {
     try (TrackingForyReadableChannel channel =
         new TrackingForyReadableChannel(
             new ChunkedReadableByteChannel(serialized, 1), ByteBuffer.allocateDirect(5))) {
+      Assert.assertEquals((long[]) fory.deserialize(channel), longs);
+      assertTrue(channel.readLongsCalled);
+    }
+
+    ByteBuffer limitedDirectBuffer = ByteBuffer.allocateDirect(serialized.length + 8);
+    limitedDirectBuffer.limit(5);
+    try (TrackingForyReadableChannel channel =
+        new TrackingForyReadableChannel(
+            new ChunkedReadableByteChannel(serialized, 1), limitedDirectBuffer)) {
       Assert.assertEquals((long[]) fory.deserialize(channel), longs);
       assertTrue(channel.readLongsCalled);
     }

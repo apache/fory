@@ -121,7 +121,7 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
@@ -220,6 +220,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     descriptorDispatchId = new HashMap<>();
   }
 
+  void setSamePackageAccess(boolean samePackageAccess) {
+    ctx.setSamePackageAccess(samePackageAccess);
+  }
+
   // Must be static to be shared across the whole process life.
   private static final Map<String, Map<String, Integer>> idGenerator = new ConcurrentHashMap<>();
 
@@ -273,6 +277,26 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
   protected static <T> T typeResolver(Fory fory, Function<TypeResolver, T> function) {
     return fory.getJITContext().asyncVisitFory(f -> function.apply(f.getTypeResolver()));
+  }
+
+  @Override
+  protected void cacheObjectInstantiator(Class<?> type) {
+    typeResolver.getObjectInstantiator(type);
+  }
+
+  @Override
+  protected Expression getObjectInstantiator(Class<?> type) {
+    cacheObjectInstantiator(type);
+    return getOrCreateField(
+        false,
+        ObjectInstantiator.class,
+        ctx.newName("objectInstantiator_" + type.getSimpleName()),
+        () ->
+            new Invoke(
+                typeResolverRef,
+                "getObjectInstantiator",
+                TypeRef.of(ObjectInstantiator.class),
+                getClassExpr(type)));
   }
 
   protected boolean needWriteRef(TypeRef<?> type) {
@@ -419,8 +443,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    * @see CodeGenerator#getClassUniqueId
    */
   protected void addCommonImports() {
-    ctx.addImports(
-        Fory.class, MemoryBuffer.class, WriteContext.class, ReadContext.class, UnsafeOps.class);
+    ctx.addImports(Fory.class, MemoryBuffer.class, WriteContext.class, ReadContext.class);
     ctx.addImports(TypeInfo.class, TypeInfoHolder.class, ClassResolver.class);
     ctx.addImport(Generated.class);
     ctx.addImports(LazyInitBeanSerializer.class, EnumSerializer.class);
@@ -943,6 +966,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         // TODO(chaokunyang) add jdk17+ unexported class check.
         // non-public class can't be accessed in generated class.
         serializerClass = Serializer.class;
+      } else if (isHiddenClass(serializerClass)) {
+        // Hidden generated serializers are represented by their Class object but cannot be named
+        // or loaded from Java source, so generated fields must use the stable Serializer type.
+        serializerClass = Serializer.class;
       } else {
         ClassLoader beanClassClassLoader = beanClass.getClassLoader();
         if (beanClassClassLoader == null) {
@@ -1004,6 +1031,14 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       serializerMap.put(cls, serializerRef);
     }
     return serializerRef;
+  }
+
+  private static boolean isHiddenClass(Class<?> cls) {
+    try {
+      return (Boolean) Class.class.getMethod("isHidden").invoke(cls);
+    } catch (ReflectiveOperationException | RuntimeException e) {
+      return false;
+    }
   }
 
   protected Expression getOrCreateStringSerializer() {
@@ -1728,6 +1763,45 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return TypeRef.of(CodeGenerator.getSourcePublicAccessibleParentClass(rawType));
   }
 
+  private TypeRef<?> mapChunkLocalType(TypeRef<?> typeRef, boolean monomorphic) {
+    if (monomorphic || useCollectionSerialization(typeRef) || useMapSerialization(typeRef)) {
+      return getMapChunkLocalType(typeRef);
+    }
+    return OBJECT_TYPE;
+  }
+
+  private Expression mapEntryRead(Expression entry, String methodName, TypeRef<?> localType) {
+    Expression value = inlineInvoke(entry, methodName, OBJECT_TYPE);
+    if (localType.equals(OBJECT_TYPE)) {
+      return value;
+    }
+    return new Cast(value, localType, "mapEntryValue", true, false);
+  }
+
+  private Expression mapEntryLocal(
+      Expression entry, String methodName, String namePrefix, TypeRef<?> localType) {
+    if (localType.equals(OBJECT_TYPE)) {
+      return new Invoke(entry, methodName, namePrefix, OBJECT_TYPE);
+    }
+    return new Cast(
+        inlineInvoke(entry, methodName, OBJECT_TYPE), localType, namePrefix, false, false);
+  }
+
+  private Expression writeMapChunkElement(
+      Expression value,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      boolean monomorphic) {
+    if (!monomorphic && value.type().equals(OBJECT_TYPE)) {
+      // Dynamic non-container chunks already wrote runtime type info. Keep the local as Object so
+      // raw maps with a value outside the declared generic type do not fail before that serializer
+      // gets the value.
+      return new Invoke(serializer, writeMethodName, writeContextRef(), value);
+    }
+    return serializeForNotNull(value, buffer, typeRef, serializer);
+  }
+
   protected Expression writeChunk(
       Expression buffer,
       Expression entry,
@@ -1739,16 +1813,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     boolean valueMonomorphic = isMonomorphic(valueType);
     Class<?> keyTypeRawType = keyType.getRawType();
     Class<?> valueTypeRawType = valueType.getRawType();
-    TypeRef<?> keyLocalType = keyMonomorphic ? getMapChunkLocalType(keyType) : keyType;
-    TypeRef<?> valueLocalType = valueMonomorphic ? getMapChunkLocalType(valueType) : valueType;
+    TypeRef<?> keyLocalType = mapChunkLocalType(keyType, keyMonomorphic);
+    TypeRef<?> valueLocalType = mapChunkLocalType(valueType, valueMonomorphic);
     Expression key =
         keyMonomorphic
             ? new Variable("key", keyLocalType)
-            : invoke(entry, "getKey", "key", keyType);
+            : mapEntryLocal(entry, "getKey", "key", keyLocalType);
     Expression value =
         valueMonomorphic
             ? new Variable("value", valueLocalType)
-            : invoke(entry, "getValue", "value", valueType);
+            : mapEntryLocal(entry, "getValue", "value", valueLocalType);
     Expression keyTypeExpr =
         keyMonomorphic
             ? getClassExpr(keyTypeRawType)
@@ -1870,9 +1944,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         new While(
             Literal.ofBoolean(true),
             () -> {
-              Expression keyAssign = new Assign(key, invokeInline(entry, "getKey", keyLocalType));
+              // Map.Entry is public but generated codecs may be package peers of non-public key or
+              // value types. Invoke as Object, then cast with this builder's source-access rules.
+              Expression keyAssign = new Assign(key, mapEntryRead(entry, "getKey", keyLocalType));
               Expression valueAssign =
-                  new Assign(value, invokeInline(entry, "getValue", valueLocalType));
+                  new Assign(value, mapEntryRead(entry, "getValue", valueLocalType));
               Expression breakCondition;
               if (keyMonomorphic && valueMonomorphic) {
                 breakCondition = or(eqNull(key), eqNull(value));
@@ -1896,7 +1972,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                         neq(inlineInvoke(key, "getClass", CLASS_TYPE), keyTypeExpr),
                         neq(inlineInvoke(value, "getClass", CLASS_TYPE), valueTypeExpr));
               }
-              Expression writeKey = serializeForNotNull(key, buffer, keyType, keySerializer);
+              Expression writeKey =
+                  writeMapChunkElement(key, buffer, keyType, keySerializer, keyMonomorphic);
               if (trackingKeyRef) {
                 writeKey =
                     new If(
@@ -1911,7 +1988,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                         writeKey);
               }
               Expression writeValue =
-                  serializeForNotNull(value, buffer, valueType, valueSerializer);
+                  writeMapChunkElement(value, buffer, valueType, valueSerializer, valueMonomorphic);
               if (trackingValueRef) {
                 writeValue =
                     new If(
@@ -2242,9 +2319,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return CompatibleSerializer.hasCompatibleCollectionArrayRead(typeResolver, descriptor);
   }
 
-  protected TypeRef<?> compatibleReadTargetTypeRef(Descriptor descriptor) {
+  protected TypeRef<?> compatibleLocalTypeRef(Descriptor descriptor) {
+    // Compatible collection/array metadata may keep the peer wire shape in TypeRef. Generated
+    // setters must cast to the local carrier that readCompatibleCollectionArrayField materializes.
     return descriptor.getField() == null
-        ? descriptor.getTypeRef()
+        ? TypeRef.of(descriptor.getRawType())
         : TypeRef.of(descriptor.getField().getGenericType());
   }
 

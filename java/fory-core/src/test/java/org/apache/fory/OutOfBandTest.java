@@ -41,7 +41,8 @@ public class OutOfBandTest extends ForyTestBase {
         Fory.builder()
             .withXlang(false)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     ByteBuffer byteBuffer = ByteBuffer.allocate(10);

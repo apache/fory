@@ -68,7 +68,7 @@ def test_dart_generator_emits_annotated_structs_and_generated_part_registration(
     assert "int fixedValue = 0;" in file.content
     assert "Uint64 taggedValue = Uint64(0);" in file.content
     assert (
-        "registerGeneratedStruct(fory, _scalarForySchema, id: 100, namespace: null, typeName: null);"
+        "registerGeneratedStruct(fory, _scalarForySchema, id: 100, name: null);"
         in file.content
     )
     assert "abstract final class DemoForyModule" in file.content
@@ -98,7 +98,7 @@ def test_dart_generator_keeps_enum_helpers_in_source_and_uses_generated_enum_reg
     assert "static Status fromRawValue(int value) => switch (value) {" in file.content
     assert "_StatusForySerializer" not in file.content
     assert (
-        "registerGeneratedEnum(fory, _statusForySchema, id: 101, namespace: null, typeName: null);"
+        "registerGeneratedEnum(fory, _statusForySchema, id: 101, name: null);"
         in file.content
     )
 
@@ -140,7 +140,7 @@ def test_dart_generator_keeps_union_serializers_direct_and_marks_union_types():
     assert "void write(" not in file.content
     assert "Animal read(" not in file.content
     assert (
-        "fory.registerSerializer(Animal, const _AnimalForySerializer(), id: 101, namespace: null, typeName: null);"
+        "fory.registerSerializer(Animal, const _AnimalForySerializer(), id: 101, name: null);"
         in file.content
     )
 
@@ -330,11 +330,11 @@ def test_dart_generator_uses_name_registration_when_auto_id_disabled():
     )
 
     assert (
-        "registerGeneratedStruct(fory, _envelopeForySchema, id: null, namespace: 'demo', typeName: 'Envelope');"
+        "registerGeneratedStruct(fory, _envelopeForySchema, id: null, name: 'demo.Envelope');"
         in file.content
     )
     assert (
-        "registerGeneratedStruct(fory, _envelopePayloadForySchema, id: null, namespace: 'demo', typeName: 'Envelope.Payload');"
+        "registerGeneratedStruct(fory, _envelopePayloadForySchema, id: null, name: 'demo.Envelope.Payload');"
         in file.content
     )
 

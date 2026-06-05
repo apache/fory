@@ -58,7 +58,7 @@ class Person:
     metadata: Dict[str, str]
 
 fory = pyfory.Fory(xlang=True, ref=True)
-fory.register(Person, typename="example.Person")
+fory.register(Person, name="example.Person")
 person = Person("Bob", 25, [88, 92, 85], {"team": "engineering"})
 data = fory.serialize(person)
 result = fory.deserialize(data)
@@ -88,7 +88,7 @@ For arbitrary Python object graphs, local classes, functions, and methods, use
 ## Performance Tips
 
 1. **Disable `ref=True` if not needed**: Reference tracking has overhead
-2. **Use type_id instead of typename**: Integer IDs are faster than string names
+2. **Use type_id instead of name**: Integer IDs are faster than string names
 3. **Reuse Fory instances**: Create once, use many times
 4. **Enable Cython**: Make sure `ENABLE_FORY_CYTHON_SERIALIZATION=1`
 

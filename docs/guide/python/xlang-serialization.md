@@ -24,7 +24,7 @@ data in Python and deserialize it in Java, C++, Go, Rust,
 JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin, or another supported
 language.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
 Python defaults to xlang mode with compatible schema evolution. Set the mode explicitly in xlang examples:
 
@@ -49,7 +49,7 @@ class Person:
     name: str
     age: pyfory.Int32
 
-f.register(Person, typename="example.Person")
+f.register(Person, name="example.Person")
 
 person = Person("Charlie", 35)
 binary_data = f.serialize(person)
@@ -89,7 +89,7 @@ struct Person {
 
 let mut fory = Fory::builder().xlang(true).build();
 
-fory.register_by_name::<Person>("example", "Person");
+fory.register_by_name::<Person>("example.Person");
 let person: Person = fory.deserialize(&binary_data)?;
 ```
 
@@ -118,7 +118,7 @@ decoded value safely satisfies the local schema.
 ## Reduced-Precision Types
 
 `pyfory.Float16` and `pyfory.BFloat16` are reserved annotation markers for xlang
-reduced-precision fields. They are not runtime value classes; scalar values deserialize as native
+reduced-precision fields. They are not value wrapper classes; scalar values deserialize as native
 Python `float`.
 
 Dense reduced-precision arrays use public dense wrappers with list-like sequence behavior. Construct them from Python

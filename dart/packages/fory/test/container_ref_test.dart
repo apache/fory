@@ -91,53 +91,41 @@ class NestedMapOfListContainer {
 }
 
 void _registerAll(Fory fory) {
-  ContainerRefTestForyModule.register(
-    fory,
-    Node,
-    namespace: 'test',
-    typeName: 'Node',
-  );
+  ContainerRefTestForyModule.register(fory, Node, name: 'test.Node');
   ContainerRefTestForyModule.register(
     fory,
     RefListContainer,
-    namespace: 'test',
-    typeName: 'RefListContainer',
+    name: 'test.RefListContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     NoRefListContainer,
-    namespace: 'test',
-    typeName: 'NoRefListContainer',
+    name: 'test.NoRefListContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     RefMapValueContainer,
-    namespace: 'test',
-    typeName: 'RefMapValueContainer',
+    name: 'test.RefMapValueContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     NoRefMapContainer,
-    namespace: 'test',
-    typeName: 'NoRefMapContainer',
+    name: 'test.NoRefMapContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     RefMapKeyContainer,
-    namespace: 'test',
-    typeName: 'RefMapKeyContainer',
+    name: 'test.RefMapKeyContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     NestedListOfMapContainer,
-    namespace: 'test',
-    typeName: 'NestedListOfMapContainer',
+    name: 'test.NestedListOfMapContainer',
   );
   ContainerRefTestForyModule.register(
     fory,
     NestedMapOfListContainer,
-    namespace: 'test',
-    typeName: 'NestedMapOfListContainer',
+    name: 'test.NestedMapOfListContainer',
   );
 }
 

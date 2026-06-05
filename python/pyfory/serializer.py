@@ -44,6 +44,7 @@ from pyfory._fory import (
 _WINDOWS = os.name == "nt"
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+from pyfory.types import TypeId
 
 
 def _import_validated_module(policy, module_name, is_local=False):
@@ -265,7 +266,6 @@ else:
 
     _RuntimeNumpy1DArraySerializer = None
 
-from pyfory.types import TypeId
 from pyfory.annotation import (
     BFloat16Array,
     BoolArray,
@@ -720,87 +720,6 @@ class ForyArrayFieldSerializer(Serializer):
 
     def read(self, buffer):
         return self.wrapper_serializer.read(buffer)
-
-
-class CompatibleArrayToListFieldSerializer(Serializer):
-    def __init__(self, type_resolver, remote_array_serializer, elem_serializer):
-        super().__init__(type_resolver, list)
-        self.remote_array_serializer = remote_array_serializer
-        self.elem_serializer = elem_serializer
-        self.need_to_write_ref = False
-
-    def write(self, buffer, value):
-        raise TypeError("compatible array-to-list field serializer is read-only")
-
-    def read(self, read_context):
-        return list(self.remote_array_serializer.read(read_context))
-
-
-class CompatibleListToArrayFieldSerializer(Serializer):
-    def __init__(self, type_resolver, target_serializer, elem_serializer, field_name=None):
-        super().__init__(type_resolver, target_serializer.type_)
-        self.target_serializer = target_serializer
-        self.elem_serializer = elem_serializer
-        self.field_name = field_name or "<array>"
-        self.need_to_write_ref = False
-
-    def write(self, buffer, value):
-        raise TypeError("compatible list-to-array field serializer is read-only")
-
-    def _empty_target(self):
-        if isinstance(self.target_serializer, ForyArrayFieldSerializer):
-            return self.target_serializer.wrapper_type()
-        if isinstance(self.target_serializer, PyArraySerializer):
-            return array.array(self.target_serializer.typecode)
-        if np is not None and _is_numpy_1d_array_serializer(self.target_serializer):
-            return np.empty(0, dtype=self.target_serializer.dtype)
-        raise TypeError(f"Field {self.field_name!r} has unsupported array target serializer {type(self.target_serializer)!r}")
-
-    def _new_target(self, length):
-        if isinstance(self.target_serializer, ForyArrayFieldSerializer):
-            return self.target_serializer.wrapper_type()
-        if isinstance(self.target_serializer, PyArraySerializer):
-            return array.array(self.target_serializer.typecode)
-        if np is not None and _is_numpy_1d_array_serializer(self.target_serializer):
-            return np.empty(length, dtype=self.target_serializer.dtype)
-        raise TypeError(f"Field {self.field_name!r} has unsupported array target serializer {type(self.target_serializer)!r}")
-
-    def read(self, read_context):
-        from pyfory.collection import (
-            COLL_HAS_NULL,
-            COLL_IS_DECL_ELEMENT_TYPE,
-            COLL_IS_SAME_TYPE,
-            COLL_TRACKING_REF,
-        )
-        from pyfory.error import TypeNotCompatibleError
-
-        length = read_context.read_var_uint32()
-        if length > read_context.max_collection_size:
-            raise ValueError(f"Collection size {length} exceeds the configured limit of {read_context.max_collection_size}")
-        if length == 0:
-            return self._empty_target()
-        collect_flag = read_context.read_int8()
-        if (collect_flag & (COLL_HAS_NULL | COLL_TRACKING_REF)) != 0:
-            raise TypeNotCompatibleError(
-                f"Field {self.field_name!r} cannot read nullable or ref-tracked list elements as array<T>",
-            )
-        if (collect_flag & (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE)) != (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE):
-            raise TypeNotCompatibleError(
-                f"Field {self.field_name!r} requires declared same-type list elements for array<T> compatible read",
-            )
-
-        target = self._new_target(length)
-        append = None if np is not None and _is_numpy_1d_array_serializer(self.target_serializer) else target.append
-        for index in range(length):
-            item = read_context.read_no_ref(serializer=self.elem_serializer)
-            try:
-                if append is None:
-                    target[index] = item
-                else:
-                    append(item)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise type(exc)(f"{self.field_name}[{index}] invalid for {type(target).__name__}: {exc}") from exc
-        return target
 
 
 class DynamicPyArraySerializer(Serializer):

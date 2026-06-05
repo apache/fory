@@ -39,6 +39,8 @@
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+    <fory.mr.classes>${project.build.directory}/multi-release-classes</fory.mr.classes>
+    <fory.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.jdk25.test.classes>
   </properties>
 
   <dependencies>
@@ -93,6 +95,7 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
               <minimizeJar>true</minimizeJar>
               <artifactSet>
                 <includes>
@@ -157,11 +160,11 @@
                 </goals>
                 <configuration>
                   <target>
-                    <mkdir dir="${project.build.directory}/jpms-classes/java9"/>
+                    <mkdir dir="${fory.mr.classes}/9"/>
                     <pathconvert property="compile.module.path" refid="maven.compile.classpath"
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/main/java9"
-                           destdir="${project.build.directory}/jpms-classes/java9"
+                           destdir="${fory.mr.classes}/9"
                            includeantruntime="false"
                            fork="true"
                            executable="${java.home}/bin/javac"
@@ -178,7 +181,7 @@
                 </configuration>
               </execution>
               <execution>
-                <id>inject-java9-module-info</id>
+                <id>inject-multi-release-classes</id>
                 <phase>package</phase>
                 <goals>
                   <goal>run</goal>
@@ -186,36 +189,11 @@
                 <configuration>
                   <target>
                     <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
-                      <zipfileset dir="${project.build.outputDirectory}/META-INF/versions/9"
-                                  prefix="META-INF/versions/9"
-                                  includes="module-info.class"/>
+                      <zipfileset dir="${fory.mr.classes}"
+                                  prefix="META-INF/versions"
+                                  includes="**/*.class"/>
                     </jar>
                   </target>
-                </configuration>
-              </execution>
-            </executions>
-          </plugin>
-          <plugin>
-            <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-resources-plugin</artifactId>
-            <version>3.3.1</version>
-            <executions>
-              <execution>
-                <id>copy-java9-module-info</id>
-                <phase>prepare-package</phase>
-                <goals>
-                  <goal>copy-resources</goal>
-                </goals>
-                <configuration>
-                  <outputDirectory>${project.build.outputDirectory}/META-INF/versions/9</outputDirectory>
-                  <resources>
-                    <resource>
-                      <directory>${project.build.directory}/jpms-classes/java9</directory>
-                      <includes>
-                        <include>module-info.class</include>
-                      </includes>
-                    </resource>
-                  </resources>
                 </configuration>
               </execution>
             </executions>
@@ -243,12 +221,12 @@
                 </goals>
                 <configuration>
                   <target>
-                    <delete dir="${project.build.directory}/jpms-classes/java16"/>
-                    <mkdir dir="${project.build.directory}/jpms-classes/java16"/>
+                    <delete dir="${fory.mr.classes}/16"/>
+                    <mkdir dir="${fory.mr.classes}/16"/>
                     <pathconvert property="compile.module.path" refid="maven.compile.classpath"
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/main/java16"
-                           destdir="${project.build.directory}/jpms-classes/java16"
+                           destdir="${fory.mr.classes}/16"
                            includeantruntime="false"
                            fork="true"
                            executable="${java.home}/bin/javac"
@@ -268,31 +246,203 @@
                   </target>
                 </configuration>
               </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk25-multi-release</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <executions>
               <execution>
-                <id>clean-java16-package-classes</id>
-                <phase>prepare-package</phase>
+                <id>attach-sources</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-jdk25-classes</id>
+                <phase>process-classes</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
                   <target>
-                    <delete dir="${project.build.outputDirectory}/META-INF/versions/16"/>
+                    <delete dir="${fory.mr.classes}/25"/>
+                    <mkdir dir="${fory.mr.classes}/25"/>
+                    <javac srcdir="${project.basedir}/src/main/java25"
+                           destdir="${fory.mr.classes}/25"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="22"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
                   </target>
                 </configuration>
               </execution>
               <execution>
-                <id>inject-java16-classes</id>
+                <id>compile-jdk25-module-info</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <pathconvert property="compile.module.path" refid="maven.compile.classpath"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/main/java25"
+                           destdir="${fory.mr.classes}/25"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="module-info.java"/>
+                      <compilerarg value="--source"/>
+                      <compilerarg value="22"/>
+                      <compilerarg value="--target"/>
+                      <compilerarg value="22"/>
+                      <compilerarg value="--module-path"/>
+                      <compilerarg path="${compile.module.path}"/>
+                      <compilerarg value="--add-modules"/>
+                      <compilerarg value="jdk.incubator.vector"/>
+                      <compilerarg value="--patch-module"/>
+                      <compilerarg value="org.apache.fory.core=${project.build.outputDirectory}${path.separator}${fory.mr.classes}/25"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>prepare-jdk25-test-classes</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.jdk25.test.classes}"/>
+                    <mkdir dir="${fory.jdk25.test.classes}"/>
+                    <!-- Surefire runs from classes directories, not the packaged multi-release jar.
+                         Overlay versioned classes and omit module-info.class so JDK25+ classpath
+                         tests stay unnamed while exercising the zero-Unsafe implementations. -->
+                    <copy todir="${fory.jdk25.test.classes}">
+                      <fileset dir="${project.build.outputDirectory}">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.mr.classes}/16">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.mr.classes}/25">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>verify-jdk25-multi-release-jar</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <java
+                        classname="org.apache.fory.builder.Jdk25MultiReleaseJarVerifier"
+                        fork="true"
+                        failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.testOutputDirectory}"/>
+                      </classpath>
+                      <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>patch-multi-release-source-jar</id>
                 <phase>package</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
                   <target>
-                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
-                      <zipfileset dir="${project.build.outputDirectory}/META-INF/versions/16"
-                                  prefix="META-INF/versions/16"
-                                  includes="**/*.class"/>
+                    <property
+                        name="jdk25.sources.jar"
+                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    <available file="${jdk25.sources.jar}" property="jdk25.sources.jar.present"/>
+                    <fail
+                        unless="jdk25.sources.jar.present"
+                        message="Multi-release source patching requires ${jdk25.sources.jar}; run with source-jar generation enabled."/>
+                    <jar destfile="${jdk25.sources.jar}" update="true">
+                      <zipfileset dir="${project.basedir}/src/main/java9" prefix="META-INF/versions/9">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java16" prefix="META-INF/versions/16">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java25" prefix="META-INF/versions/25">
+                        <include name="**/*.java"/>
+                      </zipfileset>
                     </jar>
+                    <property
+                        name="jdk25.sources.check.dir"
+                        value="${project.build.directory}/jdk25-source-check"/>
+                    <delete dir="${jdk25.sources.check.dir}"/>
+                    <mkdir dir="${jdk25.sources.check.dir}"/>
+                    <unzip src="${jdk25.sources.jar}" dest="${jdk25.sources.check.dir}">
+                      <patternset>
+                        <include name="META-INF/versions/9/module-info.java"/>
+                        <include name="META-INF/versions/16/module-info.java"/>
+                        <include name="META-INF/versions/25/module-info.java"/>
+                      </patternset>
+                    </unzip>
+                    <available
+                        file="${jdk25.sources.check.dir}/META-INF/versions/9/module-info.java"
+                        property="java9.moduleinfo.source.present"/>
+                    <available
+                        file="${jdk25.sources.check.dir}/META-INF/versions/16/module-info.java"
+                        property="java16.moduleinfo.source.present"/>
+                    <available
+                        file="${jdk25.sources.check.dir}/META-INF/versions/25/module-info.java"
+                        property="jdk25.moduleinfo.source.present"/>
+                    <fail
+                        unless="java9.moduleinfo.source.present"
+                        message="Java 9 module-info.java source is missing from the source jar."/>
+                    <fail
+                        unless="java16.moduleinfo.source.present"
+                        message="Java 16 module-info.java source is missing from the source jar."/>
+                    <fail
+                        unless="jdk25.moduleinfo.source.present"
+                        message="JDK25 versioned module-info.java source is missing from the source jar."/>
                   </target>
                 </configuration>
               </execution>
@@ -300,28 +450,10 @@
           </plugin>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
-            <artifactId>maven-resources-plugin</artifactId>
-            <version>3.3.1</version>
-            <executions>
-              <execution>
-                <id>copy-java16-classes</id>
-                <phase>prepare-package</phase>
-                <goals>
-                  <goal>copy-resources</goal>
-                </goals>
-                <configuration>
-                  <outputDirectory>${project.build.outputDirectory}/META-INF/versions/16</outputDirectory>
-                  <resources>
-                    <resource>
-                      <directory>${project.build.directory}/jpms-classes/java16</directory>
-                      <includes>
-                        <include>**/*.class</include>
-                      </includes>
-                    </resource>
-                  </resources>
-                </configuration>
-              </execution>
-            </executions>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <classesDirectory>${fory.jdk25.test.classes}</classesDirectory>
+            </configuration>
           </plugin>
         </plugins>
       </build>
@@ -371,6 +503,50 @@
                     </property>
                   </properties>
                   <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>refresh-module-packages</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>refresh-module-packages</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <!-- Shading relocates Janino after module-info is compiled, and multi-release
+                         classes are injected after shade. Refresh the descriptor package table
+                         from the final jar so JPMS can load concealed shaded codegen packages from
+                         org.apache.fory.core. JDK11 requires an update input file; re-adding an
+                         unchanged base class avoids validating versioned classes while preserving
+                         the descriptor refresh performed by the jar module-version option. -->
+                    <exec executable="${java.home}/bin/jar" failonerror="true">
+                      <arg value="--update"/>
+                      <arg value="--file"/>
+                      <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                      <arg value="--module-version"/>
+                      <arg value="${project.version}"/>
+                      <arg value="-C"/>
+                      <arg value="${project.build.outputDirectory}"/>
+                      <arg value="org/apache/fory/Fory.class"/>
+                    </exec>
+                  </target>
                 </configuration>
               </execution>
             </executions>

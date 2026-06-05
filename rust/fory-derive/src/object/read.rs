@@ -267,10 +267,9 @@ pub(crate) fn gen_read_compatible_with_construction(
         })
         .enumerate()
         .map(|(sorted_idx, binding)| {
-            // Use sorted index for matching. The assign_field_ids function assigns
-            // the sorted index to matched fields after lookup (by ID or name).
-            // Fields that don't match get field_id = -1; codec incompatibility is
-            // handled inside the arm by reading or skipping the remote payload.
+            // Use sorted index for matching. Field assignment only reaches this arm
+            // for exact reads or supported compatible read actions; unmatched and
+            // schema-incompatible fields keep field_id = -1 and are skipped.
             let field_id = sorted_idx as i16;
             let field_index = sorted_idx;
             let body = binding.read_compatible();
@@ -383,11 +382,19 @@ pub(crate) fn gen_read_compatible_with_construction(
                 };
 
                 match local_match {
-                    Some((sorted_index, local_info)) => {
+                    Some((sorted_index, local_info))
+                        if ::fory_core::serializer::codec::compatible_field_pair(
+                            &local_info.field_type,
+                            &field.field_type,
+                        ) =>
+                    {
                         if field.field_name.is_empty() {
                             field.field_name = local_info.field_name.clone();
                         }
                         field.field_id = sorted_index as i16;
+                    }
+                    Some(_) => {
+                        field.field_id = -1;
                     }
                     None => {
                         field.field_id = -1;

@@ -49,11 +49,6 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.fory</groupId>
-      <artifactId>benchmark</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
       <groupId>org.testng</groupId>
       <artifactId>testng</artifactId>
       <scope>test</scope>
@@ -80,5 +75,28 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- This module is a pre-JDK25 classpath compatibility matrix. JDK25+
+         zero-Unsafe coverage belongs to integration_tests/jpms_tests, where
+         Fory runs as named JPMS modules. -->
+    <profile>
+      <id>skip-jdk25-and-higher</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <skipTests>true</skipTests>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 
 </project>

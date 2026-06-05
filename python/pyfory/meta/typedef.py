@@ -745,9 +745,11 @@ def _create_compatible_field_serializer(
         raise TypeNotCompatibleError(f"Field {field_name!r} has unsupported list/array schema mismatch")
 
     if _is_root_list_array_pair(remote_field_type, local_field_type):
-        from pyfory.serializer import (
+        from pyfory.converter import (
             CompatibleArrayToListFieldSerializer,
             CompatibleListToArrayFieldSerializer,
+        )
+        from pyfory.serializer import (
             ForyArrayFieldSerializer,
             fory_array_wrapper_type,
         )
@@ -786,20 +788,57 @@ def _create_compatible_field_serializer(
         serializer = _create_local_typehint_serializer(resolver, field_name, type_hint)
         if serializer is not None:
             return serializer
+    if local_field_type is not None:
+        from pyfory.converter import CompatibleScalarFieldSerializer, supports_compatible_scalar_conversion
+
+        exact_scalar_field_type = (
+            remote_field_type.type_id == local_field_type.type_id
+            and remote_field_type.is_nullable == local_field_type.is_nullable
+            and remote_field_type.is_tracking_ref == local_field_type.is_tracking_ref
+        )
+        if (
+            not remote_field_type.is_tracking_ref
+            and not local_field_type.is_tracking_ref
+            and not exact_scalar_field_type
+            and supports_compatible_scalar_conversion(remote_field_type.type_id, local_field_type.type_id)
+        ):
+            remote_serializer = remote_field_type.create_serializer(resolver, local_declared_type)
+            return CompatibleScalarFieldSerializer(
+                resolver,
+                remote_serializer,
+                remote_field_type.type_id,
+                local_field_type.type_id,
+                field_name,
+            )
     return remote_field_type.create_serializer(resolver, local_declared_type)
 
 
+_SIGNED_INT8_TYPE_IDS = frozenset((TypeId.INT8,))
+_SIGNED_INT16_TYPE_IDS = frozenset((TypeId.INT16,))
 _SIGNED_INT32_TYPE_IDS = frozenset((TypeId.INT32, TypeId.VARINT32))
 _SIGNED_INT64_TYPE_IDS = frozenset((TypeId.INT64, TypeId.VARINT64, TypeId.TAGGED_INT64))
+_UNSIGNED_INT8_TYPE_IDS = frozenset((TypeId.UINT8,))
+_UNSIGNED_INT16_TYPE_IDS = frozenset((TypeId.UINT16,))
 _UNSIGNED_INT32_TYPE_IDS = frozenset((TypeId.UINT32, TypeId.VAR_UINT32))
 _UNSIGNED_INT64_TYPE_IDS = frozenset((TypeId.UINT64, TypeId.VAR_UINT64, TypeId.TAGGED_UINT64))
 _INT_TYPE_DOMAINS = {type_id: (True, 32) for type_id in _SIGNED_INT32_TYPE_IDS}
+_INT_TYPE_DOMAINS.update({type_id: (True, 8) for type_id in _SIGNED_INT8_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (True, 16) for type_id in _SIGNED_INT16_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (True, 64) for type_id in _SIGNED_INT64_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (False, 8) for type_id in _UNSIGNED_INT8_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (False, 16) for type_id in _UNSIGNED_INT16_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (False, 32) for type_id in _UNSIGNED_INT32_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (False, 64) for type_id in _UNSIGNED_INT64_TYPE_IDS})
+_COMPATIBLE_SCALAR_TYPE_IDS = frozenset(
+    (TypeId.BOOL, TypeId.STRING, TypeId.FLOAT16, TypeId.BFLOAT16, TypeId.FLOAT32, TypeId.FLOAT64, TypeId.DECIMAL)
+) | frozenset(_INT_TYPE_DOMAINS)
 _INT_RANGES = {
+    (True, 8): (-(1 << 7), (1 << 7) - 1),
+    (True, 16): (-(1 << 15), (1 << 15) - 1),
     (True, 32): (-(1 << 31), (1 << 31) - 1),
     (True, 64): (-(1 << 63), (1 << 63) - 1),
+    (False, 8): (0, (1 << 8) - 1),
+    (False, 16): (0, (1 << 16) - 1),
     (False, 32): (0, (1 << 32) - 1),
     (False, 64): (0, (1 << 64) - 1),
 }
@@ -827,6 +866,29 @@ def _field_type_assignment(remote_field_type: FieldType, local_field_type: Field
         return True, True
     if top_level and _is_root_list_array_pair(remote_field_type, local_field_type):
         return True, True
+    if top_level:
+        from pyfory.converter import supports_compatible_scalar_conversion
+
+        scalar_pair = _is_compatible_scalar_type_id(remote_type_id) and _is_compatible_scalar_type_id(local_type_id)
+        if scalar_pair:
+            if remote_field_type.is_tracking_ref != local_field_type.is_tracking_ref:
+                return False, False
+            if (remote_field_type.is_tracking_ref or local_field_type.is_tracking_ref) and (
+                remote_type_id != local_type_id or remote_field_type.is_nullable != local_field_type.is_nullable
+            ):
+                return False, False
+            if (
+                not remote_field_type.is_tracking_ref
+                and remote_type_id == local_type_id
+                and remote_field_type.is_nullable != local_field_type.is_nullable
+            ):
+                return True, needs_validation
+        if (
+            not remote_field_type.is_tracking_ref
+            and not local_field_type.is_tracking_ref
+            and supports_compatible_scalar_conversion(remote_type_id, local_type_id)
+        ):
+            return True, needs_validation
     if remote_type_id in (TypeId.LIST, TypeId.SET):
         if local_type_id != remote_type_id:
             return False, False
@@ -868,6 +930,10 @@ def _field_type_assignment(remote_field_type: FieldType, local_field_type: Field
     if remote_type_id == local_type_id:
         return True, needs_validation
     return False, False
+
+
+def _is_compatible_scalar_type_id(type_id: TypeId) -> bool:
+    return type_id in _COMPATIBLE_SCALAR_TYPE_IDS
 
 
 def plan_field_assignment(

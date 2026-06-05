@@ -824,7 +824,7 @@ final class StaticSerializerSourceWriter {
       builder.append("      case ").append(field.id).append(":\n");
       appendDebugRemoteRead("before read", "remoteField", 8);
       builder
-          .append("        if (canReadRemoteField(remoteField, fieldsById[")
+          .append("        if (canReadGeneratedField(remoteField, fieldsById[")
           .append(field.id)
           .append("])) {\n");
       builder
@@ -864,7 +864,7 @@ final class StaticSerializerSourceWriter {
       builder.append("      case ").append(field.id).append(":\n");
       appendDebugRemoteRead("before read", "remoteField", 8);
       builder
-          .append("        if (canReadRemoteField(remoteField, fieldsById[")
+          .append("        if (canReadGeneratedField(remoteField, fieldsById[")
           .append(field.id)
           .append("])) {\n");
       builder

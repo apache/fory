@@ -47,6 +47,8 @@ libraryDependencies ++= Seq(
   "dev.zio" %% "zio" % "2.1.7" % Test,
 )
 
+Test / fork := true
+
 lazy val writeTestClasspath = taskKey[File]("Writes the Scala test runtime classpath")
 
 writeTestClasspath := {

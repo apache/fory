@@ -242,8 +242,8 @@ class SomeClass2:
 
 if __name__ == "__main__":
     f = pyfory.Fory(xlang=True)
-    f.register_type(SomeClass1, typename="example.SomeClass1")
-    f.register_type(SomeClass2, typename="example.SomeClass2")
+    f.register_type(SomeClass1, name="example.SomeClass1")
+    f.register_type(SomeClass2, name="example.SomeClass2")
     obj1 = SomeClass1(f1=True, f2={-1: 2})
     obj = SomeClass2(
         f1=obj1,
@@ -399,10 +399,10 @@ fn complex_struct() {
 
     let mut fory = Fory::builder().xlang(true).build();
     fory
-        .register_by_name::<Animal>("example", "foo2")
+        .register_by_name::<Animal>("example.foo2")
         .expect("register Animal");
     fory
-        .register_by_name::<Person>("example", "foo")
+        .register_by_name::<Person>("example.foo")
         .expect("register Person");
     let bin = fory.serialize(&person).expect("serialize success");
     let obj: Person = fory.deserialize(&bin).expect("deserialize success");
@@ -462,7 +462,7 @@ class SomeClass:
     f3: Dict[str, str]
 
 fory = pyfory.Fory(xlang=True, ref=True)
-fory.register_type(SomeClass, typename="example.SomeClass")
+fory.register_type(SomeClass, name="example.SomeClass")
 obj = SomeClass()
 obj.f2 = {"k1": "v1", "k2": "v2"}
 obj.f1, obj.f3 = obj, obj.f2

@@ -117,8 +117,7 @@ void main() {
     fory.registerSerializer(
       ManualValue,
       const ManualValueSerializer(),
-      namespace: 'manual',
-      typeName: 'ManualValue',
+      name: 'manual.ManualValue',
     );
 
     final value = ManualValue('alpha', Int64(99));
@@ -133,14 +132,12 @@ void main() {
     fory.registerSerializer(
       RefPayload,
       const RefPayloadSerializer(),
-      namespace: 'manual',
-      typeName: 'RefPayload',
+      name: 'manual.RefPayload',
     );
     fory.registerSerializer(
       NonRefThenRefValue,
       const NonRefThenRefValueSerializer(),
-      namespace: 'manual',
-      typeName: 'NonRefThenRefValue',
+      name: 'manual.NonRefThenRefValue',
     );
 
     final payload = RefPayload('shared');
@@ -153,34 +150,37 @@ void main() {
     expect(identical(roundTrip.first, roundTrip.second), isFalse);
   });
 
-  test('writeRefValueFlag returns true only when payload bytes must follow',
-      () {
-    final fory = Fory();
-    fory.registerSerializer(
-      RefPayload,
-      const RefPayloadSerializer(),
-      namespace: 'manual',
-      typeName: 'RefPayload',
-    );
-    fory.registerSerializer(
-      RefValueFlagValue,
-      const RefValueFlagValueSerializer(),
-      namespace: 'manual',
-      typeName: 'RefValueFlagValue',
-    );
+  test(
+    'writeRefValueFlag returns true only when payload bytes must follow',
+    () {
+      final fory = Fory();
+      fory.registerSerializer(
+        RefPayload,
+        const RefPayloadSerializer(),
+        name: 'manual.RefPayload',
+      );
+      fory.registerSerializer(
+        RefValueFlagValue,
+        const RefValueFlagValueSerializer(),
+        name: 'manual.RefValueFlagValue',
+      );
 
-    final roundTrip = fory.deserialize<RefValueFlagValue>(
-      fory.serialize(RefValueFlagValue(RefPayload('flagged'))),
-    );
+      final roundTrip = fory.deserialize<RefValueFlagValue>(
+        fory.serialize(RefValueFlagValue(RefPayload('flagged'))),
+      );
 
-    expect(roundTrip.payload.name, equals('flagged'));
-  });
+      expect(roundTrip.payload.name, equals('flagged'));
+    },
+  );
 
   test('root trackRef supports repeated strings', () {
     final fory = Fory();
     final shared = String.fromCharCodes('shared'.codeUnits);
-    final roundTrip = fory.deserialize<Object?>(
-        fory.serialize(<Object?>[shared, shared], trackRef: true)) as List;
+    final roundTrip =
+        fory.deserialize<Object?>(
+              fory.serialize(<Object?>[shared, shared], trackRef: true),
+            )
+            as List;
 
     expect(roundTrip[0], equals('shared'));
     expect(roundTrip[1], equals('shared'));

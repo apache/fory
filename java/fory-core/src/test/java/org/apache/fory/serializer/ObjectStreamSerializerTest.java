@@ -48,11 +48,13 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
+import org.apache.fory.serializer.otherpkg.PackageNoArgParent;
 import org.apache.fory.util.Preconditions;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -114,6 +116,208 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   public void testDispatch(Fory fory) {
     WriteObjectTestClass o = new WriteObjectTestClass(new char[] {'a', 'b'});
     serDeCheckSerializer(fory, o, "ObjectStreamSerializer");
+  }
+
+  public static class AnnotatedObjectStreamType implements Serializable {
+    String name;
+    int age;
+    transient boolean readObjectCalled;
+
+    public AnnotatedObjectStreamType(String name, int age) {
+      this.name = name;
+      this.age = age;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+      readObjectCalled = true;
+    }
+  }
+
+  public static class RegisteredObjectStreamType implements Serializable {
+    String name;
+    int age;
+    transient boolean readObjectCalled;
+
+    public RegisteredObjectStreamType(String name, int age) {
+      this.name = name;
+      this.age = age;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+      readObjectCalled = true;
+    }
+  }
+
+  public static class ThrowingNoArgObjectStreamType implements Serializable {
+    String name;
+
+    public ThrowingNoArgObjectStreamType() {
+      throw new AssertionError("ObjectStream reconstruction must not invoke this constructor");
+    }
+
+    public ThrowingNoArgObjectStreamType(String name) {
+      this.name = name;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
+  public static class SerializableParentCtorType implements Serializable {
+    static int noArgCalls;
+    String parentName;
+
+    public SerializableParentCtorType() {
+      noArgCalls++;
+    }
+
+    public SerializableParentCtorType(String parentName) {
+      this.parentName = parentName;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
+  public static class SerializableChildCtorType extends SerializableParentCtorType {
+    String childName;
+
+    public SerializableChildCtorType(String parentName, String childName) {
+      super(parentName);
+      this.childName = childName;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
+  public static class PrivateNoArgParent {
+    private PrivateNoArgParent() {}
+
+    public PrivateNoArgParent(String ignored) {}
+  }
+
+  public static class InvalidCtorChild extends PrivateNoArgParent implements Serializable {
+    String name;
+
+    public InvalidCtorChild(String name) {
+      super(name);
+      this.name = name;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
+  public static class InvalidPackageCtorChild extends PackageNoArgParent implements Serializable {
+    String name;
+
+    public InvalidPackageCtorChild(String name) {
+      super(name);
+      this.name = name;
+    }
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
+  @Test(dataProvider = "javaFory")
+  public void testObjectStreamNoArgBypassRead(Fory fory) {
+    AnnotatedObjectStreamType annotated =
+        serDeCheckSerializer(
+            fory, new AnnotatedObjectStreamType("annotated", 1), "ObjectStreamSerializer");
+    Assert.assertEquals(annotated.name, "annotated");
+    Assert.assertEquals(annotated.age, 1);
+    Assert.assertTrue(annotated.readObjectCalled);
+
+    RegisteredObjectStreamType registered =
+        serDeCheckSerializer(
+            fory, new RegisteredObjectStreamType("registered", 2), "ObjectStreamSerializer");
+    Assert.assertEquals(registered.name, "registered");
+    Assert.assertEquals(registered.age, 2);
+    Assert.assertTrue(registered.readObjectCalled);
+
+    ThrowingNoArgObjectStreamType throwing =
+        serDeCheckSerializer(
+            fory, new ThrowingNoArgObjectStreamType("throwing"), "ObjectStreamSerializer");
+    Assert.assertEquals(throwing.name, "throwing");
+  }
+
+  @Test(dataProvider = "javaFory")
+  public void testSerializableParentCtor(Fory fory) {
+    SerializableParentCtorType.noArgCalls = 0;
+    SerializableChildCtorType child = new SerializableChildCtorType("parent", "child");
+    SerializableChildCtorType decoded = serDeCheckSerializer(fory, child, "ObjectStreamSerializer");
+    Assert.assertEquals(decoded.parentName, "parent");
+    Assert.assertEquals(decoded.childName, "child");
+    Assert.assertEquals(SerializableParentCtorType.noArgCalls, 0);
+  }
+
+  @Test(dataProvider = "javaFory")
+  public void testInvalidParentCtor(Fory fory) {
+    Assert.assertThrows(ForyException.class, () -> fory.serialize(new InvalidCtorChild("child")));
+    Assert.assertThrows(
+        ForyException.class, () -> fory.serialize(new InvalidPackageCtorChild("child")));
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testObjectStreamNoArgBypassCopy(Fory fory) {
+    AnnotatedObjectStreamType copy = fory.copy(new AnnotatedObjectStreamType("copy", 3));
+    Assert.assertEquals(copy.name, "copy");
+    Assert.assertEquals(copy.age, 3);
+
+    RegisteredObjectStreamType registeredCopy =
+        fory.copy(new RegisteredObjectStreamType("registered-copy", 4));
+    Assert.assertEquals(registeredCopy.name, "registered-copy");
+    Assert.assertEquals(registeredCopy.age, 4);
+
+    ThrowingNoArgObjectStreamType throwingCopy =
+        fory.copy(new ThrowingNoArgObjectStreamType("throwing-copy"));
+    Assert.assertEquals(throwingCopy.name, "throwing-copy");
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testSerializableParentCtorCopy(Fory fory) {
+    SerializableParentCtorType.noArgCalls = 0;
+    SerializableChildCtorType copy = fory.copy(new SerializableChildCtorType("parent", "child"));
+    Assert.assertEquals(copy.parentName, "parent");
+    Assert.assertEquals(copy.childName, "child");
+    Assert.assertEquals(SerializableParentCtorType.noArgCalls, 0);
   }
 
   @EqualsAndHashCode(callSuper = true)
@@ -345,6 +549,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(
         ConcurrentHashMap.class,
@@ -1033,14 +1238,24 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test
   public void testObjectStreamExpectedParentLayer() {
     Fory writerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     writerFory.register(HierarchyChildDefault.class);
     writerFory.registerSerializer(
         HierarchyChildDefault.class,
         new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyChildDefault.class));
 
     Fory readerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     readerFory.register(HierarchyChildDefault.class);
     readerFory.registerSerializer(
         HierarchyChildDefault.class,
@@ -1062,13 +1277,19 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(false)
+            .withCompatible(false)
             .build();
     writerFory.registerSerializer(
         HierarchyParentPutFields.class,
         new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyParentPutFields.class));
 
     Fory readerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     readerFory.register(HierarchyChildDefault.class);
     readerFory.registerSerializer(
         HierarchyChildDefault.class,

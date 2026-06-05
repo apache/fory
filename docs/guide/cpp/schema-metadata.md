@@ -165,7 +165,7 @@ struct Node {
 FORY_STRUCT(Node, name, (next, fory::F().nullable().ref()));
 ```
 
-For polymorphic pointer fields, use `.dynamic(true)` to always write runtime
+For polymorphic pointer fields, use `.dynamic(true)` to always write concrete
 type information, `.dynamic(false)` to use the declared type directly, or omit
 it to let Fory infer the behavior from the C++ type:
 

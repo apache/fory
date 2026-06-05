@@ -96,8 +96,7 @@ foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --
 
 The generated service code uses normal gRPC APIs, but request and response
 objects are serialized with Fory. Applications provide their own grpc-java or
-`grpcio` dependencies; Fory runtime packages do not add gRPC as a hard
-dependency.
+`grpcio` dependencies; Fory packages do not add gRPC as a hard dependency.
 
 ## Why Fory IDL?
 
@@ -105,7 +104,7 @@ dependency.
 
 Define your data model once in Fory IDL and generate consistent, type-safe code across all languages. This ensures:
 
-- **Type Safety**: Catch type errors at compile time, not runtime
+- **Type Safety**: Catch type errors at compile time, not when the code runs
 - **Consistency**: All languages use the same field names, types, and structures
 - **Documentation**: Schema serves as living documentation
 - **Evolution**: Managed schema changes across all implementations

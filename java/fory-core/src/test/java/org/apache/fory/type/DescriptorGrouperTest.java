@@ -76,7 +76,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testComparatorByTypeAndName() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = new ArrayList<>();
     descriptors.add(
         createDescriptor(TypeRef.of(Date.class), "z_timestamp", -1, "TestClass", false));
@@ -92,7 +92,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testPrimitiveComparator() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = new ArrayList<>();
     int index = 0;
     for (Class<?> aClass : Primitives.allPrimitiveTypes()) {
@@ -126,7 +126,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
       descriptors.add(createDescriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass", false));
     }
     Collections.shuffle(descriptors, new Random(7));
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     descriptors.sort(fory.getTypeResolver().getPrimitiveComparator());
     List<? extends Class<?>> classes =
         descriptors.stream().map(Descriptor::getRawType).collect(Collectors.toList());
@@ -167,7 +167,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testGrouper() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = createDescriptors();
     int index = 0;
     descriptors.add(
@@ -273,7 +273,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testCompressedPrimitiveGrouper() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     DescriptorGrouper grouper =
         DescriptorGrouper.createDescriptorGrouper(
                 d -> ReflectionUtils.isMonomorphic(d.getRawType()),
@@ -371,7 +371,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
 
   @Test
   public void testComparatorUsesFieldIdentifierBeforeRawTypeName() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Comparator<Descriptor> comparator =
         ((ClassResolver) fory.getTypeResolver()).createTypeAndNameComparator();
     Descriptor date = createDescriptor(TypeRef.of(Date.class), "z_date", -1, "TestClass", false);

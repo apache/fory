@@ -286,7 +286,7 @@ final class TypeResolver {
     if (entry == null) {
       throw StateError(
         'Type $type has no generated type metadata. '
-        'Register it through its generated library namespace first.',
+        'Register it through its generated Fory module first.',
       );
     }
     _registerResolvedSerializer(
@@ -336,11 +336,17 @@ final class TypeResolver {
     String? namespace,
     String? typeName,
   }) {
-    _validateRegistrationMode(id: id, namespace: namespace, typeName: typeName);
+    final name = _resolveRegistrationName(
+      id: id,
+      namespace: namespace,
+      typeName: typeName,
+    );
+    final resolvedNamespace = name.namespace;
+    final resolvedTypeName = name.typeName;
     final encodedNamespace =
-        namespace == null ? null : packageMetaString(namespace);
+        resolvedNamespace == null ? null : packageMetaString(resolvedNamespace);
     final encodedTypeName =
-        typeName == null ? null : typeNameMetaString(typeName);
+        resolvedTypeName == null ? null : typeNameMetaString(resolvedTypeName);
     final normalizedFields =
         registrationKind == RegistrationKind.struct
             ? _validateFieldInfos(fields)
@@ -374,8 +380,8 @@ final class TypeResolver {
       serializer: payloadSerializer,
       structSerializer: structSerializer,
       userTypeId: id,
-      namespace: namespace,
-      typeName: typeName,
+      namespace: resolvedNamespace,
+      typeName: resolvedTypeName,
       encodedNamespace: encodedNamespace,
       encodedTypeName: encodedTypeName,
       typeDef: typeDef,
@@ -386,8 +392,8 @@ final class TypeResolver {
       type,
       resolved,
       id: id,
-      namespace: namespace,
-      typeName: typeName,
+      namespace: resolvedNamespace,
+      typeName: resolvedTypeName,
     );
   }
 
@@ -535,7 +541,7 @@ final class TypeResolver {
     }
     throw StateError(
       'Type $runtimeType is not registered. Register generated types with '
-      'their generated library namespace, or register a serializer explicitly.',
+      'their generated Fory module, or register a serializer explicitly.',
     );
   }
 
@@ -1620,7 +1626,7 @@ final class TypeResolver {
         resolved;
   }
 
-  void _validateRegistrationMode({
+  ({String? namespace, String? typeName}) _resolveRegistrationName({
     required int? id,
     required String? namespace,
     required String? typeName,
@@ -1629,14 +1635,30 @@ final class TypeResolver {
     final hasNamed = namespace != null || typeName != null;
     if (hasNumeric == hasNamed) {
       throw ArgumentError(
-        'Exactly one registration mode is required: id, or namespace + typeName.',
+        'Exactly one registration mode is required: id, or name.',
       );
     }
-    if (hasNamed && (namespace == null || typeName == null)) {
-      throw ArgumentError(
-        'Both namespace and typeName are required for named registration.',
-      );
+    if (namespace != null && typeName == null) {
+      throw ArgumentError('typeName is required when namespace is provided.');
     }
+    if (typeName == null) {
+      return (namespace: null, typeName: null);
+    }
+    var resolvedNamespace = namespace;
+    var resolvedTypeName = typeName;
+    if (resolvedNamespace == null) {
+      final lastDot = typeName.lastIndexOf('.');
+      if (lastDot >= 0) {
+        resolvedNamespace = typeName.substring(0, lastDot);
+        resolvedTypeName = typeName.substring(lastDot + 1);
+      } else {
+        resolvedNamespace = '';
+      }
+    }
+    if (resolvedTypeName.isEmpty) {
+      throw ArgumentError('name must include a non-empty type name.');
+    }
+    return (namespace: resolvedNamespace, typeName: resolvedTypeName);
   }
 
   static String _nameKey(String namespace, String typeName) =>

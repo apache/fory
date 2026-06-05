@@ -223,9 +223,10 @@ void _verifyMurmurCase() {
   final shortHash = murmurHash3X64_128(const <int>[1, 2, 8]);
   final textHash = murmurHash3X64_128(utf8.encode('01234567890123456789'));
   if (data.length == 32) {
-    final expected = BytesBuilder(copy: false)
-      ..add(_hashBytes(shortHash.$1, shortHash.$2))
-      ..add(_hashBytes(textHash.$1, textHash.$2));
+    final expected =
+        BytesBuilder(copy: false)
+          ..add(_hashBytes(shortHash.$1, shortHash.$2))
+          ..add(_hashBytes(textHash.$1, textHash.$2));
     if (!_equalBytes(data, expected.toBytes())) {
       throw StateError('Unexpected MurmurHash3 byte payload.');
     }
@@ -287,36 +288,21 @@ void _registerSimpleById(Fory fory) {
 }
 
 void _registerSimpleByName(Fory fory) {
-  registerXlangType(fory, Color, namespace: 'demo', typeName: 'color');
-  registerXlangType(fory, Item, namespace: 'demo', typeName: 'item');
-  registerXlangType(
-    fory,
-    SimpleStruct,
-    namespace: 'demo',
-    typeName: 'simple_struct',
-  );
+  registerXlangType(fory, Color, name: 'demo.color');
+  registerXlangType(fory, Item, name: 'demo.item');
+  registerXlangType(fory, SimpleStruct, name: 'demo.simple_struct');
 }
 
 void _registerStructEvolvingOverrideByName(Fory fory) {
-  registerXlangType(
-    fory,
-    EvolvingOverrideStruct,
-    namespace: 'test',
-    typeName: 'evolving_yes',
-  );
-  registerXlangType(
-    fory,
-    FixedOverrideStruct,
-    namespace: 'test',
-    typeName: 'evolving_off',
-  );
+  registerXlangType(fory, EvolvingOverrideStruct, name: 'test.evolving_yes');
+  registerXlangType(fory, FixedOverrideStruct, name: 'test.evolving_off');
 }
 
 void _registerNamedCustomTypes(Fory fory) {
-  registerXlangType(fory, Color, namespace: '', typeName: 'color');
-  registerXlangType(fory, MyStruct, namespace: '', typeName: 'my_struct');
-  registerXlangType(fory, MyExt, namespace: '', typeName: 'my_ext');
-  registerXlangType(fory, MyWrapper, namespace: '', typeName: 'my_wrapper');
+  registerXlangType(fory, Color, name: 'color');
+  registerXlangType(fory, MyStruct, name: 'my_struct');
+  registerXlangType(fory, MyExt, name: 'my_ext');
+  registerXlangType(fory, MyWrapper, name: 'my_wrapper');
 }
 
 void _runCollectionElementRefOverride() {
@@ -341,10 +327,11 @@ void _runCollectionElementRefOverride() {
       identical(container.mapField['k2'], setValue)) {
     throw StateError('mapField should honor remote ref=false metadata');
   }
-  final output = RefOverrideContainer()
-    ..listField = <RefOverrideElement>[shared, shared]
-    ..setField = <RefOverrideElement>{shared}
-    ..mapField = <String, RefOverrideElement>{'k1': shared, 'k2': shared};
+  final output =
+      RefOverrideContainer()
+        ..listField = <RefOverrideElement>[shared, shared]
+        ..setField = <RefOverrideElement>{shared}
+        ..mapField = <String, RefOverrideElement>{'k1': shared, 'k2': shared};
   _writeFile(fory.serialize(output, trackRef: true));
 }
 
@@ -353,17 +340,19 @@ void _runCollectionElementRefRemoteTracking() {
   registerXlangType(fory, RefOverrideElement, id: 701);
   registerXlangType(fory, RefOverrideContainer, id: 702);
 
-  final shared = RefOverrideElement()
-    ..id = 7
-    ..name = 'shared_element';
+  final shared =
+      RefOverrideElement()
+        ..id = 7
+        ..name = 'shared_element';
   // IMPORTANT: this peer intentionally writes a shared-reference payload with
   // its default local ref-tracked schema. The Java reader uses ref-disabled
   // element annotations and must still honor the wire metadata. DO NOT REMOVE
   // this comment.
-  final output = RefOverrideContainer()
-    ..listField = <RefOverrideElement>[shared, shared]
-    ..setField = <RefOverrideElement>{shared}
-    ..mapField = <String, RefOverrideElement>{'k1': shared, 'k2': shared};
+  final output =
+      RefOverrideContainer()
+        ..listField = <RefOverrideElement>[shared, shared]
+        ..setField = <RefOverrideElement>{shared}
+        ..mapField = <String, RefOverrideElement>{'k1': shared, 'k2': shared};
   _writeFile(fory.serialize(output, trackRef: true));
 }
 
@@ -419,7 +408,8 @@ void _runListArrayCompatibleNullableListToArrayError() {
     return;
   }
   throw StateError(
-      'Expected nullable list payload to fail compatible array read.');
+    'Expected nullable list payload to fail compatible array read.',
+  );
 }
 
 void _runCase(String caseName) {
@@ -492,8 +482,11 @@ void _runCase(String caseName) {
       return;
     case 'test_nested_annotated_container_schema_consistent':
       final fory = _newFory();
-      registerXlangType(fory, NestedAnnotatedContainerSchemaConsistent,
-          id: 801);
+      registerXlangType(
+        fory,
+        NestedAnnotatedContainerSchemaConsistent,
+        id: 801,
+      );
       _roundTripFory(fory);
       return;
     case 'test_nested_annotated_container_compatible':

@@ -34,6 +34,7 @@ from fory_compiler.ir.ast import (
     ArrayType,
     MapType,
     Schema,
+    thread_safe_pointer_enabled,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -43,6 +44,7 @@ class RustGenerator(BaseGenerator):
 
     language_name = "rust"
     file_extension = ".rs"
+    RUST_ANY_TYPE = "::std::sync::Arc<dyn ::std::any::Any + Send + Sync>"
 
     # Mapping from FDL primitive types to Rust types
     PRIMITIVE_MAP = {
@@ -62,7 +64,7 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.STRING: "::std::string::String",
         PrimitiveKind.BYTES: "::std::vec::Vec<u8>",
         PrimitiveKind.DECIMAL: "::fory::Decimal",
-        PrimitiveKind.ANY: "::std::boxed::Box<dyn ::std::any::Any>",
+        PrimitiveKind.ANY: RUST_ANY_TYPE,
     }
 
     FORY_TEMPORAL_MAP = {
@@ -1012,12 +1014,12 @@ class RustGenerator(BaseGenerator):
         element_optional: bool = False,
         element_ref: bool = False,
         parent_stack: Optional[List[Message]] = None,
-        pointer_type: str = "::std::rc::Rc",
+        pointer_type: str = "::std::sync::Arc",
     ) -> str:
         """Generate Rust type string."""
         if isinstance(field_type, PrimitiveType):
             if field_type.kind == PrimitiveKind.ANY:
-                return "::std::boxed::Box<dyn ::std::any::Any>"
+                return self.RUST_ANY_TYPE
             base_type = self.primitive_type_name(field_type.kind)
             if nullable:
                 return f"::std::option::Option<{base_type}>"
@@ -1039,12 +1041,18 @@ class RustGenerator(BaseGenerator):
         elif isinstance(field_type, ListType):
             effective_element_optional = element_optional or field_type.element_optional
             effective_element_ref = element_ref or field_type.element_ref
+            element_pointer_type = pointer_type
+            if field_type.element_ref:
+                element_pointer_type = self.get_pointer_type(
+                    field_type.element_ref_options,
+                    field_type.element_ref_options.get("weak_ref") is True,
+                )
             element_type = self.generate_type(
                 field_type.element_type,
                 nullable=effective_element_optional,
                 ref=effective_element_ref,
                 parent_stack=parent_stack,
-                pointer_type=pointer_type,
+                pointer_type=element_pointer_type,
             )
             list_type = f"::std::vec::Vec<{element_type}>"
             if ref:
@@ -1076,12 +1084,18 @@ class RustGenerator(BaseGenerator):
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
+            value_pointer_type = pointer_type
+            if field_type.value_ref:
+                value_pointer_type = self.get_pointer_type(
+                    field_type.value_ref_options,
+                    field_type.value_ref_options.get("weak_ref") is True,
+                )
             value_type = self.generate_type(
                 field_type.value_type,
                 nullable=False,
                 ref=field_type.value_ref,
                 parent_stack=parent_stack,
-                pointer_type=pointer_type,
+                pointer_type=value_pointer_type,
             )
             map_type = f"::std::collections::HashMap<{key_type}, {value_type}>"
             if ref:
@@ -1140,7 +1154,7 @@ class RustGenerator(BaseGenerator):
 
     def get_pointer_type(self, ref_options: dict, weak_ref: bool = False) -> str:
         """Determine pointer type for ref tracking based on field options."""
-        if ref_options.get("thread_safe_pointer") is True:
+        if thread_safe_pointer_enabled(ref_options):
             return "::fory::ArcWeak" if weak_ref else "::std::sync::Arc"
         return "::fory::RcWeak" if weak_ref else "::std::rc::Rc"
 

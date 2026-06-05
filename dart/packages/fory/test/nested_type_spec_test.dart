@@ -79,8 +79,7 @@ void _registerFixedCompatible(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedFixedContainer,
-    namespace: 'nested',
-    typeName: 'NestedIntContainer',
+    name: 'nested.NestedIntContainer',
   );
 }
 
@@ -88,8 +87,7 @@ void _registerVarintConsistent(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedVarintContainer,
-    namespace: 'nested',
-    typeName: 'NestedIntContainer',
+    name: 'nested.NestedIntContainer',
   );
 }
 
@@ -97,14 +95,12 @@ void _registerRefWriter(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefNode,
-    namespace: 'nested',
-    typeName: 'NestedRefNode',
+    name: 'nested.NestedRefNode',
   );
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefWriterContainer,
-    namespace: 'nested',
-    typeName: 'NestedRefContainer',
+    name: 'nested.NestedRefContainer',
   );
 }
 
@@ -112,14 +108,12 @@ void _registerRefReader(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefNode,
-    namespace: 'nested',
-    typeName: 'NestedRefNode',
+    name: 'nested.NestedRefNode',
   );
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedRefReaderContainer,
-    namespace: 'nested',
-    typeName: 'NestedRefContainer',
+    name: 'nested.NestedRefContainer',
   );
 }
 
@@ -127,8 +121,7 @@ void _registerNullableWriter(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedNullableWriterContainer,
-    namespace: 'nested',
-    typeName: 'NestedNullableContainer',
+    name: 'nested.NestedNullableContainer',
   );
 }
 
@@ -136,8 +129,7 @@ void _registerNullableReader(Fory fory) {
   NestedTypeSpecTestForyModule.register(
     fory,
     NestedNullableReaderContainer,
-    namespace: 'nested',
-    typeName: 'NestedNullableContainer',
+    name: 'nested.NestedNullableContainer',
   );
 }
 

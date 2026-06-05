@@ -290,15 +290,13 @@ cdef class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
         cdef TypeInfo typeinfo = self.resolver.register_type(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
         self._populate_type_info(typeinfo)
@@ -309,15 +307,13 @@ cdef class TypeResolver:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
         cdef TypeInfo typeinfo = self.resolver.register_union(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
         self._populate_type_info(typeinfo)
@@ -853,7 +849,7 @@ cdef class Fory:
             ref: Enable reference tracking for shared and circular references.
             strict: Require registered types on dynamic resolution paths.
             compatible: Enable compatible mode and meta-share type exchange. Defaults to
-                compatible mode in xlang and schema-consistent mode in Python native mode.
+                compatible mode.
             max_depth: Maximum allowed read depth before rejecting payloads.
             policy: Optional deserialization policy implementation.
             field_nullable: Treat struct fields as nullable by default.
@@ -861,7 +857,7 @@ cdef class Fory:
             max_collection_size: Maximum allowed declared collection/map size.
             max_binary_size: Maximum allowed binary payload size for one read.
         """
-        compatible = xlang if compatible is None else compatible
+        compatible = True if compatible is None else compatible
         self.xlang = xlang
         self.track_ref = ref
         self.strict = strict
@@ -907,15 +903,13 @@ cdef class Fory:
         cls,
         *,
         type_id=None,
-        namespace=None,
-        typename=None,
+        name=None,
         serializer=None,
     ):
-        self.register_type(
+        return self.register_type(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 
@@ -924,15 +918,13 @@ cdef class Fory:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
-        self.type_resolver.register_type(
+        return self.type_resolver.register_type(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 
@@ -941,15 +933,13 @@ cdef class Fory:
         cls: Union[type, TypeVar],
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
-        self.type_resolver.register_union(
+        return self.type_resolver.register_union(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 

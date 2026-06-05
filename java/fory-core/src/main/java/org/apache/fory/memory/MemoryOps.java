@@ -70,10 +70,6 @@ final class MemoryOps {
     throw new UnsupportedOperationException("Direct ByteBuffer memory is not supported on Android");
   }
 
-  static void throwRawUnsafeMemoryCopyUnsupported() {
-    throw new UnsupportedOperationException("Raw unsafe memory copy is not supported on Android");
-  }
-
   static MemoryBuffer fromByteBuffer(ByteBuffer buffer) {
     ByteBuffer duplicate = buffer.duplicate();
     byte[] bytes = new byte[duplicate.remaining()];
@@ -1257,6 +1253,190 @@ final class MemoryOps {
         String.format(
             "offset=%d, targetOffset=%d, numBytes=%d, size=%d, targetSize=%d",
             offset, targetOffset, numBytes, source.size, target.size));
+  }
+
+  static void copyToByteArray(
+      MemoryBuffer source, int offset, byte[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 0);
+    copy(source.heapMemory, heapIndex(source, offset), target, targetOffset, numBytes);
+  }
+
+  static void copyToBooleanArray(
+      MemoryBuffer source, int offset, boolean[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 0);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    for (int i = 0; i < numBytes; i++) {
+      target[targetOffset + i] = bytes[sourceIndex + i] != 0;
+    }
+  }
+
+  static void copyToCharArray(
+      MemoryBuffer source, int offset, char[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 1);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 1;
+    for (int i = 0; i < numElements; i++, sourceIndex += 2) {
+      target[targetOffset + i] = (char) getInt16(bytes, sourceIndex);
+    }
+  }
+
+  static void copyToShortArray(
+      MemoryBuffer source, int offset, short[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 1);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 1;
+    for (int i = 0; i < numElements; i++, sourceIndex += 2) {
+      target[targetOffset + i] = getInt16(bytes, sourceIndex);
+    }
+  }
+
+  static void copyToIntArray(
+      MemoryBuffer source, int offset, int[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 2);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 2;
+    for (int i = 0; i < numElements; i++, sourceIndex += 4) {
+      target[targetOffset + i] = getInt32(bytes, sourceIndex);
+    }
+  }
+
+  static void copyToLongArray(
+      MemoryBuffer source, int offset, long[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 3);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 3;
+    for (int i = 0; i < numElements; i++, sourceIndex += 8) {
+      target[targetOffset + i] = getInt64(bytes, sourceIndex);
+    }
+  }
+
+  static void copyToFloatArray(
+      MemoryBuffer source, int offset, float[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 2);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 2;
+    for (int i = 0; i < numElements; i++, sourceIndex += 4) {
+      target[targetOffset + i] = getFloat32(bytes, sourceIndex);
+    }
+  }
+
+  static void copyToDoubleArray(
+      MemoryBuffer source, int offset, double[] target, int targetOffset, int numBytes) {
+    checkArrayCopy(source, offset, targetOffset, target.length, numBytes, 3);
+    byte[] bytes = source.heapMemory;
+    int sourceIndex = heapIndex(source, offset);
+    int numElements = numBytes >>> 3;
+    for (int i = 0; i < numElements; i++, sourceIndex += 8) {
+      target[targetOffset + i] = getFloat64(bytes, sourceIndex);
+    }
+  }
+
+  static void copyFromByteArray(
+      MemoryBuffer target, int offset, byte[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 0);
+    copy(source, sourceOffset, target.heapMemory, heapIndex(target, offset), numBytes);
+  }
+
+  static void copyFromBooleanArray(
+      MemoryBuffer target, int offset, boolean[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 0);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    for (int i = 0; i < numBytes; i++) {
+      bytes[targetIndex + i] = source[sourceOffset + i] ? (byte) 1 : (byte) 0;
+    }
+  }
+
+  static void copyFromCharArray(
+      MemoryBuffer target, int offset, char[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 1);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 1;
+    for (int i = 0; i < numElements; i++, targetIndex += 2) {
+      putInt16(bytes, targetIndex, (short) source[sourceOffset + i]);
+    }
+  }
+
+  static void copyFromShortArray(
+      MemoryBuffer target, int offset, short[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 1);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 1;
+    for (int i = 0; i < numElements; i++, targetIndex += 2) {
+      putInt16(bytes, targetIndex, source[sourceOffset + i]);
+    }
+  }
+
+  static void copyFromIntArray(
+      MemoryBuffer target, int offset, int[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 2);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 2;
+    for (int i = 0; i < numElements; i++, targetIndex += 4) {
+      putInt32(bytes, targetIndex, source[sourceOffset + i]);
+    }
+  }
+
+  static void copyFromLongArray(
+      MemoryBuffer target, int offset, long[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 3);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 3;
+    for (int i = 0; i < numElements; i++, targetIndex += 8) {
+      putInt64(bytes, targetIndex, source[sourceOffset + i]);
+    }
+  }
+
+  static void copyFromFloatArray(
+      MemoryBuffer target, int offset, float[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 2);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 2;
+    for (int i = 0; i < numElements; i++, targetIndex += 4) {
+      putFloat32(bytes, targetIndex, source[sourceOffset + i]);
+    }
+  }
+
+  static void copyFromDoubleArray(
+      MemoryBuffer target, int offset, double[] source, int sourceOffset, int numBytes) {
+    checkArrayCopy(target, offset, sourceOffset, source.length, numBytes, 3);
+    byte[] bytes = target.heapMemory;
+    int targetIndex = heapIndex(target, offset);
+    int numElements = numBytes >>> 3;
+    for (int i = 0; i < numElements; i++, targetIndex += 8) {
+      putFloat64(bytes, targetIndex, source[sourceOffset + i]);
+    }
+  }
+
+  private static void checkArrayCopy(
+      MemoryBuffer source,
+      int offset,
+      int targetOffset,
+      int targetLength,
+      int numBytes,
+      int shift) {
+    checkHeap(source);
+    int mask = (1 << shift) - 1;
+    if ((numBytes & mask) != 0) {
+      throw new IllegalArgumentException("numBytes is not aligned to array element size");
+    }
+    int numElements = numBytes >>> shift;
+    if ((offset | targetOffset | numBytes | numElements) < 0
+        || offset > source.size - numBytes
+        || targetOffset > targetLength - numElements) {
+      throwOOBException(source);
+    }
   }
 
   static boolean equalTo(

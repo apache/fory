@@ -92,7 +92,7 @@ Configuration defaults:
   - TrackRef: false (reference tracking disabled)
   - MaxDepth: 20 (maximum nesting depth)
   - IsXlang: true (xlang mode enabled)
-  - Compatible: true in the default xlang mode; false in native mode unless WithCompatible(true) is set
+  - Compatible: true by default in both xlang and native mode
 
 # Type Registration
 
@@ -184,10 +184,9 @@ When reference tracking is enabled:
 
 # Schema Evolution
 
-Native mode defaults to schema-consistent payloads. Enable compatible mode for
-forward/backward compatibility in Go-only native payloads:
+Native mode defaults to compatible payloads:
 
-	f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+	f := fory.New(fory.WithXlang(false))
 
 	// V1: original struct
 	type UserV1 struct {
@@ -206,6 +205,10 @@ Compatible mode supports:
   - Adding new fields (receive zero values from old data)
   - Removing fields (skipped during deserialization)
   - Reordering fields (matched by name)
+
+For smaller native-mode payloads, add WithCompatible(false) to a Fory instance
+created with WithXlang(false) only when every reader and writer always uses the
+same Go struct schema.
 
 # Cross-Language Serialization
 
@@ -320,8 +323,8 @@ byte slice is invalidated on the next operation.
 
 5. Register all types at startup: Before any concurrent operations.
 
-6. Use compatible mode for evolving schemas: Enable when struct definitions
-may change between service versions.
+6. Keep compatible mode for evolving schemas: Use the default when struct
+definitions may change between service versions.
 
 # More Information
 

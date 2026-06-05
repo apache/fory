@@ -15,23 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::{Fory, Serializer};
+use fory_core::Fory;
 use fory_derive::ForyStruct;
 use std::collections::{BTreeSet, BinaryHeap, HashSet};
 
 #[test]
 fn test_btreeset_roundtrip() {
-    let mut fory: Fory = Fory::builder().xlang(false).build();
-    fory.register_generic_trait::<BTreeSet<i32>>().unwrap();
+    let fory: Fory = Fory::builder().xlang(false).compatible(false).build();
 
     let mut original = BTreeSet::new();
     original.insert(1);
     original.insert(2);
     original.insert(3);
 
-    let trait_obj: Box<dyn Serializer> = Box::new(original.clone());
-    let serialized = fory.serialize(&trait_obj).unwrap();
-
+    let serialized = fory.serialize(&original).unwrap();
     let deserialized_concrete: BTreeSet<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized_concrete.len(), 3);
@@ -42,7 +39,7 @@ fn test_btreeset_roundtrip() {
 
 #[test]
 fn test_binaryheap_roundtrip() {
-    let fory: Fory = Fory::builder().xlang(false).build();
+    let fory: Fory = Fory::builder().xlang(false).compatible(false).build();
 
     let mut original = BinaryHeap::new();
     original.push(10);
@@ -64,7 +61,7 @@ struct SetContainer {
 
 #[test]
 fn test_set_container() {
-    let mut fory: Fory = Fory::builder().xlang(false).build();
+    let mut fory: Fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<SetContainer>(100).unwrap();
 
     let mut btree = BTreeSet::new();
@@ -103,7 +100,7 @@ struct HeapContainer {
 
 #[test]
 fn test_heap_container() {
-    let mut fory: Fory = Fory::builder().xlang(false).build();
+    let mut fory: Fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<HeapContainer>(100).unwrap();
 
     let mut binary_heap = BinaryHeap::new();
@@ -123,7 +120,7 @@ fn test_heap_container() {
 
 #[test]
 fn test_hashset_max_collection_size_guardrail() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let original = HashSet::from([
         "apple".to_string(),
         "banana".to_string(),
@@ -131,7 +128,11 @@ fn test_hashset_max_collection_size_guardrail() {
     ]);
     let serialized = fory.serialize(&original).unwrap();
 
-    let limited_fory = Fory::builder().xlang(false).max_collection_size(2).build();
+    let limited_fory = Fory::builder()
+        .xlang(false)
+        .max_collection_size(2)
+        .compatible(false)
+        .build();
     let err = limited_fory
         .deserialize::<HashSet<String>>(&serialized)
         .expect_err("expected collection size guardrail to reject the payload");

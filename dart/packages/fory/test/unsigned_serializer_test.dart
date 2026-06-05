@@ -181,8 +181,7 @@ void _registerUnsignedFields(Fory fory) {
   UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedFields,
-    namespace: 'test',
-    typeName: 'UnsignedFields',
+    name: 'test.UnsignedFields',
   );
 }
 
@@ -190,8 +189,7 @@ void _registerUnsignedMetadataReader(Fory fory) {
   UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedMetadataReader,
-    namespace: 'test',
-    typeName: 'UnsignedFields',
+    name: 'test.UnsignedFields',
   );
 }
 
@@ -199,8 +197,7 @@ void _registerUnsignedIntFieldsReader(Fory fory) {
   UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedIntFieldsReader,
-    namespace: 'test',
-    typeName: 'UnsignedFields',
+    name: 'test.UnsignedFields',
   );
 }
 
@@ -208,8 +205,7 @@ void _registerUnsignedWrapperFields(Fory fory) {
   UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedWrapperFields,
-    namespace: 'test',
-    typeName: 'UnsignedSchemaUint64Fields',
+    name: 'test.UnsignedSchemaUint64Fields',
   );
 }
 
@@ -217,8 +213,7 @@ void _registerUnsignedWrapperAsIntFields(Fory fory) {
   UnsignedSerializerTestForyModule.register(
     fory,
     UnsignedWrapperAsIntFields,
-    namespace: 'test',
-    typeName: 'UnsignedSchemaUint64Fields',
+    name: 'test.UnsignedSchemaUint64Fields',
   );
 }
 

@@ -31,7 +31,7 @@ For types that don't support `#[derive(ForyStruct)]`, implement the `Serializer`
 ## Implementing the Serializer Trait
 
 ```rust
-use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
+use fory::{Error, Fory, ForyDefault, ReadContext, Serializer, TypeResolver, WriteContext};
 use std::any::Any;
 
 #[derive(Debug, PartialEq, Default)]
@@ -41,20 +41,21 @@ struct CustomType {
 }
 
 impl Serializer for CustomType {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         context.writer.write_i32(self.value);
-        context.writer.write_varuint32(self.name.len() as u32);
+        context.writer.write_var_u32(self.name.len() as u32);
         context.writer.write_utf8_string(&self.name);
+        Ok(())
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let value = context.reader.read_i32();
-        let len = context.reader.read_varuint32() as usize;
-        let name = context.reader.read_utf8_string(len);
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        let value = context.reader.read_i32()?;
+        let len = context.reader.read_var_u32()? as usize;
+        let name = context.reader.read_utf8_string(len)?;
         Ok(Self { value, name })
     }
 
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> u32 {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<fory::TypeId, Error> {
         Self::fory_get_type_id(type_resolver)
     }
 
@@ -75,6 +76,28 @@ impl ForyDefault for CustomType {
 > Alternatively, you can construct a default instance directly in `fory_default()`.
 >
 > **Tip**: If your type supports `#[derive(ForyStruct)]`, you can use `#[fory(generate_default)]` to automatically generate both `ForyDefault` and `Default` implementations.
+
+## Manual Serializers and Arc Any
+
+If a manually registered serializer needs its type to round-trip behind
+`Arc<dyn Any + Send + Sync>` or preserve `UnknownCase` payloads, implement the
+send-sync Any reader and return the concrete value as a boxed `Any` value:
+
+```rust
+impl Serializer for CustomType {
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+        Ok(Box::new(Self::fory_read_data(context)?))
+    }
+
+    // Implement the ordinary Serializer methods as shown above.
+    // ...
+}
+```
+
+Do not override this method for values that contain fields whose types are not
+`Send + Sync`, such as `Rc<T>`, `RcWeak<T>`, `RefCell<T>`, or `Cell<T>`.
 
 ## Registering Custom Serializers
 

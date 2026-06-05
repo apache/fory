@@ -142,32 +142,27 @@ void _registerEnumAndUnionTypes(Fory fory) {
   EnumUnionSerializerTestForyModule.register(
     fory,
     SimpleColor,
-    namespace: 'test',
-    typeName: 'SimpleColor',
+    name: 'test.SimpleColor',
   );
   EnumUnionSerializerTestForyModule.register(
     fory,
     EnumEnvelope,
-    namespace: 'test',
-    typeName: 'EnumEnvelope',
+    name: 'test.EnumEnvelope',
   );
   EnumUnionSerializerTestForyModule.register(
     fory,
     UnionLeaf,
-    namespace: 'test',
-    typeName: 'UnionLeaf',
+    name: 'test.UnionLeaf',
   );
   EnumUnionSerializerTestForyModule.register(
     fory,
     UnionEnvelope,
-    namespace: 'test',
-    typeName: 'UnionEnvelope',
+    name: 'test.UnionEnvelope',
   );
   fory.registerSerializer(
     TestUnion,
     const TestUnionSerializer(),
-    namespace: 'test',
-    typeName: 'TestUnion',
+    name: 'test.TestUnion',
   );
 }
 
@@ -175,8 +170,7 @@ void _registerRawEnumV1(Fory fory) {
   EnumUnionSerializerTestForyModule.register(
     fory,
     StableCodeV1,
-    namespace: 'enum',
-    typeName: 'StableCode',
+    name: 'enum.StableCode',
   );
 }
 
@@ -184,8 +178,7 @@ void _registerRawEnumV2(Fory fory) {
   EnumUnionSerializerTestForyModule.register(
     fory,
     StableCodeV2,
-    namespace: 'enum',
-    typeName: 'StableCode',
+    name: 'enum.StableCode',
   );
 }
 

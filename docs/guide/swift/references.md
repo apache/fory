@@ -24,7 +24,7 @@ Swift reference tracking is controlled by `Config.trackRef`.
 ## Enable Reference Tracking
 
 ```swift
-let fory = Fory(ref: true, compatible: false)
+let fory = Fory(ref: true)
 ```
 
 When enabled, reference-trackable types preserve identity and cycles.

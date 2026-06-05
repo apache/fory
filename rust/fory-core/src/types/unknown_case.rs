@@ -27,8 +27,8 @@ pub struct UnknownCase {
     type_id: u32,
     // Keep resolver TypeInfo/Rc out of the carrier. Generated unions can outlive or move
     // independently from the resolver context, so the carrier stores only stable metadata
-    // plus the dynamic payload owned by Rust's existing polymorphic Arc path.
-    value: Arc<dyn Any>,
+    // plus a dynamic payload whose `Send + Sync` guarantee is carried by the trait object.
+    value: Arc<dyn Any + Send + Sync>,
 }
 
 impl UnknownCase {
@@ -38,7 +38,7 @@ impl UnknownCase {
     /// always uses the ordinary Any writer.
     pub fn new<T>(case_id: u32, value: T) -> Self
     where
-        T: Any,
+        T: Any + Send + Sync,
     {
         Self {
             case_id,
@@ -55,7 +55,7 @@ impl UnknownCase {
         self.type_id
     }
 
-    pub fn value(&self) -> &dyn Any {
+    pub fn value(&self) -> &(dyn Any + Send + Sync) {
         self.value.as_ref()
     }
 
@@ -63,11 +63,15 @@ impl UnknownCase {
         self.value.downcast_ref::<T>()
     }
 
-    pub(crate) fn value_arc(&self) -> &Arc<dyn Any> {
+    pub(crate) fn value_arc(&self) -> &Arc<dyn Any + Send + Sync> {
         &self.value
     }
 
-    pub(crate) fn from_runtime(case_id: u32, type_id: u32, value: Arc<dyn Any>) -> Self {
+    pub(crate) fn from_runtime(
+        case_id: u32,
+        type_id: u32,
+        value: Arc<dyn Any + Send + Sync>,
+    ) -> Self {
         Self {
             case_id,
             type_id,
@@ -118,6 +122,13 @@ mod tests {
     }
 
     #[test]
+    fn unknown_case_is_send_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+
+        assert_send_sync::<UnknownCase>();
+    }
+
+    #[test]
     fn equality_uses_carrier_identity() {
         let first = UnknownCase::new(7, String::from("future"));
         let same_carrier = first.clone();
@@ -130,7 +141,7 @@ mod tests {
 
     #[test]
     fn replay_metadata_does_not_affect_identity() {
-        let value: Arc<dyn Any> = Arc::new(String::from("future"));
+        let value: Arc<dyn Any + Send + Sync> = Arc::new(String::from("future"));
         let first = UnknownCase::from_runtime(7, 21, value.clone());
         let same_payload = UnknownCase::from_runtime(8, 5, value);
 

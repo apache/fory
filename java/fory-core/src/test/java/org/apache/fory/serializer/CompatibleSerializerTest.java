@@ -30,7 +30,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
 import org.apache.fory.test.bean.BeanA;
@@ -379,7 +378,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
   private static Fory catalogFory(boolean asyncCompilation, boolean codegen) {
     return Fory.builder()
         .withLanguage(Language.JAVA)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .requireClassRegistration(false)
         .withDeserializeUnknownClass(true)
         .withAsyncCompilation(asyncCompilation)

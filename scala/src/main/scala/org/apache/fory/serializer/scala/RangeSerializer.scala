@@ -27,7 +27,6 @@ import org.apache.fory.serializer.Serializer
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 import org.apache.fory.resolver.TypeResolver
 import java.util
-import org.apache.fory.util.unsafe._JDKAccess
 
 import java.lang.invoke.{MethodHandle, MethodHandles}
 import scala.collection.immutable.NumericRange
@@ -63,10 +62,10 @@ class RangeSerializer[T <: Range](typeResolver: TypeResolver, cls: Class[T])
 
 
 private object RangeUtils {
-   val lookupCache: ClassValue[MethodHandle] = new ClassValue[MethodHandle]() {
+  private val publicLookup = MethodHandles.publicLookup()
+  val lookupCache: ClassValue[MethodHandle] = new ClassValue[MethodHandle]() {
     override protected def computeValue(cls: Class[_]): MethodHandle = {
-      val lookup: MethodHandles.Lookup = _JDKAccess._trustedLookup(cls)
-      lookup.unreflectConstructor(cls.getDeclaredConstructors()(0))
+      publicLookup.unreflectConstructor(cls.getConstructors()(0))
     }
   }
 }

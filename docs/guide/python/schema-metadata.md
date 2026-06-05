@@ -205,7 +205,7 @@ class Container:
     # Abstract class: dynamic is always True (type info written)
     shape: Shape = pyfory.field(id=0)
 
-    # Force type info for concrete type (support runtime subtypes)
+    # Force type info for concrete type (support subtypes)
     circle: Circle = pyfory.field(id=1, dynamic=True)
 
     # Skip type info for concrete type (use declared type directly)

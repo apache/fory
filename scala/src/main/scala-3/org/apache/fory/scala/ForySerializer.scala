@@ -41,6 +41,26 @@ object ForySerializer {
   inline def derived[T]: ForySerializer[T] =
     ${ org.apache.fory.scala.internal.ForySerializerMacros.derive[T] }
 
+  private[scala] def splitName(name: String): (String, String) = {
+    if name == null then {
+      throw new NullPointerException("name")
+    }
+    val idx = name.lastIndexOf('.')
+    val namespace = if idx >= 0 then name.substring(0, idx) else ""
+    val typeName = if idx >= 0 then name.substring(idx + 1) else name
+    if typeName.isEmpty then {
+      throw new IllegalArgumentException("Name must include a non-empty type name")
+    }
+    (namespace, typeName)
+  }
+
+  private def checkTypeName(typeName: String): Unit = {
+    if typeName == null || typeName.isEmpty || typeName.contains(".") then {
+      throw new IllegalArgumentException(
+        "typeName must be non-empty and must not contain `.` when namespace is provided")
+    }
+  }
+
   def register[T](fory: Fory, cls: Class[T])(using serializer: ForySerializer[T]): Unit = {
     register(fory, cls, null, null)
   }
@@ -52,11 +72,18 @@ object ForySerializer {
     register(fory, cls, java.lang.Long.valueOf(typeId), null, null)
   }
 
+  def register[T](fory: Fory, cls: Class[T], name: String)(using
+      serializer: ForySerializer[T]): Unit = {
+    val (namespace, typeName) = splitName(name)
+    register(fory, cls, null, namespace, typeName)
+  }
+
   def register[T](
       fory: Fory,
       cls: Class[T],
       namespace: String,
       typeName: String)(using serializer: ForySerializer[T]): Unit = {
+    checkTypeName(typeName)
     register(fory, cls, null, namespace, typeName)
   }
 
@@ -66,7 +93,14 @@ object ForySerializer {
   }
 
   @Internal
+  def registerType[T](fory: Fory, cls: Class[T], name: String): Unit = {
+    val (namespace, typeName) = splitName(name)
+    registerType(fory, cls, null, namespace, typeName)
+  }
+
+  @Internal
   def registerType[T](fory: Fory, cls: Class[T], namespace: String, typeName: String): Unit = {
+    checkTypeName(typeName)
     registerType(fory, cls, null, namespace, typeName)
   }
 
@@ -85,6 +119,9 @@ object ForySerializer {
       typeId: java.lang.Long,
       namespace: String,
       typeName: String)(using serializer: ForySerializer[T]): Unit = {
+    if typeName != null then {
+      checkTypeName(typeName)
+    }
     val resolver = fory.getTypeResolver
     serializer match {
       case _ if serializer.isUnion =>
@@ -126,8 +163,17 @@ object ForySerializer {
   def register[T](
       fory: ThreadSafeFory,
       cls: Class[T],
+      name: String)(using serializer: ForySerializer[T]): Unit = {
+    val (namespace, typeName) = splitName(name)
+    registerModule(fory, cls, null, namespace, typeName)
+  }
+
+  def register[T](
+      fory: ThreadSafeFory,
+      cls: Class[T],
       namespace: String,
       typeName: String)(using serializer: ForySerializer[T]): Unit = {
+    checkTypeName(typeName)
     registerModule(fory, cls, null, namespace, typeName)
   }
 
@@ -137,6 +183,9 @@ object ForySerializer {
       typeId: java.lang.Long,
       namespace: String,
       typeName: String)(using serializer: ForySerializer[T]): Unit = {
+    if typeName != null then {
+      checkTypeName(typeName)
+    }
     fory.register(new ForyModule {
       override def install(runtime: Fory): Unit = {
         runtime.register(ForyScala)

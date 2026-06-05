@@ -37,15 +37,44 @@ import org.apache.fory.util.DecimalUtils;
 
 /** Arrow utils. */
 public class ArrowUtils {
+  private static final RuntimeException ALLOCATOR_ERROR;
+
   // RootAllocator is thread-safe, so we don't have to use thread-local.
-  // FIXME JDK17: Unable to make field long java.nio.Buffer.address
-  //   accessible: module java.base does not "opens java.nio" to unnamed module @405e4200
-  public static RootAllocator allocator = new RootAllocator();
+  // Arrow 18.x initializes its own sun.misc.Unsafe memory facade eagerly. Keep Fory class loading
+  // possible under JDK25 deny mode and fail only when the vectorized Arrow path is used.
+  public static RootAllocator allocator;
+
+  static {
+    RootAllocator rootAllocator = null;
+    RuntimeException allocatorError = null;
+    if (isUnsafeMemoryDenied()) {
+      allocatorError =
+          new UnsupportedOperationException(
+              "Apache Arrow vectorized format is unavailable when JDK Unsafe memory access is "
+                  + "denied. Apache Arrow initializes sun.misc.Unsafe memory access internally.");
+    } else {
+      try {
+        rootAllocator = new RootAllocator();
+      } catch (RuntimeException | ExceptionInInitializerError e) {
+        if (!isUnsafeMemoryAccessFailure(e)) {
+          throw e;
+        }
+        allocatorError =
+            new UnsupportedOperationException(
+                "Apache Arrow vectorized format is unavailable when Apache Arrow cannot initialize "
+                    + "its sun.misc.Unsafe memory access.",
+                e);
+      }
+    }
+    allocator = rootAllocator;
+    ALLOCATOR_ERROR = allocatorError;
+  }
+
   private static final ThreadLocal<ArrowBuf> decimalArrowBuf =
       ThreadLocal.withInitial(() -> buffer(DecimalUtils.DECIMAL_BYTE_LENGTH));
 
   public static ArrowBuf buffer(final long initialRequestSize) {
-    return allocator.buffer(initialRequestSize);
+    return requireAllocator().buffer(initialRequestSize);
   }
 
   public static ArrowBuf decimalArrowBuf() {
@@ -53,22 +82,23 @@ public class ArrowUtils {
   }
 
   public static VectorSchemaRoot createVectorSchemaRoot(Schema arrowSchema) {
-    return VectorSchemaRoot.create(arrowSchema, allocator);
+    return VectorSchemaRoot.create(arrowSchema, requireAllocator());
   }
 
   public static VectorSchemaRoot createVectorSchemaRoot(
       org.apache.fory.format.type.Schema forySchema) {
-    return VectorSchemaRoot.create(ArrowSchemaConverter.toArrowSchema(forySchema), allocator);
+    return VectorSchemaRoot.create(
+        ArrowSchemaConverter.toArrowSchema(forySchema), requireAllocator());
   }
 
   public static ArrowWriter createArrowWriter(Schema arrowSchema) {
-    VectorSchemaRoot root = VectorSchemaRoot.create(arrowSchema, allocator);
+    VectorSchemaRoot root = VectorSchemaRoot.create(arrowSchema, requireAllocator());
     return new ArrowWriter(root);
   }
 
   public static ArrowWriter createArrowWriter(org.apache.fory.format.type.Schema forySchema) {
     VectorSchemaRoot root =
-        VectorSchemaRoot.create(ArrowSchemaConverter.toArrowSchema(forySchema), allocator);
+        VectorSchemaRoot.create(ArrowSchemaConverter.toArrowSchema(forySchema), requireAllocator());
     return new ArrowWriter(root);
   }
 
@@ -87,9 +117,46 @@ public class ArrowUtils {
     try (ReadChannel channel =
         new ReadChannel(
             Channels.newChannel(new MemoryBufferInputStream(recordBatchMessageBuffer)))) {
-      return MessageSerializer.deserializeRecordBatch(channel, allocator);
+      return MessageSerializer.deserializeRecordBatch(channel, requireAllocator());
     } catch (IOException e) {
       throw new RuntimeException("Deserialize record batch failed", e);
     }
+  }
+
+  private static RootAllocator requireAllocator() {
+    if (allocator != null) {
+      return allocator;
+    }
+    throw ALLOCATOR_ERROR;
+  }
+
+  private static boolean isUnsafeMemoryDenied() {
+    return Runtime.version().feature() >= 25
+        && "deny".equals(System.getProperty("sun.misc.unsafe.memory.access"));
+  }
+
+  private static boolean isUnsafeMemoryAccessFailure(Throwable throwable) {
+    Throwable cause = throwable;
+    while (cause != null) {
+      if (cause instanceof UnsupportedOperationException
+          && cause.getMessage() != null
+          && cause.getMessage().contains("arrayBaseOffset")) {
+        return true;
+      }
+      if (cause instanceof UnsupportedOperationException) {
+        for (StackTraceElement element : cause.getStackTrace()) {
+          if ("sun.misc.Unsafe".equals(element.getClassName())) {
+            return true;
+          }
+        }
+      }
+      if ("java.lang.reflect.InaccessibleObjectException".equals(cause.getClass().getName())
+          && cause.getMessage() != null
+          && cause.getMessage().contains("java.nio")) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 }

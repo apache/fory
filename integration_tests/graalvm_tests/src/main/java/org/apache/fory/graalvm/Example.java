@@ -33,6 +33,7 @@ public class Example {
             .withName(Example.class.getName())
             .withXlang(false)
             .requireClassRegistration(true)
+            .withCompatible(false)
             .build();
     // register and generate serializer code.
     fory.register(Foo.class);

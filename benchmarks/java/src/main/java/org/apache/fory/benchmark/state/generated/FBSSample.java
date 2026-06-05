@@ -2,14 +2,26 @@
 
 package org.apache.fory.benchmark.state.generated;
 
-import java.nio.*;
-import java.lang.*;
-
-import com.google.flatbuffers.*;
+import com.google.flatbuffers.BaseVector;
+import com.google.flatbuffers.BooleanVector;
+import com.google.flatbuffers.ByteVector;
+import com.google.flatbuffers.Constants;
+import com.google.flatbuffers.DoubleVector;
+import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.flatbuffers.FloatVector;
+import com.google.flatbuffers.IntVector;
+import com.google.flatbuffers.LongVector;
+import com.google.flatbuffers.ShortVector;
+import com.google.flatbuffers.StringVector;
+import com.google.flatbuffers.Struct;
+import com.google.flatbuffers.Table;
+import com.google.flatbuffers.UnionVector;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 @SuppressWarnings("unused")
 public final class FBSSample extends Table {
-  public static void ValidateVersion() { Constants.FLATBUFFERS_2_0_0(); }
+  public static void ValidateVersion() { Constants.FLATBUFFERS_25_2_10(); }
   public static FBSSample getRootAsFBSSample(ByteBuffer _bb) { return getRootAsFBSSample(_bb, new FBSSample()); }
   public static FBSSample getRootAsFBSSample(ByteBuffer _bb, FBSSample obj) { _bb.order(ByteOrder.LITTLE_ENDIAN); return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb)); }
   public void __init(int _i, ByteBuffer _bb) { __reset(_i, _bb); }
@@ -76,51 +88,51 @@ public final class FBSSample extends Table {
   public ByteBuffer stringInByteBuffer(ByteBuffer _bb) { return __vector_in_bytebuffer(_bb, 46, 1); }
 
   public static int createFBSSample(FlatBufferBuilder builder,
-      int int_value,
-      long long_value,
-      float float_value,
-      double double_value,
-      short short_value,
-      short char_value,
-      boolean boolean_value,
-      int int_value_boxed,
-      long long_value_boxed,
-      float float_value_boxed,
-      double double_value_boxed,
-      short short_value_boxed,
-      short char_value_boxed,
-      boolean boolean_value_boxed,
-      int int_arrayOffset,
-      int long_arrayOffset,
-      int float_arrayOffset,
-      int double_arrayOffset,
-      int short_arrayOffset,
-      int char_arrayOffset,
-      int boolean_arrayOffset,
+      int intValue,
+      long longValue,
+      float floatValue,
+      double doubleValue,
+      short shortValue,
+      short charValue,
+      boolean booleanValue,
+      int intValueBoxed,
+      long longValueBoxed,
+      float floatValueBoxed,
+      double doubleValueBoxed,
+      short shortValueBoxed,
+      short charValueBoxed,
+      boolean booleanValueBoxed,
+      int intArrayOffset,
+      int longArrayOffset,
+      int floatArrayOffset,
+      int doubleArrayOffset,
+      int shortArrayOffset,
+      int charArrayOffset,
+      int booleanArrayOffset,
       int stringOffset) {
     builder.startTable(22);
-    FBSSample.addDoubleValueBoxed(builder, double_value_boxed);
-    FBSSample.addLongValueBoxed(builder, long_value_boxed);
-    FBSSample.addDoubleValue(builder, double_value);
-    FBSSample.addLongValue(builder, long_value);
+    FBSSample.addDoubleValueBoxed(builder, doubleValueBoxed);
+    FBSSample.addLongValueBoxed(builder, longValueBoxed);
+    FBSSample.addDoubleValue(builder, doubleValue);
+    FBSSample.addLongValue(builder, longValue);
     FBSSample.addString(builder, stringOffset);
-    FBSSample.addBooleanArray(builder, boolean_arrayOffset);
-    FBSSample.addCharArray(builder, char_arrayOffset);
-    FBSSample.addShortArray(builder, short_arrayOffset);
-    FBSSample.addDoubleArray(builder, double_arrayOffset);
-    FBSSample.addFloatArray(builder, float_arrayOffset);
-    FBSSample.addLongArray(builder, long_arrayOffset);
-    FBSSample.addIntArray(builder, int_arrayOffset);
-    FBSSample.addFloatValueBoxed(builder, float_value_boxed);
-    FBSSample.addIntValueBoxed(builder, int_value_boxed);
-    FBSSample.addFloatValue(builder, float_value);
-    FBSSample.addIntValue(builder, int_value);
-    FBSSample.addCharValueBoxed(builder, char_value_boxed);
-    FBSSample.addShortValueBoxed(builder, short_value_boxed);
-    FBSSample.addCharValue(builder, char_value);
-    FBSSample.addShortValue(builder, short_value);
-    FBSSample.addBooleanValueBoxed(builder, boolean_value_boxed);
-    FBSSample.addBooleanValue(builder, boolean_value);
+    FBSSample.addBooleanArray(builder, booleanArrayOffset);
+    FBSSample.addCharArray(builder, charArrayOffset);
+    FBSSample.addShortArray(builder, shortArrayOffset);
+    FBSSample.addDoubleArray(builder, doubleArrayOffset);
+    FBSSample.addFloatArray(builder, floatArrayOffset);
+    FBSSample.addLongArray(builder, longArrayOffset);
+    FBSSample.addIntArray(builder, intArrayOffset);
+    FBSSample.addFloatValueBoxed(builder, floatValueBoxed);
+    FBSSample.addIntValueBoxed(builder, intValueBoxed);
+    FBSSample.addFloatValue(builder, floatValue);
+    FBSSample.addIntValue(builder, intValue);
+    FBSSample.addCharValueBoxed(builder, charValueBoxed);
+    FBSSample.addShortValueBoxed(builder, shortValueBoxed);
+    FBSSample.addCharValue(builder, charValue);
+    FBSSample.addShortValue(builder, shortValue);
+    FBSSample.addBooleanValueBoxed(builder, booleanValueBoxed);
+    FBSSample.addBooleanValue(builder, booleanValue);
     return FBSSample.endFBSSample(builder);
   }
 
@@ -173,4 +185,3 @@ public final class FBSSample extends Table {
     public FBSSample get(FBSSample obj, int j) {  return obj.__assign(__indirect(__element(j), bb), bb); }
   }
 }
-

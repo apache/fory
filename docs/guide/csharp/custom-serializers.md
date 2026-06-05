@@ -64,6 +64,12 @@ byte[] payload = fory.Serialize(value);
 Point decoded = fory.Deserialize<Point>(payload);
 ```
 
+Use the named overload when peers identify the type by name instead of a numeric ID:
+
+```csharp
+fory.Register<Point, PointSerializer>("com.example.Point");
+```
+
 ## Serializer Behavior Notes
 
 - `WriteData` / `ReadData` only handle payload content.

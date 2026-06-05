@@ -27,7 +27,7 @@ Fory-supported languages.
 ## Why Fory JavaScript?
 
 - **Xlang**: serialize in JavaScript/TypeScript, deserialize in any supported
-  Fory runtime without writing glue code
+  Fory library without writing glue code
 - **Fast**: serializer code is generated and cached the first time you register a schema, not on every call
 - **Reference-aware**: shared references and circular object graphs are supported when enabled
 - **Explicit schemas**: field types, nullability, and polymorphism are declared once with `Type.*` builders or TypeScript decorators
@@ -111,7 +111,7 @@ options; see [Configuration](configuration.md).
 | Topic                                         | Description                                             |
 | --------------------------------------------- | ------------------------------------------------------- |
 | [Basic Serialization](basic-serialization.md) | Core APIs and everyday usage                            |
-| [Configuration](configuration.md)             | Runtime options, compatible mode, limits, and HPS       |
+| [Configuration](configuration.md)             | Fory options, compatible mode, limits, and HPS          |
 | [Type Registration](type-registration.md)     | Numeric IDs, names, decorators, and schema registration |
 | [Schema Metadata](schema-metadata.md)         | Type builders, field options, and decorators            |
 | [Supported Types](supported-types.md)         | Primitive, collection, time, enum, and struct mappings  |

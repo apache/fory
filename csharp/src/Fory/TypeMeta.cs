@@ -802,6 +802,24 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             return true;
         }
 
+        if (topLevel &&
+            (remote.TrackRef || local.TrackRef) &&
+            CompatibleScalarConverter.IsScalarType(remote.TypeId) &&
+            CompatibleScalarConverter.IsScalarType(local.TypeId))
+        {
+            return remote.TrackRef == local.TrackRef &&
+                   remote.TypeId == local.TypeId &&
+                   remote.Nullable == local.Nullable;
+        }
+
+        if (topLevel &&
+            !remote.TrackRef &&
+            !local.TrackRef &&
+            CompatibleScalarConverter.CanConvert(remote.TypeId, local.TypeId))
+        {
+            return true;
+        }
+
         if (NormalizeTypeIdForMatch(remote.TypeId) != NormalizeTypeIdForMatch(local.TypeId))
         {
             return false;
@@ -830,8 +848,8 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         bool remoteListLocalArray = remote.TypeId == (uint)global::Apache.Fory.TypeId.List &&
                                     localArrayElementTypeId.HasValue &&
                                     remote.Generics.Count == 1 &&
-                                    CompatibleScalarTypeId(localArrayElementTypeId.Value) ==
-                                    CompatibleScalarTypeId(remote.Generics[0].TypeId);
+                                    NormalizeScalarTypeIdForMatch(localArrayElementTypeId.Value) ==
+                                    NormalizeScalarTypeIdForMatch(remote.Generics[0].TypeId);
         if (remoteListLocalArray)
         {
             return true;
@@ -840,8 +858,8 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         return local.TypeId == (uint)global::Apache.Fory.TypeId.List &&
                remoteArrayElementTypeId.HasValue &&
                local.Generics.Count == 1 &&
-               CompatibleScalarTypeId(remoteArrayElementTypeId.Value) ==
-               CompatibleScalarTypeId(local.Generics[0].TypeId);
+               NormalizeScalarTypeIdForMatch(remoteArrayElementTypeId.Value) ==
+               NormalizeScalarTypeIdForMatch(local.Generics[0].TypeId);
     }
 
     private static uint? TryPackedArrayElementTypeId(uint typeId)
@@ -865,7 +883,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         };
     }
 
-    private static uint CompatibleScalarTypeId(uint typeId)
+    private static uint NormalizeScalarTypeIdForMatch(uint typeId)
     {
         return typeId switch
         {

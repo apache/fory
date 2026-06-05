@@ -68,7 +68,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - User guide docs must explain user-visible behavior, commands, and examples.
   Do not add implementation details, internal ownership rationale, build flags,
   or type-id-space caveats unless they directly clarify a confusion users can
-  act on.
+  act on. Translate internal owner-model details into concrete user actions, and
+  avoid phrases such as "serializer-owned capability" or "registration alone
+  does not..." in user-facing docs.
 - Add comments only when behavior is hard to understand or an algorithm is non-obvious.
 - Do not remove existing code comments unless they are stale, misleading, redundant, or no longer necessary after the change.
 - Only add tests that verify internal behaviors or fix specific bugs; do not create unnecessary tests unless requested.

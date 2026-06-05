@@ -169,7 +169,7 @@ jobs:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25"]' || '["8"]') }}
+        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","26"]' || '["8"]') }}
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}

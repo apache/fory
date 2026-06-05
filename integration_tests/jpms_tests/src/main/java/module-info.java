@@ -18,12 +18,13 @@
  */
 
 module org.apache.fory.integration_tests {
+  requires org.apache.fory.core;
+  requires org.apache.fory.format;
+  requires org.apache.fory.test.core;
 
-    requires org.apache.fory.benchmark;
-    requires org.apache.fory.core;
-    requires org.apache.fory.format;
-    requires org.apache.fory.test.core;
+  // we can't really test any classes from this module because it only contains test-classes
+  requires org.apache.fory.test.suite;
 
-    // we can't really test any classes from this module because it only contains test-classes
-    requires org.apache.fory.test.suite;
+  exports org.apache.fory.integration_tests.model;
+  exports org.apache.fory.integration_tests.publicserializer;
 }

@@ -32,7 +32,7 @@ except ImportError:
 
 
 def test_pickle_buffer_serialization():
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     data = b"Hello, PickleBuffer!"
     pickle_buffer = pickle.PickleBuffer(data)
@@ -46,7 +46,7 @@ def test_pickle_buffer_serialization():
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")
 def test_numpy_out_of_band_serialization():
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     arr = np.arange(10000, dtype=np.float64)
 
@@ -62,7 +62,7 @@ def test_numpy_out_of_band_serialization():
 
 @pytest.mark.skipif(pd is None, reason="Requires pandas")
 def test_pandas_out_of_band_serialization():
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     df = pd.DataFrame(
         {
@@ -84,7 +84,7 @@ def test_pandas_out_of_band_serialization():
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")
 def test_numpy_multiple_arrays_out_of_band():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     arr1 = np.arange(5000, dtype=np.float32)
     arr2 = np.arange(3000, dtype=np.int32)
@@ -107,7 +107,7 @@ def test_numpy_multiple_arrays_out_of_band():
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")
 def test_numpy_with_mixed_types():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     arr = np.arange(1000, dtype=np.float64)
     text = "some text"
@@ -129,7 +129,7 @@ def test_numpy_with_mixed_types():
 
 @pytest.mark.skipif(pd is None or np is None, reason="Requires numpy and pandas")
 def test_mixed_numpy_pandas_out_of_band():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     arr = np.arange(500, dtype=np.float64)
     df = pd.DataFrame({"x": np.arange(500, dtype=np.int64), "y": np.arange(500, dtype=np.float32)})
@@ -149,7 +149,7 @@ def test_mixed_numpy_pandas_out_of_band():
 
 @pytest.mark.skipif(np is None, reason="Requires numpy")
 def test_selective_out_of_band_serialization():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     arr1 = np.arange(1000, dtype=np.float64)
     arr2 = np.arange(1000, dtype=np.float64)
@@ -185,7 +185,7 @@ def test_buffer_object_write_to_stream():
     import io
     from pyfory.serializer import NDArrayBufferObject
 
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     arr = np.arange(100).reshape(10, 10).astype(np.float64)
 
@@ -219,7 +219,7 @@ def test_multidimensional_numpy_array_out_of_band():
     """Test out-of-band serialization with multi-dimensional numpy arrays"""
     from pyfory.serializer import NDArrayBufferObject
 
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     arr_2d = np.arange(100).reshape(10, 10).astype(np.float64)
     arr_3d = np.arange(1000).reshape(10, 10, 10).astype(np.int64)
@@ -256,7 +256,7 @@ def test_numpy_array_different_dtypes_out_of_band():
     """Test out-of-band serialization preserves various numpy dtypes"""
     from pyfory.serializer import NDArrayBufferObject
 
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     arrays = {
         "float32": np.arange(100).reshape(10, 10).astype(np.float32),
@@ -292,7 +292,7 @@ def test_large_numpy_arrays_verify_buffer_collection():
     """Verify that large numpy arrays properly use out-of-band buffers"""
     from pyfory.serializer import NDArrayBufferObject
 
-    fory = Fory(xlang=False, ref=False, strict=False)
+    fory = Fory(xlang=False, ref=False, strict=False, compatible=False)
 
     large_2d = np.arange(10000).reshape(100, 100).astype(np.int64)
     large_3d = np.arange(27000).reshape(30, 30, 30).astype(np.float32)

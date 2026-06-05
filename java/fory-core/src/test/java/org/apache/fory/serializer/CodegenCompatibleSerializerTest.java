@@ -63,7 +63,8 @@ public class CodegenCompatibleSerializerTest extends ForyTestBase {
     return Fory.builder()
         .withXlang(false)
         .requireClassRegistration(false)
-        .suppressClassRegistrationWarnings(true);
+        .suppressClassRegistrationWarnings(true)
+        .withCompatible(true);
   }
 
   @Test(dataProvider = "config")

@@ -25,6 +25,11 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 import { getCompatibleCollectionArrayReadAction } from "./collection";
+import {
+  CompatibleScalarConverter,
+  getCompatibleScalarReadAction,
+  shouldSkipCompatibleScalarRead,
+} from "../compatible/scalar";
 
 /**
  * Returns true when a field's read cannot recurse and needs no depth tracking.
@@ -98,6 +103,8 @@ function isDirectVarInt32Field(
 ) {
   return typeInfo.typeId === TypeId.VARINT32
     && toRefMode(typeInfo.trackingRef, typeInfo.nullable) === RefMode.NONE
+    && getCompatibleScalarReadAction(typeInfo) === undefined
+    && !shouldSkipCompatibleScalarRead(typeInfo)
     && typeResolver.isMonomorphic(typeInfo, typeInfo.dynamic);
 }
 
@@ -108,6 +115,8 @@ function directNumericFieldReadExpr(
   if (
     toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE
     || !builder.resolver.isMonomorphic(typeInfo, typeInfo.dynamic)
+    || getCompatibleScalarReadAction(typeInfo) !== undefined
+    || shouldSkipCompatibleScalarRead(typeInfo)
   ) {
     return null;
   }
@@ -183,10 +192,48 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       && this.sortedProps.every(({ typeInfo }) => isDepthFreeField(typeInfo));
   }
 
-  readField(fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
+  readField(fieldName: string, fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
     const { nullable = false, dynamic, trackingRef } = fieldTypeInfo;
     const refMode = toRefMode(trackingRef, nullable);
     const assignCompatible = (expr: string) => assignStmt(compatibleReadTargetExpr(fieldTypeInfo, expr));
+    const discard = (expr: string) => `${expr};`;
+    if (shouldSkipCompatibleScalarRead(fieldTypeInfo)) {
+      if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {
+        if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
+          return embedGenerator.readRefWithoutTypeInfo(discard);
+        }
+        if (isDepthFreeField(fieldTypeInfo)) {
+          return embedGenerator.read(discard, "false");
+        }
+        return embedGenerator.readWithDepth(discard, "false");
+      }
+      if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
+        return embedGenerator.readRef(discard);
+      }
+      return embedGenerator.readNoRef(discard, "false");
+    }
+    const scalarAction = getCompatibleScalarReadAction(fieldTypeInfo);
+    if (scalarAction) {
+      const converter = this.builder.getExternal(CompatibleScalarConverter.name);
+      const readValue = `${converter}.read(${this.builder.reader.ownName()}, ${scalarAction.remoteTypeId}, ${scalarAction.localTypeId}, ${CodecBuilder.safeString(fieldName)})`;
+      if (scalarAction.remoteNullable !== true) {
+        return assignStmt(readValue);
+      }
+      const refFlag = this.scope.uniqueName("refFlag");
+      return `
+        const ${refFlag} = ${this.builder.reader.readInt8()};
+        switch (${refFlag}) {
+          case ${RefFlags.NotNullValueFlag}:
+            ${assignStmt(readValue)}
+            break;
+          case ${RefFlags.NullFlag}:
+            ${assignStmt("null")}
+            break;
+          default:
+            throw new Error("Invalid reference flag for compatible scalar field ${CodecBuilder.replaceBackslashAndQuote(fieldName)}");
+        }
+      `;
+    }
     let stmt = "";
     // polymorphic type
     if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {
@@ -415,7 +462,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         }
         const innerGenerator = new InnerGeneratorClass(typeInfo, this.builder, this.scope);
         return `
-          ${this.readField(typeInfo, expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
+          ${this.readField(key, typeInfo, expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
         `;
       }).join(";\n")}
       ${accessor(result)}

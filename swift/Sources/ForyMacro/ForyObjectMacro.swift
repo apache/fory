@@ -604,7 +604,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
     }
     defaultCase = knownCase
     let defaultExpr = enumCaseDefaultExpr(defaultCase)
-    let writeSwitchCases = cases.enumerated().map { index, enumCase in
+    let writeSwitchCases = cases.map { enumCase in
         if enumCase.name == unknownCase.name {
             return """
             case .unknown(let value):
@@ -634,7 +634,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         return lines.joined(separator: "\n")
     }.joined(separator: "\n        ")
 
-    let readSwitchCases = cases.enumerated().map { index, enumCase in
+    let readSwitchCases = cases.map { enumCase in
         if enumCase.name == unknownCase.name {
             return ""
         }
@@ -2861,7 +2861,8 @@ private func compatibleFieldTypeIDExpression(_ typeText: String) -> String {
     let staticTypeIDExpr = "\(typeText).staticTypeId"
     // A typed union field already has schema from the owning struct field; only
     // dynamic/top-level union values need TYPED_UNION metadata.
-    return "UInt32((\(staticTypeIDExpr) == .structType ? TypeId.compatibleStruct : (\(staticTypeIDExpr) == .typedUnion ? TypeId.union : \(staticTypeIDExpr))).rawValue)"
+    return "UInt32((\(staticTypeIDExpr) == .structType ? TypeId.compatibleStruct : "
+        + "(\(staticTypeIDExpr) == .typedUnion ? TypeId.union : \(staticTypeIDExpr))).rawValue)"
 }
 
 private func compatibleGenericNullableExpression(_ typeText: String) -> String {

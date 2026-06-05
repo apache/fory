@@ -33,6 +33,25 @@ const addField = (target: new () => any, key: string, des: TypeInfo) => {
   targetFields.get(target)![key] = des;
 };
 
+const resolveNameParts = (namespace: string | undefined, typeName: string) => {
+  let resolvedNamespace = namespace;
+  let resolvedTypeName = typeName;
+  if (resolvedNamespace === undefined) {
+    const lastDot = typeName.lastIndexOf(".");
+    if (lastDot >= 0) {
+      resolvedNamespace = typeName.slice(0, lastDot);
+      resolvedTypeName = typeName.slice(lastDot + 1);
+    }
+  }
+  if (!resolvedTypeName) {
+    throw new Error("type name should include a non-empty type name");
+  }
+  return {
+    namespace: resolvedNamespace || "",
+    typeName: resolvedTypeName,
+  };
+};
+
 // eslint-disable-next-line
 class ExtensibleFunction extends Function {
   constructor(f: (target: any, key?: string | { name?: string }) => void) {
@@ -222,12 +241,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         throw new Error(`type name and type id should be set at least one`);
       }
     }
-    if (!namespace && typeName) {
-      const splits = typeName!.split(".");
-      if (splits.length > 1) {
-        namespace = splits[0];
-        typeName = splits.slice(1).join(".");
-      }
+    if (typeId === undefined) {
+      const resolved = resolveNameParts(namespace, typeName!);
+      namespace = resolved.namespace;
+      typeName = resolved.typeName;
     }
     let finalTypeId = 0;
     let userTypeId = -1;
@@ -279,12 +296,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         throw new Error(`type name and type id should be set at least one`);
       }
     }
-    if (!namespace && typeName) {
-      const splits = typeName!.split(".");
-      if (splits.length > 1) {
-        namespace = splits[0];
-        typeName = splits.slice(1).join(".");
-      }
+    if (typeId === undefined) {
+      const resolved = resolveNameParts(namespace, typeName!);
+      namespace = resolved.namespace;
+      typeName = resolved.typeName;
     }
     let finalTypeId = 0;
     let userTypeId = -1;
@@ -340,12 +355,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         throw new Error(`type name and type id should be set at least one`);
       }
     }
-    if (!namespace && typeName) {
-      const splits = typeName!.split(".");
-      if (splits.length > 1) {
-        namespace = splits[0];
-        typeName = splits.slice(1).join(".");
-      }
+    if (typeId === undefined) {
+      const resolved = resolveNameParts(namespace, typeName!);
+      namespace = resolved.namespace;
+      typeName = resolved.typeName;
     }
     const finalTypeId = typeId !== undefined ? TypeId.ENUM : TypeId.NAMED_ENUM;
     const userTypeId = typeId !== undefined ? typeId : -1;
@@ -821,7 +834,7 @@ export const Type = {
       withConstructor,
     });
   },
-  union(idOrCases?: number | { namespace?: string; typeName?: string } | { [caseIndex: number]: TypeInfo }, cases?: { [caseIndex: number]: TypeInfo }) {
+  union(idOrCases?: number | string | { namespace?: string; typeName?: string } | { [caseIndex: number]: TypeInfo }, cases?: { [caseIndex: number]: TypeInfo }) {
     let typeInfo: TypeInfo;
     if (typeof idOrCases === "number") {
       typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
@@ -829,11 +842,24 @@ export const Type = {
       if (cases) {
         typeInfo.options = { cases };
       }
+    } else if (typeof idOrCases === "string") {
+      const resolved = resolveNameParts(undefined, idOrCases);
+      typeInfo = new TypeInfo<typeof TypeId.NAMED_UNION>(TypeId.NAMED_UNION);
+      typeInfo.namespace = resolved.namespace;
+      typeInfo.typeName = resolved.typeName;
+      typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
+      if (cases) {
+        typeInfo.options = { cases };
+      }
     } else if (idOrCases && ("namespace" in idOrCases || "typeName" in idOrCases)) {
       const nameInfo = idOrCases as { namespace?: string; typeName?: string };
+      if (!nameInfo.typeName) {
+        throw new Error("type name should be set for named union");
+      }
+      const resolved = resolveNameParts(nameInfo.namespace, nameInfo.typeName);
       typeInfo = new TypeInfo<typeof TypeId.NAMED_UNION>(TypeId.NAMED_UNION);
-      typeInfo.namespace = nameInfo.namespace || "";
-      typeInfo.typeName = nameInfo.typeName || "";
+      typeInfo.namespace = resolved.namespace;
+      typeInfo.typeName = resolved.typeName;
       typeInfo.named = `${typeInfo.namespace}$${typeInfo.typeName}`;
       if (cases) {
         typeInfo.options = { cases };

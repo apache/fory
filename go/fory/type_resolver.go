@@ -115,6 +115,13 @@ var (
 	genericSetType       = reflect.TypeOf((*Set[any])(nil)).Elem()
 )
 
+func joinRegisteredName(namespace, typeName string) string {
+	if namespace == "" {
+		return typeName
+	}
+	return namespace + "." + typeName
+}
+
 // Global registry for generated serializer factories
 var generatedSerializerFactories = struct {
 	mu        sync.RWMutex
@@ -680,11 +687,13 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error
 	return nil
 }
 
-// RegisterEnumByName registers an enum type by namespace and type name.
-func (r *TypeResolver) RegisterEnumByName(type_ reflect.Type, namespace, typeName string) error {
+func (r *TypeResolver) registerEnumByName(type_ reflect.Type, namespace, typeName string) error {
 	// Check if already registered
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
+	}
+	if typeName == "" {
+		return fmt.Errorf("typeName must be non-empty")
 	}
 
 	// Verify it's a numeric type
@@ -696,26 +705,13 @@ func (r *TypeResolver) RegisterEnumByName(type_ reflect.Type, namespace, typeNam
 		return fmt.Errorf("RegisterEnumByName only supports numeric types; got: %v", type_.Kind())
 	}
 
-	// Parse namespace from typeName if not provided
-	if namespace == "" {
-		if idx := strings.LastIndex(typeName, "."); idx != -1 {
-			namespace = typeName[:idx]
-			typeName = typeName[idx+1:]
-		}
-	}
-
 	// Compute type ID for NAMED_ENUM
 	typeId := uint32(NAMED_ENUM)
 
 	// Create enum serializer
 	serializer := &enumSerializer{type_: type_, typeID: typeId}
 
-	var tag string
-	if namespace == "" {
-		tag = typeName
-	} else {
-		tag = namespace + "." + typeName
-	}
+	tag := joinRegisteredName(namespace, typeName)
 
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
@@ -730,26 +726,14 @@ func (r *TypeResolver) RegisterEnumByName(type_ reflect.Type, namespace, typeNam
 	return nil
 }
 
-// RegisterStructByName registers a struct type by namespace and type name.
-func (r *TypeResolver) RegisterStructByName(type_ reflect.Type, namespace, typeName string) error {
+func (r *TypeResolver) registerStructByName(type_ reflect.Type, namespace, typeName string) error {
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
 	}
-	if namespace == "" {
-		if idx := strings.LastIndex(typeName, "."); idx != -1 {
-			namespace = typeName[:idx]
-			typeName = typeName[idx+1:]
-		}
+	if typeName == "" {
+		return fmt.Errorf("typeName must be non-empty")
 	}
-	if typeName == "" && namespace != "" {
-		return fmt.Errorf("typeName cannot be empty if namespace is provided")
-	}
-	var tag string
-	if namespace == "" {
-		tag = typeName
-	} else {
-		tag = namespace + "." + typeName
-	}
+	tag := joinRegisteredName(namespace, typeName)
 	serializer := newStructSerializer(type_, tag)
 	r.typeToSerializers[type_] = serializer
 	// multiple struct with same name defined inside function will have same `type_.String()`, but they are
@@ -779,9 +763,7 @@ func (r *TypeResolver) RegisterStructByName(type_ reflect.Type, namespace, typeN
 	return nil
 }
 
-// RegisterUnionByName registers a union type by namespace and type name.
-// Union types always use NAMED_UNION and follow the same meta-share rules as other named types.
-func (r *TypeResolver) RegisterUnionByName(
+func (r *TypeResolver) registerUnionByName(
 	type_ reflect.Type,
 	namespace string,
 	typeName string,
@@ -796,21 +778,10 @@ func (r *TypeResolver) RegisterUnionByName(
 	if type_.Kind() != reflect.Struct {
 		return fmt.Errorf("RegisterUnionByName only supports struct types; got: %v", type_.Kind())
 	}
-	if namespace == "" {
-		if idx := strings.LastIndex(typeName, "."); idx != -1 {
-			namespace = typeName[:idx]
-			typeName = typeName[idx+1:]
-		}
+	if typeName == "" {
+		return fmt.Errorf("typeName must be non-empty")
 	}
-	if typeName == "" && namespace != "" {
-		return fmt.Errorf("typeName cannot be empty if namespace is provided")
-	}
-	var tag string
-	if namespace == "" {
-		tag = typeName
-	} else {
-		tag = namespace + "." + typeName
-	}
+	tag := joinRegisteredName(namespace, typeName)
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
 	r.typeInfoToType["@"+tag] = type_
@@ -839,10 +810,7 @@ func (r *TypeResolver) RegisterExt(extId int16, type_ reflect.Type) error {
 	panic("not supported")
 }
 
-// RegisterExtensionByName registers an extension type by namespace and type name.
-// Extension types use a user-provided serializer for custom serialization logic.
-// This is used for types with custom serializers in cross-language serialization.
-func (r *TypeResolver) RegisterExtensionByName(
+func (r *TypeResolver) registerExtensionByName(
 	type_ reflect.Type,
 	namespace string,
 	typeName string,
@@ -854,21 +822,10 @@ func (r *TypeResolver) RegisterExtensionByName(
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
 	}
-	if namespace == "" {
-		if idx := strings.LastIndex(typeName, "."); idx != -1 {
-			namespace = typeName[:idx]
-			typeName = typeName[idx+1:]
-		}
+	if typeName == "" {
+		return fmt.Errorf("typeName must be non-empty")
 	}
-	if typeName == "" && namespace != "" {
-		return fmt.Errorf("typeName cannot be empty if namespace is provided")
-	}
-	var tag string
-	if namespace == "" {
-		tag = typeName
-	} else {
-		tag = namespace + "." + typeName
-	}
+	tag := joinRegisteredName(namespace, typeName)
 
 	// Create adapter wrapping the user's ExtensionSerializer
 	serializer := &extensionSerializerAdapter{type_: type_, typeTag: tag, userSerial: userSerializer}
@@ -1088,20 +1045,8 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 			return ptrInfo, nil
 		}
 
-		// Element type not registered - try auto-registration for structs
 		if elemType.Kind() == reflect.Struct {
-			// First register the value type
-			elemPkgPath := elemType.PkgPath()
-			elemTypeName := elemType.Name()
-			if err := r.RegisterStructByName(elemType, elemPkgPath, elemTypeName); err != nil {
-				// Might already be registered, that's okay
-				_ = err
-			}
-			// Now the pointer type should be registered
-			if info, ok := r.typesInfo[type_]; ok {
-				return info, nil
-			}
-			return nil, fmt.Errorf("failed to find registered pointer type %v", type_)
+			return nil, fmt.Errorf("struct type %s must be registered explicitly before serializing %s", elemType, type_)
 		}
 
 		// For primitive types and other types, we can auto-create pointer serializer
@@ -1124,6 +1069,8 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 		return nil, fmt.Errorf("pointer element type %v must be registered", elemType)
 	case type_.Kind() == reflect.Interface:
 		return nil, fmt.Errorf("interface types must be registered explicitly")
+	case type_.Kind() == reflect.Struct:
+		return nil, fmt.Errorf("struct type %s must be registered explicitly", type_)
 	case pkgPath == "" && typeName == "":
 		// Allow anonymous collection types (maps, slices, arrays) without registration
 		kind := type_.Kind()
@@ -1851,23 +1798,7 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 	case reflect.Struct:
 		serializer := r.typeToSerializers[type_]
 		if serializer == nil {
-			// In xlang/compatible mode, auto-register struct types
-			if r.isXlang || r.fory.config.Compatible {
-				// Use the type's actual package path and name for auto-registration
-				pkgPath := type_.PkgPath()
-				typeName := type_.Name()
-				if typeName == "" {
-					return nil, fmt.Errorf("cannot auto-register anonymous struct type %s", type_.String())
-				}
-				// For auto-registered types, use package path as namespace and type name
-				if err := r.RegisterStructByName(type_, pkgPath, typeName); err != nil {
-					return nil, fmt.Errorf("failed to auto-register struct %s: %w", type_.String(), err)
-				}
-				serializer = r.typeToSerializers[type_]
-			}
-			if serializer == nil {
-				return nil, fmt.Errorf("struct type %s not registered", type_.String())
-			}
+			return nil, fmt.Errorf("struct type %s must be registered explicitly", type_.String())
 		}
 		return serializer, nil
 	}

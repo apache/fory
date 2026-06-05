@@ -21,7 +21,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_box_primitive() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test Box<i32>
     let value = Box::new(42i32);
@@ -52,7 +52,7 @@ fn test_box_struct() {
         age: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Person>(999).unwrap();
 
     let person = Person {
@@ -75,7 +75,7 @@ fn test_box_struct_separate() {
         age: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Person>(999).unwrap();
 
     // Test serializing the Box<Person> directly, not as a field
@@ -93,7 +93,7 @@ fn test_box_struct_separate() {
 
 #[test]
 fn test_box_collection() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test Box<Vec<i32>>
     let value = Box::new(vec![1, 2, 3, 4, 5]);
@@ -117,7 +117,7 @@ fn test_box_collection() {
 
 #[test]
 fn test_box_option() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test Box<Option<String>> with Some value
     let value = Box::new(Some("Hello".to_string()));
@@ -135,7 +135,7 @@ fn test_box_option() {
 #[test]
 fn test_nested_box() {
     // Test Box<Box<i32>> - though unusual, should work
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let value = Box::new(Box::new(42i32));
     let bin = fory.serialize(&value).unwrap();

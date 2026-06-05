@@ -141,6 +141,25 @@
 
   <profiles>
     <profile>
+      <id>native-jdk25</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <configuration>
+              <buildArgs combine.children="append">
+                <buildArg>-J--add-opens=java.base/java.lang.invoke=ALL-UNNAMED</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
       <id>native</id>
       <dependencies>
         <dependency>
@@ -169,9 +188,6 @@
             </executions>
             <configuration>
               <fallback>false</fallback>
-              <agent>
-                <enabled>true</enabled>
-              </agent>
               <buildArgs>
                 <!-- for fast build -->
                 <!-- <buildArg>-Ob</buildArg> -->

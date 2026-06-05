@@ -37,7 +37,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.util.unsafe.DefineClass;
+import org.apache.fory.platform.internal.DefineClass;
 
 /** ClassLoader utility for defining class and loading class by strategies. */
 public class ClassLoaderUtils {

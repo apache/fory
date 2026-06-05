@@ -1,7 +1,7 @@
 # Apache Fory™ Java
 
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Java Version](https://img.shields.io/badge/Java-8%20to%2025-blue?style=for-the-badge)](https://www.oracle.com/java/)
+[![Java Version](https://img.shields.io/badge/Java-8%2B-blue?style=for-the-badge)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 
 Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem, delivering up to **170x performance improvement** over traditional frameworks through JIT compilation and zero-copy techniques.
@@ -23,7 +23,7 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 ### Drop-in Replacement
 
 - **100% JDK Serialization Compatible**: Supports `writeObject`/`readObject`/`writeReplace`/`readResolve`/`readObjectNoData`/`Externalizable`
-- **Java 8-24 Support**: Works across all modern Java versions including Java 17+ records
+- **Java 8+ Support**: Works across all modern Java versions including Java 17+ records
 - **GraalVM Native Image**: AOT compilation support without reflection configuration
 
 ### Advanced Features
@@ -49,7 +49,6 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 | ------------------- | ------------------------------------- | --------------------------------- |
 | **fory-core**       | Core serialization engine             | `org.apache.fory:fory-core`       |
 | **fory-format**     | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
-| **fory-simd**       | SIMD-accelerated array compression    | `org.apache.fory:fory-simd`       |
 | **fory-extensions** | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
 | **fory-test-core**  | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
 
@@ -78,12 +77,6 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
   <version>1.1.0</version>
 </dependency>
 
-<!-- Optional: SIMD acceleration (Java 16+) -->
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-simd</artifactId>
-  <version>1.1.0</version>
-</dependency>
 ```
 
 ### Gradle
@@ -93,9 +86,23 @@ dependencies {
     implementation 'org.apache.fory:fory-core:1.1.0'
     // Optional modules
     implementation 'org.apache.fory:fory-format:1.1.0'
-    implementation 'org.apache.fory:fory-simd:1.1.0'
     implementation 'org.apache.fory:fory-extensions:1.1.0'
 }
+```
+
+### JDK25+
+
+On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
+the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
 ```
 
 ## Quick Start
@@ -161,12 +168,11 @@ Fory fory = Fory.builder()
 
 ### Schema Evolution
 
-Xlang mode enables compatible schema evolution by default. In native mode, enable compatible mode
-when your class definitions change over time:
+Compatible mode is the default for both xlang and native mode. Keep that default when your class
+definitions change over time:
 
 ```java
 Fory fory = Fory.builder().withXlang(false)
-  .withCompatible(true)
   .build();
 
 // Serialization and deserialization can use different class versions
@@ -220,8 +226,7 @@ Fory fory = Fory.builder()
   .withXlang(false)
   // Reference tracking for circular/shared references
   .withRefTracking(true)
-  // Schema evolution mode. Xlang already enables compatible mode by default.
-  .withCompatible(true)
+  // Compatible schema evolution is enabled by default.
   // Compression options
   .withIntCompressed(true)
   .withLongCompressed(true)

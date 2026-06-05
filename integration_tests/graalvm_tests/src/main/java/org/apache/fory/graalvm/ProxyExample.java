@@ -49,6 +49,7 @@ public class ProxyExample {
             .withName(ProxyExample.class.getName())
             .withXlang(false)
             .requireClassRegistration(true)
+            .withCompatible(false)
             .build();
     // register and generate serializer code.
     fory.register(TestInvocationHandler.class);

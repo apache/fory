@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Fory Swift can exchange payloads with other Fory runtimes using the xlang protocol.
+Fory Swift can exchange payloads with other Fory implementations using the xlang protocol.
 
 ## Recommended Xlang Configuration
 
@@ -45,7 +45,7 @@ fory.register(Order.self, id: 100)
 ### Name-based registration
 
 ```swift
-try fory.register(Order.self, namespace: "com.example", name: "Order")
+try fory.register(Order.self, name: "com.example.Order")
 ```
 
 ## Xlang Rules

@@ -57,11 +57,12 @@ public sealed class ThreadSafeFory : IDisposable
     /// Registers a user type by name for all current and future thread-local runtimes.
     /// </summary>
     /// <typeparam name="T">Type to register.</typeparam>
-    /// <param name="typeName">Type name used on the wire.</param>
+    /// <param name="name">Name used on the wire. A dotted name is split at the last dot.</param>
     /// <returns>The same runtime instance.</returns>
-    public ThreadSafeFory Register<T>(string typeName)
+    public ThreadSafeFory Register<T>(string name)
     {
-        ApplyRegistration(fory => fory.Register<T>(typeName));
+        _ = TypeResolver.SplitTypeName(name);
+        ApplyRegistration(fory => fory.Register<T>(name));
         return this;
     }
 
@@ -74,6 +75,7 @@ public sealed class ThreadSafeFory : IDisposable
     /// <returns>The same runtime instance.</returns>
     public ThreadSafeFory Register<T>(string typeNamespace, string typeName)
     {
+        TypeResolver.ValidateSplitTypeName(typeNamespace, typeName);
         ApplyRegistration(fory => fory.Register<T>(typeNamespace, typeName));
         return this;
     }
@@ -93,6 +95,21 @@ public sealed class ThreadSafeFory : IDisposable
     }
 
     /// <summary>
+    /// Registers a user type by name with a custom serializer for all thread-local runtimes.
+    /// </summary>
+    /// <typeparam name="T">Type to register.</typeparam>
+    /// <typeparam name="TSerializer">Serializer implementation used for <typeparamref name="T"/>.</typeparam>
+    /// <param name="name">Name used on the wire. A dotted name is split at the last dot.</param>
+    /// <returns>The same runtime instance.</returns>
+    public ThreadSafeFory Register<T, TSerializer>(string name)
+        where TSerializer : Serializer<T>, new()
+    {
+        _ = TypeResolver.SplitTypeName(name);
+        ApplyRegistration(fory => fory.Register<T, TSerializer>(name));
+        return this;
+    }
+
+    /// <summary>
     /// Registers a user type by namespace and name with a custom serializer for all thread-local runtimes.
     /// </summary>
     /// <typeparam name="T">Type to register.</typeparam>
@@ -103,6 +120,7 @@ public sealed class ThreadSafeFory : IDisposable
     public ThreadSafeFory Register<T, TSerializer>(string typeNamespace, string typeName)
         where TSerializer : Serializer<T>, new()
     {
+        TypeResolver.ValidateSplitTypeName(typeNamespace, typeName);
         ApplyRegistration(fory => fory.Register<T, TSerializer>(typeNamespace, typeName));
         return this;
     }

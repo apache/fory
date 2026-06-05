@@ -95,3 +95,15 @@ pub fn write_dyn_data_generic<T: Serializer>(
         .get_write_data_fn();
     serializer_fn(any_value, context, has_generics)
 }
+
+pub(crate) mod send_sync {
+    use std::any::Any;
+
+    #[inline(always)]
+    pub fn box_send_sync<T>(value: T) -> Box<dyn Any + Send + Sync>
+    where
+        T: Any + Send + Sync,
+    {
+        Box::new(value)
+    }
+}

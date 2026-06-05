@@ -23,6 +23,15 @@ This page covers serialization of Kotlin-specific JVM types in native mode. For
 cross-language Kotlin models, use the xlang path described in
 [Static Generated Serializers](static-generated-serializers.md).
 
+When compatible mode is enabled, Kotlin readers use the JVM compatible-read rules for selected
+scalar field type changes. A matched field can read between `Boolean`, `String`, numeric scalars,
+and `java.math.BigDecimal` when the converted value has the same logical value. For example,
+`"true"` and `"false"` can be read as booleans, `"123"` can be read as a numeric field that can hold
+`123`, numbers and decimals can be read as canonical strings, and numeric widening or narrowing
+succeeds only when no precision or range is lost. Numeric strings use finite ASCII decimal syntax.
+Invalid strings and lossy conversions fail during deserialization. Nullable and boxed fields still
+compose with these conversions, but reference-tracked scalar type changes are incompatible.
+
 ## Setup
 
 All examples assume the following setup:
@@ -180,4 +189,4 @@ The following types work with the default Fory Java implementation:
 - **Collections**: `ArrayList`, `HashMap`, `HashSet`, `LinkedHashSet`, `LinkedHashMap`
 - **Arrays**: `Array`, `BooleanArray`, `ByteArray`, `CharArray`, `DoubleArray`, `FloatArray`, `IntArray`, `LongArray`, `ShortArray`
 
-Use `ForyKotlin.builder()` for Kotlin-specific runtime types such as unsigned values, ranges, and `Duration`.
+Use `ForyKotlin.builder()` for Kotlin-specific types such as unsigned values, ranges, and `Duration`.

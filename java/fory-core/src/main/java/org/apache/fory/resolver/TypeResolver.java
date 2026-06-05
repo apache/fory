@@ -77,6 +77,7 @@ import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
@@ -253,7 +254,7 @@ public abstract class TypeResolver {
    *
    * @param type the class to register
    * @param namespace the namespace (can be empty if type name has no conflict)
-   * @param typeName the type name
+   * @param typeName the type name; must not contain {@code .}
    */
   public abstract void register(Class<?> type, String namespace, String typeName);
 
@@ -267,7 +268,9 @@ public abstract class TypeResolver {
     register(loadClass(className), classId);
   }
 
-  /** Registers a class by name with a namespace and type name. */
+  /**
+   * Registers a class by name with a namespace and type name. The type name must not contain `.`.
+   */
   public void register(String className, String namespace, String typeName) {
     register(loadClass(className), namespace, typeName);
   }
@@ -340,6 +343,18 @@ public abstract class TypeResolver {
   @Internal
   public abstract void registerEnum(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer);
+
+  /**
+   * Returns the runtime-scoped object instantiator for {@code type}.
+   *
+   * <p>The instantiator follows the normal Java object model used by Fory serializers. Records use
+   * their canonical constructor, while ordinary classes use supported empty construction followed
+   * by field restoration.
+   */
+  @Internal
+  public final <T> ObjectInstantiator<T> getObjectInstantiator(Class<T> type) {
+    return sharedRegistry.getObjectInstantiator(type);
+  }
 
   /**
    * Registers a custom serializer for a type.

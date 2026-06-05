@@ -22,7 +22,7 @@ license: |
 This page covers in-memory Java object graph copying with `Fory#copy(Object)`.
 
 `Fory.copy` is a deep-copy operation for Java object graphs. It does not serialize to bytes first.
-Instead, it uses the same runtime type system and serializers to create a copied object graph in
+Instead, it uses Fory's type system and serializers to create a copied object graph in
 memory.
 
 ## When to Use Object Copy
@@ -198,8 +198,8 @@ public class Example {
 }
 ```
 
-This follows the same registration rules as the rest of the runtime: if the runtime requires class
-registration, copied runtime types must be registered first.
+This follows the same registration rules as other Fory operations: if the Fory instance requires class
+registration, copied concrete types must be registered first.
 
 ## Thread-Safe Copy
 
@@ -227,7 +227,7 @@ The same API also works for `buildThreadLocalFory()` and `buildThreadSafeForyPoo
 
 ## Built-In Coverage
 
-Fory already provides copy support for many common Java runtime types, including:
+Fory already provides copy support for many common Java platform types, including:
 
 - Primitive values and boxed primitives
 - Strings and primitive arrays
@@ -235,7 +235,7 @@ Fory already provides copy support for many common Java runtime types, including
 - Java time and date/time values
 - Beans, records, and nested object graphs
 
-If the runtime already knows how to serialize a mutable type, it may still need an explicit copy
+If Fory already knows how to serialize a mutable type, it may still need an explicit copy
 implementation in that serializer. For mutable serializers, the default `Serializer.copy(...)`
 throws `UnsupportedOperationException` unless the serializer overrides it.
 
@@ -274,7 +274,7 @@ Guidelines:
   if the type can participate in cycles or shared-reference graphs
 - Use `copyContext.copyObject(...)` for nested values instead of manually duplicating nested copy
   logic
-- Keep copy logic consistent with the normal runtime semantics of the type
+- Keep copy logic consistent with the normal Java semantics of the type
 
 ## Custom Copy in a Serializer
 
@@ -362,12 +362,12 @@ Fix it by either:
 
 ### Registration Errors
 
-If your runtime uses `requireClassRegistration(true)`, make sure the copied runtime types are
+If your Fory instance uses `requireClassRegistration(true)`, make sure the copied concrete types are
 registered before calling `copy(...)`.
 
 ## Related Topics
 
-- [Basic Serialization](basic-serialization.md) - Runtime creation and core APIs
+- [Basic Serialization](basic-serialization.md) - Fory instance creation and core APIs
 - [Configuration](configuration.md) - Builder options including `withRefCopy`
 - [Custom Serializers](custom-serializers.md) - Serializer design and registration
-- [Virtual Threads](virtual-threads.md) - Thread-safe runtime guidance
+- [Virtual Threads](virtual-threads.md) - Thread-safe Fory guidance

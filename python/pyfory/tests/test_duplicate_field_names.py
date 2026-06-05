@@ -39,8 +39,8 @@ class ChildWithShadow(Parent):
 def test_shadowed_fields_serialization():
     """Serialization with shadowed and inherited fields."""
     fory = Fory(xlang=True, compatible=False)
-    fory.register(Parent, namespace="test", typename="Parent")
-    fory.register(ChildWithShadow, namespace="test", typename="ChildWithShadow")
+    fory.register(Parent, name="test.Parent")
+    fory.register(ChildWithShadow, name="test.ChildWithShadow")
 
     # Verify TypeDef has exactly 3 fields (no duplicate 'name')
     typedef = encode_typedef(fory.type_resolver, ChildWithShadow)

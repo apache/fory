@@ -50,7 +50,7 @@ root:
 | reference flag | [type metadata] | [value payload] |
 ```
 
-All multi-byte fixed-width values are little endian. A big-endian Java runtime
+All multi-byte fixed-width values are little endian. A big-endian Java implementation
 must still write and read little-endian payloads.
 
 The stream is stateful. Type metadata, class definitions, and object references
@@ -113,7 +113,7 @@ name metadata. Schema-evolution classes may carry a ClassDef.
 | `22..63` | Reserved in Java native mode for the xlang internal ID range.      |
 | `64..68` | Reserved for future Java native internal IDs.                      |
 | `69..98` | Java native built-ins listed below.                                |
-| `99+`    | User and runtime class IDs assigned by the Java `ClassResolver`.   |
+| `99+`    | User and Fory class IDs assigned by the Java `ClassResolver`.      |
 
 The shared scalar IDs are:
 
@@ -207,9 +207,9 @@ Indexes are assigned in first-use order.
 
 Java native mode has two object schema modes.
 
-### Schema-Consistent Mode
+### Same-Schema Mode
 
-Schema-consistent mode is used when compatible mode is disabled. The writer and
+Same-schema mode is used when compatible mode is disabled. The writer and
 reader must have matching fields and field order. No per-object ClassDef is
 required for ordinary registered classes. Field values are written directly in
 protocol order.
@@ -220,6 +220,78 @@ Compatible mode writes ClassDef metadata for struct-like classes. Readers match
 local fields against remote ClassDef fields by identifier, read matching fields,
 and skip unknown fields using the remote field type metadata. Compatible mode is
 the Java native schema-evolution path.
+
+In compatible mode, a matched field may read between direct top-level scalar
+ClassDef schemas when the remote value can be represented by the local scalar
+schema without changing the logical value. This is a read adaptation only:
+writers keep emitting their local canonical field schema and payload, and
+ClassDef metadata, same-schema mode, dynamic value serialization, and
+unknown-field skipping continue to treat the original field schemas as distinct.
+
+The rule applies only to the immediate schema of a matched field. It does not
+apply to dynamic root values, map keys, map values, collection elements, array
+elements, enum values, temporal values, binary values, structs, or nested
+generic/container positions.
+
+The scalar domains are Java boolean/boxed boolean, `String`, Java primitive and
+boxed numeric scalar fields, Fory scalar annotations whose ClassDef metadata
+identifies a narrower numeric wire domain, and `BigDecimal` as the exact decimal
+numeric scalar. Java native-only metadata outside the type IDs shared with xlang
+must still use the Java ClassDef metadata to identify the scalar domain.
+Compatible scalar conversion applies only when both the remote and local
+top-level ClassDef field metadata have `trackingRef = false`; if either matched
+field has `trackingRef = true`, scalar type changes are schema/type incompatible
+during compatible layout construction. Same scalar ClassDef field types with
+matching top-level `trackingRef` and null/optional framing are exact same-schema
+direct reads, not compatible scalar conversion. Same scalar ClassDef field types
+with different top-level `trackingRef` framing are schema/type incompatible
+because the wire framing differs. Same scalar ClassDef field types with
+different top-level null/optional framing may still use the nullable/optional
+composition rule below when both fields have `trackingRef = false`.
+
+Compatible scalar conversion follows the xlang scalar conversion contract:
+
+- `String` to boolean accepts exactly `"0"`, `"1"`, `"false"`, and `"true"`.
+  Boolean to `String` produces `"false"` or `"true"`.
+- numeric to boolean accepts only exact zero and one. Boolean to numeric
+  produces exact zero or one in the local numeric domain.
+- numeric to numeric succeeds only when the local numeric domain represents the
+  same mathematical value, including range checks, signedness checks, exact
+  integer/floating round-trip checks, floating signed-zero preservation, and
+  rejection of `NaN` across different floating type IDs.
+- `BigDecimal` participates as an exact numeric scalar. Converted decimal values
+  use canonical scale: zero and non-zero integers use scale `0`; finite
+  fractional values use the smallest non-negative scale that preserves the
+  mathematical value and leaves an unscaled value not divisible by `10`.
+  Compatible conversion rejects numeric strings longer than `320` bytes before
+  arbitrary precision parsing. It also rejects converted decimal values whose
+  canonical exponent or scale work exceeds the `256` digit bound before
+  constructing large powers of ten or formatting plain decimal text. Same-type
+  `BigDecimal` reads preserve the ordinary decimal payload.
+- `String` to numeric accepts only the finite compatible numeric literal grammar
+  from the xlang serialization spec and then applies the same lossless
+  target-domain checks. `NaN`, infinities, whitespace, leading plus signs,
+  Unicode decimal digits, underscores, grouping separators, non-decimal radices,
+  and type suffixes fail.
+- numeric to `String` emits canonical finite numeric text: integers use plain
+  decimal text, floating values use exact plain decimal text with a decimal point
+  and signed-zero preservation, and `BigDecimal` values use exact plain decimal
+  text without exponent notation or insignificant trailing fractional zeros.
+
+Nullable fields, boxed carriers, and primitive defaults compose with scalar
+conversion when the matched top-level field schemas have `trackingRef = false`.
+Readers first consume the remote null/optional framing described by the remote
+ClassDef field metadata. Present values are converted and then assigned or
+wrapped into the local carrier. Null or absent remote values use the same
+compatible-mode missing/null behavior already defined for the local field.
+Reference-tracked scalar conversion is not supported.
+
+Schema pairs outside the scalar conversion matrix remain schema/type
+compatibility errors while building the compatible layout. Once a matched field
+is accepted as a scalar conversion action, invalid payload values are
+deserialization data errors and must be reported as
+`org.apache.fory.exception.DeserializationException`, not as schema misses or
+registration errors.
 
 ## Field Order
 
