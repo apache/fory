@@ -452,8 +452,9 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
         lines.extend(self.generate_fory_helpers())
         lines.append("")
 
+        pkg = self.get_file_name()
         return GeneratedFile(
-            path=f"{self.get_file_name()}.go",
+            path=f"{pkg}/{pkg}.go",
             content="\n".join(lines),
         )
 
