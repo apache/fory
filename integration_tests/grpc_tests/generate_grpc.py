@@ -58,6 +58,12 @@ def main() -> int:
         )
 
     for schema in SCHEMAS:
+        # Each Go schema goes into its own subdir (named after the package) so
+        # multiple schemas with different package names can share the same
+        # generated/ root without one package's files overwriting another's.
+        pkg_name = schema.stem.replace(".", "_")
+        go_pkg_out = OUTPUTS["go"] / pkg_name
+        go_pkg_out.mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
             [
                 sys.executable,
@@ -67,7 +73,7 @@ def main() -> int:
                 str(schema),
                 f"--java_out={OUTPUTS['java']}",
                 f"--python_out={OUTPUTS['python']}",
-                f"--go_out={OUTPUTS['go']}",
+                f"--go_out={go_pkg_out}",
                 "--grpc",
             ],
             env=env,
