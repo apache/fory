@@ -36,9 +36,10 @@ class GoServiceGeneratorMixin:
         ]
         if not local_services:
             return []
-        return [self._generate_grpc_file(s) for s in local_services]
+        return [self._generate_grpc_file(local_services)]
 
-    def _generate_grpc_file(self, service: Service) -> GeneratedFile:
+    def _generate_grpc_file(self, services: List[Service]) -> GeneratedFile:
+        """Generate one _grpc.go file containing all services in the schema."""
         lines: List[str] = []
         tracker = ImportTracker()
 
@@ -50,23 +51,25 @@ class GoServiceGeneratorMixin:
         lines.append(f"package {self.get_package_name()}")
         lines.append("")
 
-        # Imports
-        # save the placeholder index
+        # Save placeholder index so imports can be inserted after all code is
+        # generated (imports are collected lazily via tracker as types are resolved).
         import_placeholder_index = len(lines)
 
+        # CodecV2 is emitted once per file, shared by all services in the schema.
         lines.extend(self._generate_codec())
-        lines.extend(self._generate_client_interface(service, tracker))
-        lines.extend(self._generate_client_struct(service))
-        lines.extend(self._generate_new_client(service))
-        lines.extend(self._generate_client_methods(service, tracker))
-        lines.extend(self._generate_stream_types(service, tracker))
-        lines.extend(self._generate_server_interface(service, tracker))
-        lines.extend(self._generate_unimplemented_server(service, tracker))
-        lines.extend(self._generate_server_stream_types(service, tracker))
-        lines.extend(self._generate_service_desc(service, tracker))
-        lines.extend(self._generate_register_server(service))
 
-        # insert the import block at the saved placeholder index
+        for service in services:
+            lines.extend(self._generate_client_interface(service, tracker))
+            lines.extend(self._generate_client_struct(service))
+            lines.extend(self._generate_new_client(service))
+            lines.extend(self._generate_client_methods(service, tracker))
+            lines.extend(self._generate_stream_types(service, tracker))
+            lines.extend(self._generate_server_interface(service, tracker))
+            lines.extend(self._generate_unimplemented_server(service, tracker))
+            lines.extend(self._generate_server_stream_types(service, tracker))
+            lines.extend(self._generate_service_desc(service, tracker))
+            lines.extend(self._generate_register_server(service))
+
         import_lines = self._build_import_block(tracker)
         for i, line in enumerate(import_lines):
             lines.insert(import_placeholder_index + i, line)
