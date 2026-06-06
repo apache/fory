@@ -195,9 +195,7 @@ class GoServiceGeneratorMixin:
             "// copied into a fresh slice because the transport may reclaim the"
         )
         lines.append("// underlying memory before Fory finishes reading it.")
-        lines.append(
-            "func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error {"
-        )
+        lines.append("func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error {")
         lines.append("\tb := make([]byte, data.Len())")
         lines.append("\tn := 0")
         lines.append("\tfor _, buf := range data {")
@@ -209,7 +207,7 @@ class GoServiceGeneratorMixin:
         lines.append(
             '// Name returns "fory", the codec identifier used with grpc.ForceCodecV2.'
         )
-        lines.append("func (CodecV2) Name() string { return \"fory\" }")
+        lines.append('func (CodecV2) Name() string { return "fory" }')
         lines.append("")
         return lines
 
