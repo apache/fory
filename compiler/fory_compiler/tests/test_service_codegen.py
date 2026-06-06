@@ -235,7 +235,10 @@ def test_go_grpc_service_codegen():
     assert "type GreeterClient interface" in content
     assert "type GreeterServer interface" in content
     assert "type UnimplementedGreeterServer struct" in content
-    assert "forygrpc.CodecV2{Fory: c.fory}" in content
+    assert "CodecV2{Fory: c.fory}" in content
+    assert "type CodecV2 struct" in content
+    assert "func (c CodecV2) Marshal(v any) (mem.BufferSlice, error)" in content
+    assert "func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error" in content
     assert '"/demo.greeter.Greeter/SayHello"' in content
     assert "mustEmbedUnimplementedGreeterServer()" in content
 
