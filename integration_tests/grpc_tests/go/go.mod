@@ -21,7 +21,6 @@ go 1.25.0
 
 require (
 	github.com/apache/fory/go/fory v0.0.0
-	github.com/apache/fory/go/fory/grpc v0.0.0
 	google.golang.org/grpc v1.68.0
 )
 
@@ -33,7 +32,4 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 )
 
-replace (
-	github.com/apache/fory/go/fory => ../../../go/fory
-	github.com/apache/fory/go/fory/grpc => ../../../go/fory/grpc
-)
+replace github.com/apache/fory/go/fory => ../../../go/fory

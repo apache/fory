@@ -33,7 +33,6 @@ import (
 	"strings"
 
 	"github.com/apache/fory/go/fory"
-	forygrpc "github.com/apache/fory/go/fory/grpc"
 	grpc_fdl "github.com/apache/fory/integration_tests/grpc_tests/go/generated/grpc_fdl"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -77,7 +76,7 @@ func fdlAggregate(requests []*grpc_fdl.GrpcFdlRequest) *grpc_fdl.GrpcFdlResponse
 // protoFallbackCodec overrides the built-in "proto" codec (v1 registry) with
 // Fory so the server can decode requests from Java clients, which send with the
 // default content-type (application/grpc) rather than application/grpc+fory.
-type protoFallbackCodec struct{ forygrpc.CodecV2 }
+type protoFallbackCodec struct{ grpc_fdl.CodecV2 }
 
 func (protoFallbackCodec) Name() string { return "proto" }
 
@@ -150,7 +149,7 @@ func runServer(portFile string, f *fory.Fory) error {
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	codec := forygrpc.CodecV2{Fory: f}
+	codec := grpc_fdl.CodecV2{Fory: f}
 	// "fory" (v2): used by Go clients via grpc.ForceCodecV2.
 	encoding.RegisterCodecV2(codec)
 	// "proto" (v1): overrides the built-in proto codec so Java clients are
