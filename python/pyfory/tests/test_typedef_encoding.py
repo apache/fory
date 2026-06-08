@@ -41,6 +41,7 @@ from pyfory.meta.typedef import (
     TYPEDEF_HASH_SHIFT,
     _INT64_MIN,
     _UINT64_MASK,
+    plan_field_assignment,
 )
 from pyfory.meta.typedef_encoder import (
     FIELD_NAME_ENCODER,
@@ -211,6 +212,26 @@ def test_dynamic_field_type():
     assert dynamic_field.is_monomorphic is False
     assert dynamic_field.is_nullable
     assert dynamic_field.is_tracking_ref is False
+
+
+def test_nested_user_type_shape_matching():
+    remote = CollectionFieldType(TypeId.LIST, True, False, False, DynamicFieldType(TypeId.UNKNOWN, False, False, False))
+    local = CollectionFieldType(TypeId.LIST, True, False, False, DynamicFieldType(TypeId.STRUCT, False, False, False))
+
+    can_assign, validation = plan_field_assignment(remote, local)
+
+    assert can_assign
+    assert validation is None
+
+
+def test_nested_unknown_does_not_match_scalar():
+    remote = CollectionFieldType(TypeId.LIST, True, False, False, DynamicFieldType(TypeId.UNKNOWN, False, False, False))
+    local = CollectionFieldType(TypeId.LIST, True, False, False, FieldType(TypeId.INT32, True, False, False))
+
+    can_assign, validation = plan_field_assignment(remote, local)
+
+    assert not can_assign
+    assert validation is None
 
 
 def test_encode_decode_typedef():
@@ -583,7 +604,7 @@ def test_compatible_int32_pyarray_assigns_to_list():
     assert decoded.payload == [1, 2, 3]
 
 
-def test_compatible_nullable_int32_list_payload_rejects_array_read():
+def test_compatible_nullable_int32_list_schema_assigns_to_array():
     writer = Fory(xlang=True, compatible=True)
     reader = Fory(xlang=True, compatible=True)
     _register_int32_payload(writer, NullableInt32ListPayload)
@@ -591,6 +612,7 @@ def test_compatible_nullable_int32_list_payload_rejects_array_read():
 
     decoded = reader.deserialize(writer.serialize(NullableInt32ListPayload(payload=[1, 2, 3])))
     assert isinstance(decoded, Int32ArrayPayload)
+    assert isinstance(decoded.payload, pyfory.Int32Array)
     assert list(decoded.payload) == [1, 2, 3]
 
     with pytest.raises(TypeNotCompatibleError):
@@ -607,16 +629,14 @@ def test_compatible_incompatible_list_array_elements_reject():
         reader.deserialize(writer.serialize(StringListPayload(payload=["1", "2"])))
 
 
-def test_compatible_nested_list_array_mismatch_not_assigned():
+def test_nested_list_array_mismatch_rejects():
     writer = Fory(xlang=True, compatible=True)
     reader = Fory(xlang=True, compatible=True)
     _register_int32_payload(writer, NestedInt32ListPayload)
     _register_int32_payload(reader, NestedInt32ArrayPayload)
 
-    decoded = reader.deserialize(writer.serialize(NestedInt32ListPayload(payload=[[1, 2], [3]])))
-
-    assert isinstance(decoded, NestedInt32ArrayPayload)
-    assert decoded.payload == []
+    with pytest.raises(TypeNotCompatibleError):
+        reader.deserialize(writer.serialize(NestedInt32ListPayload(payload=[[1, 2], [3]])))
 
 
 if __name__ == "__main__":

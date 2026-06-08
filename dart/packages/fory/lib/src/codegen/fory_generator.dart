@@ -158,12 +158,12 @@ final class ForyGenerator extends Generator {
         .toList(growable: false);
 
     final sortedFields = _sortFields(fields);
-    final constructorPlan = _buildConstructorPlan(element, sortedFields);
+    final constructionModel = _buildConstructionModel(element, sortedFields);
     return _GeneratedStructSpec(
       name: element.displayName,
       evolving: evolving,
       fields: sortedFields,
-      constructorPlan: constructorPlan,
+      constructionModel: constructionModel,
     );
   }
 
@@ -372,7 +372,7 @@ final class ForyGenerator extends Generator {
     );
   }
 
-  _ConstructorPlan _buildConstructorPlan(
+  _ConstructionModel _buildConstructionModel(
     ClassElement element,
     List<_GeneratedFieldSpec> fields,
   ) {
@@ -384,7 +384,7 @@ final class ForyGenerator extends Generator {
           (parameter) => parameter.isOptional,
         );
     if (hasZeroArgConstructor && fields.every((field) => field.writable)) {
-      return const _ConstructorPlan.mutable();
+      return const _ConstructionModel.mutable();
     }
 
     if (unnamedConstructor == null || unnamedConstructor.isFactory) {
@@ -449,7 +449,7 @@ final class ForyGenerator extends Generator {
         .map((field) => field.name)
         .toList(growable: false);
 
-    return _ConstructorPlan.constructor(
+    return _ConstructionModel.constructor(
       arguments: arguments,
       postConstructionFieldNames: postConstructionFields,
     );
@@ -489,6 +489,9 @@ final class ForyGenerator extends Generator {
     final schemaName = '_${_toCamelCase(structSpec.name)}ForySchema';
     final hasRuntimeFastPath = structSpec.fields.any(
       (field) => !_usesDirectGeneratedBasicFastPath(field),
+    );
+    final writeNeedsFieldDescriptors = structSpec.fields.any(
+      _writeUsesFieldDescriptor,
     );
     final writeUsesBuffer = structSpec.fields.any(
       _directGeneratedBasicWriteNeedsBuffer,
@@ -539,15 +542,15 @@ final class ForyGenerator extends Generator {
       ..writeln(
         'final class $serializerClassName extends Serializer<${structSpec.name}> implements GeneratedStructSerializer<${structSpec.name}> {',
       )
-      ..writeln('  List<GeneratedStructFieldInfo>? _generatedFields;')
+      ..writeln('  List<GeneratedStructFieldDescriptor>? _fieldDescriptors;')
       ..writeln()
       ..writeln('  $serializerClassName();')
       ..writeln()
       ..writeln(
-        '  List<GeneratedStructFieldInfo> _writeFields(WriteContext context) {',
+        '  List<GeneratedStructFieldDescriptor> _writeFields(WriteContext context) {',
       )
       ..writeln(
-        '    return _generatedFields ??= buildGeneratedStructFieldInfos(',
+        '    return _fieldDescriptors ??= buildGeneratedStructFieldDescriptors(',
       )
       ..writeln('      context.typeResolver,')
       ..writeln('      $schemaName,')
@@ -555,10 +558,10 @@ final class ForyGenerator extends Generator {
       ..writeln('  }')
       ..writeln()
       ..writeln(
-        '  List<GeneratedStructFieldInfo> _readFields(ReadContext context) {',
+        '  List<GeneratedStructFieldDescriptor> _readFields(ReadContext context) {',
       )
       ..writeln(
-        '    return _generatedFields ??= buildGeneratedStructFieldInfos(',
+        '    return _fieldDescriptors ??= buildGeneratedStructFieldDescriptors(',
       )
       ..writeln('      context.typeResolver,')
       ..writeln('      $schemaName,')
@@ -571,7 +574,7 @@ final class ForyGenerator extends Generator {
     if (writeUsesBuffer) {
       output.writeln('      final buffer = context.buffer;');
     }
-    if (hasRuntimeFastPath) {
+    if (writeNeedsFieldDescriptors) {
       output.writeln('      final fields = _writeFields(context);');
     }
     for (var index = 0; index < structSpec.fields.length; index += 1) {
@@ -603,12 +606,12 @@ final class ForyGenerator extends Generator {
           '      ${_directGeneratedTypedContainerWriteStatement(field, index, 'value.${field.name}')};',
         );
       } else {
-        final fieldValue = _generatedFieldInfoWriteValueExpression(
+        _writeGeneratedDescriptorValue(
+          output,
           field,
+          index,
           'value.${field.name}',
-        );
-        output.writeln(
-          '      writeGeneratedStructFieldInfoValue(context, fields[$index], $fieldValue);',
+          '      ',
         );
       }
       final directPrimitiveEndRun = directPrimitiveRunByEnd[index];
@@ -626,7 +629,7 @@ final class ForyGenerator extends Generator {
       ..writeln('  @override')
       ..writeln('  ${structSpec.name} read(ReadContext context) {');
 
-    switch (structSpec.constructorPlan.mode) {
+    switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
         output.writeln('    final value = ${structSpec.name}();');
         if (_structNeedsEarlyReadReference(structSpec)) {
@@ -680,7 +683,7 @@ final class ForyGenerator extends Generator {
             );
           } else {
             output.writeln(
-              '      value.${field.name} = $readerFunctionName(readGeneratedStructFieldInfoValue(context, fields[$index], value.${field.name}), value.${field.name});',
+              '      value.${field.name} = $readerFunctionName(readGeneratedStructDescriptorValue(context, fields[$index], value.${field.name}), value.${field.name});',
             );
           }
           final directPrimitiveEndRun = directPrimitiveRunByEnd[index];
@@ -739,7 +742,7 @@ final class ForyGenerator extends Generator {
             );
           } else {
             output.writeln(
-              '      final ${field.displayType} ${field.localName} = $readerFunctionName(readGeneratedStructFieldInfoValue(context, fields[$index]));',
+              '      final ${field.displayType} ${field.localName} = $readerFunctionName(readGeneratedStructDescriptorValue(context, fields[$index]));',
             );
           }
           final directPrimitiveEndRun = directPrimitiveRunByEnd[index];
@@ -754,7 +757,7 @@ final class ForyGenerator extends Generator {
         final constructorInvocation = _constructorInvocation(structSpec);
         output.writeln('      final value = $constructorInvocation;');
         for (final fieldName
-            in structSpec.constructorPlan.postConstructionFieldNames) {
+            in structSpec.constructionModel.postConstructionFieldNames) {
           final field = structSpec.fields.firstWhere(
             (item) => item.name == fieldName,
           );
@@ -764,7 +767,12 @@ final class ForyGenerator extends Generator {
     }
 
     output.writeln('  }');
-    _writeCompatibleStructReadMethod(output, structSpec);
+    _writeCompatibleStructReadMethod(
+      output,
+      structSpec,
+      readUsesBuffer: readUsesBuffer,
+      hasRuntimeFastPath: hasRuntimeFastPath,
+    );
     output
       ..writeln('}')
       ..writeln();
@@ -788,15 +796,18 @@ final class ForyGenerator extends Generator {
 
   void _writeCompatibleStructReadMethod(
     StringBuffer output,
-    _GeneratedStructSpec structSpec,
-  ) {
+    _GeneratedStructSpec structSpec, {
+    required bool readUsesBuffer,
+    required bool hasRuntimeFastPath,
+  }) {
+    final splitFallback = structSpec.fields.length >= 16;
     output
       ..writeln()
       ..writeln('  @override')
       ..writeln(
         '  ${structSpec.name} readCompatibleStruct(ReadContext context, CompatibleStructReadLayout layout) {',
       );
-    switch (structSpec.constructorPlan.mode) {
+    switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
         output.writeln('    final value = ${structSpec.name}();');
         if (_structNeedsEarlyReadReference(structSpec)) {
@@ -805,93 +816,317 @@ final class ForyGenerator extends Generator {
             ..writeln('      context.reference(value);')
             ..writeln('    }');
         }
-        output
-          ..writeln(
-            '    for (var index = 0; index < layout.fieldCount; index += 1) {',
-          )
-          ..writeln('      final field = layout.localFieldAt(index);')
-          ..writeln('      if (field == null) {')
-          ..writeln(
-            '        skipGeneratedCompatibleStructField(context, layout, index);',
-          )
-          ..writeln('        continue;')
-          ..writeln('      }')
-          ..writeln('      switch (field.index) {');
-        for (var index = 0; index < structSpec.fields.length; index += 1) {
-          final field = structSpec.fields[index];
-          final readerFunctionName = field.readerFunctionName(structSpec.name);
-          output
-            ..writeln('        case $index:')
-            ..writeln(
-              '          value.${field.name} = $readerFunctionName(readGeneratedCompatibleStructField(context, layout, index), value.${field.name});',
-            )
-            ..writeln('          break;');
+        if (!splitFallback && readUsesBuffer) {
+          output.writeln('    final buffer = context.buffer;');
         }
-        output
-          ..writeln('        default:')
-          ..writeln(
-            "          throw StateError('Compatible field index is out of range for ${structSpec.name}.');",
-          )
-          ..writeln('      }')
-          ..writeln('    }')
-          ..writeln('    return value;');
-      case _ConstructorMode.constructor:
-        for (var index = 0; index < structSpec.fields.length; index += 1) {
-          final field = structSpec.fields[index];
-          output
-            ..writeln('    late final ${field.displayType} ${field.localName};')
-            ..writeln('    var hasField$index = false;');
+        if (!splitFallback && hasRuntimeFastPath) {
+          output.writeln('    final fields = _readFields(context);');
         }
-        output
-          ..writeln(
-            '    for (var index = 0; index < layout.fieldCount; index += 1) {',
-          )
-          ..writeln('      final field = layout.localFieldAt(index);')
-          ..writeln('      if (field == null) {')
-          ..writeln(
-            '        skipGeneratedCompatibleStructField(context, layout, index);',
-          )
-          ..writeln('        continue;')
-          ..writeln('      }')
-          ..writeln('      switch (field.index) {');
-        for (var index = 0; index < structSpec.fields.length; index += 1) {
-          final field = structSpec.fields[index];
-          final readerFunctionName = field.readerFunctionName(structSpec.name);
-          output
-            ..writeln('        case $index:')
-            ..writeln(
-              '          ${field.localName} = $readerFunctionName(readGeneratedCompatibleStructField(context, layout, index));',
-            )
-            ..writeln('          hasField$index = true;')
-            ..writeln('          break;');
-        }
-        output
-          ..writeln('        default:')
-          ..writeln(
-            "          throw StateError('Compatible field index is out of range for ${structSpec.name}.');",
-          )
-          ..writeln('      }')
-          ..writeln('    }');
-        for (var index = 0; index < structSpec.fields.length; index += 1) {
-          final field = structSpec.fields[index];
-          final readerFunctionName = field.readerFunctionName(structSpec.name);
-          output
-            ..writeln('    if (!hasField$index) {')
-            ..writeln('      ${field.localName} = $readerFunctionName(null);')
-            ..writeln('    }');
-        }
-        final constructorInvocation = _constructorInvocation(structSpec);
-        output.writeln('    final value = $constructorInvocation;');
-        for (final fieldName
-            in structSpec.constructorPlan.postConstructionFieldNames) {
-          final field = structSpec.fields.firstWhere(
-            (item) => item.name == fieldName,
+        if (splitFallback) {
+          output.writeln(
+            '    return _readCompatibleStructFallback(context, layout, value);',
           );
-          output.writeln('    value.${field.name} = ${field.localName};');
+        } else {
+          _writeMutableCompatibleSwitchFallback(output, structSpec);
         }
-        output.writeln('    return value;');
+      case _ConstructorMode.constructor:
+        if (!splitFallback && readUsesBuffer) {
+          output.writeln('    final buffer = context.buffer;');
+        }
+        if (!splitFallback && hasRuntimeFastPath) {
+          output.writeln('    final fields = _readFields(context);');
+        }
+        if (splitFallback) {
+          output.writeln(
+            '    return _readCompatibleStructFallback(context, layout);',
+          );
+        } else {
+          _writeCtorCompatSwitch(output, structSpec);
+        }
     }
     output.writeln('  }');
+    if (splitFallback) {
+      _writeCompatibleStructFallbackMethod(
+        output,
+        structSpec,
+        readUsesBuffer: readUsesBuffer,
+        hasRuntimeFastPath: hasRuntimeFastPath,
+      );
+    }
+  }
+
+  void _writeCompatibleStructFallbackMethod(
+    StringBuffer output,
+    _GeneratedStructSpec structSpec, {
+    required bool readUsesBuffer,
+    required bool hasRuntimeFastPath,
+  }) {
+    final mutable =
+        structSpec.constructionModel.mode == _ConstructorMode.mutable;
+    final valueParameter = mutable ? ', ${structSpec.name} value' : '';
+    output
+      ..writeln()
+      ..writeln("  @pragma('vm:never-inline')")
+      ..writeln(
+        '  ${structSpec.name} _readCompatibleStructFallback(ReadContext context, CompatibleStructReadLayout layout$valueParameter) {',
+      );
+    if (readUsesBuffer) {
+      output.writeln('    final buffer = context.buffer;');
+    }
+    if (hasRuntimeFastPath) {
+      output.writeln('    final fields = _readFields(context);');
+    }
+    if (mutable) {
+      _writeMutableCompatibleSwitchFallback(output, structSpec);
+    } else {
+      _writeCtorCompatSwitch(output, structSpec);
+    }
+    output.writeln('  }');
+  }
+
+  void _writeMutableCompatibleSwitchFallback(
+    StringBuffer output,
+    _GeneratedStructSpec structSpec,
+  ) {
+    output
+      ..writeln(
+        '    for (var index = 0; index < layout.fieldCount; index += 1) {',
+      )
+      ..writeln('      final field = layout.fieldAt(index);')
+      ..writeln('      switch (field.matchedId) {')
+      ..writeln('        case -1:')
+      ..writeln('          skipGeneratedCompatibleStructField(context, field);')
+      ..writeln('          break;');
+    for (var index = 0; index < structSpec.fields.length; index += 1) {
+      final field = structSpec.fields[index];
+      output.writeln('        case ${index * 2}:');
+      _writeExactCompatRead(
+        output,
+        structSpec,
+        field,
+        index,
+        'value.${field.name}',
+        'value.${field.name}',
+        '          ',
+      );
+      output
+        ..writeln('          break;')
+        ..writeln('        case ${index * 2 + 1}:');
+      _writeCompatConversionRead(
+        output,
+        structSpec,
+        field,
+        index,
+        'value.${field.name}',
+        'value.${field.name}',
+        'field',
+        '          ',
+      );
+      output.writeln('          break;');
+    }
+    output
+      ..writeln('        default:')
+      ..writeln(
+        "          throw StateError('Compatible matched id is out of range for ${structSpec.name}.');",
+      )
+      ..writeln('      }')
+      ..writeln('    }')
+      ..writeln('    return value;');
+  }
+
+  void _writeCtorCompatSwitch(
+    StringBuffer output,
+    _GeneratedStructSpec structSpec,
+  ) {
+    for (var index = 0; index < structSpec.fields.length; index += 1) {
+      final field = structSpec.fields[index];
+      output
+        ..writeln('    late final ${field.displayType} ${field.localName};')
+        ..writeln('    var hasField$index = false;');
+    }
+    output
+      ..writeln(
+        '    for (var index = 0; index < layout.fieldCount; index += 1) {',
+      )
+      ..writeln('      final field = layout.fieldAt(index);')
+      ..writeln('      switch (field.matchedId) {')
+      ..writeln('        case -1:')
+      ..writeln('          skipGeneratedCompatibleStructField(context, field);')
+      ..writeln('          break;');
+    for (var index = 0; index < structSpec.fields.length; index += 1) {
+      final field = structSpec.fields[index];
+      output.writeln('        case ${index * 2}:');
+      _writeExactCompatRead(
+        output,
+        structSpec,
+        field,
+        index,
+        field.localName,
+        null,
+        '          ',
+      );
+      output
+        ..writeln('          hasField$index = true;')
+        ..writeln('          break;')
+        ..writeln('        case ${index * 2 + 1}:');
+      _writeCompatConversionRead(
+        output,
+        structSpec,
+        field,
+        index,
+        field.localName,
+        null,
+        'field',
+        '          ',
+      );
+      output
+        ..writeln('          hasField$index = true;')
+        ..writeln('          break;');
+    }
+    output
+      ..writeln('        default:')
+      ..writeln(
+        "          throw StateError('Compatible matched id is out of range for ${structSpec.name}.');",
+      )
+      ..writeln('      }')
+      ..writeln('    }');
+    for (var index = 0; index < structSpec.fields.length; index += 1) {
+      final field = structSpec.fields[index];
+      final readerFunctionName = field.readerFunctionName(structSpec.name);
+      output
+        ..writeln('    if (!hasField$index) {')
+        ..writeln('      ${field.localName} = $readerFunctionName(null);')
+        ..writeln('    }');
+    }
+    final constructorInvocation = _constructorInvocation(structSpec);
+    output.writeln('    final value = $constructorInvocation;');
+    for (final fieldName
+        in structSpec.constructionModel.postConstructionFieldNames) {
+      final field = structSpec.fields.firstWhere(
+        (item) => item.name == fieldName,
+      );
+      output.writeln('    value.${field.name} = ${field.localName};');
+    }
+    output.writeln('    return value;');
+  }
+
+  void _writeCompatConversionRead(
+    StringBuffer output,
+    _GeneratedStructSpec structSpec,
+    _GeneratedFieldSpec field,
+    int index,
+    String target,
+    String? fallback,
+    String readField,
+    String indent,
+  ) {
+    final directScalarRead = _directCompatibleScalarRead(field);
+    if (directScalarRead != null) {
+      final scalarRead = 'scalarRead$index';
+      final fallbackArg = fallback == null ? '' : ', $fallback';
+      output.writeln('${indent}final $scalarRead = $readField.scalarRead!;');
+      output.writeln(
+        '$indent$target = ${directScalarRead.method}(context, $scalarRead$fallbackArg);',
+      );
+      return;
+    }
+    final readerFunctionName = field.readerFunctionName(structSpec.name);
+    output.writeln(
+      '$indent$target = ${_readerCall(readerFunctionName, 'readGeneratedCompatibleStructField(context, $readField)', fallback)};',
+    );
+  }
+
+  void _writeExactCompatRead(
+    StringBuffer output,
+    _GeneratedStructSpec structSpec,
+    _GeneratedFieldSpec field,
+    int index,
+    String target,
+    String? fallback,
+    String indent,
+  ) {
+    final readerFunctionName = field.readerFunctionName(structSpec.name);
+    if (_usesDirectGeneratedBasicFastPath(field)) {
+      output.writeln(
+        '$indent$target = ${_directGeneratedReadExpression(field)};',
+      );
+      return;
+    }
+    if (_usesDirectGeneratedTypedContainerReadFastPath(field)) {
+      output.writeln(
+        '$indent$target = ${_directGeneratedTypedContainerReadExpression(structSpec.name, field, 'fields[$index]')};',
+      );
+      return;
+    }
+    if (_usesDirectGeneratedStructFieldFastPath(field)) {
+      output.writeln(
+        '$indent$target = ${_readerCall(readerFunctionName, 'readGeneratedStructDirectValue(context, fields[$index])', fallback)};',
+      );
+      return;
+    }
+    if (_usesDirectGeneratedDeclaredReadFastPath(field)) {
+      output.writeln(
+        '$indent$target = ${_readerCall(readerFunctionName, 'readGeneratedStructDeclaredValue(context, fields[$index])', fallback)};',
+      );
+      return;
+    }
+    final valueExpression =
+        fallback == null
+            ? 'readGeneratedStructDescriptorValue(context, fields[$index])'
+            : 'readGeneratedStructDescriptorValue(context, fields[$index], $fallback)';
+    output.writeln('$indent$target = $readerFunctionName($valueExpression);');
+  }
+
+  _DirectCompatibleScalarRead? _directCompatibleScalarRead(
+    _GeneratedFieldSpec field,
+  ) {
+    if (field.fieldType.nullable ||
+        field.fieldType.ref ||
+        _isGeneratedDynamicField(field)) {
+      return null;
+    }
+    final typeLiteral = _typeLiteral(_withoutNullability(field.type));
+    if (typeLiteral == 'int' &&
+        (field.fieldType.typeId == TypeIds.int8 ||
+            field.fieldType.typeId == TypeIds.int16 ||
+            field.fieldType.typeId == TypeIds.int32 ||
+            field.fieldType.typeId == TypeIds.varInt32 ||
+            field.fieldType.typeId == TypeIds.int64 ||
+            field.fieldType.typeId == TypeIds.varInt64 ||
+            field.fieldType.typeId == TypeIds.taggedInt64 ||
+            field.fieldType.typeId == TypeIds.uint8 ||
+            field.fieldType.typeId == TypeIds.uint16 ||
+            field.fieldType.typeId == TypeIds.uint32 ||
+            field.fieldType.typeId == TypeIds.varUint32)) {
+      return const _DirectCompatibleScalarRead('readGenCompatScalarAsInt');
+    }
+    if (typeLiteral == 'double' &&
+        (field.fieldType.typeId == TypeIds.float32 ||
+            field.fieldType.typeId == TypeIds.float64)) {
+      return const _DirectCompatibleScalarRead('readGenCompatScalarAsDouble');
+    }
+    if (typeLiteral == 'Int64' && _isSigned64TypeId(field.fieldType.typeId)) {
+      return const _DirectCompatibleScalarRead('readGenCompatScalarAsInt64');
+    }
+    if (typeLiteral == 'Uint64' &&
+        _isUnsigned64TypeId(field.fieldType.typeId)) {
+      return const _DirectCompatibleScalarRead('readGenCompatScalarAsUint64');
+    }
+    if (typeLiteral == 'Float32' && field.fieldType.typeId == TypeIds.float32) {
+      return const _DirectCompatibleScalarRead('readGenCompatScalarAsFloat32');
+    }
+    return null;
+  }
+
+  String _readerCall(
+    String functionName,
+    String valueExpression,
+    String? fallback,
+  ) {
+    if (fallback == null) {
+      return '$functionName($valueExpression)';
+    }
+    return '$functionName($valueExpression, $fallback)';
   }
 
   void _writeGeneratedSupport(
@@ -966,7 +1201,7 @@ final class ForyGenerator extends Generator {
   String _constructorInvocation(_GeneratedStructSpec structSpec) {
     final positionalArguments = <String>[];
     final namedArguments = <String>[];
-    for (final argument in structSpec.constructorPlan.arguments) {
+    for (final argument in structSpec.constructionModel.arguments) {
       final field = structSpec.fields.firstWhere(
         (item) => item.name == argument.fieldName,
       );
@@ -1081,7 +1316,7 @@ GeneratedFieldType(
       if (_isNullable(type)) {
         return valueExpression;
       }
-      return '$valueExpression == null ? $nullExpression : $valueExpression';
+      return '$valueExpression ?? $nullExpression';
     }
     if (_isNullable(type)) {
       final nonNullableType = _withoutNullability(type);
@@ -1222,7 +1457,7 @@ GeneratedFieldType(
   bool _usesDirectGeneratedBasicFastPath(_GeneratedFieldSpec field) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
-        field.fieldType.dynamic == true) {
+        _isGeneratedDynamicField(field)) {
       return false;
     }
     return _isPrimitiveTypeId(field.fieldType.typeId) ||
@@ -1294,7 +1529,7 @@ GeneratedFieldType(
   bool _usesDirectGeneratedDeclaredReadFastPath(_GeneratedFieldSpec field) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
-        field.fieldType.dynamic == true) {
+        _isGeneratedDynamicField(field)) {
       return false;
     }
     final typeId = field.fieldType.typeId;
@@ -1304,7 +1539,10 @@ GeneratedFieldType(
   bool _usesDirectGeneratedStructFieldFastPath(_GeneratedFieldSpec field) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
-        field.fieldType.dynamic == true) {
+        _isGeneratedDynamicField(field)) {
+      return false;
+    }
+    if (!_isGeneratedStructType(field.type)) {
       return false;
     }
     final typeId = field.fieldType.typeId;
@@ -1319,7 +1557,7 @@ GeneratedFieldType(
   ) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
-        field.fieldType.dynamic == true) {
+        _isGeneratedDynamicField(field)) {
       return false;
     }
     if (_isBoolList(field.type)) {
@@ -1330,12 +1568,18 @@ GeneratedFieldType(
         field.fieldType.typeId == TypeIds.map;
   }
 
+  bool _isGeneratedStructType(DartType type) {
+    final element = _withoutNullability(type).element;
+    return element is ClassElement &&
+        _foryStructChecker.hasAnnotationOf(element);
+  }
+
   bool _usesDirectGeneratedTypedContainerWriteFastPath(
     _GeneratedFieldSpec field,
   ) {
     if (field.fieldType.nullable ||
         field.fieldType.ref ||
-        field.fieldType.dynamic == true) {
+        _isGeneratedDynamicField(field)) {
       return false;
     }
     if (_isBoolList(field.type)) {
@@ -1346,12 +1590,28 @@ GeneratedFieldType(
       return false;
     }
     final elementFieldType = field.fieldType.arguments.single;
-    if (elementFieldType.ref || elementFieldType.dynamic == true) {
+    if (elementFieldType.ref || _isGeneratedDynamicType(elementFieldType)) {
       return false;
     }
     final elementType = (field.type as InterfaceType).typeArguments.single;
     return !_isNullable(elementType);
   }
+
+  bool _writeUsesFieldDescriptor(_GeneratedFieldSpec field) {
+    if (_usesDirectGeneratedBasicFastPath(field)) {
+      return false;
+    }
+    if (_usesDirectGeneratedTypedContainerWriteFastPath(field)) {
+      return true;
+    }
+    return !_isGeneratedDynamicField(field);
+  }
+
+  bool _isGeneratedDynamicField(_GeneratedFieldSpec field) =>
+      _isGeneratedDynamicType(field.fieldType);
+
+  bool _isGeneratedDynamicType(_GeneratedFieldTypeSpec fieldType) =>
+      fieldType.dynamic == true || fieldType.typeId == TypeIds.unknown;
 
   String _directGeneratedTypedContainerWriteStatement(
     _GeneratedFieldSpec field,
@@ -1372,14 +1632,16 @@ GeneratedFieldType(
   }
 
   List<_DirectGeneratedPrimitiveRun> _directGeneratedPrimitiveRuns(
-    List<_GeneratedFieldSpec> fields,
-  ) {
+    List<_GeneratedFieldSpec> fields, {
+    bool includeCoreInt64Varints = false,
+  }) {
     final runs = <_DirectGeneratedPrimitiveRun>[];
     int? start;
     var bytes = 0;
     for (var index = 0; index < fields.length; index += 1) {
       final fieldBytes = _directGeneratedPrimitiveReservationBytes(
         fields[index],
+        includeCoreInt64Varints: includeCoreInt64Varints,
       );
       if (fieldBytes == null) {
         if (start != null) {
@@ -1398,11 +1660,21 @@ GeneratedFieldType(
     return runs;
   }
 
-  bool _usesReservedGeneratedFastPath(_GeneratedFieldSpec field) {
-    return _directGeneratedPrimitiveReservationBytes(field) != null;
+  bool _usesReservedGeneratedFastPath(
+    _GeneratedFieldSpec field, {
+    bool includeCoreInt64Varints = false,
+  }) {
+    return _directGeneratedPrimitiveReservationBytes(
+          field,
+          includeCoreInt64Varints: includeCoreInt64Varints,
+        ) !=
+        null;
   }
 
-  int? _directGeneratedPrimitiveReservationBytes(_GeneratedFieldSpec field) {
+  int? _directGeneratedPrimitiveReservationBytes(
+    _GeneratedFieldSpec field, {
+    bool includeCoreInt64Varints = false,
+  }) {
     if (!_usesDirectGeneratedBasicFastPath(field)) {
       return null;
     }
@@ -1425,6 +1697,9 @@ GeneratedFieldType(
       case TypeIds.varInt32:
       case TypeIds.varUint32:
         return 5;
+      case TypeIds.varInt64:
+      case TypeIds.varUint64:
+        return includeCoreInt64Varints && field.type.isDartCoreInt ? 9 : null;
       default:
         return null;
     }
@@ -1438,7 +1713,9 @@ GeneratedFieldType(
       switch (fields[index].fieldType.typeId) {
         case TypeIds.boolType:
         case TypeIds.varInt32:
+        case TypeIds.varInt64:
         case TypeIds.varUint32:
+        case TypeIds.varUint64:
           return true;
       }
     }
@@ -1453,7 +1730,9 @@ GeneratedFieldType(
       switch (fields[index].fieldType.typeId) {
         case TypeIds.boolType:
         case TypeIds.varInt32:
+        case TypeIds.varInt64:
         case TypeIds.varUint32:
+        case TypeIds.varUint64:
           break;
         default:
           return true;
@@ -1713,6 +1992,36 @@ GeneratedFieldType(
         output.writeln(
           '$indent$target = (($result >>> 1) ^ -($result & 1)).toSigned(32);',
         );
+      case TypeIds.varInt64:
+        if (!field.type.isDartCoreInt) {
+          throw StateError(
+            'Generated varint64 cursor read is only supported for Dart int fields.',
+          );
+        }
+        final assignTarget = _writeGeneratedReadAssignmentTarget(
+          output,
+          target,
+          indent,
+        );
+        final result = 'result$fieldIndex';
+        output
+          ..writeln('$indent if (generatedIsWeb) {')
+          ..writeln('$indent   bufferSetReaderIndex(buffer, $offset);')
+          ..writeln('$indent   $assignTarget = buffer.readVarInt64AsInt();')
+          ..writeln('$indent   $offset = bufferReaderIndex(buffer);')
+          ..writeln('$indent } else {');
+        _writeDirectGeneratedVarUint64Read(
+          output,
+          result,
+          bytes,
+          offset,
+          '$indent   ',
+        );
+        output
+          ..writeln(
+            '$indent   $assignTarget = ($result >>> 1) ^ -($result & 1);',
+          )
+          ..writeln('$indent }');
       case TypeIds.varUint32:
         final result = 'result$fieldIndex';
         _writeDirectGeneratedVarUint32Read(
@@ -1723,11 +2032,56 @@ GeneratedFieldType(
           indent,
         );
         output.writeln('$indent$target = $result;');
+      case TypeIds.varUint64:
+        if (!field.type.isDartCoreInt) {
+          throw StateError(
+            'Generated varuint64 cursor read is only supported for Dart int fields.',
+          );
+        }
+        final assignTarget = _writeGeneratedReadAssignmentTarget(
+          output,
+          target,
+          indent,
+        );
+        final result = 'result$fieldIndex';
+        output
+          ..writeln('$indent if (generatedIsWeb) {')
+          ..writeln('$indent   bufferSetReaderIndex(buffer, $offset);')
+          ..writeln('$indent   $assignTarget = buffer.readVarUint64().toInt();')
+          ..writeln('$indent   $offset = bufferReaderIndex(buffer);')
+          ..writeln('$indent } else {');
+        _writeDirectGeneratedVarUint64Read(
+          output,
+          result,
+          bytes,
+          offset,
+          '$indent   ',
+        );
+        output
+          ..writeln('$indent   $assignTarget = $result;')
+          ..writeln('$indent }');
       default:
         throw StateError(
           'Unsupported generated direct buffer read fast path for ${field.name}.',
         );
     }
+  }
+
+  String _writeGeneratedReadAssignmentTarget(
+    StringBuffer output,
+    String target,
+    String indent,
+  ) {
+    if (!target.startsWith('final ')) {
+      return target;
+    }
+    final nameStart = target.lastIndexOf(' ') + 1;
+    final name = target.substring(nameStart);
+    final typePrefix = target
+        .substring(0, nameStart)
+        .replaceFirst('final ', 'late final ');
+    output.writeln('$indent$typePrefix$name;');
+    return name;
   }
 
   void _writeDirectGeneratedVarUint32Read(
@@ -1750,6 +2104,34 @@ GeneratedFieldType(
       ..writeln('$indent     break;')
       ..writeln('$indent   }')
       ..writeln('$indent   $shift += 7;')
+      ..writeln('$indent }');
+  }
+
+  void _writeDirectGeneratedVarUint64Read(
+    StringBuffer output,
+    String result,
+    String bytes,
+    String offset,
+    String indent,
+  ) {
+    final shift = '${result}Shift';
+    final byte = '${result}Byte';
+    output
+      ..writeln('$indent var $shift = 0;')
+      ..writeln('$indent var $result = 0;')
+      ..writeln('$indent while ($shift < 56) {')
+      ..writeln('$indent   final $byte = $bytes[$offset];')
+      ..writeln('$indent   $offset += 1;')
+      ..writeln('$indent   $result |= ($byte & 0x7f) << $shift;')
+      ..writeln('$indent   if (($byte & 0x80) == 0) {')
+      ..writeln('$indent     break;')
+      ..writeln('$indent   }')
+      ..writeln('$indent   $shift += 7;')
+      ..writeln('$indent }')
+      ..writeln('$indent if ($shift == 56) {')
+      ..writeln('$indent   final $byte = $bytes[$offset];')
+      ..writeln('$indent   $offset += 1;')
+      ..writeln('$indent   $result |= $byte << 56;')
       ..writeln('$indent }');
   }
 
@@ -2009,10 +2391,134 @@ GeneratedFieldType(
     }
   }
 
-  String _generatedFieldInfoWriteValueExpression(
+  void _writeGeneratedDescriptorValue(
+    StringBuffer output,
+    _GeneratedFieldSpec field,
+    int index,
+    String valueExpression,
+    String indent,
+  ) {
+    final value = 'field${index}Value';
+    output.writeln('${indent}final $value = $valueExpression;');
+    if (_isGeneratedDynamicField(field)) {
+      _writeGeneratedDynamicValue(output, field, value, indent);
+      return;
+    }
+    final descriptor = 'field$index';
+    final fieldType = 'field${index}Type';
+    output
+      ..writeln('${indent}final $descriptor = fields[$index];')
+      ..writeln('${indent}final $fieldType = $descriptor.fieldType;')
+      ..writeln(
+        '${indent}final field${index}Declared = $descriptor.declaredTypeInfo;',
+      )
+      ..writeln(
+        '${indent}if (field${index}Declared != null && $descriptor.usesDeclaredType) {',
+      );
+    _writeGeneratedDeclaredValue(
+      output,
+      field,
+      resolved: 'field${index}Declared',
+      fieldType: fieldType,
+      value: value,
+      indent: '$indent  ',
+    );
+    output.writeln('$indent} else {');
+    _writeGeneratedUndeclaredValue(
+      output,
+      field,
+      fieldType: fieldType,
+      value: value,
+      indent: '$indent  ',
+    );
+    output.writeln('$indent}');
+  }
+
+  void _writeGeneratedDynamicValue(
+    StringBuffer output,
     _GeneratedFieldSpec field,
     String valueExpression,
-  ) => valueExpression;
+    String indent,
+  ) {
+    if (field.fieldType.ref) {
+      output.writeln('${indent}context.writeRef($valueExpression);');
+      return;
+    }
+    output
+      ..writeln(
+        '${indent}if (!context.refWriter.writeRefOrNull(context.buffer, $valueExpression, trackRef: false)) {',
+      )
+      ..writeln(
+        '$indent  context.writeNonRef(${_nonNullObjectExpression(field, valueExpression)});',
+      )
+      ..writeln('$indent}');
+  }
+
+  void _writeGeneratedDeclaredValue(
+    StringBuffer output,
+    _GeneratedFieldSpec field, {
+    required String resolved,
+    required String fieldType,
+    required String value,
+    required String indent,
+  }) {
+    if (field.fieldType.nullable || field.fieldType.ref) {
+      final trackRef = field.fieldType.ref ? '$resolved.supportsRef' : 'false';
+      output
+        ..writeln(
+          '${indent}if (!context.refWriter.writeRefOrNull(context.buffer, $value, trackRef: $trackRef)) {',
+        )
+        ..writeln(
+          '$indent  context.writeResolvedValue($resolved, $value as Object, $fieldType);',
+        )
+        ..writeln('$indent}');
+      return;
+    }
+    output
+      ..writeln('${indent}if ($value == null) {')
+      ..writeln(
+        "$indent  throw StateError('Field ${field.name} is not nullable.');",
+      )
+      ..writeln('$indent}')
+      ..writeln(
+        '${indent}context.writeResolvedValue($resolved, $value as Object, $fieldType);',
+      );
+  }
+
+  void _writeGeneratedUndeclaredValue(
+    StringBuffer output,
+    _GeneratedFieldSpec field, {
+    required String fieldType,
+    required String value,
+    required String indent,
+  }) {
+    if (field.fieldType.ref) {
+      output.writeln('${indent}context.writeRef($value);');
+      return;
+    }
+    if (field.fieldType.nullable) {
+      output
+        ..writeln(
+          '${indent}if (!context.refWriter.writeRefOrNull(context.buffer, $value, trackRef: false)) {',
+        )
+        ..writeln('$indent  context.writeNonRef($value as Object);')
+        ..writeln('$indent}');
+      return;
+    }
+    output
+      ..writeln('${indent}if ($value == null) {')
+      ..writeln(
+        "$indent  throw StateError('Field ${field.name} is not nullable.');",
+      )
+      ..writeln('$indent}')
+      ..writeln(
+        '${indent}final actualResolved = context.typeResolver.resolveValue($value as Object);',
+      )
+      ..writeln('${indent}context.writeTypeMetaValue(actualResolved, $value);')
+      ..writeln(
+        '${indent}context.writeResolvedValue(actualResolved, $value, $fieldType);',
+      );
+  }
 
   String _nullExpression(
     DartType type, {
@@ -2024,9 +2530,23 @@ GeneratedFieldType(
       return 'null as $displayType';
     }
     if (fallbackExpression != null) {
+      if (_withoutNullability(type).isDartCoreObject) {
+        return '($fallbackExpression ?? (throw StateError(\'Received null for non-nullable $errorTarget.\')))';
+      }
       return '($fallbackExpression != null ? $fallbackExpression as $displayType : (throw StateError(\'Received null for non-nullable $errorTarget.\')))';
     }
     return '(throw StateError(\'Received null for non-nullable $errorTarget.\'))';
+  }
+
+  String _nonNullObjectExpression(
+    _GeneratedFieldSpec field,
+    String valueExpression,
+  ) {
+    if (_withoutNullability(field.type).isDartCoreObject &&
+        !_isNullable(field.type)) {
+      return valueExpression;
+    }
+    return '$valueExpression as Object';
   }
 
   _GeneratedFieldTypeSpec _nonNullableFieldType(
@@ -3226,7 +3746,8 @@ GeneratedFieldType(
   }
 
   bool _fieldTypeUsesNestedTypeDefinitions(_GeneratedFieldTypeSpec fieldType) {
-    if (fieldType.dynamic == true || TypeIds.isUserType(fieldType.typeId)) {
+    if (_isGeneratedDynamicType(fieldType) ||
+        TypeIds.isUserType(fieldType.typeId)) {
       return true;
     }
     for (final argument in fieldType.arguments) {
@@ -3249,14 +3770,20 @@ final class _GeneratedStructSpec {
   final String name;
   final bool evolving;
   final List<_GeneratedFieldSpec> fields;
-  final _ConstructorPlan constructorPlan;
+  final _ConstructionModel constructionModel;
 
   const _GeneratedStructSpec({
     required this.name,
     required this.evolving,
     required this.fields,
-    required this.constructorPlan,
+    required this.constructionModel,
   });
+}
+
+final class _DirectCompatibleScalarRead {
+  final String method;
+
+  const _DirectCompatibleScalarRead(this.method);
 }
 
 final class _GeneratedFieldSpec {
@@ -3321,17 +3848,17 @@ final class _GeneratedFieldTypeSpec {
 
 enum _ConstructorMode { mutable, constructor }
 
-final class _ConstructorPlan {
+final class _ConstructionModel {
   final _ConstructorMode mode;
   final List<_ConstructorArgumentSpec> arguments;
   final List<String> postConstructionFieldNames;
 
-  const _ConstructorPlan.mutable()
+  const _ConstructionModel.mutable()
     : mode = _ConstructorMode.mutable,
       arguments = const <_ConstructorArgumentSpec>[],
       postConstructionFieldNames = const <String>[];
 
-  const _ConstructorPlan.constructor({
+  const _ConstructionModel.constructor({
     required this.arguments,
     required this.postConstructionFieldNames,
   }) : mode = _ConstructorMode.constructor;

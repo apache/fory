@@ -15,22 +15,40 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::data::register_fory_types;
+use crate::data::{register_fory_types, register_fory_types_v2};
 use crate::serializers::{BenchmarkSerializer, BoxError};
 use fory::{Fory, ForyDefault, Serializer as ForyValueSerializer};
 
 #[derive(Default)]
 pub struct ForySerializer {
-    fory: Fory,
+    writer: Fory,
+    reader: Fory,
 }
 
 impl ForySerializer {
     pub fn new() -> Self {
-        let mut fory = Fory::builder().xlang(true).compatible(true).build();
-        register_fory_types(&mut fory).expect("register benchmark types");
+        let mut writer = Fory::builder().xlang(true).compatible(true).build();
+        register_fory_types(&mut writer).expect("register benchmark writer types");
+        let mut reader = Fory::builder().xlang(true).compatible(true).build();
+        if schema_mismatch_enabled() {
+            register_fory_types_v2(&mut reader).expect("register benchmark v2 reader types");
+        } else {
+            register_fory_types(&mut reader).expect("register benchmark reader types");
+        }
 
-        Self { fory }
+        Self { writer, reader }
     }
+
+    pub fn deserialize_as<T>(&self, data: &[u8]) -> Result<T, BoxError>
+    where
+        T: ForyValueSerializer + ForyDefault,
+    {
+        Ok(self.reader.deserialize(data)?)
+    }
+}
+
+pub fn schema_mismatch_enabled() -> bool {
+    std::env::var("FORY_BENCH_SCHEMA_MISMATCH").as_deref() == Ok("1")
 }
 
 impl<T> BenchmarkSerializer<T> for ForySerializer
@@ -38,10 +56,10 @@ where
     T: ForyValueSerializer + ForyDefault,
 {
     fn serialize(&self, data: &T) -> Result<Vec<u8>, BoxError> {
-        Ok(self.fory.serialize(data)?)
+        Ok(self.writer.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<T, BoxError> {
-        Ok(self.fory.deserialize(data)?)
+        self.deserialize_as(data)
     }
 }

@@ -174,11 +174,141 @@ func readCompatibleScalarField(ctx *ReadContext, field *FieldInfo, fieldPtr unsa
 			return
 		}
 	}
+	if readI32ToI64Scalar(ctx, field, fieldPtr) {
+		return
+	}
+	if readDirectIntegerScalar(ctx, field, fieldPtr) {
+		return
+	}
 	value := readCompatibleScalarValue(ctx, field.Meta.CompatibleScalar.remoteTypeID)
 	if ctx.HasError() {
 		return
 	}
 	storeCompatibleScalarValue(ctx, field, fieldPtr, value)
+}
+
+func readI32ToI64Scalar(ctx *ReadContext, field *FieldInfo, fieldPtr unsafe.Pointer) bool {
+	scalar := field.Meta.CompatibleScalar
+	if field.Kind != FieldKindValue || scalar.localType.Kind() != reflect.Int64 {
+		return false
+	}
+	err := ctx.Err()
+	switch scalar.remoteTypeID {
+	case INT32:
+		*(*int64)(fieldPtr) = int64(ctx.buffer.ReadInt32(err))
+	case VARINT32:
+		*(*int64)(fieldPtr) = int64(ctx.buffer.ReadVarint32(err))
+	default:
+		return false
+	}
+	return true
+}
+
+func readDirectIntegerScalar(ctx *ReadContext, field *FieldInfo, fieldPtr unsafe.Pointer) bool {
+	scalar := field.Meta.CompatibleScalar
+	targetSigned := isSignedTypeID(scalar.localTypeID)
+	targetUnsigned := isUnsignedTypeID(scalar.localTypeID)
+	if !targetSigned && !targetUnsigned {
+		return false
+	}
+	var signed int64
+	var unsigned uint64
+	sourceSigned := false
+	sourceUnsigned := false
+	err := ctx.Err()
+	buf := ctx.buffer
+	switch scalar.remoteTypeID {
+	case INT8:
+		signed = int64(buf.ReadInt8(err))
+		sourceSigned = true
+	case INT16:
+		signed = int64(buf.ReadInt16(err))
+		sourceSigned = true
+	case INT32:
+		signed = int64(buf.ReadInt32(err))
+		sourceSigned = true
+	case VARINT32:
+		signed = int64(buf.ReadVarint32(err))
+		sourceSigned = true
+	case INT64:
+		signed = buf.ReadInt64(err)
+		sourceSigned = true
+	case VARINT64:
+		signed = buf.ReadVarint64(err)
+		sourceSigned = true
+	case TAGGED_INT64:
+		signed = buf.ReadTaggedInt64(err)
+		sourceSigned = true
+	case UINT8:
+		unsigned = uint64(buf.ReadUint8(err))
+		sourceUnsigned = true
+	case UINT16:
+		unsigned = uint64(buf.ReadUint16(err))
+		sourceUnsigned = true
+	case UINT32:
+		unsigned = uint64(buf.ReadUint32(err))
+		sourceUnsigned = true
+	case VAR_UINT32:
+		unsigned = uint64(buf.ReadVarUint32(err))
+		sourceUnsigned = true
+	case UINT64:
+		unsigned = buf.ReadUint64(err)
+		sourceUnsigned = true
+	case VAR_UINT64:
+		unsigned = buf.ReadVarUint64(err)
+		sourceUnsigned = true
+	case TAGGED_UINT64:
+		unsigned = buf.ReadTaggedUint64(err)
+		sourceUnsigned = true
+	default:
+		return false
+	}
+	if ctx.HasError() {
+		return true
+	}
+	optInfo := optionalInfo{}
+	if field.Kind == FieldKindOptional {
+		optInfo = field.Meta.OptionalInfo
+	}
+	if targetSigned {
+		min, max := signedRange(scalar.localTypeID, scalar.localType.Kind())
+		if sourceSigned {
+			if signed < min || signed > max {
+				compatibleScalarFail(ctx, field.Meta.Name, scalar.remoteTypeID, scalar.localTypeID, "value is not an in-range integral target value")
+				return true
+			}
+			storeCompatibleInt(field.Kind, fieldPtr, optInfo, scalar.localType.Kind(), signed)
+			return true
+		}
+		if sourceUnsigned {
+			if unsigned > uint64(max) {
+				compatibleScalarFail(ctx, field.Meta.Name, scalar.remoteTypeID, scalar.localTypeID, "value is not an in-range integral target value")
+				return true
+			}
+			storeCompatibleInt(field.Kind, fieldPtr, optInfo, scalar.localType.Kind(), int64(unsigned))
+			return true
+		}
+	}
+	if targetUnsigned {
+		max := unsignedMax(scalar.localTypeID, scalar.localType.Kind())
+		if sourceSigned {
+			if signed < 0 || uint64(signed) > max {
+				compatibleScalarFail(ctx, field.Meta.Name, scalar.remoteTypeID, scalar.localTypeID, "value is not an in-range unsigned integral target value")
+				return true
+			}
+			storeCompatibleUint(field.Kind, fieldPtr, optInfo, scalar.localType.Kind(), uint64(signed))
+			return true
+		}
+		if sourceUnsigned {
+			if unsigned > max {
+				compatibleScalarFail(ctx, field.Meta.Name, scalar.remoteTypeID, scalar.localTypeID, "value is not an in-range unsigned integral target value")
+				return true
+			}
+			storeCompatibleUint(field.Kind, fieldPtr, optInfo, scalar.localType.Kind(), unsigned)
+			return true
+		}
+	}
+	return false
 }
 
 func readCompatibleScalarValue(ctx *ReadContext, typeID TypeId) compatibleScalarValue {
@@ -440,6 +570,19 @@ func compatibleValueToInt(value compatibleScalarValue, target TypeId, kind refle
 		}
 		return 0, true
 	}
+	min, max := signedRange(target, kind)
+	switch value.typeID {
+	case INT8, INT16, INT32, VARINT32, INT64, VARINT64, TAGGED_INT64:
+		if value.signed < min || value.signed > max {
+			return 0, false
+		}
+		return value.signed, true
+	case UINT8, UINT16, UINT32, VAR_UINT32, UINT64, VAR_UINT64, TAGGED_UINT64:
+		if value.unsigned > uint64(max) {
+			return 0, false
+		}
+		return int64(value.unsigned), true
+	}
 	rat, ok := compatibleFiniteRat(value)
 	if !ok {
 		return 0, false
@@ -448,7 +591,6 @@ func compatibleValueToInt(value compatibleScalarValue, target TypeId, kind refle
 		return 0, false
 	}
 	i := rat.Num()
-	min, max := signedRange(target, kind)
 	if i.Cmp(big.NewInt(min)) < 0 || i.Cmp(big.NewInt(max)) > 0 {
 		return 0, false
 	}
@@ -462,6 +604,19 @@ func compatibleValueToUint(value compatibleScalarValue, target TypeId, kind refl
 		}
 		return 0, true
 	}
+	max := unsignedMax(target, kind)
+	switch value.typeID {
+	case INT8, INT16, INT32, VARINT32, INT64, VARINT64, TAGGED_INT64:
+		if value.signed < 0 || uint64(value.signed) > max {
+			return 0, false
+		}
+		return uint64(value.signed), true
+	case UINT8, UINT16, UINT32, VAR_UINT32, UINT64, VAR_UINT64, TAGGED_UINT64:
+		if value.unsigned > max {
+			return 0, false
+		}
+		return value.unsigned, true
+	}
 	rat, ok := compatibleFiniteRat(value)
 	if !ok || !rat.IsInt() {
 		return 0, false
@@ -470,7 +625,6 @@ func compatibleValueToUint(value compatibleScalarValue, target TypeId, kind refl
 	if i.Sign() < 0 {
 		return 0, false
 	}
-	max := unsignedMax(target, kind)
 	if i.Cmp(new(big.Int).SetUint64(max)) > 0 {
 		return 0, false
 	}
@@ -1033,6 +1187,15 @@ func unsignedMax(typeID TypeId, kind reflect.Kind) uint64 {
 func isSignedTypeID(typeID TypeId) bool {
 	switch typeID {
 	case INT8, INT16, INT32, VARINT32, INT64, VARINT64, TAGGED_INT64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isUnsignedTypeID(typeID TypeId) bool {
+	switch typeID {
+	case UINT8, UINT16, UINT32, VAR_UINT32, UINT64, VAR_UINT64, TAGGED_UINT64:
 		return true
 	default:
 		return false

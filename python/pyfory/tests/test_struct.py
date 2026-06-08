@@ -28,7 +28,7 @@ import typing
 
 import pyfory
 from pyfory import Fory
-from pyfory.error import ForyInvalidDataError, TypeUnregisteredError
+from pyfory.error import ForyInvalidDataError, TypeNotCompatibleError, TypeUnregisteredError
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, REF_VALUE_FLAG
 from pyfory.struct import DataClassSerializer, build_default_values_factory
 from pyfory.types import TypeId
@@ -160,6 +160,26 @@ class LocalNestedSignedDefault:
 
 
 @dataclass
+class RemoteNestedNullable:
+    values: Dict[pyfory.Int32, List[Optional[pyfory.Int32]]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
+class LocalNestedRequired:
+    values: Dict[pyfory.Int32, List[pyfory.Int32]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
+class RemoteNestedRef:
+    values: Dict[pyfory.Int32, List[pyfory.Ref[str]]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
+class LocalNestedPlain:
+    values: Dict[pyfory.Int32, List[str]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
 class RemoteStringScalar:
     value: str = ""
 
@@ -192,6 +212,11 @@ class LocalStringScalar:
 @dataclass
 class RemoteInt64Scalar:
     value: pyfory.Int64 = 0
+
+
+@dataclass
+class RemoteInt32Scalar:
+    value: pyfory.Int32 = 0
 
 
 @dataclass
@@ -367,29 +392,34 @@ def test_scalar_tracking_ref_is_not_converted():
     assert [field_info.field_type.is_tracking_ref for field_info in field_infos] == [True, True]
 
     shared = "".join(["", "1"])
-    result = reader.deserialize(writer.serialize(RemoteTwoStringScalars(shared, shared)))
-    assert result == LocalBoolIntScalars(False, 0)
+    with pytest.raises(TypeNotCompatibleError):
+        reader.deserialize(writer.serialize(RemoteTwoStringScalars(shared, shared)))
 
 
 def test_scalar_tracking_ref_rules():
-    assert compat_ser_de(RemoteRefBoolScalar, LocalBoolScalar, RemoteRefBoolScalar(True), 739, ref=True) == LocalBoolScalar(False)
-    assert compat_ser_de(RemoteBoolScalar, LocalRefBoolScalar, RemoteBoolScalar(True), 740, ref=True) == LocalRefBoolScalar(False)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteRefBoolScalar, LocalBoolScalar, RemoteRefBoolScalar(True), 739, ref=True)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteBoolScalar, LocalRefBoolScalar, RemoteBoolScalar(True), 740, ref=True)
     assert compat_ser_de(RemoteRefBoolScalar, LocalRefBoolScalar, RemoteRefBoolScalar(True), 741, ref=True) == LocalRefBoolScalar(True)
-    assert compat_ser_de(RemoteRefFixedInt32Scalar, LocalRefInt32Scalar, RemoteRefFixedInt32Scalar(7), 742, ref=True) == LocalRefInt32Scalar(0)
-    assert compat_ser_de(
-        RemoteOptionalRefBoolScalar,
-        LocalRefBoolScalar,
-        RemoteOptionalRefBoolScalar(True),
-        748,
-        ref=True,
-    ) == LocalRefBoolScalar(False)
-    assert compat_ser_de(
-        RemoteRefBoolScalar,
-        LocalOptionalRefBoolScalar,
-        RemoteRefBoolScalar(True),
-        749,
-        ref=True,
-    ) == LocalOptionalRefBoolScalar(None)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteRefFixedInt32Scalar, LocalRefInt32Scalar, RemoteRefFixedInt32Scalar(7), 742, ref=True)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteOptionalRefBoolScalar,
+            LocalRefBoolScalar,
+            RemoteOptionalRefBoolScalar(True),
+            748,
+            ref=True,
+        )
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteRefBoolScalar,
+            LocalOptionalRefBoolScalar,
+            RemoteRefBoolScalar(True),
+            749,
+            ref=True,
+        )
     assert compat_ser_de(
         RemoteOptionalRefBoolScalar,
         LocalOptionalRefBoolScalar,
@@ -410,42 +440,69 @@ def test_same_schema_scalar_read_is_direct():
     assert fory.deserialize(fory.serialize(value)) == value
 
 
-def test_compatible_read_accepts_nested_same_domain_integer_encoding():
-    result = compat_ser_de(
-        RemoteNestedFixedTagged,
-        LocalNestedVarint,
-        RemoteNestedFixedTagged(values={1: [2, -3], -4: [5]}),
-        702,
-    )
-    assert result == LocalNestedVarint(values={1: [2, -3], -4: [5]})
+def test_integer_widening_direct():
+    from pyfory.converter import CompatibleScalarFieldSerializer
+
+    writer, reader, payload = compat_ser(RemoteInt32Scalar, LocalInt64Scalar, RemoteInt32Scalar(42), 751)
+    assert reader.deserialize(payload) == LocalInt64Scalar(42)
+    type_info = next(iter(reader.type_resolver._meta_shared_type_info.values()))
+    field_serializer = type_info.serializer._serializers[0]
+    assert type(field_serializer).__name__ == "Int32Serializer"
+    assert not isinstance(field_serializer, CompatibleScalarFieldSerializer)
+
+    writer, reader, payload = compat_ser(RemoteInt64Scalar, LocalInt8Scalar, RemoteInt64Scalar(42), 752)
+    assert reader.deserialize(payload) == LocalInt8Scalar(42)
+    type_info = next(iter(reader.type_resolver._meta_shared_type_info.values()))
+    assert isinstance(type_info.serializer._serializers[0], CompatibleScalarFieldSerializer)
 
 
-def test_compatible_read_validates_nested_integer_narrowing():
-    result = compat_ser_de(
-        RemoteNestedWide,
-        LocalNestedNarrow,
-        RemoteNestedWide(values={1: [2, -3]}),
-        703,
-    )
-    assert result == LocalNestedNarrow(values={1: [2, -3]})
-
-    result = compat_ser_de(
-        RemoteNestedWide,
-        LocalNestedNarrow,
-        RemoteNestedWide(values={1: [1 << 40]}),
-        704,
-    )
-    assert result == LocalNestedNarrow()
+def test_nested_integer_encoding_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedFixedTagged,
+            LocalNestedVarint,
+            RemoteNestedFixedTagged(values={1: [2, -3], -4: [5]}),
+            702,
+        )
 
 
-def test_compatible_read_skips_nested_signed_unsigned_mismatch():
-    result = compat_ser_de(
-        RemoteNestedUnsigned,
-        LocalNestedSignedDefault,
-        RemoteNestedUnsigned(values={1: [2]}),
-        705,
-    )
-    assert result == LocalNestedSignedDefault()
+def test_nested_integer_narrowing_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedWide,
+            LocalNestedNarrow,
+            RemoteNestedWide(values={1: [2, -3]}),
+            703,
+        )
+
+
+def test_nested_signed_unsigned_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedUnsigned,
+            LocalNestedSignedDefault,
+            RemoteNestedUnsigned(values={1: [2]}),
+            705,
+        )
+
+
+def test_nested_nullable_scalar_compatible():
+    assert compat_ser_de(
+        RemoteNestedNullable,
+        LocalNestedRequired,
+        RemoteNestedNullable(values={1: [2]}),
+        706,
+    ) == LocalNestedRequired(values={1: [2]})
+
+
+def test_nested_ref_tracking_compatible():
+    assert compat_ser_de(
+        RemoteNestedRef,
+        LocalNestedPlain,
+        RemoteNestedRef(values={1: ["one"]}),
+        707,
+        ref=True,
+    ) == LocalNestedPlain(values={1: ["one"]})
 
 
 @dataclass
@@ -1065,6 +1122,27 @@ class CompatibleRequiredDefaultsV2:
     f_dict: Dict[str, int]
 
 
+@dataclass
+class CompatibleListItemV1:
+    value: pyfory.Int32
+
+
+@dataclass
+class CompatibleListItemV2:
+    value: pyfory.Int64
+    added: str
+
+
+@dataclass
+class CompatibleListOwnerV1:
+    items: List[CompatibleListItemV1]
+
+
+@dataclass
+class CompatibleListOwnerV2:
+    items: List[CompatibleListItemV2]
+
+
 @pytest.mark.parametrize("xlang", [False, True])
 def test_compatible_mode_add_field(xlang):
     """Test that adding a field with default value works in compatible mode."""
@@ -1175,6 +1253,44 @@ def test_compatible_mode_add_required_fields_use_type_defaults(xlang):
     assert v2_result.f_set == set()
     assert v2_result.f_dict == {}
     assert ser_de(fory_v2, v2_result) == v2_result
+
+
+def test_compatible_nested_list_struct():
+    writer = Fory(xlang=True, compatible=True, ref=False)
+    reader = Fory(xlang=True, compatible=True, ref=False)
+
+    writer.register_type(CompatibleListItemV1, type_id=501)
+    writer.register_type(CompatibleListOwnerV1, type_id=502)
+    reader.register_type(CompatibleListItemV2, type_id=501)
+    reader.register_type(CompatibleListOwnerV2, type_id=502)
+
+    decoded = reader.deserialize(writer.serialize(CompatibleListOwnerV1(items=[CompatibleListItemV1(123), CompatibleListItemV1(456)])))
+
+    assert isinstance(decoded, CompatibleListOwnerV2)
+    assert [item.value for item in decoded.items] == [123, 456]
+    assert [item.added for item in decoded.items] == ["", ""]
+
+
+@dataclass
+class CompatibleListStringField:
+    items: List[str]
+
+
+@dataclass
+class CompatibleListIntField:
+    items: List[pyfory.Int32]
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_incompatible_matched_field(xlang):
+    writer = Fory(xlang=xlang, compatible=True, ref=False)
+    reader = Fory(xlang=xlang, compatible=True, ref=False)
+    writer.register_type(CompatibleListStringField, name="example.CompatibleListField")
+    reader.register_type(CompatibleListIntField, name="example.CompatibleListField")
+
+    data = writer.serialize(CompatibleListStringField(items=["one", "two"]))
+    with pytest.raises(TypeNotCompatibleError):
+        reader.deserialize(data)
 
 
 @dataclass

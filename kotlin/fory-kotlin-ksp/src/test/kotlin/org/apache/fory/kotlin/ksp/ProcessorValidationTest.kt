@@ -175,7 +175,9 @@ class ProcessorValidationTest {
         .write()
 
     assertTrue(source.contains("private fun readSchemaConstructorField"))
-    assertTrue(source.contains("private fun readCompatibleConstructorField"))
+    assertTrue(
+      source.contains("private fun readCompatibleConstructor(readContext: ReadContext): Node")
+    )
     assertTrue(source.contains("trackConstructorRefRead(readContext, buffer)"))
   }
 
@@ -524,19 +526,19 @@ class ProcessorValidationTest {
       )
     )
     assertTrue(
-      source.contains(
-        "KotlinCollectionAdapters.toTreeMap((readCompatibleFieldValue(readContext, remoteField, localField) as kotlin.collections.Map<String, Int>))"
-      )
+      source.contains("KotlinCollectionAdapters.toTreeMap") &&
+        source.contains("readCompatibleFieldValue(readContext, remoteField, localField)") &&
+        source.contains("ctorFieldValue(readContext")
     )
+    assertTrue(source.contains("3 -> {") && source.contains("fieldsById[1]!!"))
     assertTrue(
-      source.contains(
-        "1 -> run { val readSource0 = ((readCompatibleFieldValue(readContext, remoteField, localField) as kotlin.collections.List<java.util.TreeSet<String>>) as Collection<*>);"
-      )
+      source.contains("readCompatibleFieldValue(readContext, remoteField, localField)") &&
+        source.contains("as Collection<*>")
     )
+    assertTrue(source.contains("7 -> {") && source.contains("fieldsById[3]!!"))
     assertTrue(
-      source.contains(
-        "3 -> run { val readSource0 = ((readCompatibleFieldValue(readContext, remoteField, localField) as java.util.TreeMap<String, java.util.TreeSet<String>>) as Map<*, *>); val readTarget0 = java.util.TreeMap<Any?, Any?>();"
-      )
+      source.contains("readCompatibleFieldValue(readContext, remoteField, localField)") &&
+        source.contains("as Map<*, *>")
     )
     assertTrue(
       source.contains("KotlinCollectionAdapters.toTreeSet((readEntry0.value as Collection<*>))")
@@ -617,8 +619,8 @@ class ProcessorValidationTest {
     val copyStart = source.indexOf("override fun copy")
     val compatibleSource = source.substring(compatibleStart, copyStart)
 
-    assertFalse(compatibleSource.contains("return readCompatibleConstructor(readContext)"))
-    assertTrue(compatibleSource.contains("return readCompatibleDefaultConstructor(readContext)"))
+    assertTrue(compatibleSource.contains("return readCompatibleConstructor(readContext)"))
+    assertFalse(compatibleSource.contains("readCompatibleDefaultConstructor"))
     assertTrue(compatibleSource.contains("beginConstructorRef(readContext)"))
     assertTrue(compatibleSource.contains("checkNoUnresolvedReadRef(readContext)"))
     assertTrue(
@@ -628,6 +630,7 @@ class ProcessorValidationTest {
     assertTrue(compatibleSource.contains("endConstructorRef(readContext)"))
     assertTrue(compatibleSource.contains("missingDefaultMask"))
     assertTrue(compatibleSource.contains("val constructed = when (missingDefaultMask)"))
+    assertFalse(compatibleSource.contains("fieldValues = arrayOfNulls<Any?>"))
   }
 
   @Test
@@ -682,6 +685,37 @@ class ProcessorValidationTest {
             unsigned = true,
           ),
         ),
+        field(
+          7,
+          "nullableFlag",
+          scalar(
+              "Boolean::class.javaObjectType",
+              "Boolean?",
+              "java.lang.Boolean",
+              "Types.BOOL",
+              false
+            )
+            .copy(nullable = true),
+        ),
+        field(
+          8,
+          "nullableNumber",
+          scalar("Int::class.javaObjectType", "Int?", "java.lang.Integer", "Types.INT32", false)
+            .copy(nullable = true),
+        ),
+        field(
+          9,
+          "nullableUnsigned",
+          scalar(
+              "Int::class.javaObjectType",
+              "UInt?",
+              "java.lang.Integer",
+              "Types.UINT32",
+              false,
+              unsigned = true
+            )
+            .copy(nullable = true),
+        ),
       )
     val source =
       KotlinSerializerSourceWriter(
@@ -701,10 +735,24 @@ class ProcessorValidationTest {
     val copyStart = source.indexOf("override fun copy")
     val compatibleSource = source.substring(compatibleStart, copyStart)
 
-    assertTrue(compatibleSource.contains("if (canReadGeneratedField(remoteField, localField))"))
-    assertTrue(
+    assertFalse(compatibleSource.contains("canReadGeneratedField"))
+    assertFalse(compatibleSource.contains("arrayOfNulls<Any?>"))
+    assertFalse(compatibleSource.contains("Array<Any?>"))
+    assertTrue(compatibleSource.contains("when (remoteField.matchedId)"))
+    assertTrue(compatibleSource.contains("0 -> {"))
+    assertTrue(compatibleSource.contains("1 -> {"))
+    assertTrue(compatibleSource.contains("-1 -> skipField(readContext, remoteField)"))
+    assertFalse(
       compatibleSource.contains("readCompatibleFieldValue(readContext, remoteField, localField)")
     )
+    assertTrue(compatibleSource.contains("FieldConverters.readBooleanTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readIntTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readStringTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readDecimalTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readLongTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readBoxedBooleanTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readBoxedIntTarget"))
+    assertTrue(compatibleSource.contains("FieldConverters.readBoxedLongTarget"))
     assertTrue(
       compatibleSource.contains("value.flag =") && compatibleSource.contains(" as Boolean")
     )
@@ -720,11 +768,10 @@ class ProcessorValidationTest {
       compatibleSource.contains("value.decimalValue =") && compatibleSource.contains(" as String")
     )
     assertTrue(compatibleSource.contains("value.narrow =") && compatibleSource.contains(" as Int"))
-    assertTrue(
-      compatibleSource.contains("value.unsigned = run") &&
-        compatibleSource.contains("is org.apache.fory.type.unsigned.UInt32") &&
-        compatibleSource.contains("compatibleValue0.toLong().toUInt()")
-    )
+    assertTrue(compatibleSource.contains("value.unsigned ="))
+    assertTrue(compatibleSource.contains("FieldConverters.readLongTarget"))
+    assertTrue(compatibleSource.contains(".toUInt()"))
+    assertTrue(compatibleSource.contains("?.toUInt()"))
   }
 
   @Test
@@ -775,7 +822,7 @@ class ProcessorValidationTest {
     assertTrue(source.contains("var presentMask0 = 0L"))
     assertTrue(source.contains("var presentMask1 = 0L"))
     assertTrue(source.contains("presentMask1 = presentMask1 or (1L shl 5)"))
-    assertTrue(source.contains("if ((presentMask1 and (1L shl 5)) == 0L)"))
+    assertTrue(source.contains("Required Kotlin field example.WideStruct.field69 is missing"))
   }
 
   @Test
@@ -1395,14 +1442,12 @@ class ProcessorValidationTest {
         )
         .write()
 
-    assertTrue(source.contains("is org.apache.fory.type.unsigned.UInt8"))
-    assertTrue(source.contains("compatibleValue0.toInt().toUByte()"))
-    assertTrue(source.contains("is org.apache.fory.type.unsigned.UInt16"))
-    assertTrue(source.contains("compatibleValue0.toInt().toUShort()"))
-    assertTrue(source.contains("is org.apache.fory.type.unsigned.UInt32"))
-    assertTrue(source.contains("compatibleValue0.toLong().toUInt()"))
-    assertTrue(source.contains("is org.apache.fory.type.unsigned.UInt64"))
-    assertTrue(source.contains("compatibleValue0.toLong().toULong()"))
+    assertTrue(source.contains("FieldConverters.readIntTarget"))
+    assertTrue(source.contains(".toUByte()"))
+    assertTrue(source.contains(".toUShort()"))
+    assertTrue(source.contains("FieldConverters.readLongTarget"))
+    assertTrue(source.contains(".toUInt()"))
+    assertTrue(source.contains(".toULong()"))
     assertFalse(source.contains("as Number).to"))
   }
 

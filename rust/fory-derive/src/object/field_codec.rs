@@ -217,73 +217,95 @@ impl<'a> ResolvedField<'a> {
     pub fn declare_compatible_var(&self) -> TokenStream {
         let var = &self.private_ident;
         let ty = self.value_ty;
+        let default_expr = default_expr_for_type(self.value_ty);
         quote! {
-            let mut #var: Option<#ty> = None;
+            let mut #var: #ty = #default_expr;
         }
     }
 
     pub fn assign_value(&self) -> TokenStream {
         let var = &self.private_ident;
-        let default_expr = default_expr_for_type(self.value_ty);
-        quote! {
-            #var.unwrap_or_else(|| #default_expr)
-        }
+        quote! { #var }
     }
 
-    pub fn read_compatible(&self) -> TokenStream {
+    pub fn read_compatible_direct(&self) -> TokenStream {
         let var = &self.private_ident;
         match &self.dispatch {
             FieldDispatch::Codec { .. } => {
                 let call = self.codec_call();
                 quote! {
-                    let remote_field_type = &_field.field_type;
-                    if ::fory_core::serializer::codec::field_types_compatible(
-                        local_field_type,
-                        remote_field_type,
-                    ) {
-                        #var = Some(#call::read_field_with_type(context, remote_field_type)?);
-                    } else {
-                        if let Some(value) = #call::read_compatible(
-                            context,
-                            local_field_type,
-                            remote_field_type,
-                        ).map_err(|err| ::fory_core::Error::invalid_data(
-                            format!("compatible field '{}': {}", _field.field_name.as_str(), err)
-                        ))? {
-                            #var = Some(value);
-                        } else {
-                            return Err(::fory_core::Error::invalid_data(format!(
-                                "compatible field '{}' cannot convert remote type {} to local type {}",
-                                _field.field_name.as_str(),
-                                remote_field_type.type_id,
-                                local_field_type.type_id,
-                            )));
-                        }
-                    }
+                    #var = #call::read_field(context)?;
                 }
             }
             FieldDispatch::Serializer { .. } => {
                 let ty = self.value_ty;
-                quote! {
-                    let remote_field_type = &_field.field_type;
-                    if ::fory_core::serializer::codec::field_types_compatible(
-                        local_field_type,
-                        remote_field_type,
-                    ) {
+                if serializer_field_can_use_data_path(self.source.field) {
+                    quote! {
+                        #var = <#ty as ::fory_core::Serializer>::fory_read_data(context)?;
+                    }
+                } else {
+                    quote! {
                         let read_ref_mode =
-                            ::fory_core::serializer::codec::field_ref_mode(remote_field_type);
+                            ::fory_core::serializer::codec::field_ref_mode(local_field_type);
                         let read_type_info = if context.is_compatible() {
                             ::fory_core::serializer::util::field_need_read_type_info(
-                                remote_field_type.type_id
+                                local_field_type.type_id
                             )
                         } else {
                             <#ty as ::fory_core::Serializer>::fory_is_polymorphic()
                         };
-                        #var = Some(<#ty as ::fory_core::Serializer>::fory_read(
+                        #var = <#ty as ::fory_core::Serializer>::fory_read(
                             context,
                             read_ref_mode,
                             read_type_info,
-                        )?);
+                        )?;
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn direct_needs_local_field_type(&self) -> bool {
+        match &self.dispatch {
+            FieldDispatch::Codec { .. } => false,
+            FieldDispatch::Serializer { .. } => {
+                !serializer_field_can_use_data_path(self.source.field)
+            }
+        }
+    }
+
+    pub fn read_compatible_conversion(&self) -> TokenStream {
+        let var = &self.private_ident;
+        match &self.dispatch {
+            FieldDispatch::Codec { .. } => {
+                if let Some(read_scalar) = compatible_scalar_reader_for(self.value_ty) {
+                    let call = self.codec_call();
+                    let local_type = if extract_option_inner_type(self.value_ty).is_some() {
+                        quote! { local_field_type.type_id }
+                    } else {
+                        quote! { #call::static_type_id() as u32 }
+                    };
+                    return quote! {
+                        #var = #read_scalar(
+                            context,
+                            #local_type,
+                            _field,
+                        ).map_err(|err| ::fory_core::Error::invalid_data(
+                            format!("compatible field '{}': {}", _field.field_name.as_str(), err)
+                        ))?;
+                    };
+                }
+                let call = self.codec_call();
+                quote! {
+                    let remote_field_type = &_field.field_type;
+                    if let Some(value) = #call::read_compatible(
+                        context,
+                        local_field_type,
+                        remote_field_type,
+                    ).map_err(|err| ::fory_core::Error::invalid_data(
+                        format!("compatible field '{}': {}", _field.field_name.as_str(), err)
+                    ))? {
+                        #var = value;
                     } else {
                         return Err(::fory_core::Error::invalid_data(format!(
                             "compatible field '{}' cannot convert remote type {} to local type {}",
@@ -294,6 +316,36 @@ impl<'a> ResolvedField<'a> {
                     }
                 }
             }
+            FieldDispatch::Serializer { .. } => {
+                let ty = self.value_ty;
+                quote! {
+                    let remote_field_type = &_field.field_type;
+                    let read_ref_mode =
+                        ::fory_core::serializer::codec::field_ref_mode(remote_field_type);
+                    let read_type_info = if context.is_compatible() {
+                        ::fory_core::serializer::util::field_need_read_type_info(
+                            remote_field_type.type_id
+                        )
+                    } else {
+                        <#ty as ::fory_core::Serializer>::fory_is_polymorphic()
+                    };
+                    #var = <#ty as ::fory_core::Serializer>::fory_read(
+                        context,
+                        read_ref_mode,
+                        read_type_info,
+                    )?;
+                }
+            }
+        }
+    }
+
+    pub fn compatible_needs_local_field_type(&self) -> bool {
+        match &self.dispatch {
+            FieldDispatch::Codec { .. } => {
+                compatible_scalar_reader_for(self.value_ty).is_none()
+                    || extract_option_inner_type(self.value_ty).is_some()
+            }
+            FieldDispatch::Serializer { .. } => false,
         }
     }
 
@@ -903,6 +955,87 @@ fn integer_codec_type(
     }
 }
 
+fn compatible_scalar_reader_for(ty: &Type) -> Option<TokenStream> {
+    if let Some(inner) = extract_option_inner_type(ty) {
+        return compatible_scalar_reader_name(&inner, true);
+    }
+    compatible_scalar_reader_name(ty, false)
+}
+
+fn compatible_scalar_reader_name(ty: &Type, option: bool) -> Option<TokenStream> {
+    let name = type_name_and_args(ty)
+        .map(|(name, _)| name)
+        .unwrap_or_else(|| ty.to_token_stream().to_string().replace(' ', ""));
+    let reader = match (name.as_str(), option) {
+        ("bool", false) => quote! { ::fory_core::serializer::codec::read_bool_compatible_scalar },
+        ("bool", true) => {
+            quote! { ::fory_core::serializer::codec::read_bool_option_compatible_scalar }
+        }
+        ("String", false) => {
+            quote! { ::fory_core::serializer::codec::read_string_compatible_scalar }
+        }
+        ("String", true) => {
+            quote! { ::fory_core::serializer::codec::read_string_option_compatible_scalar }
+        }
+        ("i8", false) => quote! { ::fory_core::serializer::codec::read_i8_compatible_scalar },
+        ("i8", true) => quote! { ::fory_core::serializer::codec::read_i8_option_compatible_scalar },
+        ("i16", false) => quote! { ::fory_core::serializer::codec::read_i16_compatible_scalar },
+        ("i16", true) => {
+            quote! { ::fory_core::serializer::codec::read_i16_option_compatible_scalar }
+        }
+        ("i32", false) => quote! { ::fory_core::serializer::codec::read_i32_compatible_scalar },
+        ("i32", true) => {
+            quote! { ::fory_core::serializer::codec::read_i32_option_compatible_scalar }
+        }
+        ("i64", false) => quote! { ::fory_core::serializer::codec::read_i64_compatible_scalar },
+        ("i64", true) => {
+            quote! { ::fory_core::serializer::codec::read_i64_option_compatible_scalar }
+        }
+        ("u8", false) => quote! { ::fory_core::serializer::codec::read_u8_compatible_scalar },
+        ("u8", true) => quote! { ::fory_core::serializer::codec::read_u8_option_compatible_scalar },
+        ("u16", false) => quote! { ::fory_core::serializer::codec::read_u16_compatible_scalar },
+        ("u16", true) => {
+            quote! { ::fory_core::serializer::codec::read_u16_option_compatible_scalar }
+        }
+        ("u32", false) => quote! { ::fory_core::serializer::codec::read_u32_compatible_scalar },
+        ("u32", true) => {
+            quote! { ::fory_core::serializer::codec::read_u32_option_compatible_scalar }
+        }
+        ("u64", false) => quote! { ::fory_core::serializer::codec::read_u64_compatible_scalar },
+        ("u64", true) => {
+            quote! { ::fory_core::serializer::codec::read_u64_option_compatible_scalar }
+        }
+        ("f32", false) => quote! { ::fory_core::serializer::codec::read_f32_compatible_scalar },
+        ("f32", true) => {
+            quote! { ::fory_core::serializer::codec::read_f32_option_compatible_scalar }
+        }
+        ("f64", false) => quote! { ::fory_core::serializer::codec::read_f64_compatible_scalar },
+        ("f64", true) => {
+            quote! { ::fory_core::serializer::codec::read_f64_option_compatible_scalar }
+        }
+        ("float16" | "Float16", false) => {
+            quote! { ::fory_core::serializer::codec::read_float16_compatible_scalar }
+        }
+        ("float16" | "Float16", true) => {
+            quote! { ::fory_core::serializer::codec::read_float16_option_compatible_scalar }
+        }
+        ("bfloat16" | "BFloat16", false) => {
+            quote! { ::fory_core::serializer::codec::read_bfloat16_compatible_scalar }
+        }
+        ("bfloat16" | "BFloat16", true) => {
+            quote! { ::fory_core::serializer::codec::read_bfloat16_option_compatible_scalar }
+        }
+        ("Decimal", false) => {
+            quote! { ::fory_core::serializer::codec::read_decimal_compatible_scalar }
+        }
+        ("Decimal", true) => {
+            quote! { ::fory_core::serializer::codec::read_decimal_option_compatible_scalar }
+        }
+        _ => return None,
+    };
+    Some(reader)
+}
+
 fn type_name_and_args(
     ty: &Type,
 ) -> Option<(
@@ -1429,5 +1562,21 @@ mod tests {
 
         let err = codec_type_for(&ty, &meta, false, false).unwrap_err();
         assert!(err.to_string().contains("bytes schema requires Vec<u8>"));
+    }
+
+    #[test]
+    fn compatible_scalar_reader_is_typed() {
+        let ty: Type = parse_quote! { i32 };
+        let reader = compatible_scalar_reader_for(&ty).unwrap().to_string();
+        assert!(reader.contains("read_i32_compatible_scalar"));
+        assert!(!reader.contains("read_compatible"));
+
+        let ty: Type = parse_quote! { Option<u64> };
+        let reader = compatible_scalar_reader_for(&ty).unwrap().to_string();
+        assert!(reader.contains("read_u64_option_compatible_scalar"));
+        assert!(!reader.contains("read_compatible"));
+
+        let ty: Type = parse_quote! { Vec<i32> };
+        assert!(compatible_scalar_reader_for(&ty).is_none());
     }
 }

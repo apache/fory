@@ -128,6 +128,9 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `ObjectInstantiators.getObjectInstantiator(TypeResolver, Class)` or bypass the runtime-scoped owner; format
   builders without a Fory runtime context may use the base `ObjectInstantiators.getObjectInstantiator(Class)`
   construction default.
+- Compatible scalar, list-array, and binary/uint8 adapters are immediate-field-only. For matched
+  nested field metadata, classify schema pairs before generated dispatch and require exact
+  nullable/ref/generic/type shape, except for user-defined type-family normalization.
 - Root codegen and builder classes that still need Unsafe on JDK8-24 must route symbolic Unsafe
   access through a helper with a Java 25 replacement. Do not leave `_JDKAccess.unsafe()` or
   `sun.misc.Unsafe` references in JDK25-visible classes outside matching `java25` replacements.
@@ -230,9 +233,13 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - Source-generated constructor serializers must own their constructor metadata at generation time
   and call constructors directly. They must not depend on runtime `ObjectInstantiator` constructor-field
   metadata or varargs constructor calls.
-- Java annotation-processor static serializers do not own ordinary-class constructor metadata.
-  Reject ordinary non-record final fields instead of generating descriptor-based final-field
-  mutation; records and Kotlin KSP primary-constructor serializers are the constructor-owned paths.
+- Java annotation-processor static serializers must support the same Java class surface as normal
+  Fory object serialization when compatible-read static generation needs it. Ordinary classes that
+  cannot be assigned directly should allocate through generated-subclass-owned
+  `ObjectInstantiator` state and write private, inaccessible, or final fields through
+  generated-subclass-owned cached `FieldAccessor`s. Do not add constructor-binding APIs, per-read
+  reflective lookup, descriptor-based varargs constructor calls, or shared-parent argument buffers.
+  Records and Kotlin KSP primary-constructor serializers remain constructor-owned paths.
 - Generated JVM copy code may direct-copy immutable scalar values, but Java `Collection`/`Map`
   subclasses must be copied through `CopyContext.copyObject(...)` so collection/map serializers own
   concrete type, comparator, wrapper, and reference behavior.

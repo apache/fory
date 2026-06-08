@@ -48,6 +48,9 @@ is lost. Numeric strings use finite ASCII decimal syntax. Nullable and boxed fie
 these conversions, but reference-tracked scalar type changes are incompatible. Invalid strings and
 lossy conversions fail during deserialization.
 
+Extra writer fields with no matching local field are skipped. A field that matches by tag ID or name
+but has an incompatible schema is not treated as missing; deserialization fails instead.
+
 ```java
 Fory fory = Fory.builder().withXlang(false)
   .build();

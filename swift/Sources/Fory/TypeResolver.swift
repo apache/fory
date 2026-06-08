@@ -390,6 +390,7 @@ public final class TypeInfo: @unchecked Sendable {
     }
     return try reader(context)
   }
+
 }
 
 private struct TypeNameKey: Hashable {
@@ -567,9 +568,8 @@ final class TypeResolver {
       return localTypeInfo
     }
     let canonicalTypeMeta: TypeMeta
-    if let localTypeMeta = localTypeInfo.typeMeta,
-      let remapped = try? typeMeta.assigningFieldIDs(from: localTypeMeta) {
-      canonicalTypeMeta = remapped
+    if let localTypeMeta = localTypeInfo.typeMeta {
+      canonicalTypeMeta = try typeMeta.assigningFieldIDs(from: localTypeMeta)
     } else {
       canonicalTypeMeta = typeMeta
     }

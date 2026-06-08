@@ -37,6 +37,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.type.Types;
 import org.apache.fory.type.unsigned.UInt16;
 import org.apache.fory.type.unsigned.UInt32;
 import org.apache.fory.type.unsigned.UInt64;
@@ -122,6 +123,9 @@ public class FieldConverters {
    */
   @Internal
   public static boolean canConvert(TypeResolver resolver, Descriptor from, Descriptor to) {
+    if (hasIncompatibleRootArrayOrBinary(resolver, from, to)) {
+      return false;
+    }
     int fromDispatchId = DispatchId.getDispatchId(resolver, from);
     int toDispatchId = DispatchId.getDispatchId(resolver, to);
     if (isRefTrackedScalarSchemaMismatch(
@@ -178,13 +182,13 @@ public class FieldConverters {
     return CompatibleScalarConverter.canConvert(from.dispatchId, from.type, to.dispatchId, to.type);
   }
 
-  /**
-   * Returns whether a generated serializer can read {@code from} and adapt it with generated
-   * field-access code for {@code to}.
-   */
+  /** Returns whether a remote field can be classified as a compatible local-field read. */
   @Internal
-  public static boolean canReadGeneratedField(
-      SerializationFieldInfo from, SerializationFieldInfo to) {
+  public static boolean canReadCompatibleField(
+      TypeResolver resolver, SerializationFieldInfo from, SerializationFieldInfo to) {
+    if (hasIncompatibleRootArrayOrBinary(resolver, from.descriptor, to.descriptor)) {
+      return false;
+    }
     if (canConvert(from, to)) {
       return true;
     }
@@ -246,19 +250,6 @@ public class FieldConverters {
         from.dispatchId, from.type, to.dispatchId, to.type, value, to.qualifiedFieldName);
   }
 
-  /** Converts a compatible field value using scalar metadata captured at code generation time. */
-  @Internal
-  public static Object convertValue(
-      int fromDispatchId,
-      Class<?> fromType,
-      int toDispatchId,
-      Class<?> toType,
-      String fieldName,
-      Object value) {
-    return CompatibleScalarConverter.convert(
-        fromDispatchId, fromType, toDispatchId, toType, value, fieldName);
-  }
-
   /** Returns whether descriptor-level compatible read must read a source scalar payload. */
   @Internal
   public static boolean requiresSourceScalarRead(
@@ -289,7 +280,13 @@ public class FieldConverters {
   public static Object readSourceScalar(
       ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
     return readSourceScalar(
-        readContext, from, from.refMode, from.dispatchId, from.type, false, to.qualifiedFieldName);
+        readContext,
+        from,
+        from.refMode,
+        from.dispatchId,
+        from.type,
+        from.useDeclaredTypeInfo,
+        to.qualifiedFieldName);
   }
 
   /** Reads a remote scalar conversion source value for an existing field converter. */
@@ -303,27 +300,8 @@ public class FieldConverters {
         from.refMode,
         scalar.fromDispatchId,
         scalar.fromType,
-        false,
+        from.useDeclaredTypeInfo,
         scalar.fieldName);
-  }
-
-  /** Reads a remote scalar conversion source value from generated compatible serializers. */
-  @Internal
-  public static Object readSourceScalar(
-      ReadContext readContext,
-      int fromDispatchId,
-      Class<?> fromType,
-      boolean nullable,
-      boolean declaredTypeInfo,
-      String fieldName) {
-    return readSourceScalar(
-        readContext,
-        null,
-        nullable ? RefMode.NULL_ONLY : RefMode.NONE,
-        fromDispatchId,
-        fromType,
-        declaredTypeInfo,
-        fieldName);
   }
 
   private static Object readSourceScalar(
@@ -411,28 +389,140 @@ public class FieldConverters {
   }
 
   @Internal
-  public static int fromDispatchId(FieldConverter<?> converter) {
-    return scalarConverter(converter).fromDispatchId;
+  public static boolean readBooleanTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBooleanTarget(readContext, from, to);
   }
 
   @Internal
-  public static Class<?> fromType(FieldConverter<?> converter) {
-    return scalarConverter(converter).fromType;
+  public static Boolean readBoxedBooleanTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedBooleanTarget(readContext, from, to);
   }
 
   @Internal
-  public static int toDispatchId(FieldConverter<?> converter) {
-    return scalarConverter(converter).toDispatchId;
+  public static byte readByteTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readByteTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Byte readBoxedByteTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedByteTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static short readShortTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readShortTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Short readBoxedShortTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedShortTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static int readIntTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readIntTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Integer readBoxedIntTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedIntTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static long readLongTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readLongTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Long readBoxedLongTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedLongTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static float readFloatTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readFloatTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Float readBoxedFloatTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedFloatTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static double readDoubleTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readDoubleTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static Double readBoxedDoubleTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBoxedDoubleTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static String readStringTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readStringTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static BigDecimal readDecimalTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readDecimalTarget(readContext, from, to);
+  }
+
+  @Internal
+  public static UInt8 readUInt8Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readUInt8Target(readContext, from, to);
+  }
+
+  @Internal
+  public static UInt16 readUInt16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readUInt16Target(readContext, from, to);
+  }
+
+  @Internal
+  public static UInt32 readUInt32Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readUInt32Target(readContext, from, to);
+  }
+
+  @Internal
+  public static UInt64 readUInt64Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readUInt64Target(readContext, from, to);
+  }
+
+  @Internal
+  public static Float16 readFloat16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readFloat16Target(readContext, from, to);
+  }
+
+  @Internal
+  public static BFloat16 readBFloat16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    return CompatibleScalarConverter.readBFloat16Target(readContext, from, to);
   }
 
   @Internal
   public static Class<?> toType(FieldConverter<?> converter) {
     return scalarConverter(converter).toType;
-  }
-
-  @Internal
-  public static String fieldName(FieldConverter<?> converter) {
-    return scalarConverter(converter).fieldName;
   }
 
   private static Object readSourceDecimal(
@@ -537,6 +627,26 @@ public class FieldConverters {
 
   private static boolean isScalarField(SerializationFieldInfo fieldInfo) {
     return CompatibleScalarConverter.isScalar(fieldInfo.dispatchId, fieldInfo.type);
+  }
+
+  private static boolean hasIncompatibleRootArrayOrBinary(
+      TypeResolver resolver, Descriptor from, Descriptor to) {
+    int fromTypeId = rootArrayOrBinaryTypeId(resolver, from);
+    int toTypeId = rootArrayOrBinaryTypeId(resolver, to);
+    if (fromTypeId == Types.UNKNOWN && toTypeId == Types.UNKNOWN) {
+      return false;
+    }
+    return fromTypeId != toTypeId && !isBinaryUint8ArrayTypePair(fromTypeId, toTypeId);
+  }
+
+  private static boolean isBinaryUint8ArrayTypePair(int fromTypeId, int toTypeId) {
+    return (fromTypeId == Types.BINARY && toTypeId == Types.UINT8_ARRAY)
+        || (fromTypeId == Types.UINT8_ARRAY && toTypeId == Types.BINARY);
+  }
+
+  private static int rootArrayOrBinaryTypeId(TypeResolver resolver, Descriptor descriptor) {
+    int typeId = Types.getDescriptorTypeId(resolver, descriptor);
+    return typeId == Types.BINARY || Types.isPrimitiveArray(typeId) ? typeId : Types.UNKNOWN;
   }
 
   private static boolean isDirectlyAssignable(Class<?> from, Class<?> to) {

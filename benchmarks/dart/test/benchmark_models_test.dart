@@ -66,7 +66,11 @@ void main() {
     };
 
     for (final definition in definitions) {
-      final benchmark = definition.instantiate(fory);
+      final benchmark = definition.instantiate(
+        writerFory: fory,
+        readerFory: fory,
+        schemaMismatch: false,
+      );
       expect(
         benchmark.forySize,
         expectedSizes[benchmark.dataType],

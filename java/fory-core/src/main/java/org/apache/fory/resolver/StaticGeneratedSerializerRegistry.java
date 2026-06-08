@@ -19,14 +19,16 @@
 
 package org.apache.fory.resolver;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.StaticGeneratedStructSerializer;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.util.ExceptionUtils;
 
 /** Shared registry of build-time generated static serializer mappings. */
 @Internal
@@ -41,15 +43,15 @@ public final class StaticGeneratedSerializerRegistry {
 
   private static final class Entry {
     private final Class<? extends StaticGeneratedStructSerializer> serializerClass;
-    private final Constructor<? extends StaticGeneratedStructSerializer> descriptorConstructor;
-    private final Constructor<? extends StaticGeneratedStructSerializer> runtimeConstructor;
-    private final Constructor<? extends StaticGeneratedStructSerializer> compatibleConstructor;
+    private final MethodHandle descriptorConstructor;
+    private final MethodHandle runtimeConstructor;
+    private final MethodHandle compatibleConstructor;
 
     private Entry(
         Class<? extends StaticGeneratedStructSerializer> serializerClass,
-        Constructor<? extends StaticGeneratedStructSerializer> descriptorConstructor,
-        Constructor<? extends StaticGeneratedStructSerializer> runtimeConstructor,
-        Constructor<? extends StaticGeneratedStructSerializer> compatibleConstructor) {
+        MethodHandle descriptorConstructor,
+        MethodHandle runtimeConstructor,
+        MethodHandle compatibleConstructor) {
       this.serializerClass = serializerClass;
       this.descriptorConstructor = descriptorConstructor;
       this.runtimeConstructor = runtimeConstructor;
@@ -64,26 +66,20 @@ public final class StaticGeneratedSerializerRegistry {
         TypeResolver resolver, Class<?> type, TypeDef typeDef) {
       try {
         return typeDef == null
-            ? runtimeConstructor.newInstance(resolver, type)
-            : compatibleConstructor.newInstance(resolver, type, typeDef);
-      } catch (ReflectiveOperationException e) {
-        throw new ForyException(
-            "Failed to create static generated serializer "
-                + serializerClass.getName()
-                + " for "
-                + type.getName(),
-            e);
+            ? (StaticGeneratedStructSerializer<?>) runtimeConstructor.invoke(resolver, type)
+            : (StaticGeneratedStructSerializer<?>)
+                compatibleConstructor.invoke(resolver, type, typeDef);
+      } catch (Throwable e) {
+        throw ExceptionUtils.throwException(e);
       }
     }
 
     List<Descriptor> getGeneratedDescriptors() {
       try {
-        return descriptorConstructor.newInstance().getGeneratedDescriptors();
-      } catch (ReflectiveOperationException e) {
-        throw new ForyException(
-            "Failed to create descriptor-only static generated serializer "
-                + serializerClass.getName(),
-            e);
+        return ((StaticGeneratedStructSerializer<?>) descriptorConstructor.invoke())
+            .getGeneratedDescriptors();
+      } catch (Throwable e) {
+        throw ExceptionUtils.throwException(e);
       }
     }
   }
@@ -159,29 +155,26 @@ public final class StaticGeneratedSerializerRegistry {
   }
 
   private Entry newEntry(Class<? extends StaticGeneratedStructSerializer> serializerClass) {
-    Constructor<? extends StaticGeneratedStructSerializer> descriptorConstructor =
-        constructor(serializerClass);
-    Constructor<? extends StaticGeneratedStructSerializer> runtimeConstructor =
-        constructor(serializerClass, TypeResolver.class, Class.class);
-    Constructor<? extends StaticGeneratedStructSerializer> compatibleConstructor =
+    MethodHandle descriptorConstructor = constructor(serializerClass);
+    MethodHandle runtimeConstructor = constructor(serializerClass, TypeResolver.class, Class.class);
+    MethodHandle compatibleConstructor =
         constructor(serializerClass, TypeResolver.class, Class.class, TypeDef.class);
     return new Entry(
         serializerClass, descriptorConstructor, runtimeConstructor, compatibleConstructor);
   }
 
-  private Constructor<? extends StaticGeneratedStructSerializer> constructor(
+  private MethodHandle constructor(
       Class<? extends StaticGeneratedStructSerializer> serializerClass,
       Class<?>... parameterTypes) {
     try {
-      Constructor<? extends StaticGeneratedStructSerializer> constructor =
-          serializerClass.getDeclaredConstructor(parameterTypes);
-      constructor.setAccessible(true);
-      return constructor;
-    } catch (NoSuchMethodException e) {
+      // Static generated serializers are emitted into application packages, which may be in named
+      // modules not opened to Fory. Trusted constructor handles keep JPMS access in _JDKAccess.
+      return ReflectionUtils.getCtrHandle(serializerClass, parameterTypes);
+    } catch (RuntimeException e) {
       throw new ForyException(
           "Generated serializer "
               + serializerClass.getName()
-              + " is missing required constructor "
+              + " is missing or cannot access required constructor "
               + constructorSignature(parameterTypes),
           e);
     }

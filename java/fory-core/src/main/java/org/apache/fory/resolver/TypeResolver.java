@@ -21,7 +21,7 @@ package org.apache.fory.resolver;
 
 import static org.apache.fory.type.Types.INVALID_USER_TYPE_ID;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
@@ -100,6 +100,7 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.Functions;
 
@@ -1137,7 +1138,9 @@ public abstract class TypeResolver {
             jitContext.registerSerializerJITCallback(
                 () -> CompatibleSerializer.class,
                 () -> CodecUtils.loadOrGenCompatibleCodecClass(this, cls, typeDef),
-                c -> typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, c)));
+                c ->
+                    typeInfo.setSerializer(
+                        this, newGeneratedCompatibleSerializer(cls, c, typeDef)));
       } else if (sc == null) {
         sc = CompatibleSerializer.class;
       }
@@ -1158,10 +1161,26 @@ public abstract class TypeResolver {
       typeInfo.setSerializer(this, newStaticGeneratedStructSerializer(sc, cls, typeDef));
     } else if (sc == CompatibleSerializer.class) {
       typeInfo.setSerializer(this, new CompatibleSerializer(this, cls, typeDef));
+    } else if (GeneratedCompatibleSerializer.class.isAssignableFrom(sc)) {
+      typeInfo.setSerializer(this, newGeneratedCompatibleSerializer(cls, sc, typeDef));
     } else {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
     }
     return typeInfo;
+  }
+
+  private Serializer<?> newGeneratedCompatibleSerializer(
+      Class<?> cls, Class<? extends Serializer> serializerClass, TypeDef typeDef) {
+    try {
+      // Generated serializers can live in non-open application modules. Use Fory's trusted
+      // lookup owner instead of reflective setAccessible, which JPMS would reject there.
+      MethodHandle constructor =
+          ReflectionUtils.getCtrHandle(
+              serializerClass, TypeResolver.class, Class.class, TypeDef.class);
+      return (Serializer<?>) constructor.invoke(this, cls, typeDef);
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
+    }
   }
 
   private Class<? extends Serializer> loadGraalvmCompatibleDeserializerClass(
@@ -1746,17 +1765,14 @@ public abstract class TypeResolver {
   private StaticGeneratedStructSerializer<?> newRuntimeStaticCompatibleSerializer(
       Class<? extends Serializer> serializerClass, Class<?> cls, TypeDef typeDef) {
     try {
-      Constructor<? extends Serializer> constructor =
-          serializerClass.getDeclaredConstructor(TypeResolver.class, Class.class, TypeDef.class);
-      constructor.setAccessible(true);
-      return (StaticGeneratedStructSerializer<?>) constructor.newInstance(this, cls, typeDef);
-    } catch (ReflectiveOperationException e) {
-      throw new ForyException(
-          "Failed to create runtime static compatible serializer "
-              + serializerClass.getName()
-              + " for "
-              + cls.getName(),
-          e);
+      // Generated serializers can live in non-open application modules. Use Fory's trusted
+      // lookup owner instead of reflective setAccessible, which JPMS would reject there.
+      MethodHandle constructor =
+          ReflectionUtils.getCtrHandle(
+              serializerClass, TypeResolver.class, Class.class, TypeDef.class);
+      return (StaticGeneratedStructSerializer<?>) constructor.invoke(this, cls, typeDef);
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
     }
   }
 

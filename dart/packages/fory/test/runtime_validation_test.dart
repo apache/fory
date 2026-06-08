@@ -82,6 +82,14 @@ class DynamicAnimalEnvelope {
 }
 
 @ForyStruct()
+class ExplicitUnknownEnvelope {
+  ExplicitUnknownEnvelope();
+
+  @ForyField(dynamic: false)
+  Object value = 'unset';
+}
+
+@ForyStruct()
 class SkipEnvelope {
   SkipEnvelope();
 
@@ -154,6 +162,11 @@ void _registerValidationTypes(Fory fory) {
     fory,
     DynamicAnimalEnvelope,
     name: 'validation.DynamicAnimalEnvelope',
+  );
+  RuntimeValidationTestForyModule.register(
+    fory,
+    ExplicitUnknownEnvelope,
+    name: 'validation.ExplicitUnknownEnvelope',
   );
   RuntimeValidationTestForyModule.register(
     fory,
@@ -263,6 +276,17 @@ void main() {
       expect(catEnvelope.animal, isA<DynamicCat>());
       expect((catEnvelope.animal as DynamicCat).name, equals('Misty'));
       expect((catEnvelope.animal as DynamicCat).lives, equals(7));
+    });
+
+    test('unknown object fields use dynamic generated payloads', () {
+      final fory = Fory();
+      _registerValidationTypes(fory);
+
+      final roundTrip = fory.deserialize<ExplicitUnknownEnvelope>(
+        fory.serialize(ExplicitUnknownEnvelope()..value = 'dynamic-payload'),
+      );
+
+      expect(roundTrip.value, equals('dynamic-payload'));
     });
 
     test('compatible mode ignores skipped fields from older writers', () {

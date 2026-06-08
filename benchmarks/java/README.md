@@ -65,6 +65,15 @@ See `org.openjdk.jmh.runner.options.CommandLineOptions` for more information abo
 -rf Result format type
 ```
 
+## Schema Mismatch Mode
+
+Set `FORY_BENCH_SCHEMA_MISMATCH=1` to run the Fory-only compatible-read
+schema-mismatch mode for `XlangBenchmark`. This mode is off by default. When
+enabled, run with `--serializer fory`; protobuf and FlatBuffers benchmark modes
+fail with a configuration error. Fory serialization uses the normal v1 benchmark
+classes, and Fory deserialization uses v2 classes registered with the same Fory
+type IDs where one int32 field is widened to int64.
+
 Save benchmark data to specified dir, then run `tool.py` to plot graphs.
 
 ## Plotting

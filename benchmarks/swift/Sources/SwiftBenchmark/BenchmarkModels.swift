@@ -219,6 +219,150 @@ struct MediaContentList: Codable, Equatable {
     var mediaContentList: [MediaContent] = []
 }
 
+@ForyStruct
+struct NumericStructV2: Equatable {
+    @ForyField(id: 1)
+    var f1: Int64 = 0
+    @ForyField(id: 2)
+    var f2: Int32 = 0
+    @ForyField(id: 3)
+    var f3: Int32 = 0
+    @ForyField(id: 4)
+    var f4: Int32 = 0
+    @ForyField(id: 5)
+    var f5: Int32 = 0
+    @ForyField(id: 6)
+    var f6: Int32 = 0
+    @ForyField(id: 7)
+    var f7: Int32 = 0
+    @ForyField(id: 8)
+    var f8: Int32 = 0
+    @ForyField(id: 9)
+    var f9: Int32 = 0
+    @ForyField(id: 10)
+    var f10: Int32 = 0
+    @ForyField(id: 11)
+    var f11: Int32 = 0
+    @ForyField(id: 12)
+    var f12: Int32 = 0
+}
+
+@ForyStruct
+struct SampleV2: Equatable {
+    @ForyField(id: 1)
+    var intValue: Int64 = 0
+    @ForyField(id: 2)
+    var longValue: Int64 = 0
+    @ForyField(id: 3)
+    var floatValue: Float = 0
+    @ForyField(id: 4)
+    var doubleValue: Double = 0
+    @ForyField(id: 5)
+    var shortValue: Int32 = 0
+    @ForyField(id: 6)
+    var charValue: Int32 = 0
+    @ForyField(id: 7)
+    var booleanValue: Bool = false
+    @ForyField(id: 8)
+    var intValueBoxed: Int32 = 0
+    @ForyField(id: 9)
+    var longValueBoxed: Int64 = 0
+    @ForyField(id: 10)
+    var floatValueBoxed: Float = 0
+    @ForyField(id: 11)
+    var doubleValueBoxed: Double = 0
+    @ForyField(id: 12)
+    var shortValueBoxed: Int32 = 0
+    @ForyField(id: 13)
+    var charValueBoxed: Int32 = 0
+    @ForyField(id: 14)
+    var booleanValueBoxed: Bool = false
+    @ForyField(id: 15, type: .array(element: .int32()))
+    var intArray: [Int32] = []
+    @ForyField(id: 16, type: .array(element: .int64()))
+    var longArray: [Int64] = []
+    @ForyField(id: 17, type: .array(element: .float32))
+    var floatArray: [Float] = []
+    @ForyField(id: 18, type: .array(element: .float64))
+    var doubleArray: [Double] = []
+    @ForyField(id: 19, type: .array(element: .int32()))
+    var shortArray: [Int32] = []
+    @ForyField(id: 20, type: .array(element: .int32()))
+    var charArray: [Int32] = []
+    @ForyField(id: 21, type: .array(element: .bool))
+    var booleanArray: [Bool] = []
+    @ForyField(id: 22)
+    var string: String = ""
+}
+
+@ForyStruct
+struct MediaV2: Equatable {
+    @ForyField(id: 1)
+    var uri: String = ""
+    @ForyField(id: 2)
+    var title: String = ""
+    @ForyField(id: 3)
+    var width: Int64 = 0
+    @ForyField(id: 4)
+    var height: Int32 = 0
+    @ForyField(id: 5)
+    var format: String = ""
+    @ForyField(id: 6)
+    var duration: Int64 = 0
+    @ForyField(id: 7)
+    var size: Int64 = 0
+    @ForyField(id: 8)
+    var bitrate: Int32 = 0
+    @ForyField(id: 9)
+    var hasBitrate: Bool = false
+    @ForyField(id: 10)
+    var persons: [String] = []
+    @ForyField(id: 11)
+    var player: Player = .java
+    @ForyField(id: 12)
+    var copyright: String = ""
+}
+
+@ForyStruct
+struct ImageV2: Equatable {
+    @ForyField(id: 1)
+    var uri: String = ""
+    @ForyField(id: 2)
+    var title: String = ""
+    @ForyField(id: 3)
+    var width: Int64 = 0
+    @ForyField(id: 4)
+    var height: Int32 = 0
+    @ForyField(id: 5)
+    var size: Size = .small
+}
+
+@ForyStruct
+struct MediaContentV2: Equatable {
+    @ForyField(id: 1)
+    var media: MediaV2 = .init()
+    @ForyField(id: 2)
+    var images: [ImageV2] = []
+}
+
+@ForyStruct
+struct NumericStructListV2: Equatable {
+    @ForyField(id: 1)
+    var structList: [NumericStructV2] = []
+}
+
+@ForyStruct
+struct SampleListV2: Equatable {
+    @ForyField(id: 1)
+    var sampleList: [SampleV2] = []
+}
+
+@ForyStruct
+struct MediaContentListV2: Equatable {
+    @ForyField(id: 1)
+    var mediaContentList: [MediaContentV2] = []
+}
+
 enum BenchmarkDataFactory {
     static let listSize = 5
 

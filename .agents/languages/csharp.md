@@ -9,6 +9,7 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - C# code must build without compiler or analyzer warnings. Treat warnings as blockers in project, test, and generated code.
 - Fory C# requires .NET SDK `8.0+` and C# `12+`.
 - Use `dotnet format` to keep C# code style consistent.
+- Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - When extending C# tests from Java references, prioritize xlang spec behavior and the public C# contract before adding complex Java-specific parity cases.
 
 ## Commands

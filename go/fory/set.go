@@ -146,11 +146,12 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 		firstElem := UnwrapReflectValue(keys[0])
 		if isNull(firstElem) {
 			hasNull = true
-		} else if declaredGenerics {
-			elemTypeInfo = &TypeInfo{Type: firstElem.Type(), Serializer: s.elemSerializer}
 		} else {
 			// Get type info for first element to use as reference
 			elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(firstElem, true)
+			if declaredGenerics && elemTypeInfo != nil && !needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
+				elemTypeInfo = &TypeInfo{Type: firstElem.Type(), Serializer: s.elemSerializer}
+			}
 		}
 	}
 
@@ -188,6 +189,9 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 	}
 	// When hasGenerics is true, element type is declared from schema (known at compile time)
 	// so we don't need to write the element type ID
+	if declaredGenerics && elemTypeInfo != nil && needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
+		declaredGenerics = false
+	}
 	if declaredGenerics {
 		collectFlag |= CollectionIsDeclElementType
 		collectFlag |= CollectionIsSameType
@@ -322,10 +326,19 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 
 	// If all elements are same type, get element type info
 	if (collectFlag & CollectionIsSameType) != 0 {
-		if (collectFlag&CollectionIsDeclElementType) != 0 && s.elemSerializer != nil {
+		if (collectFlag & CollectionIsDeclElementType) != 0 {
 			// Element type is declared in schema, derive from Go type's key type
 			keyType := type_.Key()
-			elemTypeInfo = &TypeInfo{Type: keyType, Serializer: s.elemSerializer}
+			elemSerializer := s.elemSerializer
+			if elemSerializer == nil {
+				var err error
+				elemSerializer, err = ctx.TypeResolver().getSerializerByType(keyType, false)
+				if err != nil {
+					ctx.SetError(FromError(err))
+					return
+				}
+			}
+			elemTypeInfo = &TypeInfo{Type: keyType, Serializer: elemSerializer}
 		} else {
 			// Element type is not declared, read from buffer
 			elemTypeInfo = ctx.TypeResolver().ReadTypeInfo(buf, err)
@@ -352,31 +365,52 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 	// Determine if reference tracking is enabled
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	declaredGenerics := (flag & CollectionIsDeclElementType) != 0
-	serializer := typeInfo.Serializer
+	hasNull := (flag & CollectionHasNull) != 0
+	serializer := s.elemSerializer
 	keyType := value.Type().Key()
+	elemType := keyType
+	if !declaredGenerics && typeInfo != nil && typeInfo.Serializer != nil {
+		serializer = typeInfo.Serializer
+		if typeInfo.Type != nil {
+			elemType, serializer = wrapMapSerializerIfNeeded(keyType, typeInfo.Type, serializer)
+		}
+	}
+	if keyType.Kind() != reflect.Ptr {
+		if ptrSer, ok := serializer.(*ptrToValueSerializer); ok {
+			serializer = ptrSer.valueSerializer
+		}
+	}
+	declaredGenericDispatch := declaredGenerics && serializerNeedsGenericDispatch(serializer)
+
+	elemRefMode := RefModeNone
+	if trackRefs {
+		elemRefMode = RefModeTracking
+	}
 
 	for i := 0; i < length; i++ {
-		var refID int32
+		elem := reflect.New(elemType).Elem()
 		if trackRefs {
-			// Handle reference tracking if enabled
-			refID, _ = ctx.RefResolver().TryPreserveRefId(buf)
-			if refID < int32(NotNullValueFlag) {
-				// Use existing reference if available
-				elem := ctx.RefResolver().GetReadObject(refID)
-				setMapKey(value, elem, keyType)
+			serializer.Read(ctx, elemRefMode, false, declaredGenericDispatch, elem)
+			if ctx.HasError() {
+				return
+			}
+			if isNull(elem) {
 				continue
 			}
-		}
-
-		// Create new element and deserialize from buffer
-		elem := reflect.New(typeInfo.Type).Elem()
-		readSerializerData(ctx, serializer, declaredGenerics, elem)
-		if ctx.HasError() {
-			return
-		}
-		// Register new reference if tracking
-		if trackRefs {
-			ctx.RefResolver().SetReadObject(refID, elem)
+		} else if hasNull {
+			refFlag := buf.ReadInt8(ctx.Err())
+			if refFlag == NullFlag {
+				continue
+			}
+			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
+			if ctx.HasError() {
+				return
+			}
+		} else {
+			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
+			if ctx.HasError() {
+				return
+			}
 		}
 		// Add element to set
 		setMapKey(value, elem, keyType)

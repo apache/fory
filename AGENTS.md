@@ -90,6 +90,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Keep class registration enabled unless explicitly requested otherwise.
 - Prefer schema-consistent mode unless compatibility work requires something else.
 - When debugging test errors, always set `ENABLE_FORY_DEBUG_OUTPUT=1` to see debug output.
+- Do not set `FORY_PANIC_ON_ERROR` for normal tests, CI reproduction, or xlang validation.
+  It is a focused debug knob only; omit it from verification commands, but do not filter it
+  from test harnesses when the user command provides it.
 - Never work around failures. Find and fix the root cause. Do not hack, weaken, or bypass tests to make them pass.
 
 ## Source of Truth
@@ -131,6 +134,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 ## Shared Validation Expectations
 
 - Run the relevant tests for every touched language or subsystem before finishing.
+- A formatter-only pass after successful tests does not invalidate those test results. Do not rerun tests solely because formatting ran after the tests already passed.
 - When multiple independent language test suites are required, run them concurrently when the environment has enough resources instead of running them one by one; keep each language's logs and results separate, and rerun any failed suite with focused diagnostics.
 - Run applicable test commands in a subagent with a thinking budget one level lower than the main task budget, using medium when the current budget is unclear, unless the change is docs-only or the user explicitly asks to run them locally.
 - Reuse the same test subagent for repeated runs within one task and subsystem so it keeps failure context; create a fresh subagent when switching unrelated subsystems or when prior context may be stale or misleading.

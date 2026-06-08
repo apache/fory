@@ -19,6 +19,7 @@ package benchmark
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	pb "github.com/apache/fory/benchmarks/go/proto"
@@ -37,7 +38,26 @@ func newFory() *fory.Fory {
 		fory.WithTrackRef(false),
 		fory.WithCompatible(true),
 	)
-	// Register types with IDs matching C++ benchmark
+	registerForyTypes(f)
+	return f
+}
+
+func newForyReader() *fory.Fory {
+	f := fory.New(
+		fory.WithXlang(true),
+		fory.WithTrackRef(false),
+		fory.WithCompatible(true),
+	)
+	if schemaMismatchEnabled() {
+		registerForyTypesV2(f)
+	} else {
+		registerForyTypes(f)
+	}
+	return f
+}
+
+func registerForyTypes(f *fory.Fory) {
+	// Register types with IDs matching the existing Go benchmark schema.
 	if err := f.RegisterStruct(NumericStruct{}, 1); err != nil {
 		panic(err)
 	}
@@ -68,7 +88,49 @@ func newFory() *fory.Fory {
 	if err := f.RegisterEnum(Size(0), 7); err != nil {
 		panic(err)
 	}
-	return f
+}
+
+func registerForyTypesV2(f *fory.Fory) {
+	if err := f.RegisterStruct(NumericStructV2{}, 1); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(SampleV2{}, 2); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(MediaV2{}, 3); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(ImageV2{}, 4); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(MediaContentV2{}, 5); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(NumericStructListV2{}, 8); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(SampleListV2{}, 9); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(MediaContentListV2{}, 10); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterEnum(Player(0), 6); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterEnum(Size(0), 7); err != nil {
+		panic(err)
+	}
+}
+
+func schemaMismatchEnabled() bool {
+	return os.Getenv("FORY_BENCH_SCHEMA_MISMATCH") == "1"
+}
+
+func rejectNonForySchemaMismatch(b testing.TB) {
+	if schemaMismatchEnabled() {
+		b.Fatalf("FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory")
+	}
 }
 
 // ============================================================================
@@ -91,6 +153,7 @@ func BenchmarkFory_NumericStruct_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_NumericStruct_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStruct()
 
 	b.ResetTimer()
@@ -105,6 +168,7 @@ func BenchmarkProtobuf_NumericStruct_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_NumericStruct_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStruct()
 
 	b.ResetTimer()
@@ -117,17 +181,36 @@ func BenchmarkMsgpack_NumericStruct_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_NumericStruct_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateNumericStruct()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result NumericStructV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if result.F1 != int64(obj.F1) {
+			b.Fatal("NumericStructV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result NumericStructV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result NumericStruct
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -135,6 +218,7 @@ func BenchmarkFory_NumericStruct_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_NumericStruct_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStruct()
 	pbObj := ToPbStruct(obj)
 	data, err := proto.Marshal(pbObj)
@@ -156,6 +240,7 @@ func BenchmarkProtobuf_NumericStruct_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_NumericStruct_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStruct()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -192,6 +277,7 @@ func BenchmarkFory_NumericStructList_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_NumericStructList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStructList()
 
 	b.ResetTimer()
@@ -205,6 +291,7 @@ func BenchmarkProtobuf_NumericStructList_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_NumericStructList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStructList()
 
 	b.ResetTimer()
@@ -217,17 +304,36 @@ func BenchmarkMsgpack_NumericStructList_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_NumericStructList_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateNumericStructList()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result NumericStructListV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if len(result.NumericStructs) == 0 || result.NumericStructs[0].F1 != int64(obj.NumericStructs[0].F1) {
+			b.Fatal("NumericStructListV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result NumericStructListV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result NumericStructList
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -235,6 +341,7 @@ func BenchmarkFory_NumericStructList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_NumericStructList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStructList()
 	pbObj := ToPbNumericStructList(obj)
 	data, err := proto.Marshal(pbObj)
@@ -254,6 +361,7 @@ func BenchmarkProtobuf_NumericStructList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_NumericStructList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateNumericStructList()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -290,6 +398,7 @@ func BenchmarkFory_Sample_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_Sample_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSample()
 
 	b.ResetTimer()
@@ -303,6 +412,7 @@ func BenchmarkProtobuf_Sample_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_Sample_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSample()
 
 	b.ResetTimer()
@@ -315,17 +425,36 @@ func BenchmarkMsgpack_Sample_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_Sample_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateSample()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result SampleV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if result.IntValue != int64(obj.IntValue) {
+			b.Fatal("SampleV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result SampleV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result Sample
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -333,6 +462,7 @@ func BenchmarkFory_Sample_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_Sample_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSample()
 	pbObj := ToPbSample(obj)
 	data, err := proto.Marshal(pbObj)
@@ -352,6 +482,7 @@ func BenchmarkProtobuf_Sample_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_Sample_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSample()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -388,6 +519,7 @@ func BenchmarkFory_SampleList_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_SampleList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSampleList()
 
 	b.ResetTimer()
@@ -401,6 +533,7 @@ func BenchmarkProtobuf_SampleList_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_SampleList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSampleList()
 
 	b.ResetTimer()
@@ -413,17 +546,36 @@ func BenchmarkMsgpack_SampleList_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_SampleList_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateSampleList()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result SampleListV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if len(result.SampleList) == 0 || result.SampleList[0].IntValue != int64(obj.SampleList[0].IntValue) {
+			b.Fatal("SampleListV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result SampleListV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result SampleList
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -431,6 +583,7 @@ func BenchmarkFory_SampleList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_SampleList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSampleList()
 	pbObj := ToPbSampleList(obj)
 	data, err := proto.Marshal(pbObj)
@@ -450,6 +603,7 @@ func BenchmarkProtobuf_SampleList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_SampleList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateSampleList()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -486,6 +640,7 @@ func BenchmarkFory_MediaContent_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_MediaContent_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContent()
 
 	b.ResetTimer()
@@ -499,6 +654,7 @@ func BenchmarkProtobuf_MediaContent_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_MediaContent_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContent()
 
 	b.ResetTimer()
@@ -511,17 +667,37 @@ func BenchmarkMsgpack_MediaContent_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_MediaContent_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateMediaContent()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result MediaContentV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if result.Media.Width != int64(obj.Media.Width) ||
+			len(result.Images) == 0 || result.Images[0].Width != int64(obj.Images[0].Width) {
+			b.Fatal("MediaContentV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result MediaContentV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result MediaContent
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -529,6 +705,7 @@ func BenchmarkFory_MediaContent_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_MediaContent_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContent()
 	pbObj := ToPbMediaContent(obj)
 	data, err := proto.Marshal(pbObj)
@@ -548,6 +725,7 @@ func BenchmarkProtobuf_MediaContent_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_MediaContent_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContent()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -584,6 +762,7 @@ func BenchmarkFory_MediaContentList_Serialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_MediaContentList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContentList()
 
 	b.ResetTimer()
@@ -597,6 +776,7 @@ func BenchmarkProtobuf_MediaContentList_Serialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_MediaContentList_Serialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContentList()
 
 	b.ResetTimer()
@@ -609,17 +789,39 @@ func BenchmarkMsgpack_MediaContentList_Serialize(b *testing.B) {
 }
 
 func BenchmarkFory_MediaContentList_Deserialize(b *testing.B) {
-	f := newFory()
+	writer := newFory()
+	reader := newForyReader()
 	obj := CreateMediaContentList()
-	data, err := f.Serialize(&obj)
+	data, err := writer.Serialize(&obj)
 	if err != nil {
 		b.Fatal(err)
+	}
+
+	if schemaMismatchEnabled() {
+		var result MediaContentListV2
+		if err := reader.Deserialize(data, &result); err != nil {
+			b.Fatal(err)
+		}
+		if len(result.MediaContentList) == 0 ||
+			result.MediaContentList[0].Media.Width != int64(obj.MediaContentList[0].Media.Width) ||
+			len(result.MediaContentList[0].Images) == 0 ||
+			result.MediaContentList[0].Images[0].Width != int64(obj.MediaContentList[0].Images[0].Width) {
+			b.Fatal("MediaContentListV2 schema mismatch read failed")
+		}
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			var result MediaContentListV2
+			if err := reader.Deserialize(data, &result); err != nil {
+				b.Fatal(err)
+			}
+		}
+		return
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		var result MediaContentList
-		err := f.Deserialize(data, &result)
+		err := reader.Deserialize(data, &result)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -627,6 +829,7 @@ func BenchmarkFory_MediaContentList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkProtobuf_MediaContentList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContentList()
 	pbObj := ToPbMediaContentList(obj)
 	data, err := proto.Marshal(pbObj)
@@ -646,6 +849,7 @@ func BenchmarkProtobuf_MediaContentList_Deserialize(b *testing.B) {
 }
 
 func BenchmarkMsgpack_MediaContentList_Deserialize(b *testing.B) {
+	rejectNonForySchemaMismatch(b)
 	obj := CreateMediaContentList()
 	data, err := msgpack.Marshal(obj)
 	if err != nil {
@@ -668,6 +872,38 @@ func BenchmarkMsgpack_MediaContentList_Deserialize(b *testing.B) {
 
 func TestPrintSerializedSizes(t *testing.T) {
 	f := newFory()
+	if schemaMismatchEnabled() {
+		numericStruct := CreateNumericStruct()
+		foryStructData, _ := f.Serialize(&numericStruct)
+		sample := CreateSample()
+		forySampleData, _ := f.Serialize(&sample)
+		mediaContent := CreateMediaContent()
+		foryMediaData, _ := f.Serialize(&mediaContent)
+		structList := CreateNumericStructList()
+		foryStructListData, _ := f.Serialize(&structList)
+		sampleList := CreateSampleList()
+		forySampleListData, _ := f.Serialize(&sampleList)
+		mediaContentList := CreateMediaContentList()
+		foryMediaContentListData, _ := f.Serialize(&mediaContentList)
+
+		fmt.Println("============================================")
+		fmt.Println("Serialized Sizes (bytes):")
+		fmt.Println("============================================")
+		fmt.Printf("NumericStruct:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(foryStructData))
+		fmt.Printf("Sample:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(forySampleData))
+		fmt.Printf("MediaContent:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(foryMediaData))
+		fmt.Printf("NumericStructList:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(foryStructListData))
+		fmt.Printf("SampleList:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(forySampleListData))
+		fmt.Printf("MediaContentList:\n")
+		fmt.Printf("  Fory:     %d bytes\n", len(foryMediaContentListData))
+		fmt.Println("============================================")
+		return
+	}
 
 	// NumericStruct sizes
 	numericStruct := CreateNumericStruct()

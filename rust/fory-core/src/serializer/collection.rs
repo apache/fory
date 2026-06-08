@@ -528,19 +528,35 @@ fn read_primitive_array_data_bulk<T: 'static>(
     }
 }
 
-fn list_element_type_matches_array(list: &FieldType, array: &FieldType) -> bool {
+fn list_element_type_matches_array(
+    list: &FieldType,
+    array: &FieldType,
+    require_unframed_element: bool,
+) -> bool {
     primitive_array_element_type_id(array.type_id).is_some_and(|element_type_id| {
-        list.type_id == type_id::LIST
-            && list.generics.len() == 1
-            && primitive_array_element_type_matches(element_type_id, list.generics[0].type_id)
+        if list.type_id != type_id::LIST
+            || list.generics.len() != 1
+            || list.nullable
+            || list.track_ref
+            || array.nullable
+            || array.track_ref
+        {
+            return false;
+        }
+        let element = &list.generics[0];
+        // Nullable element schema is allowed for list<T?> -> array<T>; actual
+        // null payload elements fail in the dense-array reader. Ref-tracked
+        // element framing is rejected here because this path stays primitive-only.
+        if require_unframed_element && element.track_ref {
+            return false;
+        }
+        primitive_array_element_type_matches(element_type_id, element.type_id)
     })
 }
 
 pub(super) fn compatible_list_array_field(local: &FieldType, remote: &FieldType) -> bool {
-    (local.type_id == type_id::LIST && list_element_type_matches_array(local, remote))
-        || (remote.type_id == type_id::LIST
-            && !remote.generics.is_empty()
-            && list_element_type_matches_array(remote, local))
+    (local.type_id == type_id::LIST && list_element_type_matches_array(local, remote, false))
+        || (remote.type_id == type_id::LIST && list_element_type_matches_array(remote, local, true))
 }
 
 fn primitive_array_element_type_matches(
@@ -794,7 +810,7 @@ where
     C: Codec<T>,
 {
     if local_field_type.type_id == type_id::LIST
-        && list_element_type_matches_array(local_field_type, remote_field_type)
+        && list_element_type_matches_array(local_field_type, remote_field_type, false)
     {
         return read_array_data_as_vec_bridge::<T, C>(context, remote_field_type).map(Some);
     }
@@ -836,7 +852,7 @@ where
 {
     if remote_field_type.type_id == type_id::LIST
         && !remote_field_type.generics.is_empty()
-        && list_element_type_matches_array(remote_field_type, local_field_type)
+        && list_element_type_matches_array(remote_field_type, local_field_type, true)
     {
         if field_ref_mode(remote_field_type) != RefMode::None {
             let ref_flag = context.reader.read_i8()?;

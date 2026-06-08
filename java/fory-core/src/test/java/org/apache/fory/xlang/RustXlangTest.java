@@ -80,8 +80,10 @@ public class RustXlangTest extends XlangTestBase {
     Map<String, String> env = envBuilder(dataFile);
     env.put("RUSTFLAGS", "-Awarnings");
     env.put("RUST_BACKTRACE", "1");
+    // Rust test threads default to a small stack, and generated xlang compatible reads can exceed
+    // it on large schema-change structs before the test reaches Fory assertions.
+    env.put("RUST_MIN_STACK", "4194304");
     env.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
-    env.put("FORY_PANIC_ON_ERROR", caseName.endsWith("_error") ? "0" : "1");
     return new CommandContext(command, env, new File("../../rust"));
   }
 

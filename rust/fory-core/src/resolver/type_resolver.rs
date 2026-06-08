@@ -195,6 +195,9 @@ pub struct TypeInfo {
     namespace: Rc<MetaString>,
     type_name: Rc<MetaString>,
     register_by_name: bool,
+    // False only for a remote TypeMeta paired with the local harness. Those
+    // values must read through compatible schema mapping, not direct local data.
+    exact_local_schema: bool,
     harness: Harness,
 }
 
@@ -221,6 +224,7 @@ impl TypeInfo {
             namespace: Rc::from(namespace_meta_string),
             type_name: Rc::from(type_name_meta_string),
             register_by_name,
+            exact_local_schema: true,
             harness,
         })
     }
@@ -242,6 +246,7 @@ impl TypeInfo {
             namespace,
             type_name,
             register_by_name,
+            exact_local_schema: true,
             harness,
         })
     }
@@ -287,6 +292,11 @@ impl TypeInfo {
     }
 
     #[inline(always)]
+    pub(crate) fn has_exact_local_schema(&self) -> bool {
+        self.exact_local_schema
+    }
+
+    #[inline(always)]
     pub fn get_harness(&self) -> &Harness {
         &self.harness
     }
@@ -302,6 +312,7 @@ impl TypeInfo {
             namespace: Rc::new((*self.namespace).clone()),
             type_name: Rc::new((*self.type_name).clone()),
             register_by_name: self.register_by_name,
+            exact_local_schema: self.exact_local_schema,
             harness: self.harness.clone(),
         }
     }
@@ -347,6 +358,7 @@ impl TypeInfo {
             namespace,
             type_name,
             register_by_name,
+            exact_local_schema: false,
             harness,
         }
     }
@@ -438,6 +450,7 @@ fn build_struct_type_infos<T: StructSerializer>(
         namespace: partial_info.namespace.clone(),
         type_name: partial_info.type_name.clone(),
         register_by_name: partial_info.register_by_name,
+        exact_local_schema: true,
         harness: partial_info.harness.clone(),
     };
 
@@ -539,6 +552,7 @@ fn build_serializer_type_infos(
         namespace: partial_info.namespace.clone(),
         type_name: partial_info.type_name.clone(),
         register_by_name: partial_info.register_by_name,
+        exact_local_schema: true,
         harness: partial_info.harness.clone(),
     };
 

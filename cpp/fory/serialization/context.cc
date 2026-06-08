@@ -563,8 +563,8 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     // Have local type - assign field_ids by comparing schemas
     // Note: Extension types don't have type_meta (only structs do)
     if (local_type_info->type_meta) {
-      TypeMeta::assign_field_ids(local_type_info->type_meta.get(),
-                                 parsed_meta->field_infos);
+      FORY_RETURN_NOT_OK(TypeMeta::assign_field_ids(
+          local_type_info->type_meta.get(), parsed_meta->field_infos));
     }
     type_info->type_id = local_type_info->type_id;
     type_info->user_type_id = local_type_info->user_type_id;

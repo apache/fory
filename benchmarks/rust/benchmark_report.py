@@ -176,7 +176,10 @@ def load_serialized_sizes(size_file):
     if not os.path.exists(size_file):
         return {}
 
-    pattern = re.compile(r"^\|\s*([^|]+?)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|$")
+    pattern = re.compile(
+        r"^\|\s*([^|]+?)\s*\|\s*(\d+|n/a)\s*\|\s*(\d+|n/a)\s*\|\s*(\d+|n/a)\s*\|$",
+        re.IGNORECASE,
+    )
     sizes = {}
     with open(size_file, "r", encoding="utf-8") as file:
         for line in file:
@@ -187,11 +190,19 @@ def load_serialized_sizes(size_file):
             if datatype == "Datatype":
                 continue
             sizes[datatype] = {
-                "fory": int(fory_size),
-                "protobuf": int(protobuf_size),
-                "msgpack": int(msgpack_size),
+                "fory": parse_size_value(fory_size),
+                "protobuf": parse_size_value(protobuf_size),
+                "msgpack": parse_size_value(msgpack_size),
             }
     return sizes
+
+
+def parse_size_value(value):
+    return None if value.lower() == "n/a" else int(value)
+
+
+def format_size_value(value):
+    return str(value) if isinstance(value, int) and value >= 0 else "N/A"
 
 
 def format_tps_tick(tps, _position):
@@ -358,7 +369,9 @@ def write_report(system_info, results, sizes, output_dir, plot_prefix):
                 continue
             entry = sizes[title]
             report.append(
-                f"| {title} | {entry['fory']} | {entry['protobuf']} | {entry['msgpack']} |\n"
+                f"| {title} | {format_size_value(entry['fory'])} | "
+                + f"{format_size_value(entry['protobuf'])} | "
+                + f"{format_size_value(entry['msgpack'])} |\n"
             )
 
     report_path = os.path.join(output_dir, "README.md")

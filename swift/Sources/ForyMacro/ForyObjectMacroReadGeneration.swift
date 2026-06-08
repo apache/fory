@@ -181,9 +181,12 @@ private func buildClassReadCompatibleDataDecl(
   let bufferBinding =
     (schemaAssignBody.contains("__buffer") || compatibleAlignedAssignBody.contains("__buffer")
       || compatibleCases.contains("__buffer")) ? "let __buffer = context.buffer\n        " : ""
+  let localFieldsBinding =
+    compatibleCases.contains("__foryLocalFields")
+    ? "let __foryLocalFields = Self.foryFieldsInfo(trackRef: context.trackRef)\n        " : ""
 
   return """
-    @inline(__always)
+    @inline(never)
     private static func __foryReadCompatibleDataImpl(
         _ context: ReadContext,
         remoteTypeInfo: TypeInfo,
@@ -206,17 +209,19 @@ private func buildClassReadCompatibleDataDecl(
             \(compatibleAlignedAssignBody)
             return value
         }
-        for remoteField in typeMeta.fields {
+        \(localFieldsBinding)for remoteField in typeMeta.fields {
             switch Int(remoteField.fieldID ?? -1) {
         \(compatibleCases)
-            default:
+            case -1:
                 try context.skipFieldValue(remoteField.fieldType)
+            default:
+                throw ForyError.invalidData("invalid compatible matched id \\(remoteField.fieldID ?? -2)")
             }
         }
         return value
     }
 
-    @inline(__always)
+    @inline(never)
     \(accessPrefix)static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> Self {
         try Self.__foryReadCompatibleDataImpl(context, remoteTypeInfo: remoteTypeInfo, reservedRefID: nil)
     }
@@ -225,7 +230,7 @@ private func buildClassReadCompatibleDataDecl(
 
 private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> String {
   """
-  @inline(__always)
+  @inline(never)
   \(accessPrefix)static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> Self {
       guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
           throw ForyError.invalidData("compatible type metadata is required")
@@ -266,12 +271,19 @@ private func buildStructReadCompatibleDataDecl(
   ) { sortedIndex, field, valueExpr in
     "case \(sortedIndex): __\(field.name) = \(valueExpr)"
   }
+  let changedFallbackDecl = buildStructChangedFallbackDecl(
+    defaults: compatibleDefaults,
+    cases: compatibleCases,
+    ctorArgs: ctorArgs
+  )
   let bufferBinding =
-    (schemaReadBody.contains("__buffer") || compatibleAlignedReadBody.contains("__buffer")
-      || compatibleCases.contains("__buffer")) ? "let __buffer = context.buffer\n        " : ""
+    (schemaReadBody.contains("__buffer") || compatibleAlignedReadBody.contains("__buffer"))
+    ? "let __buffer = context.buffer\n        " : ""
 
   return """
-    @inline(__always)
+    \(changedFallbackDecl)
+
+    @inline(never)
     \(accessPrefix)static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> Self {
         \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
@@ -290,18 +302,44 @@ private func buildStructReadCompatibleDataDecl(
                 \(ctorArgs)
             )
         }
-        \(compatibleDefaults)
-        for remoteField in typeMeta.fields {
-            switch Int(remoteField.fieldID ?? -1) {
-            \(compatibleCases)
-            default:
-                try context.skipFieldValue(remoteField.fieldType)
-            }
-        }
-        return Self(
-            \(ctorArgs)
+        return try Self.__foryReadChangedData(
+            context,
+            typeMeta: typeMeta
         )
     }
+    """
+}
+
+private func buildStructChangedFallbackDecl(
+  defaults: String,
+  cases: String,
+  ctorArgs: String
+) -> String {
+  let bufferBinding = cases.contains("__buffer") ? "let __buffer = context.buffer\n        " : ""
+  let localFieldsBinding =
+    cases.contains("__foryLocalFields")
+    ? "let __foryLocalFields = Self.foryFieldsInfo(trackRef: context.trackRef)\n          " : ""
+  return """
+      @inline(never)
+      private static func __foryReadChangedData(
+          _ context: ReadContext,
+          typeMeta: TypeMeta
+      ) throws -> Self {
+          \(bufferBinding)
+          \(defaults)
+          \(localFieldsBinding)for remoteField in typeMeta.fields {
+              switch Int(remoteField.fieldID ?? -1) {
+              \(cases)
+              case -1:
+                  try context.skipFieldValue(remoteField.fieldType)
+              default:
+                  throw ForyError.invalidData("invalid compatible matched id \\(remoteField.fieldID ?? -2)")
+              }
+          }
+          return Self(
+              \(ctorArgs)
+          )
+      }
     """
 }
 
@@ -310,8 +348,7 @@ private func buildClassAssignBody(
   primitiveFastFields: [ParsedField],
   compatibleAligned: Bool
 ) -> String {
-  let remainingAssignLines = sortedFields.dropFirst(primitiveFastFields.count).map {
-    field -> String in
+  let remainingAssignLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
     let valueExpr: String
     if compatibleAligned {
       valueExpr = compatibleSchemaReadFieldExpr(field)
@@ -343,8 +380,7 @@ private func buildStructReadBody(
   primitiveFastFields: [ParsedField],
   compatibleAligned: Bool
 ) -> String {
-  let remainingReadLines = sortedFields.dropFirst(primitiveFastFields.count).map {
-    field -> String in
+  let remainingReadLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
     let valueExpr =
       compatibleAligned ? compatibleSchemaReadFieldExpr(field) : schemaReadFieldExpr(field)
     return "let __\(field.name) = \(valueExpr)"
@@ -395,62 +431,105 @@ private func buildCompatibleReadCases(
   assignCase: (Int, ParsedField, String) -> String
 ) -> String {
   sortedFields.enumerated().map { sortedIndex, field -> String in
-    let directValueExpr = readFieldExpr(
+    let directValueExpr = compatibleSchemaReadFieldExpr(field)
+    let compatibleValueExpr = readFieldExpr(
       field,
       refModeExpr:
         "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
       readTypeInfoExpr:
         "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
     )
-    let valueExpr = compatibleScalarReadExpr(field, directValueExpr: directValueExpr)
-    return assignCase(sortedIndex, field, valueExpr)
+    let compatibleCaseExpr = compatibleScalarReadExpr(
+      field,
+      sortedIndex: sortedIndex,
+      compatibleValueExpr: compatibleValueExpr
+    )
+    return [
+      assignCase(sortedIndex * 2, field, directValueExpr),
+      assignCase(sortedIndex * 2 + 1, field, compatibleCaseExpr)
+    ].joined(separator: "\n\(indent)")
   }.joined(separator: "\n\(indent)")
 }
 
-private func compatibleScalarReadExpr(_ field: ParsedField, directValueExpr: String) -> String {
-  guard field.dynamicAnyCodec == nil, compatibleScalarTypeID(field.typeID) else {
-    return directValueExpr
+private func compatibleScalarReadExpr(
+  _ field: ParsedField,
+  sortedIndex: Int,
+  compatibleValueExpr: String
+) -> String {
+  guard
+    field.dynamicAnyCodec == nil,
+    let helperTarget = compatibleScalarReaderTarget(field)
+  else {
+    return compatibleValueExpr
   }
-  let fieldName = swiftStringLiteral(field.schemaIdentifier)
-  let localRefModeExpr = fieldRefModeExpression(field)
-  if field.isOptional {
-    return """
-      try {
-          let __localRefMode = \(localRefModeExpr)
-          if remoteField.fieldType.typeID == \(field.typeID) &&
-              RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef) == __localRefMode {
-              return \(directValueExpr)
-          }
-          return try foryReadCompatibleOptionalScalarField(
-              context,
-              remoteFieldType: remoteField.fieldType,
-              localTypeID: \(field.typeID),
-              fieldName: \(fieldName),
-              directRead: {
-                  \(directValueExpr)
-              }
-          )
-      }()
-      """
-  }
+  let helperName =
+    field.isOptional
+    ? "foryReadCompatibleOptional\(helperTarget)Field"
+    : "foryReadCompatible\(helperTarget)Field"
   return """
-    try {
-        let __localRefMode = \(localRefModeExpr)
-        if remoteField.fieldType.typeID == \(field.typeID) &&
-            RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef) == __localRefMode {
-            return \(directValueExpr)
-        }
-        return try foryReadCompatibleScalarField(
-            context,
-            remoteFieldType: remoteField.fieldType,
-            localTypeID: \(field.typeID),
-            fieldName: \(fieldName),
-            directRead: {
-                \(directValueExpr)
-            }
-        )
-    }()
+    try \(helperName)(
+        context,
+        remoteField: remoteField,
+        localField: __foryLocalFields[\(sortedIndex)]
+    )
     """
+}
+
+private func compatibleScalarReaderTarget(_ field: ParsedField) -> String? {
+  guard compatibleScalarTypeID(field.typeID) else {
+    return nil
+  }
+  switch compatibleScalarPayloadType(field.typeText) {
+  case "Bool":
+    return "Bool"
+  case "Int8":
+    return "Int8"
+  case "Int16":
+    return "Int16"
+  case "Int32":
+    return "Int32"
+  case "Int64":
+    return "Int64"
+  case "Int":
+    return "Int"
+  case "UInt8":
+    return "UInt8"
+  case "UInt16":
+    return "UInt16"
+  case "UInt32":
+    return "UInt32"
+  case "UInt64":
+    return "UInt64"
+  case "UInt":
+    return "UInt"
+  case "Float16":
+    return "Float16"
+  case "BFloat16":
+    return "BFloat16"
+  case "Float":
+    return "Float"
+  case "Double":
+    return "Double"
+  case "String":
+    return "String"
+  case "Decimal":
+    return "Decimal"
+  default:
+    return nil
+  }
+}
+
+private func compatibleScalarPayloadType(_ typeText: String) -> String {
+  var type = trimType(typeText)
+  if type.hasSuffix("?") {
+    type.removeLast()
+  } else if type.hasPrefix("Optional<"), type.hasSuffix(">") {
+    type = String(type.dropFirst("Optional<".count).dropLast())
+  }
+  for prefix in ["Swift.", "Foundation.", "Fory."] where type.hasPrefix(prefix) {
+    return String(type.dropFirst(prefix.count))
+  }
+  return type
 }
 
 private func compatibleScalarTypeID(_ typeID: UInt32) -> Bool {

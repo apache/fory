@@ -196,14 +196,31 @@ and `array<T>` as distinct kinds.
 The adaptation is limited to the immediate schema of the matched compatible
 field. It does not apply when `list<T>` or `array<T>` appears inside another
 field type, including collection elements, map keys or values, array elements,
-union alternatives, or other generic/container positions. A peer `list<T>`
-TypeDef element may be declared nullable or ref-tracked; that declaration alone
-does not prevent a local matched `array<T>` field from reading the value. The
-reader must decide from the collection payload. If the payload actually carries
-a null element or reference-tracked element encoding that cannot be represented
-as a dense array element value, the local `array<T>` field must raise a
+union alternatives, or other generic/container positions. A peer `list<T?>`
+TypeDef element schema is not immediate schema incompatibility for a local
+matched `array<T>` field. Classification must accept the matched field when the
+element domains match and the only element-schema difference is nullable
+metadata. The reader must decide from the collection payload: if the payload
+actually carries a null element, the local `array<T>` field must raise a
 compatible-read error. Null list elements must not be coerced to dense-array
-default values.
+default values. Reference-tracked list-element framing is separate from
+nullable element schema. A runtime that cannot materialize ref-tracked list
+elements into a dense array without generic/reference paths may reject that
+field during compatible classification; if it accepts the field, reference
+payloads that cannot be represented as dense array element values must fail
+during read.
+
+The dense-array error rule applies to dense-array targets. A matched
+`list<T?>` field read into a local `list<T?>` target must keep using list
+semantics and preserve actual null elements; implementations must not route that
+payload through a dense primitive-array materialization path that rejects nulls.
+
+In schema-compatible mode only, a matched struct/class field may read between
+direct top-level `binary` and direct top-level `array<uint8>` schemas. This is a
+byte-sequence adaptation only: it does not merge TypeDef/ClassDef type IDs,
+schema fingerprints, dynamic root serialization, same-schema mode, or nested
+collection/map/array/union/generic positions. `array<int8>` is not part of this
+adapter.
 
 In schema-compatible mode only, a matched struct/class field may also read
 between direct top-level scalar schemas when the remote value can be represented
@@ -328,6 +345,12 @@ the compatible layout. Once a matched field is accepted as a scalar conversion
 action, an invalid payload value MUST be reported through the implementation's
 data-error path with enough context to identify the remote type, local type, and
 field when that path has the information.
+
+Unknown-field skipping applies only when the remote field has no matching local
+field identity. If a local field matches by tag ID or name but its schema is
+outside the exact-read and compatible-adaptation rules, the reader MUST reject
+the compatible layout instead of treating the field as missing, remote-only, or
+skippable.
 
 Users can also provide meta hints for fields of a type, or the type whole. Here is an example in java which use
 annotation to provide such information.
@@ -1673,6 +1696,9 @@ MurmurHash3 x64_128 of the struct fingerprint string:
   - `LIST` / `SET`: `<type_id>,<ref>,<nullable>[<element_fingerprint>]`
   - `MAP`: `<type_id>,<ref>,<nullable>[<key_fingerprint>|<value_fingerprint>]`
 - Nested container element/key/value fingerprints include nested type ID, container shape, and effective integer encoding, but nested `nullable` and `ref` policy are always hashed as `0`. Only the root field `nullable` and `ref` bits participate in schema hash, because nested reads honor the wire null/ref flags directly.
+- This schema-hash rule is only for same-schema mode without TypeDef metadata. It
+  does not permit compatible-mode matched-field classification to accept nested
+  nullability or reference-tracking mismatches.
 
 Field values are serialized in Fory order. Primitive fields are written as raw values (nullable
 primitives include a null flag). Non-primitive fields write ref/null flags as needed and then the

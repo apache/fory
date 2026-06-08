@@ -1227,30 +1227,12 @@ ValueType read_configured_value(ReadContext &ctx, RefMode ref_mode,
   }
 }
 
-template <typename T, typename Func, size_t... Indices>
-void dispatch_field_index_impl(size_t target_index, Func &&func,
-                               std::index_sequence<Indices...>, bool &handled) {
-  handled = ((target_index == Indices
-                  ? (func(std::integral_constant<size_t, Indices>{}), true)
-                  : false) ||
-             ...);
-}
-
-template <typename T, typename Func>
-void dispatch_field_index(size_t target_index, Func &&func, bool &handled) {
-  constexpr size_t field_count =
-      decltype(fory_field_info(std::declval<const T &>()))::Size;
-  dispatch_field_index_impl<T>(target_index, std::forward<Func>(func),
-                               std::make_index_sequence<field_count>{},
-                               handled);
-}
-
 // ------------------------------------------------------------------
 // Compile-time helpers to compute sorted field indices / names and
-// create small jump-table wrappers to unroll read/write per-field calls.
+// create small switch-dispatch wrappers to unroll read/write per-field calls.
 // The goal is to mimic the Rust-derived serializer behaviour where the
 // sorted field order is known at compile-time and the read path for
-// compatible mode uses a fast switch/jump table.
+// compatible mode uses generated source-level switch cases.
 // ------------------------------------------------------------------
 
 template <typename T> struct CompileTimeFieldHelpers {
@@ -2886,6 +2868,9 @@ FORY_ALWAYS_INLINE TargetType read_compatible_scalar_by_type_id(
         read_compatible_uint32(ctx, remote_type_id, field));
   } else if constexpr (std::is_same_v<Decayed, int64_t> ||
                        std::is_same_v<Decayed, long long>) {
+    if (remote_type_id == static_cast<uint32_t>(TypeId::VARINT32)) {
+      return static_cast<Decayed>(ctx.read_var_int32(ctx.error()));
+    }
     return static_cast<Decayed>(
         read_compatible_int64(ctx, remote_type_id, field));
   } else if constexpr (std::is_same_v<Decayed, uint64_t> ||
@@ -3033,17 +3018,17 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   constexpr bool is_raw_prim = is_raw_primitive_v<FieldType>;
   if constexpr (is_raw_prim && is_primitive_field && !field_type_is_nullable &&
                 !is_nullable) {
-    auto read_value = [&ctx]() -> FieldType {
-      if constexpr (is_configurable_int_v<FieldType>) {
-        return read_configurable_int<FieldType, T, Index>(ctx);
-      }
-      return read_primitive_field_direct<FieldType>(ctx, ctx.error());
-    };
+    FieldType value;
+    if constexpr (is_configurable_int_v<FieldType>) {
+      value = read_configurable_int<FieldType, T, Index>(ctx);
+    } else {
+      value = read_primitive_field_direct<FieldType>(ctx, ctx.error());
+    }
     // Assign to field.
     if constexpr (is_fory_field_v<RawFieldType>) {
-      (obj.*field_ptr).value = read_value();
+      (obj.*field_ptr).value = value;
     } else {
-      obj.*field_ptr = read_value();
+      obj.*field_ptr = value;
     }
   } else {
     // Special handling for std::optional<uint32_t/uint64_t> with encoding
@@ -3416,29 +3401,349 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   }
 }
 
-/// Helper to dispatch field reading by field_id in compatible mode.
-/// Uses fold expression with short-circuit to avoid lambda overhead.
-/// Sets handled=true if field was matched.
-/// @param remote_field_type The field type tree from the remote schema.
-template <typename T, size_t... Indices>
-FORY_ALWAYS_INLINE void
-dispatch_compatible_field_read_impl(T &obj, ReadContext &ctx, int16_t field_id,
-                                    const FieldType &remote_field_type,
-                                    bool &handled,
-                                    std::index_sequence<Indices...>) {
+template <typename T, size_t MatchedId>
+FORY_ALWAYS_INLINE void read_compatible_exact_case(T &obj, ReadContext &ctx) {
   using Helpers = CompileTimeFieldHelpers<T>;
-
-  // Short-circuit fold: stops at first match
-  // Each element evaluates to bool; || short-circuits on first true
-  (void)((static_cast<int16_t>(Indices) == field_id
-              ? (handled = true,
-                 read_single_field_by_index_compatible<
-                     Helpers::sorted_indices[Indices]>(obj, ctx,
-                                                       remote_field_type),
-                 true)
-              : false) ||
-         ...);
+  constexpr size_t local_sorted_id = MatchedId / 2;
+  constexpr size_t original_index = Helpers::sorted_indices[local_sorted_id];
+  read_single_field_by_index<original_index>(obj, ctx);
 }
+
+template <typename T>
+FORY_ALWAYS_INLINE T read_primitive_at_checked(Buffer &buffer, uint32_t &offset,
+                                               Error &error);
+
+template <typename T, size_t Index>
+constexpr bool can_read_exact_primitive_with_offset() {
+  using Helpers = CompileTimeFieldHelpers<T>;
+  constexpr size_t original_index = Helpers::sorted_indices[Index];
+  using FieldPtr =
+      typename std::tuple_element<original_index,
+                                  typename Helpers::FieldPtrs>::type;
+  using RawFieldType = typename meta::RemoveMemberPointerCVRefT<FieldPtr>;
+  using FieldType = unwrap_field_t<RawFieldType>;
+  constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
+  return is_raw_primitive_v<FieldType> && is_primitive_type_id(field_type_id) &&
+         !is_nullable_v<FieldType> &&
+         !Helpers::template field_nullable<original_index>() &&
+         !configured_node_has_override<T, original_index>();
+}
+
+template <size_t Index, typename T>
+FORY_ALWAYS_INLINE void read_single_exact_primitive_at(T &obj, ReadContext &ctx,
+                                                       uint32_t &offset) {
+  using Helpers = CompileTimeFieldHelpers<T>;
+  constexpr size_t original_index = Helpers::sorted_indices[Index];
+  const auto field_info = fory_field_info(obj);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::ptrs_ref());
+  using RawFieldType =
+      typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+  using FieldType = unwrap_field_t<RawFieldType>;
+  FieldType value =
+      read_primitive_at_checked<FieldType>(ctx.buffer(), offset, ctx.error());
+  if constexpr (is_fory_field_v<RawFieldType>) {
+    (obj.*field_ptr).value = value;
+  } else {
+    obj.*field_ptr = value;
+  }
+}
+
+template <typename T, size_t MatchedId>
+FORY_ALWAYS_INLINE void read_compatible_exact_case_at(T &obj, ReadContext &ctx,
+                                                      uint32_t &offset) {
+  constexpr size_t local_sorted_id = MatchedId / 2;
+  if constexpr (can_read_exact_primitive_with_offset<T, local_sorted_id>()) {
+    read_single_exact_primitive_at<local_sorted_id>(obj, ctx, offset);
+  } else {
+    ctx.buffer().reader_index(offset);
+    read_compatible_exact_case<T, MatchedId>(obj, ctx);
+    offset = ctx.buffer().reader_index();
+  }
+}
+
+template <typename T, size_t SortedIdx>
+FORY_ALWAYS_INLINE void
+read_exact_primitive_run(T &obj, ReadContext &ctx,
+                         const std::vector<FieldInfo> &remote_fields,
+                         size_t &remote_idx, uint32_t &offset) {
+  read_single_exact_primitive_at<SortedIdx>(obj, ctx, offset);
+  constexpr size_t next_sorted_idx = SortedIdx + 1;
+  if constexpr (next_sorted_idx < CompileTimeFieldHelpers<T>::FieldCount) {
+    if constexpr (can_read_exact_primitive_with_offset<T, next_sorted_idx>()) {
+      constexpr int16_t next_matched_id =
+          static_cast<int16_t>(next_sorted_idx * 2);
+      if (remote_idx + 1 < remote_fields.size() &&
+          remote_fields[remote_idx + 1].field_id == next_matched_id) {
+        ++remote_idx;
+        read_exact_primitive_run<T, next_sorted_idx>(obj, ctx, remote_fields,
+                                                     remote_idx, offset);
+      }
+    }
+  }
+}
+
+template <typename T, size_t MatchedId>
+FORY_NOINLINE void
+read_compatible_conversion_case(T &obj, ReadContext &ctx,
+                                const FieldType &remote_field_type) {
+  using Helpers = CompileTimeFieldHelpers<T>;
+  constexpr size_t local_sorted_id = MatchedId / 2;
+  constexpr size_t original_index = Helpers::sorted_indices[local_sorted_id];
+  read_single_field_by_index_compatible<original_index>(obj, ctx,
+                                                        remote_field_type);
+}
+
+#define FORY_COMPAT_EXACT_READ_SWITCH_CASE(N)                                  \
+  case Base + (N): {                                                           \
+    constexpr size_t matched_case = static_cast<size_t>(Base + (N));           \
+    if constexpr (matched_case < total_cases && (matched_case & 1U) == 0) {    \
+      read_compatible_exact_case<T, matched_case>(obj, ctx);                   \
+    } else {                                                                   \
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));       \
+    }                                                                          \
+    return;                                                                    \
+  }
+
+#define FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(O)                              \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 0)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 1)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 2)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 3)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 4)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 5)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 6)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 7)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 8)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 9)                                  \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 10)                                 \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 11)                                 \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 12)                                 \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 13)                                 \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 14)                                 \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASE((O) + 15)
+
+#define FORY_COMPAT_EXACT_READ_SWITCH_CASES_128()                              \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(0)                                    \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(16)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(32)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(48)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(64)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(80)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(96)                                   \
+  FORY_COMPAT_EXACT_READ_SWITCH_CASES_16(112)
+
+template <typename T, int16_t Base>
+FORY_ALWAYS_INLINE void
+dispatch_compat_exact_read_impl(T &obj, ReadContext &ctx, int16_t matched_id) {
+  constexpr size_t total_cases =
+      CompileTimeFieldHelpers<T>::FieldCount * static_cast<size_t>(2);
+  switch (matched_id) {
+    FORY_COMPAT_EXACT_READ_SWITCH_CASES_128()
+  default:
+    if constexpr (static_cast<size_t>(Base) + 128U < total_cases) {
+      dispatch_compat_exact_read_impl<T, Base + 128>(obj, ctx, matched_id);
+    } else {
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));
+    }
+    return;
+  }
+}
+
+#undef FORY_COMPAT_EXACT_READ_SWITCH_CASES_128
+#undef FORY_COMPAT_EXACT_READ_SWITCH_CASES_16
+#undef FORY_COMPAT_EXACT_READ_SWITCH_CASE
+
+#define FORY_COMPAT_CONV_READ_SWITCH_CASE(N)                                   \
+  case Base + (N): {                                                           \
+    constexpr size_t matched_case = static_cast<size_t>(Base + (N));           \
+    if constexpr (matched_case < total_cases && (matched_case & 1U) != 0) {    \
+      read_compatible_conversion_case<T, matched_case>(obj, ctx,               \
+                                                       remote_field_type);     \
+    } else {                                                                   \
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));       \
+    }                                                                          \
+    return;                                                                    \
+  }
+
+#define FORY_COMPAT_CONV_READ_SWITCH_CASES_16(O)                               \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 0)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 1)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 2)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 3)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 4)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 5)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 6)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 7)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 8)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 9)                                   \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 10)                                  \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 11)                                  \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 12)                                  \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 13)                                  \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 14)                                  \
+  FORY_COMPAT_CONV_READ_SWITCH_CASE((O) + 15)
+
+#define FORY_COMPAT_CONV_READ_SWITCH_CASES_128()                               \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(0)                                     \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(16)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(32)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(48)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(64)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(80)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(96)                                    \
+  FORY_COMPAT_CONV_READ_SWITCH_CASES_16(112)
+
+template <typename T, int16_t Base>
+FORY_NOINLINE void
+dispatch_compat_conversion_read_impl(T &obj, ReadContext &ctx,
+                                     int16_t matched_id,
+                                     const FieldType &remote_field_type) {
+  constexpr size_t total_cases =
+      CompileTimeFieldHelpers<T>::FieldCount * static_cast<size_t>(2);
+  switch (matched_id) {
+    FORY_COMPAT_CONV_READ_SWITCH_CASES_128()
+  default:
+    if constexpr (static_cast<size_t>(Base) + 128U < total_cases) {
+      dispatch_compat_conversion_read_impl<T, Base + 128>(obj, ctx, matched_id,
+                                                          remote_field_type);
+    } else {
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));
+    }
+    return;
+  }
+}
+
+#undef FORY_COMPAT_CONV_READ_SWITCH_CASES_128
+#undef FORY_COMPAT_CONV_READ_SWITCH_CASES_16
+#undef FORY_COMPAT_CONV_READ_SWITCH_CASE
+
+#define FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE(N)                               \
+  case Base + (N): {                                                           \
+    constexpr size_t matched_case = static_cast<size_t>(Base + (N));           \
+    if constexpr (matched_case < total_cases && (matched_case & 1U) == 0) {    \
+      read_compatible_exact_case_at<T, matched_case>(obj, ctx, offset);        \
+    } else {                                                                   \
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));       \
+    }                                                                          \
+    return;                                                                    \
+  }
+
+#define FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(O)                           \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 0)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 1)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 2)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 3)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 4)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 5)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 6)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 7)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 8)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 9)                               \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 10)                              \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 11)                              \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 12)                              \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 13)                              \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 14)                              \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE((O) + 15)
+
+#define FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_128()                           \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(0)                                 \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(16)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(32)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(48)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(64)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(80)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(96)                                \
+  FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16(112)
+
+template <typename T, int16_t Base>
+FORY_ALWAYS_INLINE void
+dispatch_compat_exact_read_at_impl(T &obj, ReadContext &ctx, int16_t matched_id,
+                                   uint32_t &offset) {
+  constexpr size_t total_cases =
+      CompileTimeFieldHelpers<T>::FieldCount * static_cast<size_t>(2);
+  switch (matched_id) {
+    FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_128()
+  default:
+    if constexpr (static_cast<size_t>(Base) + 128U < total_cases) {
+      dispatch_compat_exact_read_at_impl<T, Base + 128>(obj, ctx, matched_id,
+                                                        offset);
+    } else {
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));
+    }
+    return;
+  }
+}
+
+#undef FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_128
+#undef FORY_COMPAT_EXACT_READ_AT_SWITCH_CASES_16
+#undef FORY_COMPAT_EXACT_READ_AT_SWITCH_CASE
+
+#define FORY_COMPAT_CONV_READ_AT_SWITCH_CASE(N)                                \
+  case Base + (N): {                                                           \
+    constexpr size_t matched_case = static_cast<size_t>(Base + (N));           \
+    if constexpr (matched_case < total_cases && (matched_case & 1U) != 0) {    \
+      ctx.buffer().reader_index(offset);                                       \
+      read_compatible_conversion_case<T, matched_case>(obj, ctx,               \
+                                                       remote_field_type);     \
+      offset = ctx.buffer().reader_index();                                    \
+    } else {                                                                   \
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));       \
+    }                                                                          \
+    return;                                                                    \
+  }
+
+#define FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(O)                            \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 0)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 1)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 2)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 3)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 4)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 5)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 6)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 7)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 8)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 9)                                \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 10)                               \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 11)                               \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 12)                               \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 13)                               \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 14)                               \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASE((O) + 15)
+
+#define FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_128()                            \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(0)                                  \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(16)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(32)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(48)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(64)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(80)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(96)                                 \
+  FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16(112)
+
+template <typename T, int16_t Base>
+FORY_NOINLINE void dispatch_compat_conversion_read_at_impl(
+    T &obj, ReadContext &ctx, int16_t matched_id,
+    const FieldType &remote_field_type, uint32_t &offset) {
+  constexpr size_t total_cases =
+      CompileTimeFieldHelpers<T>::FieldCount * static_cast<size_t>(2);
+  switch (matched_id) {
+    FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_128()
+  default:
+    if constexpr (static_cast<size_t>(Base) + 128U < total_cases) {
+      dispatch_compat_conversion_read_at_impl<T, Base + 128>(
+          obj, ctx, matched_id, remote_field_type, offset);
+    } else {
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));
+    }
+    return;
+  }
+}
+
+#undef FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_128
+#undef FORY_COMPAT_CONV_READ_AT_SWITCH_CASES_16
+#undef FORY_COMPAT_CONV_READ_AT_SWITCH_CASE
 
 /// Helper to read a single field at compile-time sorted position
 template <typename T, size_t SortedPosition>
@@ -3608,6 +3913,163 @@ FORY_ALWAYS_INLINE T read_varint_at(Buffer &buffer, uint32_t &offset) {
   } else {
     static_assert(sizeof(T) == 0, "Unsupported varint type");
     return T{};
+  }
+}
+
+template <typename T>
+FORY_ALWAYS_INLINE T read_varint_at_checked(Buffer &buffer, uint32_t &offset,
+                                            Error &error) {
+  uint32_t bytes_read = 0;
+  if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int>) {
+    uint32_t raw = buffer.get_var_uint32(offset, &bytes_read);
+    if (FORY_PREDICT_FALSE(bytes_read == 0)) {
+      error.set_buffer_out_of_bound(offset, 1, buffer.size());
+      return T{};
+    }
+    offset += bytes_read;
+    return static_cast<T>((raw >> 1) ^ (~(raw & 1) + 1));
+  } else if constexpr (std::is_same_v<T, int64_t> ||
+                       std::is_same_v<T, long long>) {
+    uint64_t raw = buffer.get_var_uint64(offset, &bytes_read);
+    if (FORY_PREDICT_FALSE(bytes_read == 0)) {
+      error.set_buffer_out_of_bound(offset, 1, buffer.size());
+      return T{};
+    }
+    offset += bytes_read;
+    return static_cast<T>((raw >> 1) ^ (~(raw & 1) + 1));
+  } else if constexpr (std::is_same_v<T, uint32_t> ||
+                       std::is_same_v<T, unsigned int>) {
+    uint32_t raw = buffer.get_var_uint32(offset, &bytes_read);
+    if (FORY_PREDICT_FALSE(bytes_read == 0)) {
+      error.set_buffer_out_of_bound(offset, 1, buffer.size());
+      return T{};
+    }
+    offset += bytes_read;
+    return static_cast<T>(raw);
+  } else if constexpr (std::is_same_v<T, uint64_t> ||
+                       std::is_same_v<T, unsigned long long>) {
+    uint64_t raw = buffer.get_var_uint64(offset, &bytes_read);
+    if (FORY_PREDICT_FALSE(bytes_read == 0)) {
+      error.set_buffer_out_of_bound(offset, 1, buffer.size());
+      return T{};
+    }
+    offset += bytes_read;
+    return static_cast<T>(raw);
+  } else {
+    static_assert(sizeof(T) == 0, "Unsupported checked varint type");
+    return T{};
+  }
+}
+
+template <size_t Bytes>
+FORY_ALWAYS_INLINE bool ensure_offset_readable(Buffer &buffer, uint32_t offset,
+                                               Error &error) {
+  static_assert(Bytes > 0, "Bytes must be positive");
+  if (FORY_PREDICT_FALSE(offset > buffer.size() ||
+                         buffer.size() - offset < Bytes)) {
+    error.set_buffer_out_of_bound(offset, Bytes, buffer.size());
+    return false;
+  }
+  return true;
+}
+
+template <typename T>
+FORY_ALWAYS_INLINE T read_fixed_primitive_at_checked(Buffer &buffer,
+                                                     uint32_t &offset,
+                                                     Error &error) {
+  if constexpr (std::is_same_v<T, bool>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<1>(buffer, offset, error))) {
+      return false;
+    }
+    bool value = buffer.unsafe_get<uint8_t>(offset) != 0;
+    offset += 1;
+    return value;
+  } else if constexpr (std::is_same_v<T, int8_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<1>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = static_cast<int8_t>(buffer.unsafe_get<uint8_t>(offset));
+    offset += 1;
+    return value;
+  } else if constexpr (std::is_same_v<T, uint8_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<1>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = buffer.unsafe_get<uint8_t>(offset);
+    offset += 1;
+    return value;
+  } else if constexpr (std::is_same_v<T, int16_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<2>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = buffer.unsafe_get<int16_t>(offset);
+    offset += 2;
+    return value;
+  } else if constexpr (std::is_same_v<T, uint16_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<2>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = buffer.unsafe_get<uint16_t>(offset);
+    offset += 2;
+    return value;
+  } else if constexpr (std::is_same_v<T, uint32_t> ||
+                       std::is_same_v<T, unsigned int>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<4>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = static_cast<T>(buffer.unsafe_get<uint32_t>(offset));
+    offset += 4;
+    return value;
+  } else if constexpr (std::is_same_v<T, float>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<4>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = buffer.unsafe_get<float>(offset);
+    offset += 4;
+    return value;
+  } else if constexpr (std::is_same_v<T, uint64_t> ||
+                       std::is_same_v<T, unsigned long long>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<8>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = static_cast<T>(buffer.unsafe_get<uint64_t>(offset));
+    offset += 8;
+    return value;
+  } else if constexpr (std::is_same_v<T, double>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<8>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = buffer.unsafe_get<double>(offset);
+    offset += 8;
+    return value;
+  } else if constexpr (std::is_same_v<T, float16_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<2>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = float16_t::from_bits(buffer.unsafe_get<uint16_t>(offset));
+    offset += 2;
+    return value;
+  } else if constexpr (std::is_same_v<T, bfloat16_t>) {
+    if (FORY_PREDICT_FALSE(!ensure_offset_readable<2>(buffer, offset, error))) {
+      return T{};
+    }
+    T value = bfloat16_t::from_bits(buffer.unsafe_get<uint16_t>(offset));
+    offset += 2;
+    return value;
+  } else {
+    static_assert(sizeof(T) == 0, "Unsupported fixed primitive type");
+    return T{};
+  }
+}
+
+template <typename T>
+FORY_ALWAYS_INLINE T read_primitive_at_checked(Buffer &buffer, uint32_t &offset,
+                                               Error &error) {
+  if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int> ||
+                std::is_same_v<T, int64_t> || std::is_same_v<T, long long>) {
+    return read_varint_at_checked<T>(buffer, offset, error);
+  } else {
+    return read_fixed_primitive_at_checked<T>(buffer, offset, error);
   }
 }
 
@@ -3783,48 +4245,129 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
 /// Read struct fields with schema evolution (compatible mode)
 /// Reads fields in remote schema order, dispatching by field_id to local fields
 template <typename T, size_t... Indices>
-void read_struct_fields_compatible(T &obj, ReadContext &ctx,
-                                   const TypeMeta *remote_type_meta,
-                                   std::index_sequence<Indices...>) {
+FORY_NOINLINE void
+read_struct_fields_compatible(T &obj, ReadContext &ctx,
+                              const TypeMeta *remote_type_meta,
+                              std::index_sequence<Indices...>) {
   const auto &remote_fields = remote_type_meta->get_field_infos();
+  Buffer &buffer = ctx.buffer();
+  const bool use_exact_offset_reads = !buffer.has_input_stream();
+  uint32_t offset = buffer.reader_index();
+  constexpr size_t total_cases =
+      CompileTimeFieldHelpers<T>::FieldCount * static_cast<size_t>(2);
+#define FORY_COMPAT_LOOP_SWITCH_CASE(N)                                        \
+  case (N): {                                                                  \
+    constexpr size_t matched_case = static_cast<size_t>(N);                    \
+    if constexpr (matched_case < total_cases) {                                \
+      if constexpr ((matched_case & 1U) == 0) {                                \
+        if (use_exact_offset_reads) {                                          \
+          constexpr size_t local_sorted_id = matched_case / 2;                 \
+          if constexpr (can_read_exact_primitive_with_offset<                  \
+                            T, local_sorted_id>()) {                           \
+            read_exact_primitive_run<T, local_sorted_id>(                      \
+                obj, ctx, remote_fields, remote_idx, offset);                  \
+          } else {                                                             \
+            read_compatible_exact_case_at<T, matched_case>(obj, ctx, offset);  \
+          }                                                                    \
+        } else {                                                               \
+          read_compatible_exact_case<T, matched_case>(obj, ctx);               \
+        }                                                                      \
+      } else {                                                                 \
+        if (use_exact_offset_reads) {                                          \
+          buffer.reader_index(offset);                                         \
+        }                                                                      \
+        read_compatible_conversion_case<T, matched_case>(                      \
+            obj, ctx, remote_field.field_type);                                \
+        if (use_exact_offset_reads) {                                          \
+          offset = buffer.reader_index();                                      \
+        }                                                                      \
+      }                                                                        \
+    } else {                                                                   \
+      ctx.set_error(Error::type_error("Invalid compatible matched id"));       \
+    }                                                                          \
+    break;                                                                     \
+  }
+#define FORY_COMPAT_LOOP_SWITCH_CASES_16(O)                                    \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 0)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 1)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 2)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 3)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 4)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 5)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 6)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 7)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 8)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 9)                                        \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 10)                                       \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 11)                                       \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 12)                                       \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 13)                                       \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 14)                                       \
+  FORY_COMPAT_LOOP_SWITCH_CASE((O) + 15)
+#define FORY_COMPAT_LOOP_SWITCH_CASES_128()                                    \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(0)                                          \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(16)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(32)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(48)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(64)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(80)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(96)                                         \
+  FORY_COMPAT_LOOP_SWITCH_CASES_16(112)
   // Iterate through remote fields in their serialization order
   for (size_t remote_idx = 0; remote_idx < remote_fields.size(); ++remote_idx) {
     const auto &remote_field = remote_fields[remote_idx];
     int16_t field_id = remote_field.field_id;
 
-    // Use the precomputed ref_mode from remote field metadata.
-    // This is computed from nullable and track_ref flags in the remote
-    // field's header during FieldInfo::from_bytes.
-    RefMode remote_ref_mode = remote_field.field_type.ref_mode;
     if (field_id == -1) {
+      if (use_exact_offset_reads) {
+        buffer.reader_index(offset);
+      }
       // Field unknown locally — skip its value
+      RefMode remote_ref_mode = remote_field.field_type.ref_mode;
       skip_field_value(ctx, remote_field.field_type, remote_ref_mode);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
-      continue;
-    }
-
-    // Dispatch to the correct local field by field_id
-    // Uses fold expression with short-circuit - no lambda overhead
-    // Pass remote field type for correct encoding and ref metadata.
-    bool handled = false;
-    dispatch_compatible_field_read_impl<T>(obj, ctx, field_id,
-                                           remote_field.field_type, handled,
-                                           std::index_sequence<Indices...>{});
-
-    if (!handled) {
-      // Shouldn't happen if TypeMeta::assign_field_ids worked correctly
-      skip_field_value(ctx, remote_field.field_type, remote_ref_mode);
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return;
+      if (use_exact_offset_reads) {
+        offset = buffer.reader_index();
       }
       continue;
     }
 
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return;
+    switch (field_id) {
+      FORY_COMPAT_LOOP_SWITCH_CASES_128()
+    default:
+      if constexpr (128U < total_cases) {
+        if ((field_id & 1) == 0) {
+          if (use_exact_offset_reads) {
+            dispatch_compat_exact_read_at_impl<T, 128>(obj, ctx, field_id,
+                                                       offset);
+          } else {
+            dispatch_compat_exact_read_impl<T, 128>(obj, ctx, field_id);
+          }
+        } else {
+          if (use_exact_offset_reads) {
+            dispatch_compat_conversion_read_at_impl<T, 128>(
+                obj, ctx, field_id, remote_field.field_type, offset);
+          } else {
+            dispatch_compat_conversion_read_impl<T, 128>(
+                obj, ctx, field_id, remote_field.field_type);
+          }
+        }
+      } else {
+        ctx.set_error(Error::type_error("Invalid compatible matched id"));
+      }
+      break;
     }
+  }
+#undef FORY_COMPAT_LOOP_SWITCH_CASES_128
+#undef FORY_COMPAT_LOOP_SWITCH_CASES_16
+#undef FORY_COMPAT_LOOP_SWITCH_CASE
+  if (use_exact_offset_reads) {
+    buffer.reader_index(offset);
+  }
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return;
   }
 }
 

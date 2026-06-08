@@ -287,6 +287,7 @@ function nonStructTypeId(kindCode: number): number {
 export class TypeMeta {
   private headerHash: number | null;
   private readonly compressed: boolean;
+  private bytes: Uint8Array | null = null;
 
   private constructor(
     private fields: FieldInfo[],
@@ -774,6 +775,9 @@ export class TypeMeta {
     if (this.compressed) {
       throw new Error("compressed TypeMeta is not supported yet");
     }
+    if (this.bytes !== null) {
+      return this.bytes;
+    }
 
     const writer = new BinaryWriter({});
     writer.writeUint8(-1); // placeholder for header, update later
@@ -827,7 +831,8 @@ export class TypeMeta {
 
     const buffer = writer.dump();
 
-    return this.prependHeader(buffer, false);
+    this.bytes = this.prependHeader(buffer, false);
+    return this.bytes;
   }
 
   writePkgName(writer: BinaryWriter, pkg: string) {

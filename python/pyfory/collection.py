@@ -26,12 +26,24 @@ fallback only.
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory._serializer import Serializer, StringSerializer
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
+from pyfory.types import TypeId
 
 COLL_DEFAULT_FLAG = 0b0
 COLL_TRACKING_REF = 0b1
 COLL_HAS_NULL = 0b10
 COLL_IS_DECL_ELEMENT_TYPE = 0b100
 COLL_IS_SAME_TYPE = 0b1000
+
+
+def _needs_element_type_info(type_id):
+    return type_id in {
+        TypeId.STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.EXT,
+        TypeId.NAMED_EXT,
+    }
 
 
 class CollectionSerializer(Serializer):
@@ -78,7 +90,9 @@ class CollectionSerializer(Serializer):
                 if elem_type is not None:
                     elem_type_info = self.type_resolver.get_type_info(elem_type)
         else:
-            collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
+            collect_flag |= COLL_IS_SAME_TYPE
+            if not _needs_element_type_info(elem_type_info.type_id):
+                collect_flag |= COLL_IS_DECL_ELEMENT_TYPE
             for item in value:
                 if item is None:
                     has_null = True

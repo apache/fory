@@ -643,7 +643,11 @@ public enum ListFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
             typeID: TypeId.list.rawValue,
             nullable: nullable,
             trackRef: trackRef,
-            generics: [ElementCodec.fieldType(nullable: ElementCodec.isNullableType, trackRef: false)]
+            generics: [
+                ElementCodec.fieldType(
+                    nullable: ElementCodec.isNullableType,
+                    trackRef: trackRef && ElementCodec.isRefType)
+            ]
         )
     }
 
@@ -823,7 +827,11 @@ public enum SetFieldCodec<ElementCodec: FieldCodec>: FieldCodec where ElementCod
             typeID: TypeId.set.rawValue,
             nullable: nullable,
             trackRef: trackRef,
-            generics: [ElementCodec.fieldType(nullable: ElementCodec.isNullableType, trackRef: false)]
+            generics: [
+                ElementCodec.fieldType(
+                    nullable: ElementCodec.isNullableType,
+                    trackRef: trackRef && ElementCodec.isRefType)
+            ]
         )
     }
 
@@ -860,8 +868,12 @@ where KeyCodec.Value: Hashable {
             nullable: nullable,
             trackRef: trackRef,
             generics: [
-                KeyCodec.fieldType(nullable: KeyCodec.isNullableType, trackRef: false),
-                ValueCodec.fieldType(nullable: ValueCodec.isNullableType, trackRef: false)
+                KeyCodec.fieldType(
+                    nullable: KeyCodec.isNullableType,
+                    trackRef: trackRef && KeyCodec.isRefType),
+                ValueCodec.fieldType(
+                    nullable: ValueCodec.isNullableType,
+                    trackRef: trackRef && ValueCodec.isRefType)
             ]
         )
     }

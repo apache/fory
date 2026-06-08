@@ -274,8 +274,9 @@ public:
 
   /// Assign field IDs by comparing with local type
   /// This is the key function for schema evolution!
-  static void assign_field_ids(const TypeMeta *local_type,
-                               std::vector<FieldInfo> &remote_fields);
+  static Result<void, Error>
+  assign_field_ids(const TypeMeta *local_type,
+                   std::vector<FieldInfo> &remote_fields);
 
   const std::vector<FieldInfo> &get_field_infos() const { return field_infos; }
   int64_t get_hash() const { return hash; }

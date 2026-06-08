@@ -123,6 +123,23 @@ final class GeneratedEnumSchema {
 typedef GeneratedStructFieldInfo = SerializationFieldInfo;
 
 @internal
+final class GeneratedStructFieldDescriptor {
+  final GeneratedStructFieldInfo field;
+  final resolver.TypeInfo? declaredTypeInfo;
+  final bool usesDeclaredType;
+
+  const GeneratedStructFieldDescriptor({
+    required this.field,
+    required this.declaredTypeInfo,
+    required this.usesDeclaredType,
+  });
+
+  String get name => field.name;
+
+  meta_types.FieldType get fieldType => field.fieldType;
+}
+
+@internal
 final class GeneratedStructSchema<T> {
   final Type type;
   final Serializer<Object?> Function() serializerFactory;
@@ -222,7 +239,9 @@ int generatedCheckedUint16(int value) => checkedUint16(value);
 int generatedCheckedUint32(int value) => checkedUint32(value);
 
 const int _generatedJsSafeUint64IntMax = 9007199254740991;
-const bool _generatedIsWeb = bool.fromEnvironment('dart.library.js_interop');
+@internal
+const bool generatedIsWeb = bool.fromEnvironment('dart.library.js_interop');
+const bool _generatedIsWeb = generatedIsWeb;
 
 @internal
 @pragma('vm:prefer-inline')
@@ -367,6 +386,22 @@ List<GeneratedStructFieldInfo> buildGeneratedStructFieldInfos(
 }
 
 @internal
+List<GeneratedStructFieldDescriptor> buildGeneratedStructFieldDescriptors(
+  resolver.TypeResolver typeResolver,
+  GeneratedStructSchema schema,
+) {
+  final fields = buildGeneratedStructFieldInfos(typeResolver, schema);
+  return List<GeneratedStructFieldDescriptor>.generate(fields.length, (index) {
+    final field = fields[index];
+    return GeneratedStructFieldDescriptor(
+      field: field,
+      declaredTypeInfo: fieldDeclaredTypeInfo(typeResolver, field),
+      usesDeclaredType: fieldUsesDeclaredType(typeResolver, field),
+    );
+  }, growable: false);
+}
+
+@internal
 List<GeneratedStructFieldInfo> buildGeneratedUnionCaseFieldInfos(
   List<GeneratedFieldInfo> fields,
 ) {
@@ -442,35 +477,10 @@ Object? readGeneratedUnionCaseValue(
 }
 
 @internal
-void writeGeneratedStructFieldInfoValue(
-  WriteContext context,
-  GeneratedStructFieldInfo field,
-  Object? value,
-) {
-  final fieldType = field.fieldType;
-  if (!fieldType.isDynamic && !fieldType.ref && !fieldType.nullable) {
-    if (fieldType.isPrimitive) {
-      context.writePrimitiveValue(fieldType.typeId, value as Object);
-      return;
-    }
-    final resolved = fieldDeclaredTypeInfo(context.typeResolver, field)!;
-    if (fieldUsesDeclaredType(context.typeResolver, field)) {
-      context.writeResolvedValue(resolved, value as Object, fieldType);
-      return;
-    }
-    final actualResolved = context.typeResolver.resolveValue(value as Object);
-    context.writeTypeMetaValue(actualResolved, value);
-    context.writeResolvedValue(actualResolved, value, fieldType);
-    return;
-  }
-  writeFieldValue(context, field, value);
-}
-
-@internal
 @pragma('vm:prefer-inline')
-Object? readGeneratedStructFieldInfoValue(
+Object? readGeneratedStructDescriptorValue(
   ReadContext context,
-  GeneratedStructFieldInfo field, [
+  GeneratedStructFieldDescriptor field, [
   Object? fallback,
 ]) {
   final fieldType = field.fieldType;
@@ -484,24 +494,24 @@ Object? readGeneratedStructFieldInfoValue(
         fieldType,
       );
     }
-    final resolved = fieldDeclaredTypeInfo(context.typeResolver, field)!;
-    if (fieldUsesDeclaredType(context.typeResolver, field)) {
+    final resolved = field.declaredTypeInfo!;
+    if (field.usesDeclaredType) {
       return context.readResolvedValue(resolved, fieldType);
     }
     final actualResolved = context.readTypeMetaValue(resolved);
     return context.readResolvedValue(actualResolved, fieldType);
   }
-  return readFieldValue(context, field, fallback);
+  return readFieldValue(context, field.field, fallback);
 }
 
 @internal
 @pragma('vm:prefer-inline')
 Object? readGeneratedStructDeclaredValue(
   ReadContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
 ) {
-  final resolved = fieldDeclaredTypeInfo(context.typeResolver, field)!;
-  if (fieldUsesDeclaredType(context.typeResolver, field)) {
+  final resolved = field.declaredTypeInfo!;
+  if (field.usesDeclaredType) {
     return context.readResolvedValue(resolved, field.fieldType);
   }
   final actualResolved = context.readTypeMetaValue(resolved);
@@ -512,17 +522,21 @@ Object? readGeneratedStructDeclaredValue(
 @pragma('vm:prefer-inline')
 Object readGeneratedStructDirectValue(
   ReadContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
 ) {
-  final declared = fieldDeclaredTypeInfo(context.typeResolver, field)!;
+  final declared = field.declaredTypeInfo!;
   final resolver.TypeInfo resolved;
-  if (fieldUsesDeclaredType(context.typeResolver, field)) {
+  if (field.usesDeclaredType) {
     resolved = declared;
   } else {
     resolved = context.readTypeMetaValue(declared);
   }
   context.increaseDepth();
-  final value = resolved.structSerializer!.readValue(context, resolved);
+  final structSerializer = resolved.structSerializer!;
+  final value =
+      resolved.remoteTypeDef == null
+          ? structSerializer.readValue(context, resolved)
+          : structSerializer.readGeneratedCompatibleValue(context, resolved);
   context.decreaseDepth();
   return value;
 }
@@ -530,100 +544,61 @@ Object readGeneratedStructDirectValue(
 @internal
 void writeGeneratedDirectListValue<T>(
   WriteContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
   List<T> value,
 ) {
-  final fieldType = field.fieldType;
-  if (fieldType.typeId != TypeIds.list ||
-      fieldType.nullable ||
-      fieldType.ref ||
-      fieldType.isDynamic) {
-    throw StateError('Field ${field.name} is not a direct list path.');
-  }
-  final elementFieldType = fieldType.arguments.single;
-  if (elementFieldType.ref || elementFieldType.isDynamic) {
-    throw StateError(
-      'Field ${field.name} element type is not a direct list path.',
-    );
-  }
-  writeTypedListPayload<T>(context, value, elementFieldType);
+  writeTypedListPayload<T>(context, value, field.fieldType.arguments.single);
 }
 
 @internal
 void writeGeneratedDirectSetValue<T>(
   WriteContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
   Set<T> value,
 ) {
-  final fieldType = field.fieldType;
-  if (fieldType.typeId != TypeIds.set ||
-      fieldType.nullable ||
-      fieldType.ref ||
-      fieldType.isDynamic) {
-    throw StateError('Field ${field.name} is not a direct set path.');
-  }
-  final elementFieldType = fieldType.arguments.single;
-  if (elementFieldType.ref || elementFieldType.isDynamic) {
-    throw StateError(
-      'Field ${field.name} element type is not a direct set path.',
-    );
-  }
-  writeTypedSetPayload<T>(context, value, elementFieldType);
+  writeTypedSetPayload<T>(context, value, field.fieldType.arguments.single);
 }
 
 @internal
 @pragma('vm:prefer-inline')
 List<T> readGeneratedDirectListValue<T>(
   ReadContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
   T Function(Object? value) convert,
 ) {
-  final fieldType = field.fieldType;
-  if (fieldType.typeId != TypeIds.list ||
-      fieldType.nullable ||
-      fieldType.ref ||
-      fieldType.isDynamic) {
-    throw StateError('Field ${field.name} is not a direct list path.');
-  }
-  return readTypedListPayload(context, fieldType.arguments.single, convert);
+  return readTypedListPayload(
+    context,
+    field.fieldType.arguments.single,
+    convert,
+  );
 }
 
 @internal
 @pragma('vm:prefer-inline')
 Set<T> readGeneratedDirectSetValue<T>(
   ReadContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
   T Function(Object? value) convert,
 ) {
-  final fieldType = field.fieldType;
-  if (fieldType.typeId != TypeIds.set ||
-      fieldType.nullable ||
-      fieldType.ref ||
-      fieldType.isDynamic) {
-    throw StateError('Field ${field.name} is not a direct set path.');
-  }
-  return readTypedSetPayload(context, fieldType.arguments.single, convert);
+  return readTypedSetPayload(
+    context,
+    field.fieldType.arguments.single,
+    convert,
+  );
 }
 
 @internal
 @pragma('vm:prefer-inline')
 Map<K, V> readGeneratedDirectMapValue<K, V>(
   ReadContext context,
-  GeneratedStructFieldInfo field,
+  GeneratedStructFieldDescriptor field,
   K Function(Object? value) convertKey,
   V Function(Object? value) convertValue,
 ) {
-  final fieldType = field.fieldType;
-  if (fieldType.typeId != TypeIds.map ||
-      fieldType.nullable ||
-      fieldType.ref ||
-      fieldType.isDynamic) {
-    throw StateError('Field ${field.name} is not a direct map path.');
-  }
   return readTypedMapPayload(
     context,
-    fieldType.arguments[0],
-    fieldType.arguments[1],
+    field.fieldType.arguments[0],
+    field.fieldType.arguments[1],
     convertKey,
     convertValue,
   );

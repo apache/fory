@@ -335,7 +335,7 @@ FieldInfo mergeCompatibleReadField(
       typeId: remote.typeId,
       nullable: remote.nullable,
       ref: remote.ref,
-      dynamic: local.dynamic ?? remote.dynamic,
+      dynamic: remote.dynamic ?? local.dynamic,
       arguments: mergedArguments,
     );
   }

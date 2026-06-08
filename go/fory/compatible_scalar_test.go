@@ -456,11 +456,9 @@ func TestCompatibleScalarTrackingRefMismatch(t *testing.T) {
 		tagID:    -1,
 	}
 	ser := newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefMismatch", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err := ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 
 	remoteDef.trackRef = false
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefMatch", []FieldDef{remoteDef})
@@ -473,19 +471,15 @@ func TestCompatibleScalarTrackingRefMismatch(t *testing.T) {
 	remoteDef.trackRef = true
 	remoteDef.nullable = true
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefNullableRemote", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err = ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 
 	remoteDef.trackRef = true
 	remoteDef.nullable = false
 	remoteDef.typeSpec = NewSimpleTypeSpec(INT32)
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarTrackingRefInt32{}), "ScalarTrackingRefTypeChange", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err = ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 }

@@ -268,6 +268,8 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 
     public int AssignedFieldId { get; internal set; }
 
+    internal CompatibleScalarRead? CompatibleScalarRead { get; set; }
+
     internal void Write(ByteWriter writer)
     {
         byte header = 0;
@@ -706,10 +708,11 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
     }
 
     /// <summary>
-    /// Assigns local sorted field indexes for a remote compatible type meta.
+    /// Assigns doubled compatible dispatch ids for a remote compatible type meta.
     /// The result is written to each remote field's <see cref="TypeMetaFieldInfo.AssignedFieldId"/>:
-    /// - local sorted field index when a compatible local field is found
-    /// - -1 when no compatible local field is found and the field should be skipped
+    /// - local sorted field index * 2 when the matched field schema is exact
+    /// - local sorted field index * 2 + 1 when the matched field schema needs compatible conversion
+    /// - -1 when no local field identity is found and the field should be skipped
     /// </summary>
     public static void AssignFieldIds(
         TypeMeta remoteTypeMeta,
@@ -723,11 +726,6 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         for (int i = 0; i < localFieldInfos.Count; i++)
         {
             TypeMetaFieldInfo localField = localFieldInfos[i];
-            if (!string.IsNullOrEmpty(localField.FieldName))
-            {
-                localByName.TryAdd(localField.FieldName, (i, localField));
-            }
-
             if (localField.FieldId.HasValue && localField.FieldId.Value >= 0)
             {
                 short fieldId = localField.FieldId.Value;
@@ -737,12 +735,18 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
                         $"duplicate local field id {fieldId} in compatible type metadata");
                 }
             }
+            else if (!string.IsNullOrEmpty(localField.FieldName))
+            {
+                localByName.TryAdd(localField.FieldName, (i, localField));
+            }
         }
 
         HashSet<short>? remoteFieldIds = null;
+        HashSet<int> usedLocalFields = [];
         for (int i = 0; i < remoteTypeMeta.Fields.Count; i++)
         {
             TypeMetaFieldInfo remoteField = remoteTypeMeta.Fields[i];
+            remoteField.CompatibleScalarRead = null;
             if (remoteField.FieldId.HasValue && remoteField.FieldId.Value >= 0)
             {
                 short fieldId = remoteField.FieldId.Value;
@@ -758,12 +762,13 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             TypeMetaFieldInfo? localMatch = null;
 
             if (remoteField.FieldId.HasValue &&
+                remoteField.FieldId.Value >= 0 &&
                 localById.TryGetValue(remoteField.FieldId.Value, out (int Index, TypeMetaFieldInfo Field) byId))
             {
                 localIndex = byId.Index;
                 localMatch = byId.Field;
             }
-            else
+            else if (!remoteField.FieldId.HasValue)
             {
                 if (localByName.TryGetValue(remoteField.FieldName, out (int Index, TypeMetaFieldInfo Field) byName))
                 {
@@ -782,11 +787,31 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
                 }
             }
 
-            if (localIndex >= 0 &&
-                localMatch is not null &&
-                IsCompatibleFieldType(remoteField.FieldType, localMatch.FieldType, topLevel: true))
+            if (localIndex >= 0 && localMatch is not null)
             {
-                remoteField.AssignedFieldId = localIndex;
+                if (!usedLocalFields.Add(localIndex))
+                {
+                    throw new InvalidDataException(
+                        $"compatible field {remoteField.FieldName} duplicates local field {localMatch.FieldName}");
+                }
+                if (IsDirectFieldType(remoteField.FieldType, localMatch.FieldType))
+                {
+                    remoteField.AssignedFieldId = localIndex * 2;
+                }
+                else if (CompatibleScalarConverter.TryBuildRead(remoteField, localMatch) is { } scalarRead)
+                {
+                    remoteField.AssignedFieldId = localIndex * 2 + 1;
+                    remoteField.CompatibleScalarRead = scalarRead;
+                }
+                else if (IsCompatibleFieldType(remoteField.FieldType, localMatch.FieldType, topLevel: true))
+                {
+                    remoteField.AssignedFieldId = localIndex * 2 + 1;
+                }
+                else
+                {
+                    throw new InvalidDataException(
+                        $"compatible field {remoteField.FieldName} cannot be read as local field {localMatch.FieldName}: remote and local field schemas are not compatible");
+                }
             }
             else
             {
@@ -797,27 +822,24 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
 
     private static bool IsCompatibleFieldType(TypeMetaFieldType remote, TypeMetaFieldType local, bool topLevel)
     {
+        if (topLevel && IsCompatibleByteSequenceFieldPair(remote, local))
+        {
+            return true;
+        }
+
         if (topLevel && IsCompatibleListArrayFieldPair(remote, local))
         {
             return true;
         }
 
-        if (topLevel &&
-            (remote.TrackRef || local.TrackRef) &&
-            CompatibleScalarConverter.IsScalarType(remote.TypeId) &&
-            CompatibleScalarConverter.IsScalarType(local.TypeId))
+        bool remoteScalar = CompatibleScalarConverter.IsScalarType(remote.TypeId);
+        bool localScalar = CompatibleScalarConverter.IsScalarType(local.TypeId);
+        if (remoteScalar || localScalar)
         {
-            return remote.TrackRef == local.TrackRef &&
+            return !remote.TrackRef &&
+                   !local.TrackRef &&
                    remote.TypeId == local.TypeId &&
-                   remote.Nullable == local.Nullable;
-        }
-
-        if (topLevel &&
-            !remote.TrackRef &&
-            !local.TrackRef &&
-            CompatibleScalarConverter.CanConvert(remote.TypeId, local.TypeId))
-        {
-            return true;
+                   remote.Generics.Count == local.Generics.Count;
         }
 
         if (NormalizeTypeIdForMatch(remote.TypeId) != NormalizeTypeIdForMatch(local.TypeId))
@@ -841,13 +863,68 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         return true;
     }
 
+    private static bool IsDirectFieldType(TypeMetaFieldType remote, TypeMetaFieldType local)
+    {
+        if (remote.Equals(local))
+        {
+            return true;
+        }
+
+        if (remote.Nullable != local.Nullable || remote.TrackRef != local.TrackRef)
+        {
+            return false;
+        }
+
+        if (NormalizeTypeIdForMatch(remote.TypeId) != NormalizeTypeIdForMatch(local.TypeId))
+        {
+            return false;
+        }
+
+        if (remote.Generics.Count != local.Generics.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < remote.Generics.Count; i++)
+        {
+            if (!IsDirectFieldType(remote.Generics[i], local.Generics[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsCompatibleByteSequenceFieldPair(TypeMetaFieldType remote, TypeMetaFieldType local)
+    {
+        if (remote.TrackRef || local.TrackRef || remote.Nullable != local.Nullable)
+        {
+            return false;
+        }
+
+        return (remote.TypeId == (uint)global::Apache.Fory.TypeId.Binary &&
+                local.TypeId == (uint)global::Apache.Fory.TypeId.UInt8Array) ||
+               (remote.TypeId == (uint)global::Apache.Fory.TypeId.UInt8Array &&
+                local.TypeId == (uint)global::Apache.Fory.TypeId.Binary);
+    }
+
     private static bool IsCompatibleListArrayFieldPair(TypeMetaFieldType remote, TypeMetaFieldType local)
     {
+        if (remote.Nullable || local.Nullable || remote.TrackRef || local.TrackRef)
+        {
+            return false;
+        }
+
         uint? localArrayElementTypeId = TryPackedArrayElementTypeId(local.TypeId);
         uint? remoteArrayElementTypeId = TryPackedArrayElementTypeId(remote.TypeId);
+        // Nullable element schema is allowed for list<T?> -> array<T>; actual null payload
+        // elements fail in the dense-array reader. Ref-tracked element framing is rejected here
+        // because this path stays primitive-only.
         bool remoteListLocalArray = remote.TypeId == (uint)global::Apache.Fory.TypeId.List &&
                                     localArrayElementTypeId.HasValue &&
                                     remote.Generics.Count == 1 &&
+                                    !remote.Generics[0].TrackRef &&
                                     NormalizeScalarTypeIdForMatch(localArrayElementTypeId.Value) ==
                                     NormalizeScalarTypeIdForMatch(remote.Generics[0].TypeId);
         if (remoteListLocalArray)
@@ -917,9 +994,6 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             (uint)global::Apache.Fory.TypeId.Union or
             (uint)global::Apache.Fory.TypeId.NamedUnion or
             (uint)global::Apache.Fory.TypeId.TypedUnion => (uint)global::Apache.Fory.TypeId.Union,
-            (uint)global::Apache.Fory.TypeId.Binary or
-            (uint)global::Apache.Fory.TypeId.Int8Array or
-            (uint)global::Apache.Fory.TypeId.UInt8Array => (uint)global::Apache.Fory.TypeId.Binary,
             _ => typeId,
         };
     }

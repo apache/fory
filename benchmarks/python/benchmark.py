@@ -46,6 +46,7 @@ import pyfory
 
 
 LIST_SIZE = 5
+SCHEMA_MISMATCH_ENV = "FORY_BENCH_SCHEMA_MISMATCH"
 DATA_TYPE_ORDER = [
     "struct",
     "sample",
@@ -119,8 +120,50 @@ class NumericStruct:
 
 
 @dataclass
+class NumericStructV2:
+    f1: pyfory.Int64 = pyfory.field(id=1)
+    f2: pyfory.Int32 = pyfory.field(id=2)
+    f3: pyfory.Int32 = pyfory.field(id=3)
+    f4: pyfory.Int32 = pyfory.field(id=4)
+    f5: pyfory.Int32 = pyfory.field(id=5)
+    f6: pyfory.Int32 = pyfory.field(id=6)
+    f7: pyfory.Int32 = pyfory.field(id=7)
+    f8: pyfory.Int32 = pyfory.field(id=8)
+    f9: pyfory.Int32 = pyfory.field(id=9)
+    f10: pyfory.Int32 = pyfory.field(id=10)
+    f11: pyfory.Int32 = pyfory.field(id=11)
+    f12: pyfory.Int32 = pyfory.field(id=12)
+
+
+@dataclass
 class Sample:
     int_value: pyfory.Int32 = pyfory.field(id=1)
+    long_value: pyfory.Int64 = pyfory.field(id=2)
+    float_value: pyfory.Float32 = pyfory.field(id=3)
+    double_value: pyfory.Float64 = pyfory.field(id=4)
+    short_value: pyfory.Int32 = pyfory.field(id=5)
+    char_value: pyfory.Int32 = pyfory.field(id=6)
+    boolean_value: bool = pyfory.field(id=7)
+    int_value_boxed: pyfory.Int32 = pyfory.field(id=8)
+    long_value_boxed: pyfory.Int64 = pyfory.field(id=9)
+    float_value_boxed: pyfory.Float32 = pyfory.field(id=10)
+    double_value_boxed: pyfory.Float64 = pyfory.field(id=11)
+    short_value_boxed: pyfory.Int32 = pyfory.field(id=12)
+    char_value_boxed: pyfory.Int32 = pyfory.field(id=13)
+    boolean_value_boxed: bool = pyfory.field(id=14)
+    int_array: pyfory.NDArray[pyfory.Int32] = pyfory.field(id=15)
+    long_array: pyfory.NDArray[pyfory.Int64] = pyfory.field(id=16)
+    float_array: pyfory.NDArray[pyfory.Float32] = pyfory.field(id=17)
+    double_array: pyfory.NDArray[pyfory.Float64] = pyfory.field(id=18)
+    short_array: pyfory.NDArray[pyfory.Int32] = pyfory.field(id=19)
+    char_array: pyfory.NDArray[pyfory.Int32] = pyfory.field(id=20)
+    boolean_array: pyfory.NDArray[bool] = pyfory.field(id=21)
+    string: str = pyfory.field(id=22)
+
+
+@dataclass
+class SampleV2:
+    int_value: pyfory.Int64 = pyfory.field(id=1)
     long_value: pyfory.Int64 = pyfory.field(id=2)
     float_value: pyfory.Float32 = pyfory.field(id=3)
     double_value: pyfory.Float64 = pyfory.field(id=4)
@@ -161,10 +204,35 @@ class Media:
 
 
 @dataclass
+class MediaV2:
+    uri: str = pyfory.field(id=1)
+    title: str = pyfory.field(id=2)
+    width: pyfory.Int64 = pyfory.field(id=3)
+    height: pyfory.Int32 = pyfory.field(id=4)
+    format: str = pyfory.field(id=5)
+    duration: pyfory.Int64 = pyfory.field(id=6)
+    size: pyfory.Int64 = pyfory.field(id=7)
+    bitrate: pyfory.Int32 = pyfory.field(id=8)
+    has_bitrate: bool = pyfory.field(id=9)
+    persons: List[str] = pyfory.field(id=10)
+    player: Player = pyfory.field(id=11)
+    copyright: str = pyfory.field(id=12)
+
+
+@dataclass
 class Image:
     uri: str = pyfory.field(id=1)
     title: str = pyfory.field(id=2)
     width: pyfory.Int32 = pyfory.field(id=3)
+    height: pyfory.Int32 = pyfory.field(id=4)
+    size: Size = pyfory.field(id=5)
+
+
+@dataclass
+class ImageV2:
+    uri: str = pyfory.field(id=1)
+    title: str = pyfory.field(id=2)
+    width: pyfory.Int64 = pyfory.field(id=3)
     height: pyfory.Int32 = pyfory.field(id=4)
     size: Size = pyfory.field(id=5)
 
@@ -176,8 +244,19 @@ class MediaContent:
 
 
 @dataclass
+class MediaContentV2:
+    media: MediaV2 = pyfory.field(id=1)
+    images: List[ImageV2] = pyfory.field(id=2)
+
+
+@dataclass
 class NumericStructList:
     struct_list: List[NumericStruct] = pyfory.field(id=1)
+
+
+@dataclass
+class NumericStructListV2:
+    struct_list: List[NumericStructV2] = pyfory.field(id=1)
 
 
 @dataclass
@@ -186,8 +265,18 @@ class SampleList:
 
 
 @dataclass
+class SampleListV2:
+    sample_list: List[SampleV2] = pyfory.field(id=1)
+
+
+@dataclass
 class MediaContentList:
     media_content_list: List[MediaContent] = pyfory.field(id=1)
+
+
+@dataclass
+class MediaContentListV2:
+    media_content_list: List[MediaContentV2] = pyfory.field(id=1)
 
 
 def create_numeric_struct() -> NumericStruct:
@@ -541,6 +630,10 @@ PROTO_CONVERTERS = {
 
 
 def build_fory() -> pyfory.Fory:
+    return build_fory_v1()
+
+
+def build_fory_v1() -> pyfory.Fory:
     fory = pyfory.Fory(xlang=True, compatible=True, ref=False)
     fory.register_type(Player, type_id=101)
     fory.register_type(Size, type_id=102)
@@ -553,6 +646,102 @@ def build_fory() -> pyfory.Fory:
     fory.register_type(SampleList, type_id=7)
     fory.register_type(MediaContentList, type_id=8)
     return fory
+
+
+def build_fory_v2() -> pyfory.Fory:
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=False)
+    fory.register_type(Player, type_id=101)
+    fory.register_type(Size, type_id=102)
+    fory.register_type(NumericStructV2, type_id=1)
+    fory.register_type(SampleV2, type_id=2)
+    fory.register_type(MediaV2, type_id=3)
+    fory.register_type(ImageV2, type_id=4)
+    fory.register_type(MediaContentV2, type_id=5)
+    fory.register_type(NumericStructListV2, type_id=6)
+    fory.register_type(SampleListV2, type_id=7)
+    fory.register_type(MediaContentListV2, type_id=8)
+    return fory
+
+
+def schema_mismatch_enabled() -> bool:
+    return os.getenv(SCHEMA_MISMATCH_ENV) == "1"
+
+
+def validate_schema_mismatch_selection(selected_serializers: List[str]) -> None:
+    if schema_mismatch_enabled() and selected_serializers != ["fory"]:
+        raise ValueError(
+            f"{SCHEMA_MISMATCH_ENV}=1 supports only Fory benchmarks; "
+            "rerun with --serializer fory"
+        )
+
+
+def verify_schema_mismatch(datatype: str, decoded: Any, expected: Any) -> None:
+    if datatype == "struct":
+        if not isinstance(decoded, NumericStructV2) or decoded.f1 != expected.f1:
+            raise AssertionError("NumericStructV2 schema mismatch read failed")
+        return
+    if datatype == "sample":
+        if not isinstance(decoded, SampleV2) or decoded.int_value != expected.int_value:
+            raise AssertionError("SampleV2 schema mismatch read failed")
+        return
+    if datatype == "mediacontent":
+        if (
+            not isinstance(decoded, MediaContentV2)
+            or not isinstance(decoded.media, MediaV2)
+            or decoded.media.width != expected.media.width
+            or not decoded.images
+            or not isinstance(decoded.images[0], ImageV2)
+            or decoded.images[0].width != expected.images[0].width
+        ):
+            raise AssertionError("MediaContentV2 schema mismatch read failed")
+        return
+    if datatype == "structlist":
+        if (
+            not isinstance(decoded, NumericStructListV2)
+            or not decoded.struct_list
+            or not isinstance(decoded.struct_list[0], NumericStructV2)
+            or decoded.struct_list[0].f1 != expected.struct_list[0].f1
+        ):
+            raise AssertionError("NumericStructListV2 schema mismatch read failed")
+        return
+    if datatype == "samplelist":
+        if (
+            not isinstance(decoded, SampleListV2)
+            or not decoded.sample_list
+            or not isinstance(decoded.sample_list[0], SampleV2)
+            or decoded.sample_list[0].int_value != expected.sample_list[0].int_value
+        ):
+            raise AssertionError("SampleListV2 schema mismatch read failed")
+        return
+    if datatype == "mediacontentlist":
+        if (
+            not isinstance(decoded, MediaContentListV2)
+            or not decoded.media_content_list
+            or not isinstance(decoded.media_content_list[0], MediaContentV2)
+            or not isinstance(decoded.media_content_list[0].media, MediaV2)
+            or decoded.media_content_list[0].media.width
+            != expected.media_content_list[0].media.width
+            or not decoded.media_content_list[0].images
+            or not isinstance(decoded.media_content_list[0].images[0], ImageV2)
+            or decoded.media_content_list[0].images[0].width
+            != expected.media_content_list[0].images[0].width
+        ):
+            raise AssertionError("MediaContentListV2 schema mismatch read failed")
+        return
+    raise AssertionError(f"Unknown datatype for schema mismatch: {datatype}")
+
+
+def verify_fory_schema_mismatch(
+    benchmark_data: Dict[str, Any],
+    selected_datatypes: Iterable[str],
+    *,
+    writer: pyfory.Fory,
+    reader: pyfory.Fory,
+) -> None:
+    for datatype in selected_datatypes:
+        value = benchmark_data[datatype]
+        decoded = reader.deserialize(writer.serialize(value))
+        verify_schema_mismatch(datatype, decoded, value)
 
 
 def run_benchmark(
@@ -629,13 +818,14 @@ def build_case(
     datatype: str,
     obj: Any,
     *,
-    fory: pyfory.Fory,
+    fory_writer: pyfory.Fory,
+    fory_reader: pyfory.Fory,
     bench_pb2,
 ) -> Tuple[Callable[..., Any], Tuple[Any, ...]]:
     if serializer == "fory":
         if operation == "serialize":
-            return fory_serialize, (fory, obj)
-        return fory_deserialize, (fory, fory.serialize(obj))
+            return fory_serialize, (fory_writer, obj)
+        return fory_deserialize, (fory_reader, fory_writer.serialize(obj))
 
     if serializer == "pickle":
         if operation == "serialize":
@@ -660,19 +850,27 @@ def calculate_serialized_sizes(
     *,
     fory: pyfory.Fory,
     bench_pb2,
+    selected_serializers: Iterable[str],
+    schema_mismatch: bool,
 ) -> Dict[str, Dict[str, int]]:
     sizes: Dict[str, Dict[str, int]] = {}
+    serializer_names = (
+        list(selected_serializers) if schema_mismatch else SERIALIZER_ORDER
+    )
     for datatype in selected_datatypes:
         obj = benchmark_data[datatype]
         datatype_sizes: Dict[str, int] = {}
 
-        datatype_sizes["fory"] = len(fory.serialize(obj))
-        datatype_sizes["pickle"] = len(
-            pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
-        )
+        if "fory" in serializer_names:
+            datatype_sizes["fory"] = len(fory.serialize(obj))
+        if "pickle" in serializer_names:
+            datatype_sizes["pickle"] = len(
+                pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+            )
 
-        to_pb, _, _ = PROTO_CONVERTERS[datatype]
-        datatype_sizes["protobuf"] = len(to_pb(bench_pb2, obj).SerializeToString())
+        if "protobuf" in serializer_names:
+            to_pb, _, _ = PROTO_CONVERTERS[datatype]
+            datatype_sizes["protobuf"] = len(to_pb(bench_pb2, obj).SerializeToString())
 
         sizes[datatype] = datatype_sizes
     return sizes
@@ -770,12 +968,22 @@ def main() -> int:
     selected_serializers = parse_csv_list(
         args.serializer, SERIALIZER_ORDER, SERIALIZER_ORDER
     )
+    validate_schema_mismatch_selection(selected_serializers)
     selected_operations = (
         OPERATION_ORDER if args.operation == "all" else [args.operation]
     )
 
     benchmark_data = create_benchmark_data()
-    fory = build_fory()
+    mismatch = schema_mismatch_enabled()
+    fory_writer = build_fory_v1()
+    fory_reader = build_fory_v2() if mismatch else build_fory_v1()
+    if mismatch:
+        verify_fory_schema_mismatch(
+            benchmark_data,
+            selected_datatypes,
+            writer=fory_writer,
+            reader=fory_reader,
+        )
 
     print(
         f"Benchmarking {len(selected_datatypes)} data type(s), {len(selected_serializers)} serializer(s), {len(selected_operations)} operation(s)"
@@ -800,7 +1008,8 @@ def main() -> int:
                     operation,
                     datatype,
                     obj,
-                    fory=fory,
+                    fory_writer=fory_writer,
+                    fory_reader=fory_reader,
                     bench_pb2=bench_pb2,
                 )
                 mean, stdev = run_benchmark(
@@ -830,8 +1039,10 @@ def main() -> int:
     sizes = calculate_serialized_sizes(
         benchmark_data,
         selected_datatypes,
-        fory=fory,
+        fory=fory_writer,
         bench_pb2=bench_pb2,
+        selected_serializers=selected_serializers,
+        schema_mismatch=mismatch,
     )
 
     output_path = Path(args.output_json)
@@ -853,6 +1064,7 @@ def main() -> int:
             "datatypes": selected_datatypes,
             "serializers": selected_serializers,
             "list_size": LIST_SIZE,
+            "schema_mismatch": mismatch,
         },
         "benchmarks": results,
         "sizes": sizes,

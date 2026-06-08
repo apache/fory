@@ -219,6 +219,29 @@ def test_javascript_collection_types():
     assert "config: Map<string, number>;" in output
 
 
+def test_javascript_collection_ref_registration():
+    source = dedent(
+        """
+        package example;
+
+        message Node [id=100] {
+            list<ref Node> children = 1;
+            map<string, ref Node> refs = 2;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert (
+        "children: Type.list(Type.struct(100).setNullable(true).setTrackingRef(true)).setId(1)"
+        in output
+    )
+    assert (
+        "refs: Type.map(Type.string(), Type.struct(100).setNullable(true).setTrackingRef(true)).setId(2)"
+        in output
+    )
+
+
 def test_javascript_decimal_generation_uses_runtime_decimal_type():
     source = dedent(
         """

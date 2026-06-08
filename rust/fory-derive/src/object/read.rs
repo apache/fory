@@ -258,6 +258,28 @@ pub(crate) fn gen_read_compatible_with_construction(
     };
     let declare_ts: Vec<TokenStream> = declare_var(source_fields);
     let assign_ts: Vec<TokenStream> = assign_value(source_fields);
+    let is_tuple = source_fields
+        .first()
+        .map(|sf| sf.is_tuple_struct)
+        .unwrap_or(false);
+
+    let construction = if let Some(variant) = variant_ident {
+        quote! {
+            Ok(Self::#variant {
+                #(#assign_ts),*
+            })
+        }
+    } else {
+        crate::util::ok_self_construction(is_tuple, &assign_ts)
+    };
+    let same_schema_construction = construction.clone();
+    let same_schema_read_ts: Vec<TokenStream> = bindings
+        .iter()
+        .map(|binding| match binding {
+            FieldBinding::Codec(binding) => binding.read_field(),
+            FieldBinding::Skipped(binding) => binding.read_default(),
+        })
+        .collect();
 
     let match_arms: Vec<TokenStream> = bindings
         .iter()
@@ -266,29 +288,52 @@ pub(crate) fn gen_read_compatible_with_construction(
             FieldBinding::Skipped(_) => None,
         })
         .enumerate()
-        .map(|(sorted_idx, binding)| {
-            // Use sorted index for matching. Field assignment only reaches this arm
-            // for exact reads or supported compatible read actions; unmatched and
-            // schema-incompatible fields keep field_id = -1 and are skipped.
-            let field_id = sorted_idx as i16;
+        .flat_map(|(sorted_idx, binding)| {
+            let direct_field_id = (sorted_idx * 2) as i16;
+            let compatible_field_id = (sorted_idx * 2 + 1) as i16;
             let field_index = sorted_idx;
-            let body = binding.read_compatible();
-            quote! {
-                #field_id => {
-                    let local_field_type = unsafe {
-                        &(*local_fields_ptr.add(#field_index)).field_type
-                    };
-                    #body
+            let direct_body = binding.read_compatible_direct();
+            let compatible_body = binding.read_compatible_conversion();
+            let direct_arm = if binding.direct_needs_local_field_type() {
+                quote! {
+                    #direct_field_id => {
+                        let local_field_type = unsafe {
+                            &(*local_fields_ptr.add(#field_index)).field_type
+                        };
+                        #direct_body
+                    }
                 }
-            }
+            } else {
+                quote! {
+                    #direct_field_id => {
+                        #direct_body
+                    }
+                }
+            };
+            let compatible_arm = if binding.compatible_needs_local_field_type() {
+                quote! {
+                    #compatible_field_id => {
+                        let local_field_type = unsafe {
+                            &(*local_fields_ptr.add(#field_index)).field_type
+                        };
+                        #compatible_body
+                    }
+                }
+            } else {
+                quote! {
+                    #compatible_field_id => {
+                        #compatible_body
+                    }
+                }
+            };
+            [direct_arm, compatible_arm]
         })
         .collect();
-
     let skip_arm = if is_debug_enabled() {
         let struct_name = get_struct_name().expect("struct context not set");
         let struct_name_lit = syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
         quote! {
-            _ => {
+            -1 => {
                 let field_type = &_field.field_type;
                 let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
                     field_type.type_id,
@@ -312,7 +357,7 @@ pub(crate) fn gen_read_compatible_with_construction(
         }
     } else {
         quote! {
-            _ => {
+            -1 => {
                 let field_type = &_field.field_type;
                 let read_ref_flag = ::fory_core::serializer::util::field_need_write_ref_into(
                     field_type.type_id,
@@ -323,21 +368,14 @@ pub(crate) fn gen_read_compatible_with_construction(
         }
     };
 
-    // Generate construction based on whether this is a struct or enum variant
-    let is_tuple = source_fields
-        .first()
-        .map(|sf| sf.is_tuple_struct)
-        .unwrap_or(false);
-
-    let construction = if let Some(variant) = variant_ident {
-        // Enum variants use named syntax (struct variants) or tuple syntax (tuple variants)
-        quote! {
-            Ok(Self::#variant {
-                #(#assign_ts),*
-            })
+    let invalid_arm = quote! {
+        field_id => {
+            return Err(::fory_core::Error::invalid_data(format!(
+                "invalid compatible matched id {} for field '{}'",
+                field_id,
+                _field.field_name.as_str(),
+            )));
         }
-    } else {
-        crate::util::ok_self_construction(is_tuple, &assign_ts)
     };
 
     let variant_field_remap = if let Some(variant) = variant_ident {
@@ -357,50 +395,6 @@ pub(crate) fn gen_read_compatible_with_construction(
                 ))?;
             let local_variant_type_meta = local_variant_type_info.get_type_meta();
             let local_fields = local_variant_type_meta.get_field_infos();
-
-            let field_index_by_name: ::std::collections::HashMap<_, _> = local_fields
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| !f.field_name.is_empty())
-                .map(|(i, f)| (f.field_name.clone(), (i, f)))
-                .collect();
-
-            let field_index_by_id: ::std::collections::HashMap<_, _> = local_fields
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| f.field_id >= 0)
-                .map(|(i, f)| (f.field_id, (i, f)))
-                .collect();
-
-            for field in fields.iter_mut() {
-                let local_match = if field.field_id >= 0 && field.field_name.is_empty() {
-                    field_index_by_id.get(&field.field_id).copied()
-                } else {
-                    let snake_case_name =
-                        ::fory_core::util::to_snake_case(&field.field_name);
-                    field_index_by_name.get(&snake_case_name).copied()
-                };
-
-                match local_match {
-                    Some((sorted_index, local_info))
-                        if ::fory_core::serializer::codec::compatible_field_pair(
-                            &local_info.field_type,
-                            &field.field_type,
-                        ) =>
-                    {
-                        if field.field_name.is_empty() {
-                            field.field_name = local_info.field_name.clone();
-                        }
-                        field.field_id = sorted_index as i16;
-                    }
-                    Some(_) => {
-                        field.field_id = -1;
-                    }
-                    None => {
-                        field.field_id = -1;
-                    }
-                }
-            }
         }
     } else {
         quote! {}
@@ -408,8 +402,26 @@ pub(crate) fn gen_read_compatible_with_construction(
 
     let fields_binding = if variant_ident.is_some() {
         quote! {
-            let mut fields = remote_meta.get_field_infos().clone();
             #variant_field_remap
+            let mut remapped_fields: ::std::vec::Vec<::fory_core::meta::FieldInfo>;
+            let fields = if remote_meta.get_namespace().original.as_str()
+                == local_variant_type_meta.get_namespace().original.as_str()
+                && remote_meta.get_type_name().original.as_str()
+                    == local_variant_type_meta.get_type_name().original.as_str()
+            {
+                // Same-name variant TypeMeta is resolved by the synthetic variant TypeInfo during
+                // parsing, so its field ids are already doubled matched dispatch ids. Running
+                // schema matching here again would treat those internal ids as explicit wire ids
+                // and skip every field.
+                remote_meta.get_field_infos()
+            } else {
+                // Compatible enums match variants by tag first. If that tag now names a different
+                // local variant, the remote synthetic variant TypeMeta could not be classified by
+                // name during parsing, so the selected local variant owns the field remap here.
+                remapped_fields = remote_meta.get_field_infos().clone();
+                ::fory_core::meta::assign_remote_field_ids(local_fields, &mut remapped_fields)?;
+                &remapped_fields
+            };
             let local_fields_ptr = local_fields.as_ptr();
         }
     } else {
@@ -418,24 +430,43 @@ pub(crate) fn gen_read_compatible_with_construction(
             let fields = remote_meta.get_field_infos();
         }
     };
+    let schema_setup = if variant_ident.is_some() {
+        quote! {
+            let remote_meta = type_info.get_type_meta_ref();
+            let remote_type_hash = remote_meta.get_hash();
+            #fields_binding
+            if remote_type_hash == local_variant_type_meta.get_hash() {
+                // The payload is still only the variant fields. Reading the whole enum data here
+                // would consume field bytes as a fresh enum tag, so exact variant schemas use the
+                // local sorted field reader directly.
+                #(#same_schema_read_ts)*
+                return #same_schema_construction;
+            }
+        }
+    } else {
+        quote! {
+            let meta = context.get_type_resolver().get_type_meta_by_index_ref(
+                &::std::any::TypeId::of::<Self>(),
+                <Self as ::fory_core::StructSerializer>::fory_type_index(),
+            )?;
+            let local_type_hash = meta.get_hash();
+            let remote_meta = type_info.get_type_meta_ref();
+            let remote_type_hash = remote_meta.get_hash();
+            if remote_type_hash == local_type_hash {
+                return <Self as ::fory_core::Serializer>::fory_read_data(context);
+            }
+            #fields_binding
+        }
+    };
 
     quote! {
-        let meta = context.get_type_resolver().get_type_meta_by_index_ref(
-            &::std::any::TypeId::of::<Self>(),
-            <Self as ::fory_core::StructSerializer>::fory_type_index(),
-        )?;
-        let local_type_hash = meta.get_hash();
-        let remote_meta = type_info.get_type_meta_ref();
-        let remote_type_hash = remote_meta.get_hash();
-        if remote_type_hash == local_type_hash {
-            return <Self as ::fory_core::Serializer>::fory_read_data(context);
-        }
-        #fields_binding
+        #schema_setup
         #(#declare_ts)*
         for _field in fields.iter() {
             match _field.field_id {
                 #(#match_arms)*
                 #skip_arm
+                #invalid_arm
             }
         }
         #construction

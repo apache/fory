@@ -2860,9 +2860,9 @@ TypeMeta.FieldType(
 private func compatibleFieldTypeIDExpression(_ typeText: String) -> String {
     let staticTypeIDExpr = "\(typeText).staticTypeId"
     // A typed union field already has schema from the owning struct field; only
-    // dynamic/top-level union values need TYPED_UNION metadata.
+    // dynamic/top-level union values need typed or named union metadata.
     return "UInt32((\(staticTypeIDExpr) == .structType ? TypeId.compatibleStruct : "
-        + "(\(staticTypeIDExpr) == .typedUnion ? TypeId.union : \(staticTypeIDExpr))).rawValue)"
+        + "(\(staticTypeIDExpr) == .typedUnion || \(staticTypeIDExpr) == .namedUnion ? TypeId.union : \(staticTypeIDExpr))).rawValue)"
 }
 
 private func compatibleGenericNullableExpression(_ typeText: String) -> String {

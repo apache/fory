@@ -180,7 +180,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
                 #variants_fields_info_ts
             }
 
-            #[inline]
+            #[inline(never)]
             fn fory_read_compatible(context: &mut ::fory_core::ReadContext, type_info: ::std::rc::Rc<::fory_core::TypeInfo>) -> ::std::result::Result<Self, ::fory_core::error::Error> {
                 #read_compatible_ts
             }

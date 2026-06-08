@@ -358,13 +358,7 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				Items: []string{"item1", "item2"},
 				Nums:  []int32{1, 2, 3},
 			},
-			assertFunc: func(t *testing.T, input any, output any) {
-				in := input.(SliceDataClass)
-				out := output.(InconsistentSliceDataClass)
-				assert.Equal(t, in.Name, out.Name)
-				assert.Nil(t, out.Items)
-				assert.Equal(t, in.Nums, out.Nums)
-			},
+			unmarshalErrContains: "cannot be read as local field",
 		},
 		{
 			name:      "MapFields",
@@ -460,13 +454,7 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 					"c2": 20,
 				},
 			},
-			assertFunc: func(t *testing.T, input any, output any) {
-				in := input.(MapDataClass)
-				out := output.(InconsistentMapDataClass)
-				assert.Equal(t, in.Name, out.Name)
-				assert.Nil(t, out.Metadata)
-				assert.Nil(t, out.Counters)
-			},
+			unmarshalErrContains: "cannot be read as local field",
 		},
 		{
 			name:      "NestedStruct",
@@ -541,10 +529,7 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 			input: ByteFamilyInt8ArrayDataClass{
 				Payload: []int8{-1, 0, 1},
 			},
-			assertFunc: func(t *testing.T, input any, output any) {
-				out := output.(ByteFamilyBinaryDataClass)
-				assert.Nil(t, out.Payload)
-			},
+			unmarshalErrContains: "cannot be read as local field",
 		},
 		{
 			name:      "Int32ListToArray",
@@ -614,7 +599,7 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 			input: NullableInt32ListPayloadDataClass{
 				Payload: []*int32{ptr(int32(1)), nil, ptr(int32(3))},
 			},
-			unmarshalErrContains: "compatible list to array field requires non-null elements",
+			unmarshalErrContains: "requires non-null elements",
 		},
 		{
 			name:      "NestedListArrayMismatch",
@@ -624,10 +609,7 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 			input: NestedInt32ListPayloadDataClass{
 				Payload: [][]int32{{1, 2}, {3, 4}},
 			},
-			assertFunc: func(t *testing.T, input any, output any) {
-				out := output.(NestedInt32ArrayPayloadDataClass)
-				assert.Nil(t, out.Payload)
-			},
+			unmarshalErrContains: "cannot be read as local field",
 		},
 	}
 

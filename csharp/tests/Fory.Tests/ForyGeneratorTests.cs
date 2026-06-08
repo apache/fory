@@ -128,6 +128,66 @@ public sealed class ForyGeneratorTests
         Assert.DoesNotContain(output.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error && diagnostic.Id != "FORY006");
     }
 
+    [Fact]
+    public void CompatibleReadSourceUsesTypedCases()
+    {
+        const string source = """
+            using System.Collections.Generic;
+            using Apache.Fory;
+            using S = Apache.Fory.Schema.Types;
+
+            namespace GeneratedDiagnostics;
+
+            [ForyStruct]
+            public sealed class Shape
+            {
+                [ForyField(1, Type = typeof(S.Bool))]
+                public bool Flag { get; set; }
+
+                [ForyField(2, Type = typeof(S.Int32))]
+                public int? Count { get; set; }
+
+                [ForyField(3, Type = typeof(S.String))]
+                public string? Name { get; set; }
+
+                [ForyField(4, Type = typeof(S.Array<S.Int32>))]
+                public int[] Values { get; set; } = [];
+            }
+            """;
+
+        string generated = GenerateSource(source);
+
+        Assert.Contains("case 0:", generated, StringComparison.Ordinal);
+        Assert.Contains("case 1:", generated, StringComparison.Ordinal);
+        Assert.Contains("case 2:", generated, StringComparison.Ordinal);
+        Assert.Contains("case 3:", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("__ForyLocalFields", generated, StringComparison.Ordinal);
+        Assert.Contains("ReadBoolField(context, remoteField)", generated, StringComparison.Ordinal);
+        Assert.Contains("ReadNullableStringField(context, remoteField)", generated, StringComparison.Ordinal);
+        Assert.Contains("ReadNullableInt32Field(context, remoteField)", generated, StringComparison.Ordinal);
+        Assert.Contains("ReadValuesFieldBridge(context, remoteField.FieldType", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("__ForyReadCompatibleField<", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("RequiresScalarRead", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("CompatibleScalarConverter.ReadBoolField(context, remoteField.FieldType", generated, StringComparison.Ordinal);
+        Assert.DoesNotContain("if (remoteField.FieldType.TypeId ==", generated, StringComparison.Ordinal);
+    }
+
+    private static string GenerateSource(string source)
+    {
+        CSharpCompilation compilation = CreateCompilation(source);
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ForyModelGenerator());
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> diagnostics);
+
+        Assert.DoesNotContain(
+            diagnostics.Concat(output.GetDiagnostics()),
+            diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        return string.Join(
+            "\n",
+            driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources)
+                .Select(sourceResult => sourceResult.SourceText.ToString()));
+    }
+
     private static CSharpCompilation CreateCompilation(string source)
     {
         IEnumerable<MetadataReference> platformReferences =

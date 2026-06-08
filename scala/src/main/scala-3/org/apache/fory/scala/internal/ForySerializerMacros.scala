@@ -29,6 +29,7 @@ import org.apache.fory.serializer.{
   StaticGeneratedStructSerializer,
   UnionSerializer
 }
+import org.apache.fory.serializer.converter.FieldConverters
 import org.apache.fory.`type`.{Descriptor, ScalaTypes, Types}
 
 import java.lang.reflect.Modifier
@@ -57,7 +58,13 @@ object ForySerializerMacros {
         nullable: Boolean,
         trackingRef: Boolean,
         hasTrackingRefMetadata: Boolean,
-        constructorOwned: Boolean)
+        constructorOwned: Boolean,
+        hasDefault: Boolean,
+        directReadable: Boolean,
+        directWritable: Boolean) {
+      def usesFieldAccessor: Boolean =
+        !constructorOwned && (!directReadable || !directWritable)
+    }
 
     if !hasAnnotation[ForyStruct](owner) then {
       report.errorAndAbort(
@@ -157,19 +164,13 @@ object ForySerializerMacros {
     val bodyFields = {
       val candidates = owner.fieldMembers.filter { field =>
         !constructorFieldSet.contains(field) &&
-        !field.flags.is(Flags.Private) &&
         !field.flags.is(Flags.Synthetic) &&
-        !field.name.contains("$")
+        !field.name.contains("$") &&
+        (!field.flags.is(Flags.Private) || annotationIntArg[ForyField](field, "id").nonEmpty)
       }
       val selected =
         if constructorFields.isEmpty then candidates
         else candidates.filter(field => annotationIntArg[ForyField](field, "id").nonEmpty)
-      selected.foreach { field =>
-        if !field.flags.is(Flags.Mutable) then {
-          report.errorAndAbort(
-            s"${owner.fullName}.${field.name} is a post-construction field and must be a mutable var")
-        }
-      }
       selected
     }
     val serializableFields = constructorFields ++ bodyFields
@@ -188,6 +189,8 @@ object ForySerializerMacros {
         case None => (sourceType, false, false)
       }
       val refTracking = refAnnotation(field).orElse(topLevelTypeRefTracking(sourceType))
+      val constructorOwned = constructorFieldSet.contains(field)
+      val privateField = field.flags.is(Flags.Private)
       FieldMeta(
         field,
         field.name,
@@ -199,7 +202,10 @@ object ForySerializerMacros {
         nullable,
         refTracking.getOrElse(false),
         refTracking.nonEmpty,
-        constructorFieldSet.contains(field))
+        constructorOwned,
+        field.flags.is(Flags.HasDefault),
+        !privateField,
+        constructorOwned || (field.flags.is(Flags.Mutable) && !privateField))
     }
     val hasNestedCompatibleStructFields =
       fields.exists(field => hasNestedCompatibleStruct(field.sourceType))
@@ -329,21 +335,28 @@ object ForySerializerMacros {
       }
     }
 
-    def selectValue(valueExpr: Expr[T], field: FieldMeta): Expr[Any] = {
-      Select.unique(valueExpr.asTerm, field.name).asExpr
-    }
+    def selectValue(
+        valueExpr: Expr[T],
+        field: FieldMeta,
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Any] =
+      if field.usesFieldAccessor then {
+        '{ $fieldAccessorsExpr(${ Expr(field.index) }).getObject($valueExpr) }
+      } else {
+        Select.unique(valueExpr.asTerm, field.name).asExpr
+      }
 
     def writeDispatch(
         valueExpr: Expr[T],
         fieldIdExpr: Expr[Int],
         fieldInfoExpr: Expr[FieldGroups.SerializationFieldInfo],
         writeContextExpr: Expr[org.apache.fory.context.WriteContext],
-        resolverExpr: Expr[TypeResolver]): Expr[Unit] = {
+        resolverExpr: Expr[TypeResolver],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Unit] = {
       fields.foldRight(
         '{
           throw new IllegalStateException("Unknown generated Scala field id " + $fieldIdExpr)
         }: Expr[Unit]) { (field, next) =>
-        val fieldValue = selectValue(valueExpr, field)
+        val fieldValue = selectValue(valueExpr, field, fieldAccessorsExpr)
         val wireValue =
           if field.option then '{ $fieldValue.asInstanceOf[Option[Any]].orNull }
           else fieldValue
@@ -376,35 +389,482 @@ object ForySerializerMacros {
     def valueArg(valuesExpr: Expr[Array[Any]], field: FieldMeta): Expr[Any] =
       decodeValue('{ $valuesExpr(${ Expr(field.index) }) }, field)
 
-    def assignRawValue(objExpr: Expr[T], field: FieldMeta, raw: Expr[Any]): Expr[Unit] =
-      Assign(Select.unique(objExpr.asTerm, field.name), decodeValue(raw, field).asTerm)
-        .asExprOf[Unit]
-
-    def assignValueById(objExpr: Expr[T], fieldIdExpr: Expr[Int], raw: Expr[Any]): Expr[Unit] = {
-      fields.foldRight(
-        '{
-          throw new IllegalStateException("Unknown generated Scala field id " + $fieldIdExpr)
-        }: Expr[Unit]) { (field, next) =>
-        '{
-          if $fieldIdExpr == ${ Expr(field.index) } then {
-            ${ assignRawValue(objExpr, field, raw) }
-          } else {
-            $next
+    def localDefault(field: FieldMeta): Term = {
+      if field.option then {
+        field.sourceType.asType match {
+          case '[a] => '{ None.asInstanceOf[a] }.asTerm
+        }
+      } else {
+        val normalized = peelAnnotations(field.sourceType.widen)._1.dealias
+        if normalized =:= TypeRepr.of[Boolean] then '{ false }.asTerm
+        else if normalized =:= TypeRepr.of[Byte] then '{ 0.toByte }.asTerm
+        else if normalized =:= TypeRepr.of[Short] then '{ 0.toShort }.asTerm
+        else if normalized =:= TypeRepr.of[Int] then '{ 0 }.asTerm
+        else if normalized =:= TypeRepr.of[Long] then '{ 0L }.asTerm
+        else if normalized =:= TypeRepr.of[Float] then '{ 0.0f }.asTerm
+        else if normalized =:= TypeRepr.of[Double] then '{ 0.0d }.asTerm
+        else if normalized =:= TypeRepr.of[Char] then '{ 0.toChar }.asTerm
+        else {
+          field.sourceType.asType match {
+            case '[a] => '{ null.asInstanceOf[a] }.asTerm
           }
         }
       }
     }
+
+    def assignRawValue(
+        objExpr: Expr[T],
+        field: FieldMeta,
+        raw: Expr[Any],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Unit] =
+      if field.usesFieldAccessor then {
+        val decoded = decodeValue(raw, field)
+        '{
+          $fieldAccessorsExpr(${ Expr(field.index) })
+            .putObject($objExpr, $decoded.asInstanceOf[AnyRef])
+        }
+      } else {
+        Assign(Select.unique(objExpr.asTerm, field.name), decodeValue(raw, field).asTerm)
+          .asExprOf[Unit]
+      }
+
+    def assignLocalValue(local: Symbol, field: FieldMeta, raw: Expr[Any]): Term =
+      Assign(Ref(local), decodeValue(raw, field).asTerm)
+
+    def assignLocalSource(local: Symbol, field: FieldMeta, raw: Expr[Any]): Expr[Unit] =
+      field.sourceType.asType match {
+        case '[a] => Assign(Ref(local), '{ $raw.asInstanceOf[a] }.asTerm).asExprOf[Unit]
+      }
+
+    def assignValueById(
+        objExpr: Expr[T],
+        fieldIdExpr: Expr[Int],
+        raw: Expr[Any],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Unit] = {
+      val cases = fields.map { field =>
+        CaseDef(
+          Literal(IntConstant(field.index)),
+          None,
+          assignRawValue(objExpr, field, raw, fieldAccessorsExpr).asTerm)
+      } :+ CaseDef(
+        Wildcard(),
+        None,
+        '{
+          throw new IllegalStateException("Unknown generated Scala field id " + $fieldIdExpr)
+        }.asTerm)
+      Match(fieldIdExpr.asTerm, cases).asExprOf[Unit]
+    }
+
+    def compatibleScalarValue(
+        field: FieldMeta,
+        fieldInfoExpr: Expr[FieldGroups.SerializationFieldInfo],
+        remoteFieldExpr: Expr[StaticGeneratedStructSerializer.RemoteFieldInfo],
+        readContextExpr: Expr[org.apache.fory.context.ReadContext]): Option[Expr[Any]] = {
+      val targetType = optionElement(field.sourceType).getOrElse(field.sourceType)
+      val normalized = peelAnnotations(targetType.widen)._1.dealias
+      val boxed = field.option
+      normalized.asType match {
+        case '[Boolean] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedBooleanTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readBooleanTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Boolean] =>
+          Some(
+            '{
+              FieldConverters.readBoxedBooleanTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Byte] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedByteTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readByteTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Byte] =>
+          Some(
+            '{
+              FieldConverters.readBoxedByteTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Short] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedShortTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readShortTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Short] =>
+          Some(
+            '{
+              FieldConverters.readBoxedShortTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Int] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedIntTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readIntTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Integer] =>
+          Some(
+            '{
+              FieldConverters.readBoxedIntTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Long] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedLongTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readLongTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Long] =>
+          Some(
+            '{
+              FieldConverters.readBoxedLongTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Float] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedFloatTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readFloatTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Float] =>
+          Some(
+            '{
+              FieldConverters.readBoxedFloatTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[Double] =>
+          Some(
+            if boxed then
+              '{
+                FieldConverters.readBoxedDoubleTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any]
+            else
+              '{
+                FieldConverters.readDoubleTarget(
+                  $readContextExpr,
+                  $remoteFieldExpr.serializationFieldInfo,
+                  $fieldInfoExpr)
+              }.asExprOf[Any])
+        case '[java.lang.Double] =>
+          Some(
+            '{
+              FieldConverters.readBoxedDoubleTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[String] =>
+          Some(
+            '{
+              FieldConverters.readStringTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[java.math.BigDecimal] =>
+          Some(
+            '{
+              FieldConverters.readDecimalTarget(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.unsigned.UInt8] =>
+          Some(
+            '{
+              FieldConverters.readUInt8Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.unsigned.UInt16] =>
+          Some(
+            '{
+              FieldConverters.readUInt16Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.unsigned.UInt32] =>
+          Some(
+            '{
+              FieldConverters.readUInt32Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.unsigned.UInt64] =>
+          Some(
+            '{
+              FieldConverters.readUInt64Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.Float16] =>
+          Some(
+            '{
+              FieldConverters.readFloat16Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case '[org.apache.fory.`type`.BFloat16] =>
+          Some(
+            '{
+              FieldConverters.readBFloat16Target(
+                $readContextExpr,
+                $remoteFieldExpr.serializationFieldInfo,
+                $fieldInfoExpr)
+            }.asExprOf[Any])
+        case _ => None
+      }
+    }
+
+    def compatibleValue(
+        serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
+        field: FieldMeta,
+        fieldInfoExpr: Expr[FieldGroups.SerializationFieldInfo],
+        remoteFieldExpr: Expr[StaticGeneratedStructSerializer.RemoteFieldInfo],
+        readContextExpr: Expr[org.apache.fory.context.ReadContext]): Expr[Any] =
+      compatibleScalarValue(field, fieldInfoExpr, remoteFieldExpr, readContextExpr).getOrElse {
+        '{
+          $serializerExpr.readCompatibleFieldValue(
+            $readContextExpr,
+            $remoteFieldExpr,
+            $fieldInfoExpr)
+        }
+      }
 
     def readAndAssignDispatch(
         objExpr: Expr[T],
         fieldIdExpr: Expr[Int],
         fieldInfoExpr: Expr[FieldGroups.SerializationFieldInfo],
         readContextExpr: Expr[org.apache.fory.context.ReadContext],
-        resolverExpr: Expr[TypeResolver]): Expr[Unit] = {
+        resolverExpr: Expr[TypeResolver],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Unit] = {
       '{
         val fieldValue =
           StaticGeneratedStructSerializer.readFieldValue($resolverExpr, $readContextExpr, $fieldInfoExpr)
-        ${ assignValueById(objExpr, fieldIdExpr, 'fieldValue) }
+        ${ assignValueById(objExpr, fieldIdExpr, 'fieldValue, fieldAccessorsExpr) }
+      }
+    }
+
+    def compatibleAssignByMatchedId(
+        serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
+        resolverExpr: Expr[TypeResolver],
+        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        objExpr: Expr[T],
+        matchedIdExpr: Expr[Int],
+        remoteFieldExpr: Expr[StaticGeneratedStructSerializer.RemoteFieldInfo],
+        readContextExpr: Expr[org.apache.fory.context.ReadContext],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Unit] = {
+      val fieldCases = fields.flatMap { field =>
+        val fieldInfoExpr = '{ $fieldsByIdExpr(${ Expr(field.index) }) }
+        val directValue =
+          '{
+            StaticGeneratedStructSerializer.readFieldValue(
+              $resolverExpr,
+              $readContextExpr,
+              $fieldInfoExpr)
+          }
+        val compatibleFieldValue =
+          compatibleValue(serializerExpr, field, fieldInfoExpr, remoteFieldExpr, readContextExpr)
+        List(
+          CaseDef(
+            Literal(IntConstant(field.index * 2)),
+            None,
+            assignRawValue(objExpr, field, directValue, fieldAccessorsExpr).asTerm),
+          CaseDef(
+            Literal(IntConstant(field.index * 2 + 1)),
+            None,
+            assignRawValue(objExpr, field, compatibleFieldValue, fieldAccessorsExpr).asTerm))
+      }
+      val skipCase =
+        CaseDef(
+          Literal(IntConstant(-1)),
+          None,
+          '{ $serializerExpr.skipField($readContextExpr, $remoteFieldExpr) }.asTerm)
+      val invalidCase =
+        CaseDef(
+          Wildcard(),
+          None,
+          '{
+            throw new IllegalStateException("Invalid compatible matched id " + $matchedIdExpr)
+          }.asTerm)
+      Match(matchedIdExpr.asTerm, fieldCases :+ skipCase :+ invalidCase).asExprOf[Unit]
+    }
+
+    def compatibleLocalsByMatchedId(
+        serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
+        resolverExpr: Expr[TypeResolver],
+        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        localFields: Seq[(FieldMeta, Symbol)],
+        markPresent: FieldMeta => Term,
+        matchedIdExpr: Expr[Int],
+        remoteFieldExpr: Expr[StaticGeneratedStructSerializer.RemoteFieldInfo],
+        readContextExpr: Expr[org.apache.fory.context.ReadContext]): Expr[Unit] = {
+      val fieldCases = localFields.flatMap { (field, local) =>
+        val fieldInfoExpr = '{ $fieldsByIdExpr(${ Expr(field.index) }) }
+        val directValue =
+          '{
+            StaticGeneratedStructSerializer.readFieldValue(
+              $resolverExpr,
+              $readContextExpr,
+              $fieldInfoExpr)
+          }
+        val compatibleFieldValue =
+          compatibleValue(serializerExpr, field, fieldInfoExpr, remoteFieldExpr, readContextExpr)
+        List(
+          CaseDef(
+            Literal(IntConstant(field.index * 2)),
+            None,
+            Block(
+              assignLocalValue(local, field, directValue) :: markPresent(field) :: Nil,
+              '{ () }.asTerm)),
+          CaseDef(
+            Literal(IntConstant(field.index * 2 + 1)),
+            None,
+            Block(
+              assignLocalValue(local, field, compatibleFieldValue) :: markPresent(field) :: Nil,
+              '{ () }.asTerm)))
+      }.toList
+      val skipCase =
+        CaseDef(
+          Literal(IntConstant(-1)),
+          None,
+          '{ $serializerExpr.skipField($readContextExpr, $remoteFieldExpr) }.asTerm)
+      val invalidCase =
+        CaseDef(
+          Wildcard(),
+          None,
+          '{
+            throw new IllegalStateException("Invalid compatible matched id " + $matchedIdExpr)
+          }.asTerm)
+      Match(matchedIdExpr.asTerm, fieldCases :+ skipCase :+ invalidCase).asExprOf[Unit]
+    }
+
+    def assignPostConstruction(
+        obj: Term,
+        field: FieldMeta,
+        value: Term,
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Term =
+      if field.usesFieldAccessor then {
+        '{
+          $fieldAccessorsExpr(${ Expr(field.index) })
+            .putObject(${ obj.asExprOf[T] }, ${ value.asExpr }.asInstanceOf[AnyRef])
+        }.asTerm
+      } else {
+        Assign(Select.unique(obj, field.name), value)
+      }
+
+    def constructFromLocals(
+        localFields: Seq[(FieldMeta, Symbol)],
+        instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
+      val constructorOwned = fields.filter(_.constructorOwned)
+      val postConstruction = fields.filterNot(_.constructorOwned)
+      val localById = localFields.map { (field, local) => field.index -> local }.toMap
+      def localRef(field: FieldMeta): Term = Ref(localById(field.index))
+      if postConstruction.isEmpty then {
+        val args = constructorOwned.map(localRef)
+        Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), args).asExprOf[T]
+      } else if constructorOwned.isEmpty then {
+        val obj =
+          Symbol.newVal(Symbol.spliceOwner, "obj", TypeRepr.of[T], Flags.EmptyFlags, Symbol.noSymbol)
+        val construct = '{ $instantiatorExpr.newInstance() }.asTerm
+        val assignments = postConstruction.map { field =>
+          assignPostConstruction(Ref(obj), field, localRef(field), fieldAccessorsExpr)
+        }
+        Block(ValDef(obj, Some(construct)) :: assignments, Ref(obj)).asExprOf[T]
+      } else {
+        val obj =
+          Symbol.newVal(Symbol.spliceOwner, "obj", TypeRepr.of[T], Flags.EmptyFlags, Symbol.noSymbol)
+        val args = constructorOwned.map(localRef)
+        val construct = Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), args)
+        val assignments = postConstruction.map { field =>
+          assignPostConstruction(Ref(obj), field, localRef(field), fieldAccessorsExpr)
+        }
+        Block(ValDef(obj, Some(construct)) :: assignments, Ref(obj)).asExprOf[T]
       }
     }
 
@@ -440,8 +900,9 @@ object ForySerializerMacros {
         valueExpr: Expr[T],
         field: FieldMeta,
         copyContextExpr: Expr[org.apache.fory.context.CopyContext],
-        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]]): Expr[Any] = {
-      val selected = selectValue(valueExpr, field)
+        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[Any] = {
+      val selected = selectValue(valueExpr, field, fieldAccessorsExpr)
       val wireValue =
         if field.option then '{ $selected.asInstanceOf[Option[Any]].orNull }
         else selected
@@ -479,7 +940,9 @@ object ForySerializerMacros {
     def copyValue(
         valueExpr: Expr[T],
         copyContextExpr: Expr[org.apache.fory.context.CopyContext],
-        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]]): Expr[T] = {
+        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
       val constructorOwned = fields.filter(_.constructorOwned)
       val postConstruction = fields.filterNot(_.constructorOwned)
 
@@ -487,7 +950,7 @@ object ForySerializerMacros {
         if postConstruction.isEmpty then {
           val obj = Symbol.newVal(Symbol.spliceOwner, "obj", TypeRepr.of[T], Flags.EmptyFlags, Symbol.noSymbol)
           val args = constructorOwned.map { field =>
-            copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr).asTerm
+            copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr, fieldAccessorsExpr).asTerm
           }
           val cycleCheck = failIfCopiedDuringConstructorArgCopy(
             valueExpr,
@@ -501,10 +964,11 @@ object ForySerializerMacros {
             Ref(obj)).asExprOf[T]
         } else if constructorOwned.isEmpty then {
           val obj = Symbol.newVal(Symbol.spliceOwner, "obj", TypeRepr.of[T], Flags.EmptyFlags, Symbol.noSymbol)
-          val construct = Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), Nil)
+          val construct = '{ $instantiatorExpr.newInstance() }.asTerm
           val assignments = postConstruction.map { field =>
-            val copied = copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr)
-            Assign(Select.unique(Ref(obj), field.name), copied.asTerm)
+            val copied =
+              copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr, fieldAccessorsExpr)
+            assignPostConstruction(Ref(obj), field, copied.asTerm, fieldAccessorsExpr)
           }
           Block(
             ValDef(obj, Some(construct)) ::
@@ -514,15 +978,16 @@ object ForySerializerMacros {
         } else {
           val obj = Symbol.newVal(Symbol.spliceOwner, "obj", TypeRepr.of[T], Flags.EmptyFlags, Symbol.noSymbol)
           val args = constructorOwned.map { field =>
-            copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr).asTerm
+            copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr, fieldAccessorsExpr).asTerm
           }
           val cycleCheck = failIfCopiedDuringConstructorArgCopy(
             valueExpr,
             copyContextExpr).asTerm
           val construct = Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), args)
           val assignments = postConstruction.map { field =>
-            val copied = copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr)
-            Assign(Select.unique(Ref(obj), field.name), copied.asTerm)
+            val copied =
+              copiedValueArg(valueExpr, field, copyContextExpr, fieldsByIdExpr, fieldAccessorsExpr)
+            assignPostConstruction(Ref(obj), field, copied.asTerm, fieldAccessorsExpr)
           }
           Block(
             cycleCheck ::
@@ -543,6 +1008,132 @@ object ForySerializerMacros {
       } else constructFromValues(valuesExpr)
     }
 
+    def compatibleConstructRead(
+        serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
+        resolverExpr: Expr[TypeResolver],
+        fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
+        readContextExpr: Expr[org.apache.fory.context.ReadContext],
+        instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
+      val localFields = fields.map { field =>
+        val local = Symbol.newVal(
+          Symbol.spliceOwner,
+          s"${field.name}Value",
+          field.sourceType,
+          Flags.Mutable,
+          Symbol.noSymbol)
+        field -> local
+      }
+      val localDefs = localFields.map { (field, local) =>
+        ValDef(local, Some(localDefault(field)))
+      }
+      val defaultedFields = fields.filter(field => field.constructorOwned && field.hasDefault)
+      val defaultIndexByField = defaultedFields.zipWithIndex.map { (field, index) =>
+        field.index -> index
+      }.toMap
+      val defaultMaskSym =
+        if defaultedFields.nonEmpty && defaultedFields.size <= 64 then {
+          Some(
+            Symbol.newVal(
+              Symbol.spliceOwner,
+              "missingDefaultMask",
+              TypeRepr.of[Long],
+              Flags.Mutable,
+              Symbol.noSymbol))
+        } else None
+      val defaultArraySym =
+        if defaultedFields.size > 64 then {
+          Some(
+            Symbol.newVal(
+              Symbol.spliceOwner,
+              "missingDefaultMask",
+              TypeRepr.of[Array[Boolean]],
+              Flags.EmptyFlags,
+              Symbol.noSymbol))
+        } else None
+      def clearDefault(field: FieldMeta): Term =
+        defaultIndexByField.get(field.index) match {
+          case Some(defaultIndex) =>
+            defaultMaskSym match {
+              case Some(mask) =>
+                val bit = 1L << defaultIndex
+                Assign(Ref(mask), '{ ${ Ref(mask).asExprOf[Long] } & ${ Expr(~bit) } }.asTerm)
+              case None =>
+                val mask = defaultArraySym.get
+                '{
+                  ${ Ref(mask).asExprOf[Array[Boolean]] }.update(${ Expr(defaultIndex) }, false)
+                }.asTerm
+            }
+          case None =>
+            '{ () }.asTerm
+        }
+      def applyDefault(field: FieldMeta, local: Symbol, defaultIndex: Int): Term = {
+        val defaultValue =
+          '{
+            org.apache.fory.util.DefaultValueUtils.getScalaDefaultValue(
+              Class.forName(${ Expr(ownerClassName) }),
+              ${ Expr(field.name) })
+          }
+        val assignDefault = assignLocalSource(local, field, defaultValue)
+        defaultMaskSym match {
+          case Some(mask) =>
+            val bit = 1L << defaultIndex
+            '{
+              if ((${ Ref(mask).asExprOf[Long] } & ${ Expr(bit) }) != 0L) {
+                $assignDefault
+              }
+            }.asTerm
+          case None =>
+            val mask = defaultArraySym.get
+            '{
+              if (${ Ref(mask).asExprOf[Array[Boolean]] }(${ Expr(defaultIndex) })) {
+                $assignDefault
+              }
+            }.asTerm
+        }
+      }
+      val defaultAssignments = defaultedFields.zipWithIndex.map { (field, defaultIndex) =>
+        applyDefault(field, localFields.find(_._1.index == field.index).get._2, defaultIndex)
+      }
+      val readLoop =
+        '{
+          val remoteFields = $serializerExpr.getRemoteFields()
+          var i = 0
+          while i < remoteFields.size() do {
+            val remoteField = remoteFields.get(i)
+            val matchedId = remoteField.matchedId
+            ${
+              compatibleLocalsByMatchedId(
+                serializerExpr,
+                resolverExpr,
+                fieldsByIdExpr,
+                localFields,
+                clearDefault,
+                'matchedId,
+                'remoteField,
+                readContextExpr)
+            }
+            i += 1
+          }
+        }
+      val maskDefs =
+        defaultMaskSym.map { mask =>
+          val initial =
+            if defaultedFields.size == 64 then -1L
+            else (1L << defaultedFields.size) - 1L
+          ValDef(mask, Some(Literal(LongConstant(initial))))
+        }.toList ++
+          defaultArraySym.map { mask =>
+            ValDef(mask, Some('{ Array.fill[Boolean](${ Expr(defaultedFields.size) })(true) }.asTerm))
+          }.toList
+      Block(
+        localDefs ++ maskDefs,
+        Block(
+          readLoop.asTerm :: defaultAssignments.toList,
+          constructFromLocals(localFields, instantiatorExpr, fieldAccessorsExpr).asTerm))
+        .asExprOf[T]
+    }
+
     def readSchemaConsistentBody(
         serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
         resolverExpr: Expr[TypeResolver],
@@ -550,7 +1141,9 @@ object ForySerializerMacros {
         classVersionHashExpr: Expr[Int],
         allFieldsExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
         allFieldIdsExpr: Expr[Array[Int]],
-        readContextExpr: Expr[org.apache.fory.context.ReadContext]): Expr[T] = {
+        readContextExpr: Expr[org.apache.fory.context.ReadContext],
+        instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
       val constructorOwned = fields.filter(_.constructorOwned)
       if constructorOwned.isEmpty then {
         '{
@@ -558,13 +1151,21 @@ object ForySerializerMacros {
           if $resolverExpr.checkClassVersion() then {
             $serializerExpr.checkClassVersion(buffer.readInt32(), $classVersionHashExpr)
           }
-          val obj = ${ Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), Nil).asExprOf[T] }
+          val obj = $instantiatorExpr.newInstance()
           $readContextExpr.reference(obj)
           var i = 0
           while i < $allFieldsExpr.length do {
             val fieldInfo = $allFieldsExpr(i)
             val fieldId = $allFieldIdsExpr(i)
-            ${ readAndAssignDispatch('obj, 'fieldId, 'fieldInfo, readContextExpr, resolverExpr) }
+            ${
+              readAndAssignDispatch(
+                'obj,
+                'fieldId,
+                'fieldInfo,
+                readContextExpr,
+                resolverExpr,
+                fieldAccessorsExpr)
+            }
             i += 1
           }
           obj
@@ -590,35 +1191,35 @@ object ForySerializerMacros {
 
     def readCompatibleBody(
         serializerExpr: Expr[StaticGeneratedStructSerializer[T]],
+        resolverExpr: Expr[TypeResolver],
         descriptorsExpr: Expr[java.util.List[Descriptor]],
         fieldsByIdExpr: Expr[Array[FieldGroups.SerializationFieldInfo]],
         sameSchemaCompatibleExpr: Expr[Boolean],
-        readContextExpr: Expr[org.apache.fory.context.ReadContext]): Expr[T] = {
+        readContextExpr: Expr[org.apache.fory.context.ReadContext],
+        instantiatorExpr: Expr[org.apache.fory.reflect.ObjectInstantiator[T]],
+        fieldAccessorsExpr: Expr[Array[org.apache.fory.reflect.FieldAccessor]]): Expr[T] = {
       val constructorOwned = fields.filter(_.constructorOwned)
       if constructorOwned.isEmpty then {
         '{
           if $sameSchemaCompatibleExpr then {
             $serializerExpr.read($readContextExpr)
           } else {
-            val obj = ${ Apply(Select(New(TypeTree.of[T]), owner.primaryConstructor), Nil).asExprOf[T] }
+            val obj = $instantiatorExpr.newInstance()
             $readContextExpr.reference(obj)
             val remoteFields = $serializerExpr.getRemoteFields()
             var i = 0
             while i < remoteFields.size() do {
               val remoteField = remoteFields.get(i)
               val matchedId = remoteField.matchedId
-              if matchedId >= 0 then {
-                val localField = $fieldsByIdExpr(matchedId)
-                if $serializerExpr.canReadGeneratedField(remoteField, localField) then {
-                  val fieldValue =
-                    $serializerExpr.readCompatibleFieldValue($readContextExpr, remoteField, localField)
-                  ${ assignValueById('obj, 'matchedId, 'fieldValue) }
-                } else {
-                  $serializerExpr.skipField($readContextExpr, remoteField)
-                }
-              } else {
-                $serializerExpr.skipField($readContextExpr, remoteField)
-              }
+              ${ compatibleAssignByMatchedId(
+                  serializerExpr,
+                  resolverExpr,
+                  fieldsByIdExpr,
+                  'obj,
+                  'matchedId,
+                  'remoteField,
+                  readContextExpr,
+                  fieldAccessorsExpr) }
               i += 1
             }
             obj
@@ -629,29 +1230,49 @@ object ForySerializerMacros {
           if $sameSchemaCompatibleExpr then {
             $serializerExpr.read($readContextExpr)
           } else {
-            val values = new Array[Any]($descriptorsExpr.size())
-            val remoteFields = $serializerExpr.getRemoteFields()
-            var i = 0
-            while i < remoteFields.size() do {
-              val remoteField = remoteFields.get(i)
-              val matchedId = remoteField.matchedId
-              if matchedId >= 0 then {
-                val localField = $fieldsByIdExpr(matchedId)
-                if $serializerExpr.canReadGeneratedField(remoteField, localField) then {
-                  values(matchedId) =
-                    $serializerExpr.readCompatibleFieldValue($readContextExpr, remoteField, localField)
-                } else {
-                  $serializerExpr.skipField($readContextExpr, remoteField)
-                }
-              } else {
-                $serializerExpr.skipField($readContextExpr, remoteField)
-              }
-              i += 1
+            ${
+              compatibleConstructRead(
+                serializerExpr,
+                resolverExpr,
+                fieldsByIdExpr,
+                readContextExpr,
+                instantiatorExpr,
+                fieldAccessorsExpr)
             }
-            ${ constructRead('values, readContextExpr) }
           }
         }
       }
+    }
+
+    def fieldAccessors(clsExpr: Expr[Class[T]])
+        : Expr[Array[org.apache.fory.reflect.FieldAccessor]] = {
+      val accessorsSym =
+        Symbol.newVal(
+          Symbol.spliceOwner,
+          "accessors",
+          TypeRepr.of[Array[org.apache.fory.reflect.FieldAccessor]],
+          Flags.EmptyFlags,
+          Symbol.noSymbol)
+      val assignments = fields.filter(_.usesFieldAccessor).map { field =>
+        '{
+          ${ Ref(accessorsSym).asExprOf[Array[org.apache.fory.reflect.FieldAccessor]] }(
+            ${ Expr(field.index) }) =
+            org.apache.fory.reflect.FieldAccessor.createAccessor(
+              Class
+                .forName(${ Expr(ownerClassName) }, false, $clsExpr.getClassLoader)
+                .getDeclaredField(${ Expr(field.name) }))
+        }.asTerm
+      }
+      Block(
+        ValDef(
+          accessorsSym,
+          Some(
+            '{
+              new Array[org.apache.fory.reflect.FieldAccessor](${ Expr(fields.size) })
+            }.asTerm))
+          :: assignments,
+        Ref(accessorsSym))
+        .asExprOf[Array[org.apache.fory.reflect.FieldAccessor]]
     }
 
     val classExpr: Expr[Class[T]] =
@@ -681,6 +1302,12 @@ object ForySerializerMacros {
               }
               result
             }
+            private val generatedObjectInstantiator
+                : org.apache.fory.reflect.ObjectInstantiator[T] =
+              resolver.getObjectInstantiator(cls)
+            private val generatedFieldAccessors
+                : Array[org.apache.fory.reflect.FieldAccessor] =
+              ${ fieldAccessors('cls) }
             private val classVersionHash: Int =
               if resolver.checkClassVersion() then computeClassVersionHash(descriptors) else 0
             private val sameSchemaCompatible: Boolean =
@@ -707,7 +1334,15 @@ object ForySerializerMacros {
               while i < allFields.length do {
                 val fieldInfo = allFields(i)
                 val fieldId = allFieldIds(i)
-                ${ writeDispatch('value, 'fieldId, 'fieldInfo, 'writeContext, 'resolver) }
+                ${
+                  writeDispatch(
+                    'value,
+                    'fieldId,
+                    'fieldInfo,
+                    'writeContext,
+                    'resolver,
+                    'generatedFieldAccessors)
+                }
                 i += 1
               }
             }
@@ -727,23 +1362,36 @@ object ForySerializerMacros {
                   'classVersionHash,
                   'allFields,
                   'allFieldIds,
-                  'readContext)
+                  'readContext,
+                  'generatedObjectInstantiator,
+                  'generatedFieldAccessors)
               }
 
             override def readCompatible(readContext: org.apache.fory.context.ReadContext): T = {
               ${
                 readCompatibleBody(
                   'generatedSerializer,
+                  'resolver,
                   'descriptors,
                   'fieldsById,
                   'sameSchemaCompatible,
-                  'readContext)
+                  'readContext,
+                  'generatedObjectInstantiator,
+                  'generatedFieldAccessors)
               }
             }
 
             override def copy(
                 copyContext: org.apache.fory.context.CopyContext,
-                value: T): T = ${ copyValue('value, 'copyContext, 'fieldsById) }
+                value: T): T =
+              ${
+                copyValue(
+                  'value,
+                  'copyContext,
+                  'fieldsById,
+                  'generatedObjectInstantiator,
+                  'generatedFieldAccessors)
+              }
           }
         }
       }

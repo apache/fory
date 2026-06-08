@@ -31,6 +31,15 @@ const (
 	CollectionDeclSameType      = CollectionIsSameType | CollectionIsDeclElementType
 )
 
+func needsElemTypeInfo(typeID TypeId) bool {
+	switch typeID {
+	case STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, EXT, NAMED_EXT:
+		return true
+	default:
+		return false
+	}
+}
+
 // writeSliceRefAndType handles reference and type writing for slice serializers.
 // Returns true if the value was already written (nil or ref), false if data should be written.
 func writeSliceRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, value reflect.Value, typeId TypeId) bool {
@@ -156,17 +165,20 @@ func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect
 		return
 	}
 
-	// Determine collection flags
-	// When hasGenerics is true, element type is known from TypeDef, use CollectionDeclSameType
-	// When hasGenerics is false, write element type info, use CollectionIsSameType
-	var collectFlag int
-	if hasGenerics {
-		collectFlag = CollectionDeclSameType
-	} else {
-		collectFlag = CollectionIsSameType
+	elemType := s.type_.Elem()
+	elemTypeInfo, _ := ctx.TypeResolver().getTypeInfo(reflect.New(elemType).Elem(), false)
+	elemDeclared := hasGenerics
+	if elemDeclared && elemTypeInfo != nil && needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
+		elemDeclared = false
+	}
+
+	// Determine collection flags. User/ext elements still write TypeInfo so
+	// nested compatible struct readers can classify the element schema.
+	collectFlag := CollectionIsSameType
+	if elemDeclared {
+		collectFlag |= CollectionIsDeclElementType
 	}
 	hasNull := false
-	elemType := s.type_.Elem()
 	isPointerElem := elemType.Kind() == reflect.Ptr
 
 	// Check for null values first (only applicable for pointer element types)
@@ -189,10 +201,8 @@ func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect
 	}
 	buf.WriteInt8(int8(collectFlag))
 
-	// Write element type info for deserialization only when hasGenerics is false
-	// When hasGenerics is true, the element type is known from the struct's TypeDef
-	if !hasGenerics {
-		elemTypeInfo, _ := ctx.TypeResolver().getTypeInfo(reflect.New(elemType).Elem(), false)
+	// Write element type info unless the element schema fully declares it.
+	if !elemDeclared {
 		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 	}
 
@@ -305,11 +315,24 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// ReadData collection flags
 	collectFlag := buf.ReadInt8(ctxErr)
 
-	// ReadData element type info if present in buffer
-	// We must consume these bytes for protocol compliance
+	elemSerializer := s.elemSerializer
+
+	// ReadData element type info if present in buffer.
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
-			ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
+			elemTypeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
+			if elemTypeInfo != nil && elemTypeInfo.Serializer != nil {
+				elemSerializer = elemTypeInfo.Serializer
+				elemType := value.Type().Elem()
+				if elemTypeInfo.Type != nil {
+					_, elemSerializer = wrapMapSerializerIfNeeded(elemType, elemTypeInfo.Type, elemSerializer)
+				}
+				if elemType.Kind() != reflect.Ptr {
+					if ptrSer, ok := elemSerializer.(*ptrToValueSerializer); ok {
+						elemSerializer = ptrSer.valueSerializer
+					}
+				}
+			}
 		}
 	}
 
@@ -320,7 +343,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// comment during cleanup or refactors.
 	trackRefs := (collectFlag & CollectionTrackingRef) != 0
 	hasNull := (collectFlag & CollectionHasNull) != 0
-	declaredGenericDispatch := (collectFlag&CollectionIsDeclElementType) != 0 && serializerNeedsGenericDispatch(s.elemSerializer)
+	declaredGenericDispatch := (collectFlag&CollectionIsDeclElementType) != 0 && serializerNeedsGenericDispatch(elemSerializer)
 
 	// Handle slice vs array allocation
 	if isArrayType {
@@ -347,14 +370,14 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	if !trackRefs && !hasNull {
 		if declaredGenericDispatch {
 			for i := 0; i < length; i++ {
-				s.elemSerializer.Read(ctx, RefModeNone, false, true, value.Index(i))
+				elemSerializer.Read(ctx, RefModeNone, false, true, value.Index(i))
 				if ctx.HasError() {
 					return
 				}
 			}
 		} else {
 			for i := 0; i < length; i++ {
-				s.elemSerializer.ReadData(ctx, value.Index(i))
+				elemSerializer.ReadData(ctx, value.Index(i))
 				if ctx.HasError() {
 					return
 				}
@@ -370,7 +393,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		if trackRefs {
 			// When trackRefs is true, elemSerializer will read the ref flag via TryPreserveRefId
 			// For pointer types, elemSerializer will handle allocation and reference tracking
-			s.elemSerializer.Read(ctx, elemRefMode, false, declaredGenericDispatch, elem)
+			elemSerializer.Read(ctx, elemRefMode, false, declaredGenericDispatch, elem)
 		} else if hasNull {
 			// When hasNull is set, read a flag byte for each element:
 			// - NullFlag (-3) for null elements
@@ -382,16 +405,16 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 			}
 			// refFlag should be NotNullValueFlag, now read the actual data
 			if declaredGenericDispatch {
-				s.elemSerializer.Read(ctx, RefModeNone, false, true, elem)
+				elemSerializer.Read(ctx, RefModeNone, false, true, elem)
 			} else {
-				s.elemSerializer.ReadData(ctx, elem)
+				elemSerializer.ReadData(ctx, elem)
 			}
 		} else {
 			// No ref tracking and no nulls: directly read data
 			if declaredGenericDispatch {
-				s.elemSerializer.Read(ctx, RefModeNone, false, true, elem)
+				elemSerializer.Read(ctx, RefModeNone, false, true, elem)
 			} else {
-				s.elemSerializer.ReadData(ctx, elem)
+				elemSerializer.ReadData(ctx, elem)
 			}
 		}
 		if ctx.HasError() {

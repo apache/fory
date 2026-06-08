@@ -838,17 +838,22 @@ class JavaScriptGenerator(BaseGenerator):
         self,
         field_type: FieldType,
         parent_stack: Optional[List[Message]] = None,
+        *,
+        nullable: bool = False,
+        ref: bool = False,
+        element_nullable_override: bool = False,
+        element_ref_override: bool = False,
     ) -> str:
         """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
             integer_expr = self._integer_type_expr(field_type)
             if integer_expr is not None:
-                return integer_expr
-            expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
-            if expr is None:
-                return "Type.any()"
-            return expr
+                expr = integer_expr
+            else:
+                expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
+                if expr is None:
+                    expr = "Type.any()"
         elif isinstance(field_type, NamedType):
             # Check for primitive-like shorthand names (e.g. "float", "double")
             lower = field_type.name.lower()
@@ -857,83 +862,125 @@ class JavaScriptGenerator(BaseGenerator):
                 "double": PrimitiveKind.FLOAT64,
             }
             if lower in shorthand_map:
-                return self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
-            for pk in PrimitiveKind:
-                if pk.value == lower:
-                    expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
-                    if expr is None:
-                        raise ValueError(
-                            f"Primitive type '{pk.value}' has no JavaScript "
-                            f"runtime mapping."
-                        )
-                    return expr
-
-            # Named type — could be a Message, Enum, or Union
-            resolved = self._resolve_named_type(field_type.name, parent_stack)
-            if isinstance(resolved, Enum):
-                if self.should_register_by_id(resolved):
-                    name_info = str(resolved.type_id)
+                expr = self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
+            else:
+                primitive_expr: Optional[str] = None
+                for pk in PrimitiveKind:
+                    if pk.value == lower:
+                        primitive_expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
+                        if primitive_expr is None:
+                            raise ValueError(
+                                f"Primitive type '{pk.value}' has no JavaScript "
+                                f"runtime mapping."
+                            )
+                        break
+                if primitive_expr is not None:
+                    expr = primitive_expr
                 else:
-                    ns = self._get_type_package(resolved)
-                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                    name_info = f'"{ns}.{qname}"'
-                props = ", ".join(
-                    f"{self.strip_enum_prefix(resolved.name, v.name)}: {v.value}"
-                    for v in resolved.values
-                )
-                return f"Type.enum({name_info}, {{ {props} }})"
-            if isinstance(resolved, Union):
-                case_parts = []
-                for case_field in resolved.fields:
-                    case_num = (
-                        case_field.tag_id
-                        if case_field.tag_id is not None
-                        else case_field.number
-                    )
-                    if case_num is not None:
-                        case_type_expr = self._field_type_expr(
-                            case_field.field_type, parent_stack
+                    # Named type — could be a Message, Enum, or Union
+                    resolved = self._resolve_named_type(field_type.name, parent_stack)
+                    if isinstance(resolved, Enum):
+                        if self.should_register_by_id(resolved):
+                            name_info = str(resolved.type_id)
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            name_info = f'"{ns}.{qname}"'
+                        props = ", ".join(
+                            f"{self.strip_enum_prefix(resolved.name, v.name)}: {v.value}"
+                            for v in resolved.values
                         )
-                        case_parts.append(f"{case_num}: {case_type_expr}")
-                cases_arg = f", {{ {', '.join(case_parts)} }}" if case_parts else ""
-                if self.should_register_by_id(resolved):
-                    name_info = str(resolved.type_id)
-                else:
-                    ns = self._get_type_package(resolved)
-                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                    name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
-                return f"Type.union({name_info}{cases_arg})"
-            if isinstance(resolved, Message):
-                evolving = self.get_effective_evolving(resolved)
-                if self.should_register_by_id(resolved):
-                    if evolving:
-                        return f"Type.struct({resolved.type_id})"
+                        expr = f"Type.enum({name_info}, {{ {props} }})"
+                    elif isinstance(resolved, Union):
+                        case_parts = []
+                        for case_field in resolved.fields:
+                            case_num = (
+                                case_field.tag_id
+                                if case_field.tag_id is not None
+                                else case_field.number
+                            )
+                            if case_num is not None:
+                                case_type_expr = self._field_type_expr(
+                                    case_field.field_type, parent_stack
+                                )
+                                case_parts.append(f"{case_num}: {case_type_expr}")
+                        cases_arg = (
+                            f", {{ {', '.join(case_parts)} }}" if case_parts else ""
+                        )
+                        if self.should_register_by_id(resolved):
+                            name_info = str(resolved.type_id)
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+                        expr = f"Type.union({name_info}{cases_arg})"
+                    elif isinstance(resolved, Message):
+                        evolving = self.get_effective_evolving(resolved)
+                        if self.should_register_by_id(resolved):
+                            if evolving:
+                                expr = f"Type.struct({resolved.type_id})"
+                            else:
+                                expr = (
+                                    f"Type.struct({{ typeId: {resolved.type_id}, "
+                                    "evolving: false })"
+                                )
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            if evolving:
+                                expr = (
+                                    f'Type.struct({{ namespace: "{ns}", '
+                                    f'typeName: "{qname}" }})'
+                                )
+                            else:
+                                expr = (
+                                    f'Type.struct({{ namespace: "{ns}", '
+                                    f'typeName: "{qname}", evolving: false }})'
+                                )
                     else:
-                        return f"Type.struct({{ typeId: {resolved.type_id}, evolving: false }})"
-                ns = self._get_type_package(resolved)
-                qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                if evolving:
-                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}" }})'
-                else:
-                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}", evolving: false }})'
-            # Unresolved — fall back to any
-            return "Type.any()"
+                        # Unresolved — fall back to any
+                        expr = "Type.any()"
         elif isinstance(field_type, ListType):
-            inner = self._field_type_expr(field_type.element_type, parent_stack)
-            return f"Type.list({inner})"
+            inner = self._field_type_expr(
+                field_type.element_type,
+                parent_stack,
+                nullable=field_type.element_optional or element_nullable_override,
+                ref=field_type.element_ref or element_ref_override,
+            )
+            expr = f"Type.list({inner})"
         elif isinstance(field_type, ArrayType):
             if isinstance(field_type.element_type, PrimitiveType):
                 type_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(
                     field_type.element_type.kind
                 )
                 if type_expr:
-                    return type_expr
-            return "Type.any()"
+                    expr = type_expr
+                else:
+                    expr = "Type.any()"
+            else:
+                expr = "Type.any()"
         elif isinstance(field_type, MapType):
             key = self._field_type_expr(field_type.key_type, parent_stack)
-            value = self._field_type_expr(field_type.value_type, parent_stack)
-            return f"Type.map({key}, {value})"
-        return "Type.any()"
+            value = self._field_type_expr(
+                field_type.value_type,
+                parent_stack,
+                nullable=field_type.value_optional,
+                ref=field_type.value_ref,
+            )
+            expr = f"Type.map({key}, {value})"
+        else:
+            expr = "Type.any()"
+        if nullable or ref:
+            expr += ".setNullable(true)"
+        if ref:
+            expr += ".setTrackingRef(true)"
+        return expr
 
     def _integer_type_expr(self, field_type: PrimitiveType) -> Optional[str]:
         method = {
@@ -966,13 +1013,16 @@ class JavaScriptGenerator(BaseGenerator):
         used_field_names: Set[str] = set()
         for field in type_def.fields:
             member = self._field_member_name(field, type_def, used_field_names)
-            expr = self._field_type_expr(field.field_type, field_parent_stack)
+            expr = self._field_type_expr(
+                field.field_type,
+                field_parent_stack,
+                nullable=field.optional or field.ref,
+                ref=field.ref,
+                element_nullable_override=field.element_optional,
+                element_ref_override=field.element_ref,
+            )
             if field.tag_id is not None:
                 expr += f".setId({field.tag_id})"
-            if field.optional:
-                expr += ".setNullable(true)"
-            if field.ref:
-                expr += ".setTrackingRef(true)"
             props_parts.append(f"{member}: {expr}")
 
         props_str = ", ".join(props_parts)

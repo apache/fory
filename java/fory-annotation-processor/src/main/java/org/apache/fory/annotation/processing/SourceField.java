@@ -21,6 +21,7 @@ package org.apache.fory.annotation.processing;
 
 final class SourceField {
   enum AccessKind {
+    ACCESSOR,
     FIELD,
     METHOD
   }
@@ -84,6 +85,9 @@ final class SourceField {
   }
 
   String readExpression(String target) {
+    if (readAccessKind == AccessKind.ACCESSOR) {
+      return fieldAccessorName() + ".get(" + target + ")";
+    }
     if (readAccessKind == AccessKind.METHOD) {
       return target + "." + readAccess + "()";
     }
@@ -91,10 +95,21 @@ final class SourceField {
   }
 
   String writeStatement(String target, String valueExpression) {
+    if (writeAccessKind == AccessKind.ACCESSOR) {
+      return fieldAccessorName() + ".set(" + target + ", " + valueExpression + ");";
+    }
     if (writeAccessKind == AccessKind.METHOD) {
       return target + "." + writeAccess + "(" + valueExpression + ");";
     }
     return target + "." + writeAccess + " = " + valueExpression + ";";
+  }
+
+  boolean usesFieldAccessor() {
+    return readAccessKind == AccessKind.ACCESSOR || writeAccessKind == AccessKind.ACCESSOR;
+  }
+
+  String fieldAccessorName() {
+    return "fieldAccessor" + id;
   }
 
   String defaultValue() {

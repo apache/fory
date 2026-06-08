@@ -320,9 +320,10 @@ written as tagged int64. Runtime type inference is used only for dynamic or unkn
 schemas.
 
 In compatible mode, readers consume field bytes using the remote schema metadata. Python assigns the
-decoded value only when it can safely satisfy the local declared schema. Different integer encodings
-in the same signedness and width domain are compatible, and same-signedness narrowing is assigned
-only after range validation.
+decoded value only when it can safely satisfy the local declared schema. Scalar conversion and
+integer encoding adaptation apply only to the immediate matched field schema. Nested collection
+elements, map keys, and map values must keep exact nullability, reference-tracking, and type shape
+metadata, except for user-type family normalization such as named and unnamed struct metadata.
 
 ## Complete Example
 

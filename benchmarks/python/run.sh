@@ -107,6 +107,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ "${FORY_BENCH_SCHEMA_MISMATCH:-0}" == "1" && "$SERIALIZER" != "fory" ]]; then
+  echo "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory."
+  exit 1
+fi
+
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
   echo "Error: $PYTHON_BIN is not available"
   exit 1

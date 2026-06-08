@@ -131,8 +131,12 @@ def datatype_plot_label(datatype: str) -> str:
     return datatype.capitalize()
 
 
-def format_tps(value: float) -> str:
-    return f"{value:,.0f}"
+def format_tps(value) -> str:
+    return f"{value:,.0f}" if value is not None and value > 0 else "N/A"
+
+
+def format_size(value) -> str:
+    return str(value) if isinstance(value, int) and value >= 0 else "N/A"
 
 
 def format_tps_label(value: float) -> str:
@@ -288,9 +292,9 @@ def write_report(
             continue
         for operation in OPERATIONS:
             throughputs = results.get(datatype, {}).get(operation, {})
-            fory = throughputs.get("fory", 0.0)
-            protobuf = throughputs.get("protobuf", 0.0)
-            json_tps = throughputs.get("json", 0.0)
+            fory = throughputs.get("fory")
+            protobuf = throughputs.get("protobuf")
+            json_tps = throughputs.get("json")
             lines.append(
                 "| "
                 + f"{datatype_title(datatype)} | {operation.capitalize()} | "
@@ -314,9 +318,9 @@ def write_report(
         lines.append(
             "| "
             + f"{datatype_label} | "
-            + f"{entry.get('fory', '-')} | "
-            + f"{entry.get('protobuf', '-')} | "
-            + f"{entry.get('json', '-')} |"
+            + f"{format_size(entry.get('fory'))} | "
+            + f"{format_size(entry.get('protobuf'))} | "
+            + f"{format_size(entry.get('json'))} |"
         )
 
     report_path = os.path.join(output_dir, "README.md")

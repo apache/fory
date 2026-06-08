@@ -306,8 +306,8 @@ In Dart that internal owner is `StructSerializer`.
 - caching compatible read layouts
 - skipping unknown compatible fields
 - passing compatible read layouts explicitly to generated serializers
-- classifying matched compatible fields that require top-level scalar
-  conversion and routing those fields through cold conversion helpers
+- classifying matched compatible fields as exact direct reads, compatible
+  conversions, or remote-only skips before generated dispatch
 
 When `Config.compatible` is enabled and the struct is marked evolving:
 
@@ -316,9 +316,20 @@ When `Config.compatible` is enabled and the struct is marked evolving:
 - reads map incoming fields by identifier and skip unknown fields
 - generated serializers apply matched fields directly while preserving their own
   object construction and default-value rules
+- exact matched field schemas use the same direct read shape as same-schema
+  reads and must not receive remote compatible metadata
 - matched scalar fields may use compatible scalar conversion only when the
   layout has classified a remote/local top-level scalar pair as lossless
   convertible and both field schemas have `trackingRef = false`
+- compatible scalar conversion applies only to the immediate matched field.
+  Nested collection, array, map key, and map value schemas must not be accepted
+  by recursively applying scalar conversion to child schemas.
+- direct top-level `list<T?>` to dense `array<T>` matched fields must be
+  classified as compatible when element domains match; the nullable element
+  schema bit alone is not a schema-pair rejection. Actual null element payloads
+  fail in the dense-array reader. Ref-tracked list-element framing is separate
+  and may remain rejected when the runtime cannot materialize it without
+  generic/reference paths.
 
 When `compatible` is disabled and `checkStructVersion` is enabled:
 
@@ -334,8 +345,25 @@ decision and value adaptation stay with the serializer-owned compatible field
 layout. Layout classification must reject top-level scalar conversions when
 either matched schema has `trackingRef = true` and must reject same scalar type
 pairs whose top-level `trackingRef` framing differs; converters must not add a
-reference-table path for scalar mismatches. Same-schema readers with matching
-reference and null/optional framing must keep direct scalar read paths without conversion branches or per-field conversion
+reference-table path for scalar mismatches. Recursive schema comparison inside
+containers must reject scalar mismatches instead of reusing the top-level scalar
+conversion matrix. Generated serializers should consume the classified layout
+decision directly:
+
+- source-generated serializers use the layout's matched-field dispatch key to
+  select exact direct field code, compatible conversion code, or skip code
+- regenerated serializers may instead compile a remote-schema-specific
+  straight-line reader after classification, without a second outer matched-id
+  switch, when the generated source still has pure direct, pure conversion, and
+  explicit skip operations
+- compatible scalar conversion cases must read the concrete remote wire scalar
+  selected by classification and compose only the required lossless conversion;
+  they must not call a generic runtime converter that redispatches by remote and
+  local scalar type IDs, field descriptors, field names, or schema eligibility
+  helpers
+
+Same-schema readers with matching reference and null/optional framing must keep
+direct scalar read paths without conversion branches or per-field conversion
 objects. Same raw scalar types with different null/optional framing may still
 use the compatible nullable/optional composition path when both fields are not
 reference-tracked.

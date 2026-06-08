@@ -22,6 +22,9 @@ pub use meta_string::{
     Encoding, MetaString, MetaStringDecoder, MetaStringEncoder, FIELD_NAME_DECODER,
     FIELD_NAME_ENCODER, NAMESPACE_DECODER, NAMESPACE_ENCODER, TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
 };
+#[doc(hidden)]
+pub use type_meta::assign_remote_field_ids;
+pub(crate) use type_meta::compatible_scalar_field_pair;
 pub use type_meta::{
     compute_field_hash, compute_struct_hash, sort_fields, FieldInfo, FieldType, TypeMeta,
     NAMESPACE_ENCODINGS, TYPE_NAME_ENCODINGS,

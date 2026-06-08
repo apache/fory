@@ -26,6 +26,9 @@ import 'package:fory/src/serializer/scalar_conversion.dart';
 import 'package:fory/src/serializer/serialization_field_info.dart';
 import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_support.dart';
+import 'package:fory/src/types/float32.dart';
+import 'package:fory/src/types/int64.dart';
+import 'package:fory/src/types/uint64.dart';
 
 @internal
 abstract interface class GeneratedStructSerializer<T> implements Serializer<T> {
@@ -37,59 +40,167 @@ abstract interface class GeneratedStructSerializer<T> implements Serializer<T> {
 
 @internal
 final class CompatibleStructReadLayout {
-  final List<FieldInfo> remoteFields;
-  final List<SerializationFieldInfo?> fields;
-  final List<CompatibleScalarConversion?>? _scalarConversions;
-  final List<bool>? _topLevelListArrayPairs;
+  final List<CompatibleStructReadField> fields;
 
-  const CompatibleStructReadLayout(
-    this.remoteFields,
-    this.fields, [
-    this._scalarConversions,
-    this._topLevelListArrayPairs,
-  ]);
+  const CompatibleStructReadLayout(this.fields);
 
-  int get fieldCount => remoteFields.length;
+  int get fieldCount => fields.length;
 
-  FieldInfo remoteFieldAt(int index) => remoteFields[index];
+  CompatibleStructReadField fieldAt(int index) => fields[index];
+}
 
-  SerializationFieldInfo? localFieldAt(int index) => fields[index];
+@internal
+final class CompatibleStructReadField {
+  final FieldInfo remoteField;
+  final int matchedId;
+  final SerializationFieldInfo? localField;
+  final CompatibleScalarReadDescriptor? scalarRead;
+  final bool topLevelListArrayPair;
 
-  CompatibleScalarConversion? scalarConversionAt(int index) =>
-      _scalarConversions?[index];
+  const CompatibleStructReadField({
+    required this.remoteField,
+    required this.matchedId,
+    required this.localField,
+    required this.scalarRead,
+    required this.topLevelListArrayPair,
+  });
+}
 
-  bool topLevelListArrayPairAt(int index) =>
-      _topLevelListArrayPairs?[index] ?? false;
+@internal
+@pragma('vm:never-inline')
+Object? readGeneratedCompatibleScalarField(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead,
+) {
+  return readCompatibleScalarField(context, scalarRead.conversion);
 }
 
 @internal
 @pragma('vm:never-inline')
 Object? readGeneratedCompatibleStructField(
   ReadContext context,
-  CompatibleStructReadLayout layout,
-  int index,
+  CompatibleStructReadField field,
 ) {
-  final localField = layout.localFieldAt(index)!;
-  final scalarConversion = layout.scalarConversionAt(index);
-  if (scalarConversion != null) {
-    return readCompatibleScalarField(context, scalarConversion);
+  final localField = field.localField!;
+  final scalarRead = field.scalarRead;
+  if (scalarRead != null) {
+    return readGeneratedCompatibleScalarField(context, scalarRead);
   }
-  if (layout.topLevelListArrayPairAt(index)) {
+  if (field.topLevelListArrayPair) {
     return readCompatibleMatchedCollectionArrayField(
       context,
       localField,
-      layout.remoteFieldAt(index),
+      field.remoteField,
     );
   }
   return readFieldValue<Object?>(context, localField);
 }
 
 @internal
+@pragma('vm:prefer-inline')
+int readGenCompatScalarAsInt(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead, [
+  int? fallback,
+]) {
+  if (scalarRead.readsDirectIntAsInt) {
+    return readCompatScalarPayloadAsInt(context, scalarRead, fallback);
+  }
+  final value = readGeneratedCompatibleScalarField(context, scalarRead);
+  if (value == null) {
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('Received null for non-nullable field value.');
+  }
+  return value as int;
+}
+
+@internal
+@pragma('vm:prefer-inline')
+double readGenCompatScalarAsDouble(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead, [
+  double? fallback,
+]) {
+  if (scalarRead.readsDirectDoubleAsDouble) {
+    return readCompatScalarPayloadAsDouble(context, scalarRead, fallback);
+  }
+  final value = readGeneratedCompatibleScalarField(context, scalarRead);
+  if (value == null) {
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('Received null for non-nullable field value.');
+  }
+  return value as double;
+}
+
+@internal
+@pragma('vm:prefer-inline')
+Int64 readGenCompatScalarAsInt64(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead, [
+  Int64? fallback,
+]) {
+  if (scalarRead.readsDirectInt64) {
+    return readCompatScalarPayloadAsInt64(context, scalarRead, fallback);
+  }
+  final value = readGeneratedCompatibleScalarField(context, scalarRead);
+  if (value == null) {
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('Received null for non-nullable field value.');
+  }
+  return value as Int64;
+}
+
+@internal
+@pragma('vm:prefer-inline')
+Uint64 readGenCompatScalarAsUint64(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead, [
+  Uint64? fallback,
+]) {
+  if (scalarRead.readsDirectUint64) {
+    return readCompatScalarPayloadAsUint64(context, scalarRead, fallback);
+  }
+  final value = readGeneratedCompatibleScalarField(context, scalarRead);
+  if (value == null) {
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('Received null for non-nullable field value.');
+  }
+  return value as Uint64;
+}
+
+@internal
+@pragma('vm:prefer-inline')
+Float32 readGenCompatScalarAsFloat32(
+  ReadContext context,
+  CompatibleScalarReadDescriptor scalarRead, [
+  Float32? fallback,
+]) {
+  if (scalarRead.readsDirectFloat32) {
+    return readCompatScalarPayloadAsFloat32(context, scalarRead, fallback);
+  }
+  final value = readGeneratedCompatibleScalarField(context, scalarRead);
+  if (value == null) {
+    if (fallback != null) {
+      return fallback;
+    }
+    throw StateError('Received null for non-nullable field value.');
+  }
+  return value as Float32;
+}
+
+@internal
 @pragma('vm:never-inline')
 void skipGeneratedCompatibleStructField(
   ReadContext context,
-  CompatibleStructReadLayout layout,
-  int index,
+  CompatibleStructReadField field,
 ) {
-  readCompatibleField(context, layout.remoteFieldAt(index));
+  readCompatibleField(context, field.remoteField);
 }

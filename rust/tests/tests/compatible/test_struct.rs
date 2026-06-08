@@ -158,8 +158,14 @@ fn compatible_list_array_field_pairs() {
             payload: vec![vec![1, 2], vec![3]],
         })
         .unwrap();
-    let decoded: NestedArrayPayload = reader.deserialize(&bytes).unwrap();
-    assert_eq!(decoded.payload, Vec::<Vec<i32>>::default());
+    let err = reader
+        .deserialize::<NestedArrayPayload>(&bytes)
+        .expect_err("expected nested list/array mismatch to fail classification");
+    assert!(
+        err.to_string()
+            .contains("remote and local field schemas are not compatible"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -236,7 +242,7 @@ fn nonexistent_struct() {
 }
 
 #[test]
-fn serializer_container_mismatch_defaults() {
+fn rejects_serializer_container_mismatch() {
     #[derive(ForyStruct, Debug)]
     struct SetI8 {
         values: HashSet<i8>,
@@ -256,8 +262,14 @@ fn serializer_container_mismatch_defaults() {
             values: HashSet::from([1]),
         })
         .unwrap();
-    let decoded: SetI16 = fory2.deserialize(&bin).unwrap();
-    assert_eq!(decoded.values, HashSet::default());
+    let err = fory2
+        .deserialize::<SetI16>(&bin)
+        .expect_err("expected incompatible container element schema to fail classification");
+    assert!(
+        err.to_string()
+            .contains("remote and local field schemas are not compatible"),
+        "{err}"
+    );
 }
 
 #[test]

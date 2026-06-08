@@ -46,6 +46,17 @@ ctypedef PyObject *PyObjectPtr
 cdef class ListSerializer
 
 
+cdef inline bint needs_element_type_info(uint8_t type_id):
+    return (
+        type_id == <uint8_t>TypeId.STRUCT
+        or type_id == <uint8_t>TypeId.COMPATIBLE_STRUCT
+        or type_id == <uint8_t>TypeId.NAMED_STRUCT
+        or type_id == <uint8_t>TypeId.NAMED_COMPATIBLE_STRUCT
+        or type_id == <uint8_t>TypeId.EXT
+        or type_id == <uint8_t>TypeId.NAMED_EXT
+    )
+
+
 cdef class CollectionSerializer(Serializer):
     # Element serializers may be Cython or pure-Python implementations.
     cdef Serializer elem_serializer
@@ -108,7 +119,9 @@ cdef class CollectionSerializer(Serializer):
                 if elem_type is not None:
                     elem_type_info = self.type_resolver.get_type_info(elem_type)
         else:
-            collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
+            collect_flag |= COLL_IS_SAME_TYPE
+            if not needs_element_type_info(elem_type_info.type_id):
+                collect_flag |= COLL_IS_DECL_ELEMENT_TYPE
             if items != NULL:
                 for i in range(size):
                     if items[i] == <PyObject *>None:

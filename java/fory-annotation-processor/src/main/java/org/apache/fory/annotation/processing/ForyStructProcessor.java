@@ -376,13 +376,6 @@ public final class ForyStructProcessor extends AbstractProcessor {
       boolean serialized,
       SerializerMode mode) {
     Set<Modifier> modifiers = field.getModifiers();
-    if (!record && modifiers.contains(Modifier.FINAL)) {
-      throw new InvalidStructException(
-          "Static serializers cannot assign final field "
-              + field.getSimpleName()
-              + "; use a record component or mark the field @Ignore/transient",
-          field);
-    }
     ForyFieldMeta foryField = foryField(field);
     Object fieldTypeTree = typeTree(field);
     boolean nullable = fieldNullable(field.asType(), fieldTypeTree, mode);
@@ -402,7 +395,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
       writeKind = SourceField.AccessKind.METHOD;
       readAccess = field.getSimpleName().toString();
       writeAccess = null;
-    } else if (isAccessibleFromGenerated(field, generatedPackage)) {
+    } else if (isAccessibleFromGenerated(field, generatedPackage)
+        && !modifiers.contains(Modifier.FINAL)) {
       readKind = SourceField.AccessKind.FIELD;
       writeKind = SourceField.AccessKind.FIELD;
       readAccess = field.getSimpleName().toString();
@@ -410,18 +404,27 @@ public final class ForyStructProcessor extends AbstractProcessor {
     } else {
       ExecutableElement getter = findGetter(owner, field, generatedPackage);
       ExecutableElement setter = findSetter(owner, field, generatedPackage);
-      if (getter == null || setter == null) {
-        throw new InvalidStructException(
-            "Field "
-                + field.getSimpleName()
-                + " is not directly accessible from the generated serializer. Add accessible "
-                + "non-private getter/setter methods or mark it @Ignore/transient.",
-            field);
+      if (getter != null) {
+        readKind = SourceField.AccessKind.METHOD;
+        readAccess = getter.getSimpleName().toString();
+      } else if (isAccessibleFromGenerated(field, generatedPackage)) {
+        readKind = SourceField.AccessKind.FIELD;
+        readAccess = field.getSimpleName().toString();
+      } else {
+        readKind = SourceField.AccessKind.ACCESSOR;
+        readAccess = null;
       }
-      readKind = SourceField.AccessKind.METHOD;
-      writeKind = SourceField.AccessKind.METHOD;
-      readAccess = getter.getSimpleName().toString();
-      writeAccess = setter.getSimpleName().toString();
+      if (!modifiers.contains(Modifier.FINAL) && setter != null) {
+        writeKind = SourceField.AccessKind.METHOD;
+        writeAccess = setter.getSimpleName().toString();
+      } else if (!modifiers.contains(Modifier.FINAL)
+          && isAccessibleFromGenerated(field, generatedPackage)) {
+        writeKind = SourceField.AccessKind.FIELD;
+        writeAccess = field.getSimpleName().toString();
+      } else {
+        writeKind = SourceField.AccessKind.ACCESSOR;
+        writeAccess = null;
+      }
     }
     return new SourceField(
         id,

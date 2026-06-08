@@ -641,10 +641,15 @@ fn test_compatible_nested_integer_encoding_mismatch() {
     };
 
     let bytes = writer.serialize(&original).unwrap();
-    let deserialized: NestedFixedEncoding = reader.deserialize(&bytes).unwrap();
-    assert_eq!(original.values, deserialized.values);
-    assert_eq!(original.data, deserialized.data);
-    assert_eq!(original.maybe_values, deserialized.maybe_values);
+    let error = reader
+        .deserialize::<NestedFixedEncoding>(&bytes)
+        .expect_err("expected nested integer encoding drift to fail classification");
+    assert!(
+        error
+            .to_string()
+            .contains("remote and local field schemas are not compatible"),
+        "{error}"
+    );
 }
 
 /// Test struct with field IDs for compact encoding

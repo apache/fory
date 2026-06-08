@@ -39,7 +39,6 @@ type DecimalParts = {
 };
 
 const scalarReadActions = new WeakMap<TypeInfo, CompatibleScalarReadAction>();
-const scalarSkipActions = new WeakSet<TypeInfo>();
 
 const float32Array = new Float32Array(1);
 const float64Buffer = new ArrayBuffer(8);
@@ -74,15 +73,6 @@ export function getCompatibleScalarReadAction(
   typeInfo: TypeInfo,
 ): CompatibleScalarReadAction | undefined {
   return scalarReadActions.get(typeInfo);
-}
-
-export function markCompatibleScalarSkipRead(typeInfo: TypeInfo): TypeInfo {
-  scalarSkipActions.add(typeInfo);
-  return typeInfo;
-}
-
-export function shouldSkipCompatibleScalarRead(typeInfo: TypeInfo): boolean {
-  return scalarSkipActions.has(typeInfo);
 }
 
 export function isCompatibleScalarType(typeId: number): boolean {
@@ -155,18 +145,6 @@ function scalarKind(typeId: number): ScalarKind | undefined {
   }
 }
 
-function isFloatType(typeId: number): boolean {
-  switch (canonicalScalarTypeId(typeId)) {
-    case TypeId.FLOAT16:
-    case TypeId.BFLOAT16:
-    case TypeId.FLOAT32:
-    case TypeId.FLOAT64:
-      return true;
-    default:
-      return false;
-  }
-}
-
 function readDecimal(reader: BinaryReader): Decimal {
   const scale = reader.readVarInt32();
   const header = reader.readVarUInt64();
@@ -187,63 +165,6 @@ function readDecimal(reader: BinaryReader): Decimal {
     throw new Error("Big decimal encoding must not represent zero.");
   }
   return new Decimal((meta & 1n) === 0n ? magnitude : -magnitude, scale);
-}
-
-function readScalarPayload(
-  reader: BinaryReader,
-  remoteTypeId: number,
-): unknown {
-  switch (remoteTypeId) {
-    case TypeId.BOOL: {
-      const value = reader.readUint8();
-      if (value !== 0 && value !== 1) {
-        throw new Error(`Invalid boolean scalar value ${value}.`);
-      }
-      return value === 1;
-    }
-    case TypeId.STRING:
-      return reader.stringWithHeader();
-    case TypeId.INT8:
-      return reader.readInt8();
-    case TypeId.INT16:
-      return reader.readInt16();
-    case TypeId.INT32:
-      return reader.readInt32();
-    case TypeId.VARINT32:
-      return reader.readVarInt32();
-    case TypeId.INT64:
-      return reader.readInt64();
-    case TypeId.VARINT64:
-      return reader.readVarInt64();
-    case TypeId.TAGGED_INT64:
-      return reader.readTaggedInt64();
-    case TypeId.UINT8:
-      return reader.readUint8();
-    case TypeId.UINT16:
-      return reader.readUint16();
-    case TypeId.UINT32:
-      return reader.readUint32();
-    case TypeId.VAR_UINT32:
-      return reader.readVarUInt32();
-    case TypeId.UINT64:
-      return reader.readUint64();
-    case TypeId.VAR_UINT64:
-      return reader.readVarUInt64();
-    case TypeId.TAGGED_UINT64:
-      return reader.readTaggedUInt64();
-    case TypeId.FLOAT16:
-      return reader.readFloat16();
-    case TypeId.BFLOAT16:
-      return reader.readBfloat16();
-    case TypeId.FLOAT32:
-      return reader.readFloat32();
-    case TypeId.FLOAT64:
-      return reader.readFloat64();
-    case TypeId.DECIMAL:
-      return readDecimal(reader);
-    default:
-      throw new Error(`Unsupported compatible scalar type ${remoteTypeId}.`);
-  }
 }
 
 function pow10(exp: number): bigint {
@@ -541,16 +462,6 @@ function exactInteger(value: DecimalParts): bigint {
   return normalized.unscaled;
 }
 
-function exactSafeNumber(value: bigint): number {
-  const result = Number(value);
-  if (!Number.isSafeInteger(result) || BigInt(result) !== value) {
-    throw new Error(
-      `Scalar integer ${value.toString()} is not exactly representable as a number.`,
-    );
-  }
-  return result;
-}
-
 function exactFloat(value: DecimalParts, localTypeId: number): number {
   let candidate = partsToNumber(value);
   if (!Number.isFinite(candidate)) {
@@ -581,85 +492,50 @@ function exactFloat(value: DecimalParts, localTypeId: number): number {
 }
 
 function rangeCheckedInteger(
-  value: bigint,
+  value: number | bigint,
   localTypeId: number,
 ): number | bigint {
+  const integer = typeof value === "bigint" ? value : BigInt(value);
   switch (canonicalScalarTypeId(localTypeId)) {
     case TypeId.INT8:
-      if (value < INT8_MIN || value > INT8_MAX)
+      if (integer < INT8_MIN || integer > INT8_MAX)
         throw new Error("Scalar integer is outside int8 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.INT16:
-      if (value < INT16_MIN || value > INT16_MAX)
+      if (integer < INT16_MIN || integer > INT16_MAX)
         throw new Error("Scalar integer is outside int16 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.INT32:
-      if (value < INT32_MIN || value > INT32_MAX)
+      if (integer < INT32_MIN || integer > INT32_MAX)
         throw new Error("Scalar integer is outside int32 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.INT64:
-      if (value < INT64_MIN || value > INT64_MAX)
+      if (integer < INT64_MIN || integer > INT64_MAX)
         throw new Error("Scalar integer is outside int64 range.");
-      return value;
+      return integer;
     case TypeId.UINT8:
-      if (value < 0n || value > UINT8_MAX)
+      if (integer < 0n || integer > UINT8_MAX)
         throw new Error("Scalar integer is outside uint8 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.UINT16:
-      if (value < 0n || value > UINT16_MAX)
+      if (integer < 0n || integer > UINT16_MAX)
         throw new Error("Scalar integer is outside uint16 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.UINT32:
-      if (value < 0n || value > UINT32_MAX)
+      if (integer < 0n || integer > UINT32_MAX)
         throw new Error("Scalar integer is outside uint32 range.");
-      return Number(value);
+      return Number(integer);
     case TypeId.UINT64:
-      if (value < 0n || value > UINT64_MAX)
+      if (integer < 0n || integer > UINT64_MAX)
         throw new Error("Scalar integer is outside uint64 range.");
-      return value;
+      return integer;
     default:
       throw new Error("Target scalar type is not an integer.");
   }
 }
 
-function valueToParts(value: unknown, remoteTypeId: number): DecimalParts {
-  if (value instanceof Decimal) {
-    return decimalToParts(value);
-  }
-  if (typeof value === "bigint") {
-    return integerToParts(value);
-  }
-  if (typeof value === "number") {
-    return isFloatType(remoteTypeId)
-      ? floatToParts(value)
-      : integerToParts(value);
-  }
-  if (typeof value === "string") {
-    return parseDecimalString(value);
-  }
-  if (typeof value === "boolean") {
-    return integerToParts(value ? 1 : 0);
-  }
-  throw new Error("Unsupported scalar value.");
-}
-
-function convertToBool(value: unknown, remoteTypeId: number): boolean {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  if (typeof value === "string") {
-    switch (value) {
-      case "0":
-      case "false":
-        return false;
-      case "1":
-      case "true":
-        return true;
-      default:
-        throw new Error(`Scalar string "${value}" is not a boolean value.`);
-    }
-  }
-  const integer = exactInteger(valueToParts(value, remoteTypeId));
+function integerToBool(value: number | bigint): boolean {
+  const integer = exactInteger(integerToParts(value));
   if (integer === 0n) {
     return false;
   }
@@ -669,72 +545,191 @@ function convertToBool(value: unknown, remoteTypeId: number): boolean {
   throw new Error("Scalar numeric value is not a boolean value.");
 }
 
-function convertToString(value: unknown, remoteTypeId: number): string {
-  if (typeof value === "boolean") {
-    return value ? "true" : "false";
+function stringToBool(value: string): boolean {
+  switch (value) {
+    case "0":
+    case "false":
+      return false;
+    case "1":
+    case "true":
+      return true;
+    default:
+      throw new Error(`Scalar string "${value}" is not a boolean value.`);
   }
-  const parts = valueToParts(value, remoteTypeId);
-  return formatParts(parts, isFloatType(remoteTypeId));
 }
 
-function convertToDecimal(value: unknown, remoteTypeId: number): Decimal {
-  const parts = valueToParts(value, remoteTypeId);
-  const normalized = normalizeParts(parts);
+function partsToDecimal(value: DecimalParts): Decimal {
+  const normalized = normalizeParts(value);
   return new Decimal(normalized.unscaled, normalized.scale);
 }
 
-function convertToNumber(
-  value: unknown,
-  remoteTypeId: number,
-  localTypeId: number,
-): number | bigint | Decimal {
-  if (canonicalScalarTypeId(localTypeId) === TypeId.DECIMAL) {
-    return convertToDecimal(value, remoteTypeId);
-  }
-  if (isFloatType(localTypeId)) {
-    if (typeof value === "number" && !Number.isFinite(value)) {
-      if (Number.isNaN(value)) {
-        throw new Error("Scalar NaN cannot be converted losslessly.");
-      }
-      return value;
+function floatToFloat(value: number, localTypeId: number): number {
+  if (!Number.isFinite(value)) {
+    if (Number.isNaN(value)) {
+      throw new Error("Scalar NaN cannot be converted losslessly.");
     }
-    return exactFloat(valueToParts(value, remoteTypeId), localTypeId);
+    return value;
   }
-  const integer = exactInteger(valueToParts(value, remoteTypeId));
-  const result = rangeCheckedInteger(integer, localTypeId);
-  if (typeof result === "number") {
-    return exactSafeNumber(BigInt(result));
-  }
-  return result;
+  return exactFloat(floatToParts(value), localTypeId);
 }
 
 export class CompatibleScalarConverter {
-  static read(
-    reader: BinaryReader,
-    remoteTypeId: number,
-    localTypeId: number,
-    fieldName: string,
-  ): unknown {
-    try {
-      const value = readScalarPayload(reader, remoteTypeId);
-      if (remoteTypeId === localTypeId) {
-        return value;
-      }
-      switch (scalarKind(localTypeId)) {
-        case "bool":
-          return convertToBool(value, remoteTypeId);
-        case "string":
-          return convertToString(value, remoteTypeId);
-        case "number":
-          return convertToNumber(value, remoteTypeId, localTypeId);
-        default:
-          throw new Error(`Unsupported target scalar type ${localTypeId}.`);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Failed to convert compatible field ${fieldName}: ${message}`,
-      );
+  static readDecimal(reader: BinaryReader): Decimal {
+    return readDecimal(reader);
+  }
+
+  static checkedBool(value: number): boolean {
+    if (value !== 0 && value !== 1) {
+      throw new Error(`Invalid boolean scalar value ${value}.`);
     }
+    return value === 1;
+  }
+
+  static stringToBool(value: string): boolean {
+    return stringToBool(value);
+  }
+
+  static integerToBool(value: number | bigint): boolean {
+    return integerToBool(value);
+  }
+
+  static floatToBool(value: number): boolean {
+    return integerToBool(exactInteger(floatToParts(value)));
+  }
+
+  static decimalToBool(value: Decimal): boolean {
+    return integerToBool(exactInteger(decimalToParts(value)));
+  }
+
+  static floatToString(value: number): string {
+    return formatParts(floatToParts(value), true);
+  }
+
+  static decimalToString(value: Decimal): string {
+    return formatParts(decimalToParts(value), false);
+  }
+
+  static stringToInteger(value: string): bigint {
+    return exactInteger(parseDecimalString(value));
+  }
+
+  static floatToInteger(value: number): bigint {
+    return exactInteger(floatToParts(value));
+  }
+
+  static decimalToInteger(value: Decimal): bigint {
+    return exactInteger(decimalToParts(value));
+  }
+
+  static checkedInt8(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.INT8) as number;
+  }
+
+  static checkedInt16(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.INT16) as number;
+  }
+
+  static checkedInt32(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.INT32) as number;
+  }
+
+  static checkedInt64(value: number | bigint): bigint {
+    return rangeCheckedInteger(value, TypeId.INT64) as bigint;
+  }
+
+  static checkedUint8(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.UINT8) as number;
+  }
+
+  static checkedUint16(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.UINT16) as number;
+  }
+
+  static checkedUint32(value: number | bigint): number {
+    return rangeCheckedInteger(value, TypeId.UINT32) as number;
+  }
+
+  static checkedUint64(value: number | bigint): bigint {
+    return rangeCheckedInteger(value, TypeId.UINT64) as bigint;
+  }
+
+  static boolToDecimal(value: boolean): Decimal {
+    return new Decimal(value ? 1n : 0n, 0);
+  }
+
+  static integerToDecimal(value: number | bigint): Decimal {
+    return partsToDecimal(integerToParts(value));
+  }
+
+  static floatToDecimal(value: number): Decimal {
+    return partsToDecimal(floatToParts(value));
+  }
+
+  static stringToDecimal(value: string): Decimal {
+    return partsToDecimal(parseDecimalString(value));
+  }
+
+  static integerToFloat16(value: number | bigint): number {
+    return exactFloat(integerToParts(value), TypeId.FLOAT16);
+  }
+
+  static integerToBfloat16(value: number | bigint): number {
+    return exactFloat(integerToParts(value), TypeId.BFLOAT16);
+  }
+
+  static integerToFloat32(value: number | bigint): number {
+    return exactFloat(integerToParts(value), TypeId.FLOAT32);
+  }
+
+  static integerToFloat64(value: number | bigint): number {
+    return exactFloat(integerToParts(value), TypeId.FLOAT64);
+  }
+
+  static floatToFloat16(value: number): number {
+    return floatToFloat(value, TypeId.FLOAT16);
+  }
+
+  static floatToBfloat16(value: number): number {
+    return floatToFloat(value, TypeId.BFLOAT16);
+  }
+
+  static floatToFloat32(value: number): number {
+    return floatToFloat(value, TypeId.FLOAT32);
+  }
+
+  static floatToFloat64(value: number): number {
+    return floatToFloat(value, TypeId.FLOAT64);
+  }
+
+  static decimalToFloat16(value: Decimal): number {
+    return exactFloat(decimalToParts(value), TypeId.FLOAT16);
+  }
+
+  static decimalToBfloat16(value: Decimal): number {
+    return exactFloat(decimalToParts(value), TypeId.BFLOAT16);
+  }
+
+  static decimalToFloat32(value: Decimal): number {
+    return exactFloat(decimalToParts(value), TypeId.FLOAT32);
+  }
+
+  static decimalToFloat64(value: Decimal): number {
+    return exactFloat(decimalToParts(value), TypeId.FLOAT64);
+  }
+
+  static stringToFloat16(value: string): number {
+    return exactFloat(parseDecimalString(value), TypeId.FLOAT16);
+  }
+
+  static stringToBfloat16(value: string): number {
+    return exactFloat(parseDecimalString(value), TypeId.BFLOAT16);
+  }
+
+  static stringToFloat32(value: string): number {
+    return exactFloat(parseDecimalString(value), TypeId.FLOAT32);
+  }
+
+  static stringToFloat64(value: string): number {
+    return exactFloat(parseDecimalString(value), TypeId.FLOAT64);
   }
 }

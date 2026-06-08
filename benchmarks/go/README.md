@@ -69,6 +69,15 @@ apt-get install protobuf-compiler
 ./run.sh --no-report
 ```
 
+### Schema Mismatch Mode
+
+Set `FORY_BENCH_SCHEMA_MISMATCH=1` to run the Fory-only compatible-read
+schema-mismatch mode. This mode is off by default. When enabled, run with
+`--serializer fory`; protobuf and MessagePack benchmark modes fail with a
+configuration error. Fory serialization uses the normal v1 benchmark structs,
+and Fory deserialization uses v2 structs registered with the same Fory type IDs
+where one int32 field is widened to int64.
+
 ### Manual Run
 
 ```bash

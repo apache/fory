@@ -42,7 +42,7 @@ fn test_simple() {
         f3: Vec<i8>,
         f4: String,
         f5: i8,
-        f6: Vec<i16>,
+        f6: Vec<i8>,
         f7: i16,
         last: i8,
     }
@@ -66,7 +66,7 @@ fn test_simple() {
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
     assert_eq!(obj.f5, 5);
-    assert_eq!(obj.f6, Vec::<i16>::default());
+    assert_eq!(animal.f6, obj.f6);
     assert_eq!(obj.f7, 43);
     assert_eq!(animal.last, obj.last);
 }

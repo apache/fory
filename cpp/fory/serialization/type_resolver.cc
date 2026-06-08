@@ -697,7 +697,7 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
 
   // Assign field IDs by comparing with local type
   if (local_type_info != nullptr) {
-    assign_field_ids(local_type_info, field_infos);
+    FORY_RETURN_IF_ERROR(assign_field_ids(local_type_info, field_infos));
   }
 
   size_t current_pos = buffer.reader_index();
@@ -987,20 +987,71 @@ bool name_sorter(const FieldInfo &a, const FieldInfo &b) {
   return compare_field_sort_key(a, b) < 0;
 }
 
-bool allows_empty_generic_fallback(uint32_t type_id) {
-  return type_id == static_cast<uint32_t>(TypeId::LIST) ||
-         type_id == static_cast<uint32_t>(TypeId::SET) ||
-         type_id == static_cast<uint32_t>(TypeId::MAP);
+uint32_t exact_schema_type_id(uint32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::UNKNOWN:
+    return static_cast<uint32_t>(TypeId::STRUCT);
+  case TypeId::ENUM:
+  case TypeId::NAMED_ENUM:
+    return static_cast<uint32_t>(TypeId::ENUM);
+  case TypeId::EXT:
+  case TypeId::NAMED_EXT:
+    return static_cast<uint32_t>(TypeId::EXT);
+  case TypeId::UNION:
+  case TypeId::TYPED_UNION:
+  case TypeId::NAMED_UNION:
+    return static_cast<uint32_t>(TypeId::UNION);
+  default:
+    return type_id;
+  }
 }
 
-bool union_type_ids_compatible(uint32_t local_type_id,
-                               uint32_t remote_type_id) {
-  auto is_union = [](uint32_t type_id) {
-    TypeId tid = static_cast<TypeId>(type_id);
-    return tid == TypeId::UNION || tid == TypeId::TYPED_UNION ||
-           tid == TypeId::NAMED_UNION;
-  };
-  return is_union(local_type_id) && is_union(remote_type_id);
+bool user_type_ids_compatible(const FieldType &local, const FieldType &remote) {
+  return local.user_type_id == remote.user_type_id ||
+         local.type_id == static_cast<uint32_t>(TypeId::UNKNOWN) ||
+         remote.type_id == static_cast<uint32_t>(TypeId::UNKNOWN);
+}
+
+bool byte_sequence_field_types_compatible(const FieldType &local,
+                                          const FieldType &remote) {
+  if (local.track_ref || remote.track_ref ||
+      local.nullable != remote.nullable) {
+    return false;
+  }
+  return (local.type_id == static_cast<uint32_t>(TypeId::BINARY) &&
+          remote.type_id == static_cast<uint32_t>(TypeId::UINT8_ARRAY)) ||
+         (local.type_id == static_cast<uint32_t>(TypeId::UINT8_ARRAY) &&
+          remote.type_id == static_cast<uint32_t>(TypeId::BINARY));
+}
+
+bool scalar_field_type_id(uint32_t type_id) {
+  return compatible_scalar_field_types(type_id, type_id);
+}
+
+bool compatible_payload_field_types(const FieldType &local,
+                                    const FieldType &remote) {
+  if (scalar_field_type_id(local.type_id) ||
+      scalar_field_type_id(remote.type_id)) {
+    return !local.track_ref && !remote.track_ref &&
+           local.type_id == remote.type_id;
+  }
+  if (exact_schema_type_id(local.type_id) !=
+          exact_schema_type_id(remote.type_id) ||
+      !user_type_ids_compatible(local, remote) ||
+      local.generics.size() != remote.generics.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < local.generics.size(); ++i) {
+    if (!compatible_payload_field_types(local.generics[i],
+                                        remote.generics[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool direct_field_types_compatible(const FieldType &local,
@@ -1028,14 +1079,20 @@ bool direct_field_types_compatible(const FieldType &local,
   if (local.type_id == static_cast<uint32_t>(TypeId::LIST) &&
       remote.generics.size() == 0 &&
       primitive_array_element_type_id(remote.type_id, array_element_type_id) &&
-      local.generics.size() == 1) {
+      local.generics.size() == 1 && !local.nullable && !local.track_ref &&
+      !remote.nullable && !remote.track_ref) {
     return compatible_fingerprint_type_id(local.generics[0].type_id) ==
            compatible_fingerprint_type_id(array_element_type_id);
   }
   if (remote.type_id == static_cast<uint32_t>(TypeId::LIST) &&
       local.generics.size() == 0 &&
       primitive_array_element_type_id(local.type_id, array_element_type_id) &&
-      remote.generics.size() == 1) {
+      remote.generics.size() == 1 && !local.nullable && !local.track_ref &&
+      !remote.nullable && !remote.track_ref && !remote.generics[0].track_ref) {
+    // Nullable element schema is compatible with dense arrays when the payload
+    // has no nulls; actual null elements are rejected by the array reader.
+    // Ref-tracked element framing stays rejected because this path is
+    // primitive-only.
     return compatible_fingerprint_type_id(remote.generics[0].type_id) ==
            compatible_fingerprint_type_id(array_element_type_id);
   }
@@ -1082,15 +1139,22 @@ uint32_t compatible_fingerprint_type_id(uint32_t type_id) {
 }
 
 bool field_types_compatible(const FieldType &local, const FieldType &remote) {
-  if (local.compatible_fingerprint == remote.compatible_fingerprint) {
-    return true;
+  if (exact_schema_type_id(local.type_id) !=
+          exact_schema_type_id(remote.type_id) ||
+      !user_type_ids_compatible(local, remote) ||
+      local.nullable != remote.nullable ||
+      local.track_ref != remote.track_ref) {
+    return false;
   }
-  if (union_type_ids_compatible(local.type_id, remote.type_id)) {
-    return true;
+  if (local.generics.size() != remote.generics.size()) {
+    return false;
   }
-  return local.type_id == remote.type_id &&
-         allows_empty_generic_fallback(local.type_id) &&
-         (local.generics.empty() || remote.generics.empty());
+  for (size_t i = 0; i < local.generics.size(); ++i) {
+    if (!field_types_compatible(local.generics[i], remote.generics[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool primitive_array_element_type_id(uint32_t array_type_id,
@@ -1143,8 +1207,10 @@ bool primitive_array_element_type_id(uint32_t array_type_id,
 bool field_types_compatible_top_level(const FieldType &local,
                                       const FieldType &remote) {
   return direct_field_types_compatible(local, remote) ||
+         byte_sequence_field_types_compatible(local, remote) ||
          (!local.track_ref && !remote.track_ref &&
-          compatible_scalar_field_types(local.type_id, remote.type_id));
+          compatible_scalar_field_types(local.type_id, remote.type_id)) ||
+         compatible_payload_field_types(local, remote);
 }
 
 std::vector<FieldInfo>
@@ -1196,9 +1262,12 @@ TypeMeta::sort_field_infos(std::vector<FieldInfo> fields) {
 // Field ID Assignment (KEY FUNCTION for schema evolution!)
 // ============================================================================
 
-void TypeMeta::assign_field_ids(const TypeMeta *local_type,
-                                std::vector<FieldInfo> &remote_fields) {
+Result<void, Error>
+TypeMeta::assign_field_ids(const TypeMeta *local_type,
+                           std::vector<FieldInfo> &remote_fields) {
   const auto &local_fields = local_type->field_infos;
+  constexpr size_t max_compatible_matched_field_index =
+      (static_cast<size_t>(std::numeric_limits<int16_t>::max()) - 1) / 2;
 
   // Primary mapping: field name -> sorted index in local schema
   std::unordered_map<std::string, size_t> local_field_index_map;
@@ -1219,17 +1288,53 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
   // back to type-based matching.
   std::vector<bool> used(local_fields.size(), false);
 
-  // For each remote field, assign field ID (sorted index in local schema)
+  auto assign_matched_field = [&](FieldInfo &remote_field,
+                                  size_t local_index) -> Result<bool, Error> {
+    if (used[local_index]) {
+      return false;
+    }
+    const FieldInfo &local_field = local_fields[local_index];
+    if (field_types_compatible(local_field.field_type,
+                               remote_field.field_type)) {
+      if (local_index > max_compatible_matched_field_index) {
+        return Unexpected(Error::type_error(
+            "Cannot assign compatible matched id for local field " +
+            local_field.field_name + ": local field index " +
+            std::to_string(local_index) + " exceeds max " +
+            std::to_string(max_compatible_matched_field_index)));
+      }
+      remote_field.field_id = static_cast<int16_t>(local_index * 2);
+      used[local_index] = true;
+      return true;
+    }
+    if (field_types_compatible_top_level(local_field.field_type,
+                                         remote_field.field_type)) {
+      if (local_index > max_compatible_matched_field_index) {
+        return Unexpected(Error::type_error(
+            "Cannot assign compatible matched id for local field " +
+            local_field.field_name + ": local field index " +
+            std::to_string(local_index) + " exceeds max " +
+            std::to_string(max_compatible_matched_field_index)));
+      }
+      remote_field.field_id = static_cast<int16_t>(local_index * 2 + 1);
+      used[local_index] = true;
+      return true;
+    }
+    return Unexpected(Error::type_error(
+        "Cannot read remote field " + remote_field.field_name +
+        " as local field " + local_field.field_name +
+        ": remote and local field schemas are not compatible"));
+  };
+
+  // For each remote field, assign doubled dispatch id in local schema.
   for (auto &remote_field : remote_fields) {
-    size_t local_index = static_cast<size_t>(-1);
+    bool matched = false;
 
     if (remote_field.field_id >= 0) {
       auto id_it = local_field_id_map.find(remote_field.field_id);
-      if (id_it != local_field_id_map.end() && !used[id_it->second] &&
-          field_types_compatible_top_level(
-              local_fields[id_it->second].field_type,
-              remote_field.field_type)) {
-        local_index = id_it->second;
+      if (id_it != local_field_id_map.end()) {
+        FORY_TRY(is_matched, assign_matched_field(remote_field, id_it->second));
+        matched = is_matched;
       }
     } else {
       // 1) Try exact name + type match first (fast path for same-language
@@ -1240,43 +1345,40 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
       if (it != local_field_index_map.end()) {
         size_t idx = it->second;
         const FieldInfo &local_field = local_fields[idx];
-        if (local_field.field_id < 0 &&
-            field_types_compatible_top_level(local_field.field_type,
-                                             remote_field.field_type)) {
-          local_index = idx;
+        if (local_field.field_id < 0) {
+          FORY_TRY(is_matched, assign_matched_field(remote_field, idx));
+          matched = is_matched;
         }
       }
 
-      // 2) Fallback: match by type signature and position when field names
-      //    are not available or differ across languages. Keep this fallback
-      //    within name-based fields so a mixed schema does not switch into a
-      //    global tag-ID mode or bind an untagged field to a tagged local
-      //    field.
-      if (local_index == static_cast<size_t>(-1)) {
+      // 2) Fallback by type signature only when no canonical remote name was
+      //    carried. Named remote fields that miss the local name map are
+      //    remote-only fields; matching them by type can bind an added string
+      //    field such as `email` to an unrelated local string field.
+      if (!matched && remote_field.field_name.empty()) {
         for (size_t i = 0; i < local_fields.size(); ++i) {
           if (used[i] || local_fields[i].field_id >= 0) {
             continue;
           }
-          // Scalar conversion requires a tag or canonical-name match; the
-          // type-only fallback is only for schemas whose scalar identity
-          // already matches, otherwise unrelated fields can bind by value type.
-          if (direct_field_types_compatible(local_fields[i].field_type,
-                                            remote_field.field_type)) {
-            local_index = i;
+          // Compatible adapters require tag or canonical-name identity. The
+          // type-only fallback is only for anonymous legacy fields with exact
+          // schema shape, otherwise unrelated fields can bind by value type.
+          if (field_types_compatible(local_fields[i].field_type,
+                                     remote_field.field_type)) {
+            FORY_TRY(is_matched, assign_matched_field(remote_field, i));
+            matched = is_matched;
             break;
           }
         }
       }
     }
 
-    if (local_index == static_cast<size_t>(-1)) {
+    if (!matched) {
       // No suitable local field found -> mark as skipped.
       remote_field.field_id = -1;
-    } else {
-      remote_field.field_id = static_cast<int16_t>(local_index);
-      used[local_index] = true;
     }
   }
+  return Result<void, Error>();
 }
 
 int64_t TypeMeta::compute_hash(const std::vector<uint8_t> &meta_bytes) {

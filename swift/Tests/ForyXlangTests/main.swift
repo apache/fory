@@ -42,12 +42,15 @@ private struct Item {
 
 @ForyStruct
 private struct SimpleStruct {
-    var f1: [Int32: Double] = [:]
+    // Java xlang uses boxed collection element types for this case, so the
+    // schema marks map keys/values and list elements nullable even when the
+    // sample payload contains only non-null values.
+    var f1: [Int32?: Double?] = [:]
     var f2: Int32 = 0
     var f3: Item = .foryDefault()
     var f4: String = ""
     var f5: PeerColor = .green
-    var f6: [String] = []
+    var f6: [String?] = []
     var f7: Int32 = 0
     var f8: Int32 = 0
     var last: Int32 = 0

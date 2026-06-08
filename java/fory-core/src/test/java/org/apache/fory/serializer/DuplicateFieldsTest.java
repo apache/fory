@@ -206,22 +206,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
       assertEquals(newC, c);
     }
     {
-      // Use CompatibleSerializer JIT version
-      Serializer<C> serializer =
-          Serializers.newSerializer(
-              fory,
-              C.class,
-              CodecUtils.loadOrGenCompatibleCodecClass(
-                  fory, C.class, fory.getTypeResolver().getTypeDef(C.class, true)));
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
-      writeSerializer(fory, serializer, buffer, c);
-      C newC = readSerializer(fory, serializer, buffer);
-      assertEquals(newC.f1, c.f1);
-      assertEquals(((B) newC).f1, ((B) c).f1);
-      assertEquals(newC, c);
-    }
-    {
-      // FallbackSerializer/CodegenSerializer will set itself to ClassResolver.
+      // The compatible generated serializer is schema-pair owned and installed by TypeResolver.
       Fory fory1 = builder.build();
       C newC = serDeCheckSerializer(fory1, c, ".*Codec|.*Serializer");
       assertEquals(newC.f1, c.f1);

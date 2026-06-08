@@ -75,6 +75,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append("import org.apache.fory.serializer.FieldGroups\n")
     builder.append("import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo\n")
     builder.append("import org.apache.fory.serializer.StaticGeneratedStructSerializer\n")
+    builder.append("import org.apache.fory.serializer.converter.FieldConverters\n")
     builder.append("import org.apache.fory.type.Descriptor\n")
     builder.append("import org.apache.fory.type.BFloat16Array\n")
     builder.append("import org.apache.fory.type.Float16Array\n")
@@ -279,113 +280,6 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     if (struct.construction != KotlinStructConstruction.CONSTRUCTOR) {
       return
     }
-
-    builder
-      .append("  private fun readCompatibleConstructor(readContext: ReadContext): ")
-      .append(struct.typeName)
-      .append(" {\n")
-    builder.append("    val fieldValues = arrayOfNulls<Any?>(DESCRIPTORS.size)\n")
-    builder.append("    val bufferedFields = newFieldBits(DESCRIPTORS.size)\n")
-    builder.append("    val presentFields = newFieldBits(DESCRIPTORS.size)\n")
-    builder.append("    beginConstructorRef(readContext)\n")
-    builder.append("    try {\n")
-    builder.append("      var remaining = countConstructorFields(constructorFieldBits!!)\n")
-    builder.append("      var value: ").append(struct.typeName).append("? = null\n")
-    builder.append("      if (remaining == 0) {\n")
-    builder.append("        val constructed = newConstructorObject(fieldValues)\n")
-    builder.append("        value = constructed\n")
-    builder.append("        referenceConstructorRef(readContext, constructed)\n")
-    builder.append("      }\n")
-    builder.append("      for (i in remoteFields.indices) {\n")
-    builder.append("        val remoteField = remoteFields[i]\n")
-    builder.append("        val fieldId = remoteField.matchedId\n")
-    builder.append("        if (fieldId < 0) {\n")
-    builder.append("          skipField(readContext, remoteField)\n")
-    builder.append("          continue\n")
-    builder.append("        }\n")
-    builder.append("        val localField = fieldsById[fieldId]!!\n")
-    builder.append("        if (!canReadGeneratedField(remoteField, localField)) {\n")
-    builder.append("          skipField(readContext, remoteField)\n")
-    builder.append("          continue\n")
-    builder.append("        }\n")
-    builder.append(
-      "        val fieldValue = readCompatibleConstructorField(readContext, remoteField, localField, fieldId)\n"
-    )
-    builder.append("        markField(presentFields, fieldId)\n")
-    builder.append("        if (hasField(constructorFieldBits!!, fieldId)) {\n")
-    builder.append(
-      "          fieldValues[fieldId] = ctorFieldValue(readContext, fieldValue, type)\n"
-    )
-    builder.append("          remaining--\n")
-    builder.append("          if (remaining == 0) {\n")
-    builder.append("            checkNoUnresolvedReadRef(readContext)\n")
-    builder.append("            val constructed = newConstructorObject(fieldValues)\n")
-    builder.append("            value = constructed\n")
-    builder.append("            referenceConstructorRef(readContext, constructed)\n")
-    builder.append("            setBufferedFields(constructed, fieldValues, bufferedFields)\n")
-    builder.append("          }\n")
-    builder.append("        } else if (value == null) {\n")
-    builder.append(
-      "          fieldValues[fieldId] = bufferFieldValue(readContext, fieldValue, type)\n"
-    )
-    builder.append("          markField(bufferedFields, fieldId)\n")
-    builder.append("        } else {\n")
-    builder.append("          setFieldById(value!!, localField, fieldId, fieldValue)\n")
-    builder.append("        }\n")
-    builder.append("      }\n")
-    for (field in struct.fields) {
-      if (field.hasDefault || field.nullable) {
-        continue
-      }
-      builder.append("      if (!hasField(presentFields, ").append(field.id).append(")) {\n")
-      builder
-        .append("        throw DeserializationException(\"Required Kotlin field ")
-        .append(struct.qualifiedTypeName)
-        .append('.')
-        .append(field.name)
-        .append(" is missing in compatible xlang payload\")\n")
-      builder.append("      }\n")
-    }
-    builder.append("      if (value == null) {\n")
-    builder.append("        checkNoUnresolvedReadRef(readContext)\n")
-    builder.append("        val constructed = newConstructorObject(fieldValues)\n")
-    builder.append("        value = constructed\n")
-    builder.append("        referenceConstructorRef(readContext, constructed)\n")
-    builder.append("        setBufferedFields(constructed, fieldValues, bufferedFields)\n")
-    builder.append("      }\n")
-    builder.append("      return value!!\n")
-    builder.append("    } finally {\n")
-    builder.append("      endConstructorRef(readContext)\n")
-    builder.append("    }\n")
-    builder.append("  }\n\n")
-
-    builder.append(
-      "  private fun readCompatibleConstructorField(readContext: ReadContext, remoteField: StaticGeneratedStructSerializer.RemoteFieldInfo, localField: SerializationFieldInfo, fieldId: Int): Any? {\n"
-    )
-    builder.append("    val buffer = readContext.buffer\n")
-    builder.append("    return when (fieldId) {\n")
-    for (field in struct.fields) {
-      val readExpression =
-        castReadExpression(
-          field,
-          "readCompatibleFieldValue(readContext, remoteField, localField)",
-          compatible = true,
-        )
-      val expression = constructorReadExpression(field, readExpression)
-      if (field.trackingRef) {
-        builder.append("      ").append(field.id).append(" -> {\n")
-        builder.append("        trackConstructorRefRead(readContext, buffer)\n")
-        builder.append("        ").append(expression).append("\n")
-        builder.append("      }\n")
-      } else {
-        builder.append("      ").append(field.id).append(" -> ").append(expression).append("\n")
-      }
-    }
-    builder.append(
-      "      else -> throw IllegalStateException(\"Unknown generated field id \${fieldId}\")\n"
-    )
-    builder.append("    }\n")
-    builder.append("  }\n\n")
 
     builder
       .append("  private fun newConstructorObject(fieldValues: Array<Any?>): ")
@@ -795,18 +689,10 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append("    if (sameSchemaCompatible) {\n")
     builder.append("      return readSchemaConsistent(readContext)\n")
     builder.append("    }\n")
-    if (
-      struct.construction == KotlinStructConstruction.CONSTRUCTOR &&
-        struct.fields.any { it.hasDefault }
-    ) {
-      builder.append("    return readCompatibleDefaultConstructor(readContext)\n")
-      builder.append("  }\n\n")
-      writeCompatibleDefaultConstructorRead()
-      return
-    }
     if (struct.construction == KotlinStructConstruction.CONSTRUCTOR) {
       builder.append("    return readCompatibleConstructor(readContext)\n")
       builder.append("  }\n\n")
+      writeCompatibleConstructorRead()
       return
     }
     if (struct.construction == KotlinStructConstruction.MUTABLE) {
@@ -818,9 +704,9 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append("  }\n\n")
   }
 
-  private fun writeCompatibleDefaultConstructorRead() {
+  private fun writeCompatibleConstructorRead() {
     builder
-      .append("  private fun readCompatibleDefaultConstructor(readContext: ReadContext): ")
+      .append("  private fun readCompatibleConstructor(readContext: ReadContext): ")
       .append(struct.typeName)
       .append(" {\n")
     builder.append("    beginConstructorRef(readContext)\n")
@@ -839,14 +725,49 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append(indent).append("  val remoteField = remoteFields[i]\n")
     builder.append(indent).append("  when (remoteField.matchedId) {\n")
     for (field in struct.fields) {
-      builder.append(indent).append("    ").append(field.id).append(" -> {\n")
+      builder.append(indent).append("    ").append(field.id * 2).append(" -> {\n")
+      builder.append(indent).append("      val buffer = readContext.buffer\n")
+      val directRead =
+        directReadExpression(field)
+          ?: castReadExpression(
+            field,
+            "readFieldValue(readContext, fieldsById[${field.id}]!!)",
+            compatible = false,
+          )
+      val constructorDirectRead =
+        if (constructorRefs && field.trackingRef) {
+          "run { trackConstructorRefRead(readContext, buffer); ctorFieldValue(readContext, $directRead, type) }"
+        } else if (constructorRefs) {
+          "ctorFieldValue(readContext, $directRead, type)"
+        } else {
+          directRead
+        }
+      val directAssignment =
+        if (constructorRefs) {
+          localValueExpression(field, constructorDirectRead)
+        } else {
+          constructorDirectRead
+        }
+      builder
+        .append(indent)
+        .append("      ")
+        .append(field.localName)
+        .append(" = ")
+        .append(directAssignment)
+        .append("\n")
+      builder.append(indent).append("      ")
+      appendPresenceSet(field)
+      builder.append("\n")
+      builder.append(indent).append("    }\n")
+      builder.append(indent).append("    ").append(field.id * 2 + 1).append(" -> {\n")
       builder
         .append(indent)
         .append("      val localField = fieldsById[")
         .append(field.id)
         .append("]!!\n")
-      builder.append(indent).append("      if (canReadGeneratedField(remoteField, localField)) {\n")
-      val readExpression = "readCompatibleFieldValue(readContext, remoteField, localField)"
+      val readExpression =
+        compatibleScalarReadExpression(field)
+          ?: "readCompatibleFieldValue(readContext, remoteField, localField)"
       val constructorReadExpression =
         if (constructorRefs && field.trackingRef) {
           "run { trackConstructorRefRead(readContext, readContext.buffer); ctorFieldValue(readContext, $readExpression, type) }"
@@ -864,22 +785,25 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
           castReadExpression(
             field,
             constructorReadExpression,
-            compatible = true,
+            compatible = readExpression.startsWith("readCompatibleFieldValue"),
           )
         )
         .append("\n")
-      builder.append(indent).append("        ")
+      builder.append(indent).append("      ")
       appendPresenceSet(field)
       builder.append("\n")
-      builder.append(indent).append("      } else {\n")
-      builder.append(indent).append("        skipField(readContext, remoteField)\n")
-      builder.append(indent).append("      }\n")
       builder.append(indent).append("    }\n")
     }
-    builder.append(indent).append("    else -> skipField(readContext, remoteField)\n")
+    builder.append(indent).append("    -1 -> skipField(readContext, remoteField)\n")
+    builder
+      .append(indent)
+      .append(
+        "    else -> throw IllegalStateException(\"Invalid compatible matched id \${remoteField.matchedId}\")\n"
+      )
     builder.append(indent).append("  }\n")
     builder.append(indent).append("}\n")
-    builder.append(indent).append("var missingDefaultMask = 0L\n")
+    writeMissingRequiredChecks(indent)
+    builder.append(indent).append("var missingDefaultMask = 0\n")
     val defaultFields = struct.fields.filter { it.hasDefault }
     for (field in struct.fields) {
       if (!field.hasDefault && field.nullable) {
@@ -888,21 +812,12 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       builder.append(indent).append("if (")
       appendPresenceMissing(field)
       builder.append(") {\n")
-      when {
-        field.hasDefault ->
-          builder
-            .append(indent)
-            .append("  missingDefaultMask = missingDefaultMask or ")
-            .append(1L shl defaultFields.indexOf(field))
-            .append("L\n")
-        else ->
-          builder
-            .append(indent)
-            .append("  throw DeserializationException(\"Required Kotlin field ")
-            .append(struct.qualifiedTypeName)
-            .append('.')
-            .append(field.name)
-            .append(" is missing in compatible xlang payload\")\n")
+      if (field.hasDefault) {
+        builder
+          .append(indent)
+          .append("  missingDefaultMask = missingDefaultMask or ")
+          .append(1 shl defaultFields.indexOf(field))
+          .append("\n")
       }
       builder.append(indent).append("}\n")
     }
@@ -922,48 +837,72 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     builder.append("      val remoteField = remoteFields[i]\n")
     builder.append("      when (remoteField.matchedId) {\n")
     for (field in struct.fields) {
-      builder.append("        ").append(field.id).append(" -> {\n")
-      builder.append("          val localField = fieldsById[").append(field.id).append("]!!\n")
-      builder.append("          if (canReadGeneratedField(remoteField, localField)) {\n")
+      builder.append("        ").append(field.id * 2).append(" -> {\n")
+      builder.append("          val buffer = readContext.buffer\n")
+      val directRead =
+        directReadExpression(field)
+          ?: castReadExpression(
+            field,
+            "readFieldValue(readContext, fieldsById[${field.id}]!!)",
+            compatible = false,
+          )
       builder
         .append("            value.")
+        .append(field.name)
+        .append(" = ")
+        .append(directRead)
+        .append("\n")
+      builder.append("            ")
+      appendPresenceSet(field)
+      builder.append("\n")
+      builder.append("        }\n")
+      builder.append("        ").append(field.id * 2 + 1).append(" -> {\n")
+      builder.append("          val localField = fieldsById[").append(field.id).append("]!!\n")
+      builder
+        .append("          value.")
         .append(field.name)
         .append(" = ")
         .append(
           castReadExpression(
             field,
-            "readCompatibleFieldValue(readContext, remoteField, localField)",
-            compatible = true,
+            compatibleScalarReadExpression(field)
+              ?: "readCompatibleFieldValue(readContext, remoteField, localField)",
+            compatible = compatibleScalarReadExpression(field) == null,
           )
         )
         .append("\n")
-      builder.append("            ")
+      builder.append("          ")
       appendPresenceSet(field)
       builder.append("\n")
-      builder.append("          } else {\n")
-      builder.append("            skipField(readContext, remoteField)\n")
-      builder.append("          }\n")
       builder.append("        }\n")
     }
-    builder.append("        else -> skipField(readContext, remoteField)\n")
+    builder.append("        -1 -> skipField(readContext, remoteField)\n")
+    builder.append(
+      "        else -> throw IllegalStateException(\"Invalid compatible matched id \${remoteField.matchedId}\")\n"
+    )
     builder.append("      }\n")
     builder.append("    }\n")
+    writeMissingRequiredChecks("    ")
+    builder.append("    return value\n")
+  }
+
+  private fun writeMissingRequiredChecks(indent: String) {
     for (field in struct.fields) {
-      if (field.nullable) {
+      if (field.hasDefault || field.nullable) {
         continue
       }
-      builder.append("    if (")
+      builder.append(indent).append("if (")
       appendPresenceMissing(field)
       builder.append(") {\n")
       builder
-        .append("      throw DeserializationException(\"Required Kotlin field ")
+        .append(indent)
+        .append("  throw DeserializationException(\"Required Kotlin field ")
         .append(struct.qualifiedTypeName)
-        .append('.')
+        .append(".")
         .append(field.name)
-        .append(" is missing in compatible xlang payload\")\n")
-      builder.append("    }\n")
+        .append(" is missing\")\n")
+      builder.append(indent).append("}\n")
     }
-    builder.append("    return value\n")
   }
 
   private fun writePresenceVars(indent: String = "    ") {
@@ -1093,13 +1032,13 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     if (defaultFields.isEmpty()) {
       if (referenceConstructor) {
         builder.append(indent).append("val constructed = ")
-        appendConstructorCall(defaultMask = 0L)
+        appendConstructorCall(defaultMask = 0)
         builder.append("\n")
         builder.append(indent).append("referenceConstructorRef(readContext, constructed)\n")
         builder.append(indent).append("return constructed\n")
       } else {
         builder.append(indent).append("return ")
-        appendConstructorCall(defaultMask = 0L)
+        appendConstructorCall(defaultMask = 0)
         builder.append("\n")
       }
       return
@@ -1109,15 +1048,15 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     } else {
       builder.append(indent).append("return when (missingDefaultMask) {\n")
     }
-    val combinations = 1L shl defaultFields.size
+    val combinations = 1 shl defaultFields.size
     for (combination in 0 until combinations) {
-      var mask = 0L
+      var mask = 0
       for (i in defaultFields.indices) {
-        if ((combination and (1L shl i)) != 0L) {
-          mask = mask or (1L shl i)
+        if ((combination and (1 shl i)) != 0) {
+          mask = mask or (1 shl i)
         }
       }
-      builder.append(indent).append("  ").append(mask).append("L -> ")
+      builder.append(indent).append("  ").append(mask).append(" -> ")
       appendConstructorCall(defaultMask = mask)
       builder.append("\n")
     }
@@ -1133,14 +1072,14 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     }
   }
 
-  private fun appendConstructorCall(defaultMask: Long) {
+  private fun appendConstructorCall(defaultMask: Int) {
     val defaultFields = struct.fields.filter { it.hasDefault }
     builder.append(struct.typeName).append("(")
     var first = true
     for (field in struct.fields) {
       if (field.hasDefault) {
         val defaultIndex = defaultFields.indexOf(field)
-        if (defaultIndex >= 0 && (defaultMask and (1L shl defaultIndex)) != 0L) {
+        if (defaultIndex >= 0 && (defaultMask and (1 shl defaultIndex)) != 0) {
           continue
         }
       }
@@ -1178,6 +1117,13 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       return source
     }
     return "($source as ${field.propertyTypeName})"
+  }
+
+  private fun localValueExpression(field: KotlinSourceField, expression: String): String {
+    if (field.type.valueTypeName == "Any?") {
+      return expression
+    }
+    return "($expression as ${field.type.valueTypeName})"
   }
 
   private fun constructorValueExpression(field: KotlinSourceField): String {
@@ -1400,6 +1346,88 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       return expression
     }
     return "($expression as ${field.type.valueTypeName})"
+  }
+
+  private fun compatibleScalarReadExpression(field: KotlinSourceField): String? {
+    if (field.type.componentType != null || field.type.typeArguments.isNotEmpty()) {
+      return null
+    }
+    val nullable = field.type.nullable
+    val helperCall =
+      when (field.type.valueTypeName.removeSuffix("?")) {
+        "Boolean" ->
+          if (nullable) {
+            "FieldConverters.readBoxedBooleanTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readBooleanTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Byte" ->
+          if (nullable) {
+            "FieldConverters.readBoxedByteTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readByteTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Short" ->
+          if (nullable) {
+            "FieldConverters.readBoxedShortTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readShortTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Int" ->
+          if (nullable) {
+            "FieldConverters.readBoxedIntTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readIntTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Long" ->
+          if (nullable) {
+            "FieldConverters.readBoxedLongTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readLongTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Float" ->
+          if (nullable) {
+            "FieldConverters.readBoxedFloatTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readFloatTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "Double" ->
+          if (nullable) {
+            "FieldConverters.readBoxedDoubleTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          } else {
+            "FieldConverters.readDoubleTarget(readContext, remoteField.serializationFieldInfo, localField)"
+          }
+        "String" ->
+          "FieldConverters.readStringTarget(readContext, remoteField.serializationFieldInfo, localField)"
+        "java.math.BigDecimal" ->
+          "FieldConverters.readDecimalTarget(readContext, remoteField.serializationFieldInfo, localField)"
+        "UByte" ->
+          if (nullable) {
+            "FieldConverters.readBoxedIntTarget(readContext, remoteField.serializationFieldInfo, localField)?.toUByte()"
+          } else {
+            "FieldConverters.readIntTarget(readContext, remoteField.serializationFieldInfo, localField).toUByte()"
+          }
+        "UShort" ->
+          if (nullable) {
+            "FieldConverters.readBoxedIntTarget(readContext, remoteField.serializationFieldInfo, localField)?.toUShort()"
+          } else {
+            "FieldConverters.readIntTarget(readContext, remoteField.serializationFieldInfo, localField).toUShort()"
+          }
+        "UInt" ->
+          if (nullable) {
+            "FieldConverters.readBoxedLongTarget(readContext, remoteField.serializationFieldInfo, localField)?.toUInt()"
+          } else {
+            "FieldConverters.readLongTarget(readContext, remoteField.serializationFieldInfo, localField).toUInt()"
+          }
+        "ULong" ->
+          if (nullable) {
+            "FieldConverters.readBoxedLongTarget(readContext, remoteField.serializationFieldInfo, localField)?.toULong()"
+          } else {
+            "FieldConverters.readLongTarget(readContext, remoteField.serializationFieldInfo, localField).toULong()"
+          }
+        else -> return null
+      }
+    return helperCall
   }
 
   private fun hasKotlinScalar(type: KotlinSourceTypeNode): Boolean =
