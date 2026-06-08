@@ -92,9 +92,456 @@ class RustGenerator(BaseGenerator):
             return temporal_map[kind]
         return self.PRIMITIVE_MAP[kind]
 
+    # Strict and reserved keywords defined in Rust (https://doc.rust-lang.org/reference/keywords.html).
+    # Weak keywords are intentionally excluded because they are usable outside their special syntax contexts.
+    RUST_RAW_IDENTIFIER_KEYWORDS = {
+        "as",
+        "async",
+        "await",
+        "abstract",
+        "become",
+        "box",
+        "break",
+        "const",
+        "continue",
+        "do",
+        "dyn",
+        "else",
+        "enum",
+        "extern",
+        "false",
+        "final",
+        "fn",
+        "for",
+        "gen",
+        "if",
+        "impl",
+        "in",
+        "let",
+        "loop",
+        "macro",
+        "match",
+        "mod",
+        "move",
+        "mut",
+        "override",
+        "priv",
+        "pub",
+        "ref",
+        "return",
+        "static",
+        "struct",
+        "trait",
+        "true",
+        "try",
+        "type",
+        "typeof",
+        "unsafe",
+        "unsized",
+        "use",
+        "virtual",
+        "where",
+        "while",
+        "yield",
+    }
+
+    # Reserved identifiers in Rust (https://doc.rust-lang.org/reference/identifiers.html#railroad-RESERVED_RAW_IDENTIFIER).
+    # These tokens are invalid even with an `r#` prefix, so escape them by suffixing `_` instead.
+    RUST_RESERVED_IDENTIFIERS = {"_", "self", "Self", "super", "crate"}
+
+    def sanitize_identifier(self, normalized: str) -> str:
+        """Escape an already-normalized Rust name."""
+        if normalized in self.RUST_RESERVED_IDENTIFIERS:
+            return f"{normalized}_"
+        if normalized and normalized[0].isnumeric():
+            return f"_{normalized}"  # Rust identifiers cannot start with a digit.
+        if normalized in self.RUST_RAW_IDENTIFIER_KEYWORDS:
+            return f"r#{normalized}"
+        return normalized
+
+    def to_rust_snake(self, source: str) -> str:
+        """Convert an IDL name to a sanitized Rust snake_case identifier."""
+        return self.sanitize_identifier(self.to_snake_case(source))
+
+    def get_top_level_module_identifier(self, package: Optional[str]) -> str:
+        """Get the Rust module identifier used to reference one schema file."""
+        # e.g. `foo.bar` defined in the IDL will be `foo_bar` in the generated Rust code.
+        module_name = package.replace(".", "_") if package else "generated"
+        return self.to_rust_snake(module_name)
+
+    def get_type_identifier(self, type_def: object) -> str:
+        """Get the sanitized identifier for a type declaration or reference from the cache."""
+        self._ensure_name_caches(self._schema_for_node(type_def))
+        return self._type_identifier_cache[self._cache_key(type_def)]
+
+    def get_module_identifier(self, message: Message) -> str:
+        """Get the sanitized module name for a message's nested-type scope from the cache."""
+        self._ensure_name_caches(self._schema_for_node(message))
+        return self._module_identifier_cache[self._cache_key(message)]
+
+    def get_field_identifier(self, message: Message, field: Field) -> str:
+        """Get the sanitized field name within one message from the cache."""
+        self._ensure_name_caches(self._schema_for_node(message))
+        return self._field_identifier_cache[self._cache_key(message)][
+            self._cache_key(field)
+        ]
+
+    def get_union_case_identifier(self, union: Union, field: Field) -> str:
+        """Get the sanitized variant name for one union case from the cache"""
+        self._ensure_name_caches(self._schema_for_node(union))
+        return self._union_case_identifier_cache[self._cache_key(union)][
+            self._cache_key(field)
+        ]
+
+    def _cache_key(self, node: object) -> Tuple[object, ...]:
+        """Get a cache key for an IR node."""
+        # Use the location as the key due to its stability.
+        location = node.location
+        return (
+            type(node).__name__,
+            str(Path(location.file).resolve()),
+            location.line,
+            location.column,
+        )
+
+    def _package_for_source_file(self, file_path: str) -> Optional[str]:
+        """Get the package name that a file declares."""
+        source_key = str(Path(file_path).resolve())
+        schema_source_key = str(Path(self.schema.source_file).resolve())
+        # `file_path` is the self schema file.
+        if source_key == schema_source_key:
+            return self.schema.package
+        # `file_path` corresponds to an imported schema file.
+        return self.schema.source_packages[source_key]
+
+    def _schema_for_node(self, node: object) -> Schema:
+        """Get the schema an IR node belongs to."""
+        file_path = node.location.file
+        source_key = str(Path(file_path).resolve())
+        # `node` belongs to the self schema.
+        if source_key == str(Path(self.schema.source_file).resolve()):
+            return self.schema
+        # `node` belongs to an imported schema.
+        if not hasattr(self, "_source_schema_cache"):
+            self._source_schema_cache: Dict[str, Schema] = {}
+        if source_key in self._source_schema_cache:
+            return self._source_schema_cache[source_key]
+        enums = [
+            enum
+            for enum in self.schema.enums
+            if str(Path(enum.location.file).resolve()) == source_key
+        ]
+        unions = [
+            union
+            for union in self.schema.unions
+            if str(Path(union.location.file).resolve()) == source_key
+        ]
+        messages = [
+            message
+            for message in self.schema.messages
+            if str(Path(message.location.file).resolve()) == source_key
+        ]
+        services = [
+            service
+            for service in self.schema.services
+            if str(Path(service.location.file).resolve()) == source_key
+        ]
+        if enums or unions or messages or services:
+            schema = Schema(
+                package=self._package_for_source_file(file_path),
+                enums=enums,
+                messages=messages,
+                unions=unions,
+                services=services,
+                source_file=file_path,
+                source_format=self.schema.source_format,
+            )
+            self._source_schema_cache[source_key] = schema
+            return schema
+        raise ValueError(
+            f"Rust generator cannot find source schema for "
+            f"{type(node).__name__} {getattr(node, 'name', '<unnamed>')!r}"
+        )
+
+    def _local_top_level_types(
+        self, schema: Schema
+    ) -> Tuple[List[Enum], List[Union], List[Message]]:
+        """Get top-level types that are declared directly in the schema file."""
+        schema_source_key = str(Path(schema.source_file).resolve())
+        enums = [
+            enum
+            for enum in schema.enums
+            if str(Path(enum.location.file).resolve()) == schema_source_key
+        ]
+        unions = [
+            union
+            for union in schema.unions
+            if str(Path(union.location.file).resolve()) == schema_source_key
+        ]
+        messages = [
+            message
+            for message in schema.messages
+            if str(Path(message.location.file).resolve()) == schema_source_key
+        ]
+        return enums, unions, messages
+
+    def _resolve_message_path(self, schema: Schema, parts: List[str]) -> List[Message]:
+        """Resolve a dotted message path to the concrete message lineage."""
+        lineage: List[Message] = []
+        scope = self._local_top_level_types(schema)[2]
+        for part in parts:
+            match = next((message for message in scope if message.name == part), None)
+            if match is None:
+                return []
+            lineage.append(match)
+            scope = match.nested_messages
+        return lineage
+
+    def _allocate_scoped_identifier(
+        self,
+        normalized_name: str,
+        used_names: Dict[str, str],
+        scope: str,
+        source_name: str,
+    ) -> str:
+        """Allocate one sanitized identifier inside a single generated scope. Throw error on collision"""
+        escaped = self.sanitize_identifier(normalized_name)
+        if not escaped:
+            raise ValueError(f"Rust identifier for {source_name!r} in {scope} is empty")
+        previous_source = used_names.get(escaped)
+        if previous_source is not None:
+            raise ValueError(
+                f"Rust name collision in {scope}: {previous_source!r} and "
+                f"{source_name!r} both map to Rust identifier {escaped!r}"
+            )
+        used_names[escaped] = source_name
+        return escaped
+
+    def _allocate_scoped_type_identifiers(
+        self, type_defs: List[object], scope: str
+    ) -> None:
+        """Allocate unique sanitized identifiers for type declarations in the scope and cache the results."""
+        used_names: Dict[str, str] = {}
+        for type_def in type_defs:
+            self._type_identifier_cache[self._cache_key(type_def)] = (
+                self._allocate_scoped_identifier(
+                    self.to_pascal_case(type_def.name),
+                    used_names,
+                    scope,
+                    type_def.name,
+                )
+            )
+
+    def _allocate_scoped_module_identifiers(
+        self, messages: List[Message], scope: str
+    ) -> None:
+        """Allocate unique sanitized identifiers for nested-type modules in the scope and cache the results."""
+        used_names: Dict[str, str] = {}
+        for message in messages:
+            self._module_identifier_cache[self._cache_key(message)] = (
+                self._allocate_scoped_identifier(
+                    self.to_snake_case(message.name),
+                    used_names,
+                    scope,
+                    message.name,
+                )
+            )
+
+    def _allocate_scoped_enum_identifiers(self, enum: Enum) -> None:
+        """Allocate unique sanitized variant names for the generated enum and cache the results."""
+        used_names: Dict[str, str] = {}
+        allocated: Dict[Tuple[object, ...], str] = {}
+        for value in enum.values:
+            allocated[self._cache_key(value)] = self._allocate_scoped_identifier(
+                self.to_pascal_case(self.strip_enum_prefix(enum.name, value.name)),
+                used_names,
+                f"enum {enum.name}",
+                value.name,
+            )
+        self._enum_value_identifier_cache[self._cache_key(enum)] = allocated
+
+    def _allocate_scoped_union_identifiers(self, union: Union) -> None:
+        """Allocate unique sanitized variant names for the generated union and cache the results."""
+        used_names: Dict[str, str] = {}
+        allocated: Dict[Tuple[object, ...], str] = {}
+        for field in union.fields:
+            allocated[self._cache_key(field)] = self._allocate_scoped_identifier(
+                self.to_pascal_case(field.name),
+                used_names,
+                f"union {union.name}",
+                field.name,
+            )
+        self._union_case_identifier_cache[self._cache_key(union)] = allocated
+
+    def _allocate_scoped_message_identifiers(self, message: Message) -> None:
+        """Allocate all scoped names that belong to the message."""
+        used_fields: Dict[str, str] = {}
+        field_names: Dict[Tuple[object, ...], str] = {}
+        for field in message.fields:
+            field_names[self._cache_key(field)] = self._allocate_scoped_identifier(
+                self.to_snake_case(field.name),
+                used_fields,
+                f"message {message.name} fields",
+                field.name,
+            )
+        self._field_identifier_cache[self._cache_key(message)] = field_names
+        nested_types: List[object] = (
+            list(message.nested_enums)
+            + list(message.nested_unions)
+            + list(message.nested_messages)
+        )
+        self._allocate_scoped_type_identifiers(
+            nested_types, f"message {message.name} types"
+        )
+        self._allocate_scoped_module_identifiers(
+            list(message.nested_messages), f"message {message.name} modules"
+        )
+        for nested_enum in message.nested_enums:
+            self._allocate_scoped_enum_identifiers(nested_enum)
+        for nested_union in message.nested_unions:
+            self._allocate_scoped_union_identifiers(nested_union)
+        for nested_message in message.nested_messages:
+            self._allocate_scoped_message_identifiers(nested_message)
+
+    def _ensure_name_caches(self, schema: Schema) -> None:
+        """Construct the naming caches once for a schema file."""
+        if not hasattr(self, "_named_schema_ids"):
+            # Init everything.
+            self._named_schema_ids: Set[int] = set()
+            self._type_identifier_cache: Dict[Tuple[object, ...], str] = {}
+            self._module_identifier_cache: Dict[Tuple[object, ...], str] = {}
+            self._field_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._enum_value_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._union_case_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._named_service_schema_ids: Set[int] = set()
+            self._service_trait_identifier_cache: Dict[Tuple[object, ...], str] = {}
+            self._service_client_module_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._service_server_module_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._service_name_constant_identifier_cache: Dict[
+                Tuple[object, ...], str
+            ] = {}
+            self._rpc_method_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._rpc_stream_type_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._rpc_path_constant_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+        schema_id = id(schema)
+        if schema_id in self._named_schema_ids:
+            # Cache exists.
+            return
+        enums, unions, messages = self._local_top_level_types(schema)
+        self._allocate_scoped_type_identifiers(
+            list(enums) + list(unions) + list(messages), "top-level Rust types"
+        )
+        self._allocate_scoped_module_identifiers(
+            list(messages), "top-level Rust modules"
+        )
+        for enum in enums:
+            self._allocate_scoped_enum_identifiers(enum)
+        for union in unions:
+            self._allocate_scoped_union_identifiers(union)
+        for message in messages:
+            self._allocate_scoped_message_identifiers(message)
+        self._named_schema_ids.add(schema_id)
+
     def generate(self) -> List[GeneratedFile]:
         """Generate Rust files for the schema."""
         files = []
+        if self.options.grpc:
+            # Allocate and validate identifier naming for gRPC service definition.
+            self._ensure_name_caches(self.schema)
+            schema_id = id(self.schema)
+            if schema_id not in self._named_service_schema_ids:
+                schema_source_key = str(Path(self.schema.source_file).resolve())
+                services = [
+                    service
+                    for service in self.schema.services
+                    if str(Path(service.location.file).resolve()) == schema_source_key
+                ]
+                used_traits: Dict[str, str] = {}
+                used_modules: Dict[str, str] = {}
+                used_constants: Dict[str, str] = {}
+                for service in services:
+                    service_key = self._cache_key(service)
+                    self._service_trait_identifier_cache[service_key] = (
+                        self._allocate_scoped_identifier(
+                            self.to_pascal_case(service.name),
+                            used_traits,
+                            "Rust gRPC service traits",
+                            service.name,
+                        )
+                    )
+                    self._service_client_module_identifier_cache[service_key] = (
+                        self._allocate_scoped_identifier(
+                            f"{self.to_snake_case(service.name)}_client",
+                            used_modules,
+                            "Rust gRPC service modules",
+                            f"{service.name} client module",
+                        )
+                    )
+                    self._service_server_module_identifier_cache[service_key] = (
+                        self._allocate_scoped_identifier(
+                            f"{self.to_snake_case(service.name)}_server",
+                            used_modules,
+                            "Rust gRPC service modules",
+                            f"{service.name} server module",
+                        )
+                    )
+                    self._service_name_constant_identifier_cache[service_key] = (
+                        self._allocate_scoped_identifier(
+                            f"{self.to_upper_snake_case(service.name)}_SERVICE_NAME",
+                            used_constants,
+                            "Rust gRPC service constants",
+                            service.name,
+                        )
+                    )
+                    used_methods: Dict[str, str] = {}
+                    used_stream_types: Dict[str, str] = {}
+                    method_names: Dict[Tuple[object, ...], str] = {}
+                    stream_types: Dict[Tuple[object, ...], str] = {}
+                    path_constants: Dict[Tuple[object, ...], str] = {}
+                    for method in service.methods:
+                        method_key = self._cache_key(method)
+                        method_names[method_key] = self._allocate_scoped_identifier(
+                            self.to_snake_case(method.name),
+                            used_methods,
+                            f"Rust gRPC service {service.name} methods",
+                            method.name,
+                        )
+                        if method.server_streaming:
+                            stream_types[method_key] = self._allocate_scoped_identifier(
+                                f"{self.to_pascal_case(method.name)}Stream",
+                                used_stream_types,
+                                f"Rust gRPC service {service.name} stream types",
+                                method.name,
+                            )
+                        path_constants[method_key] = self._allocate_scoped_identifier(
+                            f"{self.to_upper_snake_case(service.name)}_"
+                            f"{self.to_upper_snake_case(method.name)}_PATH",
+                            used_constants,
+                            "Rust gRPC service constants",
+                            f"{service.name}.{method.name}",
+                        )
+                    self._rpc_method_identifier_cache[service_key] = method_names
+                    self._rpc_stream_type_identifier_cache[service_key] = stream_types
+                    self._rpc_path_constant_identifier_cache[service_key] = (
+                        path_constants
+                    )
+                self._named_service_schema_ids.add(schema_id)
 
         # Generate a single module file with all types
         files.append(self.generate_module())
@@ -103,9 +550,11 @@ class RustGenerator(BaseGenerator):
 
     def get_module_name(self) -> str:
         """Get the Rust module name."""
-        if self.package:
-            return self.package.replace(".", "_")
-        return "generated"
+        module_name = self.get_top_level_module_identifier(self.package)
+        # e.g., when resolving the file for `pub mod r#type`, Rust looks for `type.rs`, not `r#type.rs`.
+        if module_name.startswith("r#"):
+            return module_name[2:]
+        return module_name
 
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
@@ -150,53 +599,98 @@ class RustGenerator(BaseGenerator):
         return schema
 
     def _module_name_for_schema(self, schema: Schema) -> str:
-        if schema.package:
-            return schema.package.replace(".", "_")
-        return "generated"
+        return self.get_top_level_module_identifier(schema.package)
 
-    def _module_name_for_type(self, type_def: object) -> Optional[str]:
-        location = getattr(type_def, "location", None)
-        file_path = getattr(location, "file", None) if location else None
-        schema = self._load_schema(file_path)
+    def _module_name_for_type(self, type_def: object) -> str:
+        schema = self._load_schema(type_def.location.file)
         if schema is None:
-            return None
+            return self.get_top_level_module_identifier(
+                self._package_for_source_file(type_def.location.file)
+            )
         return self._module_name_for_schema(schema)
 
+    def _record_imported_module(
+        self,
+        module_sources: Dict[str, str],
+        ordered_modules: List[str],
+        module: str,
+        source: str,
+    ) -> None:
+        """Record an imported module and reject module-name collisions."""
+        previous_source = module_sources.get(module)
+        if previous_source is not None:
+            if previous_source != source:
+                raise ValueError(
+                    f"Rust module name collision: {previous_source!r} and "
+                    f"{source!r} both map to Rust module {module!r}"
+                )
+            return
+        module_sources[module] = source
+        ordered_modules.append(module)
+
     def _collect_imported_modules(self) -> List[str]:
-        modules: Set[str] = set()
+        modules: Dict[str, str] = {}
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
                 continue
             module = self._module_name_for_type(type_def)
-            if module:
-                modules.add(module)
+            source = type_def.location.file
+            previous_source = modules.get(module)
+            if previous_source is not None and previous_source != source:
+                raise ValueError(
+                    f"Rust module name collision: {previous_source!r} and "
+                    f"{source!r} both map to Rust module {module!r}"
+                )
+            modules[module] = source
         ordered: List[str] = []
-        used: Set[str] = set()
-        if self.schema.source_file:
-            base_dir = Path(self.schema.source_file).resolve().parent
-            for imp in self.schema.imports:
-                candidate = (base_dir / imp.path).resolve()
-                schema = self._load_schema(str(candidate))
-                if schema is None:
-                    continue
+        module_sources: Dict[str, str] = {}
+        base_dir = Path(self.schema.source_file).resolve().parent
+        for imp in self.schema.imports:
+            resolved_path = getattr(imp, "resolved_path", None)
+            candidate = (
+                Path(resolved_path).resolve()
+                if resolved_path
+                else (base_dir / imp.path).resolve()
+            )
+            schema = self._load_schema(str(candidate))
+            if schema is None:
+                package = self.schema.source_packages.get(str(candidate))
+                if str(candidate) not in self.schema.source_packages:
+                    raise ValueError(
+                        f"Rust generator cannot determine package for import "
+                        f"{imp.path!r} resolved to {str(candidate)!r}"
+                    )
+                module = self.get_top_level_module_identifier(package)
+            else:
                 module = self._module_name_for_schema(schema)
-                if module in used:
-                    continue
-                ordered.append(module)
-                used.add(module)
-        for module in sorted(modules):
-            if module in used:
-                continue
-            ordered.append(module)
+            self._record_imported_module(
+                module_sources, ordered, module, str(candidate)
+            )
+        for module, source in sorted(modules.items()):
+            self._record_imported_module(module_sources, ordered, module, source)
         return ordered
 
-    def _format_imported_type_name(self, type_name: str, module: str) -> str:
-        if "." in type_name:
-            parts = type_name.split(".")
-            parents = [self.to_snake_case(name) for name in parts[:-1]]
-            path = "::".join(parents + [self.to_pascal_case(parts[-1])])
+    def _format_imported_type_name(
+        self,
+        type_name: str,
+        module: str,
+        type_def: object,
+    ) -> str:
+        type_path = self.schema.resolve_type_name(type_name)
+        if "." in type_path:
+            parts = type_path.split(".")
+            parents: List[str] = []
+            schema = self._schema_for_node(type_def)
+            parent_messages = self._resolve_message_path(schema, parts[:-1])
+            if parent_messages:
+                parents = [
+                    self.get_module_identifier(parent) for parent in parent_messages
+                ]
+            if not parents:
+                parents = [self.to_rust_snake(name) for name in parts[:-1]]
+            path = "::".join(parents + [self.get_type_identifier(type_def)])
             return f"crate::{module}::{path}"
-        return f"crate::{module}::{self.to_pascal_case(type_name)}"
+        return f"crate::{module}::{self.get_type_identifier(type_def)}"
 
     def generate_bytes_impl(self, type_name: str) -> List[str]:
         lines = []
@@ -295,24 +789,31 @@ class RustGenerator(BaseGenerator):
         """Build module path from parent message names."""
         if not parent_stack:
             return ""
-        return "::".join(self.to_snake_case(parent.name) for parent in parent_stack)
+        return "::".join(self.get_module_identifier(parent) for parent in parent_stack)
 
-    def get_type_path(self, name: str, parent_stack: Optional[List[Message]]) -> str:
+    def get_type_path(
+        self, type_def: object, parent_stack: Optional[List[Message]]
+    ) -> str:
         """Build a type path for nested types from the root module."""
         module_path = self.get_module_path(parent_stack)
+        name = self.get_type_identifier(type_def)
         if module_path:
             return f"{module_path}::{name}"
         return name
 
     def build_relative_type_name(
         self,
-        current_parents: List[str],
-        target_parents: List[str],
+        current_parents: List[Message],
+        target_parents: List[Message],
         type_name: str,
     ) -> str:
         """Build a type path relative to the current module."""
-        current_parts = [self.to_snake_case(name) for name in current_parents]
-        target_parts = [self.to_snake_case(name) for name in target_parents]
+        current_parts = [
+            self.get_module_identifier(message) for message in current_parents
+        ]
+        target_parts = [
+            self.get_module_identifier(message) for message in target_parents
+        ]
         common = 0
         for left, right in zip(current_parts, target_parts):
             if left != right:
@@ -338,7 +839,7 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust enum."""
         lines = []
 
-        type_name = enum.name
+        type_name = self.get_type_identifier(enum)
 
         # Derive macros
         lines.append(
@@ -352,8 +853,10 @@ class RustGenerator(BaseGenerator):
         for i, value in enumerate(enum.values):
             if i == 0:
                 lines.append("    #[default]")
-            stripped_name = self.strip_enum_prefix(enum.name, value.name)
-            lines.append(f"    {self.to_pascal_case(stripped_name)} = {value.value},")
+            value_name = self._enum_value_identifier_cache[self._cache_key(enum)][
+                self._cache_key(value)
+            ]
+            lines.append(f"    {value_name} = {value.value},")
 
         lines.append("}")
 
@@ -367,8 +870,7 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust tagged union."""
         lines: List[str] = []
 
-        if self.to_pascal_case(union.name) != union.name:
-            lines.append("#[allow(non_camel_case_types)]")
+        union_name = self.get_type_identifier(union)
         comment = self.format_type_id_comment(union, "//")
         if comment:
             lines.append(comment)
@@ -377,12 +879,12 @@ class RustGenerator(BaseGenerator):
             if self.union_supports_trait(union, trait, parent_stack):
                 derives.append(trait)
         lines.append(f"#[derive({', '.join(derives)})]")
-        lines.append(f"pub enum {union.name} {{")
+        lines.append(f"pub enum {union_name} {{")
         lines.append("    #[fory(unknown)]")
         lines.append("    Unknown(::fory::UnknownCase),")
 
         for index, field in enumerate(union.fields):
-            variant_name = self.to_pascal_case(field.name)
+            variant_name = self.get_union_case_identifier(union, field)
             pointer_type = self.get_field_pointer_type(field)
             variant_type = self.generate_type(
                 field.field_type,
@@ -413,7 +915,7 @@ class RustGenerator(BaseGenerator):
 
         if union.fields:
             default_field = union.fields[0]
-            default_variant = self.to_pascal_case(default_field.name)
+            default_variant = self.get_union_case_identifier(union, default_field)
             default_pointer_type = self.get_field_pointer_type(default_field)
             default_type = self.generate_type(
                 default_field.field_type,
@@ -427,7 +929,7 @@ class RustGenerator(BaseGenerator):
             default_type = self.qualify_union_payload_type(
                 default_field.field_type, default_type, default_variant
             )
-            lines.append(f"impl ::std::default::Default for {union.name} {{")
+            lines.append(f"impl ::std::default::Default for {union_name} {{")
             lines.append("    fn default() -> Self {")
             lines.append(
                 f"        Self::{default_variant}(<{default_type} as ::fory::ForyDefault>::fory_default())"
@@ -436,7 +938,7 @@ class RustGenerator(BaseGenerator):
             lines.append("}")
             lines.append("")
 
-        lines.extend(self.generate_bytes_impl(union.name))
+        lines.extend(self.generate_bytes_impl(union_name))
 
         return lines
 
@@ -458,7 +960,7 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust struct."""
         lines = []
 
-        type_name = self.to_pascal_case(message.name)
+        type_name = self.get_type_identifier(message)
 
         # Derive macros
         comment = self.format_type_id_comment(message, "//")
@@ -785,7 +1287,7 @@ class RustGenerator(BaseGenerator):
     def generate_debug_impl(self, message: Message) -> List[str]:
         """Generate a Debug impl that avoids recursive ref expansion."""
         lines: List[str] = []
-        type_name = self.to_pascal_case(message.name)
+        type_name = self.get_type_identifier(message)
         lines.append(f"impl ::std::fmt::Debug for {type_name} {{")
         lines.append(
             "    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {"
@@ -802,7 +1304,7 @@ class RustGenerator(BaseGenerator):
         )
         lineage = self._lineage_for_message(message)
         for i, field in enumerate(message.fields):
-            field_name = self.to_snake_case(field.name)
+            field_name = self.get_field_identifier(message, field)
             if i > 0:
                 lines.append('        f.write_str(", ")?;')
             lines.append(
@@ -842,7 +1344,7 @@ class RustGenerator(BaseGenerator):
 
         lines: List[str] = []
         ind = self.indent_str * indent
-        module_name = self.to_snake_case(message.name)
+        module_name = self.get_module_identifier(message)
         lines.append(f"{ind}pub mod {module_name} {{")
         lines.append(f"{ind}{self.indent_str}use super::*;")
         lines.append("")
@@ -918,7 +1420,7 @@ class RustGenerator(BaseGenerator):
             parent_stack=parent_stack,
             pointer_type=pointer_type,
         )
-        field_name = self.to_snake_case(field.name)
+        field_name = self.get_field_identifier(parent_stack[-1], field)
 
         lines.append(f"pub {field_name}: {rust_type},")
 
@@ -1026,12 +1528,19 @@ class RustGenerator(BaseGenerator):
             return base_type
 
         elif isinstance(field_type, NamedType):
-            type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
-            named_type = self.schema.get_type(field_type.name)
-            if named_type is not None and self.is_imported_type(named_type):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if named_type is None:
+                raise ValueError(f"Unknown type {field_type.name!r}")
+            type_name = self.resolve_nested_type_name(
+                field_type.name,
+                named_type,
+                parent_stack,
+            )
+            if self.is_imported_type(named_type):
                 module = self._module_name_for_type(named_type)
-                if module:
-                    type_name = self._format_imported_type_name(field_type.name, module)
+                type_name = self._format_imported_type_name(
+                    field_type.name, module, named_type
+                )
             if ref:
                 type_name = f"{pointer_type}<{type_name}>"
             if nullable:
@@ -1104,34 +1613,43 @@ class RustGenerator(BaseGenerator):
                 map_type = f"::std::option::Option<{map_type}>"
             return map_type
 
-        return "()"
+        raise TypeError(f"Unsupported Rust field type: {field_type!r}")
 
     def resolve_nested_type_name(
         self,
         type_name: str,
+        type_def: object,
         parent_stack: Optional[List[Message]] = None,
     ) -> str:
         """Resolve nested type names to module-qualified Rust identifiers."""
-        current_parents = [msg.name for msg in (parent_stack or [])[:-1]]
-        if "." in type_name:
-            parts = type_name.split(".")
-            target_parents = parts[:-1]
-            base_name = parts[-1]
+        current_parents = (parent_stack or [])[:-1]
+        type_path = self.schema.resolve_type_name(type_name)
+        if "." in type_path:
+            parts = type_path.split(".")
+            schema = self._schema_for_node(type_def)
+            target_parents = self._resolve_message_path(schema, parts[:-1])
+            base_name = self.get_type_identifier(type_def)
+            if not target_parents:
+                down = [self.to_rust_snake(name) for name in parts[:-1]]
+                return "::".join(down + [base_name])
             return self.build_relative_type_name(
-                current_parents, target_parents, self.to_pascal_case(base_name)
+                current_parents,
+                target_parents,
+                base_name,
             )
+        resolved_name = self.get_type_identifier(type_def)
         if not parent_stack:
-            return self.to_pascal_case(type_name)
+            return resolved_name
 
         for i in range(len(parent_stack) - 1, -1, -1):
             message = parent_stack[i]
             if message.get_nested_type(type_name) is not None:
-                target_parents = [msg.name for msg in parent_stack[: i + 1]]
+                target_parents = parent_stack[: i + 1]
                 return self.build_relative_type_name(
-                    current_parents, target_parents, self.to_pascal_case(type_name)
+                    current_parents, target_parents, resolved_name
                 )
 
-        return self.to_pascal_case(type_name)
+        return resolved_name
 
     def field_uses_pointer(self, field: Field) -> bool:
         if field.ref:
@@ -1224,7 +1742,7 @@ class RustGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ):
         """Generate registration code for an enum."""
-        type_name = self.get_type_path(enum.name, parent_stack)
+        type_name = self.get_type_path(enum, parent_stack)
         reg_name = self.get_registration_type_name(enum.name, parent_stack)
 
         if self.should_register_by_id(enum):
@@ -1242,7 +1760,7 @@ class RustGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ):
         """Generate registration code for a message and its nested types."""
-        type_name = self.get_type_path(self.to_pascal_case(message.name), parent_stack)
+        type_name = self.get_type_path(message, parent_stack)
         reg_name = self.get_registration_type_name(message.name, parent_stack)
 
         # Register nested enums first
@@ -1278,7 +1796,7 @@ class RustGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]],
     ):
         """Generate registration code for a union."""
-        type_name = self.get_type_path(union.name, parent_stack)
+        type_name = self.get_type_path(union, parent_stack)
         reg_name = self.get_registration_type_name(union.name, parent_stack)
 
         if self.should_register_by_id(union):

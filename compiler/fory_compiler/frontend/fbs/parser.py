@@ -266,13 +266,20 @@ class Parser:
         attributes = self.parse_metadata()
         self.consume(TokenType.LBRACE, "Expected '{' after union name")
 
-        types: List[str] = []
+        types: List[FbsTypeName] = []
         while not self.check(TokenType.RBRACE):
             if self.check(TokenType.COMMA):
                 self.advance()
                 continue
+            type_start = self.current()
             type_name = self.parse_qualified_ident()
-            types.append(type_name)
+            types.append(
+                FbsTypeName(
+                    name=type_name,
+                    line=type_start.line,
+                    column=type_start.column,
+                )
+            )
             if self.match(TokenType.COMMA):
                 continue
             if self.check(TokenType.RBRACE):

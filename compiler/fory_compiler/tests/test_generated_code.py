@@ -23,7 +23,7 @@ from typing import Dict, Tuple, Type
 
 import pytest
 
-from fory_compiler.cli import resolve_imports
+from fory_compiler.cli import main as foryc_main, resolve_imports
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
@@ -490,8 +490,8 @@ def test_generated_code_map_types_equivalent():
     assert_all_languages_equal(schemas)
 
     rust_output = render_files(generate_files(schemas["fdl"], RustGenerator))
-    assert "RcWeak<MapValue>" in rust_output
-    assert "Option<i32>" in rust_output
+    assert "::fory::RcWeak<MapValue>" in rust_output
+    assert "::std::option::Option<i32>" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
     assert "SharedWeak<MapValue>" in cpp_output
@@ -849,7 +849,7 @@ def test_generated_code_tree_ref_options_equivalent():
     assert_all_languages_equal(schemas)
 
     rust_output = render_files(generate_files(schemas["fdl"], RustGenerator))
-    assert "ArcWeak<TreeNode>" in rust_output
+    assert "::fory::ArcWeak<TreeNode>" in rust_output
     assert "#[derive(::fory::ForyStruct, Clone, PartialEq, Eq, Default)]" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
@@ -1255,3 +1255,113 @@ def test_rust_union_conflicting_payload_uses_self_path():
         "Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())" in rust_output
     )
     assert "Dog(Dog)," not in rust_output
+
+
+def test_rust_escapes_keywords():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message type {
+                string type = 1;
+                string self = 2;
+                string crate = 3;
+                string extern = 4;
+                string raw = 5;
+            }
+
+            message _1 {
+                string value = 1;
+            }
+            """
+        )
+    )
+    rust_files = generate_files(schema, RustGenerator)
+    rust_output = render_files(rust_files)
+
+    assert "demo.rs" in rust_files
+    assert "pub struct Type {" in rust_output
+    assert "pub r#type: ::std::string::String," in rust_output
+    assert "pub self_: ::std::string::String," in rust_output
+    assert "pub crate_: ::std::string::String," in rust_output
+    assert "pub r#extern: ::std::string::String," in rust_output
+    assert "pub raw: ::std::string::String," in rust_output
+    assert "pub struct _1 {" in rust_output
+
+
+def test_rust_rejects_normalized_name_collisions():
+    collision_cases = [
+        """
+        message foo_bar {}
+
+        message FooBar {}
+        """,
+        """
+        message Holder {
+            string fooBar = 1;
+            string foo_bar = 2;
+        }
+        """,
+        """
+        message Holder {
+            string self = 1;
+            string self_ = 2;
+        }
+        """,
+        """
+        union crate {
+            string self = 1;
+            string Self = 2;
+        }
+        """,
+    ]
+
+    for source in collision_cases:
+        schema = parse_fdl(dedent(source))
+        with pytest.raises(ValueError, match="Rust name collision"):
+            generate_files(schema, RustGenerator)
+
+
+def test_rust_rejects_same_output_path_collisions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    first_fdl = tmp_path / "first.fdl"
+    second_fdl = tmp_path / "second.fdl"
+    rust_out = tmp_path / "rust"
+    first_fdl.write_text(
+        dedent(
+            """
+            package foo.bar;
+
+            message First {
+                string value = 1;
+            }
+            """
+        )
+    )
+    second_fdl.write_text(
+        dedent(
+            """
+            package foo_bar;
+
+            message Second {
+                string value = 1;
+            }
+            """
+        )
+    )
+    exit_code = foryc_main(
+        [
+            str(first_fdl),
+            str(second_fdl),
+            "--rust_out",
+            str(rust_out),
+            "-I",
+            str(tmp_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "Rust output path collision" in captured.err

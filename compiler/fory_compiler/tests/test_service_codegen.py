@@ -565,8 +565,18 @@ def test_grpc_method_name_collisions_fail():
     else:
         raise AssertionError("Expected Python gRPC method name collision")
 
+    rust_generator = RustGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    try:
+        rust_generator.generate()
+    except ValueError as e:
+        assert "Rust name collision" in str(e)
+    else:
+        raise AssertionError("Expected Rust gRPC method name collision")
 
-def test_python_grpc_method_keywords_are_safe_names():
+
+def test_java_python_grpc_method_keywords_are_safe_names():
     schema = parse_fdl(
         dedent(
             """
@@ -615,6 +625,29 @@ def test_python_grpc_service_registration_collisions_fail():
         assert "Python gRPC service registration collision" in str(e)
     else:
         raise AssertionError("Expected Python gRPC service registration collision")
+
+
+def test_rust_grpc_service_module_collisions_fail():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+
+            service FooBar {}
+            service FooBAR {}
+            """
+        )
+    )
+
+    generator = RustGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    try:
+        generator.generate()
+    except ValueError as e:
+        assert "Rust name collision" in str(e)
+    else:
+        raise AssertionError("Expected Rust gRPC service module collision")
 
 
 def test_default_package_java_grpc_output_path_and_service_name():
@@ -699,7 +732,7 @@ def test_compile_service_schema_with_grpc_flag(tmp_path: Path):
     lang_dirs = {}
     for lang in ("java", "python", "rust", "go", "cpp", "csharp", "swift"):
         lang_dirs[lang] = tmp_path / lang
-    ok = compile_file(example_path, lang_dirs, grpc=True)
+    ok = compile_file(example_path, lang_dirs, grpc=True, generated_outputs={})
     assert ok is True
     for lang, lang_dir in lang_dirs.items():
         files = [p for p in lang_dir.rglob("*") if p.is_file()]

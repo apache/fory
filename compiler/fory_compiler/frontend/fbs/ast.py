@@ -81,7 +81,7 @@ class FbsUnion:
     """A FlatBuffers union declaration."""
 
     name: str
-    types: List[str] = field(default_factory=list)
+    types: List[FbsTypeName] = field(default_factory=list)
     attributes: Dict[str, object] = field(default_factory=dict)
     line: int = 0
     column: int = 0

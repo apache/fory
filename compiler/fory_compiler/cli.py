@@ -129,6 +129,7 @@ def resolve_imports(
     imported_messages = []
     imported_unions = []
     resolved_import_files = []
+    source_packages: Dict[str, Optional[str]] = {str(file_path): schema.package}
 
     for imp in schema.imports:
         # Resolve import path using search paths
@@ -159,6 +160,7 @@ def resolve_imports(
         imported_enums.extend(imported_schema.enums)
         imported_messages.extend(imported_schema.messages)
         imported_unions.extend(imported_schema.unions)
+        source_packages.update(imported_schema.source_packages)
 
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
@@ -173,6 +175,7 @@ def resolve_imports(
         source_file=schema.source_file,
         source_format=schema.source_format,
         resolved_import_files=list(dict.fromkeys(resolved_import_files)),
+        source_packages=source_packages,
     )
 
     cache[file_path] = copy.deepcopy(merged_schema)
@@ -611,6 +614,8 @@ def compile_file(
     emit_fdl_path: Optional[Path] = None,
     resolve_cache: Optional[Dict[Path, Schema]] = None,
     grpc: bool = False,
+    *,
+    generated_outputs: Optional[Dict[Path, Path]] = None,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -618,7 +623,11 @@ def compile_file(
         file_path: Path to the IDL file
         lang_output_dirs: Dictionary mapping language name to output directory
         import_paths: List of import search paths
+        generated_outputs: output file path -> source IDL path
     """
+    file_path = file_path.resolve()
+    if generated_outputs is None:
+        generated_outputs = {}
     print(f"Compiling {file_path}...")
 
     # Parse and resolve imports
@@ -689,6 +698,31 @@ def compile_file(
             print(f"Error: {e}", file=sys.stderr)
             return False
 
+        if lang == "rust":
+            # Special error handling for Rust
+            output_targets: List[Path] = []
+            for f in files:
+                target = (lang_output / f.path).resolve()
+                # Reject overwriting existing non-generated files
+                if target.exists() and not is_generated_file(target):
+                    print(
+                        f"Error: Rust output path collision: {target} already exists",
+                        file=sys.stderr,
+                    )
+                    return False
+                # Check if distinct source files map to the same output file, e.g. due to naming normalization
+                previous_source = generated_outputs.get(target)
+                if previous_source is not None and previous_source != file_path:
+                    print(
+                        "Error: Rust output path collision: "
+                        f"{previous_source} and {file_path} both generate {target}",
+                        file=sys.stderr,
+                    )
+                    return False
+                output_targets.append(target)
+            for target in output_targets:
+                generated_outputs[target] = file_path
+
         generator.write_files(files)
 
         for f in files:
@@ -709,6 +743,7 @@ def compile_file_recursive(
     stack: Set[Path],
     resolve_cache: Dict[Path, Schema],
     go_module_root: Optional[Path],
+    generated_outputs: Dict[Path, Path],
     grpc: bool = False,
 ) -> bool:
     file_path = file_path.resolve()
@@ -773,6 +808,7 @@ def compile_file_recursive(
             stack,
             resolve_cache,
             go_module_root,
+            generated_outputs,
             grpc,
         ):
             stack.remove(file_path)
@@ -789,6 +825,7 @@ def compile_file_recursive(
         emit_fdl_path,
         resolve_cache,
         grpc,
+        generated_outputs=generated_outputs,
     )
     if ok:
         generated.add(file_path)
@@ -868,6 +905,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
     success = True
     generated: Set[Path] = set()
     resolve_cache: Dict[Path, Schema] = {}
+    generated_outputs: Dict[Path, Path] = {}
     for file_path in args.files:
         if not file_path.exists():
             print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -887,6 +925,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 set(),
                 resolve_cache,
                 None,
+                generated_outputs,
                 args.grpc,
             ):
                 success = False
