@@ -1468,13 +1468,20 @@ class CppGenerator(BaseGenerator):
             return type_name
 
         if isinstance(field_type, ListType):
+            effective_element_optional = element_optional or field_type.element_optional
+            effective_element_ref = element_ref or field_type.element_ref
+            effective_element_weak_ref = element_weak_ref
+            if field_type.element_ref:
+                effective_element_weak_ref = self.is_weak_ref(
+                    field_type.element_ref_options
+                )
             element_type = self.generate_namespaced_type(
                 field_type.element_type,
-                element_optional,
-                element_ref,
+                effective_element_optional,
+                effective_element_ref,
                 False,
                 False,
-                element_weak_ref,
+                effective_element_weak_ref,
                 False,
                 parent_stack,
             )
@@ -1513,13 +1520,18 @@ class CppGenerator(BaseGenerator):
             key_type = self.generate_namespaced_type(
                 field_type.key_type, False, False, False, False, parent_stack
             )
+            value_weak_ref = (
+                self.is_weak_ref(field_type.value_ref_options)
+                if field_type.value_ref
+                else False
+            )
             value_type = self.generate_namespaced_type(
                 field_type.value_type,
                 False,
                 field_type.value_ref,
                 False,
                 False,
-                weak_ref and field_type.value_ref,
+                value_weak_ref,
                 False,
                 parent_stack,
             )
@@ -1749,13 +1761,20 @@ class CppGenerator(BaseGenerator):
             return type_name
 
         elif isinstance(field_type, ListType):
+            effective_element_optional = element_optional or field_type.element_optional
+            effective_element_ref = element_ref or field_type.element_ref
+            effective_element_weak_ref = element_weak_ref
+            if field_type.element_ref:
+                effective_element_weak_ref = self.is_weak_ref(
+                    field_type.element_ref_options
+                )
             element_type = self.generate_type(
                 field_type.element_type,
-                element_optional,
-                element_ref,
+                effective_element_optional,
+                effective_element_ref,
                 False,
                 False,
-                element_weak_ref,
+                effective_element_weak_ref,
                 False,
                 parent_stack,
             )
@@ -1794,13 +1813,18 @@ class CppGenerator(BaseGenerator):
             key_type = self.generate_type(
                 field_type.key_type, False, False, False, False, parent_stack
             )
+            value_weak_ref = (
+                self.is_weak_ref(field_type.value_ref_options)
+                if field_type.value_ref
+                else False
+            )
             value_type = self.generate_type(
                 field_type.value_type,
                 False,
                 field_type.value_ref,
                 False,
                 False,
-                weak_ref and field_type.value_ref,
+                value_weak_ref,
                 False,
                 parent_stack,
             )
@@ -1898,14 +1922,21 @@ class CppGenerator(BaseGenerator):
 
         elif isinstance(field_type, ListType):
             includes.add("<vector>")
+            effective_element_optional = element_optional or field_type.element_optional
+            effective_element_ref = element_ref or field_type.element_ref
+            effective_element_weak_ref = element_weak_ref
+            if field_type.element_ref:
+                effective_element_weak_ref = self.is_weak_ref(
+                    field_type.element_ref_options
+                )
             self.collect_includes(
                 field_type.element_type,
-                element_optional,
-                element_ref,
+                effective_element_optional,
+                effective_element_ref,
                 includes,
                 False,
                 False,
-                element_weak_ref,
+                effective_element_weak_ref,
                 False,
             )
 
@@ -1924,9 +1955,14 @@ class CppGenerator(BaseGenerator):
 
         elif isinstance(field_type, MapType):
             includes.add("<unordered_map>")
+            value_weak_ref = (
+                self.is_weak_ref(field_type.value_ref_options)
+                if field_type.value_ref
+                else False
+            )
             if field_type.value_ref:
                 includes.add("<memory>")
-                if weak_ref:
+                if value_weak_ref:
                     includes.add('"fory/serialization/weak_ptr_serializer.h"')
             self.collect_includes(field_type.key_type, False, False, includes)
             self.collect_includes(
@@ -1936,7 +1972,7 @@ class CppGenerator(BaseGenerator):
                 includes,
                 False,
                 False,
-                weak_ref and field_type.value_ref,
+                value_weak_ref,
                 False,
             )
 

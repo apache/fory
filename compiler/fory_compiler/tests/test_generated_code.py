@@ -1126,6 +1126,49 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
     assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
 
 
+def test_cpp_nested_container_ref_uses_correct_pointer_type():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Node {
+                string value = 1;
+            }
+
+            message Request {
+                list<list<ref Node>> groups = 1;
+                map<string, map<string, ref Node>> nodes = 2;
+                list<list<ref(weak=true) Node>> weak_groups = 3;
+                map<string, map<string, ref(weak=true) Node>> weak_nodes = 4;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "std::vector<std::vector<std::shared_ptr<Node>>> groups_;" in cpp_output
+    assert "std::vector<std::vector<Node>> groups_;" not in cpp_output
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, std::shared_ptr<Node>>> nodes_;" in cpp_output
+    )
+    assert (
+        "std::vector<std::vector<fory::serialization::SharedWeak<Node>>> weak_groups_;"
+        in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, fory::serialization::SharedWeak<Node>>> "
+        "weak_nodes_;" in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, std::shared_ptr<Node>>> weak_nodes_;"
+        not in cpp_output
+    )
+
+
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
         dedent(
