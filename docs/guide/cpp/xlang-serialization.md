@@ -158,13 +158,13 @@ print(f"Timestamp: {msg.timestamp}")
 
 ### Collection Types
 
-| C++ Type                        | Java Type      | Python Type     | Go Type               | Rust Type       |
-| ------------------------------- | -------------- | --------------- | --------------------- | --------------- |
-| `std::vector<T>`                | `List<T>`      | `list`          | `[]T`                 | `Vec<T>`        |
-| `std::vector<fory::float16_t>`  | `Float16List`  | `Float16Array`  | `[]float16.Float16`   | `Vec<Float16>`  |
-| `std::vector<fory::bfloat16_t>` | `BFloat16List` | `BFloat16Array` | `[]bfloat16.BFloat16` | `Vec<BFloat16>` |
-| `std::set<T>`                   | `Set<T>`       | `set`           | `map[T]struct{}`      | `HashSet<T>`    |
-| `std::map<K,V>`                 | `Map<K,V>`     | `dict`          | `map[K]V`             | `HashMap<K,V>`  |
+| C++ Type                                    | Java Type      | Python Type     | Go Type               | Rust Type       |
+| ------------------------------------------- | -------------- | --------------- | --------------------- | --------------- |
+| `std::vector<T>`                            | `List<T>`      | `list`          | `[]T`                 | `Vec<T>`        |
+| `std::vector<fory::float16_t>`              | `Float16List`  | `Float16Array`  | `[]float16.Float16`   | `Vec<Float16>`  |
+| `std::vector<fory::bfloat16_t>`             | `BFloat16List` | `BFloat16Array` | `[]bfloat16.BFloat16` | `Vec<BFloat16>` |
+| `std::set<T>`                               | `Set<T>`       | `set`           | `map[T]struct{}`      | `HashSet<T>`    |
+| `std::map<K,V>` / `std::unordered_map<K,V>` | `Map<K,V>`     | `dict`          | `map[K]V`             | `HashMap<K,V>`  |
 
 ### Lists and Dense Arrays
 

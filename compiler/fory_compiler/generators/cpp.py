@@ -241,9 +241,9 @@ class CppGenerator(BaseGenerator):
 
         # Collect includes (including from nested types)
         includes.add("<cstdint>")
-        includes.add("<map>")
         includes.add("<memory>")
         includes.add("<string>")
+        includes.add("<unordered_map>")
         includes.add("<vector>")
         includes.add("<utility>")
         includes.add('"fory/serialization/fory.h"')
@@ -1523,7 +1523,7 @@ class CppGenerator(BaseGenerator):
                 False,
                 parent_stack,
             )
-            map_type = f"std::map<{key_type}, {value_type}>"
+            map_type = f"std::unordered_map<{key_type}, {value_type}>"
             if ref:
                 wrapper = (
                     "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
@@ -1804,7 +1804,7 @@ class CppGenerator(BaseGenerator):
                 False,
                 parent_stack,
             )
-            map_type = f"std::map<{key_type}, {value_type}>"
+            map_type = f"std::unordered_map<{key_type}, {value_type}>"
             if ref:
                 wrapper = (
                     "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
@@ -1923,7 +1923,7 @@ class CppGenerator(BaseGenerator):
             )
 
         elif isinstance(field_type, MapType):
-            includes.add("<map>")
+            includes.add("<unordered_map>")
             if field_type.value_ref:
                 includes.add("<memory>")
                 if weak_ref:

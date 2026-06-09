@@ -1478,10 +1478,10 @@ message Config {
 
 **Language Mapping:**
 
-| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              | JavaScript/TypeScript | Dart                |
-| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- | --------------------- | ------------------- |
-| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` | `Map<string, number>` | `Map<String, int>`  |
-| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    | `Map<string, User>`   | `Map<String, User>` |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                                        | JavaScript/TypeScript | Dart                |
+| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | ------------------------------------------ | --------------------- | ------------------- |
+| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::unordered_map<std::string, int32_t>` | `Map<string, number>` | `Map<String, int>`  |
+| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::unordered_map<std::string, User>`    | `Map<string, User>`   | `Map<String, User>` |
 
 **Key Type Restrictions:**
 

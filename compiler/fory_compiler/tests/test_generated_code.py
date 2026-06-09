@@ -494,7 +494,19 @@ def test_generated_code_map_types_equivalent():
     assert "::std::option::Option<i32>" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
+    assert "#include <unordered_map>" in cpp_output
+    assert "#include <map>" not in cpp_output
+    assert "std::unordered_map<std::string, int32_t> counts_;" in cpp_output
+    assert (
+        "std::optional<std::unordered_map<std::string, MapValue>> entries_;"
+        in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, fory::serialization::SharedWeak<MapValue>> "
+        "weak_entries_;" in cpp_output
+    )
     assert "SharedWeak<MapValue>" in cpp_output
+    assert "std::map<" not in cpp_output
 
 
 def test_rust_generated_ref_pointer_default_and_opt_out():

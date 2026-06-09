@@ -112,14 +112,14 @@ FORY_STRUCT(Foo, (nested, fory::F().map(T::uint32().varint(),
 
 Supported recursive composition methods are:
 
-| Method              | Applies to                            |
-| ------------------- | ------------------------------------- |
-| `list(elem)`        | `std::vector<T>` and list-like fields |
-| `set(elem)`         | `std::set<T>` and set-like fields     |
-| `map(key, value)`   | `std::map<K, V>` and map-like fields  |
-| `map().key(spec)`   | Override only the map key             |
-| `map().value(spec)` | Override only the map value           |
-| `inner(child)`      | Transparent single-child carriers     |
+| Method              | Applies to                                                        |
+| ------------------- | ----------------------------------------------------------------- |
+| `list(elem)`        | `std::vector<T>` and list-like fields                             |
+| `set(elem)`         | `std::set<T>` and set-like fields                                 |
+| `map(key, value)`   | `std::map<K, V>`, `std::unordered_map<K, V>`, and map-like fields |
+| `map().key(spec)`   | Override only the map key                                         |
+| `map().value(spec)` | Override only the map value                                       |
+| `inner(child)`      | Transparent single-child carriers                                 |
 
 Partial map overrides are useful when only one side needs a non-default
 encoding:
