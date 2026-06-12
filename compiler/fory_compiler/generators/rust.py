@@ -20,6 +20,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
+from fory_compiler.generators.services.rust import RustServiceGeneratorMixin
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
@@ -39,7 +40,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class RustGenerator(BaseGenerator):
+class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     """Generates Rust types with Fory derive macros."""
 
     language_name = "rust"
@@ -461,87 +462,6 @@ class RustGenerator(BaseGenerator):
     def generate(self) -> List[GeneratedFile]:
         """Generate Rust files for the schema."""
         files = []
-        if self.options.grpc:
-            # Allocate and validate identifier naming for gRPC service definition.
-            self._ensure_name_caches(self.schema)
-            schema_id = id(self.schema)
-            if schema_id not in self._named_service_schema_ids:
-                schema_source_key = str(Path(self.schema.source_file).resolve())
-                services = [
-                    service
-                    for service in self.schema.services
-                    if str(Path(service.location.file).resolve()) == schema_source_key
-                ]
-                used_traits: Dict[str, str] = {}
-                used_modules: Dict[str, str] = {}
-                used_constants: Dict[str, str] = {}
-                for service in services:
-                    service_key = self._cache_key(service)
-                    self._service_trait_identifier_cache[service_key] = (
-                        self._allocate_scoped_identifier(
-                            self.to_pascal_case(service.name),
-                            used_traits,
-                            "Rust gRPC service traits",
-                            service.name,
-                        )
-                    )
-                    self._service_client_module_identifier_cache[service_key] = (
-                        self._allocate_scoped_identifier(
-                            f"{self.to_snake_case(service.name)}_client",
-                            used_modules,
-                            "Rust gRPC service modules",
-                            f"{service.name} client module",
-                        )
-                    )
-                    self._service_server_module_identifier_cache[service_key] = (
-                        self._allocate_scoped_identifier(
-                            f"{self.to_snake_case(service.name)}_server",
-                            used_modules,
-                            "Rust gRPC service modules",
-                            f"{service.name} server module",
-                        )
-                    )
-                    self._service_name_constant_identifier_cache[service_key] = (
-                        self._allocate_scoped_identifier(
-                            f"{self.to_upper_snake_case(service.name)}_SERVICE_NAME",
-                            used_constants,
-                            "Rust gRPC service constants",
-                            service.name,
-                        )
-                    )
-                    used_methods: Dict[str, str] = {}
-                    used_stream_types: Dict[str, str] = {}
-                    method_names: Dict[Tuple[object, ...], str] = {}
-                    stream_types: Dict[Tuple[object, ...], str] = {}
-                    path_constants: Dict[Tuple[object, ...], str] = {}
-                    for method in service.methods:
-                        method_key = self._cache_key(method)
-                        method_names[method_key] = self._allocate_scoped_identifier(
-                            self.to_snake_case(method.name),
-                            used_methods,
-                            f"Rust gRPC service {service.name} methods",
-                            method.name,
-                        )
-                        if method.server_streaming:
-                            stream_types[method_key] = self._allocate_scoped_identifier(
-                                f"{self.to_pascal_case(method.name)}Stream",
-                                used_stream_types,
-                                f"Rust gRPC service {service.name} stream types",
-                                method.name,
-                            )
-                        path_constants[method_key] = self._allocate_scoped_identifier(
-                            f"{self.to_upper_snake_case(service.name)}_"
-                            f"{self.to_upper_snake_case(method.name)}_PATH",
-                            used_constants,
-                            "Rust gRPC service constants",
-                            f"{service.name}.{method.name}",
-                        )
-                    self._rpc_method_identifier_cache[service_key] = method_names
-                    self._rpc_stream_type_identifier_cache[service_key] = stream_types
-                    self._rpc_path_constant_identifier_cache[service_key] = (
-                        path_constants
-                    )
-                self._named_service_schema_ids.add(schema_id)
 
         # Generate a single module file with all types
         files.append(self.generate_module())
@@ -1062,6 +982,28 @@ class RustGenerator(BaseGenerator):
             if visit(top, []):
                 break
         return lineage
+
+    def _parent_stack_for_type(self, type_def: object) -> List[Message]:
+        def visit(current: Message, parents: List[Message]) -> Optional[List[Message]]:
+            if current is type_def:
+                return parents
+            for nested_union in current.nested_unions:
+                if nested_union is type_def:
+                    return parents + [current]
+            for nested_enum in current.nested_enums:
+                if nested_enum is type_def:
+                    return parents + [current]
+            for nested_message in current.nested_messages:
+                found = visit(nested_message, parents + [current])
+                if found is not None:
+                    return found
+            return None
+
+        for top in self.schema.messages:
+            found = visit(top, [])
+            if found is not None:
+                return found
+        return []
 
     def union_supports_trait(
         self,

@@ -34,6 +34,7 @@ OUTPUTS = {
     "java": TEST_DIR / "java/src/main/java/generated",
     "python": TEST_DIR / "python/grpc_tests/generated",
     "go": TEST_DIR / "go/generated",
+    "rust": TEST_DIR / "rust/generated/src",
 }
 
 
@@ -74,6 +75,7 @@ def main() -> int:
                 f"--java_out={OUTPUTS['java']}",
                 f"--python_out={OUTPUTS['python']}",
                 f"--go_out={go_pkg_out}",
+                f"--rust_out={OUTPUTS['rust']}",
                 "--grpc",
             ],
             env=env,

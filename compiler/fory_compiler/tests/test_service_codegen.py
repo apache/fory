@@ -21,6 +21,8 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Dict, Tuple, Type
 
+import pytest
+
 from fory_compiler.cli import compile_file, resolve_imports
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
@@ -129,7 +131,12 @@ def test_service_definition_does_not_affect_message_codegen():
 def test_generate_services_returns_empty_list_for_unsupported_generators():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
-        if generator_cls in (JavaGenerator, PythonGenerator, GoGenerator):
+        if generator_cls in (
+            JavaGenerator,
+            PythonGenerator,
+            GoGenerator,
+            RustGenerator,
+        ):
             continue
         options = GeneratorOptions(output_dir=Path("/tmp"))
         generator = generator_cls(schema, options)
@@ -368,6 +375,13 @@ def test_proto_grpc_services_use_imported_qualified_type_references(tmp_path: Pa
     )
     assert "marshaller(com.example.common.CommonModels.Shared.class)" in java
 
+    rust_files = generate_service_files(schema, RustGenerator)
+    rust_service = rust_files["api_service.rs"]
+    assert "request: ::tonic::Request<crate::common::Shared>," in rust_service
+    assert "::tonic::Response<crate::api::Local>" in rust_service
+    assert "crate::common::common::Shared" not in rust_service
+    assert "crate::api::api::Local" not in rust_service
+
 
 def test_proto_grpc_absolute_rpc_type_uses_package_type_not_nested_shadow():
     schema = parse_proto(
@@ -395,6 +409,13 @@ def test_proto_grpc_absolute_rpc_type_uses_package_type_not_nested_shadow():
     java = java_files["demo/ApiServiceGrpc.java"]
     assert "io.grpc.MethodDescriptor<Request, Response>" in java
     assert "io.grpc.MethodDescriptor<demo.Request, Response>" not in java
+
+    rust_files = generate_service_files(schema, RustGenerator)
+    rust_service = rust_files["demo_service.rs"]
+    assert "request: ::tonic::Request<crate::demo::Request>," in rust_service
+    assert "::tonic::Response<crate::demo::Response>" in rust_service
+    assert "crate::demo::demo::Request" not in rust_service
+    assert "crate::demo::::demo::Request" not in rust_service
 
 
 def test_proto_grpc_absolute_rpc_type_prefers_longest_package_prefix(tmp_path: Path):
@@ -440,6 +461,12 @@ def test_proto_grpc_absolute_rpc_type_prefers_longest_package_prefix(tmp_path: P
     assert "io.grpc.MethodDescriptor<pkg.two.C, pkg.two.C>" in java
     assert "marshaller(pkg.two.C.class)" in java
     assert "io.grpc.MethodDescriptor<beta.C, beta.C>" not in java
+
+    rust_files = generate_service_files(schema, RustGenerator)
+    rust_service = rust_files["alpha_service.rs"]
+    assert "request: ::tonic::Request<crate::alpha_beta::C>," in rust_service
+    assert "::tonic::Response<crate::alpha_beta::C>" in rust_service
+    assert "crate::alpha::beta::C" not in rust_service
 
 
 def test_java_grpc_service_class_collision_fails():
@@ -593,7 +620,7 @@ def test_grpc_method_name_collisions_fail():
         schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
     )
     try:
-        rust_generator.generate()
+        rust_generator.generate_services()
     except ValueError as e:
         assert "Rust name collision" in str(e)
     else:
@@ -667,7 +694,7 @@ def test_rust_grpc_service_module_collisions_fail():
         schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
     )
     try:
-        generator.generate()
+        generator.generate_services()
     except ValueError as e:
         assert "Rust name collision" in str(e)
     else:
@@ -763,6 +790,8 @@ def test_compile_service_schema_with_grpc_flag(tmp_path: Path):
         assert len(files) >= 1, f"{lang}: expected at least one file with grpc=True"
     assert (lang_dirs["java"] / "demo" / "greeter" / "GreeterGrpc.java").exists()
     assert (lang_dirs["python"] / "demo_greeter_grpc.py").exists()
+    assert (lang_dirs["rust"] / "demo_greeter_service.rs").exists()
+    assert (lang_dirs["rust"] / "demo_greeter_service_grpc.rs").exists()
 
 
 def test_generated_message_contains_key_signatures():
@@ -778,3 +807,70 @@ def test_generated_message_contains_key_signatures():
     all_python = "\n".join(python_files.values())
     assert "HelloRequest" in all_python
     assert "HelloReply" in all_python
+
+
+def test_rust_grpc_rejects_non_thread_safe_refs():
+    cases = [
+        (
+            "Rust gRPC payload type Request.node uses non-thread-safe ref",
+            """
+            package demo.grpc;
+
+            message Node {}
+
+            message Request {
+                ref(thread_safe=false) Node node = 1;
+            }
+
+            message Response {}
+
+            service Api {
+                rpc Call (Request) returns (Response);
+            }
+            """,
+        ),
+        (
+            "Rust gRPC payload type Request.groups uses non-thread-safe list element ref",
+            """
+            package demo.grpc;
+
+            message Node {}
+
+            message Request {
+                list<ref(thread_safe=false) Node> groups = 1;
+            }
+
+            message Response {}
+
+            service Api {
+                rpc Call (Request) returns (Response);
+            }
+            """,
+        ),
+        (
+            "Rust gRPC payload type Request.nodes uses non-thread-safe map value ref",
+            """
+            package demo.grpc;
+
+            message Node {}
+
+            message Request {
+                map<string, ref(thread_safe=false) Node> nodes = 1;
+            }
+
+            message Response {}
+
+            service Api {
+                rpc Call (Request) returns (Response);
+            }
+            """,
+        ),
+    ]
+
+    for message, source in cases:
+        schema = parse_fdl(dedent(source))
+        generator = RustGenerator(
+            schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+        )
+        with pytest.raises(ValueError, match=message):
+            generator.generate_services()

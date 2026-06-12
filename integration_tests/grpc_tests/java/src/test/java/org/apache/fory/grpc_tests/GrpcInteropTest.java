@@ -71,7 +71,57 @@ public class GrpcInteropTest {
         new PeerOutputCollector(process.getInputStream(), "python-grpc-server");
     outputCollector.start();
     try {
-      int port = waitForPort(process, outputCollector, portFile);
+      int port = waitForPort(process, outputCollector, portFile, "Python");
+      ManagedChannel channel =
+          ManagedChannelBuilder.forAddress("127.0.0.1", port).usePlaintext().build();
+      try {
+        exerciseFdl(channel);
+        exerciseFbs(channel);
+        exercisePb(channel);
+      } finally {
+        channel.shutdownNow();
+        channel.awaitTermination(10, TimeUnit.SECONDS);
+      }
+    } finally {
+      process.destroy();
+      process.waitFor(10, TimeUnit.SECONDS);
+      if (process.isAlive()) {
+        process.destroyForcibly();
+        process.waitFor(10, TimeUnit.SECONDS);
+      }
+      outputCollector.awaitOutput();
+      Files.deleteIfExists(portFile);
+    }
+  }
+
+  @Test
+  public void testJavaServerRustClient() throws Exception {
+    Server server =
+        ServerBuilder.forPort(0)
+            .addService(new FdlService())
+            .addService(new FbsService())
+            .addService(new PbService())
+            .build()
+            .start();
+    try {
+      runRust("rust-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+    } finally {
+      server.shutdownNow();
+      server.awaitTermination(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  public void testJavaClientRustServer() throws Exception {
+    Path portFile = Files.createTempFile("fory-grpc-rust-", ".port");
+    Files.deleteIfExists(portFile);
+    PeerCommand command = rustCommand("server", "--port-file", portFile.toString());
+    Process process = startPeer(command);
+    PeerOutputCollector outputCollector =
+        new PeerOutputCollector(process.getInputStream(), "rust-grpc-server");
+    outputCollector.start();
+    try {
+      int port = waitForPort(process, outputCollector, portFile, "Rust");
       ManagedChannel channel =
           ManagedChannelBuilder.forAddress("127.0.0.1", port).usePlaintext().build();
       try {
@@ -280,11 +330,7 @@ public class GrpcInteropTest {
 
   @Test
   public void testJavaServerGoClient() throws Exception {
-    Server server =
-        ServerBuilder.forPort(0)
-            .addService(new FdlService())
-            .build()
-            .start();
+    Server server = ServerBuilder.forPort(0).addService(new FdlService()).build().start();
     try {
       runGo("go-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
@@ -303,7 +349,7 @@ public class GrpcInteropTest {
         new PeerOutputCollector(process.getInputStream(), "go-grpc-server");
     outputCollector.start();
     try {
-      int port = waitForPort(process, outputCollector, portFile);
+      int port = waitForPort(process, outputCollector, portFile, "Go");
       ManagedChannel channel =
           ManagedChannelBuilder.forAddress("127.0.0.1", port).usePlaintext().build();
       try {
@@ -397,8 +443,58 @@ public class GrpcInteropTest {
     return peerCommand;
   }
 
+  private PeerCommand rustCommand(String... args) {
+    Path repoRoot = repoRoot();
+    Path grpcRoot = repoRoot.resolve("integration_tests").resolve("grpc_tests");
+    Path rustRoot = grpcRoot.resolve("rust");
+    List<String> command = new ArrayList<>();
+    command.add("cargo");
+    command.add("run");
+    command.add("--quiet");
+    command.add("--manifest-path");
+    command.add(rustRoot.resolve("interop").resolve("Cargo.toml").toString());
+    command.add("--");
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = new PeerCommand();
+    peerCommand.command = command;
+    peerCommand.workDir = rustRoot;
+    peerCommand.environment.put("CARGO_TERM_COLOR", "never");
+    peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+    peerCommand.environment.put("RUST_BACKTRACE", "1");
+    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
+    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
+    for (String proxyVar :
+        Arrays.asList(
+            "all_proxy", "http_proxy", "https_proxy", "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY")) {
+      peerCommand.environment.put(proxyVar, "");
+    }
+    return peerCommand;
+  }
+
   private void runPython(String peer, String... args) throws IOException, InterruptedException {
     Process process = startPeer(pythonCommand(args));
+    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
+    outputCollector.start();
+    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
+    if (!finished) {
+      process.destroyForcibly();
+      process.waitFor(10, TimeUnit.SECONDS);
+      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
+    }
+    int exitCode = process.exitValue();
+    if (exitCode != 0) {
+      Assert.fail(
+          "Peer process failed for "
+              + peer
+              + " with exit code "
+              + exitCode
+              + peerOutput(outputCollector));
+    }
+    outputCollector.awaitOutput();
+  }
+
+  private void runRust(String peer, String... args) throws IOException, InterruptedException {
+    Process process = startPeer(rustCommand(args));
     PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
     outputCollector.start();
     boolean finished = process.waitFor(180, TimeUnit.SECONDS);
@@ -427,12 +523,13 @@ public class GrpcInteropTest {
     return builder.start();
   }
 
-  private int waitForPort(Process process, PeerOutputCollector outputCollector, Path portFile)
+  private int waitForPort(
+      Process process, PeerOutputCollector outputCollector, Path portFile, String language)
       throws IOException, InterruptedException {
     long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
     while (System.nanoTime() < deadline) {
       if (!process.isAlive()) {
-        Assert.fail("Python gRPC server exited early" + peerOutput(outputCollector));
+        Assert.fail(language + " gRPC server exited early" + peerOutput(outputCollector));
       }
       if (Files.exists(portFile)) {
         String value = new String(Files.readAllBytes(portFile), StandardCharsets.UTF_8).trim();
@@ -444,7 +541,8 @@ public class GrpcInteropTest {
     }
     process.destroyForcibly();
     process.waitFor(10, TimeUnit.SECONDS);
-    Assert.fail("Timed out waiting for Python gRPC server port" + peerOutput(outputCollector));
+    Assert.fail(
+        "Timed out waiting for " + language + " gRPC server port" + peerOutput(outputCollector));
     return -1;
   }
 

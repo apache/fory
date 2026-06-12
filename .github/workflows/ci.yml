@@ -688,7 +688,7 @@ jobs:
         run: python ./ci/run_ci.py java --version integration_tests
 
   grpc_tests:
-    name: Java/Python gRPC Tests
+    name: Java/Python/Go/Rust gRPC Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -709,11 +709,16 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: integration_tests/grpc_tests/rust
+          cache-bin: "false"
       - name: Install Java artifacts for gRPC tests
         run: |
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
-      - name: Run Java/Python gRPC Tests
+      - name: Run Java/Python/Go/Rust gRPC Tests
         run: ./integration_tests/grpc_tests/run_tests.sh
 
   javascript:
