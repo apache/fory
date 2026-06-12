@@ -32,22 +32,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/apache/fory/go/fory"
 	grpc_fdl "github.com/apache/fory/integration_tests/grpc_tests/go/generated/grpc_fdl"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/encoding"
 )
 
 // --- helpers ----------------------------------------------------------------
-
-func newFory() *fory.Fory {
-	f := fory.New(fory.WithXlang(true), fory.WithRefTracking(true), fory.WithCompatible(true))
-	if err := grpc_fdl.RegisterTypes(f); err != nil {
-		log.Fatalf("RegisterTypes: %v", err)
-	}
-	return f
-}
 
 func fdlResponse(req *grpc_fdl.GrpcFdlRequest, tag string, offset int) *grpc_fdl.GrpcFdlResponse {
 	return &grpc_fdl.GrpcFdlResponse{
@@ -71,27 +61,6 @@ func fdlAggregate(requests []*grpc_fdl.GrpcFdlRequest) *grpc_fdl.GrpcFdlResponse
 		Count:   count,
 		Payload: "client:" + strings.Join(payloads, "+"),
 	}
-}
-
-// protoFallbackCodec overrides the built-in "proto" codec (v1 registry) with
-// Fory so the server can decode requests from Java clients, which send with the
-// default content-type (application/grpc) rather than application/grpc+fory.
-type protoFallbackCodec struct{ grpc_fdl.CodecV2 }
-
-func (protoFallbackCodec) Name() string { return "proto" }
-
-func (c protoFallbackCodec) Marshal(v interface{}) ([]byte, error) {
-	b, err := c.Fory.Marshal(v)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]byte, len(b))
-	copy(out, b)
-	return out, nil
-}
-
-func (c protoFallbackCodec) Unmarshal(data []byte, v interface{}) error {
-	return c.Fory.Unmarshal(data, v)
 }
 
 // --- server -----------------------------------------------------------------
@@ -144,19 +113,14 @@ func (s *fdlService) BidiStreamMessage(stream grpc_fdl.FdlGrpcService_BidiStream
 	}
 }
 
-func runServer(portFile string, f *fory.Fory) error {
+func runServer(portFile string) error {
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
 	}
-	codec := grpc_fdl.CodecV2{Fory: f}
-	// "fory" (v2): used by Go clients via grpc.ForceCodecV2.
-	encoding.RegisterCodecV2(codec)
-	// "proto" (v1): overrides the built-in proto codec so Java clients are
-	// also handled by Fory. RegisterCodecV2 writes to a separate registry and
-	// does not replace the v1 "proto" entry; RegisterCodec must be used.
-	encoding.RegisterCodec(protoFallbackCodec{codec})
-	s := grpc.NewServer()
+	// Force the Fory codec for every RPC so peers sending the default
+	// content-type (e.g. Java clients) are also decoded by Fory.
+	s := grpc.NewServer(grpc.ForceServerCodecV2(grpc_fdl.CodecV2{}))
 	grpc_fdl.RegisterFdlGrpcServiceServer(s, &fdlService{})
 
 	// Write the bound port so the Java test harness knows where to connect.
@@ -246,14 +210,14 @@ func exerciseMessageStub(stub grpc_fdl.FdlGrpcServiceClient, requests []*grpc_fd
 	return nil
 }
 
-func runClient(target string, f *fory.Fory) error {
+func runClient(target string) error {
 	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("dial %s: %w", target, err)
 	}
 	defer conn.Close()
 
-	stub := grpc_fdl.NewFdlGrpcServiceClient(conn, f)
+	stub := grpc_fdl.NewFdlGrpcServiceClient(conn)
 	requests := []*grpc_fdl.GrpcFdlRequest{
 		{Id: "fdl-a", Count: 1, Payload: "alpha"},
 		{Id: "fdl-b", Count: 2, Payload: "beta"},
@@ -274,15 +238,13 @@ func main() {
 		log.Fatal("usage: grpc-interop <server|client> [flags]")
 	}
 
-	f := newFory()
-
 	switch os.Args[1] {
 	case "server":
 		serverCmd.Parse(os.Args[2:])
 		if *serverPortFile == "" {
 			log.Fatal("--port-file is required")
 		}
-		if err := runServer(*serverPortFile, f); err != nil {
+		if err := runServer(*serverPortFile); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
 	case "client":
@@ -290,7 +252,7 @@ func main() {
 		if *clientTarget == "" {
 			log.Fatal("--target is required")
 		}
-		if err := runClient(*clientTarget, f); err != nil {
+		if err := runClient(*clientTarget); err != nil {
 			log.Fatalf("client error: %v", err)
 		}
 	default:

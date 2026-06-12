@@ -237,15 +237,18 @@ def test_go_grpc_service_codegen():
     files = generate_service_files(schema, GoGenerator)
     assert len(files) == 1
     content = next(iter(files.values()))
-    assert "func NewGreeterClient(" in content
+    assert "func NewGreeterClient(cc grpc.ClientConnInterface) GreeterClient" in content
     assert "func RegisterGreeterServer(" in content
     assert "type GreeterClient interface" in content
     assert "type GreeterServer interface" in content
     assert "type UnimplementedGreeterServer struct" in content
-    assert "CodecV2{Fory: c.fory}" in content
-    assert "type CodecV2 struct" in content
-    assert "func (c CodecV2) Marshal(v any) (mem.BufferSlice, error)" in content
-    assert "func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error" in content
+    assert "type CodecV2 struct{}" in content
+    assert "CodecV2{}" in content
+    assert "Fory *fory.Fory" not in content
+    assert "getFory().Serialize(v)" in content
+    assert "getFory().Deserialize(b, v)" in content
+    assert "func (CodecV2) Marshal(v any) (mem.BufferSlice, error)" in content
+    assert "func (CodecV2) Unmarshal(data mem.BufferSlice, v any) error" in content
     assert '"/demo.greeter.Greeter/SayHello"' in content
     assert "mustEmbedUnimplementedGreeterServer()" in content
 
@@ -625,6 +628,43 @@ def test_grpc_method_name_collisions_fail():
         assert "Rust name collision" in str(e)
     else:
         raise AssertionError("Expected Rust gRPC method name collision")
+
+    go_generator = GoGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    try:
+        go_generator.generate_services()
+    except ValueError as e:
+        assert "Go gRPC method name collision" in str(e) and "Foo and foo" in str(e)
+    else:
+        raise AssertionError("Expected Go gRPC method name collision")
+
+
+def test_go_grpc_service_type_collision_fails():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+
+            message GreeterClient {}
+            message Res {}
+
+            service Greeter {
+                rpc Call (GreeterClient) returns (Res);
+            }
+            """
+        )
+    )
+
+    generator = GoGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    try:
+        generator.generate_services()
+    except ValueError as e:
+        assert "Go gRPC service Greeter generates GreeterClient" in str(e)
+    else:
+        raise AssertionError("Expected Go gRPC service type collision")
 
 
 def test_java_python_grpc_method_keywords_are_safe_names():

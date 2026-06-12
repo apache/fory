@@ -204,12 +204,9 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
 
         self.validate_type_names()
 
-        # Generate a single Go file with all types
+        # gRPC service companions are emitted by the CLI via generate_services();
+        # emitting them here too would write _grpc.go twice.
         files.append(self.generate_file())
-
-        # Generate gRPC service stubs if requested
-        if self.options.grpc:
-            files.extend(self.generate_services())
 
         return files
 

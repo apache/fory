@@ -36,7 +36,56 @@ class GoServiceGeneratorMixin:
         ]
         if not local_services:
             return []
+        self._check_method_collisions(local_services)
+        self._check_service_collisions(local_services)
         return [self._generate_grpc_file(local_services)]
+
+    def _check_method_collisions(self, services: List[Service]) -> None:
+        """Reject methods whose PascalCase names collide within a service.
+
+        to_pascal_case folds case (Foo and foo both yield Foo), which would
+        emit duplicate interface methods, handlers, and stream types.
+        """
+        for service in services:
+            seen: dict = {}
+            for method in service.methods:
+                name = self.to_pascal_case(method.name)
+                if name in seen:
+                    raise ValueError(
+                        f"Go gRPC method name collision in service {service.name}: "
+                        f"{seen[name]} and {method.name} both generate {name}"
+                    )
+                seen[name] = method.name
+
+    def _check_service_collisions(self, services: List[Service]) -> None:
+        """Reject services whose generated identifiers collide with each other
+        or with a generated type in the same package."""
+        generated_type_names = {
+            type_def.name
+            for type_def in (
+                *self.schema.enums,
+                *self.schema.unions,
+                *self.schema.messages,
+            )
+            if not self.is_imported_type(type_def)
+        }
+        seen_services: dict = {}
+        for service in services:
+            if service.name in seen_services:
+                raise ValueError(
+                    f"Go gRPC service name collision: two services named {service.name}"
+                )
+            seen_services[service.name] = service.name
+            for generated in (
+                f"{service.name}Client",
+                f"{service.name}Server",
+                f"Unimplemented{service.name}Server",
+            ):
+                if generated in generated_type_names:
+                    raise ValueError(
+                        f"Go gRPC service {service.name} generates {generated} which "
+                        "conflicts with a generated type; rename the service or type"
+                    )
 
     def _generate_grpc_file(self, services: List[Service]) -> GeneratedFile:
         """Generate one _grpc.go file containing all services in the schema."""
@@ -85,7 +134,6 @@ class GoServiceGeneratorMixin:
             '"google.golang.org/grpc/codes"',
             '"google.golang.org/grpc/mem"',
             '"google.golang.org/grpc/status"',
-            '"github.com/apache/fory/go/fory"',
         ]
 
         for alias, path in tracker._imports.items():
@@ -142,7 +190,6 @@ class GoServiceGeneratorMixin:
         lines: List[str] = []
         lines.append(f"type {self.to_camel_case(service.name)}Client struct {{")
         lines.append("\tcc grpc.ClientConnInterface")
-        lines.append("\tfory *fory.Fory")
         lines.append("}")
         lines.append("")
         return lines
@@ -150,11 +197,9 @@ class GoServiceGeneratorMixin:
     def _generate_new_client(self, service: Service) -> List[str]:
         lines: List[str] = []
         lines.append(
-            f"func New{service.name}Client(cc grpc.ClientConnInterface, f *fory.Fory) {service.name}Client {{"
+            f"func New{service.name}Client(cc grpc.ClientConnInterface) {service.name}Client {{"
         )
-        lines.append(
-            f"\treturn &{self.to_camel_case(service.name)}Client{{cc: cc, fory: f}}"
-        )
+        lines.append(f"\treturn &{self.to_camel_case(service.name)}Client{{cc: cc}}")
         lines.append("}")
         lines.append("")
         return lines
@@ -165,30 +210,26 @@ class GoServiceGeneratorMixin:
             "// CodecV2 implements grpc/encoding.CodecV2 using Fory serialization."
         )
         lines.append(
-            "// Pass a configured *fory.Fory instance with all message types registered."
+            "// It is stateless and uses the package thread-safe Fory runtime"
         )
-        lines.append("type CodecV2 struct {")
-        lines.append("\tFory *fory.Fory")
-        lines.append("}")
+        lines.append(
+            "// (getFory), so it is safe to share across concurrent RPCs."
+        )
+        lines.append("type CodecV2 struct{}")
         lines.append("")
         lines.append(
-            "// Marshal serializes v with Fory. The result is copied before being handed"
+            "// Marshal serializes v with the package Fory runtime. getFory().Serialize"
         )
         lines.append(
-            "// to gRPC because Fory reuses its internal write buffer across calls —"
+            "// returns a freshly allocated slice per call, so streaming handlers that"
         )
-        lines.append(
-            "// streaming handlers may buffer multiple frames before sending, and without"
-        )
-        lines.append("// a copy all frames would alias the last serialized value.")
-        lines.append("func (c CodecV2) Marshal(v any) (mem.BufferSlice, error) {")
-        lines.append("\tb, err := c.Fory.Marshal(v)")
+        lines.append("// buffer multiple frames never alias the same buffer.")
+        lines.append("func (CodecV2) Marshal(v any) (mem.BufferSlice, error) {")
+        lines.append("\tb, err := getFory().Serialize(v)")
         lines.append("\tif err != nil {")
         lines.append("\t\treturn nil, err")
         lines.append("\t}")
-        lines.append("\tout := make([]byte, len(b))")
-        lines.append("\tcopy(out, b)")
-        lines.append("\treturn mem.BufferSlice{mem.NewBuffer(&out, nil)}, nil")
+        lines.append("\treturn mem.BufferSlice{mem.NewBuffer(&b, nil)}, nil")
         lines.append("}")
         lines.append("")
         lines.append(
@@ -198,13 +239,13 @@ class GoServiceGeneratorMixin:
             "// copied into a fresh slice because the transport may reclaim the"
         )
         lines.append("// underlying memory before Fory finishes reading it.")
-        lines.append("func (c CodecV2) Unmarshal(data mem.BufferSlice, v any) error {")
+        lines.append("func (CodecV2) Unmarshal(data mem.BufferSlice, v any) error {")
         lines.append("\tb := make([]byte, data.Len())")
         lines.append("\tn := 0")
         lines.append("\tfor _, buf := range data {")
         lines.append("\t\tn += copy(b[n:], buf.ReadOnlyData())")
         lines.append("\t}")
-        lines.append("\treturn c.Fory.Unmarshal(b, v)")
+        lines.append("\treturn getFory().Deserialize(b, v)")
         lines.append("}")
         lines.append("")
         lines.append(
@@ -229,7 +270,7 @@ class GoServiceGeneratorMixin:
                 )
                 lines.append(f"\tout := new({res_type[1:]})")
                 lines.append(
-                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{Fory: c.fory})}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{})}, opts...)"
                 )
                 lines.append(
                     f'\terr := c.cc.Invoke(ctx, "{self.get_grpc_method_path(service, method)}", in, out, callOpts...)'
@@ -245,7 +286,7 @@ class GoServiceGeneratorMixin:
                     f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, in {req_type}, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{"
                 )
                 lines.append(
-                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{Fory: c.fory})}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{})}, opts...)"
                 )
                 lines.append(
                     f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", callOpts...)'
@@ -271,7 +312,7 @@ class GoServiceGeneratorMixin:
                     f"func (c *{self.to_camel_case(service.name)}Client) {self.to_pascal_case(method.name)}(ctx context.Context, opts ...grpc.CallOption) ({service.name}_{self.to_pascal_case(method.name)}Client, error) {{"
                 )
                 lines.append(
-                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{Fory: c.fory})}, opts...)"
+                    "\tcallOpts := append([]grpc.CallOption{grpc.ForceCodecV2(CodecV2{})}, opts...)"
                 )
                 lines.append(
                     f'\tstream, err := c.cc.NewStream(ctx, &_{service.name}_serviceDesc.Streams[{stream_index}], "{self.get_grpc_method_path(service, method)}", callOpts...)'
