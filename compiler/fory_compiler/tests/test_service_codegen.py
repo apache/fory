@@ -253,6 +253,36 @@ def test_go_grpc_service_codegen():
     assert "mustEmbedUnimplementedGreeterServer()" in content
 
 
+def test_go_grpc_descriptor_uses_wire_method_name():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.greeter;
+
+            message Req {}
+            message Res {}
+
+            service Greeter {
+                rpc sayHello (Req) returns (Res);
+                rpc streamHello (Req) returns (stream Res);
+            }
+            """
+        )
+    )
+    content = next(iter(generate_service_files(schema, GoGenerator).values()))
+    # Wire names in the descriptor and path must match the IDL method name so a
+    # client invoking /Service/sayHello routes to the registered handler.
+    assert '"/demo.greeter.Greeter/sayHello"' in content
+    assert '"/demo.greeter.Greeter/streamHello"' in content
+    assert 'MethodName:\t"sayHello"' in content
+    assert 'StreamName:\t"streamHello"' in content
+    assert 'MethodName:\t"SayHello"' not in content
+    assert 'StreamName:\t"StreamHello"' not in content
+    # Exported Go identifiers stay PascalCase.
+    assert "_Greeter_SayHello_Handler" in content
+    assert "SayHello(ctx context.Context" in content
+
+
 def test_java_outer_classname_service_references_nested_model_types():
     schema = parse_fdl(
         dedent(

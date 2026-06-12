@@ -704,9 +704,10 @@ class GoServiceGeneratorMixin:
             mode = streaming_mode(method)
             if mode is StreamingMode.UNARY:
                 lines.append("\t\t{")
-                lines.append(
-                    f'\t\t\tMethodName:\t"{self.to_pascal_case(method.name)}",'
-                )
+                # MethodName is the wire name and must match the path the client
+                # invokes (get_grpc_method_path uses method.name); only Go
+                # identifiers like the handler use PascalCase.
+                lines.append(f'\t\t\tMethodName:\t"{method.name}",')
                 lines.append(
                     f"\t\t\tHandler:\t_{service.name}_{self.to_pascal_case(method.name)}_Handler,"
                 )
@@ -721,9 +722,9 @@ class GoServiceGeneratorMixin:
                 continue
             else:
                 lines.append("\t\t{")
-                lines.append(
-                    f'\t\t\tStreamName:\t"{self.to_pascal_case(method.name)}",'
-                )
+                # StreamName is the wire name; it must match method.name used in
+                # the client's invocation path, not the PascalCase Go identifier.
+                lines.append(f'\t\t\tStreamName:\t"{method.name}",')
                 lines.append(
                     f"\t\t\tHandler:\t_{service.name}_{self.to_pascal_case(method.name)}_Handler,"
                 )

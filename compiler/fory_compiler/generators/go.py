@@ -204,8 +204,7 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
 
         self.validate_type_names()
 
-        # gRPC service companions are emitted by the CLI via generate_services();
-        # emitting them here too would write _grpc.go twice.
+        # gRPC service companions are emitted by the CLI via generate_services().
         files.append(self.generate_file())
 
         return files
