@@ -207,23 +207,10 @@ class GoServiceGeneratorMixin:
     def _generate_codec(self) -> List[str]:
         lines: List[str] = []
         lines.append(
-            "// CodecV2 implements grpc/encoding.CodecV2 using Fory serialization."
-        )
-        lines.append(
-            "// It is stateless and uses the package thread-safe Fory runtime"
-        )
-        lines.append(
-            "// (getFory), so it is safe to share across concurrent RPCs."
+            "// CodecV2 implements grpc/encoding.CodecV2 using the package Fory runtime."
         )
         lines.append("type CodecV2 struct{}")
         lines.append("")
-        lines.append(
-            "// Marshal serializes v with the package Fory runtime. getFory().Serialize"
-        )
-        lines.append(
-            "// returns a freshly allocated slice per call, so streaming handlers that"
-        )
-        lines.append("// buffer multiple frames never alias the same buffer.")
         lines.append("func (CodecV2) Marshal(v any) (mem.BufferSlice, error) {")
         lines.append("\tb, err := getFory().Serialize(v)")
         lines.append("\tif err != nil {")
@@ -232,13 +219,6 @@ class GoServiceGeneratorMixin:
         lines.append("\treturn mem.BufferSlice{mem.NewBuffer(&b, nil)}, nil")
         lines.append("}")
         lines.append("")
-        lines.append(
-            "// Unmarshal deserializes the gRPC frame into v. Each buffer segment is"
-        )
-        lines.append(
-            "// copied into a fresh slice because the transport may reclaim the"
-        )
-        lines.append("// underlying memory before Fory finishes reading it.")
         lines.append("func (CodecV2) Unmarshal(data mem.BufferSlice, v any) error {")
         lines.append("\tb := make([]byte, data.Len())")
         lines.append("\tn := 0")
