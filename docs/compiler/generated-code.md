@@ -23,7 +23,11 @@ This document explains generated code for each target language.
 
 Fory IDL generated types are idiomatic in host languages and can be used directly as domain objects. Generated types also include `to/from bytes` helpers and schema modules or registration helpers, depending on the target language.
 
-Generated schema modules are schema-file owners, not package or namespace owners. In targets that expose the owner directly in a language package or namespace, the owner name includes a source-file-derived prefix such as `AddressbookForyModule` or `ComplexPbForyModule` so multiple IDL files can target the same package or namespace without producing colliding `ForyModule` types.
+Generated schema modules are named from the schema source file, not from the
+package or namespace. In targets that expose the module directly in a language
+package or namespace, names such as `AddressbookForyModule` or
+`ComplexPbForyModule` let multiple IDL files target the same package or
+namespace without producing colliding `ForyModule` types.
 
 ## Reference Schemas
 
@@ -920,7 +924,7 @@ public abstract partial record Animal
 
 ### Module Installation
 
-Each schema generates a module owner that installs imported modules first and
+Each schema generates a module class that installs imported modules first and
 then registers the local schema types:
 
 ```csharp
@@ -935,20 +939,19 @@ public static class AddressbookForyModule
 }
 ```
 
-The C# model file basename and module class both use the normalized schema file
-stem even when several schemas share the same C# namespace.
+The C# model file basename and module class both use the normalized source file
+stem. They do not use `csharp_namespace` and they do not use gRPC service names.
+For example, `service.fdl` generates `Service.cs` and `ServiceForyModule`,
+while `order-events.fdl` generates `OrderEvents.cs` and
+`OrderEventsForyModule`. A gRPC service named `Greeter` generates the service
+companion `GreeterGrpc.cs`; it does not change the schema module name. To get
+`GreeterForyModule`, name the schema file `greeter.fdl` or `Greeter.fdl`.
+
+This source-file rule lets several schemas target the same C# namespace without
+colliding. No namespace-derived or service-derived module alias is generated.
 
 When explicit type IDs are not provided, generated installation uses computed
 numeric IDs (same behavior as other targets).
-
-For existing generated C# outputs, this is a breaking generated-code naming
-rule. For example, `service.fdl` with
-`option csharp_namespace = "Demo.Greeter";` now generates `Service.cs` and
-`ServiceForyModule`; `order-events.fdl` generates `OrderEvents.cs` and
-`OrderEventsForyModule`. Regenerate the files, remove stale generated model
-files from previous compiler versions, and update manual calls such as
-`GreeterForyModule.Install(fory)` to `ServiceForyModule.Install(fory)`. No
-legacy alias is emitted.
 
 ### gRPC Service Companions
 

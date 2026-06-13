@@ -267,24 +267,22 @@ the gRPC path.
 
 ## Generated Module Names
 
-C# schema modules are named from the source file stem, not from the namespace.
-This lets several schema files target the same C# namespace without colliding.
-For example, `service.fdl` with `option csharp_namespace = "Demo.Greeter";`
-generates `Service.cs` and `ServiceForyModule`. A file such as
-`order-events.fdl` generates `OrderEvents.cs` and `OrderEventsForyModule`.
+C# schema module names come from the source file stem. They do not come from
+`csharp_namespace` and they do not come from gRPC service names.
 
-If you previously called a namespace-derived module name, update that call after
-regenerating:
+For example:
 
-```csharp
-// Before
-GreeterForyModule.Install(fory);
+| Schema input       | Model file       | Schema module           |
+| ------------------ | ---------------- | ----------------------- |
+| `service.fdl`      | `Service.cs`     | `ServiceForyModule`     |
+| `order-events.fdl` | `OrderEvents.cs` | `OrderEventsForyModule` |
+| `greeter.fdl`      | `Greeter.cs`     | `GreeterForyModule`     |
+| `Greeter.fdl`      | `Greeter.cs`     | `GreeterForyModule`     |
 
-// After
-ServiceForyModule.Install(fory);
-```
-
-No legacy alias is generated.
+A gRPC service named `Greeter` still generates the service companion
+`GreeterGrpc.cs`; it does not change the schema module name. This lets several
+schema files target the same C# namespace without colliding. No
+namespace-derived or service-derived module alias is generated.
 
 ## Operations
 
