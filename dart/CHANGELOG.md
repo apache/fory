@@ -1,6 +1,6 @@
-## 1.2.0-dev
+## 1.2.0
 
-- Start the next Dart workspace development cycle after the 1.1.0 release.
+- Release Apache Fory Dart 1.2.0.
 
 ## 1.1.0
 
