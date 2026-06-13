@@ -408,6 +408,94 @@ def test_csharp_output_collision(tmp_path: Path, capsys):
     assert not out.exists()
 
 
+def test_csharp_service_type_collision(tmp_path: Path, capsys):
+    model = tmp_path / "model.fdl"
+    model.write_text(
+        """
+        package demo.same;
+
+        message Greeter {
+            string name = 1;
+        }
+        """
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        """
+        package demo.same;
+
+        message Req {}
+        message Res {}
+
+        service Greeter {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            "--grpc",
+            str(model),
+            str(service),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# top-level symbol collision" in captured.err
+    assert not out.exists()
+
+
+def test_csharp_service_module_collision(tmp_path: Path, capsys):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        """
+        package demo.same;
+
+        message Holder {
+            string name = 1;
+        }
+        """
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        """
+        package demo.same;
+
+        message Req {}
+        message Res {}
+
+        service CommonForyModule {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            "--grpc",
+            str(common),
+            str(service),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# top-level symbol collision" in captured.err
+    assert not out.exists()
+
+
 def test_csharp_namespace_option_is_known():
     source = """
     package myapp;

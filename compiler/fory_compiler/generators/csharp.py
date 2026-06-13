@@ -40,6 +40,93 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
+_CSHARP_KEYWORDS = {
+    "abstract",
+    "as",
+    "base",
+    "bool",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "checked",
+    "class",
+    "const",
+    "continue",
+    "decimal",
+    "default",
+    "delegate",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "event",
+    "explicit",
+    "extern",
+    "false",
+    "finally",
+    "fixed",
+    "float",
+    "for",
+    "foreach",
+    "goto",
+    "if",
+    "implicit",
+    "in",
+    "int",
+    "interface",
+    "internal",
+    "is",
+    "lock",
+    "long",
+    "namespace",
+    "new",
+    "null",
+    "object",
+    "operator",
+    "out",
+    "override",
+    "params",
+    "private",
+    "protected",
+    "public",
+    "readonly",
+    "ref",
+    "return",
+    "sbyte",
+    "sealed",
+    "short",
+    "sizeof",
+    "stackalloc",
+    "static",
+    "string",
+    "struct",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "uint",
+    "ulong",
+    "unchecked",
+    "unsafe",
+    "ushort",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "while",
+}
+
+
+def csharp_safe_identifier(name: str) -> str:
+    if name in _CSHARP_KEYWORDS:
+        return f"@{name}"
+    return name
+
+
 def csharp_namespace_for_schema(schema: Schema) -> str:
     value = schema.get_option("csharp_namespace")
     if value:
@@ -90,17 +177,52 @@ def csharp_output_paths(
     return outputs
 
 
+def csharp_top_level_symbols(
+    schema: Schema, include_services: bool = False
+) -> List[Tuple[str, str]]:
+    module_name = csharp_module_class_name(schema)
+    symbols = [
+        (
+            csharp_safe_identifier(module_name),
+            f"schema module {module_name}",
+        )
+    ]
+    for type_def in schema.enums + schema.unions + schema.messages:
+        symbols.append(
+            (
+                csharp_safe_identifier(type_def.name),
+                f"schema type {type_def.name}",
+            )
+        )
+    if include_services:
+        for service in schema.services:
+            symbols.append(
+                (
+                    csharp_safe_identifier(service.name),
+                    f"service {service.name}",
+                )
+            )
+    return symbols
+
+
 def validate_csharp_generation(
     graph: List[Tuple[Path, Schema]], grpc: bool = False
 ) -> bool:
     output_owners: Dict[str, List[str]] = {}
     module_owners: Dict[Tuple[str, str], List[str]] = {}
+    symbol_owners: Dict[Tuple[str, str], List[str]] = {}
     for path, schema in graph:
         for output_path, owner in csharp_output_paths(schema, include_services=grpc):
             output_owners.setdefault(output_path, []).append(f"{path} {owner}")
         namespace_name = csharp_namespace_for_schema(schema)
         module_name = csharp_module_class_name(schema)
         module_owners.setdefault((namespace_name, module_name), []).append(str(path))
+        for symbol_name, owner in csharp_top_level_symbols(
+            schema, include_services=grpc
+        ):
+            symbol_owners.setdefault((namespace_name, symbol_name), []).append(
+                f"{path} {owner}"
+            )
 
     output_collisions = {
         output_path: owners
@@ -130,6 +252,20 @@ def validate_csharp_generation(
         raise ValueError(
             "C# schema module owner collision; rename schema files or use "
             f"distinct C# namespaces. Collisions: {details}"
+        )
+    symbol_collisions = {
+        owner: paths for owner, paths in symbol_owners.items() if len(paths) > 1
+    }
+    if symbol_collisions:
+        details = ", ".join(
+            f"{namespace_name}.{symbol_name}: {', '.join(paths)}"
+            for (namespace_name, symbol_name), paths in sorted(
+                symbol_collisions.items()
+            )
+        )
+        raise ValueError(
+            "C# top-level symbol collision; rename schema files, schema types, "
+            f"or services, or use distinct C# namespaces. Collisions: {details}"
         )
     return True
 
@@ -183,85 +319,7 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         PrimitiveKind.DECIMAL,
     }
 
-    CSHARP_KEYWORDS = {
-        "abstract",
-        "as",
-        "base",
-        "bool",
-        "break",
-        "byte",
-        "case",
-        "catch",
-        "char",
-        "checked",
-        "class",
-        "const",
-        "continue",
-        "decimal",
-        "default",
-        "delegate",
-        "do",
-        "double",
-        "else",
-        "enum",
-        "event",
-        "explicit",
-        "extern",
-        "false",
-        "finally",
-        "fixed",
-        "float",
-        "for",
-        "foreach",
-        "goto",
-        "if",
-        "implicit",
-        "in",
-        "int",
-        "interface",
-        "internal",
-        "is",
-        "lock",
-        "long",
-        "namespace",
-        "new",
-        "null",
-        "object",
-        "operator",
-        "out",
-        "override",
-        "params",
-        "private",
-        "protected",
-        "public",
-        "readonly",
-        "ref",
-        "return",
-        "sbyte",
-        "sealed",
-        "short",
-        "sizeof",
-        "stackalloc",
-        "static",
-        "string",
-        "struct",
-        "switch",
-        "this",
-        "throw",
-        "true",
-        "try",
-        "typeof",
-        "uint",
-        "ulong",
-        "unchecked",
-        "unsafe",
-        "ushort",
-        "using",
-        "virtual",
-        "void",
-        "volatile",
-        "while",
-    }
+    CSHARP_KEYWORDS = _CSHARP_KEYWORDS
 
     def __init__(self, schema: Schema, options):
         super().__init__(schema, options)
@@ -307,9 +365,7 @@ class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
         return namespace_name.replace(".", "/") if namespace_name else ""
 
     def safe_identifier(self, name: str) -> str:
-        if name in self.CSHARP_KEYWORDS:
-            return f"@{name}"
-        return name
+        return csharp_safe_identifier(name)
 
     def safe_type_identifier(self, name: str) -> str:
         return self.safe_identifier(name)

@@ -38,7 +38,6 @@ class CSharpServiceMixin:
     def _generate_csharp_service(self, service: Service) -> GeneratedFile:
         namespace_name = self.get_csharp_namespace()
         service_name = self.safe_type_identifier(service.name)
-        module_name = self.safe_type_identifier(self.get_module_class_name())
         marshallers = self._csharp_marshallers(service)
 
         lines: List[str] = []
@@ -51,25 +50,28 @@ class CSharpServiceMixin:
         lines.append("")
         lines.append(f"public static partial class {service_name}")
         lines.append("{")
-        lines.append(
-            f'{self.indent_str}static readonly string __ServiceName = "{self.get_grpc_service_name(service)}";'
-        )
-        lines.append(
-            f"{self.indent_str}private static readonly global::Apache.Fory.ThreadSafeFory __Fory ="
-        )
-        lines.append(f"{self.indent_str * 2}{module_name}.GetFory();")
-        lines.append("")
-        lines.extend(self._generate_marshallers(marshallers))
-        lines.append("")
-        lines.extend(self._generate_methods(service, marshallers))
-        lines.append("")
+        if service.methods:
+            module_name = self.safe_type_identifier(self.get_module_class_name())
+            lines.append(
+                f'{self.indent_str}static readonly string __ServiceName = "{self.get_grpc_service_name(service)}";'
+            )
+            lines.append(
+                f"{self.indent_str}private static readonly global::Apache.Fory.ThreadSafeFory __Fory ="
+            )
+            lines.append(f"{self.indent_str * 2}{module_name}.GetFory();")
+            lines.append("")
+            lines.extend(self._generate_marshallers(marshallers))
+            lines.append("")
+            lines.extend(self._generate_methods(service, marshallers))
+            lines.append("")
         lines.extend(self._generate_server_base(service))
         lines.append("")
         lines.extend(self._generate_client(service))
         lines.append("")
         lines.extend(self._generate_bind_service(service))
-        lines.append("")
-        lines.extend(self._generate_cold_helpers())
+        if service.methods:
+            lines.append("")
+            lines.extend(self._generate_cold_helpers())
         lines.append("}")
 
         file_name = f"{service.name}Grpc.cs"

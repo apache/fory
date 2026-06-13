@@ -1150,6 +1150,8 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
                 rpc Client (stream SharedRequest) returns (SharedReply);
                 rpc Bidi (stream LocalChoice) returns (stream SharedChoice);
             }
+
+            service Empty {}
             """
         )
     )
@@ -1170,15 +1172,21 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
     )
 
     service = out / "Demo" / "Greeter" / "GreeterGrpc.cs"
+    empty_service = out / "Demo" / "Greeter" / "EmptyGrpc.cs"
     main_model = out / "Demo" / "Greeter" / "main.cs"
     common_model = out / "Demo" / "Shared" / "common.cs"
     assert service.is_file()
+    assert empty_service.is_file()
     assert main_model.is_file()
     assert common_model.is_file()
     service_code = service.read_text()
     assert "MainForyModule.GetFory()" in service_code
     assert "global::Demo.Shared.SharedChoice" in service_code
     assert "PayloadAsNewBuffer" not in service_code
+    empty_service_code = empty_service.read_text()
+    assert "__ServiceName" not in empty_service_code
+    assert "__Fory" not in empty_service_code
+    assert "__Throw" not in empty_service_code
 
     project = out / "GrpcValidation.csproj"
     project.write_text(
