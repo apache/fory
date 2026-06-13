@@ -18,10 +18,12 @@
 """C# code generator."""
 
 from pathlib import Path
+import re
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.csharp import CSharpServiceMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -38,7 +40,101 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class CSharpGenerator(BaseGenerator):
+def csharp_namespace_for_schema(schema: Schema) -> str:
+    value = schema.get_option("csharp_namespace")
+    if value:
+        return str(value)
+    if schema.package:
+        return schema.package
+    return "generated"
+
+
+def csharp_module_file_name(schema: Schema) -> str:
+    if schema.source_file and not schema.source_file.startswith("<"):
+        return f"{Path(schema.source_file).stem}.cs"
+    if schema.package:
+        return f"{schema.package.replace('.', '_')}.cs"
+    return "generated.cs"
+
+
+def csharp_module_owner_stem(schema: Schema) -> str:
+    if schema.source_file and not schema.source_file.startswith("<"):
+        return Path(schema.source_file).stem
+    if schema.package:
+        return schema.package.replace(".", "_")
+    return "generated"
+
+
+def csharp_module_class_name(schema: Schema) -> str:
+    stem = re.sub(r"[^0-9A-Za-z_]", "_", csharp_module_owner_stem(schema))
+    parts = [part for part in stem.lower().split("_") if part]
+    class_name = "".join(part.capitalize() for part in parts)
+    if not class_name or not (class_name[0].isalpha() or class_name[0] == "_"):
+        class_name = f"Schema{class_name}"
+    return f"{class_name}ForyModule"
+
+
+def csharp_output_paths(
+    schema: Schema, include_services: bool = False
+) -> List[Tuple[str, str]]:
+    namespace_name = csharp_namespace_for_schema(schema)
+    namespace_path = namespace_name.replace(".", "/") if namespace_name else ""
+    model_file = csharp_module_file_name(schema)
+    model_path = f"{namespace_path}/{model_file}" if namespace_path else model_file
+    outputs = [(model_path, f"schema module {csharp_module_class_name(schema)}")]
+    if include_services:
+        for service in schema.services:
+            file_name = f"{service.name}Grpc.cs"
+            path = f"{namespace_path}/{file_name}" if namespace_path else file_name
+            outputs.append((path, f"service {service.name}"))
+    return outputs
+
+
+def validate_csharp_generation(
+    graph: List[Tuple[Path, Schema]], grpc: bool = False
+) -> bool:
+    output_owners: Dict[str, List[str]] = {}
+    module_owners: Dict[Tuple[str, str], List[str]] = {}
+    for path, schema in graph:
+        for output_path, owner in csharp_output_paths(schema, include_services=grpc):
+            output_owners.setdefault(output_path, []).append(f"{path} {owner}")
+        namespace_name = csharp_namespace_for_schema(schema)
+        module_name = csharp_module_class_name(schema)
+        module_owners.setdefault((namespace_name, module_name), []).append(str(path))
+
+    output_collisions = {
+        output_path: owners
+        for output_path, owners in output_owners.items()
+        if len(owners) > 1
+    }
+    if output_collisions:
+        details = ", ".join(
+            f"{output_path}: {', '.join(owners)}"
+            for output_path, owners in sorted(output_collisions.items())
+        )
+        raise ValueError(
+            "C# generated file path collision; rename schema files or services, "
+            f"or use distinct C# namespaces. Collisions: {details}"
+        )
+
+    module_collisions = {
+        owner: paths for owner, paths in module_owners.items() if len(paths) > 1
+    }
+    if module_collisions:
+        details = ", ".join(
+            f"{namespace_name}.{module_name}: {', '.join(paths)}"
+            for (namespace_name, module_name), paths in sorted(
+                module_collisions.items()
+            )
+        )
+        raise ValueError(
+            "C# schema module owner collision; rename schema files or use "
+            f"distinct C# namespaces. Collisions: {details}"
+        )
+    return True
+
+
+class CSharpGenerator(CSharpServiceMixin, BaseGenerator):
     """Generates C# models and registration helpers for Apache Fory."""
 
     language_name = "csharp"
@@ -196,29 +292,16 @@ class CSharpGenerator(BaseGenerator):
             visit_message(message, [])
 
     def get_csharp_namespace(self) -> str:
-        csharp_ns = self.schema.get_option("csharp_namespace")
-        if csharp_ns:
-            return str(csharp_ns)
-        if self.schema.package:
-            return self.schema.package
-        return "generated"
+        return csharp_namespace_for_schema(self.schema)
 
     def get_module_class_name(self) -> str:
-        return self._module_class_name_for_namespace(self.get_csharp_namespace())
+        return csharp_module_class_name(self.schema)
 
-    def _module_class_name_for_namespace(self, namespace_name: str) -> str:
-        if namespace_name:
-            leaf = namespace_name.split(".")[-1]
-        else:
-            leaf = "generated"
-        return f"{self.to_pascal_case(leaf)}ForyModule"
+    def _module_class_name_for_schema(self, schema: Schema) -> str:
+        return csharp_module_class_name(schema)
 
     def _module_file_name(self) -> str:
-        if self.schema.source_file and not self.schema.source_file.startswith("<"):
-            return f"{Path(self.schema.source_file).stem}.cs"
-        if self.schema.package:
-            return f"{self.schema.package.replace('.', '_')}.cs"
-        return "generated.cs"
+        return csharp_module_file_name(self.schema)
 
     def _namespace_path(self, namespace_name: str) -> str:
         return namespace_name.replace(".", "/") if namespace_name else ""
@@ -313,12 +396,7 @@ class CSharpGenerator(BaseGenerator):
         return schema
 
     def _csharp_namespace_for_schema(self, schema: Schema) -> str:
-        value = schema.get_option("csharp_namespace")
-        if value:
-            return str(value)
-        if schema.package:
-            return schema.package
-        return "generated"
+        return csharp_namespace_for_schema(schema)
 
     def _csharp_namespace_for_type(self, type_def: object) -> str:
         location = getattr(type_def, "location", None)
@@ -344,7 +422,7 @@ class CSharpGenerator(BaseGenerator):
             if imported_schema is None:
                 continue
             namespace_name = self._csharp_namespace_for_schema(imported_schema)
-            module_name = self._module_class_name_for_namespace(namespace_name)
+            module_name = self._module_class_name_for_schema(imported_schema)
             file_info[normalized] = (namespace_name, module_name)
 
         ordered: List[Tuple[str, str]] = []
@@ -365,14 +443,7 @@ class CSharpGenerator(BaseGenerator):
                 continue
             ordered.append(file_info[key])
 
-        deduped: List[Tuple[str, str]] = []
-        seen: Set[Tuple[str, str]] = set()
-        for item in ordered:
-            if item in seen:
-                continue
-            seen.add(item)
-            deduped.append(item)
-        return deduped
+        return ordered
 
     def generate(self) -> List[GeneratedFile]:
         return [self.generate_file()]

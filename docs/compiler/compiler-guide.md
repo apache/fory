@@ -141,24 +141,26 @@ foryc schema.fdl --output ./src/generated
 foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
-**Compile a simple schema containing service definitions (Java + Python + Rust + Kotlin models):**
+**Compile a simple schema containing service definitions (Java + Python + Rust + C# + Kotlin models):**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --kotlin_out=./generated/kotlin
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --kotlin_out=./generated/kotlin
 ```
 
-**Generate Java, Python, Rust, and Kotlin gRPC service companions:**
+**Generate Java, Python, Rust, C#, and Kotlin gRPC service companions:**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --kotlin_out=./generated/kotlin --grpc
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --kotlin_out=./generated/kotlin --grpc
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
 payloads. Java output imports grpc-java APIs, Python output imports `grpc`, and
 Rust output imports `tonic` and `bytes`. Kotlin output imports grpc-java and
-grpc-kotlin APIs and uses coroutine stubs. Applications that compile or run
-those generated service files must provide their own gRPC dependencies. Fory
-packages do not add a hard gRPC dependency for this feature.
+grpc-kotlin APIs and uses coroutine stubs. C# output imports `Grpc.Core.Api`
+types and can be hosted with normal .NET gRPC packages such as
+`Grpc.AspNetCore` or called through `Grpc.Net.Client`. Applications that
+compile or run those generated service files must provide their own gRPC
+dependencies. Fory packages do not add a hard gRPC dependency for this feature.
 
 **Use import search paths:**
 
@@ -372,6 +374,8 @@ generated/
   `ToBytes`/`FromBytes` methods
 - Imported schemas are installed transitively (for example `root.idl` importing
   `addressbook.fdl` and `tree.fdl`)
+- With `--grpc`, one `<ServiceName>Grpc.cs` companion per service next to the
+  schema file output
 
 ### Swift
 

@@ -126,8 +126,8 @@ message Container {
 
 FlatBuffers `rpc_service` definitions are translated to Fory services. With
 `--grpc`, the compiler emits gRPC service companions for supported outputs such
-as Java, Python, Go, Rust, and Kotlin. These companions use Fory serialization for
-request and response payloads.
+as Java, Python, Go, Rust, C#, and Kotlin. These companions use Fory
+serialization for request and response payloads.
 
 ```fbs
 rpc_service SearchService {
@@ -137,13 +137,13 @@ rpc_service SearchService {
 ```
 
 ```bash
-foryc api.fbs --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --kotlin_out=./generated/kotlin --grpc
+foryc api.fbs --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --kotlin_out=./generated/kotlin --grpc
 ```
 
 Generated service code imports grpc APIs, so applications must provide grpc-java,
-grpc-kotlin, `grpcio`, grpc-go, or Rust `tonic` and `bytes` dependencies when
-they compile or run those files. Fory packages do not add gRPC as a hard
-dependency.
+grpc-kotlin, `grpcio`, grpc-go, Rust `tonic` and `bytes`, or C#
+`Grpc.Core.Api` plus server/client dependencies when they compile or run those
+files. Fory packages do not add gRPC as a hard dependency.
 
 ### Defaults and Metadata
 

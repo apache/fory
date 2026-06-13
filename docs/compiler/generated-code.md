@@ -937,6 +937,67 @@ the same C# namespace.
 When explicit type IDs are not provided, generated installation uses computed
 numeric IDs (same behavior as other targets).
 
+For existing generated C# call sites, this is a breaking generated-code name
+rule when the namespace leaf and source file stem differ. For example,
+`service.fdl` with `option csharp_namespace = "Demo.Greeter";` now generates
+`ServiceForyModule`, not `GreeterForyModule`. Regenerate the files and update
+manual calls such as `GreeterForyModule.Install(fory)` to
+`ServiceForyModule.Install(fory)`. No legacy alias is emitted.
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, C#
+generation emits one `<ServiceName>Grpc.cs` file per service next to the schema
+model file.
+
+```csharp
+public static partial class AddressBookService
+{
+    public abstract partial class AddressBookServiceBase
+    {
+        public virtual Task<AddressBook> Lookup(
+            Person request,
+            grpc::ServerCallContext context) { ... }
+    }
+
+    public partial class AddressBookServiceClient
+        : grpc::ClientBase<AddressBookServiceClient>
+    {
+        public virtual AddressBook Lookup(Person request, grpc::CallOptions options) { ... }
+        public virtual grpc::AsyncUnaryCall<AddressBook> LookupAsync(
+            Person request,
+            grpc::CallOptions options) { ... }
+    }
+
+    public static grpc::ServerServiceDefinition BindService(
+        AddressBookServiceBase serviceImpl) { ... }
+
+    public static void BindService(
+        grpc::ServiceBinderBase serviceBinder,
+        AddressBookServiceBase? serviceImpl) { ... }
+}
+```
+
+Each generated method descriptor uses a static Fory-backed
+`Grpc.Core.Marshaller<T>` that reuses the schema module's `ThreadSafeFory`.
+Deserialization reads the gRPC body through `PayloadAsReadOnlySequence()` and
+rejects trailing bytes after the single Fory frame. Generated service companions
+do not use protobuf parsers and do not create Fory instances per RPC call.
+
+Streaming RPCs map to standard gRPC C# APIs:
+
+| IDL shape                                 | Server method                                                                 | Client method                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
+| `rpc A (Req) returns (Res)`               | `Task<Res> A(Req request, ServerCallContext context)`                         | `A(...)` and `AAsync(...)`                  |
+| `rpc A (Req) returns (stream Res)`        | `Task A(Req request, IServerStreamWriter<Res> responseStream, ...)`           | `AsyncServerStreamingCall<Res> A(...)`      |
+| `rpc A (stream Req) returns (Res)`        | `Task<Res> A(IAsyncStreamReader<Req> requestStream, ...)`                     | `AsyncClientStreamingCall<Req, Res> A(...)` |
+| `rpc A (stream Req) returns (stream Res)` | `Task A(IAsyncStreamReader<Req> requestStream, IServerStreamWriter<Res> ...)` | `AsyncDuplexStreamingCall<Req, Res> A(...)` |
+
+Applications compiling generated C# service files must provide `Grpc.Core.Api`
+and their chosen .NET gRPC hosting or client package, such as `Grpc.AspNetCore`
+or `Grpc.Net.Client`. The `Apache.Fory` package does not add gRPC dependencies
+as hard dependencies.
+
 ## JavaScript/TypeScript
 
 ### Output Layout

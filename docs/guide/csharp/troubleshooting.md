@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 12
+sidebar_position: 13
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -84,6 +84,25 @@ Fory fory = Fory.Builder().TrackRef(true).Build();
 
 **Fix**: Use `BuildThreadSafe()`.
 
+## Generated gRPC Compile Errors
+
+**Symptom**: Generated `*Grpc.cs` files cannot find `Grpc.Core` types.
+
+**Cause**: gRPC packages are application dependencies. The `Apache.Fory`
+package does not add gRPC as a hard dependency.
+
+**Fix**: Add `Grpc.Core.Api` and your chosen gRPC server or client package, such
+as `Grpc.AspNetCore` for server hosting or `Grpc.Net.Client` for clients. See
+[gRPC Support](grpc-support.md).
+
+## Protobuf Client Cannot Decode a Fory gRPC Service
+
+**Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message
+bodies. They do not send protobuf message bytes.
+
+**Fix**: Use a Fory-generated client and server for the Fory endpoint, or expose
+a separate protobuf endpoint for generic protobuf clients.
+
 ## Validation Commands
 
 Run C# tests from repo root:
@@ -96,5 +115,6 @@ dotnet test Fory.sln -c Release
 ## Related Topics
 
 - [Configuration](configuration.md)
+- [gRPC Support](grpc-support.md)
 - [Schema Evolution](schema-evolution.md)
 - [Thread Safety](thread-safety.md)

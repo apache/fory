@@ -96,6 +96,7 @@ User decoded = fory.Deserialize<User>(payload);
 | [Schema Evolution](schema-evolution.md)       | Compatible mode behavior                      |
 | [Supported Types](supported-types.md)         | Built-in and generated type support           |
 | [Thread Safety](thread-safety.md)             | `Fory` vs `ThreadSafeFory` usage              |
+| [gRPC Support](grpc-support.md)               | Generated Fory-backed gRPC service companions |
 | [Troubleshooting](troubleshooting.md)         | Common errors and debugging steps             |
 
 ## Related Resources

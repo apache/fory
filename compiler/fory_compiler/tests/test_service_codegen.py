@@ -18,12 +18,14 @@
 """Codegen smoke tests for schemas that contain service definitions."""
 
 from pathlib import Path
+import shutil
+import subprocess
 from textwrap import dedent
 from typing import Dict, Tuple, Type
 
 import pytest
 
-from fory_compiler.cli import compile_file, resolve_imports
+from fory_compiler.cli import compile_file, main as foryc_main, resolve_imports
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.frontend.fbs.lexer import Lexer as FbsLexer
@@ -119,7 +121,7 @@ def generate_service_files(
     return {item.path: item.content for item in generator.generate_services()}
 
 
-def test_service_definition_does_not_affect_message_codegen():
+def test_services_do_not_change_models():
     schema_with = parse_fdl(_GREETER_WITH_SERVICE)
     schema_without = parse_fdl(_GREETER_WITHOUT_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
@@ -130,13 +132,14 @@ def test_service_definition_does_not_affect_message_codegen():
         )
 
 
-def test_generate_services_returns_empty_list_for_unsupported_generators():
+def test_unsupported_generators_no_services():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
         if generator_cls in (
             JavaGenerator,
             PythonGenerator,
             GoGenerator,
+            CSharpGenerator,
             RustGenerator,
             KotlinGenerator,
         ):
@@ -148,7 +151,7 @@ def test_generate_services_returns_empty_list_for_unsupported_generators():
         )
 
 
-def test_java_grpc_service_codegen_contains_fory_marshaller():
+def test_java_grpc_fory_marshaller():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     files = generate_service_files(schema, JavaGenerator)
     assert set(files) == {"demo/greeter/GreeterGrpc.java"}
@@ -163,7 +166,7 @@ def test_java_grpc_service_codegen_contains_fory_marshaller():
     assert "ProtoUtils" not in content
 
 
-def test_python_grpc_service_codegen_uses_byte_callbacks():
+def test_python_grpc_byte_callbacks():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     files = generate_service_files(schema, PythonGenerator)
     assert set(files) == {"demo_greeter_grpc.py"}
@@ -183,7 +186,7 @@ def test_python_grpc_service_codegen_uses_byte_callbacks():
     assert "FromString" not in content
 
 
-def test_kotlin_grpc_service_codegen_contains_fory_marshaller():
+def test_kotlin_grpc_fory_marshaller():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     files = generate_service_files(schema, KotlinGenerator)
     assert set(files) == {"demo/greeter/GreeterGrpcKt.kt"}
@@ -217,6 +220,46 @@ def test_kotlin_grpc_service_codegen_contains_fory_marshaller():
     assert "readUnknownLengthBytes(stream)" in content
     assert "ProtoUtils" not in content
     assert "MessageLite" not in content
+
+
+def test_csharp_grpc_fory_marshaller():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    files = generate_service_files(schema, CSharpGenerator)
+    assert set(files) == {"demo/greeter/GreeterGrpc.cs"}
+    content = files["demo/greeter/GreeterGrpc.cs"]
+    assert "public static partial class Greeter" in content
+    assert 'static readonly string __ServiceName = "demo.greeter.Greeter"' in content
+    assert (
+        "private static readonly global::Apache.Fory.ThreadSafeFory __Fory" in content
+    )
+    assert "demoGreeterForyModule" not in content
+    assert "grpc::Marshallers.Create(__Serialize_" in content
+    assert "context.Complete(__Fory.Serialize<" in content
+    assert "PayloadAsReadOnlySequence()" in content
+    assert "PayloadAsNewBuffer" not in content
+    assert "new grpc::Method<global::demo.greeter.HelloRequest" in content
+    assert "grpc::MethodType.Unary" in content
+    assert '[grpc::BindServiceMethod(typeof(Greeter), "BindService")]' in content
+    assert (
+        "public partial class GreeterClient : grpc::ClientBase<GreeterClient>"
+        in content
+    )
+    assert "protected override GreeterClient NewInstance" in content
+    assert "public static grpc::ServerServiceDefinition BindService" in content
+    assert (
+        "public static void BindService(grpc::ServiceBinderBase serviceBinder"
+        in content
+    )
+    assert "serviceImpl == null" in content
+    assert "new grpc::UnaryServerMethod" in content
+    assert "MethodImplOptions.NoInlining" in content
+    assert "ProtoUtils" not in content
+    hot_path = content.split("__ThrowSerializeError", 1)[0]
+    assert '$"' not in hot_path
+    assert "System.Reflection" not in content
+    assert "ValueTuple" not in content
+    assert "Tuple<" not in content
+    assert "Activator" not in content
 
 
 def test_grpc_streaming_method_shapes():
@@ -287,6 +330,32 @@ def test_grpc_streaming_method_shapes():
     assert "io.grpc.kotlin.ServerCalls.clientStreamingServerMethodDefinition" in kotlin
     assert "io.grpc.kotlin.ServerCalls.bidiStreamingServerMethodDefinition" in kotlin
 
+    csharp = next(iter(generate_service_files(schema, CSharpGenerator).values()))
+    assert "grpc::MethodType.Unary" in csharp
+    assert "grpc::MethodType.ServerStreaming" in csharp
+    assert "grpc::MethodType.ClientStreaming" in csharp
+    assert "grpc::MethodType.DuplexStreaming" in csharp
+    assert "public virtual global::demo.streams.Res Unary(" in csharp
+    assert (
+        "public virtual grpc::AsyncUnaryCall<global::demo.streams.Res> UnaryAsync"
+        in csharp
+    )
+    assert (
+        "public virtual grpc::AsyncServerStreamingCall<global::demo.streams.Res> Server"
+        in csharp
+    )
+    assert (
+        "public virtual grpc::AsyncClientStreamingCall<global::demo.streams.Req, global::demo.streams.Res> Client"
+        in csharp
+    )
+    assert (
+        "public virtual grpc::AsyncDuplexStreamingCall<global::demo.streams.Payload, global::demo.streams.Payload> Bidi"
+        in csharp
+    )
+    assert "new grpc::ServerStreamingServerMethod" in csharp
+    assert "new grpc::ClientStreamingServerMethod" in csharp
+    assert "new grpc::DuplexStreamingServerMethod" in csharp
+
 
 def test_go_grpc_service_codegen():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
@@ -310,7 +379,7 @@ def test_go_grpc_service_codegen():
     assert "mustEmbedUnimplementedGreeterServer()" in content
 
 
-def test_go_grpc_service_desc_uses_idl_method_names():
+def test_go_grpc_uses_idl_names():
     schema = parse_fdl(
         dedent(
             """
@@ -346,7 +415,7 @@ def test_go_grpc_service_desc_uses_idl_method_names():
     assert 'StreamName:\t"StreamReplies"' not in content
 
 
-def test_java_outer_classname_service_references_nested_model_types():
+def test_java_outer_service_types():
     schema = parse_fdl(
         dedent(
             """
@@ -370,7 +439,7 @@ def test_java_outer_classname_service_references_nested_model_types():
     assert "marshaller(OuterModels.Res.class)" in content
 
 
-def test_grpc_services_use_imported_java_type_references(tmp_path: Path):
+def test_grpc_imported_java_types(tmp_path: Path):
     common = tmp_path / "common.fdl"
     common.write_text(
         dedent(
@@ -432,8 +501,20 @@ def test_grpc_services_use_imported_java_type_references(tmp_path: Path):
     assert "marshaller(common.Shared::class.java)" in kotlin
     assert "public open suspend fun get(request: common.Shared): Local" in kotlin
 
+    csharp_files = generate_service_files(schema, CSharpGenerator)
+    assert set(csharp_files) == {"api/ApiServiceGrpc.cs"}
+    csharp = csharp_files["api/ApiServiceGrpc.cs"]
+    assert (
+        "grpc::Method<global::common.Shared, global::api.Local> __Method_Get" in csharp
+    )
+    assert "grpc::Marshaller<global::common.Shared>" in csharp
+    assert (
+        "public virtual global::System.Threading.Tasks.Task<global::api.Local> Get("
+        in csharp
+    )
 
-def test_proto_grpc_services_use_imported_qualified_type_references(tmp_path: Path):
+
+def test_proto_grpc_imported_types(tmp_path: Path):
     common = tmp_path / "common.proto"
     common.write_text(
         dedent(
@@ -490,8 +571,15 @@ def test_proto_grpc_services_use_imported_qualified_type_references(tmp_path: Pa
     assert "io.grpc.MethodDescriptor<common.Shared, Local>" in kotlin
     assert "marshaller(common.Shared::class.java)" in kotlin
 
+    csharp_files = generate_service_files(schema, CSharpGenerator)
+    csharp = csharp_files["api/ApiServiceGrpc.cs"]
+    assert (
+        "grpc::Method<global::common.Shared, global::api.Local> __Method_Get" in csharp
+    )
+    assert "grpc::Marshaller<global::common.Shared>" in csharp
 
-def test_proto_grpc_absolute_rpc_type_uses_package_type_not_nested_shadow():
+
+def test_proto_grpc_absolute_type():
     schema = parse_proto(
         dedent(
             """
@@ -530,8 +618,13 @@ def test_proto_grpc_absolute_rpc_type_uses_package_type_not_nested_shadow():
     assert "io.grpc.MethodDescriptor<Request, Response>" in kotlin
     assert "io.grpc.MethodDescriptor<demo.Request, Response>" not in kotlin
 
+    csharp_files = generate_service_files(schema, CSharpGenerator)
+    csharp = csharp_files["demo/ApiServiceGrpc.cs"]
+    assert "grpc::Method<global::demo.Request, global::demo.Response>" in csharp
+    assert "global::demo.demo.Request" not in csharp
 
-def test_proto_grpc_absolute_rpc_type_prefers_longest_package_prefix(tmp_path: Path):
+
+def test_proto_grpc_longest_package(tmp_path: Path):
     common = tmp_path / "common.proto"
     common.write_text(
         dedent(
@@ -586,8 +679,13 @@ def test_proto_grpc_absolute_rpc_type_prefers_longest_package_prefix(tmp_path: P
     assert "io.grpc.MethodDescriptor<alpha.beta.C, alpha.beta.C>" in kotlin
     assert "io.grpc.MethodDescriptor<beta.C, beta.C>" not in kotlin
 
+    csharp_files = generate_service_files(schema, CSharpGenerator)
+    csharp = csharp_files["alpha/ApiServiceGrpc.cs"]
+    assert "grpc::Method<global::alpha.beta.C, global::alpha.beta.C>" in csharp
+    assert "global::alpha.beta.beta.C" not in csharp
 
-def test_java_grpc_service_class_collision_fails():
+
+def test_java_grpc_class_collision():
     schema = parse_fdl(
         dedent(
             """
@@ -614,7 +712,7 @@ def test_java_grpc_service_class_collision_fails():
         raise AssertionError("Expected Java gRPC service class collision")
 
 
-def test_kotlin_grpc_service_class_collision_fails():
+def test_kotlin_grpc_class_collision():
     schema = parse_fdl(
         dedent(
             """
@@ -634,7 +732,30 @@ def test_kotlin_grpc_service_class_collision_fails():
         KotlinGenerator(schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True))
 
 
-def test_java_grpc_service_class_collision_with_imported_type_fails(tmp_path: Path):
+def test_csharp_grpc_class_collision():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+
+            message Greeter {}
+            message Req {}
+            message Res {}
+
+            service Greeter {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    generator = CSharpGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    with pytest.raises(ValueError, match="C# gRPC service class Greeter conflicts"):
+        generator.generate_services()
+
+
+def test_java_grpc_import_type_collision(tmp_path: Path):
     common = tmp_path / "common.fdl"
     common.write_text(
         dedent(
@@ -675,7 +796,7 @@ def test_java_grpc_service_class_collision_with_imported_type_fails(tmp_path: Pa
         raise AssertionError("Expected imported Java gRPC service class collision")
 
 
-def test_java_grpc_service_class_collision_with_imported_outer_fails(tmp_path: Path):
+def test_java_grpc_import_outer_collision(tmp_path: Path):
     common = tmp_path / "common.fdl"
     common.write_text(
         dedent(
@@ -786,8 +907,19 @@ def test_grpc_method_name_collisions_fail():
     else:
         raise AssertionError("Expected Kotlin gRPC method name collision")
 
+    csharp_generator = CSharpGenerator(
+        schema, GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
+    )
+    try:
+        csharp_generator.generate_services()
+    except ValueError as e:
+        assert "C# gRPC method name collision" in str(e)
+        assert "Foo and foo" in str(e)
+    else:
+        raise AssertionError("Expected C# gRPC method name collision")
 
-def test_java_python_grpc_method_keywords_are_safe_names():
+
+def test_grpc_method_keywords_safe():
     schema = parse_fdl(
         dedent(
             """
@@ -820,7 +952,7 @@ def test_java_python_grpc_method_keywords_are_safe_names():
     assert "implementation = ::`class`" in kotlin
 
 
-def test_python_grpc_service_registration_collisions_fail():
+def test_python_grpc_registration_collision():
     schema = parse_fdl(
         dedent(
             """
@@ -843,7 +975,7 @@ def test_python_grpc_service_registration_collisions_fail():
         raise AssertionError("Expected Python gRPC service registration collision")
 
 
-def test_rust_grpc_service_module_collisions_fail():
+def test_rust_grpc_module_collision():
     schema = parse_fdl(
         dedent(
             """
@@ -866,7 +998,7 @@ def test_rust_grpc_service_module_collisions_fail():
         raise AssertionError("Expected Rust gRPC service module collision")
 
 
-def test_default_package_java_grpc_output_path_and_service_name():
+def test_java_grpc_default_package():
     schema = parse_fdl(
         dedent(
             """
@@ -934,7 +1066,7 @@ def test_proto_and_fbs_grpc_service_codegen():
     assert '"/demo.fbs.FbsSvc/Call"' in fbs_python["demo_fbs_grpc.py"]
 
 
-def test_service_schema_produces_one_file_per_message_per_language():
+def test_service_schema_model_files():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     for generator_cls in GENERATOR_CLASSES:
         files = generate_files(schema, generator_cls)
@@ -943,7 +1075,7 @@ def test_service_schema_produces_one_file_per_message_per_language():
         )
 
 
-def test_compile_service_schema_with_grpc_flag(tmp_path: Path, capsys):
+def test_compile_service_with_grpc(tmp_path: Path, capsys):
     example_path = Path(__file__).resolve().parents[2] / "examples" / "service.fdl"
     lang_dirs = {}
     for lang in ("java", "python", "rust", "go", "cpp", "csharp", "swift", "kotlin"):
@@ -960,10 +1092,132 @@ def test_compile_service_schema_with_grpc_flag(tmp_path: Path, capsys):
     assert output.count("demo_greeter_grpc.go") == 1
     assert (lang_dirs["rust"] / "demo_greeter_service.rs").exists()
     assert (lang_dirs["rust"] / "demo_greeter_service_grpc.rs").exists()
+    assert (lang_dirs["csharp"] / "demo" / "greeter" / "service.cs").exists()
+    assert (lang_dirs["csharp"] / "demo" / "greeter" / "GreeterGrpc.cs").exists()
     assert (lang_dirs["kotlin"] / "demo" / "greeter" / "GreeterGrpcKt.kt").exists()
 
 
-def test_generated_message_contains_key_signatures():
+@pytest.mark.skipif(shutil.which("dotnet") is None, reason="dotnet not installed")
+def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[3]
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+            option csharp_namespace = "Demo.Shared";
+
+            message SharedRequest {
+                string name = 1;
+            }
+
+            message SharedReply {
+                string text = 1;
+            }
+
+            union SharedChoice {
+                SharedRequest request = 1;
+                SharedReply reply = 2;
+            }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.greeter;
+            option csharp_namespace = "Demo.Greeter";
+
+            import "common.fdl";
+
+            message LocalRequest {
+                string name = 1;
+            }
+
+            message LocalReply {
+                string text = 1;
+            }
+
+            union LocalChoice {
+                LocalRequest request = 1;
+                LocalReply reply = 2;
+            }
+
+            service Greeter {
+                rpc Unary (LocalRequest) returns (LocalReply);
+                rpc Server (LocalRequest) returns (stream LocalReply);
+                rpc Client (stream SharedRequest) returns (SharedReply);
+                rpc Bidi (stream LocalChoice) returns (stream SharedChoice);
+            }
+            """
+        )
+    )
+    out = tmp_path / "out"
+    assert (
+        foryc_main(
+            [
+                "--lang",
+                "csharp",
+                "--csharp_out",
+                str(out),
+                "--grpc",
+                str(common),
+                str(main),
+            ]
+        )
+        == 0
+    )
+
+    service = out / "Demo" / "Greeter" / "GreeterGrpc.cs"
+    main_model = out / "Demo" / "Greeter" / "main.cs"
+    common_model = out / "Demo" / "Shared" / "common.cs"
+    assert service.is_file()
+    assert main_model.is_file()
+    assert common_model.is_file()
+    service_code = service.read_text()
+    assert "MainForyModule.GetFory()" in service_code
+    assert "global::Demo.Shared.SharedChoice" in service_code
+    assert "PayloadAsNewBuffer" not in service_code
+
+    project = out / "GrpcValidation.csproj"
+    project.write_text(
+        dedent(
+            f"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net8.0</TargetFramework>
+                <LangVersion>12.0</LangVersion>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <Nullable>enable</Nullable>
+                <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+              </PropertyGroup>
+              <ItemGroup>
+                <ProjectReference Include="{repo_root / "csharp/src/Fory/Fory.csproj"}" />
+                <ProjectReference Include="{repo_root / "csharp/src/Fory.Generator/Fory.Generator.csproj"}"
+                                  OutputItemType="Analyzer"
+                                  ReferenceOutputAssembly="false" />
+                <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
+              </ItemGroup>
+            </Project>
+            """
+        ).strip()
+    )
+    (out / "Program.cs").write_text(CSHARP_GRPC_VALIDATION_PROGRAM)
+
+    result = subprocess.run(
+        ["dotnet", "run", "--project", str(project), "-v:quiet"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_generated_message_signatures():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     java_files = generate_files(schema, JavaGenerator)
     all_java = "\n".join(java_files.values())
@@ -978,7 +1232,650 @@ def test_generated_message_contains_key_signatures():
     assert "HelloReply" in all_python
 
 
-def test_rust_grpc_rejects_non_thread_safe_refs():
+CSHARP_GRPC_VALIDATION_PROGRAM = dedent(
+    r"""
+    using System;
+    using System.Buffers;
+    using System.Collections.Generic;
+    using System.Reflection;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Apache.Fory;
+    using Demo.Greeter;
+    using Demo.Shared;
+    using Grpc.Core;
+
+    static class Program
+    {
+        static async Task Main()
+        {
+            TestMarshallers();
+            TestClientDispatch();
+            await TestServerBinding();
+            TestGeneratedSerializers();
+            TestAllocationBaseline();
+        }
+
+        static void TestMarshallers()
+        {
+            Method<LocalRequest, LocalReply> unary =
+                GetMethod<LocalRequest, LocalReply>("__Method_Unary");
+            Method<SharedRequest, SharedReply> client =
+                GetMethod<SharedRequest, SharedReply>("__Method_Client");
+            Method<LocalChoice, SharedChoice> bidi =
+                GetMethod<LocalChoice, SharedChoice>("__Method_Bidi");
+
+            LocalRequest localRequest = new() { Name = "local" };
+            LocalRequest decodedLocal = RoundTrip(unary.RequestMarshaller, localRequest);
+            Require(decodedLocal.Name == "local", "local request marshaller");
+
+            LocalReply localReply = new() { Text = "reply" };
+            LocalReply decodedReply = RoundTrip(unary.ResponseMarshaller, localReply);
+            Require(decodedReply.Text == "reply", "local response marshaller");
+
+            SharedRequest sharedRequest = new() { Name = "shared" };
+            SharedRequest decodedShared =
+                RoundTrip(client.RequestMarshaller, sharedRequest);
+            Require(decodedShared.Name == "shared", "imported request marshaller");
+
+            SharedReply sharedReply = new() { Text = "shared-reply" };
+            SharedReply decodedSharedReply =
+                RoundTrip(client.ResponseMarshaller, sharedReply);
+            Require(
+                decodedSharedReply.Text == "shared-reply",
+                "imported response marshaller");
+
+            LocalChoice localUnion =
+                new LocalChoice.Request(new LocalRequest { Name = "union-local" });
+            LocalChoice decodedLocalUnion =
+                RoundTrip(bidi.RequestMarshaller, localUnion);
+            Require(
+                decodedLocalUnion is LocalChoice.Request { Value.Name: "union-local" },
+                "local union marshaller");
+
+            SharedChoice sharedUnion =
+                new SharedChoice.Reply(new SharedReply { Text = "union-shared" });
+            SharedChoice decodedSharedUnion =
+                RoundTrip(bidi.ResponseMarshaller, sharedUnion);
+            Require(
+                decodedSharedUnion is SharedChoice.Reply { Value.Text: "union-shared" },
+                "imported union marshaller");
+
+            byte[] bytes = Serialize(unary.RequestMarshaller, localRequest);
+            byte[] trailing = new byte[bytes.Length + 1];
+            Array.Copy(bytes, trailing, bytes.Length);
+            RpcException error = RequireThrows<RpcException>(() =>
+                unary.RequestMarshaller.ContextualDeserializer(
+                    new BytesDeserializationContext(trailing)));
+            Require(error.StatusCode == StatusCode.Internal, "trailing bytes rejected");
+        }
+
+        static void TestClientDispatch()
+        {
+            CapturingInvoker invoker = new();
+            Greeter.GreeterClient client = new(invoker);
+            LocalRequest request = new() { Name = "client" };
+
+            client.Unary(request);
+            client.UnaryAsync(request);
+            client.Server(request);
+            client.Client();
+            client.Bidi();
+
+            Require(invoker.Calls.Count == 5, "client dispatch count");
+            Require(invoker.Calls[0] == "Unary:Unary", "blocking unary dispatch");
+            Require(invoker.Calls[1] == "AsyncUnary:Unary", "async unary dispatch");
+            Require(
+                invoker.Calls[2] == "ServerStreaming:Server",
+                "server streaming dispatch");
+            Require(
+                invoker.Calls[3] == "ClientStreaming:Client",
+                "client streaming dispatch");
+            Require(
+                invoker.Calls[4] == "DuplexStreaming:Bidi",
+                "duplex streaming dispatch");
+        }
+
+        static async Task TestServerBinding()
+        {
+            CapturingBinder metadataBinder = new();
+            Greeter.BindService(metadataBinder, null);
+            Require(metadataBinder.Handlers.Count == 4, "metadata binding count");
+            Require(
+                metadataBinder.Handlers.TrueForAll(static handler => handler is null),
+                "metadata binding uses null handlers");
+
+            CapturingBinder binder = new();
+            Greeter.BindService(binder, new ServiceImpl());
+            Require(binder.Handlers.Count == 4, "implementation binding count");
+            Require(binder.Methods[0].Name == "Unary", "unary method name");
+            Require(
+                binder.Methods[1].Type == MethodType.ServerStreaming,
+                "server stream method type");
+            Require(
+                binder.Methods[2].Type == MethodType.ClientStreaming,
+                "client stream method type");
+            Require(
+                binder.Methods[3].Type == MethodType.DuplexStreaming,
+                "duplex method type");
+
+            var unary =
+                (UnaryServerMethod<LocalRequest, LocalReply>)binder.Handlers[0]!;
+            LocalReply reply = await unary(
+                new LocalRequest { Name = "bound" },
+                TestServerCallContext.Instance);
+            Require(reply.Text == "bound", "unary delegate dispatch");
+
+            var server =
+                (ServerStreamingServerMethod<LocalRequest, LocalReply>)
+                    binder.Handlers[1]!;
+            CapturingServerWriter<LocalReply> serverWriter = new();
+            await server(
+                new LocalRequest { Name = "stream" },
+                serverWriter,
+                TestServerCallContext.Instance);
+            Require(
+                serverWriter.Messages.Count == 1
+                    && serverWriter.Messages[0].Text == "stream",
+                "server stream dispatch");
+
+            var client =
+                (ClientStreamingServerMethod<SharedRequest, SharedReply>)
+                    binder.Handlers[2]!;
+            SharedReply clientReply = await client(
+                new ArrayStreamReader<SharedRequest>(
+                    new SharedRequest { Name = "a" },
+                    new SharedRequest { Name = "b" }),
+                TestServerCallContext.Instance);
+            Require(clientReply.Text == "a,b", "client stream dispatch");
+
+            var duplex =
+                (DuplexStreamingServerMethod<LocalChoice, SharedChoice>)
+                    binder.Handlers[3]!;
+            CapturingServerWriter<SharedChoice> duplexWriter = new();
+            await duplex(
+                new ArrayStreamReader<LocalChoice>(
+                    new LocalChoice.Request(new LocalRequest { Name = "duplex" })),
+                duplexWriter,
+                TestServerCallContext.Instance);
+            Require(duplexWriter.Messages.Count == 1, "duplex stream dispatch");
+            Require(
+                duplexWriter.Messages[0]
+                    is SharedChoice.Reply { Value.Text: "duplex" },
+                "duplex union response");
+        }
+
+        static void TestGeneratedSerializers()
+        {
+            Fory fory = Fory.Builder().TrackRef(true).Build();
+            MainForyModule.Install(fory);
+            TypeResolver resolver = Resolver(fory);
+            Require(IsGeneratedSerializer<LocalRequest>(resolver), "local message serializer");
+            Require(IsGeneratedSerializer<LocalChoice>(resolver), "local union serializer");
+            Require(IsGeneratedSerializer<SharedRequest>(resolver), "imported message serializer");
+            Require(IsGeneratedSerializer<SharedChoice>(resolver), "imported union serializer");
+        }
+
+        static void TestAllocationBaseline()
+        {
+            Method<LocalRequest, LocalReply> method =
+                GetMethod<LocalRequest, LocalReply>("__Method_Unary");
+            LocalRequest request = new() { Name = "allocation" };
+            BytesSerializationContext serialization = new();
+            BytesDeserializationContext deserialization = new(Array.Empty<byte>());
+            Apache.Fory.ThreadSafeFory fory = MainForyModule.GetFory();
+
+            for (int i = 0; i < 256; i++)
+            {
+                DirectRoundTrip(fory, request);
+                GeneratedRoundTrip(method.RequestMarshaller, request, serialization, deserialization);
+            }
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            long direct = Measure(2048, () => DirectRoundTrip(fory, request));
+            long generated = Measure(
+                2048,
+                () => GeneratedRoundTrip(
+                    method.RequestMarshaller,
+                    request,
+                    serialization,
+                    deserialization));
+            Require(
+                generated <= direct + 32768,
+                $"generated marshaller allocated {generated} bytes vs direct {direct}");
+        }
+
+        static bool IsGeneratedSerializer<T>(TypeResolver resolver)
+        {
+            string name = resolver.GetSerializer<T>().GetType().Name;
+            return name.Contains("__ForySerializer_", StringComparison.Ordinal);
+        }
+
+        static TypeResolver Resolver(Fory fory)
+        {
+            FieldInfo field = typeof(Fory).GetField(
+                "_typeResolver",
+                BindingFlags.NonPublic | BindingFlags.Instance)
+                ?? throw new InvalidOperationException("Fory resolver field not found");
+            return (TypeResolver)field.GetValue(fory)!;
+        }
+
+        static void DirectRoundTrip(
+            Apache.Fory.ThreadSafeFory fory,
+            LocalRequest request)
+        {
+            byte[] bytes = fory.Serialize<LocalRequest>(in request);
+            ReadOnlySequence<byte> sequence = new(bytes);
+            LocalRequest decoded = fory.Deserialize<LocalRequest>(ref sequence);
+            Require(decoded.Name == request.Name, "direct roundtrip");
+        }
+
+        static void GeneratedRoundTrip(
+            Marshaller<LocalRequest> marshaller,
+            LocalRequest request,
+            BytesSerializationContext serialization,
+            BytesDeserializationContext deserialization)
+        {
+            serialization.Reset();
+            marshaller.ContextualSerializer(request, serialization);
+            deserialization.Reset(serialization.Payload);
+            LocalRequest decoded = marshaller.ContextualDeserializer(deserialization);
+            Require(decoded.Name == request.Name, "generated roundtrip");
+            Require(
+                deserialization.ReadOnlySequenceCalls == 1
+                    && deserialization.NewBufferCalls == 0,
+                "generated deserializer used read-only sequence");
+        }
+
+        static long Measure(int iterations, Action action)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < iterations; i++)
+            {
+                action();
+            }
+            return GC.GetAllocatedBytesForCurrentThread() - before;
+        }
+
+        static Method<TRequest, TResponse> GetMethod<TRequest, TResponse>(string name)
+            where TRequest : class
+            where TResponse : class
+        {
+            FieldInfo field = typeof(Greeter).GetField(
+                name,
+                BindingFlags.NonPublic | BindingFlags.Static)
+                ?? throw new InvalidOperationException(
+                    $"Missing generated method field {name}");
+            return (Method<TRequest, TResponse>)field.GetValue(null)!;
+        }
+
+        static T RoundTrip<T>(Marshaller<T> marshaller, T value)
+        {
+            BytesDeserializationContext deserialization =
+                new(Serialize(marshaller, value));
+            T decoded = marshaller.ContextualDeserializer(deserialization);
+            Require(
+                deserialization.ReadOnlySequenceCalls == 1
+                    && deserialization.NewBufferCalls == 0,
+                "deserializer used read-only sequence");
+            return decoded;
+        }
+
+        static byte[] Serialize<T>(Marshaller<T> marshaller, T value)
+        {
+            BytesSerializationContext context = new();
+            marshaller.ContextualSerializer(value, context);
+            return context.Payload;
+        }
+
+        static TException RequireThrows<TException>(Action action)
+            where TException : Exception
+        {
+            try
+            {
+                action();
+            }
+            catch (TException error)
+            {
+                return error;
+            }
+            throw new InvalidOperationException($"Expected {typeof(TException).Name}");
+        }
+
+        static void Require(bool condition, string message)
+        {
+            if (!condition)
+            {
+                throw new InvalidOperationException(message);
+            }
+        }
+    }
+
+    sealed class BytesSerializationContext : SerializationContext
+    {
+        readonly ArrayBufferWriter<byte> _writer = new();
+
+        public byte[] Payload { get; private set; } = Array.Empty<byte>();
+
+        public void Reset()
+        {
+            Payload = Array.Empty<byte>();
+        }
+
+        public override void Complete(byte[] payload)
+        {
+            Payload = payload;
+        }
+
+        public override IBufferWriter<byte> GetBufferWriter()
+        {
+            return _writer;
+        }
+
+        public override void SetPayloadLength(int payloadLength)
+        {
+        }
+
+        public override void Complete()
+        {
+            Payload = _writer.WrittenMemory.ToArray();
+        }
+    }
+
+    sealed class BytesDeserializationContext(byte[] payload) : DeserializationContext
+    {
+        byte[] _payload = payload;
+
+        public int NewBufferCalls { get; private set; }
+        public int ReadOnlySequenceCalls { get; private set; }
+        public override int PayloadLength => _payload.Length;
+
+        public void Reset(byte[] payload)
+        {
+            _payload = payload;
+            NewBufferCalls = 0;
+            ReadOnlySequenceCalls = 0;
+        }
+
+        public override byte[] PayloadAsNewBuffer()
+        {
+            NewBufferCalls++;
+            return (byte[])_payload.Clone();
+        }
+
+        public override ReadOnlySequence<byte> PayloadAsReadOnlySequence()
+        {
+            ReadOnlySequenceCalls++;
+            return new ReadOnlySequence<byte>(_payload);
+        }
+    }
+
+    sealed class CapturingInvoker : CallInvoker
+    {
+        public List<string> Calls { get; } = [];
+
+        public override TResponse BlockingUnaryCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options,
+            TRequest request)
+        {
+            Calls.Add($"Unary:{method.Name}");
+            return Create<TResponse>();
+        }
+
+        public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            string? host,
+            CallOptions options,
+            TRequest request)
+        {
+            Calls.Add($"AsyncUnary:{method.Name}");
+            return new AsyncUnaryCall<TResponse>(
+                Task.FromResult(Create<TResponse>()),
+                Task.FromResult(new Metadata()),
+                static () => Status.DefaultSuccess,
+                static () => new Metadata(),
+                static () => { });
+        }
+
+        public override AsyncServerStreamingCall<TResponse>
+            AsyncServerStreamingCall<TRequest, TResponse>(
+                Method<TRequest, TResponse> method,
+                string? host,
+                CallOptions options,
+                TRequest request)
+        {
+            Calls.Add($"ServerStreaming:{method.Name}");
+            return new AsyncServerStreamingCall<TResponse>(
+                new ArrayStreamReader<TResponse>(),
+                Task.FromResult(new Metadata()),
+                static () => Status.DefaultSuccess,
+                static () => new Metadata(),
+                static () => { });
+        }
+
+        public override AsyncClientStreamingCall<TRequest, TResponse>
+            AsyncClientStreamingCall<TRequest, TResponse>(
+                Method<TRequest, TResponse> method,
+                string? host,
+                CallOptions options)
+        {
+            Calls.Add($"ClientStreaming:{method.Name}");
+            return new AsyncClientStreamingCall<TRequest, TResponse>(
+                new ClientStreamWriter<TRequest>(),
+                Task.FromResult(Create<TResponse>()),
+                Task.FromResult(new Metadata()),
+                static () => Status.DefaultSuccess,
+                static () => new Metadata(),
+                static () => { });
+        }
+
+        public override AsyncDuplexStreamingCall<TRequest, TResponse>
+            AsyncDuplexStreamingCall<TRequest, TResponse>(
+                Method<TRequest, TResponse> method,
+                string? host,
+                CallOptions options)
+        {
+            Calls.Add($"DuplexStreaming:{method.Name}");
+            return new AsyncDuplexStreamingCall<TRequest, TResponse>(
+                new ClientStreamWriter<TRequest>(),
+                new ArrayStreamReader<TResponse>(),
+                Task.FromResult(new Metadata()),
+                static () => Status.DefaultSuccess,
+                static () => new Metadata(),
+                static () => { });
+        }
+
+        static T Create<T>()
+        {
+            return Activator.CreateInstance<T>();
+        }
+    }
+
+    sealed class CapturingBinder : ServiceBinderBase
+    {
+        public List<IMethod> Methods { get; } = [];
+        public List<Delegate?> Handlers { get; } = [];
+
+        public override void AddMethod<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            UnaryServerMethod<TRequest, TResponse>? handler)
+        {
+            Methods.Add(method);
+            Handlers.Add(handler);
+        }
+
+        public override void AddMethod<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            ClientStreamingServerMethod<TRequest, TResponse>? handler)
+        {
+            Methods.Add(method);
+            Handlers.Add(handler);
+        }
+
+        public override void AddMethod<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            ServerStreamingServerMethod<TRequest, TResponse>? handler)
+        {
+            Methods.Add(method);
+            Handlers.Add(handler);
+        }
+
+        public override void AddMethod<TRequest, TResponse>(
+            Method<TRequest, TResponse> method,
+            DuplexStreamingServerMethod<TRequest, TResponse>? handler)
+        {
+            Methods.Add(method);
+            Handlers.Add(handler);
+        }
+    }
+
+    sealed class ServiceImpl : Greeter.GreeterBase
+    {
+        public override Task<LocalReply> Unary(
+            LocalRequest request,
+            ServerCallContext context)
+        {
+            return Task.FromResult(new LocalReply { Text = request.Name });
+        }
+
+        public override async Task Server(
+            LocalRequest request,
+            IServerStreamWriter<LocalReply> responseStream,
+            ServerCallContext context)
+        {
+            await responseStream.WriteAsync(new LocalReply { Text = request.Name });
+        }
+
+        public override async Task<SharedReply> Client(
+            IAsyncStreamReader<SharedRequest> requestStream,
+            ServerCallContext context)
+        {
+            List<string> names = [];
+            while (await requestStream.MoveNext(CancellationToken.None))
+            {
+                names.Add(requestStream.Current.Name);
+            }
+            return new SharedReply { Text = string.Join(",", names) };
+        }
+
+        public override async Task Bidi(
+            IAsyncStreamReader<LocalChoice> requestStream,
+            IServerStreamWriter<SharedChoice> responseStream,
+            ServerCallContext context)
+        {
+            while (await requestStream.MoveNext(CancellationToken.None))
+            {
+                string name = requestStream.Current switch
+                {
+                    LocalChoice.Request request => request.Value.Name,
+                    LocalChoice.Reply reply => reply.Value.Text,
+                    _ => "unknown",
+                };
+                await responseStream.WriteAsync(
+                    new SharedChoice.Reply(new SharedReply { Text = name }));
+            }
+        }
+    }
+
+    sealed class ArrayStreamReader<T>(params T[] items) : IAsyncStreamReader<T>
+    {
+        int _index = -1;
+
+        public T Current { get; private set; } = default!;
+
+        public Task<bool> MoveNext(CancellationToken cancellationToken)
+        {
+            _index++;
+            if (_index >= items.Length)
+            {
+                return Task.FromResult(false);
+            }
+            Current = items[_index];
+            return Task.FromResult(true);
+        }
+    }
+
+    sealed class CapturingServerWriter<T> : IServerStreamWriter<T>
+    {
+        public List<T> Messages { get; } = [];
+        public WriteOptions? WriteOptions { get; set; }
+
+        public Task WriteAsync(T message)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
+        }
+
+        public Task WriteAsync(T message, CancellationToken cancellationToken)
+        {
+            Messages.Add(message);
+            return Task.CompletedTask;
+        }
+    }
+
+    sealed class ClientStreamWriter<T> : IClientStreamWriter<T>
+    {
+        public WriteOptions? WriteOptions { get; set; }
+
+        public Task CompleteAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task WriteAsync(T message)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task WriteAsync(T message, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+    }
+
+    sealed class TestServerCallContext : ServerCallContext
+    {
+        public static readonly TestServerCallContext Instance = new();
+        readonly Dictionary<object, object> _userState = [];
+        Metadata _trailers = [];
+        Status _status = Status.DefaultSuccess;
+
+        protected override string MethodCore => "test";
+        protected override string HostCore => "localhost";
+        protected override string PeerCore => "peer";
+        protected override DateTime DeadlineCore => DateTime.UtcNow.AddMinutes(1);
+        protected override Metadata RequestHeadersCore => [];
+        protected override CancellationToken CancellationTokenCore =>
+            CancellationToken.None;
+        protected override Metadata ResponseTrailersCore => _trailers;
+        protected override Status StatusCore { get => _status; set => _status = value; }
+        protected override WriteOptions? WriteOptionsCore { get; set; }
+        protected override AuthContext AuthContextCore =>
+            new("none", new Dictionary<string, List<AuthProperty>>());
+
+        protected override ContextPropagationToken CreatePropagationTokenCore(
+            ContextPropagationOptions? options)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override Task WriteResponseHeadersAsyncCore(
+            Metadata responseHeaders)
+        {
+            return Task.CompletedTask;
+        }
+
+        protected override IDictionary<object, object> UserStateCore => _userState;
+    }
+    """
+).lstrip()
+
+
+def test_rust_grpc_rejects_unsafe_refs():
     cases = [
         (
             "Rust gRPC payload type Request.node uses non-thread-safe ref",
