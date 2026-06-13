@@ -89,9 +89,9 @@ For this schema, the C# generator emits:
 
 | File                                        | Purpose                                      |
 | ------------------------------------------- | -------------------------------------------- |
-| `Demo/Greeter/service.cs`                   | Fory model types and schema module           |
+| `Demo/Greeter/Service.cs`                   | Fory model types and schema module           |
 | `Demo/Greeter/GreeterGrpc.cs`               | gRPC service base, client, and descriptors   |
-| `ServiceForyModule` in `service.cs`         | Fory registration module for generated types |
+| `ServiceForyModule` in `Service.cs`         | Fory registration module for generated types |
 | `Greeter.GreeterBase` in `GreeterGrpc.cs`   | Base class for server implementations        |
 | `Greeter.GreeterClient` in `GreeterGrpc.cs` | Client stub for gRPC calls                   |
 
@@ -101,6 +101,7 @@ Extend the generated `Greeter.GreeterBase` class and map it through normal
 ASP.NET Core gRPC hosting:
 
 ```csharp
+using System.Threading.Tasks;
 using Demo.Greeter;
 using Grpc.Core;
 
@@ -170,6 +171,97 @@ Generated C# service methods follow gRPC C# conventions:
 | `rpc A (stream Req) returns (Res)`        | `Task<Res> A(IAsyncStreamReader<Req> requestStream, ...)`                     | `AsyncClientStreamingCall<Req, Res> A(...)`        |
 | `rpc A (stream Req) returns (stream Res)` | `Task A(IAsyncStreamReader<Req> requestStream, IServerStreamWriter<Res> ...)` | `AsyncDuplexStreamingCall<Req, Res> A(...)`        |
 
+Server implementations can use the generated streaming method shapes directly:
+
+```csharp
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Demo.Greeter;
+using Grpc.Core;
+
+public sealed class GreeterService : Greeter.GreeterBase
+{
+    public override async Task LotsOfReplies(
+        HelloRequest request,
+        IServerStreamWriter<HelloReply> responseStream,
+        ServerCallContext context)
+    {
+        foreach (string reply in new[]
+        {
+            "Hello, " + request.Name,
+            "Welcome, " + request.Name,
+        })
+        {
+            await responseStream.WriteAsync(new HelloReply { Reply = reply });
+        }
+    }
+
+    public override async Task<HelloReply> LotsOfGreetings(
+        IAsyncStreamReader<HelloRequest> requestStream,
+        ServerCallContext context)
+    {
+        List<string> names = new();
+        while (await requestStream.MoveNext(context.CancellationToken))
+        {
+            names.Add(requestStream.Current.Name);
+        }
+
+        return new HelloReply { Reply = string.Join(", ", names) };
+    }
+
+    public override async Task Chat(
+        IAsyncStreamReader<HelloRequest> requestStream,
+        IServerStreamWriter<HelloReply> responseStream,
+        ServerCallContext context)
+    {
+        while (await requestStream.MoveNext(context.CancellationToken))
+        {
+            await responseStream.WriteAsync(new HelloReply
+            {
+                Reply = "Hello, " + requestStream.Current.Name,
+            });
+        }
+    }
+}
+```
+
+Generated clients return the standard gRPC streaming call objects:
+
+```csharp
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Demo.Greeter;
+using Grpc.Core;
+
+using AsyncServerStreamingCall<HelloReply> replies =
+    client.LotsOfReplies(new HelloRequest { Name = "Fory" });
+while (await replies.ResponseStream.MoveNext(CancellationToken.None))
+{
+    Console.WriteLine(replies.ResponseStream.Current.Reply);
+}
+
+using AsyncClientStreamingCall<HelloRequest, HelloReply> greetings =
+    client.LotsOfGreetings();
+await greetings.RequestStream.WriteAsync(new HelloRequest { Name = "Ada" });
+await greetings.RequestStream.WriteAsync(new HelloRequest { Name = "Grace" });
+await greetings.RequestStream.CompleteAsync();
+HelloReply summary = await greetings.ResponseAsync;
+Console.WriteLine(summary.Reply);
+
+using AsyncDuplexStreamingCall<HelloRequest, HelloReply> chat = client.Chat();
+Task readTask = Task.Run(async () =>
+{
+    while (await chat.ResponseStream.MoveNext(CancellationToken.None))
+    {
+        Console.WriteLine(chat.ResponseStream.Current.Reply);
+    }
+});
+await chat.RequestStream.WriteAsync(new HelloRequest { Name = "Fory" });
+await chat.RequestStream.CompleteAsync();
+await readTask;
+```
+
 The generated descriptors preserve the exact IDL service and method names for
 the gRPC path.
 
@@ -178,7 +270,8 @@ the gRPC path.
 C# schema modules are named from the source file stem, not from the namespace.
 This lets several schema files target the same C# namespace without colliding.
 For example, `service.fdl` with `option csharp_namespace = "Demo.Greeter";`
-generates `ServiceForyModule`.
+generates `Service.cs` and `ServiceForyModule`. A file such as
+`order-events.fdl` generates `OrderEvents.cs` and `OrderEventsForyModule`.
 
 If you previously called a namespace-derived module name, update that call after
 regenerating:

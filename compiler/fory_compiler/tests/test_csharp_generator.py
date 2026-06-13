@@ -50,7 +50,7 @@ def test_csharp_namespace_option_used():
         """
     )
 
-    assert file.path == "MyCorp/Payment/V1/payment.cs"
+    assert file.path == "MyCorp/Payment/V1/Payment.cs"
     assert "namespace MyCorp.Payment.V1;" in file.content
     assert "public sealed partial class Payment" in file.content
 
@@ -66,7 +66,7 @@ def test_csharp_namespace_uses_package():
         """
     )
 
-    assert file.path == "com/example/models/com_example_models.cs"
+    assert file.path == "com/example/models/ComExampleModels.cs"
     assert "namespace com.example.models;" in file.content
 
 
@@ -220,7 +220,7 @@ def test_csharp_imported_modules():
     assert "global::tree.TreeForyModule.Install(fory);" in file.content
 
 
-def test_csharp_module_uses_source_file(tmp_path: Path):
+def test_csharp_model_file_uses_owner_name(tmp_path: Path):
     schema_file = tmp_path / "order-events.fdl"
     schema_file.write_text(
         """
@@ -238,9 +238,31 @@ def test_csharp_module_uses_source_file(tmp_path: Path):
     assert validator.validate(), validator.errors
     file = CSharpGenerator(schema, GeneratorOptions(output_dir=tmp_path)).generate()[0]
 
-    assert file.path == "App/Events/order-events.cs"
+    assert file.path == "App/Events/OrderEvents.cs"
     assert "public static class OrderEventsForyModule" in file.content
     assert "public static class EventsForyModule" not in file.content
+
+
+def test_csharp_owner_name_prefixes_digits(tmp_path: Path):
+    schema_file = tmp_path / "123-schema.fdl"
+    schema_file.write_text(
+        """
+        package app.events;
+        option csharp_namespace = "App.Events";
+
+        message Event {
+            string name = 1;
+        }
+        """
+    )
+
+    schema = resolve_imports(schema_file)
+    validator = SchemaValidator(schema)
+    assert validator.validate(), validator.errors
+    file = CSharpGenerator(schema, GeneratorOptions(output_dir=tmp_path)).generate()[0]
+
+    assert file.path == "App/Events/Schema123Schema.cs"
+    assert "public static class Schema123SchemaForyModule" in file.content
 
 
 def test_csharp_import_modules_distinct(tmp_path: Path):
@@ -360,7 +382,7 @@ def test_csharp_module_collision(tmp_path: Path, capsys):
 
     captured = capsys.readouterr()
     assert result == 1
-    assert "C# schema module owner collision" in captured.err
+    assert "C# generated file path collision" in captured.err
     assert not out.exists()
 
 

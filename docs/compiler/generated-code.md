@@ -868,7 +868,11 @@ packages do not add gRPC as a hard dependency.
 
 C# output is one `.cs` file per schema, for example:
 
-- `<csharp_out>/addressbook/addressbook.cs`
+- `<csharp_out>/addressbook/Addressbook.cs`
+
+The C# model file name uses the normalized PascalCase source file stem. For
+example, `service.fdl` generates `Service.cs`, `order-events.fdl` generates
+`OrderEvents.cs`, and `123-schema.fdl` generates `Schema123Schema.cs`.
 
 ### Type Generation
 
@@ -931,18 +935,20 @@ public static class AddressbookForyModule
 }
 ```
 
-The C# module owner keeps the schema-file prefix even when several schemas share
-the same C# namespace.
+The C# model file basename and module class both use the normalized schema file
+stem even when several schemas share the same C# namespace.
 
 When explicit type IDs are not provided, generated installation uses computed
 numeric IDs (same behavior as other targets).
 
-For existing generated C# call sites, this is a breaking generated-code name
-rule when the namespace leaf and source file stem differ. For example,
-`service.fdl` with `option csharp_namespace = "Demo.Greeter";` now generates
-`ServiceForyModule`, not `GreeterForyModule`. Regenerate the files and update
-manual calls such as `GreeterForyModule.Install(fory)` to
-`ServiceForyModule.Install(fory)`. No legacy alias is emitted.
+For existing generated C# outputs, this is a breaking generated-code naming
+rule. For example, `service.fdl` with
+`option csharp_namespace = "Demo.Greeter";` now generates `Service.cs` and
+`ServiceForyModule`; `order-events.fdl` generates `OrderEvents.cs` and
+`OrderEventsForyModule`. Regenerate the files, remove stale generated model
+files from previous compiler versions, and update manual calls such as
+`GreeterForyModule.Install(fory)` to `ServiceForyModule.Install(fory)`. No
+legacy alias is emitted.
 
 ### gRPC Service Companions
 

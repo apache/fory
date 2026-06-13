@@ -1092,7 +1092,7 @@ def test_compile_service_with_grpc(tmp_path: Path, capsys):
     assert output.count("demo_greeter_grpc.go") == 1
     assert (lang_dirs["rust"] / "demo_greeter_service.rs").exists()
     assert (lang_dirs["rust"] / "demo_greeter_service_grpc.rs").exists()
-    assert (lang_dirs["csharp"] / "demo" / "greeter" / "service.cs").exists()
+    assert (lang_dirs["csharp"] / "demo" / "greeter" / "Service.cs").exists()
     assert (lang_dirs["csharp"] / "demo" / "greeter" / "GreeterGrpc.cs").exists()
     assert (lang_dirs["kotlin"] / "demo" / "greeter" / "GreeterGrpcKt.kt").exists()
 
@@ -1173,8 +1173,8 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
 
     service = out / "Demo" / "Greeter" / "GreeterGrpc.cs"
     empty_service = out / "Demo" / "Greeter" / "EmptyGrpc.cs"
-    main_model = out / "Demo" / "Greeter" / "main.cs"
-    common_model = out / "Demo" / "Shared" / "common.cs"
+    main_model = out / "Demo" / "Greeter" / "Main.cs"
+    common_model = out / "Demo" / "Shared" / "Common.cs"
     assert service.is_file()
     assert empty_service.is_file()
     assert main_model.is_file()

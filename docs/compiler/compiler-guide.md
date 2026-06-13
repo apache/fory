@@ -365,10 +365,11 @@ generated/
 generated/
 └── csharp/
     └── example/
-        └── example.cs
+        └── Example.cs
 ```
 
-- Single `.cs` file per schema
+- Single `.cs` file per schema named from the normalized PascalCase source file
+  stem
 - Namespace uses `csharp_namespace` (if set) or Fory IDL package
 - Includes source-file-prefixed `XXXForyModule` installation helper and
   `ToBytes`/`FromBytes` methods

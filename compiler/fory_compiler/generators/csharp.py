@@ -137,11 +137,7 @@ def csharp_namespace_for_schema(schema: Schema) -> str:
 
 
 def csharp_module_file_name(schema: Schema) -> str:
-    if schema.source_file and not schema.source_file.startswith("<"):
-        return f"{Path(schema.source_file).stem}.cs"
-    if schema.package:
-        return f"{schema.package.replace('.', '_')}.cs"
-    return "generated.cs"
+    return f"{csharp_schema_owner_name(schema)}.cs"
 
 
 def csharp_module_owner_stem(schema: Schema) -> str:
@@ -152,13 +148,23 @@ def csharp_module_owner_stem(schema: Schema) -> str:
     return "generated"
 
 
-def csharp_module_class_name(schema: Schema) -> str:
+def csharp_schema_owner_name(schema: Schema) -> str:
     stem = re.sub(r"[^0-9A-Za-z_]", "_", csharp_module_owner_stem(schema))
-    parts = [part for part in stem.lower().split("_") if part]
-    class_name = "".join(part.capitalize() for part in parts)
-    if not class_name or not (class_name[0].isalpha() or class_name[0] == "_"):
-        class_name = f"Schema{class_name}"
-    return f"{class_name}ForyModule"
+    parts = [part for part in stem.split("_") if part]
+    owner_name = "".join(_pascal_identifier_part(part) for part in parts)
+    if not owner_name or not (owner_name[0].isalpha() or owner_name[0] == "_"):
+        owner_name = f"Schema{owner_name}"
+    return owner_name
+
+
+def _pascal_identifier_part(part: str) -> str:
+    if part.isupper():
+        return part.capitalize()
+    return f"{part[0].upper()}{part[1:]}"
+
+
+def csharp_module_class_name(schema: Schema) -> str:
+    return f"{csharp_schema_owner_name(schema)}ForyModule"
 
 
 def csharp_output_paths(
