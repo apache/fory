@@ -119,3 +119,4 @@ Fory Scala is built on top of Fory Java. Most configuration options, features, a
 - [Schema Metadata](schema-metadata.md) - Scala annotations, references, enum IDs, and union metadata
 - [Default Values](default-values.md) - Scala class default values support
 - [Schema IDL And Xlang](schema-idl.md) - Scala 3 generated models and macro-derived xlang serializers
+- [gRPC Support](grpc-support.md) - Scala 3 generated gRPC service companions

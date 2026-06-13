@@ -44,6 +44,10 @@ Generated schema modules are also Fory modules. Use `.withModule(...)` when
 creating a custom Fory instance, or use the generated no-argument `toBytes` and
 `fromBytes` helpers when the generated default Fory instance is sufficient.
 
+Schemas with service definitions can also generate Scala 3 gRPC service
+companions with `foryc --scala_out=... --grpc`. See
+[gRPC Support](grpc-support.md) for dependencies and client/server examples.
+
 Generated helpers register message type identities before installing message
 serializers. This two-phase order lets mutually recursive message graphs build
 descriptor metadata through the normal `TypeResolver` path without temporary

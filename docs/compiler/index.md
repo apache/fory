@@ -23,9 +23,9 @@ Fory IDL is a schema definition language for Apache Fory that enables type-safe
 cross-language serialization. Define your data structures once and generate
 native data structure code for Java, Python, C++, Go, Rust,
 JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Fory IDL can also
-describe RPC services; for Java, Python, Go, Rust, C#, and Kotlin, the compiler
-can generate gRPC service companions that use Fory serialization for request
-and response payloads.
+describe RPC services; for Java, Python, Go, Rust, C#, Scala, and Kotlin, the
+compiler can generate gRPC service companions that use Fory serialization for
+request and response payloads.
 
 ## Example Schema
 
@@ -88,10 +88,10 @@ service AnimalService {
 }
 ```
 
-Generate Java, Python, Rust, C#, and Kotlin models plus gRPC service companions with:
+Generate Java, Python, Rust, C#, Scala, and Kotlin models plus gRPC service companions with:
 
 ```bash
-foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --kotlin_out=./generated/kotlin --grpc
+foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --grpc
 ```
 
 The generated service code uses normal gRPC APIs, but request and response

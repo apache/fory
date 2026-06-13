@@ -41,19 +41,20 @@ how protobuf concepts map to Fory, and how to use protobuf-only Fory extension o
 
 ## Protobuf vs Fory at a Glance
 
-| Aspect             | Protocol Buffers              | Fory                                          |
-| ------------------ | ----------------------------- | --------------------------------------------- |
-| Primary purpose    | RPC/message contracts         | High-performance object serialization         |
-| Encoding model     | Tag-length-value              | Fory binary protocol                          |
-| Reference tracking | Not built-in                  | First-class (`ref`)                           |
-| Circular refs      | Not supported                 | Supported                                     |
-| Unknown fields     | Preserved                     | Not preserved                                 |
-| Generated types    | Protobuf-specific model types | Native language constructs                    |
-| gRPC ecosystem     | Native                        | Java/Python/Go/Rust/C#/Kotlin service codegen |
+| Aspect             | Protocol Buffers              | Fory                                                |
+| ------------------ | ----------------------------- | --------------------------------------------------- |
+| Primary purpose    | RPC/message contracts         | High-performance object serialization               |
+| Encoding model     | Tag-length-value              | Fory binary protocol                                |
+| Reference tracking | Not built-in                  | First-class (`ref`)                                 |
+| Circular refs      | Not supported                 | Supported                                           |
+| Unknown fields     | Preserved                     | Not preserved                                       |
+| Generated types    | Protobuf-specific model types | Native language constructs                          |
+| gRPC ecosystem     | Native                        | Java/Python/Go/Rust/C#/Scala/Kotlin service codegen |
 
-Fory can generate Java, Python, Go, Rust, C#, and Kotlin gRPC service companions
-with `--grpc`. Those services use normal gRPC transports but serialize request
-and response payloads with Fory rather than protobuf. For broad gRPC ecosystem
+Fory can generate Java, Python, Go, Rust, C#, Scala, and Kotlin gRPC service
+companions with `--grpc`. Those services use normal gRPC transports but
+serialize request and response payloads with Fory rather than protobuf. For
+broad gRPC ecosystem
 tooling, schema reflection, and protobuf-native interceptors, protobuf remains
 the mature/default choice.
 
@@ -314,17 +315,18 @@ languages.
 For supported service outputs, add `--grpc` to emit gRPC companion code:
 
 ```bash
-foryc api.proto --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --kotlin_out=./generated/kotlin --grpc
+foryc api.proto --java_out=./generated/java --python_out=./generated/python --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --grpc
 ```
 
 Generated Java service files compile against grpc-java, generated Python service
 modules import `grpc`, generated Rust service files import `tonic` and `bytes`,
-generated C# service files import `Grpc.Core.Api` types, and generated Kotlin
-service files compile against grpc-java and grpc-kotlin. Add those dependencies
-in your application build; Fory packages do not add gRPC as a hard dependency.
-Protobuf `oneof` fields are translated to Fory union fields inside request and
-response messages. Direct union RPC request or response types are not part of
-normal protobuf RPC syntax.
+generated C# service files import `Grpc.Core.Api` types, generated Scala service
+files compile against grpc-java, and generated Kotlin service files compile
+against grpc-java and grpc-kotlin. Add those dependencies in your application
+build; Fory packages do not add gRPC as a hard dependency. Protobuf `oneof`
+fields are translated to Fory union fields inside request and response messages.
+Direct union RPC request or response types are not part of normal protobuf RPC
+syntax.
 
 ### Step 5: Run Compatibility Checks
 

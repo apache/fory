@@ -30,8 +30,9 @@ Fory payload encoding. Use standard protobuf gRPC code generation when your API
 must be consumed by generic protobuf clients, reflection tools, or components
 that expect protobuf message bytes.
 
-For Kotlin coroutine stubs and service bases, see
-[Kotlin gRPC Support](../kotlin/grpc-support.md).
+For Scala generated grpc-java companions, see
+[Scala gRPC Support](../scala/grpc-support.md). For Kotlin coroutine stubs and
+service bases, see [Kotlin gRPC Support](../kotlin/grpc-support.md).
 
 ## Add Dependencies
 

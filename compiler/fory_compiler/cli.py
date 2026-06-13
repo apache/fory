@@ -36,6 +36,10 @@ from fory_compiler.generators.kotlin import (
     kotlin_output_paths,
     kotlin_package_for_schema,
 )
+from fory_compiler.generators.scala import (
+    scala_output_paths,
+    scala_package_for_schema,
+)
 
 
 class ImportError(Exception):
@@ -336,6 +340,68 @@ def validate_csharp_files(
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return False
+
+
+def validate_scala_import_packages(graph: List[Tuple[Path, Schema]]) -> bool:
+    """Check package combinations that Scala source cannot compile."""
+    packages = {scala_package_for_schema(schema) for _, schema in graph}
+    if None not in packages or len(packages) <= 1:
+        return True
+    details = ", ".join(
+        f"{package or '<default>'}: {path}"
+        for path, schema in sorted(graph, key=lambda item: str(item[0]))
+        for package in [scala_package_for_schema(schema)]
+    )
+    print(
+        "Error: Scala imports cannot mix default-package schemas with named "
+        f"Scala packages; found {details}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def validate_scala_output_paths(
+    graph: List[Tuple[Path, Schema]],
+    grpc: bool = False,
+) -> bool:
+    """Check Scala output paths for the current generation run."""
+    outputs: Dict[str, List[str]] = {}
+    for path, schema in graph:
+        for output_path, owner in scala_output_paths(schema, include_services=grpc):
+            outputs.setdefault(output_path, []).append(f"{path} {owner}")
+    collisions = {
+        output_path: paths for output_path, paths in outputs.items() if len(paths) > 1
+    }
+    if not collisions:
+        return True
+    details = ", ".join(
+        f"{output_path}: {', '.join(paths)}"
+        for output_path, paths in sorted(collisions.items())
+    )
+    print(
+        "Error: Scala generated file path collision; rename schema files, "
+        f"schema types, or services, or use distinct Scala packages. Collisions: {details}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def validate_scala_generation(
+    files: List[Path],
+    import_paths: List[Path],
+    grpc: bool = False,
+) -> bool:
+    """Preflight Scala package and helper paths before writing output."""
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
+    for file_path in files:
+        file_graph = collect_schema_graph(file_path, import_paths, cache, set())
+        if file_graph is None:
+            return False
+        graph.extend(file_graph)
+    if not validate_scala_import_packages(graph):
+        return False
+    return validate_scala_output_paths(graph, grpc=grpc)
 
 
 def _find_go_module_root(base_go_out: Path) -> Optional[Path]:
@@ -924,6 +990,9 @@ def cmd_compile(args: argparse.Namespace) -> int:
             return 1
     if "csharp" in lang_output_dirs:
         if not validate_csharp_files(args.files, import_paths, grpc=args.grpc):
+            return 1
+    if "scala" in lang_output_dirs:
+        if not validate_scala_generation(args.files, import_paths, grpc=args.grpc):
             return 1
 
     # Create output directories
