@@ -138,9 +138,34 @@ dart run build_runner build --delete-conflicting-outputs
 dart test
 ```
 
+## Generated gRPC files cannot find `package:grpc` types
+
+**Cause**: gRPC packages are application dependencies. The `fory` package does
+not add gRPC as a hard dependency.
+
+**Fix**: Add `grpc` to your `pubspec.yaml` (and the `build_runner` dev
+dependency), then run `dart pub get`. See [gRPC Support](grpc-support.md).
+
+## `getFory()` throws before the first gRPC call
+
+**Cause**: The generated gRPC companion resolves its `Fory` instance from the
+schema module, which must be installed first.
+
+**Fix**: Call `<Schema>ForyModule.install(fory)` once during startup before
+issuing or serving any RPC.
+
+## A protobuf client cannot decode a Fory gRPC service
+
+**Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message
+bodies, not protobuf wire encoding.
+
+**Fix**: Use a Fory-generated client for Fory-generated services, or expose a
+separate protobuf service endpoint for generic protobuf clients.
+
 ## Related Topics
 
 - [Xlang Serialization](xlang-serialization.md)
 - [Code Generation](code-generation.md)
 - [Custom Serializers](custom-serializers.md)
 - [Web Platform Support](web-platform-support.md)
+- [gRPC Support](grpc-support.md)

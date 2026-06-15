@@ -22,6 +22,8 @@ Load this file when changing `dart/`.
 - Generated struct serializers should use serializer-owned field descriptors for runtime resolver decisions and emit direct field-specific write/read code for static schemas. Do not route generated hot writes through generic field-info value helpers such as `writeGeneratedStructFieldInfoValue`.
 - Dart xlang or runtime ownership changes need local Dart package tests plus the Java-driven `DartXlangTest`; package-only smoke tests are not enough.
 - When claiming non-VM Dart support, prove a relevant non-VM compile path such as `dart compile js` against active runtime or example code.
+- Generated Dart gRPC service companions (`<stem>_grpc.dart`) are compiler-owned files that depend on the application-provided `grpc` package, not `dart/packages/fory`. Keep gRPC dependencies out of the Fory Dart runtime package.
+- Dart generated schema modules (`<Stem>ForyModule`) are the source-file owners. Service companions must resolve their `Fory` through that module's `getFory()` and must not introduce package-derived aliases or duplicate serializer registration paths.
 
 ## Commands
 
