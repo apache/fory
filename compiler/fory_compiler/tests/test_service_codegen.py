@@ -2919,7 +2919,7 @@ def test_dart_grpc_streaming_shapes():
     assert (
         "$createStreamingCall(_$bidiStreamMessage, request, options: options);"
     ) in content
-    
+
     assert (
         "'UnaryMessage',\n        unaryMessage_Pre,\n        false,\n        false,"
     ) in content
