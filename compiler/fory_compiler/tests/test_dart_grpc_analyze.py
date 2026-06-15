@@ -64,6 +64,9 @@ _GREETER_FDL = textwrap.dedent(
 
     service Greeter {
         rpc SayHello (HelloRequest) returns (HelloReply);
+        rpc SayHellos (HelloRequest) returns (stream HelloReply);
+        rpc CollectHellos (stream HelloRequest) returns (HelloReply);
+        rpc ChatHellos (stream HelloRequest) returns (stream HelloReply);
     }
     """
 )

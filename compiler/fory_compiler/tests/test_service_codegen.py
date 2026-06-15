@@ -2868,7 +2868,7 @@ def test_rust_grpc_rejects_unsafe_refs():
             generator.generate_services()
 
 
-def test_dart_grpc_rejects_streaming():
+def test_dart_grpc_streaming_shapes():
     from fory_compiler.generators.dart import DartGenerator
 
     schema = parse_fdl(
@@ -2880,26 +2880,87 @@ def test_dart_grpc_rejects_streaming():
             message Res {}
 
             service Streamer {
-                rpc Unary (Req) returns (Res);
-                rpc Server (Req) returns (stream Res);
-                rpc Client (stream Req) returns (Res);
-                rpc Bidi (stream Req) returns (stream Res);
+                rpc UnaryMessage (Req) returns (Res);
+                rpc ServerStreamMessage (Req) returns (stream Res);
+                rpc ClientStreamMessage (stream Req) returns (Res);
+                rpc BidiStreamMessage (stream Req) returns (stream Res);
             }
             """
         )
     )
 
-    import pytest
+    content = generate_service_files(schema, DartGenerator)[
+        "demo/streams/demo_streams_grpc.dart"
+    ]
 
-    with pytest.raises(ValueError) as excinfo:
-        generate_service_files(schema, DartGenerator)
+    assert "ResponseFuture<_models.Res> unaryMessage(" in content
+    assert "$createUnaryCall(_$unaryMessage, request, options: options);" in content
 
-    msg = str(excinfo.value)
-    assert "Dart gRPC generator does not yet support streaming RPCs" in msg
-    assert "Streamer.Server" in msg
-    assert "Streamer.Client" in msg
-    assert "Streamer.Bidi" in msg
-    assert "Streamer.Unary" not in msg
+    assert "ResponseStream<_models.Res> serverStreamMessage(" in content
+    assert (
+        "    return $createStreamingCall(\n"
+        "      _$serverStreamMessage,\n"
+        "      Stream.value(request),\n"
+        "      options: options,\n"
+        "    );"
+    ) in content
+
+    assert "ResponseFuture<_models.Res> clientStreamMessage(" in content
+    assert "Stream<_models.Req> request, {" in content
+    assert (
+        "    return $createStreamingCall(\n"
+        "      _$clientStreamMessage,\n"
+        "      request,\n"
+        "      options: options,\n"
+        "    ).single;"
+    ) in content
+
+    assert "ResponseStream<_models.Res> bidiStreamMessage(" in content
+    assert (
+        "$createStreamingCall(_$bidiStreamMessage, request, options: options);"
+    ) in content
+    
+    assert (
+        "'UnaryMessage',\n        unaryMessage_Pre,\n        false,\n        false,"
+    ) in content
+    assert (
+        "'ServerStreamMessage',\n        serverStreamMessage_Pre,\n"
+        "        false,\n        true,"
+    ) in content
+    assert (
+        "'ClientStreamMessage',\n        clientStreamMessage_Pre,\n"
+        "        true,\n        false,"
+    ) in content
+    assert (
+        "'BidiStreamMessage',\n        bidiStreamMessage_Pre,\n"
+        "        true,\n        true,"
+    ) in content
+
+    assert "Future<_models.Res> unaryMessage_Pre(" in content
+    assert "Stream<_models.Res> serverStreamMessage_Pre(" in content
+    assert (
+        "  ) async* {\n    yield* serverStreamMessage($call, await $request);"
+    ) in content
+    assert "Future<_models.Res> clientStreamMessage_Pre(" in content
+    assert "  ) {\n    return clientStreamMessage($call, $request);" in content
+    assert "Stream<_models.Res> bidiStreamMessage_Pre(" in content
+
+    assert (
+        "Future<_models.Res> unaryMessage(\n    ServiceCall call,\n"
+        "    _models.Req request,\n  );"
+    ) in content
+    assert (
+        "Stream<_models.Res> serverStreamMessage(\n    ServiceCall call,\n"
+        "    _models.Req request,\n  );"
+    ) in content
+    assert (
+        "Future<_models.Res> clientStreamMessage(\n    ServiceCall call,\n"
+        "    Stream<_models.Req> request,\n  );"
+    ) in content
+    assert (
+        "Stream<_models.Res> bidiStreamMessage(\n    ServiceCall call,\n"
+        "    Stream<_models.Req> request,\n  );"
+    ) in content
 
 
 def test_dart_grpc_service_codegen_uses_fory_codec():
@@ -2917,7 +2978,10 @@ def test_dart_grpc_service_codegen_uses_fory_codec():
     assert "import 'package:grpc/grpc.dart';" in content
     assert "import 'demo_greeter.dart' as _models;" in content
 
-    assert "_models.DemoGreeterForyModule.getFory().serialize(value)" in content
+    assert (
+        "_models.DemoGreeterForyModule.getFory().serialize(value, trackRef: true)"
+        in content
+    )
     assert "_models.DemoGreeterForyModule.getFory().deserialize<T>" in content
     assert "is Uint8List ? bytes : Uint8List.fromList(bytes)" in content
 
@@ -2978,7 +3042,6 @@ def test_dart_grpc_service_class_collision():
 def test_dart_grpc_method_collision():
     from fory_compiler.generators.dart import DartGenerator
 
-    # `SayHello` and `say_hello` both normalize to camelCase `sayHello`.
     schema = parse_fdl(
         dedent(
             """

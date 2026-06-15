@@ -1370,6 +1370,44 @@ void main() {
 }
 ```
 
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Dart
+generation emits one `<module>_grpc.dart` file per schema next to the model
+types. It targets `package:grpc` and serializes each request and response with
+the schema module's `getFory()` instance (for example
+`GreeterForyModule.getFory()`).
+
+All four RPC modes are generated: unary, server-streaming, client-streaming, and
+bidirectional. The client class extends `Client`; the service base class extends
+`Service` and self-registers each method with `$addMethod`.
+
+```dart
+class GreeterClient extends Client {
+  // Single response: ResponseFuture. Streaming response: ResponseStream.
+  ResponseFuture<HelloReply> sayHello(HelloRequest request, {CallOptions? options}) { ... }
+  ResponseStream<HelloReply> sayHellos(HelloRequest request, {CallOptions? options}) { ... }
+  ResponseFuture<HelloReply> collectHellos(Stream<HelloRequest> request, {CallOptions? options}) { ... }
+  ResponseStream<HelloReply> chatHellos(Stream<HelloRequest> request, {CallOptions? options}) { ... }
+}
+
+abstract class GreeterServiceBase extends Service {
+  Future<HelloReply> sayHello(ServiceCall call, HelloRequest request);
+  Stream<HelloReply> sayHellos(ServiceCall call, HelloRequest request);
+  Future<HelloReply> collectHellos(ServiceCall call, Stream<HelloRequest> request);
+  Stream<HelloReply> chatHellos(ServiceCall call, Stream<HelloRequest> request);
+}
+```
+
+A single-response client method returns `ResponseFuture<R>` (client-streaming
+adapts the streaming call with `.single`); a streaming-response method returns
+`ResponseStream<R>`. On the server, single requests arrive as `Future<Q>` and
+streaming requests as `Stream<Q>`; implementations override the abstract methods,
+returning a `Future` for single responses or a `Stream` for streaming responses.
+Applications compiling these files must provide a `grpc` dependency; the Fory Dart
+runtime does not add one. The original IDL method names are used in the gRPC wire
+paths.
+
 ## Kotlin
 
 The Kotlin target emits Kotlin source only. The compiler does not generate Java
