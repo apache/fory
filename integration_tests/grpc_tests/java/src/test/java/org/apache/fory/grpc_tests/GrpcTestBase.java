@@ -310,6 +310,50 @@ public abstract class GrpcTestBase {
     outputCollector.awaitOutput();
   }
 
+  protected PeerCommand dartCommand(String... args) {
+    Path grpcRoot = repoRoot().resolve("integration_tests").resolve("grpc_tests");
+    Path dartRoot = grpcRoot.resolve("dart");
+    List<String> command = new ArrayList<>();
+    command.add("dart");
+    command.add("run");
+    command.add("bin/interop.dart");
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = new PeerCommand();
+    peerCommand.command = command;
+    peerCommand.workDir = dartRoot;
+    peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
+    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
+    for (String proxyVar :
+        Arrays.asList(
+            "all_proxy", "http_proxy", "https_proxy", "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY")) {
+      peerCommand.environment.put(proxyVar, "");
+    }
+    return peerCommand;
+  }
+
+  protected void runDart(String peer, String... args) throws IOException, InterruptedException {
+    Process process = startPeer(dartCommand(args));
+    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
+    outputCollector.start();
+    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
+    if (!finished) {
+      process.destroyForcibly();
+      process.waitFor(10, TimeUnit.SECONDS);
+      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
+    }
+    int exitCode = process.exitValue();
+    if (exitCode != 0) {
+      Assert.fail(
+          "Peer process failed for "
+              + peer
+              + " with exit code "
+              + exitCode
+              + peerOutput(outputCollector));
+    }
+    outputCollector.awaitOutput();
+  }
+
   protected PeerCommand pythonCommand(String... args) {
     Path repoRoot = repoRoot();
     Path grpcRoot = repoRoot.resolve("integration_tests").resolve("grpc_tests");
