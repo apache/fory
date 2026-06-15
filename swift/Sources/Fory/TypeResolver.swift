@@ -390,6 +390,7 @@ public final class TypeInfo: @unchecked Sendable {
     }
     return try reader(context)
   }
+
 }
 
 private struct TypeNameKey: Hashable {
@@ -472,6 +473,12 @@ final class TypeResolver {
 
   func register<T: Serializer>(_ type: T.Type, namespace: String, typeName: String) throws {
     try ensureRegistrationAllowed()
+    guard !typeName.isEmpty else {
+      throw ForyError.invalidData("registered type name must not be empty")
+    }
+    guard !typeName.contains(".") else {
+      throw ForyError.invalidData("registered type name must not contain '.'")
+    }
     let namespaceMeta = try MetaStringEncoder.namespace.encode(
       namespace,
       allowedEncodings: namespaceMetaStringEncodings
@@ -523,14 +530,16 @@ final class TypeResolver {
   }
 
   func register<T: Serializer>(_ type: T.Type, name: String) throws {
-    let parts = name.components(separatedBy: ".")
-    if parts.count <= 1 {
+    guard !name.isEmpty else {
+      throw ForyError.invalidData("registered name must not be empty")
+    }
+    guard let separator = name.lastIndex(of: ".") else {
       try register(type, namespace: "", typeName: name)
       return
     }
 
-    let resolvedTypeName = parts[parts.count - 1]
-    let resolvedNamespace = parts.dropLast().joined(separator: ".")
+    let resolvedTypeName = String(name[name.index(after: separator)...])
+    let resolvedNamespace = String(name[..<separator])
     try register(type, namespace: resolvedNamespace, typeName: resolvedTypeName)
   }
 
@@ -559,9 +568,8 @@ final class TypeResolver {
       return localTypeInfo
     }
     let canonicalTypeMeta: TypeMeta
-    if let localTypeMeta = localTypeInfo.typeMeta,
-      let remapped = try? typeMeta.assigningFieldIDs(from: localTypeMeta) {
-      canonicalTypeMeta = remapped
+    if let localTypeMeta = localTypeInfo.typeMeta {
+      canonicalTypeMeta = try typeMeta.assigningFieldIDs(from: localTypeMeta)
     } else {
       canonicalTypeMeta = typeMeta
     }

@@ -18,9 +18,16 @@
 """AST node definitions for FDL."""
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Union as TypingUnion
+from typing import Dict, List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.types import PrimitiveKind
+
+THREAD_SAFE_POINTER_DEFAULT = True
+
+
+def thread_safe_pointer_enabled(ref_options: dict) -> bool:
+    """Return the effective Rust pointer-carrier default for ref options."""
+    return ref_options.get("thread_safe_pointer", THREAD_SAFE_POINTER_DEFAULT) is True
 
 
 @dataclass(frozen=True)
@@ -324,6 +331,9 @@ class Schema:
     source_file: Optional[str] = None
     source_format: Optional[str] = None
     resolved_import_files: List[str] = field(default_factory=list)
+    source_packages: Dict[str, Optional[str]] = field(
+        default_factory=dict
+    )  # Source file path -> the package name it declares
 
     def __repr__(self) -> str:
         opts = f", options={len(self.options)}" if self.options else ""

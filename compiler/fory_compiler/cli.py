@@ -31,9 +31,14 @@ from fory_compiler.ir.emitter import FDLEmitter
 from fory_compiler.ir.validator import SchemaValidator
 from fory_compiler.generators.base import GeneratorOptions
 from fory_compiler.generators import GENERATORS
+from fory_compiler.generators.csharp import validate_csharp_generation
 from fory_compiler.generators.kotlin import (
     kotlin_output_paths,
     kotlin_package_for_schema,
+)
+from fory_compiler.generators.scala import (
+    scala_output_paths,
+    scala_package_for_schema,
 )
 
 
@@ -129,6 +134,7 @@ def resolve_imports(
     imported_messages = []
     imported_unions = []
     resolved_import_files = []
+    source_packages: Dict[str, Optional[str]] = {str(file_path): schema.package}
 
     for imp in schema.imports:
         # Resolve import path using search paths
@@ -159,6 +165,7 @@ def resolve_imports(
         imported_enums.extend(imported_schema.enums)
         imported_messages.extend(imported_schema.messages)
         imported_unions.extend(imported_schema.unions)
+        source_packages.update(imported_schema.source_packages)
 
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
@@ -173,6 +180,7 @@ def resolve_imports(
         source_file=schema.source_file,
         source_format=schema.source_format,
         resolved_import_files=list(dict.fromkeys(resolved_import_files)),
+        source_packages=source_packages,
     )
 
     cache[file_path] = copy.deepcopy(merged_schema)
@@ -272,11 +280,12 @@ def validate_kotlin_import_packages(graph: List[Tuple[Path, Schema]]) -> bool:
 
 def validate_kotlin_output_paths(
     graph: List[Tuple[Path, Schema]],
+    grpc: bool = False,
 ) -> bool:
     """Check Kotlin output paths for the current generation run."""
     outputs: Dict[str, List[str]] = {}
     for path, schema in graph:
-        for output_path, owner in kotlin_output_paths(schema):
+        for output_path, owner in kotlin_output_paths(schema, include_services=grpc):
             outputs.setdefault(output_path, []).append(f"{path} {owner}")
     collisions = {
         output_path: paths for output_path, paths in outputs.items() if len(paths) > 1
@@ -298,6 +307,7 @@ def validate_kotlin_output_paths(
 def validate_kotlin_generation(
     files: List[Path],
     import_paths: List[Path],
+    grpc: bool = False,
 ) -> bool:
     """Preflight Kotlin package and helper paths before writing output."""
     cache: Dict[Path, Schema] = {}
@@ -309,7 +319,89 @@ def validate_kotlin_generation(
         graph.extend(file_graph)
     if not validate_kotlin_import_packages(graph):
         return False
-    return validate_kotlin_output_paths(graph)
+    return validate_kotlin_output_paths(graph, grpc=grpc)
+
+
+def validate_csharp_files(
+    files: List[Path],
+    import_paths: List[Path],
+    grpc: bool = False,
+) -> bool:
+    """Preflight C# generated paths and module owners before writing output."""
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
+    for file_path in files:
+        file_graph = collect_schema_graph(file_path, import_paths, cache, set())
+        if file_graph is None:
+            return False
+        graph.extend(file_graph)
+    try:
+        return validate_csharp_generation(graph, grpc=grpc)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
+def validate_scala_import_packages(graph: List[Tuple[Path, Schema]]) -> bool:
+    """Check package combinations that Scala source cannot compile."""
+    packages = {scala_package_for_schema(schema) for _, schema in graph}
+    if None not in packages or len(packages) <= 1:
+        return True
+    details = ", ".join(
+        f"{package or '<default>'}: {path}"
+        for path, schema in sorted(graph, key=lambda item: str(item[0]))
+        for package in [scala_package_for_schema(schema)]
+    )
+    print(
+        "Error: Scala imports cannot mix default-package schemas with named "
+        f"Scala packages; found {details}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def validate_scala_output_paths(
+    graph: List[Tuple[Path, Schema]],
+    grpc: bool = False,
+) -> bool:
+    """Check Scala output paths for the current generation run."""
+    outputs: Dict[str, List[str]] = {}
+    for path, schema in graph:
+        for output_path, owner in scala_output_paths(schema, include_services=grpc):
+            outputs.setdefault(output_path, []).append(f"{path} {owner}")
+    collisions = {
+        output_path: paths for output_path, paths in outputs.items() if len(paths) > 1
+    }
+    if not collisions:
+        return True
+    details = ", ".join(
+        f"{output_path}: {', '.join(paths)}"
+        for output_path, paths in sorted(collisions.items())
+    )
+    print(
+        "Error: Scala generated file path collision; rename schema files, "
+        f"schema types, or services, or use distinct Scala packages. Collisions: {details}",
+        file=sys.stderr,
+    )
+    return False
+
+
+def validate_scala_generation(
+    files: List[Path],
+    import_paths: List[Path],
+    grpc: bool = False,
+) -> bool:
+    """Preflight Scala package and helper paths before writing output."""
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
+    for file_path in files:
+        file_graph = collect_schema_graph(file_path, import_paths, cache, set())
+        if file_graph is None:
+            return False
+        graph.extend(file_graph)
+    if not validate_scala_import_packages(graph):
+        return False
+    return validate_scala_output_paths(graph, grpc=grpc)
 
 
 def _find_go_module_root(base_go_out: Path) -> Optional[Path]:
@@ -563,6 +655,11 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Generate gRPC service code (stubs, serialization traits, etc.)",
     )
+    parser.add_argument(
+        "--grpc-web",
+        action="store_true",
+        help="Generate JavaScript gRPC-Web client code",
+    )
 
     return parser.parse_args(args)
 
@@ -611,6 +708,9 @@ def compile_file(
     emit_fdl_path: Optional[Path] = None,
     resolve_cache: Optional[Dict[Path, Schema]] = None,
     grpc: bool = False,
+    grpc_web: bool = False,
+    *,
+    generated_outputs: Optional[Dict[Path, Path]] = None,
 ) -> bool:
     """Compile a single IDL file with import resolution.
 
@@ -618,7 +718,11 @@ def compile_file(
         file_path: Path to the IDL file
         lang_output_dirs: Dictionary mapping language name to output directory
         import_paths: List of import search paths
+        generated_outputs: output file path -> source IDL path
     """
+    file_path = file_path.resolve()
+    if generated_outputs is None:
+        generated_outputs = {}
     print(f"Compiling {file_path}...")
 
     # Parse and resolve imports
@@ -675,6 +779,7 @@ def compile_file(
             go_nested_type_style=go_nested_type_style,
             swift_namespace_style=swift_namespace_style,
             grpc=grpc,
+            grpc_web=grpc_web,
         )
 
         generator_class = GENERATORS[lang]
@@ -682,12 +787,46 @@ def compile_file(
             generator = generator_class(schema, options)
             files = generator.generate()
 
-            if grpc:
+            if grpc or (grpc_web and lang == "javascript"):
                 service_files = generator.generate_services()
                 files.extend(service_files)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             return False
+
+        if lang in {"rust", "csharp", "javascript"}:
+            # Special error handling for languages with run-wide generated path
+            # validation.
+            display_lang = {
+                "csharp": "C#",
+                "javascript": "JavaScript",
+            }.get(lang, lang.capitalize())
+            output_targets: List[Path] = []
+            for f in files:
+                target = (lang_output / f.path).resolve()
+                # Reject overwriting existing non-generated files
+                if (
+                    lang in {"rust", "csharp"}
+                    and target.exists()
+                    and not is_generated_file(target)
+                ):
+                    print(
+                        f"Error: {display_lang} output path collision: {target} already exists",
+                        file=sys.stderr,
+                    )
+                    return False
+                # Check if distinct source files map to the same output file, e.g. due to naming normalization
+                previous_source = generated_outputs.get(target)
+                if previous_source is not None and previous_source != file_path:
+                    print(
+                        f"Error: {display_lang} output path collision: "
+                        f"{previous_source} and {file_path} both generate {target}",
+                        file=sys.stderr,
+                    )
+                    return False
+                output_targets.append(target)
+            for target in output_targets:
+                generated_outputs[target] = file_path
 
         generator.write_files(files)
 
@@ -709,7 +848,9 @@ def compile_file_recursive(
     stack: Set[Path],
     resolve_cache: Dict[Path, Schema],
     go_module_root: Optional[Path],
+    generated_outputs: Dict[Path, Path],
     grpc: bool = False,
+    grpc_web: bool = False,
 ) -> bool:
     file_path = file_path.resolve()
     if file_path in generated:
@@ -773,7 +914,9 @@ def compile_file_recursive(
             stack,
             resolve_cache,
             go_module_root,
+            generated_outputs,
             grpc,
+            grpc_web,
         ):
             stack.remove(file_path)
             return False
@@ -789,6 +932,8 @@ def compile_file_recursive(
         emit_fdl_path,
         resolve_cache,
         grpc,
+        grpc_web,
+        generated_outputs=generated_outputs,
     )
     if ok:
         generated.add(file_path)
@@ -858,8 +1003,21 @@ def cmd_compile(args: argparse.Namespace) -> int:
             import_paths.append(resolved)
 
     if "kotlin" in lang_output_dirs:
-        if not validate_kotlin_generation(args.files, import_paths):
+        if not validate_kotlin_generation(args.files, import_paths, grpc=args.grpc):
             return 1
+    if "csharp" in lang_output_dirs:
+        if not validate_csharp_files(args.files, import_paths, grpc=args.grpc):
+            return 1
+    if "scala" in lang_output_dirs:
+        if not validate_scala_generation(args.files, import_paths, grpc=args.grpc):
+            return 1
+
+    if args.grpc_web and "javascript" not in lang_output_dirs:
+        print(
+            "Error: --grpc-web is only supported with JavaScript output.",
+            file=sys.stderr,
+        )
+        return 1
 
     # Create output directories
     for out_dir in lang_output_dirs.values():
@@ -868,6 +1026,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
     success = True
     generated: Set[Path] = set()
     resolve_cache: Dict[Path, Schema] = {}
+    generated_outputs: Dict[Path, Path] = {}
     for file_path in args.files:
         if not file_path.exists():
             print(f"Error: File not found: {file_path}", file=sys.stderr)
@@ -887,7 +1046,9 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 set(),
                 resolve_cache,
                 None,
+                generated_outputs,
                 args.grpc,
+                args.grpc_web,
             ):
                 success = False
         except ImportError as e:

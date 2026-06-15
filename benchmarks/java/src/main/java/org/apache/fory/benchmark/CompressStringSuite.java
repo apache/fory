@@ -21,6 +21,7 @@ package org.apache.fory.benchmark;
 
 import java.nio.ByteBuffer;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.serializer.StringEncodingUtils;
 import org.apache.fory.util.StringUtils;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.Benchmark;
@@ -99,7 +100,7 @@ public class CompressStringSuite {
 
   @Benchmark
   public Object latinSuperWordCheck() {
-    return StringUtils.isLatin(latinStrChars);
+    return StringEncodingUtils.isLatin(latinStrChars);
   }
 
   public static void main(String[] args) throws Exception {

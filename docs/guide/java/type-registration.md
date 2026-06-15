@@ -40,19 +40,26 @@ fory.register(SomeClass1.class, 1);
 ```
 
 Note that class registration order is important. Serialization and deserialization peers should have the same registration order.
+Register classes and custom serializers before the first top-level `serialize`, `deserialize`, or
+`copy` call on a `Fory` instance. Fory freezes registration at that point so serializer lookups can use
+the finalized registration state.
 
 Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
 `Types.NONE + 1`, and user IDs are encoded as `(user_id << 8) | internal_type_id`.
 
 ### Register by Name
 
-Register class by ID will have better performance and smaller space overhead. But in some cases, management for a bunch of type IDs is complex. In such cases, registering class by name using API `register(Class<?> cls, String namespace, String typeName)` is recommended:
+Register class by ID has better performance and smaller space overhead. But in some cases,
+management for a bunch of type IDs is complex. In such cases, registering class by name using API
+`register(Class<?> cls, String name)` is recommended. Use `.` inside the name to add a namespace
+prefix:
 
 ```java
-fory.register(Foo.class, "demo", "Foo");
+fory.register(Foo.class, "demo.Foo");
 ```
 
-If there are no duplicate names for types, `namespace` can be left as empty to reduce serialized size.
+If there are no duplicate names for types, use a name without a namespace prefix to reduce
+serialized size.
 
 **Do not use this API to register class since it will increase serialized size a lot compared to registering class by ID.**
 
@@ -84,7 +91,7 @@ ThreadSafeFory fory = Fory.builder().withXlang(false)
   .buildThreadSafeFory();
 ```
 
-`withTypeChecker` installs the checker on every created runtime immediately, which also avoids the
+`withTypeChecker` installs the checker on every created Fory instance immediately, which also avoids the
 generic startup warning emitted when class registration is disabled without any checker. You can
 still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later if you need to
 replace the checker after build time.

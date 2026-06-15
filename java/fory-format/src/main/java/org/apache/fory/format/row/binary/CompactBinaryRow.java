@@ -19,8 +19,6 @@
 
 package org.apache.fory.format.row.binary;
 
-import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
-import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
@@ -41,47 +39,39 @@ import org.apache.fory.memory.MemoryBuffer;
  * <b>The compact format is still under development and may not be stable yet.</b>
  */
 public class CompactBinaryRow extends BinaryRow {
-  private final boolean allFieldsNotNullable;
-  private final int[] fixedOffsets;
+  private final CompactRowLayout layout;
   private final int bitmapOffset;
 
   public CompactBinaryRow(final Schema schema) {
-    this(schema, CompactBinaryRowWriter.fixedOffsets(schema));
+    this(new CompactRowLayout(schema));
   }
 
-  public CompactBinaryRow(final Schema schema, final int[] fixedOffsets) {
-    super(schema);
-    this.fixedOffsets = fixedOffsets;
-    bitmapOffset = fixedOffsets[fixedOffsets.length - 1];
-    allFieldsNotNullable = CompactBinaryRowWriter.allNotNullable(schema.fields());
+  CompactBinaryRow(CompactRowLayout layout) {
+    super(layout.schema, layout.bitmapWidthInBytes);
+    this.layout = layout;
+    this.bitmapOffset = layout.fixedOffsets[layout.fixedOffsets.length - 1];
   }
 
-  @Override
-  protected int computeBitmapWidthInBytes() {
-    // cannot use field due to initialization order
-    if (CompactBinaryRowWriter.allNotNullable(schema.fields())) {
-      return 0;
-    }
-    return CompactBinaryRowWriter.headerBytes(schema);
+  CompactRowLayout getLayout() {
+    return layout;
   }
 
   @Override
   public boolean isNullAt(final int ordinal) {
-    if (allFieldsNotNullable) {
+    if (layout.allFieldsNotNullable) {
       return false;
     }
     return super.isNullAt(ordinal);
   }
 
-  // TODO: this should use StableValue once it's available
   @Override
   public int getOffset(final int ordinal) {
-    return baseOffset + fixedOffsets[ordinal];
+    return baseOffset + layout.fixedOffsets[ordinal];
   }
 
   @Override
   public MemoryBuffer getBuffer(final int ordinal) {
-    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
+    final int fixedWidthBinary = layout.fixedWidths[ordinal];
     if (fixedWidthBinary >= 0) {
       if (isNullAt(ordinal)) {
         return null;
@@ -94,7 +84,7 @@ public class CompactBinaryRow extends BinaryRow {
 
   @Override
   public byte[] getBinary(final int ordinal) {
-    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
+    final int fixedWidthBinary = layout.fixedWidths[ordinal];
     if (fixedWidthBinary >= 0) {
       if (isNullAt(ordinal)) {
         return null;
@@ -112,27 +102,30 @@ public class CompactBinaryRow extends BinaryRow {
     if (isNullAt(ordinal)) {
       return null;
     }
-    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
+    final CompactBinaryRow row = layout.childLayouts[ordinal].newRow();
+    final int fixedWidthBinary = layout.fixedWidths[ordinal];
     if (fixedWidthBinary == -1) {
-      return super.getStruct(ordinal, field, extDataSlot);
+      final long offsetAndSize = getInt64(ordinal);
+      final int relativeOffset = (int) (offsetAndSize >> 32);
+      final int size = (int) offsetAndSize;
+      row.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
+    } else {
+      row.pointTo(getBuffer(), getOffset(ordinal), fixedWidthBinary);
     }
-    if (extData[extDataSlot] == null) {
-      extData[extDataSlot] = DataTypes.createSchema(field);
-    }
-    final BinaryRow row = newRow((Schema) extData[extDataSlot]);
-    row.pointTo(getBuffer().slice(getOffset(ordinal), fixedWidthBinary), 0, fixedWidthBinary);
     return row;
   }
 
   @Override
-  protected Schema newSchema(final Field field) {
-    return CompactBinaryRowWriter.sortSchema(super.newSchema(field));
-  }
-
-  @Override
-  protected BinaryRow newRow(final Schema schema) {
-    // TODO: avoid re-computing these offsets
-    return new CompactBinaryRow(schema, CompactBinaryRowWriter.fixedOffsets(schema));
+  BinaryArray getArray(final int ordinal, final Field field) {
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    final long offsetAndSize = getInt64(ordinal);
+    final int relativeOffset = (int) (offsetAndSize >> 32);
+    final int size = (int) offsetAndSize;
+    final CompactBinaryArray array = new CompactBinaryArray(field, layout.childLayouts[ordinal]);
+    array.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
+    return array;
   }
 
   @Override
@@ -152,6 +145,6 @@ public class CompactBinaryRow extends BinaryRow {
 
   @Override
   protected BinaryRow rowForCopy() {
-    return new CompactBinaryRow(schema, fixedOffsets);
+    return new CompactBinaryRow(layout);
   }
 }

@@ -16,11 +16,11 @@
 // under the License.
 
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::{env, fs};
 
 use chrono::NaiveDate;
-use fory::{BFloat16, Float16, Fory, RcWeak};
+use fory::{ArcWeak, BFloat16, Float16, Fory};
 use idl_tests::generated::addressbook::{
     self,
     person::{PhoneNumber, PhoneType},
@@ -303,41 +303,41 @@ fn build_optional_holder() -> OptionalHolder {
 
 fn build_any_holder() -> AnyHolder {
     AnyHolder {
-        bool_value: Box::new(true),
-        string_value: Box::new("hello".to_string()),
-        date_value: Box::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
-        timestamp_value: Box::new(
+        bool_value: Arc::new(true),
+        string_value: Arc::new("hello".to_string()),
+        date_value: Arc::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
+        timestamp_value: Arc::new(
             NaiveDate::from_ymd_opt(2024, 1, 2)
                 .unwrap()
                 .and_hms_opt(3, 4, 5)
                 .expect("timestamp"),
         ),
-        message_value: Box::new(AnyInner {
+        message_value: Arc::new(AnyInner {
             name: "inner".to_string(),
         }),
-        union_value: Box::new(AnyUnion::Text("union".to_string())),
-        list_value: Box::new("list-placeholder".to_string()),
-        map_value: Box::new("map-placeholder".to_string()),
+        union_value: Arc::new(AnyUnion::Text("union".to_string())),
+        list_value: Arc::new("list-placeholder".to_string()),
+        map_value: Arc::new("map-placeholder".to_string()),
     }
 }
 
 fn build_any_holder_with_collections() -> AnyHolder {
     AnyHolder {
-        bool_value: Box::new(true),
-        string_value: Box::new("hello".to_string()),
-        date_value: Box::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
-        timestamp_value: Box::new(
+        bool_value: Arc::new(true),
+        string_value: Arc::new("hello".to_string()),
+        date_value: Arc::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
+        timestamp_value: Arc::new(
             NaiveDate::from_ymd_opt(2024, 1, 2)
                 .unwrap()
                 .and_hms_opt(3, 4, 5)
                 .expect("timestamp"),
         ),
-        message_value: Box::new(AnyInner {
+        message_value: Arc::new(AnyInner {
             name: "inner".to_string(),
         }),
-        union_value: Box::new(AnyUnion::Text("union".to_string())),
-        list_value: Box::new(vec!["alpha".to_string(), "beta".to_string()]),
-        map_value: Box::new(HashMap::from([
+        union_value: Arc::new(AnyUnion::Text("union".to_string())),
+        list_value: Arc::new(vec!["alpha".to_string(), "beta".to_string()]),
+        map_value: Arc::new(HashMap::from([
             ("k1".to_string(), "v1".to_string()),
             ("k2".to_string(), "v2".to_string()),
         ])),
@@ -638,31 +638,31 @@ fn assert_any_holder(holder: &AnyHolder) {
 }
 
 fn build_tree() -> tree::TreeNode {
-    let mut child_a = Rc::new(tree::TreeNode {
+    let mut child_a = Arc::new(tree::TreeNode {
         id: "child-a".to_string(),
         name: "child-a".to_string(),
         children: vec![],
         parent: None,
     });
-    let mut child_b = Rc::new(tree::TreeNode {
+    let mut child_b = Arc::new(tree::TreeNode {
         id: "child-b".to_string(),
         name: "child-b".to_string(),
         children: vec![],
         parent: None,
     });
 
-    let child_a_weak = RcWeak::from(&child_a);
-    let child_b_weak = RcWeak::from(&child_b);
-    Rc::get_mut(&mut child_a).expect("child a unique").parent = Some(child_b_weak);
-    Rc::get_mut(&mut child_b).expect("child b unique").parent = Some(child_a_weak);
+    let child_a_weak = ArcWeak::from(&child_a);
+    let child_b_weak = ArcWeak::from(&child_b);
+    Arc::get_mut(&mut child_a).expect("child a unique").parent = Some(child_b_weak);
+    Arc::get_mut(&mut child_b).expect("child b unique").parent = Some(child_a_weak);
 
     tree::TreeNode {
         id: "root".to_string(),
         name: "root".to_string(),
         children: vec![
-            Rc::clone(&child_a),
-            Rc::clone(&child_a),
-            Rc::clone(&child_b),
+            Arc::clone(&child_a),
+            Arc::clone(&child_a),
+            Arc::clone(&child_b),
         ],
         parent: None,
     }
@@ -670,8 +670,8 @@ fn build_tree() -> tree::TreeNode {
 
 fn assert_tree(root: &tree::TreeNode) {
     assert_eq!(root.children.len(), 3);
-    assert!(Rc::ptr_eq(&root.children[0], &root.children[1]));
-    assert!(!Rc::ptr_eq(&root.children[0], &root.children[2]));
+    assert!(Arc::ptr_eq(&root.children[0], &root.children[1]));
+    assert!(!Arc::ptr_eq(&root.children[0], &root.children[2]));
     let parent_a = root.children[0]
         .parent
         .as_ref()
@@ -684,36 +684,36 @@ fn assert_tree(root: &tree::TreeNode) {
         .expect("child b parent")
         .upgrade()
         .expect("upgrade child b parent");
-    assert!(Rc::ptr_eq(&parent_a, &root.children[2]));
-    assert!(Rc::ptr_eq(&parent_b, &root.children[0]));
+    assert!(Arc::ptr_eq(&parent_a, &root.children[2]));
+    assert!(Arc::ptr_eq(&parent_b, &root.children[0]));
 }
 
 fn build_graph() -> graph::Graph {
-    let mut node_a = Rc::new(graph::Node {
+    let mut node_a = Arc::new(graph::Node {
         id: "node-a".to_string(),
         out_edges: vec![],
         in_edges: vec![],
     });
-    let mut node_b = Rc::new(graph::Node {
+    let mut node_b = Arc::new(graph::Node {
         id: "node-b".to_string(),
         out_edges: vec![],
         in_edges: vec![],
     });
 
-    let edge = Rc::new(graph::Edge {
+    let edge = Arc::new(graph::Edge {
         id: "edge-1".to_string(),
         weight: 1.5_f32,
-        from: Some(RcWeak::from(&node_a)),
-        to: Some(RcWeak::from(&node_b)),
+        from: Some(ArcWeak::from(&node_a)),
+        to: Some(ArcWeak::from(&node_b)),
     });
 
-    Rc::get_mut(&mut node_a).expect("node a unique").out_edges = vec![Rc::clone(&edge)];
-    Rc::get_mut(&mut node_a).expect("node a unique").in_edges = vec![Rc::clone(&edge)];
-    Rc::get_mut(&mut node_b).expect("node b unique").in_edges = vec![Rc::clone(&edge)];
+    Arc::get_mut(&mut node_a).expect("node a unique").out_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_a).expect("node a unique").in_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_b).expect("node b unique").in_edges = vec![Arc::clone(&edge)];
 
     graph::Graph {
-        nodes: vec![Rc::clone(&node_a), Rc::clone(&node_b)],
-        edges: vec![Rc::clone(&edge)],
+        nodes: vec![Arc::clone(&node_a), Arc::clone(&node_b)],
+        edges: vec![Arc::clone(&edge)],
     }
 }
 
@@ -723,8 +723,8 @@ fn assert_graph(value: &graph::Graph) {
     let node_a = &value.nodes[0];
     let node_b = &value.nodes[1];
     let edge = &value.edges[0];
-    assert!(Rc::ptr_eq(&node_a.out_edges[0], &node_a.in_edges[0]));
-    assert!(Rc::ptr_eq(&node_a.out_edges[0], edge));
+    assert!(Arc::ptr_eq(&node_a.out_edges[0], &node_a.in_edges[0]));
+    assert!(Arc::ptr_eq(&node_a.out_edges[0], edge));
     let from = edge
         .from
         .as_ref()
@@ -737,8 +737,8 @@ fn assert_graph(value: &graph::Graph) {
         .expect("edge to")
         .upgrade()
         .expect("upgrade to");
-    assert!(Rc::ptr_eq(&from, node_a));
-    assert!(Rc::ptr_eq(&to, node_b));
+    assert!(Arc::ptr_eq(&from, node_a));
+    assert!(Arc::ptr_eq(&to, node_b));
 }
 
 #[test]

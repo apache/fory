@@ -23,7 +23,7 @@ Fory Go enables seamless data exchange with Java, Python, C++, Rust,
 JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. This guide covers
 xlang compatibility and type mapping.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
 Go defaults to xlang mode with compatible schema evolution. Set the mode explicitly in xlang examples:
 

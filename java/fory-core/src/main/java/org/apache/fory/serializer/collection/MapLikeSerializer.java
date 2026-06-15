@@ -83,7 +83,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   protected MethodHandle constructor;
   protected final Config config;
-  protected final int maxCollectionSize;
   protected final boolean supportCodegenHook;
   private final GenericType objType;
   // For subclass whose kv type are instantiated already, such as
@@ -111,7 +110,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
-    maxCollectionSize = config.maxCollectionSize();
     this.typeResolver = typeResolver;
     trackRef = typeResolver.getConfig().trackingRef();
     this.supportCodegenHook = supportCodegenHook;
@@ -1031,24 +1029,27 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
   protected final int readMapSize(MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkMapSize(numElements);
+    if (numElements > Integer.MAX_VALUE / 2) {
+      throwInvalidMapBodySize(numElements);
+    }
+    buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }
 
   protected final void checkMapSize(int numElements) {
     // Keep this as direct primitive branches. Map reads are hot enough that
     // Preconditions.checkArgument would add helper/varargs overhead on the valid path.
-    if (numElements < 0 || numElements > maxCollectionSize) {
+    if (numElements < 0) {
       throwInvalidMapSize(numElements);
     }
   }
 
   private void throwInvalidMapSize(int numElements) {
-    if (numElements < 0) {
-      throw new DeserializationException("Map size must be non-negative: " + numElements);
-    } else {
-      throw new DeserializationException(
-          "Map size " + numElements + " exceeds max collection size " + maxCollectionSize);
-    }
+    throw new DeserializationException("Map size must be non-negative: " + numElements);
+  }
+
+  private void throwInvalidMapBodySize(int numElements) {
+    throw new DeserializationException("Map size is too large to read: " + numElements);
   }
 
   public abstract T onMapCopy(Map map);

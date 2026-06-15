@@ -29,7 +29,7 @@ Key characteristics:
 - **Cross-language**: Same binary format works across Java, Python, C++, Go,
   Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
 - **Reference-aware**: Handles shared references and circular references without duplication or infinite recursion
-- **Polymorphic**: Supports object polymorphism with runtime type resolution
+- **Polymorphic**: Supports object polymorphism with concrete type resolution
 
 This specification defines the Fory xlang binary format. The format is dynamic rather than static, which enables flexibility and ease of use at the cost of additional complexity in the wire format.
 
@@ -101,7 +101,7 @@ Note:
 ### Polymorphisms
 
 For polymorphism, if one non-final class is registered, and only one subclass is registered, then we can take all
-elements in List/Map have same type, thus reduce runtime check cost.
+elements in List/Map have same type, thus reduce per-element type checks.
 
 Collection/Array polymorphism are not fully supported, since some languages such as golang have only one collection
 type. If users want to get exactly the type he passed, he must pass that type when deserializing or annotate that type
@@ -190,20 +190,167 @@ encodings in the same signedness and width domain match the corresponding dense
 array element domain. This is a read adaptation, not a schema-kind merge:
 writers keep emitting their local canonical `list<T>` or `array<T>` payload, and
 TypeDef/ClassDef encodings, fingerprints, dynamic root serialization,
-schema-consistent mode, and unknown-field skipping continue to treat `list<T>`
+same-schema mode, and unknown-field skipping continue to treat `list<T>`
 and `array<T>` as distinct kinds.
 
 The adaptation is limited to the immediate schema of the matched compatible
 field. It does not apply when `list<T>` or `array<T>` appears inside another
 field type, including collection elements, map keys or values, array elements,
-union alternatives, or other generic/container positions. A peer `list<T>`
-TypeDef element may be declared nullable or ref-tracked; that declaration alone
-does not prevent a local matched `array<T>` field from reading the value. The
-reader must decide from the collection payload. If the payload actually carries
-a null element or reference-tracked element encoding that cannot be represented
-as a dense array element value, the local `array<T>` field must raise a
+union alternatives, or other generic/container positions. A peer `list<T?>`
+TypeDef element schema is not immediate schema incompatibility for a local
+matched `array<T>` field. Classification must accept the matched field when the
+element domains match and the only element-schema difference is nullable
+metadata. The reader must decide from the collection payload: if the payload
+actually carries a null element, the local `array<T>` field must raise a
 compatible-read error. Null list elements must not be coerced to dense-array
-default values.
+default values. Reference-tracked list-element framing is separate from
+nullable element schema. A runtime that cannot materialize ref-tracked list
+elements into a dense array without generic/reference paths may reject that
+field during compatible classification; if it accepts the field, reference
+payloads that cannot be represented as dense array element values must fail
+during read.
+
+The dense-array error rule applies to dense-array targets. A matched
+`list<T?>` field read into a local `list<T?>` target must keep using list
+semantics and preserve actual null elements; implementations must not route that
+payload through a dense primitive-array materialization path that rejects nulls.
+
+In schema-compatible mode only, a matched struct/class field may read between
+direct top-level `binary` and direct top-level `array<uint8>` schemas. This is a
+byte-sequence adaptation only: it does not merge TypeDef/ClassDef type IDs,
+schema fingerprints, dynamic root serialization, same-schema mode, or nested
+collection/map/array/union/generic positions. `array<int8>` is not part of this
+adapter.
+
+In schema-compatible mode only, a matched struct/class field may also read
+between direct top-level scalar schemas when the remote value can be represented
+by the local scalar schema without changing the logical value. This is a
+compatible read adaptation only: writers keep emitting their local canonical
+schema and payload, and TypeDef/ClassDef encodings, fingerprints, dynamic root
+serialization, same-schema mode, unknown-field skipping, and container
+element schemas continue to treat the original scalar types as distinct.
+
+The scalar conversion rule applies only to the immediate schema of the matched
+compatible field. It does not apply to dynamic root values, `any`, map keys, map
+values, list elements, set elements, array elements, union alternatives, enum
+values, time/date/duration values, binary values, structs, ext values, or nested
+generic/container positions. It also applies only when both the remote and local
+top-level field schemas have `trackingRef = false`; if either matched field
+schema has `trackingRef = true`, scalar conversion is outside the compatible
+layout matrix and scalar type changes remain schema/type incompatible. Same
+scalar type IDs with matching top-level `trackingRef` and null/optional framing
+are exact same-schema direct reads, not compatible scalar conversion. Same
+scalar type IDs with different top-level `trackingRef` framing are schema/type
+incompatible because the wire framing differs. Same scalar type IDs with
+different top-level null/optional framing may still use the nullable/optional
+composition rule below when both fields have `trackingRef = false`.
+
+The convertible scalar domains are `bool`, `string`, and numeric scalars.
+Numeric scalars are signed integers (`int8`, `int16`, `int32`, `int64`),
+unsigned integers (`uint8`, `uint16`, `uint32`, `uint64`), floating point
+(`float16`, `bfloat16`, `float32`, `float64`), and `decimal`. Integer encoding
+variants are the same semantic domain as their base width: fixed, variable, and
+tagged integer encodings do not create additional conversion domains.
+
+Compatible scalar conversion MUST follow these rules:
+
+- `string` to `bool` accepts exactly `"0"`, `"1"`, `"false"`, and `"true"`.
+  The match is byte-for-byte ASCII; readers MUST NOT trim whitespace, accept a
+  leading sign, accept other letter case, or use locale-specific text.
+- `bool` to `string` produces canonical lower-case `"false"` or `"true"`.
+- numeric to `bool` accepts only exact numeric zero and exact numeric one. `NaN`
+  and infinities fail. Negative floating zero is zero. Decimal scale does not
+  affect the zero/one check.
+- `bool` to numeric produces exact zero or one in the local numeric domain.
+- numeric to numeric succeeds only when the local numeric domain represents the
+  same mathematical value. Integer conversions check target range and signedness;
+  integer-to-floating conversions check exact representability in the target
+  floating domain; floating-to-integer conversions require a finite integral
+  value within range; floating-to-floating conversions require exact
+  preservation after converting to the target and back to the source, including
+  the sign of zero. Floating infinities may convert only when the target floating
+  domain preserves the same infinity. `NaN` is not convertible across different
+  floating type IDs.
+- decimal is an exact numeric scalar. Integer-to-decimal conversion uses scale
+  `0`; decimal-to-integer conversion requires an integral value in range;
+  floating-to-decimal conversion requires a finite value and converts the exact
+  binary floating value to canonical decimal form; decimal-to-floating
+  conversion requires exact representability in the target floating domain.
+  Same-type decimal reads preserve the ordinary decimal payload. Decimal values
+  produced by conversion use the canonical converted decimal form below.
+- `string` to numeric accepts only the compatible numeric literal grammar below
+  and then applies the same lossless target-domain checks. `"NaN"`,
+  `"Infinity"`, `"-Infinity"`, and spelling variants fail because numeric
+  strings are finite-only.
+- numeric to `string` emits canonical finite numeric text. Integer sources emit
+  decimal text with no leading zeros except `"0"`. Floating sources emit exact
+  plain decimal text that equals the source value and parses back to the same
+  source floating type; it includes a decimal point and at least one fractional
+  digit, preserves negative zero as `"-0.0"`, never uses exponent notation, and
+  fails for `NaN` and infinities. Decimal sources emit exact plain decimal text
+  with no exponent and no insignificant trailing fractional zeros; decimal zero
+  is `"0"`.
+
+The compatible numeric literal grammar is deliberately stricter than host
+language parsers:
+
+- no leading or trailing whitespace;
+- no leading plus sign;
+- ASCII grammar only: signs, digits, decimal points, and exponent markers are
+  the ASCII bytes `-`, `0` through `9`, `.`, `e`, and `E`;
+- no Unicode decimal digits, underscores, grouping separators, locale-specific
+  digits, hexadecimal, octal, binary, or type suffixes;
+- integer literal: `-?(0|[1-9][0-9]*)`;
+- decimal floating literal:
+  `-?(0|[1-9][0-9]*)\.[0-9]+([eE]-?(0|[1-9][0-9]*))?` or
+  `-?(0|[1-9][0-9]*)[eE]-?(0|[1-9][0-9]*)`.
+
+Readers MUST parse numeric strings with exact decimal, rational, or equivalent
+checked algorithms. Parsing through a host floating type and then casting is not
+valid unless the implementation also proves exactness against the original
+literal.
+
+Canonical converted decimal form is:
+
+- zero: `unscaled = 0`, `scale = 0`;
+- non-zero integers: `scale = 0` and the integer as `unscaled`;
+- finite fractional values: the smallest non-negative scale whose
+  `unscaled * 10^-scale` equals the value and whose `unscaled` is not divisible
+  by `10`.
+
+Compatible scalar conversion MUST reject a numeric string before arbitrary
+precision parsing when the raw string length is greater than `320`. It MUST also
+reject a converted decimal before constructing large powers of ten or formatting
+plain decimal text when its canonical converted form would require an exponent or
+scale outside `[-256, 256]`, a positive scale greater than `256`, an unscaled
+decimal magnitude with more than `256` significant digits, or a negative scale
+whose formatted integer digit count would exceed `256`. These bounds apply only
+to values produced by compatible scalar conversion, including string-to-decimal,
+decimal-to-string, and floating-to-decimal conversion. Same-type decimal reads
+preserve the ordinary decimal payload. A bounded public decimal carrier may
+reject smaller values when it cannot represent the value exactly.
+
+Nullable, boxed, optional, and nullable-field composition is supported for
+matched scalar pairs whose top-level field schemas have `trackingRef = false`.
+Readers first consume the remote null/optional framing described by the remote
+field metadata. If a value is present, the reader converts the unwrapped scalar
+value and then assigns or wraps it into the local carrier. If the remote value
+is null or absent, the reader uses the same missing/null compatible-field rule
+it already applies for that local field; this feature does not introduce a
+second null policy. Reference-tracked scalar conversion is not supported.
+
+Conversion failures are data errors, not schema misses. A schema pair outside
+the conversion matrix remains a schema/type compatibility error when building
+the compatible layout. Once a matched field is accepted as a scalar conversion
+action, an invalid payload value MUST be reported through the implementation's
+data-error path with enough context to identify the remote type, local type, and
+field when that path has the information.
+
+Unknown-field skipping applies only when the remote field has no matching local
+field identity. If a local field matches by tag ID or name but its schema is
+outside the exact-read and compatible-adaptation rules, the reader MUST reject
+the compatible layout instead of treating the field as missing, remote-only, or
+skippable.
 
 Users can also provide meta hints for fields of a type, or the type whole. Here is an example in java which use
 annotation to provide such information.
@@ -270,7 +417,7 @@ Named types (`NAMED_*`) do not embed a user ID; their names are carried in metad
 | 24      | MAP                     | Key-value mapping                                      |
 | 25      | ENUM                    | Enum registered by numeric ID                          |
 | 26      | NAMED_ENUM              | Enum registered by namespace + type name               |
-| 27      | STRUCT                  | Struct registered by numeric ID (schema consistent)    |
+| 27      | STRUCT                  | Struct registered by numeric ID (same-schema)          |
 | 28      | COMPATIBLE_STRUCT       | Struct with schema evolution support (by ID)           |
 | 29      | NAMED_STRUCT            | Struct registered by namespace + type name             |
 | 30      | NAMED_COMPATIBLE_STRUCT | Struct with schema evolution (by name)                 |
@@ -1175,12 +1322,12 @@ The elements header is a single byte that encodes metadata about the collection 
 |      reserved      | is_same_type| is_decl_elem_type| has_null | track_ref |
 ```
 
-| Bit | Name              | Value | Meaning when SET (1)                    | Meaning when UNSET (0)                  |
-| --- | ----------------- | ----- | --------------------------------------- | --------------------------------------- |
-| 0   | track_ref         | 0x01  | Track references for elements           | Don't track element references          |
-| 1   | has_null          | 0x02  | Payload contains null element markers   | No null elements (skip null checks)     |
-| 2   | is_decl_elem_type | 0x04  | Elements are the declared generic type  | Element types differ from declared type |
-| 3   | is_same_type      | 0x08  | All elements have the same runtime type | Elements have different runtime types   |
+| Bit | Name              | Value | Meaning when SET (1)                     | Meaning when UNSET (0)                  |
+| --- | ----------------- | ----- | ---------------------------------------- | --------------------------------------- |
+| 0   | track_ref         | 0x01  | Track references for elements            | Don't track element references          |
+| 1   | has_null          | 0x02  | Payload contains null element markers    | No null elements (skip null checks)     |
+| 2   | is_decl_elem_type | 0x04  | Elements are the declared generic type   | Element types differ from declared type |
+| 3   | is_same_type      | 0x08  | All elements have the same concrete type | Elements have different concrete types  |
 
 **Common header values:**
 
@@ -1253,7 +1400,7 @@ can be taken as an example.
 
 Primitive array are taken as a binary buffer, serialization will just write the length of array size as an unsigned int,
 then copy the whole buffer into the stream. Multi-byte element arrays are always encoded in little-endian element order;
-runtimes whose native typed-array storage uses another byte order must swap or write elements explicitly instead of
+implementations whose native typed-array storage uses another byte order must swap or write elements explicitly instead of
 copying native storage bytes unchanged.
 
 Such serialization won't compress the array. If users want to compress primitive array, users need to register custom
@@ -1382,7 +1529,7 @@ Date represents a date without timezone. It is encoded as:
 - `days` (varint64): signed count of days since the Unix epoch (`1970-01-01`)
 
 The value is reconstructed as `LocalDate.ofEpochDay(days)` or the equivalent calendar-date constructor in
-the target runtime.
+the target language implementation.
 
 This `varint64` encoding applies to xlang serialization only. Native, language-specific local-date
 encodings are unchanged.
@@ -1530,7 +1677,7 @@ reachable only in invalid schemas (e.g., duplicate tag IDs).
 - The compressed numeric rule is critical for cross-language consistency: compressed integer
   fields are always placed after all fixed-width integer fields.
 
-#### Schema consistent (meta share disabled)
+#### Same-schema mode (meta share disabled)
 
 Object value layout:
 
@@ -1549,6 +1696,9 @@ MurmurHash3 x64_128 of the struct fingerprint string:
   - `LIST` / `SET`: `<type_id>,<ref>,<nullable>[<element_fingerprint>]`
   - `MAP`: `<type_id>,<ref>,<nullable>[<key_fingerprint>|<value_fingerprint>]`
 - Nested container element/key/value fingerprints include nested type ID, container shape, and effective integer encoding, but nested `nullable` and `ref` policy are always hashed as `0`. Only the root field `nullable` and `ref` bits participate in schema hash, because nested reads honor the wire null/ref flags directly.
+- This schema-hash rule is only for same-schema mode without TypeDef metadata. It
+  does not permit compatible-mode matched-field classification to accept nested
+  nullability or reference-tracking mismatches.
 
 Field values are serialized in Fory order. Primitive fields are written as raw values (nullable
 primitives include a null flag). Non-primitive fields write ref/null flags as needed and then the
@@ -1556,7 +1706,7 @@ value; polymorphic fields include type meta.
 
 #### Compatible mode (meta share enabled)
 
-The field value layout is the same as schema-consistent mode, but the type meta for
+The field value layout is the same as same-schema mode, but the type meta for
 `COMPATIBLE_STRUCT` and `NAMED_COMPATIBLE_STRUCT` uses shared TypeDef entries. Deserializers use
 TypeDef to map fields by name or tag ID and to honor nullable/ref flags from metadata; unknown fields
 are skipped.
@@ -1578,7 +1728,7 @@ union Contact [id=0] {
 Rules:
 
 - A union schema MUST declare at least one schema-defined alternative. The
-  unknown-case carrier used by some language bindings is runtime-owned and is
+  unknown-case carrier used by some language bindings is implementation-provided and is
   omitted from the schema's alternative table.
 - Each union alternative MUST have a stable non-negative tag number (`= 0`, `= 1`, ...).
 - Tag numbers MUST be unique within the union and MUST NOT be reused.
@@ -1627,7 +1777,7 @@ This is required even for primitives so unknown alternatives can be skipped safe
 If a reader sees a `case_id` that is not present in its local union
 schema, it SHOULD preserve the unknown case when the target language has a
 language-neutral carrier for it. Such a carrier MUST expose the original case
-ID and decoded value, and it MUST retain only runtime-internal wire type ID
+ID and decoded value, and it MUST retain only implementation-internal wire type ID
 state needed for reserialization. It MUST NOT store resolver-owned type
 metadata or other context-owned state. Writers MUST use the stored original
 case ID for the union envelope, not any generated carrier marker. Unknown-case
@@ -1635,10 +1785,10 @@ payload writers MUST emit the Any-style payload body in wire order: ref
 metadata first, then full value type metadata, then value bytes. For internal
 numeric type IDs, the type ID byte is the complete value type metadata and the
 payload writer MAY use the stored wire type ID to preserve fixed, variable, or
-tagged integer encodings when the decoded value has the expected runtime type.
+tagged integer encodings when the decoded value has the expected concrete value type.
 These scalar numeric payloads are not reference-tracked, so their ref metadata
-is `NotNullValue`. Otherwise it MUST fall back to the language runtime's
-ordinary polymorphic Any-value writer. Unknown carriers are runtime-owned
+is `NotNullValue`. Otherwise it MUST fall back to the language implementation's
+ordinary polymorphic Any-value writer. Unknown carriers are implementation-provided
 forward-compatibility containers, not entries in the local schema case table;
 schema-defined union cases MAY use `0..N`. When an unknown carrier is written
 back, the union envelope MUST use the carrier's original peer schema case ID
@@ -1699,7 +1849,7 @@ Type will be serialized using type meta format.
 1. **Byte Order**: Always use little-endian for multi-byte values
 2. **Varint Sign Extension**: Ensure proper handling of signed vs unsigned varints
 3. **Reference ID Ordering**: IDs must be assigned in serialization order
-4. **Field Order Consistency**: Must match exactly across languages in schema-consistent mode; in compatible mode, match by TypeDef field names or tag IDs
+4. **Field Order Consistency**: Must match exactly across languages in same-schema mode; in compatible mode, match by TypeDef field names or tag IDs
 5. **String Encoding**: Use best encoding for current language
 6. **Null Handling**: Different languages represent null differently
 7. **Empty Collections**: Still write length (0) and header byte

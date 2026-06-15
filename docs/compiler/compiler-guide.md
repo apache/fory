@@ -52,27 +52,28 @@ foryc --scan-generated [OPTIONS]
 
 Compile options:
 
-| Option                                | Description                                           | Default       |
-| ------------------------------------- | ----------------------------------------------------- | ------------- |
-| `--lang`                              | Comma-separated target languages                      | `all`         |
-| `--output`, `-o`                      | Output directory                                      | `./generated` |
-| `-I`, `--proto_path`, `--import_path` | Add directory to import search path (can be repeated) | (none)        |
-| `--java_out=DST_DIR`                  | Generate Java code in DST_DIR                         | (none)        |
-| `--python_out=DST_DIR`                | Generate Python code in DST_DIR                       | (none)        |
-| `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                          | (none)        |
-| `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
-| `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
-| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                           | (none)        |
-| `--javascript_out=DST_DIR`            | Generate JavaScript/TypeScript code in DST_DIR        | (none)        |
-| `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                        | (none)        |
-| `--dart_out=DST_DIR`                  | Generate Dart code in DST_DIR                         | (none)        |
-| `--scala_out=DST_DIR`                 | Generate Scala 3 code in DST_DIR                      | (none)        |
-| `--kotlin_out=DST_DIR`                | Generate Kotlin code in DST_DIR                       | (none)        |
-| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | `underscore`  |
-| `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`            | `enum`        |
-| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)              | `false`       |
-| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory) | (stdout)      |
-| `--grpc`                              | Generate gRPC service companions for Java and Python  | `false`       |
+| Option                                | Description                                            | Default       |
+| ------------------------------------- | ------------------------------------------------------ | ------------- |
+| `--lang`                              | Comma-separated target languages                       | `all`         |
+| `--output`, `-o`                      | Output directory                                       | `./generated` |
+| `-I`, `--proto_path`, `--import_path` | Add directory to import search path (can be repeated)  | (none)        |
+| `--java_out=DST_DIR`                  | Generate Java code in DST_DIR                          | (none)        |
+| `--python_out=DST_DIR`                | Generate Python code in DST_DIR                        | (none)        |
+| `--cpp_out=DST_DIR`                   | Generate C++ code in DST_DIR                           | (none)        |
+| `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                            | (none)        |
+| `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                          | (none)        |
+| `--csharp_out=DST_DIR`                | Generate C# code in DST_DIR                            | (none)        |
+| `--javascript_out=DST_DIR`            | Generate JavaScript/TypeScript code in DST_DIR         | (none)        |
+| `--swift_out=DST_DIR`                 | Generate Swift code in DST_DIR                         | (none)        |
+| `--dart_out=DST_DIR`                  | Generate Dart code in DST_DIR                          | (none)        |
+| `--scala_out=DST_DIR`                 | Generate Scala 3 code in DST_DIR                       | (none)        |
+| `--kotlin_out=DST_DIR`                | Generate Kotlin code in DST_DIR                        | (none)        |
+| `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`     | `underscore`  |
+| `--swift_namespace_style`             | Swift namespace style: `enum` or `flatten`             | `enum`        |
+| `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)               | `false`       |
+| `--emit-fdl-path`                     | Write translated FDL to this path (file or directory)  | (stdout)      |
+| `--grpc`                              | Generate gRPC service companions for supported outputs | `false`       |
+| `--grpc-web`                          | Generate JavaScript gRPC-Web client companions         | `false`       |
 
 Schema-level file options are supported for language-specific generation choices.
 For `go_nested_type_style` and `swift_namespace_style`, the CLI flag overrides
@@ -141,23 +142,39 @@ foryc schema.fdl --output ./src/generated
 foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
-**Compile a simple schema containing service definitions (Java + Python models):**
+**Compile a simple schema containing service definitions (Java + Python + Go + Rust + C# + Scala + Kotlin + JavaScript models):**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript
 ```
 
-**Generate Java and Python gRPC service companions:**
+**Generate Java, Python, Go, Rust, C#, Scala, Kotlin, and Node.js JavaScript gRPC service companions:**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --grpc
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
-payloads. Java output imports grpc-java APIs and Python output imports `grpc`;
-applications that compile or run those generated service files must provide
-their own gRPC dependencies. Fory's Java and Python runtime packages do not add a
-hard gRPC dependency for this feature.
+payloads. Java output imports grpc-java APIs, Python output imports `grpc`, Go
+output imports grpc-go, Rust output imports `tonic` and `bytes`, Scala output
+imports grpc-java APIs, and Kotlin output imports grpc-java and grpc-kotlin APIs
+and uses coroutine stubs. C# output imports `Grpc.Core.Api` types and can be
+hosted with normal .NET gRPC packages such as `Grpc.AspNetCore` or called
+through `Grpc.Net.Client`. JavaScript output imports `@grpc/grpc-js`.
+Applications that compile or run those generated service files must provide
+their own gRPC dependencies. Fory packages do not add a hard gRPC dependency for
+this feature.
+
+**Generate JavaScript gRPC-Web browser clients:**
+
+```bash
+foryc compiler/examples/service.fdl --javascript_out=./generated/javascript --grpc-web
+```
+
+Use `--grpc` and `--grpc-web` together when the same JavaScript output should
+include both Node.js and browser companions. The browser companion imports
+`grpc-web`; the application must provide the package and a gRPC-Web compatible
+server or proxy.
 
 **Use import search paths:**
 
@@ -192,6 +209,9 @@ foryc schema.fdl --java_out=./gen/java -I proto/ -I common/
 
 # Generate Scala 3 code to a specific directory
 foryc schema.fdl --scala_out=./src/main/scala
+
+# Generate Scala 3 models and gRPC service companions
+foryc service.fdl --scala_out=./src/main/scala --grpc
 
 # Generate Kotlin code to a specific directory
 foryc schema.fdl --kotlin_out=./src/main/kotlin
@@ -268,7 +288,7 @@ Compiling src/main.fdl...
 | Rust                  | `rust`       | `.rs`            | Structs with derive macros             |
 | C++                   | `cpp`        | `.h`             | Structs with FORY macros               |
 | C#                    | `csharp`     | `.cs`            | Classes with Fory attributes           |
-| JavaScript/TypeScript | `javascript` | `.ts`            | Interfaces with registration function  |
+| JavaScript/TypeScript | `javascript` | `.ts`            | Interfaces with schema module helpers  |
 | Swift                 | `swift`      | `.swift`         | Fory Swift model macros                |
 | Dart                  | `dart`       | `.dart`          | `@ForyStruct` classes with annotations |
 | Scala                 | `scala`      | `.scala`         | Scala 3 models with macro derivation   |
@@ -347,14 +367,19 @@ generated/
 ```
 generated/
 └── javascript/
-  └── example.ts
+    ├── example.ts
+    ├── example_grpc.ts      # with --grpc
+    └── example_grpc_web.ts  # with --grpc-web
 ```
 
 - Single `.ts` file per schema
 - `export interface` declarations for messages
 - `export enum` declarations for enums
 - Discriminated unions with case enums
-- Registration helper function included
+- Schema helpers `registerXxxTypes(fory)` plus default `serializeX` and
+  `deserializeX` helpers included
+- `--grpc` emits a Node.js companion using `@grpc/grpc-js`
+- `--grpc-web` emits a browser client companion using `grpc-web`
 
 ### C\#
 
@@ -362,14 +387,18 @@ generated/
 generated/
 └── csharp/
     └── example/
-        └── example.cs
+        └── Example.cs
 ```
 
-- Single `.cs` file per schema
+- Single `.cs` file per schema named from the normalized PascalCase source file
+  stem
 - Namespace uses `csharp_namespace` (if set) or Fory IDL package
-- Includes registration helper and `ToBytes`/`FromBytes` methods
-- Imported schemas are registered transitively (for example `root.idl` importing
+- Includes source-file-prefixed `XXXForyModule` installation helper and
+  `ToBytes`/`FromBytes` methods
+- Imported schemas are installed transitively (for example `root.idl` importing
   `addressbook.fdl` and `tree.fdl`)
+- With `--grpc`, one `<ServiceName>Grpc.cs` companion per service next to the
+  schema file output
 
 ### Swift
 
@@ -384,8 +413,9 @@ generated/
 - Package segments are mapped to nested Swift enums (for example `addressbook.*` -> `Addressbook.*`)
 - Generated messages use `@ForyStruct`, enums use `@ForyEnum`, and unions use `@ForyUnion`/`@ForyCase`
 - Union types are generated as tagged enums with associated payload values
-- Each schema includes `ForyRegistration` and `toBytes`/`fromBytes` helpers
-- Imported schemas are registered transitively by generated registration helpers
+- Each schema includes a schema-file module owner and `toBytes`/`fromBytes`
+  helpers
+- Imported schemas are installed transitively by generated module helpers
 
 ### Dart
 
@@ -399,7 +429,8 @@ generated/
 
 - Two files per schema: a main `.dart` file with annotated types, and a `.fory.dart` part file with generated serializers
 - Package segments map to directories (e.g., `demo.foo` → `demo/foo/`)
-- Registration helper class included in the part file
+- IDL module class included in the main file; generated serializer metadata is
+  included in the part file
 - Typed arrays used for non-optional, non-ref primitive lists (e.g., `Int32List`)
 
 ### Scala
@@ -411,6 +442,7 @@ generated/
         ├── User.scala
         ├── Status.scala
         ├── Animal.scala
+        ├── ExampleServiceGrpc.scala
         └── ExampleForyModule.scala
 ```
 
@@ -421,6 +453,8 @@ generated/
 - Enums use Scala 3 `enum`
 - Unions use Scala 3 ADT `enum` with `@ForyUnion`, `@ForyCase`, and an `Unknown`
 - Schema module object included
+- With `--grpc`, one `<ServiceName>Grpc.scala` service companion is generated
+  per local service definition
 
 ### Kotlin
 
@@ -440,6 +474,8 @@ generated/
 - Enums use stable Fory enum IDs
 - Unions use sealed classes with `@ForyUnion`, `@ForyCase`, and an unknown-case carrier
 - Schema module object included
+- With `--grpc`, one `<ServiceName>GrpcKt.kt` coroutine service companion per
+  service
 
 ### C# IDL Matrix Verification
 
@@ -450,7 +486,7 @@ cd integration_tests/idl_tests
 ./run_csharp_tests.sh
 ```
 
-This runner executes schema-consistent and compatible roundtrips across:
+This runner executes same-schema and compatible roundtrips across:
 
 - `addressbook`, `auto_id`, `complex_pb` primitives
 - `collection` and union/list variants
@@ -472,7 +508,7 @@ cd integration_tests/idl_tests
 
 This runs:
 
-- local Swift IDL roundtrip tests in both compatible and schema-consistent modes
+- local Swift IDL roundtrip tests in both compatible and same-schema modes
 - Java-driven peer roundtrip validation with `IDL_PEER_LANG=swift`
 
 The script also sets `DATA_FILE*` variables so file-based roundtrip paths are exercised.
@@ -671,7 +707,7 @@ Add the Fory dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fory: ^1.0.0
+  fory: ^1.1.0
 
 dev_dependencies:
   build_runner: ^2.4.0
@@ -863,5 +899,5 @@ fory = "x.y.z"
 
 ```yaml
 dependencies:
-  fory: ^1.0.0
+  fory: ^1.1.0
 ```

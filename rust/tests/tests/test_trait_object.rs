@@ -17,12 +17,24 @@
 
 use fory_core::fory::Fory;
 use fory_core::register_trait_type;
+use fory_core::resolver::RefFlag;
 use fory_core::serializer::Serializer;
+use fory_core::TypeId;
 use fory_derive::ForyStruct;
 use std::collections::{HashMap, HashSet};
 
 fn fory_compatible() -> Fory {
     Fory::builder().xlang(false).compatible(true).build()
+}
+
+fn assert_erased_serializer_container_error(err: fory_core::Error) {
+    let message = err.to_string();
+    assert!(
+        message.contains("Type info for internal type not found")
+            || message.contains("not found in type_info registry")
+            || message.contains("ID harness not found"),
+        "unexpected error: {message}"
+    );
 }
 
 #[test]
@@ -74,41 +86,64 @@ fn test_option_some_roundtrip() {
 }
 
 #[test]
-fn test_hashmap_roundtrip() {
+fn trait_object_map_set_payloads_rejected() {
     let fory = fory_compatible();
-    let mut original = HashMap::new();
-    original.insert(String::from("one"), 1);
-    original.insert(String::from("two"), 2);
-    original.insert(String::from("three"), 3);
 
-    let trait_obj: Box<dyn Serializer> = Box::new(original.clone());
-    let serialized = fory.serialize(&trait_obj).unwrap();
+    let list: Box<dyn Serializer> = Box::new(vec!["one".to_string(), "two".to_string()]);
+    assert_erased_serializer_container_error(fory.serialize(&list).unwrap_err());
 
-    let deserialized_concrete: HashMap<String, i32> = fory.deserialize(&serialized).unwrap();
+    let representative_map: Box<dyn Serializer> = Box::new(HashMap::from([
+        ("one".to_string(), 1_i32),
+        ("two".to_string(), 2),
+    ]));
+    assert_erased_serializer_container_error(fory.serialize(&representative_map).unwrap_err());
 
-    assert_eq!(deserialized_concrete.len(), 3);
-    assert_eq!(deserialized_concrete.get("one"), Some(&1));
-    assert_eq!(deserialized_concrete.get("two"), Some(&2));
-    assert_eq!(deserialized_concrete.get("three"), Some(&3));
+    let other_map: Box<dyn Serializer> = Box::new(HashMap::from([
+        ("one".to_string(), "first".to_string()),
+        ("two".to_string(), "second".to_string()),
+    ]));
+    assert_erased_serializer_container_error(fory.serialize(&other_map).unwrap_err());
+
+    let representative_set: Box<dyn Serializer> = Box::new(HashSet::from([1_i32, 2, 3]));
+    assert_erased_serializer_container_error(fory.serialize(&representative_set).unwrap_err());
+
+    let other_set: Box<dyn Serializer> = Box::new(HashSet::from([
+        "one".to_string(),
+        "two".to_string(),
+        "three".to_string(),
+    ]));
+    assert_erased_serializer_container_error(fory.serialize(&other_set).unwrap_err());
 }
 
 #[test]
-fn test_hashset_roundtrip() {
+fn trait_object_map_values_reject_containers() {
     let fory = fory_compatible();
-    let mut original = HashSet::new();
-    original.insert(1);
-    original.insert(2);
-    original.insert(3);
 
-    let trait_obj: Box<dyn Serializer> = Box::new(original.clone());
-    let serialized = fory.serialize(&trait_obj).unwrap();
+    let mut values: HashMap<String, Box<dyn Serializer>> = HashMap::new();
+    values.insert(
+        "map".to_string(),
+        Box::new(HashMap::from([("one".to_string(), 1_i32)])),
+    );
+    assert_erased_serializer_container_error(fory.serialize(&values).unwrap_err());
 
-    let deserialized_concrete: HashSet<i32> = fory.deserialize(&serialized).unwrap();
+    let mut values: HashMap<String, Box<dyn Serializer>> = HashMap::new();
+    values.insert("set".to_string(), Box::new(HashSet::from([1_i32, 2, 3])));
+    assert_erased_serializer_container_error(fory.serialize(&values).unwrap_err());
+}
 
-    assert_eq!(deserialized_concrete.len(), 3);
-    assert!(deserialized_concrete.contains(&1));
-    assert!(deserialized_concrete.contains(&2));
-    assert!(deserialized_concrete.contains(&3));
+#[test]
+fn trait_object_container_type_ids_rejected_on_read() {
+    let fory = fory_compatible();
+
+    for type_id in [TypeId::LIST, TypeId::SET, TypeId::MAP] {
+        let bytes = vec![0, RefFlag::NotNullValue as i8 as u8, type_id as u8];
+        let result: Result<Box<dyn Serializer>, _> = fory.deserialize(&bytes);
+        let err = match result {
+            Ok(_) => panic!("expected erased container type id to fail"),
+            Err(err) => err,
+        };
+        assert_erased_serializer_container_error(err);
+    }
 }
 
 #[test]

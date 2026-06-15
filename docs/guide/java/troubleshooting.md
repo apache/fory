@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 17
+sidebar_position: 18
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -23,23 +23,21 @@ This page covers common issues and their solutions.
 
 ## Class Inconsistency and Class Version Check
 
-If you create Fory without enabling compatible mode and you get a strange serialization error, it may be caused by class inconsistency between the serialization peer and deserialization peer.
+If you explicitly disabled compatible mode and get a strange serialization error, it may be caused by class inconsistency between the serialization peer and deserialization peer.
 
-In such cases, you can invoke `ForyBuilder#withClassVersionCheck` to create Fory to validate it. If deserialization throws `org.apache.fory.exception.ClassNotCompatibleException`, it shows classes are inconsistent, and you should create Fory with `ForyBuilder#withCompatible(true)`.
+In such cases, you can invoke `ForyBuilder#withClassVersionCheck` with `withCompatible(false)` to validate it. If deserialization throws `org.apache.fory.exception.ClassNotCompatibleException`, the classes are inconsistent. Remove the `withCompatible(false)` override unless every reader and writer always uses the same class schema.
 
 ```java
 // Enable class version check to diagnose issues
 Fory fory = Fory.builder()
+  .withCompatible(false)
   .withClassVersionCheck(true)
   .build();
 
-// If ClassNotCompatibleException is thrown, add compatible mode to the
-// same builder configuration on every peer.
-ForyBuilder builder = Fory.builder()
-  .withCompatible(true);
+// If ClassNotCompatibleException is thrown, remove withCompatible(false).
 ```
 
-**Note**: compatible mode has more performance and space cost. For xlang mode it is the default and recommended setting. Use schema-consistent mode only if your classes are always consistent between serialization and deserialization, or if all services deploy schema changes at the same time.
+**Note**: compatible mode is the default for both xlang and native mode. Use `withCompatible(false)` only if every reader and writer always uses the same class schema and you want faster serialization and smaller size.
 
 ## Using Wrong API for Deserialization
 
@@ -69,7 +67,7 @@ MyClass typedResult = fory.deserialize(typedBytes, MyClass.class);
 
 ## Deserialize POJO into Another Type
 
-If you want to serialize one POJO and deserialize it into a different POJO type, enable compatible mode:
+If you want to serialize one POJO and deserialize it into a different POJO type, use compatible mode:
 
 ```java
 public class DeserializeIntoType {
@@ -90,7 +88,7 @@ public class DeserializeIntoType {
   }
 
   static ThreadSafeFory fory = Fory.builder()
-    .withCompatible(true).buildThreadSafeFory();
+    .buildThreadSafeFory();
 
   public static void main(String[] args) {
     Struct1 struct1 = new Struct1(10, "abc");
@@ -118,11 +116,10 @@ fory.register(MyClass.class, 100);
 
 **Cause**: Class schema differs between serialization and deserialization.
 
-**Solution**: Use compatible mode:
+**Solution**: Keep compatible mode enabled:
 
 ```java
 Fory fory = Fory.builder()
-  .withCompatible(true)
   .build();
 ```
 
@@ -147,6 +144,23 @@ Fory fory = Fory.builder()
 ```java
 fory.registerSerializer(MyClass.class, new MyClassSerializer(fory.getTypeResolver()));
 ```
+
+### JDK25+ access errors
+
+On JDK25+, if an error names `java.base/java.lang.invoke`, open `java.lang.invoke` to Fory. Use
+`ALL-UNNAMED` when Fory is on the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
+```
+
+Fory does not require application package opens for private-field access.
 
 ## Performance Issues
 

@@ -24,35 +24,21 @@ import 'package:test/test.dart';
 void main() {
   test('compatible named struct round trip preserves nested struct fields', () {
     final fory = Fory(compatible: true);
-    registerXlangType(
-      fory,
-      Color,
-      namespace: 'demo',
-      typeName: 'color',
-    );
-    registerXlangType(
-      fory,
-      Item,
-      namespace: 'demo',
-      typeName: 'item',
-    );
-    registerXlangType(
-      fory,
-      SimpleStruct,
-      namespace: 'demo',
-      typeName: 'simple_struct',
-    );
+    registerXlangType(fory, Color, name: 'demo.color');
+    registerXlangType(fory, Item, name: 'demo.item');
+    registerXlangType(fory, SimpleStruct, name: 'demo.simple_struct');
 
-    final original = SimpleStruct()
-      ..f2 = (1)
-      ..f7 = (2)
-      ..f8 = (3)
-      ..last = (4)
-      ..f4 = 'outer'
-      ..f6 = <String>['a', 'b']
-      ..f1 = <int?, double?>{(7): 9.5}
-      ..f3 = (Item()..name = 'inner')
-      ..f5 = Color.blue;
+    final original =
+        SimpleStruct()
+          ..f2 = (1)
+          ..f7 = (2)
+          ..f8 = (3)
+          ..last = (4)
+          ..f4 = 'outer'
+          ..f6 = <String>['a', 'b']
+          ..f1 = <int?, double?>{(7): 9.5}
+          ..f3 = (Item()..name = 'inner')
+          ..f5 = Color.blue;
 
     final firstBytes = fory.serialize(original);
     final decoded = fory.deserialize<SimpleStruct>(firstBytes);

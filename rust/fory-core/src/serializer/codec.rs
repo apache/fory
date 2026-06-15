@@ -22,12 +22,12 @@
 //! nested collection configuration without creating wrapper value types.
 
 use super::collection::{
-    read_primitive_array_vec_compatible_mismatch, read_vec_compatible_mismatch,
-    CompatibleListArrayElement,
+    compatible_list_array_field, read_primitive_array_vec_compatible_mismatch,
+    read_vec_compatible_mismatch, CompatibleListArrayElement,
 };
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::meta::FieldType;
+use crate::meta::{FieldInfo, FieldType};
 use crate::resolver::{RefFlag, RefMode, TypeResolver};
 use crate::serializer::{primitive_list, ForyDefault, Serializer};
 use crate::type_id::{self, need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE, UNKNOWN};
@@ -219,17 +219,155 @@ pub(super) fn collection_type_with_fallback_generics(type_id: u32) -> bool {
 
 #[inline(always)]
 pub fn field_types_compatible(local: &FieldType, remote: &FieldType) -> bool {
-    if local.compatible_fingerprint() == remote.compatible_fingerprint() {
-        return true;
-    }
-    if local.type_id == remote.type_id
-        && collection_type_with_fallback_generics(local.type_id)
-        && (local.generics.is_empty() || remote.generics.is_empty())
-    {
-        return true;
-    }
-    false
+    local.exact_shape_match(remote)
 }
+
+#[inline(always)]
+fn compatible_byte_sequence_field(local: &FieldType, remote: &FieldType) -> bool {
+    !local.track_ref
+        && !remote.track_ref
+        && local.nullable == remote.nullable
+        && ((local.type_id == type_id::BINARY && remote.type_id == type_id::UINT8_ARRAY)
+            || (local.type_id == type_id::UINT8_ARRAY && remote.type_id == type_id::BINARY))
+}
+
+#[cold]
+#[inline(never)]
+pub fn compatible_field_pair(local: &FieldType, remote: &FieldType) -> bool {
+    field_types_compatible(local, remote)
+        || compatible_byte_sequence_field(local, remote)
+        || crate::meta::compatible_scalar_field_pair(local, remote)
+        || compatible_list_array_field(local, remote)
+        || local.compatible_shape_match(remote)
+}
+
+macro_rules! compatible_scalar_reader {
+    ($read:ident, $read_option:ident, $target:ident, $target_option:ident, $ty:ty) => {
+        #[inline(always)]
+        pub fn $read(
+            context: &mut ReadContext,
+            local_type: u32,
+            remote_field: &FieldInfo,
+        ) -> Result<$ty, Error> {
+            super::scalar_conversion::$target(context, local_type, remote_field)
+        }
+
+        #[inline(always)]
+        pub fn $read_option(
+            context: &mut ReadContext,
+            local_type: u32,
+            remote_field: &FieldInfo,
+        ) -> Result<Option<$ty>, Error> {
+            super::scalar_conversion::$target_option(context, local_type, remote_field)
+        }
+    };
+}
+
+compatible_scalar_reader!(
+    read_bool_compatible_scalar,
+    read_bool_option_compatible_scalar,
+    read_bool_target,
+    read_bool_option_target,
+    bool
+);
+compatible_scalar_reader!(
+    read_string_compatible_scalar,
+    read_string_option_compatible_scalar,
+    read_string_target,
+    read_string_option_target,
+    String
+);
+compatible_scalar_reader!(
+    read_i8_compatible_scalar,
+    read_i8_option_compatible_scalar,
+    read_i8_target,
+    read_i8_option_target,
+    i8
+);
+compatible_scalar_reader!(
+    read_i16_compatible_scalar,
+    read_i16_option_compatible_scalar,
+    read_i16_target,
+    read_i16_option_target,
+    i16
+);
+compatible_scalar_reader!(
+    read_i32_compatible_scalar,
+    read_i32_option_compatible_scalar,
+    read_i32_target,
+    read_i32_option_target,
+    i32
+);
+compatible_scalar_reader!(
+    read_i64_compatible_scalar,
+    read_i64_option_compatible_scalar,
+    read_i64_target,
+    read_i64_option_target,
+    i64
+);
+compatible_scalar_reader!(
+    read_u8_compatible_scalar,
+    read_u8_option_compatible_scalar,
+    read_u8_target,
+    read_u8_option_target,
+    u8
+);
+compatible_scalar_reader!(
+    read_u16_compatible_scalar,
+    read_u16_option_compatible_scalar,
+    read_u16_target,
+    read_u16_option_target,
+    u16
+);
+compatible_scalar_reader!(
+    read_u32_compatible_scalar,
+    read_u32_option_compatible_scalar,
+    read_u32_target,
+    read_u32_option_target,
+    u32
+);
+compatible_scalar_reader!(
+    read_u64_compatible_scalar,
+    read_u64_option_compatible_scalar,
+    read_u64_target,
+    read_u64_option_target,
+    u64
+);
+compatible_scalar_reader!(
+    read_f32_compatible_scalar,
+    read_f32_option_compatible_scalar,
+    read_f32_target,
+    read_f32_option_target,
+    f32
+);
+compatible_scalar_reader!(
+    read_f64_compatible_scalar,
+    read_f64_option_compatible_scalar,
+    read_f64_target,
+    read_f64_option_target,
+    f64
+);
+compatible_scalar_reader!(
+    read_float16_compatible_scalar,
+    read_float16_option_compatible_scalar,
+    read_float16_target,
+    read_float16_option_target,
+    crate::types::float16::float16
+);
+compatible_scalar_reader!(
+    read_bfloat16_compatible_scalar,
+    read_bfloat16_option_compatible_scalar,
+    read_bfloat16_target,
+    read_bfloat16_option_target,
+    crate::types::bfloat16::bfloat16
+);
+compatible_scalar_reader!(
+    read_decimal_compatible_scalar,
+    read_decimal_option_compatible_scalar,
+    read_decimal_target,
+    read_decimal_option_target,
+    crate::types::Decimal
+);
 
 #[inline(always)]
 pub(super) fn generic_field_type<'a>(
@@ -242,6 +380,38 @@ pub(super) fn generic_field_type<'a>(
             "{owner} field metadata is missing generic type at index {index}"
         ))
     })
+}
+
+pub enum CodecReadType {
+    Field(FieldType),
+    TypeInfo(Rc<crate::TypeInfo>),
+}
+
+enum ElementReadType {
+    Direct,
+    Field(FieldType),
+    TypeInfo(Rc<crate::TypeInfo>),
+}
+
+#[inline(always)]
+fn element_read_type<T, C>(
+    context: &mut ReadContext,
+    read_type: CodecReadType,
+) -> Result<ElementReadType, Error>
+where
+    T: 'static,
+    C: Codec<T>,
+{
+    match read_type {
+        CodecReadType::Field(field_type) => Ok(ElementReadType::Field(field_type)),
+        CodecReadType::TypeInfo(type_info) => {
+            if C::type_info_exact(context, &type_info)? {
+                Ok(ElementReadType::Direct)
+            } else {
+                Ok(ElementReadType::TypeInfo(type_info))
+            }
+        }
+    }
 }
 
 #[inline(always)]
@@ -314,10 +484,16 @@ pub trait Codec<T: 'static>: 'static {
         local_field_type: &FieldType,
         remote_field_type: &FieldType,
     ) -> Result<Option<T>, Error> {
-        if !field_types_compatible(local_field_type, remote_field_type) {
-            return Ok(None);
+        if field_types_compatible(local_field_type, remote_field_type)
+            || local_field_type.compatible_shape_match(remote_field_type)
+        {
+            return Self::read_field_with_type(context, remote_field_type).map(Some);
         }
-        Self::read_field_with_type(context, remote_field_type).map(Some)
+        super::scalar_conversion::read_scalar_field::<T, Self>(
+            context,
+            local_field_type,
+            remote_field_type,
+        )
     }
 
     fn write_data(value: &T, context: &mut WriteContext) -> Result<(), Error>;
@@ -330,6 +506,22 @@ pub trait Codec<T: 'static>: 'static {
         _remote_data_type: &FieldType,
     ) -> Result<T, Error> {
         Self::read_data(context)
+    }
+
+    #[inline(always)]
+    fn read_data_with_type_info(
+        context: &mut ReadContext,
+        type_info: &Rc<crate::TypeInfo>,
+    ) -> Result<T, Error> {
+        Self::read_with_type_info(context, RefMode::None, type_info.clone())
+    }
+
+    #[inline(always)]
+    fn type_info_exact(
+        _context: &ReadContext,
+        _type_info: &Rc<crate::TypeInfo>,
+    ) -> Result<bool, Error> {
+        Ok(false)
     }
 
     fn read_field_with_type(
@@ -362,6 +554,11 @@ pub trait Codec<T: 'static>: 'static {
     fn write_type_info(context: &mut WriteContext) -> Result<(), Error>;
 
     fn read_type_info(context: &mut ReadContext) -> Result<(), Error>;
+
+    #[inline(always)]
+    fn read_type_info_value(context: &mut ReadContext) -> Result<CodecReadType, Error> {
+        Self::read_type_info_as_field_type(context).map(CodecReadType::Field)
+    }
 
     #[inline(always)]
     fn read_type_info_as_field_type(context: &mut ReadContext) -> Result<FieldType, Error> {
@@ -449,6 +646,28 @@ where
     }
 
     #[inline(always)]
+    fn read_data_with_type_info(
+        context: &mut ReadContext,
+        type_info: &Rc<crate::TypeInfo>,
+    ) -> Result<T, Error> {
+        if Self::type_info_exact(context, type_info)? {
+            return T::fory_read_data(context);
+        }
+        T::fory_read_with_type_info(context, RefMode::None, type_info.clone())
+    }
+
+    #[inline(always)]
+    fn type_info_exact(
+        context: &ReadContext,
+        type_info: &Rc<crate::TypeInfo>,
+    ) -> Result<bool, Error> {
+        if !context.is_compatible() {
+            return Ok(false);
+        }
+        Ok(type_info.has_exact_local_schema())
+    }
+
+    #[inline(always)]
     fn read_field_with_type(
         context: &mut ReadContext,
         remote_field_type: &FieldType,
@@ -502,6 +721,15 @@ where
     #[inline(always)]
     fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         T::fory_read_type_info(context)
+    }
+
+    #[inline(always)]
+    fn read_type_info_value(context: &mut ReadContext) -> Result<CodecReadType, Error> {
+        if context.is_compatible() {
+            return context.read_any_type_info().map(CodecReadType::TypeInfo);
+        }
+        T::fory_read_type_info(context)?;
+        Self::field_type(context.get_type_resolver()).map(CodecReadType::Field)
     }
 
     #[inline(always)]
@@ -893,6 +1121,24 @@ where
     }
 
     #[inline(always)]
+    fn read_compatible(
+        context: &mut ReadContext,
+        local_field_type: &FieldType,
+        remote_field_type: &FieldType,
+    ) -> Result<Option<Option<T>>, Error> {
+        if field_types_compatible(local_field_type, remote_field_type)
+            || local_field_type.compatible_shape_match(remote_field_type)
+        {
+            return Self::read_field_with_type(context, remote_field_type).map(Some);
+        }
+        super::scalar_conversion::read_scalar_option_field::<T>(
+            context,
+            local_field_type,
+            remote_field_type,
+        )
+    }
+
+    #[inline(always)]
     fn write_with_mode(
         value: &Option<T>,
         context: &mut WriteContext,
@@ -1272,6 +1518,78 @@ signed_int_codec!(
 
 pub struct VecCodec<T, C, const NULLABLE: bool, const TRACK_REF: bool>(PhantomData<(T, C)>);
 
+#[inline(always)]
+fn check_sequence_len(context: &ReadContext, len: u32) -> Result<usize, Error> {
+    let len = len as usize;
+    context.reader.check_bound(len)?;
+    Ok(len)
+}
+
+#[inline(always)]
+fn read_vec_items<T, C>(
+    context: &mut ReadContext,
+    len: u32,
+    has_null: bool,
+    read_type: Option<ElementReadType>,
+) -> Result<Vec<T>, Error>
+where
+    T: 'static,
+    C: Codec<T>,
+{
+    let mut vec = Vec::with_capacity(check_sequence_len(context, len)?);
+    match read_type {
+        None | Some(ElementReadType::Direct) => {
+            if has_null {
+                for _ in 0..len {
+                    let flag = context.reader.read_i8()?;
+                    if flag == RefFlag::Null as i8 {
+                        vec.push(C::default_value());
+                    } else {
+                        vec.push(C::read_data(context)?);
+                    }
+                }
+            } else {
+                for _ in 0..len {
+                    vec.push(C::read_data(context)?);
+                }
+            }
+        }
+        Some(ElementReadType::Field(field_type)) => {
+            if has_null {
+                for _ in 0..len {
+                    let flag = context.reader.read_i8()?;
+                    if flag == RefFlag::Null as i8 {
+                        vec.push(C::default_value());
+                    } else {
+                        vec.push(C::read_data_with_type(context, &field_type)?);
+                    }
+                }
+            } else {
+                for _ in 0..len {
+                    vec.push(C::read_data_with_type(context, &field_type)?);
+                }
+            }
+        }
+        Some(ElementReadType::TypeInfo(type_info)) => {
+            if has_null {
+                for _ in 0..len {
+                    let flag = context.reader.read_i8()?;
+                    if flag == RefFlag::Null as i8 {
+                        vec.push(C::default_value());
+                    } else {
+                        vec.push(C::read_data_with_type_info(context, &type_info)?);
+                    }
+                }
+            } else {
+                for _ in 0..len {
+                    vec.push(C::read_data_with_type_info(context, &type_info)?);
+                }
+            }
+        }
+    }
+    Ok(vec)
+}
+
 impl<T, C, const NULLABLE: bool, const TRACK_REF: bool> Codec<Vec<T>>
     for VecCodec<T, C, NULLABLE, TRACK_REF>
 where
@@ -1319,7 +1637,9 @@ where
         local_field_type: &FieldType,
         remote_field_type: &FieldType,
     ) -> Result<Option<Vec<T>>, Error> {
-        if local_field_type.compatible_fingerprint() == remote_field_type.compatible_fingerprint() {
+        if field_types_compatible(local_field_type, remote_field_type)
+            || local_field_type.compatible_shape_match(remote_field_type)
+        {
             return Self::read_field_with_type(context, remote_field_type).map(Some);
         }
         if local_field_type.type_id == remote_field_type.type_id
@@ -1383,13 +1703,6 @@ where
         if len == 0 {
             return Ok(Vec::new());
         }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(Error::size_limit_exceeded(format!(
-                "Collection size {} exceeds limit {}",
-                len, max
-            )));
-        }
         let header = context.reader.read_u8()?;
         if C::is_polymorphic() || C::is_shared_ref() {
             let field_type = Self::field_type(context.get_type_resolver())?;
@@ -1400,26 +1713,14 @@ where
                 "Type inconsistent, target collection element type is not polymorphic",
             ));
         }
-        if (header & DECL_ELEMENT_TYPE) == 0 {
-            C::read_type_info(context)?;
-        }
-        let has_null = (header & HAS_NULL) != 0;
-        let mut vec = Vec::with_capacity(len as usize);
-        if has_null {
-            for _ in 0..len {
-                let flag = context.reader.read_i8()?;
-                if flag == RefFlag::Null as i8 {
-                    vec.push(C::default_value());
-                } else {
-                    vec.push(C::read_data(context)?);
-                }
-            }
+        let read_type = if (header & DECL_ELEMENT_TYPE) == 0 {
+            let codec_read_type = C::read_type_info_value(context)?;
+            Some(element_read_type::<T, C>(context, codec_read_type)?)
         } else {
-            for _ in 0..len {
-                vec.push(C::read_data(context)?);
-            }
-        }
-        Ok(vec)
+            None
+        };
+        let has_null = (header & HAS_NULL) != 0;
+        read_vec_items::<T, C>(context, len, has_null, read_type)
     }
 
     fn read_data_with_type(
@@ -1429,13 +1730,6 @@ where
         let len = context.reader.read_var_u32()?;
         if len == 0 {
             return Ok(Vec::new());
-        }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(Error::size_limit_exceeded(format!(
-                "Collection size {} exceeds limit {}",
-                len, max
-            )));
         }
         let header = context.reader.read_u8()?;
         let has_null = (header & HAS_NULL) != 0;
@@ -1449,29 +1743,13 @@ where
                 "Type inconsistent, target collection element type is not polymorphic",
             ));
         }
-        let owned_element_type;
-        let element_type = if is_declared {
-            generic_field_type(remote_field_type, 0, "list")?
+        let read_type = if is_declared {
+            ElementReadType::Field(generic_field_type(remote_field_type, 0, "list")?.clone())
         } else {
-            owned_element_type = C::read_type_info_as_field_type(context)?;
-            &owned_element_type
+            let codec_read_type = C::read_type_info_value(context)?;
+            element_read_type::<T, C>(context, codec_read_type)?
         };
-        let mut vec = Vec::with_capacity(len as usize);
-        if has_null {
-            for _ in 0..len {
-                let flag = context.reader.read_i8()?;
-                if flag == RefFlag::Null as i8 {
-                    vec.push(C::default_value());
-                } else {
-                    vec.push(C::read_data_with_type(context, element_type)?);
-                }
-            }
-        } else {
-            for _ in 0..len {
-                vec.push(C::read_data_with_type(context, element_type)?);
-            }
-        }
-        Ok(vec)
+        read_vec_items::<T, C>(context, len, has_null, Some(read_type))
     }
 
     #[inline(always)]
@@ -1606,7 +1884,7 @@ where
         local_field_type: &FieldType,
         remote_field_type: &FieldType,
     ) -> Result<Option<Vec<T>>, Error> {
-        if local_field_type.compatible_fingerprint() == remote_field_type.compatible_fingerprint() {
+        if field_types_compatible(local_field_type, remote_field_type) {
             return Self::read_field_with_type(context, remote_field_type).map(Some);
         }
         read_primitive_array_vec_compatible_mismatch::<T>(
@@ -1803,7 +2081,7 @@ where
     } else {
         RefMode::None
     };
-    let mut vec = Vec::with_capacity(len as usize);
+    let mut vec = Vec::with_capacity(check_sequence_len(context, len)?);
     if is_same_type {
         if C::is_polymorphic() {
             if is_declared {
@@ -1995,13 +2273,6 @@ where
         if len == 0 {
             return Ok(HashMap::new());
         }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(Error::size_limit_exceeded(format!(
-                "Map size {} exceeds limit {}",
-                len, max
-            )));
-        }
         if KC::is_polymorphic()
             || KC::is_shared_ref()
             || VC::is_polymorphic()
@@ -2021,13 +2292,6 @@ where
         if len == 0 {
             return Ok(HashMap::new());
         }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(Error::size_limit_exceeded(format!(
-                "Map size {} exceeds limit {}",
-                len, max
-            )));
-        }
         if KC::is_polymorphic()
             || KC::is_shared_ref()
             || VC::is_polymorphic()
@@ -2035,7 +2299,7 @@ where
         {
             return read_map_dynamic::<K, V, KC, VC>(context, len, remote_field_type);
         }
-        let mut map = HashMap::with_capacity(len as usize);
+        let mut map = HashMap::with_capacity(check_map_len(context, len)?);
         let mut len_counter = 0;
         while len_counter < len {
             let header = context.reader.read_u8()?;
@@ -2174,6 +2438,13 @@ struct MapEntryReadType {
     type_info: Option<std::rc::Rc<crate::TypeInfo>>,
 }
 
+#[inline(always)]
+fn check_map_len(context: &ReadContext, len: u32) -> Result<usize, Error> {
+    let len = len as usize;
+    context.reader.check_bound(len)?;
+    Ok(len)
+}
+
 fn read_map_static<K, V, KC, VC>(
     context: &mut ReadContext,
     len: u32,
@@ -2184,7 +2455,7 @@ where
     KC: Codec<K>,
     VC: Codec<V>,
 {
-    let mut map = HashMap::with_capacity(len as usize);
+    let mut map = HashMap::with_capacity(check_map_len(context, len)?);
     let mut len_counter = 0u32;
     while len_counter < len {
         let header = context.reader.read_u8()?;
@@ -2290,7 +2561,7 @@ where
     KC: Codec<K>,
     VC: Codec<V>,
 {
-    let mut map = HashMap::with_capacity(len as usize);
+    let mut map = HashMap::with_capacity(check_map_len(context, len)?);
     let mut len_counter = 0u32;
     while len_counter < len {
         let header = context.reader.read_u8()?;
@@ -2748,11 +3019,11 @@ macro_rules! any_codec {
 
 any_codec!(AnyBoxCodec, Box<dyn Any>);
 any_codec!(AnyRcCodec, Rc<dyn Any>);
-any_codec!(AnyArcCodec, Arc<dyn Any>);
+any_codec!(AnyArcCodec, Arc<dyn Any + Send + Sync>);
 
 #[cfg(test)]
 mod tests {
-    use super::field_types_compatible;
+    use super::{compatible_field_pair, field_types_compatible};
     use crate::meta::FieldType;
     use crate::type_id;
 
@@ -2762,9 +3033,84 @@ mod tests {
         let uint8_array = FieldType::new(type_id::UINT8_ARRAY, false, vec![]);
         let int8_array = FieldType::new(type_id::INT8_ARRAY, false, vec![]);
 
-        assert!(field_types_compatible(&bytes, &uint8_array));
-        assert!(field_types_compatible(&uint8_array, &bytes));
+        assert!(!field_types_compatible(&bytes, &uint8_array));
+        assert!(!field_types_compatible(&uint8_array, &bytes));
+        assert!(compatible_field_pair(&bytes, &uint8_array));
+        assert!(compatible_field_pair(&uint8_array, &bytes));
         assert!(!field_types_compatible(&bytes, &int8_array));
         assert!(!field_types_compatible(&int8_array, &bytes));
+        assert!(!compatible_field_pair(&bytes, &int8_array));
+        assert!(!compatible_field_pair(&int8_array, &bytes));
+    }
+
+    #[test]
+    fn scalar_ref_tracking_rules() {
+        let bool_value = FieldType::new(type_id::BOOL, false, vec![]);
+        let ref_bool = FieldType::new_with_ref(type_id::BOOL, false, true, vec![]);
+
+        assert!(!field_types_compatible(&bool_value, &ref_bool));
+        assert!(!field_types_compatible(&ref_bool, &bool_value));
+        assert!(field_types_compatible(&ref_bool, &ref_bool));
+        let nullable_ref_bool = FieldType::new_with_ref(type_id::BOOL, true, true, vec![]);
+        assert!(field_types_compatible(
+            &nullable_ref_bool,
+            &nullable_ref_bool
+        ));
+        assert!(!field_types_compatible(&ref_bool, &nullable_ref_bool));
+        assert!(!field_types_compatible(&nullable_ref_bool, &ref_bool));
+
+        let fixed_i32 = FieldType::new(type_id::INT32, false, vec![]);
+        let var_i32 = FieldType::new(type_id::VARINT32, false, vec![]);
+        assert!(!field_types_compatible(&fixed_i32, &var_i32));
+        assert!(compatible_field_pair(&fixed_i32, &var_i32));
+
+        let ref_fixed_i32 = FieldType::new_with_ref(type_id::INT32, false, true, vec![]);
+        let ref_var_i32 = FieldType::new_with_ref(type_id::VARINT32, false, true, vec![]);
+        assert!(!field_types_compatible(&ref_fixed_i32, &ref_var_i32));
+    }
+
+    #[test]
+    fn compatible_field_pair_rules() {
+        let int8 = FieldType::new(type_id::INT8, false, vec![]);
+        let int16 = FieldType::new(type_id::INT16, false, vec![]);
+        assert!(compatible_field_pair(&int16, &int8));
+
+        let ref_int16 = FieldType::new_with_ref(type_id::INT16, false, true, vec![]);
+        assert!(!compatible_field_pair(&ref_int16, &int8));
+
+        let list_i8 = FieldType::new(type_id::LIST, false, vec![int8]);
+        let list_i16 = FieldType::new(type_id::LIST, false, vec![int16]);
+        assert!(!compatible_field_pair(&list_i16, &list_i8));
+
+        let list_fixed_i32 = FieldType::new(
+            type_id::LIST,
+            false,
+            vec![FieldType::new(type_id::INT32, false, vec![])],
+        );
+        let list_var_i32 = FieldType::new(
+            type_id::LIST,
+            false,
+            vec![FieldType::new(type_id::VARINT32, false, vec![])],
+        );
+        assert!(!field_types_compatible(&list_fixed_i32, &list_var_i32));
+        assert!(!compatible_field_pair(&list_fixed_i32, &list_var_i32));
+
+        let list_nullable_i32 = FieldType::new(
+            type_id::LIST,
+            false,
+            vec![FieldType::new(type_id::INT32, true, vec![])],
+        );
+        assert!(!field_types_compatible(&list_fixed_i32, &list_nullable_i32));
+        assert!(compatible_field_pair(&list_fixed_i32, &list_nullable_i32));
+
+        let int32_array = FieldType::new(type_id::INT32_ARRAY, false, vec![]);
+        let list_i32 = FieldType::new(
+            type_id::LIST,
+            false,
+            vec![FieldType::new(type_id::INT32, false, vec![])],
+        );
+        assert!(compatible_field_pair(&list_i32, &int32_array));
+        assert!(compatible_field_pair(&list_nullable_i32, &int32_array));
+        assert!(compatible_field_pair(&int32_array, &list_i32));
     }
 }

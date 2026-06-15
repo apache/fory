@@ -19,17 +19,16 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ C# supports xlang serialization with other Fory runtimes.
+Apache Fory™ C# supports xlang serialization with other Fory implementations.
 
-## Xlang Runtime
+## Xlang Fory Instance
 
 C# always writes and reads the xlang frame header. There is no mode switch, so interoperability code
-only needs to configure the remaining runtime behavior such as compatibility mode and reference
+only needs to configure the remaining settings such as compatibility mode and reference
 tracking.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 ```
 
@@ -44,7 +43,6 @@ public sealed class Person
 }
 
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 
 fory.Register<Person>(100);
@@ -52,10 +50,10 @@ fory.Register<Person>(100);
 
 Use the same ID mapping on all languages.
 
-## Register by Namespace/Type Name
+## Register by Name
 
 ```csharp
-fory.Register<Person>("com.example", "Person");
+fory.Register<Person>("com.example.Person");
 ```
 
 ## Xlang Example
@@ -120,7 +118,7 @@ C# `List<T>` maps to Fory `list<T>`. Use the schema marker
 ## Best Practices
 
 1. Keep type IDs stable and documented.
-2. Enable `Compatible(true)` for rolling upgrades.
+2. Keep compatible mode enabled for rolling upgrades.
 3. Register all user types on both read/write peers.
 4. Validate integration with real payload round trips.
 

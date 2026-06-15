@@ -17,7 +17,8 @@
 
 [build-system]
 requires = [
-    "setuptools>=45",
+    "setuptools>=78.1.1; python_version >= '3.9'",
+    "setuptools>=70.0.0,<78.1.1; python_version < '3.9'",
     "wheel",
     "Cython>=0.29",
     "numpy",
@@ -59,7 +60,8 @@ all = ["pyarrow"]
 dev = [
     "ruff",
     "pytest",
-    "setuptools>=45",
+    "setuptools>=78.1.1; python_version >= '3.9'",
+    "setuptools>=70.0.0,<78.1.1; python_version < '3.9'",
     "wheel",
     "Cython>=0.29",
     "numpy",

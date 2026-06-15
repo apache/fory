@@ -21,7 +21,7 @@ package org.apache.fory.format.encoder;
 
 import static org.apache.fory.type.TypeUtils.getRawType;
 
-import java.awt.List;
+import java.util.List;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.ClosureVisitable;
 import org.apache.fory.codegen.Code;

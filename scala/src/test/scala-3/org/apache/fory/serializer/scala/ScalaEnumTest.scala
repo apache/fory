@@ -67,15 +67,18 @@ class ScalaEnumTest extends AnyWordSpec with Matchers {
       val writer = ForyScala.builder()
         .withXlang(true)
         .withRefTracking(false)
-          .requireClassRegistration(true)
+        .requireClassRegistration(true)
         .build()
       val reader = ForyScala.builder()
         .withXlang(true)
         .withRefTracking(false)
-          .requireClassRegistration(true)
+        .requireClassRegistration(true)
         .build()
-      ScalaSerializers.registerEnum(writer, classOf[StableColorV1], "scala_test", "StableColor")
-      ScalaSerializers.registerEnum(reader, classOf[StableColorV2], "scala_test", "StableColor")
+      ScalaSerializers.registerEnum(writer, classOf[StableColorV1], "scala_test.StableColor")
+      ScalaSerializers.registerEnum(reader, classOf[StableColorV2], "scala_test.StableColor")
+      intercept[IllegalArgumentException] {
+        ScalaSerializers.registerEnum(writer, classOf[ColorEnum], "scala_test", "Bad.Name")
+      }
 
       reader.deserialize(writer.serialize(StableColorV1.Green)) shouldBe StableColorV2.Green
     }

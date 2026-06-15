@@ -44,6 +44,7 @@ from pyfory._fory import (
 _WINDOWS = os.name == "nt"
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+from pyfory.types import TypeId
 
 
 def _import_validated_module(policy, module_name, is_local=False):
@@ -63,11 +64,9 @@ def _resolve_validated_module_qualname(policy, module_name, qualname):
     return obj
 
 
-def _check_collection_size(read_context, size, kind):
+def _check_non_negative_size(size, kind):
     if size < 0:
         raise ValueError(f"{kind} size {size} must be non-negative")
-    if size > read_context.max_collection_size:
-        raise ValueError(f"{kind} size {size} exceeds the configured limit of {read_context.max_collection_size}")
 
 
 def _is_local_qualname(module_name, qualname):
@@ -116,6 +115,11 @@ def _validate_function_value(policy, func, is_local):
         raise TypeError(f"Function serializer resolved non-callable object {func!r}")
     policy.validate_function(func, is_local=is_local)
     return func
+
+
+def _authorize_callable_materialization(policy, callable_type, **kwargs):
+    if policy is not DEFAULT_POLICY:
+        policy.authorize_instantiation(callable_type, **kwargs)
 
 
 def _bind_static_method(obj, method_name):
@@ -265,7 +269,6 @@ else:
 
     _RuntimeNumpy1DArraySerializer = None
 
-from pyfory.types import TypeId
 from pyfory.annotation import (
     BFloat16Array,
     BoolArray,
@@ -365,10 +368,10 @@ def _write_decimal_parts(write_context, scale: int, unscaled: int):
     magnitude = abs(unscaled)
     if magnitude == 0:
         raise ValueError("Zero must use the small decimal encoding")
-    payload = magnitude.to_bytes((magnitude.bit_length() + 7) // 8, "little", signed=False)
-    meta = (len(payload) << 1) | (1 if unscaled < 0 else 0)
+    magnitude_bytes = magnitude.to_bytes((magnitude.bit_length() + 7) // 8, "little", signed=False)
+    meta = (len(magnitude_bytes) << 1) | (1 if unscaled < 0 else 0)
     _write_var_uint64(write_context, (meta << 1) | 1)
-    write_context.write_bytes(payload)
+    write_context.write_bytes(magnitude_bytes)
 
 
 def _write_var_uint64(write_context, value: int):
@@ -390,10 +393,10 @@ def _read_decimal_parts(read_context) -> Tuple[int, int]:
     length = meta >> 1
     if length <= 0:
         raise ValueError(f"Invalid decimal magnitude length {length}")
-    payload = read_context.read_bytes(length)
-    if payload[-1] == 0:
-        raise ValueError("Non-canonical decimal payload: trailing zero byte")
-    magnitude = int.from_bytes(payload, "little", signed=False)
+    magnitude_bytes = read_context.read_bytes(length)
+    if magnitude_bytes[-1] == 0:
+        raise ValueError("Non-canonical decimal magnitude bytes: trailing zero byte")
+    magnitude = int.from_bytes(magnitude_bytes, "little", signed=False)
     if magnitude == 0:
         raise ValueError("Big decimal encoding must not represent zero")
     return scale, -magnitude if sign else magnitude
@@ -722,87 +725,6 @@ class ForyArrayFieldSerializer(Serializer):
         return self.wrapper_serializer.read(buffer)
 
 
-class CompatibleArrayToListFieldSerializer(Serializer):
-    def __init__(self, type_resolver, remote_array_serializer, elem_serializer):
-        super().__init__(type_resolver, list)
-        self.remote_array_serializer = remote_array_serializer
-        self.elem_serializer = elem_serializer
-        self.need_to_write_ref = False
-
-    def write(self, buffer, value):
-        raise TypeError("compatible array-to-list field serializer is read-only")
-
-    def read(self, read_context):
-        return list(self.remote_array_serializer.read(read_context))
-
-
-class CompatibleListToArrayFieldSerializer(Serializer):
-    def __init__(self, type_resolver, target_serializer, elem_serializer, field_name=None):
-        super().__init__(type_resolver, target_serializer.type_)
-        self.target_serializer = target_serializer
-        self.elem_serializer = elem_serializer
-        self.field_name = field_name or "<array>"
-        self.need_to_write_ref = False
-
-    def write(self, buffer, value):
-        raise TypeError("compatible list-to-array field serializer is read-only")
-
-    def _empty_target(self):
-        if isinstance(self.target_serializer, ForyArrayFieldSerializer):
-            return self.target_serializer.wrapper_type()
-        if isinstance(self.target_serializer, PyArraySerializer):
-            return array.array(self.target_serializer.typecode)
-        if np is not None and _is_numpy_1d_array_serializer(self.target_serializer):
-            return np.empty(0, dtype=self.target_serializer.dtype)
-        raise TypeError(f"Field {self.field_name!r} has unsupported array target serializer {type(self.target_serializer)!r}")
-
-    def _new_target(self, length):
-        if isinstance(self.target_serializer, ForyArrayFieldSerializer):
-            return self.target_serializer.wrapper_type()
-        if isinstance(self.target_serializer, PyArraySerializer):
-            return array.array(self.target_serializer.typecode)
-        if np is not None and _is_numpy_1d_array_serializer(self.target_serializer):
-            return np.empty(length, dtype=self.target_serializer.dtype)
-        raise TypeError(f"Field {self.field_name!r} has unsupported array target serializer {type(self.target_serializer)!r}")
-
-    def read(self, read_context):
-        from pyfory.collection import (
-            COLL_HAS_NULL,
-            COLL_IS_DECL_ELEMENT_TYPE,
-            COLL_IS_SAME_TYPE,
-            COLL_TRACKING_REF,
-        )
-        from pyfory.error import TypeNotCompatibleError
-
-        length = read_context.read_var_uint32()
-        if length > read_context.max_collection_size:
-            raise ValueError(f"Collection size {length} exceeds the configured limit of {read_context.max_collection_size}")
-        if length == 0:
-            return self._empty_target()
-        collect_flag = read_context.read_int8()
-        if (collect_flag & (COLL_HAS_NULL | COLL_TRACKING_REF)) != 0:
-            raise TypeNotCompatibleError(
-                f"Field {self.field_name!r} cannot read nullable or ref-tracked list elements as array<T>",
-            )
-        if (collect_flag & (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE)) != (COLL_IS_SAME_TYPE | COLL_IS_DECL_ELEMENT_TYPE):
-            raise TypeNotCompatibleError(
-                f"Field {self.field_name!r} requires declared same-type list elements for array<T> compatible read",
-            )
-
-        target = self._new_target(length)
-        append = None if np is not None and _is_numpy_1d_array_serializer(self.target_serializer) else target.append
-        for index in range(length):
-            item = read_context.read_no_ref(serializer=self.elem_serializer)
-            try:
-                if append is None:
-                    target[index] = item
-                else:
-                    append(item)
-            except (TypeError, ValueError, OverflowError) as exc:
-                raise type(exc)(f"{self.field_name}[{index}] invalid for {type(target).__name__}: {exc}") from exc
-        return target
-
-
 class DynamicPyArraySerializer(Serializer):
     """Serializer for dynamic Python arrays that handles any typecode."""
 
@@ -1006,15 +928,16 @@ class PythonNDArraySerializer(NDArraySerializer):
         read_context.set_reader_index(reader_index)
         dtype = np.dtype(read_context.read_string())
         ndim = read_context.read_var_uint32()
-        _check_collection_size(read_context, ndim, "ndarray dimension")
+        _check_non_negative_size(ndim, "ndarray dimension")
         shape = tuple(read_context.read_var_uint32() for _ in range(ndim))
         if dtype.kind == "O":
             length = read_context.read_varint32()
-            _check_collection_size(read_context, length, "ndarray object")
+            _check_non_negative_size(length, "ndarray object")
+            read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)
         for dim in shape:
-            _check_collection_size(read_context, dim, "ndarray dimension")
+            _check_non_negative_size(dim, "ndarray dimension")
         fory_buf = read_context.read_buffer_object()
         if isinstance(fory_buf, memoryview):
             return np.frombuffer(fory_buf, dtype=dtype).reshape(shape)
@@ -1404,7 +1327,7 @@ class TypeSerializer(Serializer):
         ref_id = read_context.last_preserved_ref_id()
 
         num_bases = read_context.read_var_uint32()
-        _check_collection_size(read_context, num_bases, "local class base")
+        _check_non_negative_size(num_bases, "local class base")
         bases = tuple(read_context.read_ref() for _ in range(num_bases))
         read_context.policy.authorize_instantiation(type, module=module, qualname=qualname, bases=bases)
         cls = type(name, bases, {})
@@ -1412,7 +1335,7 @@ class TypeSerializer(Serializer):
         read_context.policy.validate_class(cls, is_local=True)
 
         num_class_methods = read_context.read_var_uint32()
-        _check_collection_size(read_context, num_class_methods, "local class method")
+        _check_non_negative_size(num_class_methods, "local class method")
         for _ in range(num_class_methods):
             attr_name = read_context.read_string()
             func = read_context.read_ref()
@@ -1585,9 +1508,10 @@ class FunctionSerializer(Serializer):
 
         func_type_id = read_context.read_int8()
         if func_type_id == 0:
+            policy = read_context.policy
+            _authorize_callable_materialization(policy, types.MethodType)
             self_obj = read_context.read_ref()
             method_name = read_context.read_string()
-            policy = read_context.policy
             if policy is DEFAULT_POLICY:
                 return getattr(self_obj, method_name)
             return _resolve_validated_bound_method(policy, self_obj, method_name, is_local=_is_local_receiver(self_obj))
@@ -1600,7 +1524,15 @@ class FunctionSerializer(Serializer):
 
         module = read_context.read_string()
         qualname = read_context.read_string()
-        mod = _import_validated_module(read_context.policy, module, is_local=_is_local_qualname(module, qualname))
+        policy = read_context.policy
+        mod = _import_validated_module(policy, module, is_local=_is_local_qualname(module, qualname))
+        _authorize_callable_materialization(
+            policy,
+            types.FunctionType,
+            module=module,
+            qualname=qualname,
+            is_local=True,
+        )
         name = qualname.rsplit(".")[-1]
 
         marshalled_code = read_context.read_bytes_and_size()
@@ -1610,7 +1542,7 @@ class FunctionSerializer(Serializer):
         defaults = None
         if has_defaults:
             num_defaults = read_context.read_var_uint32()
-            _check_collection_size(read_context, num_defaults, "function default")
+            _check_non_negative_size(num_defaults, "function default")
             default_values = []
             for _ in range(num_defaults):
                 default_values.append(read_context.read_ref())
@@ -1618,7 +1550,7 @@ class FunctionSerializer(Serializer):
 
         has_closure = read_context.read_bool()
         num_freevars = read_context.read_var_uint32()
-        _check_collection_size(read_context, num_freevars, "function closure")
+        _check_non_negative_size(num_freevars, "function closure")
         closure = None
 
         closure_values = []
@@ -1629,7 +1561,7 @@ class FunctionSerializer(Serializer):
             closure = tuple(types.CellType(value) for value in closure_values)
 
         num_freevars = read_context.read_var_uint32()
-        _check_collection_size(read_context, num_freevars, "function free variable")
+        _check_non_negative_size(num_freevars, "function free variable")
         freevars = []
         for _ in range(num_freevars):
             freevars.append(read_context.read_string())
@@ -1690,8 +1622,9 @@ class NativeFuncMethodSerializer(Serializer):
             )
             func = _validate_function_value(read_context.policy, func, is_local=_is_local_callable(func))
         else:
-            obj = read_context.read_ref()
             policy = read_context.policy
+            _authorize_callable_materialization(policy, types.MethodType, method_name=name)
+            obj = read_context.read_ref()
             if policy is DEFAULT_POLICY:
                 func = getattr(obj, name)
             else:
@@ -1715,6 +1648,7 @@ class MethodSerializer(Serializer):
         write_context.write_string(method_name)
 
     def read(self, read_context):
+        _authorize_callable_materialization(read_context.policy, self.cls)
         instance = read_context.read_ref()
         method_name = read_context.read_string()
 
@@ -1763,8 +1697,7 @@ class ObjectSerializer(Serializer):
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
-        if num_fields > read_context.max_collection_size:
-            raise ValueError(f"object field size {num_fields} exceeds the configured limit of {read_context.max_collection_size}")
+        _check_non_negative_size(num_fields, "object field")
         state = {}
         for _ in range(num_fields):
             field_name = read_context.read_string()
@@ -1781,8 +1714,7 @@ class _DefaultPolicyObjectSerializer(ObjectSerializer):
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
-        if num_fields > read_context.max_collection_size:
-            raise ValueError(f"object field size {num_fields} exceeds the configured limit of {read_context.max_collection_size}")
+        _check_non_negative_size(num_fields, "object field")
         for _ in range(num_fields):
             field_name = read_context.read_string()
             field_value = read_context.read_ref()

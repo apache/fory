@@ -50,10 +50,10 @@ Uint8List _decimalMagnitudeToCanonicalLittleEndian(BigInt magnitude) {
   return Uint8List.fromList(bytes);
 }
 
-BigInt _decimalMagnitudeFromCanonicalLittleEndian(Uint8List payload) {
+BigInt _decimalMagnitudeFromCanonicalLittleEndian(Uint8List magnitudeBytes) {
   var magnitude = BigInt.zero;
-  for (var index = payload.length - 1; index >= 0; index -= 1) {
-    magnitude = (magnitude << 8) | BigInt.from(payload[index]);
+  for (var index = magnitudeBytes.length - 1; index >= 0; index -= 1) {
+    magnitude = (magnitude << 8) | BigInt.from(magnitudeBytes[index]);
   }
   return magnitude;
 }
@@ -132,22 +132,13 @@ final class BinarySerializer extends Serializer<Uint8List> {
   }
 
   static void writePayload(WriteContext context, Uint8List value) {
-    if (value.length > context.config.maxBinarySize) {
-      throw StateError(
-        'Binary payload exceeds ${context.config.maxBinarySize} bytes.',
-      );
-    }
     context.buffer.writeVarUint32(value.length);
     context.buffer.writeBytes(value);
   }
 
   static Uint8List readPayload(ReadContext context) {
     final size = context.buffer.readVarUint32();
-    if (size > context.config.maxBinarySize) {
-      throw StateError(
-        'Binary payload exceeds ${context.config.maxBinarySize} bytes.',
-      );
-    }
+    context.buffer.checkReadableBytes(size);
     return context.buffer.copyBytes(size);
   }
 }
@@ -178,11 +169,13 @@ final class DecimalSerializer extends Serializer<Decimal> {
       return;
     }
 
-    final payload = _decimalMagnitudeToCanonicalLittleEndian(unscaled.abs());
+    final magnitudeBytes = _decimalMagnitudeToCanonicalLittleEndian(
+      unscaled.abs(),
+    );
     final sign = unscaled.isNegative ? 1 : 0;
-    final meta = (payload.length << 1) | sign;
+    final meta = (magnitudeBytes.length << 1) | sign;
     buffer.writeVarUint64(Uint64((meta << 1) | 1));
-    buffer.writeBytes(payload);
+    buffer.writeBytes(magnitudeBytes);
   }
 
   static Decimal readPayload(ReadContext context) {
@@ -198,13 +191,16 @@ final class DecimalSerializer extends Serializer<Decimal> {
     if (length <= 0) {
       throw StateError('Invalid decimal magnitude length $length.');
     }
-    final payload = context.buffer.copyBytes(length);
-    if (payload[length - 1] == 0) {
+    context.buffer.checkReadableBytes(length);
+    final magnitudeBytes = context.buffer.copyBytes(length);
+    if (magnitudeBytes[length - 1] == 0) {
       throw StateError(
-        'Non-canonical decimal payload: trailing zero byte.',
+        'Non-canonical decimal magnitude bytes: trailing zero byte.',
       );
     }
-    final magnitude = _decimalMagnitudeFromCanonicalLittleEndian(payload);
+    final magnitude = _decimalMagnitudeFromCanonicalLittleEndian(
+      magnitudeBytes,
+    );
     if (magnitude == BigInt.zero) {
       throw StateError('Big decimal encoding must not represent zero.');
     }

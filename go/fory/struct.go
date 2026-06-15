@@ -2314,74 +2314,30 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 	buf := ctx.Buffer()
 	ptr := unsafe.Pointer(value.UnsafeAddr())
 	err := ctx.Err()
-	readField := func(field *FieldInfo) {
-		if field.Meta.FieldIndex < 0 {
+	for i := 0; i < len(s.fields); i++ {
+		field := &s.fields[i]
+		switch field.ReadAction {
+		case remoteFieldReadSkip:
 			s.skipField(ctx, field)
-			return
-		}
-
-		// Fast path for fixed-size primitive types (no ref flag from remote schema)
-		if isFixedSizePrimitive(field.DispatchId) {
-			fieldPtr := unsafe.Add(ptr, field.Offset)
-			optInfo := optionalInfo{}
-			if field.Kind == FieldKindOptional {
-				optInfo = field.Meta.OptionalInfo
+			if ctx.HasError() {
+				return
 			}
-			switch field.DispatchId {
-			case PrimitiveBoolDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadBool(err))
-			case PrimitiveInt8DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadInt8(err))
-			case PrimitiveUint8DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint8(buf.ReadInt8(err)))
-			case PrimitiveInt16DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadInt16(err))
-			case PrimitiveUint16DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadUint16(err))
-			case PrimitiveInt32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadInt32(err))
-			case PrimitiveUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadUint32(err))
-			case PrimitiveInt64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadInt64(err))
-			case PrimitiveUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadUint64(err))
-			case PrimitiveFloat32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadFloat32(err))
-			case PrimitiveFloat64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadFloat64(err))
-			case PrimitiveFloat16DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadUint16(err))
+			continue
+		case remoteFieldReadExactFixed:
+			i = readExactFixedPrimitiveRun(ctx, s.fields, i, ptr) - 1
+			continue
+		case remoteFieldReadExactVarint:
+			i = readExactVarintPrimitiveRun(ctx, s.fields, i, ptr) - 1
+			continue
+		case remoteFieldReadCompatibleScalar:
+			readCompatibleScalarField(ctx, field, unsafe.Add(ptr, field.Offset))
+			if ctx.HasError() {
+				return
 			}
-			return
-		}
-
-		// Fast path for varint primitive types (no ref flag from remote schema)
-		if isVarintPrimitive(field.DispatchId) && !fieldHasNonPrimitiveSerializer(field) {
-			fieldPtr := unsafe.Add(ptr, field.Offset)
-			optInfo := optionalInfo{}
-			if field.Kind == FieldKindOptional {
-				optInfo = field.Meta.OptionalInfo
-			}
-			switch field.DispatchId {
-			case PrimitiveVarint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
-			case PrimitiveVarint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
-			case PrimitiveVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
-			case PrimitiveVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
-			case PrimitiveTaggedInt64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
-			case PrimitiveTaggedUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
-			case PrimitiveIntDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
-			case PrimitiveUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
-			}
-			return
+			continue
+		case remoteFieldReadExactRemaining:
+			s.readRemainingField(ctx, ptr, field, value)
+			continue
 		}
 
 		fieldPtr := unsafe.Add(ptr, field.Offset)
@@ -2390,13 +2346,12 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			optInfo = field.Meta.OptionalInfo
 		}
 
-		// Handle nullable fixed-size primitives (read ref flag + fixed bytes)
-		// These have Nullable=true but use fixed encoding, not varint
-		if isNullableFixedSizePrimitive(field.DispatchId) {
+		switch field.ReadAction {
+		case remoteFieldReadExactNullableFixed:
 			refFlag := buf.ReadInt8(err)
 			if refFlag == NullFlag {
 				clearFieldValue(field.Kind, fieldPtr, optInfo)
-				return
+				continue
 			}
 			// Read fixed-size value based on dispatch ID
 			switch field.DispatchId {
@@ -2425,15 +2380,12 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableFloat16DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadUint16(err))
 			}
-			return
-		}
-
-		// Handle nullable varint primitives (read ref flag + varint)
-		if isNullableVarintPrimitive(field.DispatchId) {
+			continue
+		case remoteFieldReadExactNullableVarint:
 			refFlag := buf.ReadInt8(err)
 			if refFlag == NullFlag {
 				clearFieldValue(field.Kind, fieldPtr, optInfo)
-				return
+				continue
 			}
 			// Read varint value based on dispatch ID
 			switch field.DispatchId {
@@ -2454,14 +2406,12 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableUintDispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 			}
-			return
-		}
-		if isEnumField(field) {
+			continue
+		case remoteFieldReadExactEnum:
 			readEnumFieldUnsafe(ctx, field, fieldPtr)
-			return
+			continue
 		}
 
-		// Slow path for non-primitives (all need ref flag per xlang spec)
 		fieldValue := value.Field(field.Meta.FieldIndex)
 		if field.Serializer != nil {
 			// Use pre-computed RefMode and WriteType from field initialization
@@ -2469,15 +2419,260 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 		} else {
 			ctx.ReadValue(fieldValue, RefModeTracking, true)
 		}
-	}
-
-	for i := range s.fields {
-		field := &s.fields[i]
-		readField(field)
 		if ctx.HasError() {
 			return
 		}
 	}
+	if ctx.HasError() {
+		return
+	}
+}
+
+func computeRemoteFieldReadAction(field *FieldInfo) remoteFieldReadAction {
+	if field.Meta.FieldIndex < 0 {
+		return remoteFieldReadSkip
+	}
+	if field.Meta.CompatibleScalar != nil {
+		return remoteFieldReadCompatibleScalar
+	}
+	if field.Meta.CompatibleScalar == nil &&
+		field.Meta.FieldIndex >= 0 &&
+		isFixedSizePrimitive(field.DispatchId) {
+		return remoteFieldReadExactFixed
+	}
+	if field.Meta.CompatibleScalar == nil &&
+		field.Meta.FieldIndex >= 0 &&
+		isVarintPrimitive(field.DispatchId) &&
+		!fieldHasNonPrimitiveSerializer(field) {
+		return remoteFieldReadExactVarint
+	}
+	if field.Meta.ExactSchema && !isPrimitiveFieldGroupType(field.Meta.TypeId) {
+		return remoteFieldReadExactRemaining
+	}
+	if isNullableFixedSizePrimitive(field.DispatchId) {
+		return remoteFieldReadExactNullableFixed
+	}
+	if isNullableVarintPrimitive(field.DispatchId) {
+		return remoteFieldReadExactNullableVarint
+	}
+	if isEnumField(field) {
+		return remoteFieldReadExactEnum
+	}
+	return remoteFieldReadSerializer
+}
+
+func canReadFixedRun(field *FieldInfo) bool {
+	return field.ReadAction == remoteFieldReadExactFixed
+}
+
+func readExactFixedPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int, ptr unsafe.Pointer) int {
+	end := start
+	size := 0
+	for end < len(fields) {
+		field := &fields[end]
+		if !canReadFixedRun(field) {
+			break
+		}
+		size += getFixedSizeByDispatchId(field.DispatchId)
+		end++
+	}
+	buf := ctx.Buffer()
+	var errOut Error
+	if !buf.CheckReadable(size, &errOut) {
+		ctx.SetError(errOut)
+		return end
+	}
+	baseOffset := buf.ReaderIndex()
+	data := buf.GetData()
+	bufOffset := baseOffset
+	for i := start; i < end; i++ {
+		field := &fields[i]
+		fieldPtr := unsafe.Add(ptr, field.Offset)
+		optInfo := optionalInfo{}
+		if field.Kind == FieldKindOptional {
+			optInfo = field.Meta.OptionalInfo
+		}
+		switch field.DispatchId {
+		case PrimitiveBoolDispatchId:
+			storeFieldValue(field.Kind, fieldPtr, optInfo, data[bufOffset] != 0)
+			bufOffset++
+		case PrimitiveInt8DispatchId:
+			storeFieldValue(field.Kind, fieldPtr, optInfo, int8(data[bufOffset]))
+			bufOffset++
+		case PrimitiveUint8DispatchId:
+			storeFieldValue(field.Kind, fieldPtr, optInfo, data[bufOffset])
+			bufOffset++
+		case PrimitiveInt16DispatchId:
+			var v int16
+			if isLittleEndian {
+				v = *(*int16)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = int16(binary.LittleEndian.Uint16(data[bufOffset:]))
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 2
+		case PrimitiveUint16DispatchId:
+			var v uint16
+			if isLittleEndian {
+				v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = binary.LittleEndian.Uint16(data[bufOffset:])
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 2
+		case PrimitiveInt32DispatchId:
+			var v int32
+			if isLittleEndian {
+				v = *(*int32)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = int32(binary.LittleEndian.Uint32(data[bufOffset:]))
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 4
+		case PrimitiveUint32DispatchId:
+			var v uint32
+			if isLittleEndian {
+				v = *(*uint32)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = binary.LittleEndian.Uint32(data[bufOffset:])
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 4
+		case PrimitiveInt64DispatchId:
+			var v int64
+			if isLittleEndian {
+				v = *(*int64)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = int64(binary.LittleEndian.Uint64(data[bufOffset:]))
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 8
+		case PrimitiveUint64DispatchId:
+			var v uint64
+			if isLittleEndian {
+				v = *(*uint64)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = binary.LittleEndian.Uint64(data[bufOffset:])
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 8
+		case PrimitiveFloat32DispatchId:
+			var v float32
+			if isLittleEndian {
+				v = *(*float32)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = math.Float32frombits(binary.LittleEndian.Uint32(data[bufOffset:]))
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 4
+		case PrimitiveFloat64DispatchId:
+			var v float64
+			if isLittleEndian {
+				v = *(*float64)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = math.Float64frombits(binary.LittleEndian.Uint64(data[bufOffset:]))
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 8
+		case PrimitiveFloat16DispatchId:
+			var v uint16
+			if isLittleEndian {
+				v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
+			} else {
+				v = binary.LittleEndian.Uint16(data[bufOffset:])
+			}
+			storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			bufOffset += 2
+		}
+	}
+	buf.SetReaderIndex(baseOffset + size)
+	return end
+}
+
+func canReadVarintRun(field *FieldInfo) bool {
+	return field.ReadAction == remoteFieldReadExactVarint
+}
+
+func readExactVarintPrimitiveRun(ctx *ReadContext, fields []FieldInfo, start int, ptr unsafe.Pointer) int {
+	end := start
+	maxSize := 0
+	plainVarint32Values := true
+	for end < len(fields) {
+		field := &fields[end]
+		if !canReadVarintRun(field) {
+			break
+		}
+		maxSize += getVarintMaxSizeByDispatchId(field.DispatchId)
+		if field.DispatchId != PrimitiveVarint32DispatchId || field.Kind != FieldKindValue {
+			plainVarint32Values = false
+		}
+		end++
+	}
+	buf := ctx.Buffer()
+	err := ctx.Err()
+	useUnsafe := buf.remaining() >= maxSize+8
+	if plainVarint32Values {
+		for i := start; i < end; i++ {
+			field := &fields[i]
+			if useUnsafe {
+				*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.UnsafeReadVarint32(err)
+			} else {
+				*(*int32)(unsafe.Add(ptr, field.Offset)) = buf.ReadVarint32(err)
+			}
+		}
+		return end
+	}
+	for i := start; i < end; i++ {
+		field := &fields[i]
+		fieldPtr := unsafe.Add(ptr, field.Offset)
+		optInfo := optionalInfo{}
+		if field.Kind == FieldKindOptional {
+			optInfo = field.Meta.OptionalInfo
+		}
+		switch field.DispatchId {
+		case PrimitiveVarint32DispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint32(err))
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
+			}
+		case PrimitiveVarint64DispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint64())
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
+			}
+		case PrimitiveVarUint32DispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint32(err))
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
+			}
+		case PrimitiveVarUint64DispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint64())
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
+			}
+		case PrimitiveTaggedInt64DispatchId:
+			storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
+		case PrimitiveTaggedUint64DispatchId:
+			storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+		case PrimitiveIntDispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.UnsafeReadVarint64()))
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
+			}
+		case PrimitiveUintDispatchId:
+			if useUnsafe {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.UnsafeReadVarUint64()))
+			} else {
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
+			}
+		}
+	}
+	return end
 }
 
 // skipField skips a field that doesn't exist or is incompatible

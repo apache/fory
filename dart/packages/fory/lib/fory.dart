@@ -43,6 +43,7 @@ export 'src/codegen/generated_support.dart';
 export 'src/config.dart';
 export 'src/context/read_context.dart';
 export 'src/context/write_context.dart';
+export 'src/exceptions.dart';
 export 'src/fory.dart';
 export 'src/meta/type_ids.dart';
 export 'src/serializer/enum_serializer.dart';

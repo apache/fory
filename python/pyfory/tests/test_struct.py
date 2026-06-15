@@ -20,15 +20,24 @@ from dataclasses import dataclass
 import datetime
 import decimal
 import enum
+import math
 from typing import Dict, Any, List, Set, Optional, Tuple
 
 import pytest
 import typing
 
+try:
+    from typing_extensions import get_args
+except ImportError:
+    from typing import get_args
+
 import pyfory
 from pyfory import Fory
-from pyfory.error import TypeUnregisteredError
-from pyfory.struct import DataClassSerializer, build_default_values_factory
+from pyfory.error import ForyInvalidDataError, TypeNotCompatibleError, TypeUnregisteredError
+from pyfory.resolver import NOT_NULL_VALUE_FLAG, REF_VALUE_FLAG
+from pyfory.serializer import FixedInt32Serializer
+from pyfory.struct import DataClassSerializer, build_default_values_factory, compute_struct_fingerprint
+from pyfory.type_util import get_type_hints
 from pyfory.types import TypeId
 
 
@@ -37,12 +46,20 @@ def ser_de(fory, obj):
     return fory.deserialize(binary)
 
 
-def compat_ser_de(remote_cls, local_cls, value, type_id):
+def compat_ser_de(remote_cls, local_cls, value, type_id, ref=False):
+    writer = Fory(xlang=True, compatible=True, ref=ref)
+    reader = Fory(xlang=True, compatible=True, ref=ref)
+    writer.register_type(remote_cls, type_id=type_id)
+    reader.register_type(local_cls, type_id=type_id)
+    return reader.deserialize(writer.serialize(value))
+
+
+def compat_ser(remote_cls, local_cls, value, type_id):
     writer = Fory(xlang=True, compatible=True, ref=False)
     reader = Fory(xlang=True, compatible=True, ref=False)
     writer.register_type(remote_cls, type_id=type_id)
     reader.register_type(local_cls, type_id=type_id)
-    return reader.deserialize(writer.serialize(value))
+    return writer, reader, writer.serialize(value)
 
 
 @dataclass
@@ -64,10 +81,97 @@ class ComplexObject:
     f10: Optional[Dict[pyfory.Int32, pyfory.Float64]] = None
 
 
+@dataclass
+class TypingFriendlyScalarObject:
+    byte_value: pyfory.Int8 = 0
+    int_value: pyfory.Int32 = 0
+    fixed_int_value: pyfory.FixedInt32 = 0
+    float_value: pyfory.Float32 = 0.0
+    double_value: pyfory.Float64 = 0.0
+    values: List[pyfory.Int16] = dataclasses.field(default_factory=list)
+    dense_values: pyfory.Array[pyfory.Int32] = dataclasses.field(default_factory=pyfory.Int32Array)
+
+
+def _plain_numeric_hint_base(type_hint):
+    args = get_args(type_hint)
+    if args and args[0] in (int, float):
+        return args[0]
+    return type_hint
+
+
+def test_scalar_markers_are_typing_friendly_aliases():
+    plain_hints = typing.get_type_hints(TypingFriendlyScalarObject)
+    assert _plain_numeric_hint_base(plain_hints["byte_value"]) is int
+    assert _plain_numeric_hint_base(plain_hints["int_value"]) is int
+    assert _plain_numeric_hint_base(plain_hints["float_value"]) is float
+    assert _plain_numeric_hint_base(plain_hints["double_value"]) is float
+
+    fory_hints = get_type_hints(TypingFriendlyScalarObject)
+    assert get_args(fory_hints["byte_value"]) == (int, TypeId.INT8)
+    assert get_args(fory_hints["int_value"]) == (int, TypeId.VARINT32)
+    assert get_args(fory_hints["fixed_int_value"]) == (int, TypeId.INT32)
+    assert get_args(fory_hints["float_value"]) == (float, TypeId.FLOAT32)
+    assert get_args(fory_hints["double_value"]) == (float, TypeId.FLOAT64)
+
+
+def test_scalar_marker_typeids_drive_struct_fields():
+    fory = Fory(xlang=True, compatible=True, ref=False)
+    fory.register_type(TypingFriendlyScalarObject, type_id=702)
+    serializer = fory.type_resolver.get_serializer(TypingFriendlyScalarObject)
+    field_infos = {field_info.name: field_info for field_info in serializer._field_infos}
+
+    assert field_infos["byte_value"].field_type.type_id == TypeId.INT8
+    assert field_infos["int_value"].field_type.type_id == TypeId.VARINT32
+    assert field_infos["fixed_int_value"].field_type.type_id == TypeId.INT32
+    assert field_infos["float_value"].field_type.type_id == TypeId.FLOAT32
+    assert field_infos["double_value"].field_type.type_id == TypeId.FLOAT64
+    assert field_infos["values"].field_type.element_type.type_id == TypeId.INT16
+    assert field_infos["dense_values"].field_type.type_id == TypeId.INT32_ARRAY
+    fingerprint = compute_struct_fingerprint(
+        fory.type_resolver,
+        serializer._field_names,
+        serializer._serializers,
+        serializer._nullable_fields,
+        serializer._field_infos,
+    )
+    assert f"byte_value,{TypeId.INT8},0,0;" in fingerprint
+    assert f"fixed_int_value,{TypeId.INT32},0,0;" in fingerprint
+    assert f"float_value,{TypeId.FLOAT32},0,0;" in fingerprint
+    assert f"values,{TypeId.LIST},0,0[{TypeId.INT16},0,0];" in fingerprint
+
+    value = TypingFriendlyScalarObject(
+        byte_value=127,
+        int_value=2**31 - 1,
+        fixed_int_value=-(2**31),
+        float_value=1.5,
+        double_value=2.5,
+        values=[1, 2, 3],
+        dense_values=pyfory.Int32Array([4, 5, 6]),
+    )
+    assert ser_de(fory, value) == value
+
+
+def test_scalar_marker_resolves_registered_serializer():
+    fory = Fory(xlang=True, compatible=False, ref=True)
+    cases = [
+        (pyfory.Int8, TypeId.INT8, pyfory.ByteSerializer),
+        (pyfory.Int32, TypeId.VARINT32, pyfory.Int32Serializer),
+        (pyfory.FixedInt32, TypeId.INT32, FixedInt32Serializer),
+        (pyfory.Float32, TypeId.FLOAT32, pyfory.Float32Serializer),
+        (pyfory.Float64, TypeId.FLOAT64, pyfory.Float64Serializer),
+    ]
+    for marker, type_id, serializer_type in cases:
+        typeinfo = fory.type_resolver.get_type_info(marker)
+        assert typeinfo.cls == type_id
+        assert typeinfo.type_id == type_id
+        assert type(typeinfo.serializer) is serializer_type
+        assert typeinfo.serializer.need_to_write_ref is False
+
+
 def test_struct():
     fory = Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(SimpleObject, typename="SimpleObject")
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
+    fory.register_type(SimpleObject, name="SimpleObject")
+    fory.register_type(ComplexObject, name="example.ComplexObject")
     o = SimpleObject(f1={1: 1.0 / 3})
     assert ser_de(fory, o) == o
 
@@ -149,42 +253,350 @@ class LocalNestedSignedDefault:
     values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]] = dataclasses.field(default_factory=lambda: {-1: [-1]})
 
 
-def test_compatible_read_accepts_nested_same_domain_integer_encoding():
-    result = compat_ser_de(
-        RemoteNestedFixedTagged,
-        LocalNestedVarint,
-        RemoteNestedFixedTagged(values={1: [2, -3], -4: [5]}),
-        702,
-    )
-    assert result == LocalNestedVarint(values={1: [2, -3], -4: [5]})
+@dataclass
+class RemoteNestedNullable:
+    values: Dict[pyfory.Int32, List[Optional[pyfory.Int32]]] = dataclasses.field(default_factory=dict)
 
 
-def test_compatible_read_validates_nested_integer_narrowing():
-    result = compat_ser_de(
-        RemoteNestedWide,
-        LocalNestedNarrow,
-        RemoteNestedWide(values={1: [2, -3]}),
-        703,
-    )
-    assert result == LocalNestedNarrow(values={1: [2, -3]})
-
-    result = compat_ser_de(
-        RemoteNestedWide,
-        LocalNestedNarrow,
-        RemoteNestedWide(values={1: [1 << 40]}),
-        704,
-    )
-    assert result == LocalNestedNarrow()
+@dataclass
+class LocalNestedRequired:
+    values: Dict[pyfory.Int32, List[pyfory.Int32]] = dataclasses.field(default_factory=dict)
 
 
-def test_compatible_read_skips_nested_signed_unsigned_mismatch():
-    result = compat_ser_de(
-        RemoteNestedUnsigned,
-        LocalNestedSignedDefault,
-        RemoteNestedUnsigned(values={1: [2]}),
-        705,
-    )
-    assert result == LocalNestedSignedDefault()
+@dataclass
+class RemoteNestedRef:
+    values: Dict[pyfory.Int32, List[pyfory.Ref[str]]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
+class LocalNestedPlain:
+    values: Dict[pyfory.Int32, List[str]] = dataclasses.field(default_factory=dict)
+
+
+@dataclass
+class RemoteStringScalar:
+    value: str = ""
+
+
+@dataclass
+class LocalBoolScalar:
+    value: bool = False
+
+
+@dataclass
+class RemoteBoolScalar:
+    value: bool = False
+
+
+@dataclass
+class RemoteOptionalBoolScalar:
+    value: Optional[bool] = None
+
+
+@dataclass
+class RemoteOptionalRefBoolScalar:
+    value: Optional[bool] = pyfory.field(default=True, ref=True)
+
+
+@dataclass
+class LocalStringScalar:
+    value: str = ""
+
+
+@dataclass
+class RemoteInt64Scalar:
+    value: pyfory.Int64 = 0
+
+
+@dataclass
+class RemoteInt32Scalar:
+    value: pyfory.Int32 = 0
+
+
+@dataclass
+class LocalInt8Scalar:
+    value: pyfory.Int8 = 0
+
+
+@dataclass
+class RemoteUInt64Scalar:
+    value: pyfory.UInt64 = 0
+
+
+@dataclass
+class LocalInt64Scalar:
+    value: pyfory.Int64 = 0
+
+
+@dataclass
+class LocalDecimalScalar:
+    value: decimal.Decimal = decimal.Decimal(0)
+
+
+@dataclass
+class RemoteDecimalScalar:
+    value: decimal.Decimal = decimal.Decimal(0)
+
+
+@dataclass
+class LocalFloat32Scalar:
+    value: pyfory.Float32 = 0.0
+
+
+@dataclass
+class RemoteFloat64Scalar:
+    value: pyfory.Float64 = 0.0
+
+
+@dataclass
+class RemoteOptionalStringScalar:
+    value: Optional[str] = None
+
+
+@dataclass
+class RemoteTwoStringScalars:
+    flag: str = pyfory.field(default="", ref=True)
+    count: str = pyfory.field(default="", ref=True)
+
+
+@dataclass
+class RemoteRefBoolScalar:
+    value: bool = pyfory.field(default=False, ref=True)
+
+
+@dataclass
+class LocalRefBoolScalar:
+    value: bool = pyfory.field(default=False, ref=True)
+
+
+@dataclass
+class LocalOptionalRefBoolScalar:
+    value: Optional[bool] = pyfory.field(default=None, ref=True)
+
+
+@dataclass
+class RemoteRefFixedInt32Scalar:
+    value: pyfory.FixedInt32 = pyfory.field(default=0, ref=True)
+
+
+@dataclass
+class LocalRefInt32Scalar:
+    value: pyfory.Int32 = pyfory.field(default=0, ref=True)
+
+
+@dataclass
+class LocalBoolIntScalars:
+    flag: bool = False
+    count: pyfory.Int32 = 0
+
+
+def test_compatible_scalar_conversions():
+    assert compat_ser_de(RemoteStringScalar, LocalBoolScalar, RemoteStringScalar("true"), 720) == LocalBoolScalar(True)
+    assert compat_ser_de(RemoteStringScalar, LocalBoolScalar, RemoteStringScalar("0"), 721) == LocalBoolScalar(False)
+    assert compat_ser_de(RemoteBoolScalar, LocalStringScalar, RemoteBoolScalar(True), 722) == LocalStringScalar("true")
+    assert compat_ser_de(RemoteInt64Scalar, LocalBoolScalar, RemoteInt64Scalar(1), 723) == LocalBoolScalar(True)
+    assert compat_ser_de(RemoteBoolScalar, LocalInt8Scalar, RemoteBoolScalar(True), 724) == LocalInt8Scalar(1)
+    assert compat_ser_de(RemoteInt64Scalar, LocalInt8Scalar, RemoteInt64Scalar(127), 725) == LocalInt8Scalar(127)
+    assert compat_ser_de(RemoteUInt64Scalar, LocalInt64Scalar, RemoteUInt64Scalar(42), 726) == LocalInt64Scalar(42)
+    assert compat_ser_de(RemoteStringScalar, LocalFloat32Scalar, RemoteStringScalar("0.5"), 727) == LocalFloat32Scalar(0.5)
+    assert compat_ser_de(RemoteFloat64Scalar, LocalStringScalar, RemoteFloat64Scalar(-0.0), 728) == LocalStringScalar("-0.0")
+    assert compat_ser_de(RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("1.2300"), 729) == LocalDecimalScalar(decimal.Decimal("1.23"))
+    assert compat_ser_de(RemoteDecimalScalar, LocalInt64Scalar, RemoteDecimalScalar(decimal.Decimal("1.0")), 730) == LocalInt64Scalar(1)
+    assert compat_ser_de(RemoteInt64Scalar, LocalDecimalScalar, RemoteInt64Scalar(7), 731) == LocalDecimalScalar(decimal.Decimal(7))
+    digits_256 = "1" * 256
+    digit_bound = compat_ser_de(RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar(digits_256), 743)
+    assert digit_bound.value == decimal.Decimal(digits_256)
+    exponent_bound = compat_ser_de(RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("1e255"), 744)
+    assert len(str(int(exponent_bound.value))) == 256
+    result = compat_ser_de(RemoteStringScalar, LocalFloat32Scalar, RemoteStringScalar("-0e0"), 737)
+    assert result.value == 0.0
+    assert math.copysign(1.0, result.value) < 0.0
+
+
+def test_compatible_scalar_rejects_invalid_bool_payload():
+    _, reader, payload = compat_ser(RemoteBoolScalar, LocalStringScalar, RemoteBoolScalar(True), 745)
+    corrupted = bytearray(payload)
+    corrupted[-1] = 2
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(bytes(corrupted))
+
+
+def test_compatible_scalar_rejects_ref_value_flag():
+    _, reader, payload = compat_ser(RemoteOptionalStringScalar, LocalBoolScalar, RemoteOptionalStringScalar("1"), 746)
+    corrupted = bytearray(payload)
+    flag_offset = corrupted.rfind(bytes([NOT_NULL_VALUE_FLAG & 0xFF]))
+    assert flag_offset >= 0
+    corrupted[flag_offset] = REF_VALUE_FLAG & 0xFF
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(bytes(corrupted))
+
+
+def test_compatible_scalar_same_type_nullable_uses_strict_source_read():
+    _, reader, payload = compat_ser(RemoteOptionalBoolScalar, LocalBoolScalar, RemoteOptionalBoolScalar(True), 747)
+    corrupted = bytearray(payload)
+    flag_offset = corrupted.rfind(bytes([NOT_NULL_VALUE_FLAG & 0xFF]))
+    assert flag_offset >= 0
+    corrupted[flag_offset] = REF_VALUE_FLAG & 0xFF
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(bytes(corrupted))
+
+    corrupted = bytearray(payload)
+    corrupted[-1] = 2
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(bytes(corrupted))
+
+
+@pytest.mark.parametrize(
+    ("remote_cls", "local_cls", "value"),
+    [
+        (RemoteStringScalar, LocalBoolScalar, RemoteStringScalar("True")),
+        (RemoteInt64Scalar, LocalBoolScalar, RemoteInt64Scalar(2)),
+        (RemoteStringScalar, LocalInt64Scalar, RemoteStringScalar("01")),
+        (RemoteStringScalar, LocalInt64Scalar, RemoteStringScalar("1.5")),
+        (RemoteStringScalar, LocalFloat32Scalar, RemoteStringScalar("0.1")),
+        (RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("1" * 257)),
+        (RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("0." + "0" * 319)),
+        (RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("1e1000000")),
+        (RemoteStringScalar, LocalDecimalScalar, RemoteStringScalar("1e256")),
+        (RemoteInt64Scalar, LocalInt8Scalar, RemoteInt64Scalar(128)),
+        (RemoteDecimalScalar, LocalInt64Scalar, RemoteDecimalScalar(decimal.Decimal(1 << 63))),
+        (RemoteDecimalScalar, LocalStringScalar, RemoteDecimalScalar(decimal.Decimal((0, (1,), 256)))),
+        (RemoteFloat64Scalar, LocalStringScalar, RemoteFloat64Scalar(float("inf"))),
+    ],
+)
+def test_compatible_scalar_conversion_errors(remote_cls, local_cls, value):
+    _, reader, payload = compat_ser(remote_cls, local_cls, value, 732)
+    with pytest.raises(ForyInvalidDataError):
+        reader.deserialize(payload)
+
+
+def test_compatible_scalar_optional_composition():
+    assert compat_ser_de(RemoteOptionalStringScalar, LocalBoolScalar, RemoteOptionalStringScalar("false"), 733) == LocalBoolScalar(False)
+    assert compat_ser_de(RemoteOptionalStringScalar, LocalBoolScalar, RemoteOptionalStringScalar("1"), 734) == LocalBoolScalar(True)
+    assert compat_ser_de(RemoteOptionalStringScalar, LocalBoolScalar, RemoteOptionalStringScalar(None), 735) == LocalBoolScalar(False)
+
+
+def test_scalar_tracking_ref_is_not_converted():
+    writer = Fory(xlang=True, compatible=True, ref=True)
+    reader = Fory(xlang=True, compatible=True, ref=True)
+    writer.register_type(RemoteTwoStringScalars, type_id=738)
+    reader.register_type(LocalBoolIntScalars, type_id=738)
+    field_infos = writer.type_resolver.get_serializer(RemoteTwoStringScalars)._field_infos
+    assert [field_info.runtime_ref_tracking for field_info in field_infos] == [True, True]
+    assert [field_info.field_type.is_tracking_ref for field_info in field_infos] == [True, True]
+
+    shared = "".join(["", "1"])
+    with pytest.raises(TypeNotCompatibleError):
+        reader.deserialize(writer.serialize(RemoteTwoStringScalars(shared, shared)))
+
+
+def test_scalar_tracking_ref_rules():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteRefBoolScalar, LocalBoolScalar, RemoteRefBoolScalar(True), 739, ref=True)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteBoolScalar, LocalRefBoolScalar, RemoteBoolScalar(True), 740, ref=True)
+    assert compat_ser_de(RemoteRefBoolScalar, LocalRefBoolScalar, RemoteRefBoolScalar(True), 741, ref=True) == LocalRefBoolScalar(True)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(RemoteRefFixedInt32Scalar, LocalRefInt32Scalar, RemoteRefFixedInt32Scalar(7), 742, ref=True)
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteOptionalRefBoolScalar,
+            LocalRefBoolScalar,
+            RemoteOptionalRefBoolScalar(True),
+            748,
+            ref=True,
+        )
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteRefBoolScalar,
+            LocalOptionalRefBoolScalar,
+            RemoteRefBoolScalar(True),
+            749,
+            ref=True,
+        )
+    assert compat_ser_de(
+        RemoteOptionalRefBoolScalar,
+        LocalOptionalRefBoolScalar,
+        RemoteOptionalRefBoolScalar(True),
+        750,
+        ref=True,
+    ) == LocalOptionalRefBoolScalar(True)
+
+
+def test_same_schema_scalar_read_is_direct():
+    from pyfory.converter import CompatibleScalarFieldSerializer
+
+    fory = Fory(xlang=True, compatible=True, ref=False)
+    fory.register_type(RemoteStringScalar, type_id=736)
+    serializer = fory.type_resolver.get_serializer(RemoteStringScalar)
+    assert all(not isinstance(field_serializer, CompatibleScalarFieldSerializer) for field_serializer in serializer._serializers)
+    value = RemoteStringScalar("true")
+    assert fory.deserialize(fory.serialize(value)) == value
+
+
+def test_integer_widening_direct():
+    from pyfory.converter import CompatibleScalarFieldSerializer
+
+    writer, reader, payload = compat_ser(RemoteInt32Scalar, LocalInt64Scalar, RemoteInt32Scalar(42), 751)
+    assert reader.deserialize(payload) == LocalInt64Scalar(42)
+    type_info = next(iter(reader.type_resolver._meta_shared_type_info.values()))
+    field_serializer = type_info.serializer._serializers[0]
+    assert type(field_serializer).__name__ == "Int32Serializer"
+    assert not isinstance(field_serializer, CompatibleScalarFieldSerializer)
+
+    writer, reader, payload = compat_ser(RemoteInt64Scalar, LocalInt8Scalar, RemoteInt64Scalar(42), 752)
+    assert reader.deserialize(payload) == LocalInt8Scalar(42)
+    type_info = next(iter(reader.type_resolver._meta_shared_type_info.values()))
+    assert isinstance(type_info.serializer._serializers[0], CompatibleScalarFieldSerializer)
+
+
+def test_nested_integer_encoding_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedFixedTagged,
+            LocalNestedVarint,
+            RemoteNestedFixedTagged(values={1: [2, -3], -4: [5]}),
+            702,
+        )
+
+
+def test_nested_integer_narrowing_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedWide,
+            LocalNestedNarrow,
+            RemoteNestedWide(values={1: [2, -3]}),
+            703,
+        )
+
+
+def test_nested_signed_unsigned_rejected():
+    with pytest.raises(TypeNotCompatibleError):
+        compat_ser_de(
+            RemoteNestedUnsigned,
+            LocalNestedSignedDefault,
+            RemoteNestedUnsigned(values={1: [2]}),
+            705,
+        )
+
+
+def test_nested_nullable_scalar_compatible():
+    assert compat_ser_de(
+        RemoteNestedNullable,
+        LocalNestedRequired,
+        RemoteNestedNullable(values={1: [2]}),
+        706,
+    ) == LocalNestedRequired(values={1: [2]})
+
+
+def test_nested_ref_tracking_compatible():
+    assert compat_ser_de(
+        RemoteNestedRef,
+        LocalNestedPlain,
+        RemoteNestedRef(values={1: ["one"]}),
+        707,
+        ref=True,
+    ) == LocalNestedPlain(values={1: ["one"]})
 
 
 @dataclass
@@ -199,7 +611,7 @@ class ChildClass1(SuperClass1):
 
 
 def test_strict():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     obj = ChildClass1(f1="a", f2=-10, f3={"a": -10.0, "b": 1 / 3})
     with pytest.raises(TypeUnregisteredError):
         fory.serialize(obj)
@@ -209,7 +621,7 @@ def test_inheritance():
     type_hints = typing.get_type_hints(ChildClass1)
     print(type_hints)
     assert type_hints.keys() == {"f1", "f2", "f3"}
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     obj = ChildClass1(f1="a", f2=-10, f3={"a": -10.0, "b": 1 / 3})
     assert ser_de(fory, obj) == obj
     assert type(fory.type_resolver.get_serializer(ChildClass1)) is pyfory.DataClassSerializer
@@ -360,14 +772,14 @@ def test_duration_and_decimal_fields_use_declared_serializers():
     ],
 )
 def test_bool_field_coercion(value, expected):
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     result = ser_de(fory, BoolCoercionObject(value))
     assert result.b is expected
 
 
 def test_bool_field_coercion_numpy_bool():
     np = pytest.importorskip("numpy")
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     result_true = ser_de(fory, BoolCoercionObject(np.bool_(True)))
     assert result_true.b is True
@@ -398,15 +810,15 @@ def test_bool_field_coercion_numpy_bool():
     ],
 )
 def test_numeric_serializer_need_to_write_ref_disabled(numeric_type):
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     serializer = fory.type_resolver.get_serializer(numeric_type)
     assert serializer.need_to_write_ref is False
 
 
 def test_data_class_serializer_xlang():
     fory = Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
-    fory.register_type(DataClassObject, typename="example.TestDataClassObject")
+    fory.register_type(ComplexObject, name="example.ComplexObject")
+    fory.register_type(DataClassObject, name="example.TestDataClassObject")
 
     complex_data = ComplexObject(
         f1="nested_str",
@@ -463,7 +875,7 @@ def test_data_class_serializer_xlang():
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_dataclass_with_typed_tuple_field(track_ref):
-    fory = Fory(xlang=False, ref=track_ref, strict=False)
+    fory = Fory(xlang=False, ref=track_ref, strict=False, compatible=False)
     obj = TupleFieldObject(bar=("a", 1))
     assert ser_de(fory, obj) == obj
 
@@ -471,7 +883,7 @@ def test_dataclass_with_typed_tuple_field(track_ref):
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_xlang_dataclass_tuple_field(track_ref):
     fory = Fory(xlang=True, compatible=False, ref=track_ref, strict=False)
-    fory.register_type(XlangTupleFieldObject, typename="example.XlangTupleFieldObject")
+    fory.register_type(XlangTupleFieldObject, name="example.XlangTupleFieldObject")
     obj = XlangTupleFieldObject(bar=("a", 1))
     result = ser_de(fory, obj)
     assert result == obj
@@ -481,7 +893,7 @@ def test_xlang_dataclass_tuple_field(track_ref):
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_xlang_nested_tuple_container_fields(track_ref):
     fory = Fory(xlang=True, compatible=False, ref=track_ref, strict=False)
-    fory.register_type(XlangNestedTupleObject, typename="example.XlangNestedTupleObject")
+    fory.register_type(XlangNestedTupleObject, name="example.XlangNestedTupleObject")
     obj = XlangNestedTupleObject(
         tuple_field=([1, 2], {"a": 1, "b": 2}),
         list_of_tuples=[("a", 1), ("b", 2)],
@@ -509,8 +921,8 @@ def test_struct_evolving_override():
         f1: pyfory.Int32 = 0
 
     fory = Fory(xlang=True, compatible=True)
-    fory.register_type(EvolvingStruct, namespace="test", typename="EvolvingStruct")
-    fory.register_type(FixedStruct, namespace="test", typename="FixedStruct")
+    fory.register_type(EvolvingStruct, name="test.EvolvingStruct")
+    fory.register_type(FixedStruct, name="test.FixedStruct")
     evolving_info = fory.type_resolver.get_type_info(EvolvingStruct)
     fixed_info = fory.type_resolver.get_type_info(FixedStruct)
     assert evolving_info.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
@@ -531,8 +943,8 @@ def test_data_class_serializer_xlang_serializer():
     fory = Fory(xlang=True, compatible=False, ref=True)
 
     # Register types first
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
-    fory.register_type(DataClassObject, typename="example.TestDataClassObject")
+    fory.register_type(ComplexObject, name="example.ComplexObject")
+    fory.register_type(DataClassObject, name="example.TestDataClassObject")
 
     # trigger lazy serializer replace
     fory.serialize(DataClassObject.create())
@@ -574,11 +986,11 @@ def test_data_class_serializer_xlang_serializer():
 def test_data_class_serializer_xlang_vs_non_xlang():
     """Test that xlang and non-xlang modes use the same dataclass serializer behavior."""
     fory_xlang = Fory(xlang=True, compatible=False, ref=True)
-    fory_python = Fory(xlang=False, ref=True, strict=False)
+    fory_python = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     # Register types for xlang
-    fory_xlang.register_type(ComplexObject, typename="example.ComplexObject")
-    fory_xlang.register_type(DataClassObject, typename="example.TestDataClassObject")
+    fory_xlang.register_type(ComplexObject, name="example.ComplexObject")
+    fory_xlang.register_type(DataClassObject, name="example.TestDataClassObject")
 
     # trigger lazy serializer replace
     fory_xlang.serialize(DataClassObject.create())
@@ -616,7 +1028,7 @@ class MissingDefaultFactoryFields:
 
 
 def test_build_default_values_factory():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     type_hints = typing.get_type_hints(MissingDefaultFactoryFields)
     default_factories = build_default_values_factory(
         fory,
@@ -677,7 +1089,7 @@ class OptionalFieldsObject:
 def test_optional_fields(xlang, compatible):
     fory = Fory(xlang=xlang, ref=True, compatible=compatible, strict=False)
     if xlang:
-        fory.register_type(OptionalFieldsObject, typename="example.OptionalFieldsObject")
+        fory.register_type(OptionalFieldsObject, name="example.OptionalFieldsObject")
 
     obj_with_none = OptionalFieldsObject(f1=None, f2=None, f3=None, f4=42, f5="test")
     result = ser_de(fory, obj_with_none)
@@ -716,8 +1128,8 @@ class NestedOptionalObject:
 def test_nested_optional_fields(xlang, compatible):
     fory = Fory(xlang=xlang, ref=True, compatible=compatible, strict=False)
     if xlang:
-        fory.register_type(ComplexObject, typename="example.ComplexObject")
-        fory.register_type(NestedOptionalObject, typename="example.NestedOptionalObject")
+        fory.register_type(ComplexObject, name="example.ComplexObject")
+        fory.register_type(NestedOptionalObject, name="example.NestedOptionalObject")
 
     obj_with_none = NestedOptionalObject(f1=None, f2=None, f3="test")
     result = ser_de(fory, obj_with_none)
@@ -804,14 +1216,35 @@ class CompatibleRequiredDefaultsV2:
     f_dict: Dict[str, int]
 
 
+@dataclass
+class CompatibleListItemV1:
+    value: pyfory.Int32
+
+
+@dataclass
+class CompatibleListItemV2:
+    value: pyfory.Int64
+    added: str
+
+
+@dataclass
+class CompatibleListOwnerV1:
+    items: List[CompatibleListItemV1]
+
+
+@dataclass
+class CompatibleListOwnerV2:
+    items: List[CompatibleListItemV2]
+
+
 @pytest.mark.parametrize("xlang", [False, True])
 def test_compatible_mode_add_field(xlang):
     """Test that adding a field with default value works in compatible mode."""
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleV1, typename="example.Compatible")
-    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
+    fory_v1.register_type(CompatibleV1, name="example.Compatible")
+    fory_v2.register_type(CompatibleV2, name="example.Compatible")
 
     # V1 object serialized
     v1_obj = CompatibleV1(f1=100, f2="test", f3=3.14)
@@ -831,8 +1264,8 @@ def test_compatible_mode_remove_field(xlang):
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v3 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
-    fory_v3.register_type(CompatibleV3, typename="example.Compatible")
+    fory_v2.register_type(CompatibleV2, name="example.Compatible")
+    fory_v3.register_type(CompatibleV3, name="example.Compatible")
 
     # V2 object with all fields
     v2_obj = CompatibleV2(f1=200, f2="hello", f3=2.71, f4=True)
@@ -851,8 +1284,8 @@ def test_compatible_mode_bidirectional(xlang):
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleV1, typename="example.Compatible")
-    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
+    fory_v1.register_type(CompatibleV1, name="example.Compatible")
+    fory_v2.register_type(CompatibleV2, name="example.Compatible")
 
     # V1 -> V2
     v1_obj = CompatibleV1(f1=100, f2="test", f3=3.14)
@@ -877,8 +1310,8 @@ def test_compatible_mode_add_required_field_without_default_uses_zero_value(xlan
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleRequiredFieldV1, typename="example.CompatibleRequiredField")
-    fory_v2.register_type(CompatibleRequiredFieldV2, typename="example.CompatibleRequiredField")
+    fory_v1.register_type(CompatibleRequiredFieldV1, name="example.CompatibleRequiredField")
+    fory_v2.register_type(CompatibleRequiredFieldV2, name="example.CompatibleRequiredField")
 
     v1_binary = fory_v1.serialize(CompatibleRequiredFieldV1(f1=321))
     v2_result = fory_v2.deserialize(v1_binary)
@@ -899,8 +1332,8 @@ def test_compatible_mode_add_required_fields_use_type_defaults(xlang):
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleRequiredDefaultsV1, typename="example.CompatibleRequiredDefaults")
-    fory_v2.register_type(CompatibleRequiredDefaultsV2, typename="example.CompatibleRequiredDefaults")
+    fory_v1.register_type(CompatibleRequiredDefaultsV1, name="example.CompatibleRequiredDefaults")
+    fory_v2.register_type(CompatibleRequiredDefaultsV2, name="example.CompatibleRequiredDefaults")
 
     v1_binary = fory_v1.serialize(CompatibleRequiredDefaultsV1(f1=11))
     v2_result = fory_v2.deserialize(v1_binary)
@@ -914,6 +1347,44 @@ def test_compatible_mode_add_required_fields_use_type_defaults(xlang):
     assert v2_result.f_set == set()
     assert v2_result.f_dict == {}
     assert ser_de(fory_v2, v2_result) == v2_result
+
+
+def test_compatible_nested_list_struct():
+    writer = Fory(xlang=True, compatible=True, ref=False)
+    reader = Fory(xlang=True, compatible=True, ref=False)
+
+    writer.register_type(CompatibleListItemV1, type_id=501)
+    writer.register_type(CompatibleListOwnerV1, type_id=502)
+    reader.register_type(CompatibleListItemV2, type_id=501)
+    reader.register_type(CompatibleListOwnerV2, type_id=502)
+
+    decoded = reader.deserialize(writer.serialize(CompatibleListOwnerV1(items=[CompatibleListItemV1(123), CompatibleListItemV1(456)])))
+
+    assert isinstance(decoded, CompatibleListOwnerV2)
+    assert [item.value for item in decoded.items] == [123, 456]
+    assert [item.added for item in decoded.items] == ["", ""]
+
+
+@dataclass
+class CompatibleListStringField:
+    items: List[str]
+
+
+@dataclass
+class CompatibleListIntField:
+    items: List[pyfory.Int32]
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_incompatible_matched_field(xlang):
+    writer = Fory(xlang=xlang, compatible=True, ref=False)
+    reader = Fory(xlang=xlang, compatible=True, ref=False)
+    writer.register_type(CompatibleListStringField, name="example.CompatibleListField")
+    reader.register_type(CompatibleListIntField, name="example.CompatibleListField")
+
+    data = writer.serialize(CompatibleListStringField(items=["one", "two"]))
+    with pytest.raises(TypeNotCompatibleError):
+        reader.deserialize(data)
 
 
 @dataclass
@@ -937,8 +1408,8 @@ def test_compatible_mode_with_optional_fields(xlang):
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleWithOptional, typename="example.CompatibleOptional")
-    fory_v2.register_type(CompatibleWithOptionalV2, typename="example.CompatibleOptional")
+    fory_v1.register_type(CompatibleWithOptional, name="example.CompatibleOptional")
+    fory_v2.register_type(CompatibleWithOptionalV2, name="example.CompatibleOptional")
 
     # V1 with None values
     v1_obj = CompatibleWithOptional(f1=None, f2="test", f3=None)
@@ -986,8 +1457,8 @@ def test_compatible_mode_all_basic_types(xlang):
     fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
     fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
 
-    fory_v1.register_type(CompatibleAllTypes, typename="example.CompatibleAllTypes")
-    fory_v2.register_type(CompatibleAllTypesV2, typename="example.CompatibleAllTypes")
+    fory_v1.register_type(CompatibleAllTypes, name="example.CompatibleAllTypes")
+    fory_v2.register_type(CompatibleAllTypesV2, name="example.CompatibleAllTypes")
 
     v1_obj = CompatibleAllTypes(f_int=42, f_str="hello", f_float=3.14, f_bool=True, f_list=[1, 2, 3], f_dict={"a": 1, "b": 2})
     v1_binary = fory_v1.serialize(v1_obj)
@@ -1007,9 +1478,9 @@ def test_optional_compatible_mode_evolution():
     fory_v2 = Fory(xlang=True, ref=True, compatible=True)
     fory_v3 = Fory(xlang=True, ref=True, compatible=True)
 
-    fory_v1.register_type(OptionalV1, typename="example.OptionalVersioned")
-    fory_v2.register_type(OptionalV2, typename="example.OptionalVersioned")
-    fory_v3.register_type(OptionalV3, typename="example.OptionalVersioned")
+    fory_v1.register_type(OptionalV1, name="example.OptionalVersioned")
+    fory_v2.register_type(OptionalV2, name="example.OptionalVersioned")
+    fory_v3.register_type(OptionalV3, name="example.OptionalVersioned")
 
     v1_obj = OptionalV1(f1=100, f2="test", f3=[1, 2, 3])
     v1_binary = fory_v1.serialize(v1_obj)
@@ -1077,7 +1548,7 @@ class Zoo:
 
 def test_dynamic_with_inheritance():
     """Test dynamic=True allows polymorphic serialization with inheritance."""
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register_type(Animal)
     fory.register_type(Dog)
     fory.register_type(Zoo)
@@ -1101,9 +1572,9 @@ def test_dynamic_with_inheritance():
 def test_dynamic_with_inheritance_xlang():
     """Test dynamic=True allows polymorphic serialization in xlang mode."""
     fory = Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(Animal, typename="example.Animal")
-    fory.register_type(Dog, typename="example.Dog")
-    fory.register_type(Zoo, typename="example.Zoo")
+    fory.register_type(Animal, name="example.Animal")
+    fory.register_type(Dog, name="example.Dog")
+    fory.register_type(Zoo, name="example.Zoo")
 
     dog1 = Dog(name="Max", breed="Husky")
     dog2 = Dog(name="Luna", breed="Poodle")

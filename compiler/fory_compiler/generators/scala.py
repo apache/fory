@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.scala import ScalaServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -40,7 +41,103 @@ from fory_compiler.ir.construction import analyze_shapes
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class ScalaGenerator(BaseGenerator):
+def _to_pascal_case(name: str) -> str:
+    if not name:
+        return name
+    if "_" in name:
+        return "".join(word.capitalize() for word in name.lower().split("_"))
+    if name.isupper():
+        return name.capitalize()
+    return name[0].upper() + name[1:]
+
+
+def scala_package_for_schema(schema: Schema) -> Optional[str]:
+    """Return the Scala source package for a schema."""
+    return schema.package
+
+
+def scala_package_path(schema: Schema) -> str:
+    """Return the generated Scala package directory."""
+    package = scala_package_for_schema(schema)
+    return package.replace(".", "/") if package else ""
+
+
+def scala_module_name(schema: Schema) -> str:
+    """Return the generated Scala schema module name."""
+    package = scala_package_for_schema(schema)
+    if package:
+        return _to_pascal_case(package.split(".")[-1]) + "ForyModule"
+    if schema.source_file and not schema.source_file.startswith("<"):
+        cleaned = "".join(
+            char if char.isascii() and (char.isalnum() or char == "_") else "_"
+            for char in Path(schema.source_file).stem
+        )
+        prefix = _to_pascal_case(cleaned) if cleaned else "Schema"
+        if not prefix or not (prefix[0].isalpha() or prefix[0] == "_"):
+            prefix = f"Schema{prefix}"
+        return prefix + "ForyModule"
+    return "ForyModule"
+
+
+def scala_source_path(schema: Schema, type_name: str) -> str:
+    """Return a generated Scala source path for a top-level owner."""
+    path = scala_package_path(schema)
+    file_name = f"{type_name}.scala"
+    return f"{path}/{file_name}" if path else file_name
+
+
+def scala_module_file_path(schema: Schema) -> str:
+    """Return the generated Scala schema module path."""
+    return scala_source_path(schema, scala_module_name(schema))
+
+
+def _is_schema_local(type_def: object, schema: Schema) -> bool:
+    if not schema.source_file or schema.source_file.startswith("<"):
+        return True
+    location = getattr(type_def, "location", None)
+    file_path = getattr(location, "file", None) if location else None
+    if not file_path:
+        return True
+    try:
+        return Path(file_path).resolve() == Path(schema.source_file).resolve()
+    except Exception:
+        return file_path == schema.source_file
+
+
+def scala_output_paths(
+    schema: Schema,
+    local_only: bool = False,
+    include_services: bool = False,
+) -> List[Tuple[str, str]]:
+    """Return generated Scala output paths and their owning schema elements."""
+    outputs: List[Tuple[str, str]] = []
+
+    def add_type(type_def: object, kind: str) -> None:
+        if local_only and not _is_schema_local(type_def, schema):
+            return
+        outputs.append((scala_source_path(schema, type_def.name), kind))
+
+    for enum in schema.enums:
+        add_type(enum, f"enum {enum.name}")
+    for union in schema.unions:
+        add_type(union, f"union {union.name}")
+    for message in schema.messages:
+        add_type(message, f"message {message.name}")
+    outputs.append((scala_module_file_path(schema), "schema module"))
+    if include_services:
+        for service in schema.services:
+            if local_only and not _is_schema_local(service, schema):
+                continue
+            outputs.append(
+                (
+                    scala_source_path(schema, f"{service.name}Grpc"),
+                    f"service {service.name}",
+                )
+            )
+    return outputs
+
+
+class ScalaGenerator(ScalaServiceGeneratorMixin, BaseGenerator):
     """Generates Scala 3 models with Fory macro-derived serializers."""
 
     language_name = "scala"
@@ -136,11 +233,10 @@ class ScalaGenerator(BaseGenerator):
         self._construction_shapes = analyze_shapes(schema)
 
     def get_scala_package(self) -> Optional[str]:
-        return self.schema.package
+        return scala_package_for_schema(self.schema)
 
     def get_scala_package_path(self) -> str:
-        package = self.get_scala_package()
-        return package.replace(".", "/") if package else ""
+        return scala_package_path(self.schema)
 
     def get_module_name(self) -> str:
         return self._module_name(self.schema)
@@ -167,7 +263,7 @@ class ScalaGenerator(BaseGenerator):
             return path_str
 
     def _scala_package_for_schema(self, schema: Schema) -> Optional[str]:
-        return schema.package
+        return scala_package_for_schema(schema)
 
     def _validate_import_packages(self) -> None:
         schemas = self._schema_graph()
@@ -184,25 +280,7 @@ class ScalaGenerator(BaseGenerator):
         )
 
     def _module_name(self, schema: Schema) -> str:
-        package = self._scala_package_for_schema(schema)
-        if package:
-            return self.to_pascal_case(package.split(".")[-1]) + "ForyModule"
-        prefix = self._module_prefix_from_source(schema)
-        if prefix:
-            return prefix + "ForyModule"
-        return "ForyModule"
-
-    def _module_prefix_from_source(self, schema: Schema) -> str:
-        if not schema.source_file or schema.source_file.startswith("<"):
-            return ""
-        cleaned = "".join(
-            char if char.isascii() and (char.isalnum() or char == "_") else "_"
-            for char in Path(schema.source_file).stem
-        )
-        prefix = self.to_pascal_case(cleaned) if cleaned else "Schema"
-        if not prefix or not (prefix[0].isalpha() or prefix[0] == "_"):
-            prefix = f"Schema{prefix}"
-        return prefix
+        return scala_module_name(schema)
 
     def _scala_package_for_type(self, type_def: object) -> Optional[str]:
         location = getattr(type_def, "location", None)

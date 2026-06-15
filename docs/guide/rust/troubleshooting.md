@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 12
+sidebar_position: 13
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -47,14 +47,13 @@ Confirm that:
 
 **Solution**:
 
-- Enable compatible mode for schema evolution
+- Keep compatible mode enabled for schema evolution
 - Ensure field types match across versions
 
 ```rust
-// Add compatible(true) to the same builder configuration on every peer.
+// Remove any compatible(false) override from the peers.
 let fory = Fory::builder()
     // existing options
-    .compatible(true)
     .build();
 ```
 
@@ -145,7 +144,7 @@ cargo test --features tests
 
 ## Error Handling Best Practices
 
-Prefer the static constructors on `fory_core::error::Error`:
+Prefer the static constructors on the facade `Error` type:
 
 - `Error::type_mismatch`
 - `Error::invalid_data`

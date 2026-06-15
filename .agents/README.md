@@ -20,7 +20,8 @@ Load `AGENTS.md` first. Do not load every file under `.agents/` by default; read
 - `languages/swift.md`: Swift rules, lint/test workflow, and Java-driven xlang validation.
 - `languages/javascript.md`: JavaScript/TypeScript commands and package-manager expectations.
 - `languages/dart.md`: Dart codegen, test, and analysis commands.
-- `languages/kotlin.md`: Kotlin build/test commands and dependency on installed Java artifacts.
+- `languages/kotlin.md`: Kotlin build/test commands, generated Kotlin source rules, and dependency
+  on installed Java artifacts.
 - `languages/scala.md`: Scala build/test/format commands and dependency on installed Java artifacts.
 
 ## Common Loading Recipes
@@ -34,6 +35,10 @@ Load `AGENTS.md` first. Do not load every file under `.agents/` by default; read
   - `docs-and-formatting.md`
   - `testing/integration-tests.md`
   - every touched runtime file under `languages/`
+- Compiler/codegen work that emits runtime-specific source:
+  - `AGENTS.md`
+  - `repo-reference.md`
+  - relevant runtime file under `languages/`
 - Performance work:
   - `AGENTS.md`
   - relevant runtime file under `languages/`

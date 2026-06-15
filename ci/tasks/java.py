@@ -56,6 +56,7 @@ JDKS = {
     "21": "zulu21.28.85-ca-jdk21.0.0-linux_x64",
     "24": "zulu24.32.13-ca-fx-jdk24.0.2-linux_x64",
     "25": "zulu25.30.17-ca-jdk25.0.1-linux_x64",
+    "26": "zulu26.30.11-ca-crac-jdk26.0.1-linux_x64",
 }
 
 
@@ -74,6 +75,86 @@ def install_jdks():
     logging.info("Creating toolchains.xml")
     create_toolchains_xml(JDKS)
     logging.info("JDKs downloaded and installed successfully")
+
+
+def jdk25_access_options(fory_targets="org.apache.fory.core"):
+    return [
+        "--sun-misc-unsafe-memory-access=deny",
+        f"--add-opens=java.base/java.lang.invoke={fory_targets}",
+    ]
+
+
+def jdk25_runtime_options(fory_targets="org.apache.fory.core"):
+    return jdk25_access_options(fory_targets)
+
+
+def jdk25_javac_options():
+    return [
+        "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
+        "--add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+    ]
+
+
+def set_jdk_options(java_version):
+    if int(java_version) >= 25:
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(
+            jdk25_runtime_options() + jdk25_javac_options()
+        )
+    else:
+        os.environ.pop("JDK_JAVA_OPTIONS", None)
+
+
+def use_jdk(java_version):
+    java_home = os.path.join(common.PROJECT_ROOT_DIR, JDKS[java_version])
+    os.environ["JAVA_HOME"] = java_home
+    os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
+    set_jdk_options(java_version)
+
+
+def save_java_env():
+    return {
+        "JAVA_HOME": os.environ.get("JAVA_HOME"),
+        "PATH": os.environ.get("PATH"),
+        "JDK_JAVA_OPTIONS": os.environ.get("JDK_JAVA_OPTIONS"),
+    }
+
+
+def restore_java_env(env):
+    for key, value in env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+
+def install_jdk25_fory_artifacts():
+    env = save_java_env()
+    try:
+        use_jdk("25")
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
+        common.cd_project_subdir("java")
+        common.exec_cmd(
+            "mvn -T10 -B --no-transfer-progress clean install -DskipTests "
+            "-pl '!:fory-testsuite'"
+        )
+        logging.info("Verify JDK25 benchmark multi-release jar")
+        common.cd_project_subdir("benchmarks/java")
+        common.exec_cmd("mvn -T10 -B --no-transfer-progress -Pjmh -DskipTests install")
+        logging.info("Verify JPMS tests on JDK25")
+        os.environ.pop("JDK_JAVA_OPTIONS", None)
+        common.cd_project_subdir("integration_tests/jpms_tests")
+        common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test")
+    finally:
+        restore_java_env(env)
 
 
 def create_toolchains_xml(jdk_mappings):
@@ -151,7 +232,7 @@ def run_java8():
     logging.info("Executing fory java tests with Java 8")
     install_jdks()
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress clean test")
     logging.info("Executing fory java tests succeeds")
 
 
@@ -159,7 +240,7 @@ def run_java11():
     """Run Java 11 tests."""
     logging.info("Executing fory java tests with Java 11")
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress clean test")
     logging.info("Executing fory java tests succeeds")
 
 
@@ -167,12 +248,26 @@ def run_jdk17_plus(java_version="17"):
     """Run Java 17+ tests."""
     logging.info(f"Executing fory java tests with Java {java_version}")
     common.exec_cmd("java -version")
-    os.environ["JDK_JAVA_OPTIONS"] = (
+    jdk_options = [
         "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
-    )
+    ]
+    if int(java_version) >= 25:
+        jdk_options.extend(jdk25_runtime_options("ALL-UNNAMED"))
+        jdk_options.extend(jdk25_javac_options())
+    os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk_options)
 
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress install")
+    if int(java_version) >= 25:
+        # The JDK25+ profile overlays Surefire's classpath with Java25 replacement
+        # classes while keeping the test run unnamed. Keep JPMS coverage below as a
+        # separate named-module check.
+        common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress clean install")
+        os.environ.pop("JDK_JAVA_OPTIONS", None)
+        logging.info(f"Executing JDK{java_version} JPMS tests")
+        common.cd_project_subdir("integration_tests/jpms_tests")
+        common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress clean test")
+    else:
+        common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress install")
 
     logging.info("Executing fory java tests succeeds")
 
@@ -203,10 +298,7 @@ def run_integration_tests():
 
     logging.info("Executing fory integration tests")
 
-    common.cd_project_subdir("java")
-    common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'"
-    )
+    install_jdk25_fory_artifacts()
 
     logging.info("benchmark tests")
     common.cd_project_subdir("benchmarks/java")
@@ -214,7 +306,7 @@ def run_integration_tests():
 
     logging.info("Start JPMS tests")
     common.cd_project_subdir("integration_tests/jpms_tests")
-    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean compile")
+    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test")
 
     logging.info("Start jdk compatibility tests")
     common.cd_project_subdir("integration_tests/jdk_compatibility_tests")
@@ -227,10 +319,14 @@ def run_integration_tests():
 
     # First round: Generate serialized data files
     logging.info("First round: Generate serialized data files for each JDK version")
-    for jdk in JDKS.values():
-        java_home = os.path.join(common.PROJECT_ROOT_DIR, jdk)
-        os.environ["JAVA_HOME"] = java_home
-        os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
+    for java_version, jdk in JDKS.items():
+        if int(java_version) >= 25:
+            logging.info(
+                "Skipping classpath JDK compatibility data generation for "
+                f"JDK{java_version}; JDK25+ zero-Unsafe coverage runs on JPMS"
+            )
+            continue
+        use_jdk(java_version)
 
         logging.info(f"Generating data with JDK: {jdk}")
         common.exec_cmd(
@@ -239,10 +335,14 @@ def run_integration_tests():
 
     # Second round: Test cross-JDK compatibility
     logging.info("Second round: Test cross-JDK compatibility")
-    for jdk in JDKS.values():
-        java_home = os.path.join(common.PROJECT_ROOT_DIR, jdk)
-        os.environ["JAVA_HOME"] = java_home
-        os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
+    for java_version, jdk in JDKS.items():
+        if int(java_version) >= 25:
+            logging.info(
+                "Skipping classpath JDK compatibility verification for "
+                f"JDK{java_version}; JDK25+ zero-Unsafe coverage runs on JPMS"
+            )
+            continue
+        use_jdk(java_version)
 
         logging.info(f"Testing compatibility with JDK: {jdk}")
         common.exec_cmd(
@@ -255,6 +355,11 @@ def run_integration_tests():
 def run_graalvm_test():
     """Run GraalVM tests."""
     logging.info("Start GraalVM tests")
+    java_major = get_jdk_major_version()
+    if java_major is not None and java_major >= 25:
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
+    else:
+        os.environ.pop("JDK_JAVA_OPTIONS", None)
 
     common.cd_project_subdir("java")
     common.exec_cmd(
@@ -275,17 +380,30 @@ def run_graalvm_test():
 def run_release():
     """Release to Maven Central."""
     logging.info("Starting release to Maven Central with Java")
+    java_major = get_jdk_major_version()
+    if java_major is None or java_major < 25:
+        raise RuntimeError(
+            "Java releases must run on JDK25+ so MR-JAR entries are packaged"
+        )
     common.cd_project_subdir("java")
 
-    # Clean and install without tests first
-    logging.info("Cleaning and installing dependencies")
-    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
+    previous_jdk_options = os.environ.get("JDK_JAVA_OPTIONS")
+    os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
+    try:
+        # Clean and install without tests first
+        logging.info("Cleaning and installing dependencies")
+        common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
 
-    # Deploy to Maven Central
-    logging.info("Deploying to Maven Central")
-    common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean deploy -Dgpg.skip -DskipTests -Papache-release"
-    )
+        # Deploy to Maven Central
+        logging.info("Deploying to Maven Central")
+        common.exec_cmd(
+            "mvn -T10 -B --no-transfer-progress clean deploy -Dgpg.skip -DskipTests -Papache-release"
+        )
+    finally:
+        if previous_jdk_options is None:
+            os.environ.pop("JDK_JAVA_OPTIONS", None)
+        else:
+            os.environ["JDK_JAVA_OPTIONS"] = previous_jdk_options
 
     logging.info("Release to Maven Central completed successfully")
 
@@ -309,6 +427,8 @@ def run(version=None, release=False, install_jdks=False, install_fory=False):
         run_jdk17_plus("21")
     elif version == "25":
         run_jdk17_plus("25")
+    elif version == "26":
+        run_jdk17_plus("26")
     elif version == "windows_java21":
         run_windows_java21()
     elif version == "integration_tests":

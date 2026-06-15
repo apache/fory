@@ -38,7 +38,7 @@ struct StructWithSkip {
 
 #[test]
 fn test_skip_field() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithSkip>(1).unwrap();
 
     let original = StructWithSkip {
@@ -66,7 +66,7 @@ struct StructWithNullable {
 
 #[test]
 fn test_nullable_attribute() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithNullable>(2).unwrap();
 
     // Test with Some value
@@ -104,7 +104,7 @@ struct StructWithRefTracking {
 
 #[test]
 fn test_ref_tracking_disabled() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<InnerData>(3).unwrap();
     fory.register::<StructWithRefTracking>(4).unwrap();
 
@@ -125,7 +125,7 @@ struct StructWithExplicitNotNull {
 
 #[test]
 fn test_explicit_not_nullable() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithExplicitNotNull>(5).unwrap();
 
     let original = StructWithExplicitNotNull {
@@ -144,7 +144,7 @@ struct StructWithArc {
 
 #[test]
 fn test_arc_default_ref_tracking() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<InnerData>(6).unwrap();
     fory.register::<StructWithArc>(7).unwrap();
 
@@ -168,7 +168,7 @@ struct StructWithCombinedAttrs {
 
 #[test]
 fn test_combined_attributes() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithCombinedAttrs>(8).unwrap();
 
     let original = StructWithCombinedAttrs {
@@ -195,7 +195,7 @@ struct StructWithPrimitives {
 
 #[test]
 fn test_primitive_defaults() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithPrimitives>(9).unwrap();
 
     let original = StructWithPrimitives {
@@ -612,7 +612,7 @@ fn serializer_backed_container_fields_write_declared_generic_payloads() {
 
 #[test]
 fn test_nested_codec_annotations_roundtrip() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<NestedFixedEncoding>(10).unwrap();
 
     let original = NestedFixedEncoding {
@@ -641,10 +641,15 @@ fn test_compatible_nested_integer_encoding_mismatch() {
     };
 
     let bytes = writer.serialize(&original).unwrap();
-    let deserialized: NestedFixedEncoding = reader.deserialize(&bytes).unwrap();
-    assert_eq!(original.values, deserialized.values);
-    assert_eq!(original.data, deserialized.data);
-    assert_eq!(original.maybe_values, deserialized.maybe_values);
+    let error = reader
+        .deserialize::<NestedFixedEncoding>(&bytes)
+        .expect_err("expected nested integer encoding drift to fail classification");
+    assert!(
+        error
+            .to_string()
+            .contains("remote and local field schemas are not compatible"),
+        "{error}"
+    );
 }
 
 /// Test struct with field IDs for compact encoding
@@ -660,7 +665,7 @@ struct StructWithFieldIds {
 
 #[test]
 fn test_field_id_attribute() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithFieldIds>(10).unwrap();
 
     let original = StructWithFieldIds {
@@ -686,7 +691,7 @@ struct StructWithMixedIds {
 
 #[test]
 fn test_mixed_field_ids() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithMixedIds>(11).unwrap();
 
     let original = StructWithMixedIds {
@@ -715,7 +720,7 @@ struct StructWithCombinedFieldAttrs {
 
 #[test]
 fn test_field_id_with_other_attrs() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithCombinedFieldAttrs>(12).unwrap();
 
     let original = StructWithCombinedFieldAttrs {
@@ -948,7 +953,7 @@ struct StructWithSkipAndId {
 
 #[test]
 fn test_skip_with_field_id() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithSkipAndId>(350).unwrap();
 
     let original = StructWithSkipAndId {

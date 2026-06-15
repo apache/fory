@@ -21,7 +21,6 @@ package org.apache.fory.serializer.collection;
 
 import java.io.Externalizable;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -50,16 +49,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.collection.CollectionSnapshot;
-import org.apache.fory.config.Config;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
@@ -70,7 +67,6 @@ import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.util.Preconditions;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Serializers for classes implements {@link Collection}. All collection serializers should extend
@@ -78,21 +74,28 @@ import org.apache.fory.util.unsafe._JDKAccess;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CollectionSerializers {
-  private static void throwBinarySizeLimitExceeded(long size, int maxBinarySize) {
-    throw new DeserializationException(
-        "Binary payload size " + size + " exceeds max binary size " + maxBinarySize);
+  private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
+
+  private static void requireXlangNaturalOrdering(Class<?> type, Comparator<?> comparator) {
+    if (comparator != null && comparator != NATURAL_ORDER_COMPARATOR) {
+      throw new UnsupportedOperationException(
+          "Xlang serialization of "
+              + type.getName()
+              + " with a custom comparator is unsupported because the xlang set wire format "
+              + "does not encode comparators");
+    }
   }
 
   private static void throwNegativeBinarySize(int size) {
-    throw new DeserializationException("Binary payload size must be non-negative: " + size);
+    throw new DeserializationException("Binary body size must be non-negative: " + size);
   }
 
   private static void throwUnalignedBinarySize(int size, int elemSize) {
     throw new DeserializationException(
-        "Binary payload size " + size + " is not aligned to element size " + elemSize);
+        "Binary body size " + size + " is not aligned to element size " + elemSize);
   }
 
-  private static void checkBoundedQueueCapacity(Config config, int numElements, int capacity) {
+  private static void checkBoundedQueueCapacity(int numElements, int capacity) {
     // Keep these as direct primitive branches. This collection read path is JIT-sensitive; using
     // Preconditions.checkArgument here adds helper/varargs overhead and hurts inlining.
     if (numElements < 0) {
@@ -105,11 +108,15 @@ public class CollectionSerializers {
       throw new DeserializationException(
           "Queue capacity " + capacity + " is smaller than serialized size " + numElements);
     }
-    int maxCollectionSize = config.maxCollectionSize();
-    if (capacity > maxCollectionSize) {
-      throw new DeserializationException(
-          "Queue capacity " + capacity + " exceeds max collection size " + maxCollectionSize);
-    }
+  }
+
+  private static UnsupportedOperationException unsupportedBoundedQueueWrite(Class<?> type) {
+    return new UnsupportedOperationException(
+        "Serializing or copying "
+            + type.getName()
+            + " requires access to its exact capacity field. This runtime can deserialize existing "
+            + "wire bodies for this type, but cannot serialize or copy it without JDK concurrent "
+            + "field access.");
   }
 
   public static final class ArrayListSerializer extends CollectionSerializer<ArrayList> {
@@ -129,14 +136,13 @@ public class CollectionSerializers {
   }
 
   public static final class ArraysAsListSerializer extends CollectionSerializer<List<?>> {
-    private static final class ArrayFieldOffset {
-      // Make offset compatible with graalvm native image.
-      private static final long VALUE;
+    private static final class ArrayAccess {
+      private static final FieldAccessor ACCESSOR;
 
       static {
         try {
           Field arrayField = Class.forName("java.util.Arrays$ArrayList").getDeclaredField("a");
-          VALUE = UnsafeOps.objectFieldOffset(arrayField);
+          ACCESSOR = FieldAccessor.createAccessor(arrayField);
         } catch (final Exception e) {
           throw new RuntimeException(e);
         }
@@ -162,9 +168,9 @@ public class CollectionSerializers {
         super.write(writeContext, value);
       } else {
         Object[] array =
-            AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+            !MemoryUtils.JDK_COLLECTION_FIELD_ACCESS
                 ? value.toArray()
-                : (Object[]) UnsafeOps.getObject(value, ArrayFieldOffset.VALUE);
+                : (Object[]) ArrayAccess.ACCESSOR.getObject(value);
         writeContext.writeRef(array);
       }
     }
@@ -247,6 +253,9 @@ public class CollectionSerializers {
 
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, T value) {
+      if (config.isXlang()) {
+        requireXlangNaturalOrdering(type, value.comparator());
+      }
       MemoryBuffer buffer = writeContext.getBuffer();
       buffer.writeVarUInt32Small7(value.size());
       if (config.isXlang()) {
@@ -260,12 +269,11 @@ public class CollectionSerializers {
     @SuppressWarnings("unchecked")
     @Override
     public T newCollection(ReadContext readContext) {
-      assert !config.isXlang();
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
       T collection;
-      Comparator comparator = (Comparator) readContext.readRef();
+      Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
       if (type == TreeSet.class) {
         collection = (T) new TreeSet(comparator);
       } else {
@@ -286,7 +294,8 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(CopyContext copyContext, Collection originCollection) {
       Collection collection;
-      Comparator comparator = copyContext.copyObject(((SortedSet) originCollection).comparator());
+      Comparator comparator =
+          ComparatorCopy.copy(copyContext, ((SortedSet) originCollection).comparator());
       if (Objects.equals(type, TreeSet.class)) {
         collection = new TreeSet(comparator);
       } else {
@@ -329,7 +338,7 @@ public class CollectionSerializers {
         int numElements = readCollectionSize(readContext.getBuffer());
         if (numElements != 0) {
           throw new DeserializationException(
-              "Empty list payload must have zero elements but got " + numElements);
+              "Empty list body must have zero elements but got " + numElements);
         }
       }
       return Collections.EMPTY_LIST;
@@ -519,6 +528,9 @@ public class CollectionSerializers {
     @Override
     public CollectionSnapshot onCollectionWrite(
         WriteContext writeContext, ConcurrentSkipListSet value) {
+      if (config.isXlang()) {
+        requireXlangNaturalOrdering(type, value.comparator());
+      }
       CollectionSnapshot snapshot = super.onCollectionWrite(writeContext, value);
       if (config.isXlang()) {
         return snapshot;
@@ -532,7 +544,11 @@ public class CollectionSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
-      assert !config.isXlang();
+      if (config.isXlang()) {
+        ConcurrentSkipListSet skipListSet = new ConcurrentSkipListSet();
+        readContext.reference(skipListSet);
+        return skipListSet;
+      }
       int refId = readContext.lastPreservedRefId();
       // It's possible that comparator/elements has circular ref to set.
       Comparator comparator = (Comparator) readContext.readRef();
@@ -544,7 +560,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(CopyContext copyContext, Collection originCollection) {
       Comparator comparator =
-          copyContext.copyObject(((ConcurrentSkipListSet) originCollection).comparator());
+          ComparatorCopy.copy(copyContext, ((ConcurrentSkipListSet) originCollection).comparator());
       return new ConcurrentSkipListSet(comparator);
     }
   }
@@ -552,22 +568,27 @@ public class CollectionSerializers {
   public static final class SetFromMapSerializer extends CollectionSerializer<Set<?>> {
     private static final List EMPTY_COLLECTION_STUB = new ArrayList<>();
 
-    private static final class JvmSetFromMapAccess {
-      private static final long MAP_FIELD_OFFSET;
-      private static final MethodHandle M_SETTER;
-      private static final MethodHandle S_SETTER;
+    private static final class SetFromMapAccess {
+      private static final FieldAccessor MAP_ACCESSOR;
+      private static final FieldAccessor KEY_SET_ACCESSOR;
 
       static {
         try {
           Class<?> type = Class.forName("java.util.Collections$SetFromMap");
-          Field mapField = type.getDeclaredField("m");
-          MAP_FIELD_OFFSET = UnsafeOps.objectFieldOffset(mapField);
-          MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(type);
-          M_SETTER = lookup.findSetter(type, "m", Map.class);
-          S_SETTER = lookup.findSetter(type, "s", Set.class);
+          MAP_ACCESSOR = FieldAccessor.createAccessor(type.getDeclaredField("m"));
+          KEY_SET_ACCESSOR = FieldAccessor.createAccessor(type.getDeclaredField("s"));
         } catch (final Exception e) {
           throw new RuntimeException(e);
         }
+      }
+
+      static Map<?, Boolean> map(Set<?> set) {
+        return (Map<?, Boolean>) MAP_ACCESSOR.getObject(set);
+      }
+
+      static void restore(Set<?> set, Map<?, Boolean> map) {
+        MAP_ACCESSOR.putObject(set, map);
+        KEY_SET_ACCESSOR.putObject(set, map.keySet());
       }
     }
 
@@ -588,18 +609,19 @@ public class CollectionSerializers {
         set = Collections.newSetFromMap(mapSerializer.newMap(readContext));
         setNumElements(mapSerializer.getAndClearNumElements());
       } else {
-        if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
           throw new UnsupportedOperationException(
-              "This runtime cannot read legacy SetFromMap payloads that require hidden JDK field "
+              "This runtime cannot read SetFromMap backing-map bodies that require hidden JDK field "
                   + "restoration");
         }
-        Map map = (Map) mapSerializer.read(readContext);
+        Map<?, Boolean> map = (Map<?, Boolean>) mapSerializer.read(readContext);
         try {
-          set = UnsafeOps.newInstance(type);
-          JvmSetFromMapAccess.M_SETTER.invoke(set, map);
-          JvmSetFromMapAccess.S_SETTER.invoke(set, map.keySet());
+          set = Collections.newSetFromMap(new HashMap<>());
+          SetFromMapAccess.restore(set, map);
         } catch (Throwable e) {
-          throw new RuntimeException(e);
+          throw new UnsupportedOperationException(
+              "This runtime cannot restore SetFromMap backing-map bodies through final JDK fields",
+              e);
         }
         setNumElements(0);
       }
@@ -610,24 +632,28 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(CopyContext copyContext, Collection originCollection) {
       assert !config.isXlang();
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return Collections.newSetFromMap(new HashMap(originCollection.size()));
+      return Collections.newSetFromMap(new HashMap(originCollection.size()));
+    }
+
+    @Override
+    public Set<?> copy(CopyContext copyContext, Set<?> originCollection) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
+        return (Set<?>) super.copy(copyContext, originCollection);
       }
-      Map<?, Boolean> map =
-          (Map<?, Boolean>)
-              UnsafeOps.getObject(originCollection, JvmSetFromMapAccess.MAP_FIELD_OFFSET);
-      MapLikeSerializer mapSerializer =
-          (MapLikeSerializer) typeResolver.getSerializer(map.getClass());
-      Map newMap = mapSerializer.newMap(copyContext, map);
-      return Collections.newSetFromMap(newMap);
+      Map<?, Boolean> map = SetFromMapAccess.map(originCollection);
+      Set<?> result = Collections.newSetFromMap(new HashMap<>());
+      copyContext.reference(originCollection, result);
+      Map<?, Boolean> newMap = copyContext.copyObject(map);
+      SetFromMapAccess.restore(result, newMap);
+      return result;
     }
 
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, Set<?> value) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      final Map<?, Boolean> map;
-      final TypeInfo typeInfo;
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      Map<?, Boolean> map;
+      TypeInfo typeInfo;
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         HashMap source = new HashMap<>(value.size());
         for (Object element : value) {
           source.put(element, Boolean.TRUE);
@@ -635,7 +661,7 @@ public class CollectionSerializers {
         map = source;
         typeInfo = typeResolver.getTypeInfo(HashMap.class);
       } else {
-        map = (Map<?, Boolean>) UnsafeOps.getObject(value, JvmSetFromMapAccess.MAP_FIELD_OFFSET);
+        map = SetFromMapAccess.map(value);
         typeInfo = typeResolver.getTypeInfo(map.getClass());
       }
       MapLikeSerializer mapSerializer = (MapLikeSerializer) typeInfo.getSerializer();
@@ -776,11 +802,9 @@ public class CollectionSerializers {
   }
 
   public static class BitSetSerializer extends Serializer<BitSet> {
-    private final int maxBinarySize;
 
     public BitSetSerializer(TypeResolver typeResolver, Class<BitSet> type) {
       super(typeResolver.getConfig(), type);
-      maxBinarySize = typeResolver.getConfig().maxBinarySize();
     }
 
     @Override
@@ -805,11 +829,9 @@ public class CollectionSerializers {
       if ((size & 7) != 0) {
         throwUnalignedBinarySize(size, 8);
       }
-      if (size > maxBinarySize) {
-        throwBinarySizeLimitExceeded(size, maxBinarySize);
-      }
+      buffer.checkReadableBytes(size);
       long[] values = new long[size >>> 3];
-      buffer.readInt64ArrayPayload(values, size);
+      buffer.readInt64ArrayBytes(values, size);
       return BitSet.valueOf(values);
     }
   }
@@ -833,7 +855,8 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(CopyContext copyContext, Collection collection) {
       return new PriorityQueue(
-          collection.size(), copyContext.copyObject(((PriorityQueue) collection).comparator()));
+          collection.size(),
+          ComparatorCopy.copy(copyContext, ((PriorityQueue) collection).comparator()));
     }
 
     @Override
@@ -861,13 +884,13 @@ public class CollectionSerializers {
 
     // Use reflection to get the items array length which represents the capacity.
     // This avoids race conditions when reading remainingCapacity() and size() separately.
-    private static final class ItemsOffset {
-      private static final long VALUE;
+    private static final class ItemsAccess {
+      private static final FieldAccessor ACCESSOR;
 
       static {
         try {
           Field itemsField = ArrayBlockingQueue.class.getDeclaredField("items");
-          VALUE = UnsafeOps.objectFieldOffset(itemsField);
+          ACCESSOR = FieldAccessor.createAccessor(itemsField);
         } catch (NoSuchFieldException e) {
           throw new RuntimeException(e);
         }
@@ -879,10 +902,10 @@ public class CollectionSerializers {
     }
 
     private static int getCapacity(ArrayBlockingQueue queue) {
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return queue.size() + queue.remainingCapacity();
+      if (!MemoryUtils.JDK_CONCURRENT_FIELD_ACCESS) {
+        throw unsupportedBoundedQueueWrite(ArrayBlockingQueue.class);
       }
-      Object[] items = (Object[]) UnsafeOps.getObject(queue, ItemsOffset.VALUE);
+      Object[] items = (Object[]) ItemsAccess.ACCESSOR.getObject(queue);
       return items.length;
     }
 
@@ -903,7 +926,8 @@ public class CollectionSerializers {
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
-      checkBoundedQueueCapacity(config, numElements, capacity);
+      checkBoundedQueueCapacity(numElements, capacity);
+      buffer.checkReadableBytes(capacity);
       ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;
@@ -927,13 +951,13 @@ public class CollectionSerializers {
       extends ConcurrentCollectionSerializer<LinkedBlockingQueue> {
     // Use reflection to get the capacity field directly.
     // This avoids race conditions when reading remainingCapacity() and size() separately.
-    private static final class CapacityOffset {
-      private static final long VALUE;
+    private static final class CapacityAccess {
+      private static final FieldAccessor ACCESSOR;
 
       static {
         try {
           Field capacityField = LinkedBlockingQueue.class.getDeclaredField("capacity");
-          VALUE = UnsafeOps.objectFieldOffset(capacityField);
+          ACCESSOR = FieldAccessor.createAccessor(capacityField);
         } catch (NoSuchFieldException e) {
           throw new RuntimeException(e);
         }
@@ -946,10 +970,10 @@ public class CollectionSerializers {
     }
 
     private static int getCapacity(LinkedBlockingQueue queue) {
-      if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-        return queue.size() + queue.remainingCapacity();
+      if (!MemoryUtils.JDK_CONCURRENT_FIELD_ACCESS) {
+        throw unsupportedBoundedQueueWrite(LinkedBlockingQueue.class);
       }
-      return UnsafeOps.getInt(queue, CapacityOffset.VALUE);
+      return CapacityAccess.ACCESSOR.getInt(queue);
     }
 
     @Override
@@ -969,7 +993,8 @@ public class CollectionSerializers {
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
-      checkBoundedQueueCapacity(config, numElements, capacity);
+      checkBoundedQueueCapacity(numElements, capacity);
+      buffer.checkReadableBytes(capacity);
       LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;

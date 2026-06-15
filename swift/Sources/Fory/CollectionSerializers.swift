@@ -235,19 +235,19 @@ func writePrimitiveArray<Element: Serializer>(_ value: [Element], context: Write
 }
 
 func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [Element] {
-    let payloadSize = Int(try context.buffer.readVarUInt32())
-    try context.ensureRemainingBytes(payloadSize, label: "primitive_array_payload")
+    let byteSize = Int(try context.buffer.readVarUInt32())
+    try context.ensureRemainingBytes(byteSize, label: "primitive_array_bytes")
 
     if Element.self == UInt8.self {
-        try context.ensureCollectionLength(payloadSize, label: "uint8_array")
-        let bytes = try context.buffer.readBytes(count: payloadSize)
+        try context.ensureCollectionLength(byteSize, label: "uint8_array")
+        let bytes = try context.buffer.readBytes(count: byteSize)
         return uncheckedArrayCast(bytes, to: Element.self)
     }
 
     if Element.self == Bool.self {
-        try context.ensureCollectionLength(payloadSize, label: "bool_array")
-        let out = try readArrayUninitialized(count: payloadSize) { destination in
-            for index in 0..<payloadSize {
+        try context.ensureCollectionLength(byteSize, label: "bool_array")
+        let out = try readArrayUninitialized(count: byteSize) { destination in
+            for index in 0..<byteSize {
                 destination.advanced(by: index).initialize(to: try context.buffer.readUInt8() != 0)
             }
         }
@@ -255,8 +255,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Int8.self {
-        try context.ensureCollectionLength(payloadSize, label: "int8_array")
-        var out = Array(repeating: Int8(0), count: payloadSize)
+        try context.ensureCollectionLength(byteSize, label: "int8_array")
+        var out = Array(repeating: Int8(0), count: byteSize)
         try out.withUnsafeMutableBytes { rawBytes in
             try context.buffer.readBytes(into: rawBytes)
         }
@@ -264,8 +264,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Int16.self {
-        if payloadSize % 2 != 0 { throw ForyError.invalidData("int16 array payload size mismatch") }
-        let count = payloadSize / 2
+        if byteSize % 2 != 0 { throw ForyError.invalidData("int16 array byte size mismatch") }
+        let count = byteSize / 2
         try context.ensureCollectionLength(count, label: "int16_array")
         if hostIsLittleEndian {
             var out = Array(repeating: Int16(0), count: count)
@@ -283,8 +283,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Int32.self {
-        if payloadSize % 4 != 0 { throw ForyError.invalidData("int32 array payload size mismatch") }
-        let count = payloadSize / 4
+        if byteSize % 4 != 0 { throw ForyError.invalidData("int32 array byte size mismatch") }
+        let count = byteSize / 4
         try context.ensureCollectionLength(count, label: "int32_array")
         if hostIsLittleEndian {
             var out = Array(repeating: Int32(0), count: count)
@@ -302,8 +302,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == UInt32.self {
-        if payloadSize % 4 != 0 { throw ForyError.invalidData("uint32 array payload size mismatch") }
-        let count = payloadSize / 4
+        if byteSize % 4 != 0 { throw ForyError.invalidData("uint32 array byte size mismatch") }
+        let count = byteSize / 4
         try context.ensureCollectionLength(count, label: "uint32_array")
         if hostIsLittleEndian {
             var out = Array(repeating: UInt32(0), count: count)
@@ -321,8 +321,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Int64.self {
-        if payloadSize % 8 != 0 { throw ForyError.invalidData("int64 array payload size mismatch") }
-        let count = payloadSize / 8
+        if byteSize % 8 != 0 { throw ForyError.invalidData("int64 array byte size mismatch") }
+        let count = byteSize / 8
         try context.ensureCollectionLength(count, label: "int64_array")
         if hostIsLittleEndian {
             var out = Array(repeating: Int64(0), count: count)
@@ -340,8 +340,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == UInt64.self {
-        if payloadSize % 8 != 0 { throw ForyError.invalidData("uint64 array payload size mismatch") }
-        let count = payloadSize / 8
+        if byteSize % 8 != 0 { throw ForyError.invalidData("uint64 array byte size mismatch") }
+        let count = byteSize / 8
         try context.ensureCollectionLength(count, label: "uint64_array")
         if hostIsLittleEndian {
             var out = Array(repeating: UInt64(0), count: count)
@@ -359,8 +359,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == UInt16.self {
-        if payloadSize % 2 != 0 { throw ForyError.invalidData("uint16 array payload size mismatch") }
-        let count = payloadSize / 2
+        if byteSize % 2 != 0 { throw ForyError.invalidData("uint16 array byte size mismatch") }
+        let count = byteSize / 2
         try context.ensureCollectionLength(count, label: "uint16_array")
         if hostIsLittleEndian {
             var out = Array(repeating: UInt16(0), count: count)
@@ -378,8 +378,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Float16.self {
-        if payloadSize % 2 != 0 { throw ForyError.invalidData("float16 array payload size mismatch") }
-        let count = payloadSize / 2
+        if byteSize % 2 != 0 { throw ForyError.invalidData("float16 array byte size mismatch") }
+        let count = byteSize / 2
         try context.ensureCollectionLength(count, label: "float16_array")
         let values = try readArrayUninitialized(count: count) { destination in
             for index in 0..<count {
@@ -390,8 +390,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == BFloat16.self {
-        if payloadSize % 2 != 0 { throw ForyError.invalidData("bfloat16 array payload size mismatch") }
-        let count = payloadSize / 2
+        if byteSize % 2 != 0 { throw ForyError.invalidData("bfloat16 array byte size mismatch") }
+        let count = byteSize / 2
         try context.ensureCollectionLength(count, label: "bfloat16_array")
         let values = try readArrayUninitialized(count: count) { destination in
             for index in 0..<count {
@@ -402,8 +402,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
     }
 
     if Element.self == Float.self {
-        if payloadSize % 4 != 0 { throw ForyError.invalidData("float32 array payload size mismatch") }
-        let count = payloadSize / 4
+        if byteSize % 4 != 0 { throw ForyError.invalidData("float32 array byte size mismatch") }
+        let count = byteSize / 4
         try context.ensureCollectionLength(count, label: "float32_array")
         if hostIsLittleEndian {
             var out = Array(repeating: Float(0), count: count)
@@ -420,8 +420,8 @@ func readPrimitiveArray<Element: Serializer>(_ context: ReadContext) throws -> [
         return uncheckedArrayCast(out, to: Element.self)
     }
 
-    if payloadSize % 8 != 0 { throw ForyError.invalidData("float64 array payload size mismatch") }
-    let count = payloadSize / 8
+    if byteSize % 8 != 0 { throw ForyError.invalidData("float64 array byte size mismatch") }
+    let count = byteSize / 8
     try context.ensureCollectionLength(count, label: "float64_array")
     if hostIsLittleEndian {
         var out = Array(repeating: Double(0), count: count)
@@ -541,6 +541,7 @@ extension Array: Serializer where Element: Serializer {
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
         if !sameType {
+            try context.ensureRemainingBytes(length, label: "array")
             if trackRef {
                 return try readArrayUninitialized(count: length) { destination in
                     for index in 0..<length {
@@ -578,6 +579,7 @@ extension Array: Serializer where Element: Serializer {
         }
 
         let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
+        try context.ensureRemainingBytes(length, label: "array")
         return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
             if trackRef {
                 return try readArrayUninitialized(count: length) { destination in
@@ -866,7 +868,8 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         }
 
         var map: [Key: Value] = [:]
-        map.reserveCapacity(Swift.min(totalLength, context.buffer.remaining))
+        try context.ensureRemainingBytes(totalLength, label: "map")
+        map.reserveCapacity(totalLength)
         let keyDynamicType = Key.staticTypeId == .unknown
         let valueDynamicType = Value.staticTypeId == .unknown
         if keyDynamicType || valueDynamicType {

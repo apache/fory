@@ -17,7 +17,7 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Iterable, Optional, TypeVar, Union
+from typing import Iterable, Optional, Union
 
 _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
     "1",
@@ -105,7 +105,7 @@ class Fory:
         ...     age: pyfory.Int32
         >>>
         >>> fory = pyfory.Fory(xlang=True)
-        >>> fory.register(Person, typename="example.Person")
+        >>> fory.register(Person, name="example.Person")
         >>> data = fory.serialize(Person("Alice", 30))
         >>> person = fory.deserialize(data)
 
@@ -126,8 +126,6 @@ class Fory:
         "max_depth",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
     )
 
     def __init__(
@@ -140,8 +138,6 @@ class Fory:
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
-        max_collection_size: int = 1_000_000,
-        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -166,8 +162,7 @@ class Fory:
                 are allowed. We are not responsible for security risks when this option
                 is disabled without proper policy controls.
 
-            compatible: Enable schema evolution. When omitted, xlang mode defaults to
-                compatible mode and Python native mode defaults to schema-consistent mode.
+            compatible: Enable schema evolution. When omitted, compatible mode is enabled.
                 When enabled, supports forward/backward compatibility for dataclass field
                 additions and removals.
 
@@ -181,17 +176,6 @@ class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
-            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
-                and maps (dicts) during deserialization. This limit is used to prevent
-                out-of-memory attacks from malicious payloads that claim extremely large
-                collection sizes, as collections preallocate memory based on the declared
-                size. Raises an exception if exceeded. Default is 1,000,000.
-
-            max_binary_size: Maximum allowed size in bytes for binary data reads during
-                deserialization (default: 64 MB). Raises an exception if a single binary
-                read exceeds this limit, preventing out-of-memory attacks from malicious
-                payloads that claim extremely large binary sizes.
-
         Example:
             >>> # Python native mode with reference tracking
             >>> fory = Fory(xlang=False, ref=True)
@@ -199,7 +183,7 @@ class Fory:
             >>> # Xlang mode with compatible schema evolution
             >>> fory = Fory(xlang=True)
         """
-        compatible = xlang if compatible is None else compatible
+        compatible = True if compatible is None else compatible
         self.xlang = xlang
         self.track_ref = ref
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
@@ -207,8 +191,6 @@ class Fory:
         self.compatible = compatible
         self.field_nullable = field_nullable
         self.max_depth = max_depth
-        self.max_collection_size = max_collection_size
-        self.max_binary_size = max_binary_size
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -220,8 +202,6 @@ class Fory:
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
-            max_collection_size=max_collection_size,
-            max_binary_size=max_binary_size,
         )
         from pyfory.registry import SharedRegistry, TypeResolver
 
@@ -233,15 +213,14 @@ class Fory:
         self.type_resolver.initialize()
         self.write_context = WriteContext(self.config, self.type_resolver)
         self.read_context = ReadContext(self.config, self.type_resolver)
-        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
+        self.buffer = Buffer.allocate(32)
 
     def register(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
         """
@@ -253,17 +232,15 @@ class Fory:
 
         For cross-language serialization, types can be matched between languages using:
         1. **type_id** (recommended): Numeric ID matching - faster and more compact
-        2. **namespace + typename**: String-based matching - more flexible but larger overhead
+        2. **name**: String-based matching - more flexible but larger overhead
 
         Args:
             cls: The Python type to register
             type_id: Optional unique numeric ID for cross-language type matching.
                 Using type_id provides better performance and smaller serialized size
-                compared to namespace/typename matching.
-            namespace: Optional namespace for cross-language type matching by name.
-                Used when type_id is not specified.
-            typename: Optional type name for cross-language type matching by name.
-                Defaults to class name if not specified. Used with namespace.
+                compared to name matching.
+            name: Optional name for cross-language type matching. The last `.`
+                separates the internal namespace from the type name.
             serializer: Optional custom serializer instance for this type
 
         Example:
@@ -271,29 +248,26 @@ class Fory:
             >>> fory = Fory(xlang=True)
             >>> fory.register(Person, type_id=100)
             >>>
-            >>> # Register with namespace and typename (more flexible)
-            >>> fory.register(Person, namespace="com.example", typename="Person")
+            >>> # Register with name (more flexible)
+            >>> fory.register(Person, name="com.example.Person")
             >>>
             >>> # Python native mode (no cross-language matching needed)
             >>> fory = Fory(xlang=False)
             >>> fory.register(Person)
         """
-        self.register_type(
+        return self.register_type(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 
-    # `Union[type, TypeVar]` is not supported in py3.6
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
         """
@@ -304,17 +278,15 @@ class Fory:
 
         For cross-language serialization, types can be matched between languages using:
         1. **type_id** (recommended): Numeric ID matching - faster and more compact
-        2. **namespace + typename**: String-based matching - more flexible but larger overhead
+        2. **name**: String-based matching - more flexible but larger overhead
 
         Args:
             cls: The Python type to register
             type_id: Optional unique numeric ID for cross-language type matching.
                 Using type_id provides better performance and smaller serialized size
-                compared to namespace/typename matching.
-            namespace: Optional namespace for cross-language type matching by name.
-                Used when type_id is not specified.
-            typename: Optional type name for cross-language type matching by name.
-                Defaults to class name if not specified. Used with namespace.
+                compared to name matching.
+            name: Optional name for cross-language type matching. The last `.`
+                separates the internal namespace from the type name.
             serializer: Optional custom serializer instance for this type
 
         Example:
@@ -322,8 +294,8 @@ class Fory:
             >>> fory = Fory(xlang=True)
             >>> fory.register_type(Person, type_id=100)
             >>>
-            >>> # Register with namespace and typename (more flexible)
-            >>> fory.register_type(Person, namespace="com.example", typename="Person")
+            >>> # Register with name (more flexible)
+            >>> fory.register_type(Person, name="com.example.Person")
             >>>
             >>> # Python native mode (no cross-language matching needed)
             >>> fory = Fory(xlang=False)
@@ -332,18 +304,16 @@ class Fory:
         return self.type_resolver.register_type(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
         """
@@ -352,8 +322,7 @@ class Fory:
         return self.type_resolver.register_union(
             cls,
             type_id=type_id,
-            namespace=namespace,
-            typename=typename,
+            name=name,
             serializer=serializer,
         )
 
@@ -545,7 +514,7 @@ class Fory:
         unsupported_objects: Iterable = None,
     ):
         if isinstance(buffer, bytes):
-            buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
+            buffer = Buffer(buffer)
         read_context = self.read_context
         reader_index = buffer.get_reader_index()
         buffer.set_reader_index(reader_index + 1)
@@ -614,13 +583,9 @@ class ThreadSafeFory:
         ref (bool): Whether to enable reference tracking. Defaults to False.
         strict (bool): Whether to require type registration. Defaults to True.
         compatible (bool): Whether to enable compatible mode. Defaults to compatible mode
-            in xlang and schema-consistent mode in Python native mode.
+            in both xlang and Python native mode. Set False only when every reader and
+            writer always uses the same Python class schema and smaller payloads matter.
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
-        max_collection_size (int): Maximum allowed size for collections and maps during
-            deserialization. Defaults to 1,000,000.
-        max_binary_size (int): Maximum allowed size in bytes for binary data reads during
-            deserialization. Defaults to 64 MB.
-
     Example:
         >>> import pyfory
         >>> import threading
@@ -698,36 +663,33 @@ class ThreadSafeFory:
 
     def register(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
-        self._register_callback(lambda f: f.register(cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer))
+        self._register_callback(lambda f: f.register(cls, type_id=type_id, name=name, serializer=serializer))
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
-        self._register_callback(lambda f: f.register_type(cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer))
+        self._register_callback(lambda f: f.register_type(cls, type_id=type_id, name=name, serializer=serializer))
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
-        self._register_callback(lambda f: f.register_union(cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer))
+        self._register_callback(lambda f: f.register_union(cls, type_id=type_id, name=name, serializer=serializer))
 
     def register_serializer(self, cls: type, serializer):
         self._register_callback(lambda f: f.register_serializer(cls, serializer))

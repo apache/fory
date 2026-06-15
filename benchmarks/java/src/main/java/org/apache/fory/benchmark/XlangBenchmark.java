@@ -64,13 +64,16 @@ import org.openjdk.jmh.annotations.Warmup;
 @CompilerControl(value = CompilerControl.Mode.INLINE)
 public class XlangBenchmark {
   private static final int LIST_SIZE = 5;
+  private static final String SCHEMA_MISMATCH_ENV = "FORY_BENCH_SCHEMA_MISMATCH";
 
   @State(Scope.Thread)
   public static class XlangState {
     @Param({"true", "false"})
     public boolean codegen;
 
-    public Fory fory;
+    public Fory foryWriter;
+    public Fory foryReader;
+    public boolean schemaMismatch;
 
     public NumericStruct numericStruct;
     public Sample sample;
@@ -109,16 +112,15 @@ public class XlangBenchmark {
 
     @Setup(Level.Trial)
     public void setup() {
-      fory =
-          Fory.builder()
-              .withXlang(true)
-              .withCompatible(true)
-              .withCodegen(codegen)
-              .withRefTracking(false)
-              .withClassVersionCheck(false)
-              .requireClassRegistration(true)
-              .build();
-      registerForyTypes(fory);
+      schemaMismatch = schemaMismatchEnabled();
+      foryWriter = newBenchmarkFory(codegen);
+      registerForyTypes(foryWriter);
+      if (schemaMismatch) {
+        foryReader = newBenchmarkFory(codegen);
+        registerForyTypesV2(foryReader);
+      } else {
+        foryReader = foryWriter;
+      }
 
       numericStruct = createNumericStruct();
       sample = createSample();
@@ -127,47 +129,56 @@ public class XlangBenchmark {
       sampleList = createSampleList();
       mediaContentList = createMediaContentList();
 
-      foryNumericStructBytes = fory.serialize(numericStruct);
-      forySampleBytes = fory.serialize(sample);
-      foryMediaContentBytes = fory.serialize(mediaContent);
-      foryNumericStructListBytes = fory.serialize(numericStructList);
-      forySampleListBytes = fory.serialize(sampleList);
-      foryMediaContentListBytes = fory.serialize(mediaContentList);
+      foryNumericStructBytes = foryWriter.serialize(numericStruct);
+      forySampleBytes = foryWriter.serialize(sample);
+      foryMediaContentBytes = foryWriter.serialize(mediaContent);
+      foryNumericStructListBytes = foryWriter.serialize(numericStructList);
+      forySampleListBytes = foryWriter.serialize(sampleList);
+      foryMediaContentListBytes = foryWriter.serialize(mediaContentList);
 
-      protobufNumericStructBytes = toFixedProto(numericStruct).toByteArray();
-      protobufSampleBytes = toProto(sample).toByteArray();
-      protobufMediaContentBytes = toProto(mediaContent).toByteArray();
-      protobufNumericStructListBytes = toProto(numericStructList).toByteArray();
-      protobufSampleListBytes = toProto(sampleList).toByteArray();
-      protobufMediaContentListBytes = toProto(mediaContentList).toByteArray();
+      if (!schemaMismatch) {
+        protobufNumericStructBytes = toFixedProto(numericStruct).toByteArray();
+        protobufSampleBytes = toProto(sample).toByteArray();
+        protobufMediaContentBytes = toProto(mediaContent).toByteArray();
+        protobufNumericStructListBytes = toProto(numericStructList).toByteArray();
+        protobufSampleListBytes = toProto(sampleList).toByteArray();
+        protobufMediaContentListBytes = toProto(mediaContentList).toByteArray();
 
-      flatbufferNumericStructBytes = toFlatBuffer(numericStruct);
-      flatbufferSampleBytes = toFlatBuffer(sample);
-      flatbufferMediaContentBytes = toFlatBuffer(mediaContent);
-      flatbufferNumericStructListBytes = toFlatBuffer(numericStructList);
-      flatbufferSampleListBytes = toFlatBuffer(sampleList);
-      flatbufferMediaContentListBytes = toFlatBuffer(mediaContentList);
+        flatbufferNumericStructBytes = toFlatBuffer(numericStruct);
+        flatbufferSampleBytes = toFlatBuffer(sample);
+        flatbufferMediaContentBytes = toFlatBuffer(mediaContent);
+        flatbufferNumericStructListBytes = toFlatBuffer(numericStructList);
+        flatbufferSampleListBytes = toFlatBuffer(sampleList);
+        flatbufferMediaContentListBytes = toFlatBuffer(mediaContentList);
 
-      flatbufferNumericStructBuffer = ByteBuffer.wrap(flatbufferNumericStructBytes);
-      flatbufferSampleBuffer = ByteBuffer.wrap(flatbufferSampleBytes);
-      flatbufferMediaContentBuffer = ByteBuffer.wrap(flatbufferMediaContentBytes);
-      flatbufferNumericStructListBuffer = ByteBuffer.wrap(flatbufferNumericStructListBytes);
-      flatbufferSampleListBuffer = ByteBuffer.wrap(flatbufferSampleListBytes);
-      flatbufferMediaContentListBuffer = ByteBuffer.wrap(flatbufferMediaContentListBytes);
+        flatbufferNumericStructBuffer = ByteBuffer.wrap(flatbufferNumericStructBytes);
+        flatbufferSampleBuffer = ByteBuffer.wrap(flatbufferSampleBytes);
+        flatbufferMediaContentBuffer = ByteBuffer.wrap(flatbufferMediaContentBytes);
+        flatbufferNumericStructListBuffer = ByteBuffer.wrap(flatbufferNumericStructListBytes);
+        flatbufferSampleListBuffer = ByteBuffer.wrap(flatbufferSampleListBytes);
+        flatbufferMediaContentListBuffer = ByteBuffer.wrap(flatbufferMediaContentListBytes);
+      }
 
       verifySetup();
     }
 
     private void verifySetup() {
-      verifyForySerializerMode(NumericStruct.class);
-      verifyForySerializerMode(Sample.class);
-      verifyForySerializerMode(MediaContent.class);
-      fory.deserialize(foryNumericStructBytes);
-      fromProtoStruct(protobufNumericStructBytes);
-      fromFlatBufferNumericStruct(flatbufferNumericStructBuffer);
+      verifyForySerializerMode(foryWriter, NumericStruct.class);
+      verifyForySerializerMode(foryWriter, Sample.class);
+      verifyForySerializerMode(foryWriter, MediaContent.class);
+      if (schemaMismatch) {
+        verifyForySerializerMode(foryReader, NumericStructV2.class);
+        verifyForySerializerMode(foryReader, SampleV2.class);
+        verifyForySerializerMode(foryReader, MediaContentV2.class);
+        verifySchemaMismatch();
+      } else {
+        foryReader.deserialize(foryNumericStructBytes);
+        fromProtoStruct(protobufNumericStructBytes);
+        fromFlatBufferNumericStruct(flatbufferNumericStructBuffer);
+      }
     }
 
-    private void verifyForySerializerMode(Class<?> type) {
+    private void verifyForySerializerMode(Fory fory, Class<?> type) {
       Serializer<?> serializer = fory.getTypeResolver().getSerializer(type);
       boolean staticSerializer = serializer instanceof StaticGeneratedStructSerializer;
       if (staticSerializer == codegen) {
@@ -179,6 +190,67 @@ public class XlangBenchmark {
                 + ": "
                 + serializer.getClass().getName());
       }
+    }
+
+    private void verifySchemaMismatch() {
+      NumericStructV2 numeric = (NumericStructV2) foryReader.deserialize(foryNumericStructBytes);
+      if (numeric.f1 != numericStruct.f1) {
+        throw new IllegalStateException("NumericStructV2 schema mismatch read failed");
+      }
+      SampleV2 sampleV2 = (SampleV2) foryReader.deserialize(forySampleBytes);
+      if (sampleV2.int_value != sample.int_value) {
+        throw new IllegalStateException("SampleV2 schema mismatch read failed");
+      }
+      MediaContentV2 mediaContentV2 =
+          (MediaContentV2) foryReader.deserialize(foryMediaContentBytes);
+      if (mediaContentV2.media.width != mediaContent.media.width
+          || mediaContentV2.images.isEmpty()
+          || mediaContentV2.images.get(0).width != mediaContent.images.get(0).width) {
+        throw new IllegalStateException("MediaContentV2 schema mismatch read failed");
+      }
+      NumericStructListV2 structList =
+          (NumericStructListV2) foryReader.deserialize(foryNumericStructListBytes);
+      if (structList.struct_list.isEmpty()
+          || structList.struct_list.get(0).f1 != numericStructList.struct_list.get(0).f1) {
+        throw new IllegalStateException("NumericStructListV2 schema mismatch read failed");
+      }
+      SampleListV2 sampleListV2 = (SampleListV2) foryReader.deserialize(forySampleListBytes);
+      if (sampleListV2.sample_list.isEmpty()
+          || sampleListV2.sample_list.get(0).int_value != sampleList.sample_list.get(0).int_value) {
+        throw new IllegalStateException("SampleListV2 schema mismatch read failed");
+      }
+      MediaContentListV2 mediaList =
+          (MediaContentListV2) foryReader.deserialize(foryMediaContentListBytes);
+      if (mediaList.media_content_list.isEmpty()
+          || mediaList.media_content_list.get(0).media.width
+              != mediaContentList.media_content_list.get(0).media.width
+          || mediaList.media_content_list.get(0).images.isEmpty()
+          || mediaList.media_content_list.get(0).images.get(0).width
+              != mediaContentList.media_content_list.get(0).images.get(0).width) {
+        throw new IllegalStateException("MediaContentListV2 schema mismatch read failed");
+      }
+    }
+  }
+
+  private static Fory newBenchmarkFory(boolean codegen) {
+    return Fory.builder()
+        .withXlang(true)
+        .withCompatible(true)
+        .withCodegen(codegen)
+        .withRefTracking(false)
+        .withClassVersionCheck(false)
+        .requireClassRegistration(true)
+        .build();
+  }
+
+  private static boolean schemaMismatchEnabled() {
+    return "1".equals(System.getenv(SCHEMA_MISMATCH_ENV));
+  }
+
+  private static void rejectNonForySchemaMismatch() {
+    if (schemaMismatchEnabled()) {
+      throw new IllegalStateException(
+          SCHEMA_MISMATCH_ENV + "=1 supports only Fory benchmarks; rerun with --serializer fory");
     }
   }
 
@@ -195,183 +267,220 @@ public class XlangBenchmark {
     fory.register(Size.class, 102);
   }
 
+  private static void registerForyTypesV2(Fory fory) {
+    fory.register(NumericStructV2.class, 1);
+    fory.register(SampleV2.class, 2);
+    fory.register(MediaV2.class, 3);
+    fory.register(ImageV2.class, 4);
+    fory.register(MediaContentV2.class, 5);
+    fory.register(NumericStructListV2.class, 6);
+    fory.register(SampleListV2.class, 7);
+    fory.register(MediaContentListV2.class, 8);
+    fory.register(Player.class, 101);
+    fory.register(Size.class, 102);
+  }
+
   @Benchmark
   public Object BM_Fory_NumericStruct_Serialize(XlangState state) {
-    return state.fory.serialize(state.numericStruct);
+    return state.foryWriter.serialize(state.numericStruct);
   }
 
   @Benchmark
   public Object BM_Fory_NumericStruct_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.foryNumericStructBytes);
+    return state.foryReader.deserialize(state.foryNumericStructBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_NumericStruct_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFixedProto(state.numericStruct).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_NumericStruct_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoStruct(state.protobufNumericStructBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_NumericStruct_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.numericStruct);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_NumericStruct_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferNumericStruct(state.flatbufferNumericStructBuffer);
   }
 
   @Benchmark
   public Object BM_Fory_Sample_Serialize(XlangState state) {
-    return state.fory.serialize(state.sample);
+    return state.foryWriter.serialize(state.sample);
   }
 
   @Benchmark
   public Object BM_Fory_Sample_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.forySampleBytes);
+    return state.foryReader.deserialize(state.forySampleBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_Sample_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toProto(state.sample).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_Sample_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoSample(state.protobufSampleBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_Sample_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.sample);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_Sample_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferSample(state.flatbufferSampleBuffer);
   }
 
   @Benchmark
   public Object BM_Fory_MediaContent_Serialize(XlangState state) {
-    return state.fory.serialize(state.mediaContent);
+    return state.foryWriter.serialize(state.mediaContent);
   }
 
   @Benchmark
   public Object BM_Fory_MediaContent_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.foryMediaContentBytes);
+    return state.foryReader.deserialize(state.foryMediaContentBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_MediaContent_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toProto(state.mediaContent).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_MediaContent_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoMediaContent(state.protobufMediaContentBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_MediaContent_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.mediaContent);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_MediaContent_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferMediaContent(state.flatbufferMediaContentBuffer);
   }
 
   @Benchmark
   public Object BM_Fory_NumericStructList_Serialize(XlangState state) {
-    return state.fory.serialize(state.numericStructList);
+    return state.foryWriter.serialize(state.numericStructList);
   }
 
   @Benchmark
   public Object BM_Fory_NumericStructList_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.foryNumericStructListBytes);
+    return state.foryReader.deserialize(state.foryNumericStructListBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_NumericStructList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toProto(state.numericStructList).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_NumericStructList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoNumericStructList(state.protobufNumericStructListBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_NumericStructList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.numericStructList);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_NumericStructList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferNumericStructList(state.flatbufferNumericStructListBuffer);
   }
 
   @Benchmark
   public Object BM_Fory_SampleList_Serialize(XlangState state) {
-    return state.fory.serialize(state.sampleList);
+    return state.foryWriter.serialize(state.sampleList);
   }
 
   @Benchmark
   public Object BM_Fory_SampleList_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.forySampleListBytes);
+    return state.foryReader.deserialize(state.forySampleListBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_SampleList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toProto(state.sampleList).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_SampleList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoSampleList(state.protobufSampleListBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_SampleList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.sampleList);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_SampleList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferSampleList(state.flatbufferSampleListBuffer);
   }
 
   @Benchmark
   public Object BM_Fory_MediaContentList_Serialize(XlangState state) {
-    return state.fory.serialize(state.mediaContentList);
+    return state.foryWriter.serialize(state.mediaContentList);
   }
 
   @Benchmark
   public Object BM_Fory_MediaContentList_Deserialize(XlangState state) {
-    return state.fory.deserialize(state.foryMediaContentListBytes);
+    return state.foryReader.deserialize(state.foryMediaContentListBytes);
   }
 
   @Benchmark
   public Object BM_Protobuf_MediaContentList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toProto(state.mediaContentList).toByteArray();
   }
 
   @Benchmark
   public Object BM_Protobuf_MediaContentList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromProtoMediaContentList(state.protobufMediaContentListBytes);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_MediaContentList_Serialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return toFlatBuffer(state.mediaContentList);
   }
 
   @Benchmark
   public Object BM_Flatbuffer_MediaContentList_Deserialize(XlangState state) {
+    rejectNonForySchemaMismatch();
     return fromFlatBufferMediaContentList(state.flatbufferMediaContentListBuffer);
   }
 
@@ -1316,5 +1425,197 @@ public class XlangBenchmark {
   public static class MediaContentList {
     @ForyField(id = 1)
     public List<MediaContent> media_content_list;
+  }
+
+  @ForyStruct
+  public static class NumericStructV2 {
+    @ForyField(id = 1)
+    public long f1;
+
+    @ForyField(id = 2)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f2;
+
+    @ForyField(id = 3)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f3;
+
+    @ForyField(id = 4)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f4;
+
+    @ForyField(id = 5)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f5;
+
+    @ForyField(id = 6)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f6;
+
+    @ForyField(id = 7)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f7;
+
+    @ForyField(id = 8)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f8;
+
+    @ForyField(id = 9)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f9;
+
+    @ForyField(id = 10)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f10;
+
+    @ForyField(id = 11)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f11;
+
+    @ForyField(id = 12)
+    public @Int32Type(encoding = Int32Encoding.FIXED) int f12;
+  }
+
+  @ForyStruct
+  public static class SampleV2 {
+    @ForyField(id = 1)
+    public long int_value;
+
+    @ForyField(id = 2)
+    public long long_value;
+
+    @ForyField(id = 3)
+    public float float_value;
+
+    @ForyField(id = 4)
+    public double double_value;
+
+    @ForyField(id = 5)
+    public int short_value;
+
+    @ForyField(id = 6)
+    public int char_value;
+
+    @ForyField(id = 7)
+    public boolean boolean_value;
+
+    @ForyField(id = 8)
+    public int int_value_boxed;
+
+    @ForyField(id = 9)
+    public long long_value_boxed;
+
+    @ForyField(id = 10)
+    public float float_value_boxed;
+
+    @ForyField(id = 11)
+    public double double_value_boxed;
+
+    @ForyField(id = 12)
+    public int short_value_boxed;
+
+    @ForyField(id = 13)
+    public int char_value_boxed;
+
+    @ForyField(id = 14)
+    public boolean boolean_value_boxed;
+
+    @ForyField(id = 15)
+    public int[] int_array;
+
+    @ForyField(id = 16)
+    public long[] long_array;
+
+    @ForyField(id = 17)
+    public float[] float_array;
+
+    @ForyField(id = 18)
+    public double[] double_array;
+
+    @ForyField(id = 19)
+    public int[] short_array;
+
+    @ForyField(id = 20)
+    public int[] char_array;
+
+    @ForyField(id = 21)
+    public boolean[] boolean_array;
+
+    @ForyField(id = 22)
+    public String string;
+  }
+
+  @ForyStruct
+  public static class MediaV2 {
+    @ForyField(id = 1)
+    public String uri;
+
+    @ForyField(id = 2)
+    public String title;
+
+    @ForyField(id = 3)
+    public long width;
+
+    @ForyField(id = 4)
+    public int height;
+
+    @ForyField(id = 5)
+    public String format;
+
+    @ForyField(id = 6)
+    public long duration;
+
+    @ForyField(id = 7)
+    public long size;
+
+    @ForyField(id = 8)
+    public int bitrate;
+
+    @ForyField(id = 9)
+    public boolean has_bitrate;
+
+    @ForyField(id = 10)
+    public List<String> persons;
+
+    @ForyField(id = 11)
+    public Player player;
+
+    @ForyField(id = 12)
+    public String copyright;
+  }
+
+  @ForyStruct
+  public static class ImageV2 {
+    @ForyField(id = 1)
+    public String uri;
+
+    @ForyField(id = 2)
+    public String title;
+
+    @ForyField(id = 3)
+    public long width;
+
+    @ForyField(id = 4)
+    public int height;
+
+    @ForyField(id = 5)
+    public Size size;
+  }
+
+  @ForyStruct
+  public static class MediaContentV2 {
+    @ForyField(id = 1)
+    public MediaV2 media;
+
+    @ForyField(id = 2)
+    public List<ImageV2> images;
+  }
+
+  @ForyStruct
+  public static class NumericStructListV2 {
+    @ForyField(id = 1)
+    public List<NumericStructV2> struct_list;
+  }
+
+  @ForyStruct
+  public static class SampleListV2 {
+    @ForyField(id = 1)
+    public List<SampleV2> sample_list;
+  }
+
+  @ForyStruct
+  public static class MediaContentListV2 {
+    @ForyField(id = 1)
+    public List<MediaContentV2> media_content_list;
   }
 }

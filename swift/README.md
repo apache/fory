@@ -11,7 +11,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 - **Fast Binary Serialization**: Efficient encoding for Swift value and reference types
 - **Macro-Driven Models**: Use `@ForyStruct`, `@ForyEnum`, and `@ForyUnion` to generate serializers
-- **Cross-Language**: Exchange payloads with Java, Rust, Go, Python, and other Fory runtimes via xlang
+- **Cross-Language**: Exchange payloads with Java, Rust, Go, Python, and other Fory language implementations via xlang
 - **Shared/Circular References**: Preserve object identity with `trackRef` for reference graphs
 - **Dynamic Values**: Serialize `Any`, `AnyObject`, `any Serializer`, `AnyHashable`, and dynamic containers
 - **Schema Evolution**: Enable compatible mode for add/remove/reorder field evolution
@@ -20,7 +20,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 | Target           | Description                                              |
 | ---------------- | -------------------------------------------------------- |
-| `Fory`           | Core Swift runtime and macro declarations                |
+| `Fory`           | Core Swift implementation and macro declarations         |
 | `ForyMacro`      | Macro implementation used by Fory model and field macros |
 | `ForyXlangTests` | Executable used by Java-driven xlang integration tests   |
 | `ForyTests`      | Swift unit tests                                         |
@@ -33,7 +33,7 @@ The Swift implementation provides high-performance object graph serialization wi
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/apache/fory.git", from: "1.0.0")
+    .package(url: "https://github.com/apache/fory.git", from: "1.1.0")
 ],
 targets: [
     .target(
@@ -388,7 +388,7 @@ Type registration can be ID-based or name-based:
 
 ```swift
 fory.register(MyType.self, id: 100)
-try fory.register(MyType.self, namespace: "com.example", name: "MyType")
+try fory.register(MyType.self, name: "com.example.MyType")
 ```
 
 Cross-language rules:
@@ -401,7 +401,8 @@ Cross-language rules:
 
 - Prefer `trackRef=false` for value-only payloads to avoid reference-table overhead
 - Reuse the same `Fory` instance and register types once per process/service lifecycle
-- Use schema-consistent mode (`compatible=false`) when strict schema parity is guaranteed
+- Use `compatible=false` only when every reader and writer always uses the same schema and you want
+  faster serialization and smaller size
 
 ## Development
 

@@ -26,7 +26,6 @@ import logging
 import pickle
 import types
 import typing
-from typing import TypeVar, Union
 from enum import Enum
 
 from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
@@ -136,6 +135,7 @@ from pyfory.types import (
 )
 from pyfory.type_util import (
     load_class,
+    normalize_fory_type,
     record_class_factory,
 )
 from pyfory._fory import (
@@ -221,6 +221,20 @@ def _construct_serializer(serializer_factory, type_resolver, cls):
         if _accepts_n_positional_args(serializer_factory, nargs):
             return serializer_factory(*args)
     raise TypeError(f"Unsupported serializer constructor for {serializer_factory!r}; expected `(type_resolver, cls)`, `(type_resolver)`, or `()`.")
+
+
+def _split_registration_name(name: str):
+    if name is None:
+        return None, None
+    if not isinstance(name, str):
+        raise TypeError(f"name must be a string, got {type(name).__name__}")
+    if not name or name.endswith("."):
+        raise ValueError("name must not be empty or end with '.'")
+    namespace, separator, typename = name.rpartition(".")
+    if not separator:
+        namespace = ""
+        typename = name
+    return namespace, typename
 
 
 if ENABLE_FORY_CYTHON_SERIALIZATION:
@@ -328,8 +342,6 @@ class TypeResolver:
         "compatible",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
         "shared_registry",
         "_type_id_counter",
         "_types_info",
@@ -360,8 +372,6 @@ class TypeResolver:
         self.compatible = config.compatible
         self.field_nullable = config.field_nullable
         self.policy = config.policy
-        self.max_collection_size = config.max_collection_size
-        self.max_binary_size = config.max_binary_size
         self.shared_registry = shared_registry
         self.require_registration = self.strict
         self._metastr_to_type = dict()
@@ -537,13 +547,13 @@ class TypeResolver:
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
+        namespace, typename = _split_registration_name(name)
         return self._register_type(
             cls,
             type_id=type_id,
@@ -554,13 +564,13 @@ class TypeResolver:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
-        namespace: str = None,
-        typename: str = None,
+        name: str = None,
         serializer=None,
     ):
+        namespace, typename = _split_registration_name(name)
         if serializer is None:
             raise TypeError("register_union requires a serializer")
         if serializer is not None and not isinstance(serializer, Serializer):
@@ -591,7 +601,7 @@ class TypeResolver:
 
     def _register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -602,6 +612,7 @@ class TypeResolver:
     ):
         """Register type with given type id or typename. If typename is not None, it will be used for
         cross-language serialization."""
+        cls = normalize_fory_type(cls)
         if internal:
             if type_id is not None and type_id >= 0 and type_id > 0xFF:
                 raise ValueError(f"Internal type id overflow: {type_id}")
@@ -642,7 +653,7 @@ class TypeResolver:
 
     def _register_xtype(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -700,7 +711,7 @@ class TypeResolver:
 
     def __register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -729,6 +740,8 @@ class TypeResolver:
                     namespace, typename = splits
                 else:
                     namespace = ""  # Use empty string for consistency with lookup
+            if not typename:
+                raise ValueError("type name must not be empty")
             ns_metastr = self.namespace_encoder.encode(namespace or "")
             ns_meta_bytes = self.shared_registry.get_encoded_meta_string(ns_metastr)
             type_metastr = self.typename_encoder.encode(typename)
@@ -768,8 +781,9 @@ class TypeResolver:
             type_id = self._type_id_counter = self._type_id_counter + 1
         return type_id
 
-    def register_serializer(self, cls: Union[type, TypeVar], serializer):
-        assert isinstance(cls, (type, TypeVar)), cls
+    def register_serializer(self, cls, serializer):
+        cls = normalize_fory_type(cls)
+        assert isinstance(cls, type) or type(cls) is int, cls
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
@@ -799,6 +813,7 @@ class TypeResolver:
         return self.get_type_info(cls).serializer
 
     def get_type_info(self, cls, create=True):
+        cls = normalize_fory_type(cls)
         if cls is tuple and self.xlang:
             return self.get_type_info(list, create=create)
         type_info = self._types_info.get(cls)
@@ -938,6 +953,7 @@ class TypeResolver:
         return serializer
 
     def is_registered_by_name(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         if typeinfo is None:
             return False
@@ -945,6 +961,7 @@ class TypeResolver:
 
     def is_registered_by_id(self, cls=None, type_id=None, user_type_id=NO_USER_TYPE_ID):
         if cls is not None:
+            cls = normalize_fory_type(cls)
             typeinfo = self._types_info.get(cls)
             if typeinfo is None:
                 return False
@@ -959,21 +976,25 @@ class TypeResolver:
             return type_id in self._type_id_to_type_info
 
     def get_registered_name(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.decode_namespace(), typeinfo.decode_typename()
 
     def get_registered_id(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.type_id
 
     def get_registered_user_type_id(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.user_type_id
 
     def get_registered_type_ids(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.type_id, typeinfo.user_type_id

@@ -17,7 +17,13 @@
 
 import array
 import typing
-from typing import TypeVar
+
+from pyfory.type_id import TypeId
+
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
 
 if typing.TYPE_CHECKING:
     from pyfory.serialization import (
@@ -36,34 +42,25 @@ if typing.TYPE_CHECKING:
         UInt8Array,
     )
 
-try:
-    from typing import Annotated as _Annotated
-except ImportError:
-    try:
-        from typing_extensions import Annotated as _Annotated
-    except ImportError:
-        _Annotated = None
-
-
 Bool = bool
-Int8 = TypeVar("Int8", bound=int)
-UInt8 = TypeVar("UInt8", bound=int)
-Int16 = TypeVar("Int16", bound=int)
-UInt16 = TypeVar("UInt16", bound=int)
-Int32 = TypeVar("Int32", bound=int)
-UInt32 = TypeVar("UInt32", bound=int)
-FixedInt32 = TypeVar("FixedInt32", bound=int)
-FixedUInt32 = TypeVar("FixedUInt32", bound=int)
-Int64 = TypeVar("Int64", bound=int)
-UInt64 = TypeVar("UInt64", bound=int)
-FixedInt64 = TypeVar("FixedInt64", bound=int)
-TaggedInt64 = TypeVar("TaggedInt64", bound=int)
-FixedUInt64 = TypeVar("FixedUInt64", bound=int)
-TaggedUInt64 = TypeVar("TaggedUInt64", bound=int)
-Float16 = TypeVar("Float16", bound=float)
-BFloat16 = TypeVar("BFloat16", bound=float)
-Float32 = TypeVar("Float32", bound=float)
-Float64 = TypeVar("Float64", bound=float)
+Int8 = Annotated[int, TypeId.INT8]
+UInt8 = Annotated[int, TypeId.UINT8]
+Int16 = Annotated[int, TypeId.INT16]
+UInt16 = Annotated[int, TypeId.UINT16]
+Int32 = Annotated[int, TypeId.VARINT32]
+UInt32 = Annotated[int, TypeId.VAR_UINT32]
+FixedInt32 = Annotated[int, TypeId.INT32]
+FixedUInt32 = Annotated[int, TypeId.UINT32]
+Int64 = Annotated[int, TypeId.VARINT64]
+UInt64 = Annotated[int, TypeId.VAR_UINT64]
+FixedInt64 = Annotated[int, TypeId.INT64]
+TaggedInt64 = Annotated[int, TypeId.TAGGED_INT64]
+FixedUInt64 = Annotated[int, TypeId.UINT64]
+TaggedUInt64 = Annotated[int, TypeId.TAGGED_UINT64]
+Float16 = Annotated[float, TypeId.FLOAT16]
+BFloat16 = Annotated[float, TypeId.BFLOAT16]
+Float32 = Annotated[float, TypeId.FLOAT32]
+Float64 = Annotated[float, TypeId.FLOAT64]
 
 _ARRAY_EXPORTS = {
     "BoolArray",
@@ -111,9 +108,7 @@ class Ref:
             enable = params[1]
         if not isinstance(enable, bool):
             raise TypeError("Ref enable must be a bool")
-        if _Annotated is None:
-            return target
-        return _Annotated[target, RefMeta(enable)]
+        return Annotated[target, RefMeta(enable)]
 
 
 class ArrayMeta:
@@ -133,29 +128,6 @@ class ArrayMeta:
         return f"ArrayMeta(element_type={self.element_type!r}, carrier={self.carrier!r})"
 
 
-class _ArrayTypeHint:
-    __slots__ = ("__origin__", "__args__", "__fory_array_meta__")
-
-    def __init__(self, origin, element_type, carrier: str):
-        self.__origin__ = origin
-        self.__args__ = (element_type,)
-        self.__fory_array_meta__ = ArrayMeta(element_type, carrier)
-
-    def __repr__(self):
-        return f"{self.__origin__.__name__}[{self.__args__[0]!r}]"
-
-    def __eq__(self, other):
-        return (
-            type(other) is _ArrayTypeHint
-            and self.__origin__ is other.__origin__
-            and self.__args__ == other.__args__
-            and self.__fory_array_meta__ == other.__fory_array_meta__
-        )
-
-    def __hash__(self):
-        return hash((self.__origin__, self.__args__, self.__fory_array_meta__))
-
-
 class _ArrayHint:
     _carrier = "array"
 
@@ -168,9 +140,7 @@ class _ArrayHint:
             if len(element_type) != 1:
                 raise TypeError(f"{cls.__name__} expects exactly one element type")
             element_type = element_type[0]
-        if _Annotated is None:
-            return _ArrayTypeHint(cls, element_type, cls._carrier)
-        return _Annotated[cls._base_type(element_type), ArrayMeta(element_type, cls._carrier)]
+        return Annotated[cls._base_type(element_type), ArrayMeta(element_type, cls._carrier)]
 
 
 class Array(_ArrayHint):

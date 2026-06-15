@@ -47,8 +47,9 @@
 //!   `.xlang(true)` and compatible schema evolution when `compatible` is
 //!   omitted.
 //! - **Native mode**: the Rust-only wire format, selected with `.xlang(false)`
-//!   and schema-consistent payloads when `compatible` is omitted. Add
-//!   `.compatible(true)` only when Rust-only deployments need schema evolution.
+//!   with compatible schema evolution when `compatible` is omitted. Add
+//!   `.compatible(false)` only when every reader and writer always uses the same
+//!   schema and you need smaller, faster payloads.
 //!
 //! ### Type System
 //!
@@ -105,7 +106,7 @@
 //! }
 //!
 //! # fn main() {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100).unwrap();
 //! fory.register::<Cat>(101).unwrap();
 //! fory.register::<Zoo>(102).unwrap();
@@ -153,7 +154,7 @@
 //! use std::collections::HashMap;
 //!
 //! // Create a Fory instance
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //!
 //! // Serialize String
 //! let text = String::from("Hello, Fory!");
@@ -181,6 +182,10 @@
 //! // let row_data = to_row(&my_data);
 //! // let row = from_row::<MyStruct>(&row_data);
 //! ```
+
+// Direct lower-level derive users may resolve this crate through `::fory_core`, including
+// doctests where `crate` is the doctest crate instead of this runtime crate.
+extern crate self as fory_core;
 
 pub mod buffer;
 pub mod config;

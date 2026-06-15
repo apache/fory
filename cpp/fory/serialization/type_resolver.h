@@ -169,42 +169,7 @@ public:
   bool operator!=(const FieldType &other) const { return !(*this == other); }
 };
 
-inline uint32_t compatible_fingerprint_type_id(uint32_t type_id) {
-  switch (static_cast<TypeId>(type_id)) {
-  case TypeId::STRUCT:
-  case TypeId::COMPATIBLE_STRUCT:
-  case TypeId::NAMED_STRUCT:
-  case TypeId::NAMED_COMPATIBLE_STRUCT:
-  case TypeId::UNKNOWN:
-    return static_cast<uint32_t>(TypeId::STRUCT);
-  case TypeId::ENUM:
-  case TypeId::NAMED_ENUM:
-    return static_cast<uint32_t>(TypeId::ENUM);
-  case TypeId::EXT:
-  case TypeId::NAMED_EXT:
-    return static_cast<uint32_t>(TypeId::EXT);
-  case TypeId::BINARY:
-  case TypeId::INT8_ARRAY:
-  case TypeId::UINT8_ARRAY:
-    return static_cast<uint32_t>(TypeId::BINARY);
-  case TypeId::INT32:
-  case TypeId::VARINT32:
-    return static_cast<uint32_t>(TypeId::VARINT32);
-  case TypeId::INT64:
-  case TypeId::VARINT64:
-  case TypeId::TAGGED_INT64:
-    return static_cast<uint32_t>(TypeId::VARINT64);
-  case TypeId::UINT32:
-  case TypeId::VAR_UINT32:
-    return static_cast<uint32_t>(TypeId::VAR_UINT32);
-  case TypeId::UINT64:
-  case TypeId::VAR_UINT64:
-  case TypeId::TAGGED_UINT64:
-    return static_cast<uint32_t>(TypeId::VAR_UINT64);
-  default:
-    return type_id;
-  }
-}
+uint32_t compatible_fingerprint_type_id(uint32_t type_id);
 
 inline uint64_t FieldType::compute_compatible_fingerprint(
     uint32_t tid, const std::vector<FieldType> &generic_types) {
@@ -217,105 +182,11 @@ inline uint64_t FieldType::compute_compatible_fingerprint(
   return hash;
 }
 
-inline bool collection_type_allows_empty_generic_fallback(uint32_t type_id) {
-  return type_id == static_cast<uint32_t>(TypeId::LIST) ||
-         type_id == static_cast<uint32_t>(TypeId::SET) ||
-         type_id == static_cast<uint32_t>(TypeId::MAP);
-}
-
-inline bool union_type_ids_compatible(uint32_t local_type_id,
-                                      uint32_t remote_type_id) {
-  auto is_union = [](uint32_t type_id) {
-    TypeId tid = static_cast<TypeId>(type_id);
-    return tid == TypeId::UNION || tid == TypeId::TYPED_UNION ||
-           tid == TypeId::NAMED_UNION;
-  };
-  return is_union(local_type_id) && is_union(remote_type_id);
-}
-
-inline bool field_types_compatible(const FieldType &local,
-                                   const FieldType &remote) {
-  if (local.compatible_fingerprint == remote.compatible_fingerprint) {
-    return true;
-  }
-  if (union_type_ids_compatible(local.type_id, remote.type_id)) {
-    return true;
-  }
-  return local.type_id == remote.type_id &&
-         collection_type_allows_empty_generic_fallback(local.type_id) &&
-         (local.generics.empty() || remote.generics.empty());
-}
-
-inline bool primitive_array_element_type_id(uint32_t array_type_id,
-                                            uint32_t &element_type_id) {
-  switch (static_cast<TypeId>(array_type_id)) {
-  case TypeId::BOOL_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::BOOL);
-    return true;
-  case TypeId::INT8_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::INT8);
-    return true;
-  case TypeId::INT16_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::INT16);
-    return true;
-  case TypeId::INT32_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::VARINT32);
-    return true;
-  case TypeId::INT64_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::VARINT64);
-    return true;
-  case TypeId::FLOAT16_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::FLOAT16);
-    return true;
-  case TypeId::FLOAT32_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::FLOAT32);
-    return true;
-  case TypeId::FLOAT64_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::FLOAT64);
-    return true;
-  case TypeId::UINT8_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::UINT8);
-    return true;
-  case TypeId::UINT16_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::UINT16);
-    return true;
-  case TypeId::UINT32_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::UINT32);
-    return true;
-  case TypeId::UINT64_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::UINT64);
-    return true;
-  case TypeId::BFLOAT16_ARRAY:
-    element_type_id = static_cast<uint32_t>(TypeId::BFLOAT16);
-    return true;
-  default:
-    return false;
-  }
-}
-
-inline bool field_types_compatible_top_level(const FieldType &local,
-                                             const FieldType &remote) {
-  if (field_types_compatible(local, remote)) {
-    return true;
-  }
-
-  uint32_t array_element_type_id = 0;
-  if (local.type_id == static_cast<uint32_t>(TypeId::LIST) &&
-      remote.generics.size() == 0 &&
-      primitive_array_element_type_id(remote.type_id, array_element_type_id) &&
-      local.generics.size() == 1) {
-    return compatible_fingerprint_type_id(local.generics[0].type_id) ==
-           compatible_fingerprint_type_id(array_element_type_id);
-  }
-  if (remote.type_id == static_cast<uint32_t>(TypeId::LIST) &&
-      local.generics.size() == 0 &&
-      primitive_array_element_type_id(local.type_id, array_element_type_id) &&
-      remote.generics.size() == 1) {
-    return compatible_fingerprint_type_id(remote.generics[0].type_id) ==
-           compatible_fingerprint_type_id(array_element_type_id);
-  }
-  return false;
-}
+bool field_types_compatible(const FieldType &local, const FieldType &remote);
+bool primitive_array_element_type_id(uint32_t array_type_id,
+                                     uint32_t &element_type_id);
+bool field_types_compatible_top_level(const FieldType &local,
+                                      const FieldType &remote);
 
 // ============================================================================
 // FieldInfo - Field metadata (name, type, id)
@@ -403,8 +274,9 @@ public:
 
   /// Assign field IDs by comparing with local type
   /// This is the key function for schema evolution!
-  static void assign_field_ids(const TypeMeta *local_type,
-                               std::vector<FieldInfo> &remote_fields);
+  static Result<void, Error>
+  assign_field_ids(const TypeMeta *local_type,
+                   std::vector<FieldInfo> &remote_fields);
 
   const std::vector<FieldInfo> &get_field_infos() const { return field_infos; }
   int64_t get_hash() const { return hash; }
@@ -762,13 +634,13 @@ void apply_integer_encoding(FieldType &ft, const FieldNodeSpec &spec,
     ft.set_type_id(static_cast<uint32_t>(TypeId::UINT16));
   } else if constexpr (std::is_same_v<Decayed, uint32_t>) {
     ft.set_type_id(static_cast<uint32_t>(
-        enc == Encoding::Varint ? TypeId::VAR_UINT32 : TypeId::UINT32));
+        enc == Encoding::Fixed ? TypeId::UINT32 : TypeId::VAR_UINT32));
   } else if constexpr (std::is_same_v<Decayed, uint64_t>) {
-    ft.set_type_id(static_cast<uint32_t>(enc == Encoding::Varint
-                                             ? TypeId::VAR_UINT64
+    ft.set_type_id(static_cast<uint32_t>(enc == Encoding::Fixed
+                                             ? TypeId::UINT64
                                              : (enc == Encoding::Tagged
                                                     ? TypeId::TAGGED_UINT64
-                                                    : TypeId::UINT64)));
+                                                    : TypeId::VAR_UINT64)));
   } else if constexpr (std::is_same_v<Decayed, int32_t> ||
                        std::is_same_v<Decayed, int>) {
     ft.set_type_id(static_cast<uint32_t>(
@@ -1246,19 +1118,19 @@ constexpr uint32_t compute_unsigned_type_id() {
     } else if constexpr (std::is_same_v<InnerType, uint16_t>) {
       return static_cast<uint32_t>(TypeId::UINT16);
     } else if constexpr (std::is_same_v<InnerType, uint32_t>) {
-      if constexpr (enc == Encoding::Varint) {
-        return static_cast<uint32_t>(TypeId::VAR_UINT32);
-      } else {
+      // uint32_t defaults to Serializer<uint32_t>::type_id (VAR_UINT32);
+      // only an explicit fixed field config should emit UINT32 metadata.
+      if constexpr (enc == Encoding::Fixed) {
         return static_cast<uint32_t>(TypeId::UINT32);
       }
+      return static_cast<uint32_t>(TypeId::VAR_UINT32);
     } else if constexpr (std::is_same_v<InnerType, uint64_t>) {
-      if constexpr (enc == Encoding::Varint) {
-        return static_cast<uint32_t>(TypeId::VAR_UINT64);
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<uint32_t>(TypeId::UINT64);
       } else if constexpr (enc == Encoding::Tagged) {
         return static_cast<uint32_t>(TypeId::TAGGED_UINT64);
-      } else {
-        return static_cast<uint32_t>(TypeId::UINT64);
       }
+      return static_cast<uint32_t>(TypeId::VAR_UINT64);
     }
   }
   // Not an unsigned type with configured encoding; use the type default.
@@ -1303,9 +1175,8 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         ::fory::to_snake_case<max_snake_len>(original_name);
     std::string field_name(snake_buffer.data(), snake_len);
 
-    const auto field_ptr = std::get<Index>(field_ptrs);
-    using RawFieldType =
-        typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+    const auto field_entry = std::get<Index>(field_ptrs);
+    using RawFieldType = meta::FieldRawTypeT<T, decltype(field_entry)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
@@ -1350,9 +1221,8 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         ::fory::to_snake_case<max_snake_len>(original_name);
     std::string field_name(snake_buffer.data(), snake_len);
 
-    const auto field_ptr = std::get<Index>(field_ptrs);
-    using RawFieldType =
-        typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+    const auto field_entry = std::get<Index>(field_ptrs);
+    using RawFieldType = meta::FieldRawTypeT<T, decltype(field_entry)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
@@ -1583,6 +1453,10 @@ private:
 
   template <typename T>
   static void *harness_read_data_adapter_abstract(ReadContext &ctx);
+
+  template <typename T> static void harness_destroy_adapter(void *ptr);
+
+  static void harness_destroy_adapter_noop(void *ptr);
 
   template <typename T>
   static Result<std::vector<FieldInfo>, Error>
@@ -1840,6 +1714,10 @@ TypeResolver::register_by_name(const std::string &ns,
     return Unexpected(
         Error::invalid("type_name must be non-empty for register_by_name"));
   }
+  if (type_name.find('.') != std::string::npos) {
+    return Unexpected(Error::invalid(
+        "type_name must not contain '.' when namespace is provided"));
+  }
 
   constexpr uint64_t ctid = type_index<T>();
 
@@ -1912,6 +1790,10 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
     return Unexpected(Error::invalid(
         "type_name must be non-empty for register_ext_type_by_name"));
   }
+  if (type_name.find('.') != std::string::npos) {
+    return Unexpected(Error::invalid(
+        "type_name must not contain '.' when namespace is provided"));
+  }
 
   constexpr uint64_t ctid = type_index<T>();
 
@@ -1954,6 +1836,10 @@ TypeResolver::register_union_by_name(const std::string &ns,
   if (type_name.empty()) {
     return Unexpected(Error::invalid(
         "type_name must be non-empty for register_union_by_name"));
+  }
+  if (type_name.find('.') != std::string::npos) {
+    return Unexpected(Error::invalid(
+        "type_name must not contain '.' when namespace is provided"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
@@ -2160,6 +2046,7 @@ Harness TypeResolver::make_struct_harness_impl(std::true_type) {
                   &TypeResolver::harness_read_adapter_abstract<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter_abstract<T>,
+                  &TypeResolver::harness_destroy_adapter_noop,
                   &TypeResolver::harness_struct_sorted_fields<T>,
                   &TypeResolver::harness_read_compatible_adapter_abstract<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
@@ -2173,6 +2060,7 @@ Harness TypeResolver::make_struct_harness_impl(std::false_type) {
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter<T>,
+                  &TypeResolver::harness_destroy_adapter<T>,
                   &TypeResolver::harness_struct_sorted_fields<T>,
                   &TypeResolver::harness_read_compatible_adapter<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
@@ -2185,6 +2073,7 @@ template <typename T> Harness TypeResolver::make_serializer_harness() {
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter<T>,
+                  &TypeResolver::harness_destroy_adapter<T>,
                   &TypeResolver::harness_empty_sorted_fields<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter<T>;
@@ -2239,6 +2128,12 @@ void *TypeResolver::harness_read_data_adapter_abstract(ReadContext &ctx) {
   ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
   return nullptr;
 }
+
+template <typename T> void TypeResolver::harness_destroy_adapter(void *ptr) {
+  delete static_cast<T *>(ptr);
+}
+
+inline void TypeResolver::harness_destroy_adapter_noop(void *ptr) { (void)ptr; }
 
 template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,

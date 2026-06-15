@@ -37,7 +37,7 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
     const codec = this.builder.getExternal(DecimalCodec.name);
     const scale = this.scope.uniqueName("decimal_scale");
     const unscaled = this.scope.uniqueName("decimal_unscaled");
-    const payload = this.scope.uniqueName("decimal_payload");
+    const magnitudeBytes = this.scope.uniqueName("decimal_magnitude_bytes");
     const meta = this.scope.uniqueName("decimal_meta");
     return `
       const ${scale} = ${accessor}.scale;
@@ -46,10 +46,10 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
       if (${codec}.canUseSmallEncoding(${unscaled})) {
         ${this.builder.writer.writeVarUInt64(`(${codec}.encodeZigZag64(${unscaled}) << 1n)`)}
       } else {
-        const ${payload} = ${codec}.toCanonicalLittleEndianMagnitude(${unscaled});
-        const ${meta} = (BigInt(${payload}.length) << 1n) | (${unscaled} < 0n ? 1n : 0n);
+        const ${magnitudeBytes} = ${codec}.toCanonicalLittleEndianMagnitude(${unscaled});
+        const ${meta} = (BigInt(${magnitudeBytes}.length) << 1n) | (${unscaled} < 0n ? 1n : 0n);
         ${this.builder.writer.writeVarUInt64(`((${meta} << 1n) | 1n)`)}
-        ${this.builder.writer.buffer(payload)}
+        ${this.builder.writer.buffer(magnitudeBytes)}
       }
     `;
   }
@@ -61,7 +61,7 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
     const header = this.scope.uniqueName("decimal_header");
     const meta = this.scope.uniqueName("decimal_meta");
     const length = this.scope.uniqueName("decimal_length");
-    const payload = this.scope.uniqueName("decimal_payload");
+    const magnitudeBytes = this.scope.uniqueName("decimal_magnitude_bytes");
     const magnitude = this.scope.uniqueName("decimal_magnitude");
     const unscaled = this.scope.uniqueName("decimal_unscaled");
     return `
@@ -75,11 +75,11 @@ class DecimalSerializerGenerator extends BaseSerializerGenerator {
         if (${length} <= 0 || ${length} > 0x7fffffff) {
           throw new Error(\`Invalid decimal magnitude length \${${length}}.\`);
         }
-        const ${payload} = ${this.builder.reader.buffer(length)};
-        if (${payload}[${length} - 1] === 0) {
-          throw new Error("Non-canonical decimal payload: trailing zero byte.");
+        const ${magnitudeBytes} = ${this.builder.reader.buffer(length)};
+        if (${magnitudeBytes}[${length} - 1] === 0) {
+          throw new Error("Non-canonical decimal magnitude bytes: trailing zero byte.");
         }
-        const ${magnitude} = ${codec}.fromCanonicalLittleEndianMagnitude(${payload});
+        const ${magnitude} = ${codec}.fromCanonicalLittleEndianMagnitude(${magnitudeBytes});
         if (${magnitude} === 0n) {
           throw new Error("Big decimal encoding must not represent zero.");
         }

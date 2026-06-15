@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.apache.fory</groupId>
     <artifactId>fory-parent</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
     <relativePath>../../java</relativePath>
   </parent>
   <modelVersion>4.0.0</modelVersion>
@@ -36,14 +36,10 @@
     <maven.compiler.target>11</maven.compiler.target>
     <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <fory.final.field.policy.arg/>
   </properties>
 
   <dependencies>
-    <dependency>
-      <groupId>org.apache.fory</groupId>
-      <artifactId>benchmark</artifactId>
-      <version>${project.version}</version>
-    </dependency>
     <dependency>
       <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>
@@ -75,5 +71,40 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>jdk25-and-higher</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <argLine>
+                --sun-misc-unsafe-memory-access=deny
+                --add-opens=java.base/java.lang.invoke=org.apache.fory.core
+                ${fory.final.field.policy.arg}
+              </argLine>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk26-and-higher</id>
+      <activation>
+        <jdk>[26,)</jdk>
+      </activation>
+      <properties>
+        <fory.final.field.policy.arg>
+          --illegal-final-field-mutation=deny
+        </fory.final.field.policy.arg>
+      </properties>
+    </profile>
+  </profiles>
 
 </project>

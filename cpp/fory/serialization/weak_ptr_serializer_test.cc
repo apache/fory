@@ -33,7 +33,11 @@ namespace {
 // ============================================================================
 
 Fory create_serializer(bool track_ref = true) {
-  return Fory::builder().xlang(true).track_ref(track_ref).build();
+  return Fory::builder()
+      .xlang(true)
+      .track_ref(track_ref)
+      .compatible(true)
+      .build();
 }
 
 // ============================================================================

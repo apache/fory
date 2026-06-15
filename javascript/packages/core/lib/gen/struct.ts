@@ -25,6 +25,11 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator, SerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 import { getCompatibleCollectionArrayReadAction } from "./collection";
+import {
+  CompatibleScalarConverter,
+  getCompatibleScalarReadAction,
+} from "../compatible/scalar";
+import { shouldSkipCompatibleRead } from "../compatible/field";
 
 /**
  * Returns true when a field's read cannot recurse and needs no depth tracking.
@@ -60,8 +65,16 @@ function compatibleReadTargetExpr(typeInfo: TypeInfo, expr: string): string {
 }
 
 const sortProps = (typeInfo: TypeInfo, typeResolver: CodecBuilder["resolver"]) => {
-  const names = TypeMeta.fromTypeInfo(typeInfo, typeResolver).getFieldInfo();
   const props = typeInfo.options!.props;
+  if (typeInfo.options!.preserveFieldOrder) {
+    return typeInfo.options!.fieldEntries ?? Object.entries(props!).map(
+      ([key, fieldTypeInfo]) => ({
+        key,
+        typeInfo: fieldTypeInfo,
+      }),
+    );
+  }
+  const names = TypeMeta.fromTypeInfo(typeInfo, typeResolver).getFieldInfo();
   return names.map((x) => {
     return {
       key: x.fieldName,
@@ -96,9 +109,30 @@ function isDirectVarInt32Field(
   typeInfo: TypeInfo,
   typeResolver: CodecBuilder["resolver"],
 ) {
-  return typeInfo.typeId === TypeId.VARINT32
-    && toRefMode(typeInfo.trackingRef, typeInfo.nullable) === RefMode.NONE
-    && typeResolver.isMonomorphic(typeInfo, typeInfo.dynamic);
+  return varInt32ObjectReadKind(typeInfo, typeResolver) === "number";
+}
+
+function varInt32ObjectReadKind(
+  typeInfo: TypeInfo,
+  typeResolver: CodecBuilder["resolver"],
+): "number" | "bigint" | null {
+  if (
+    toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE
+    || !typeResolver.isMonomorphic(typeInfo, typeInfo.dynamic)
+  ) {
+    return null;
+  }
+  const scalarAction = getCompatibleScalarReadAction(typeInfo);
+  if (scalarAction !== undefined) {
+    return scalarAction.remoteNullable !== true
+      && scalarAction.remoteTypeId === TypeId.VARINT32
+      && (scalarAction.localTypeId === TypeId.INT64
+      || scalarAction.localTypeId === TypeId.VARINT64
+      || scalarAction.localTypeId === TypeId.TAGGED_INT64)
+      ? "bigint"
+      : null;
+  }
+  return typeInfo.typeId === TypeId.VARINT32 ? "number" : null;
 }
 
 function directNumericFieldReadExpr(
@@ -108,6 +142,7 @@ function directNumericFieldReadExpr(
   if (
     toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE
     || !builder.resolver.isMonomorphic(typeInfo, typeInfo.dynamic)
+    || getCompatibleScalarReadAction(typeInfo) !== undefined
   ) {
     return null;
   }
@@ -153,6 +188,372 @@ function directNumericFieldReadExpr(
   }
 }
 
+function compatibleScalarFieldReadExpr(
+  remoteTypeId: number,
+  localTypeId: number,
+  builder: CodecBuilder,
+): string | null {
+  const converter = builder.getExternal(CompatibleScalarConverter.name);
+  const remoteRead = compatibleScalarRemoteReadExpr(
+    remoteTypeId,
+    builder,
+    converter,
+  );
+  if (remoteRead === null) {
+    return null;
+  }
+  if (remoteTypeId === localTypeId) {
+    return remoteRead;
+  }
+  const remoteCanonical = canonicalScalarTypeId(remoteTypeId);
+  const localCanonical = canonicalScalarTypeId(localTypeId);
+  switch (localCanonical) {
+    case TypeId.BOOL:
+      return scalarToBoolExpr(remoteCanonical, remoteRead, converter);
+    case TypeId.STRING:
+      return scalarToStringExpr(remoteCanonical, remoteRead, converter);
+    case TypeId.DECIMAL:
+      return scalarToDecimalExpr(remoteCanonical, remoteRead, converter);
+    case TypeId.INT8:
+    case TypeId.INT16:
+    case TypeId.INT32:
+    case TypeId.INT64:
+    case TypeId.UINT8:
+    case TypeId.UINT16:
+    case TypeId.UINT32:
+    case TypeId.UINT64:
+      return scalarToIntegerExpr(
+        remoteCanonical,
+        localCanonical,
+        remoteRead,
+        converter,
+      );
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      return scalarToFloatExpr(
+        remoteCanonical,
+        localCanonical,
+        remoteRead,
+        converter,
+      );
+    default:
+      return null;
+  }
+}
+
+function canonicalScalarTypeId(typeId: number): number {
+  switch (typeId) {
+    case TypeId.VARINT32:
+      return TypeId.INT32;
+    case TypeId.VARINT64:
+    case TypeId.TAGGED_INT64:
+      return TypeId.INT64;
+    case TypeId.VAR_UINT32:
+      return TypeId.UINT32;
+    case TypeId.VAR_UINT64:
+    case TypeId.TAGGED_UINT64:
+      return TypeId.UINT64;
+    default:
+      return typeId;
+  }
+}
+
+function compatibleScalarRemoteReadExpr(
+  remoteTypeId: number,
+  builder: CodecBuilder,
+  converter: string,
+): string | null {
+  const reader = builder.reader;
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      return `${converter}.checkedBool(${reader.readUint8()})`;
+    case TypeId.INT8:
+      return reader.readInt8();
+    case TypeId.INT16:
+      return reader.readInt16();
+    case TypeId.INT32:
+      return reader.readInt32();
+    case TypeId.VARINT32:
+      return reader.readVarInt32();
+    case TypeId.INT64:
+      return reader.readInt64();
+    case TypeId.VARINT64:
+      return reader.readVarInt64();
+    case TypeId.TAGGED_INT64:
+      return reader.readTaggedInt64();
+    case TypeId.UINT8:
+      return reader.readUint8();
+    case TypeId.UINT16:
+      return reader.readUint16();
+    case TypeId.UINT32:
+      return reader.readUint32();
+    case TypeId.VAR_UINT32:
+      return reader.readVarUInt32();
+    case TypeId.UINT64:
+      return reader.readUint64();
+    case TypeId.VAR_UINT64:
+      return reader.readVarUInt64();
+    case TypeId.TAGGED_UINT64:
+      return reader.readTaggedUInt64();
+    case TypeId.FLOAT16:
+      return reader.readFloat16();
+    case TypeId.BFLOAT16:
+      return reader.readBfloat16();
+    case TypeId.FLOAT32:
+      return reader.readFloat32();
+    case TypeId.FLOAT64:
+      return reader.readFloat64();
+    case TypeId.STRING:
+      return reader.stringWithHeader();
+    case TypeId.DECIMAL:
+      return `${converter}.readDecimal(${reader.ownName()})`;
+    default:
+      return null;
+  }
+}
+
+function scalarToBoolExpr(
+  remoteTypeId: number,
+  value: string,
+  converter: string,
+): string | null {
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      return value;
+    case TypeId.STRING:
+      return `${converter}.stringToBool(${value})`;
+    case TypeId.DECIMAL:
+      return `${converter}.decimalToBool(${value})`;
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      return `${converter}.floatToBool(${value})`;
+    default:
+      return `${converter}.integerToBool(${value})`;
+  }
+}
+
+function scalarToStringExpr(
+  remoteTypeId: number,
+  value: string,
+  converter: string,
+): string | null {
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      return `(${value} ? "true" : "false")`;
+    case TypeId.STRING:
+      return value;
+    case TypeId.DECIMAL:
+      return `${converter}.decimalToString(${value})`;
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      return `${converter}.floatToString(${value})`;
+    default:
+      return `${value}.toString()`;
+  }
+}
+
+function scalarToDecimalExpr(
+  remoteTypeId: number,
+  value: string,
+  converter: string,
+): string | null {
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      return `${converter}.boolToDecimal(${value})`;
+    case TypeId.STRING:
+      return `${converter}.stringToDecimal(${value})`;
+    case TypeId.DECIMAL:
+      return value;
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      return `${converter}.floatToDecimal(${value})`;
+    default:
+      return `${converter}.integerToDecimal(${value})`;
+  }
+}
+
+function scalarToIntegerExpr(
+  remoteTypeId: number,
+  localTypeId: number,
+  value: string,
+  converter: string,
+): string | null {
+  const checkedMethod = checkedIntegerMethod(localTypeId);
+  if (checkedMethod === null) {
+    return null;
+  }
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      if (localTypeId === TypeId.INT64 || localTypeId === TypeId.UINT64) {
+        return `(${value} ? 1n : 0n)`;
+      }
+      return `(${value} ? 1 : 0)`;
+    case TypeId.STRING:
+      return `${converter}.${checkedMethod}(${converter}.stringToInteger(${value}))`;
+    case TypeId.DECIMAL:
+      return `${converter}.${checkedMethod}(${converter}.decimalToInteger(${value}))`;
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      return `${converter}.${checkedMethod}(${converter}.floatToInteger(${value}))`;
+    default:
+      return integerToIntegerExpr(remoteTypeId, localTypeId, value, converter);
+  }
+}
+
+function integerToIntegerExpr(
+  remoteTypeId: number,
+  localTypeId: number,
+  value: string,
+  converter: string,
+): string {
+  if (remoteTypeId === localTypeId) {
+    return value;
+  }
+  if (integerRangeFits(remoteTypeId, localTypeId)) {
+    if (localTypeId === TypeId.INT64 || localTypeId === TypeId.UINT64) {
+      return `BigInt(${value})`;
+    }
+    return value;
+  }
+  return `${converter}.${checkedIntegerMethod(localTypeId)}(${value})`;
+}
+
+function checkedIntegerMethod(localTypeId: number): string | null {
+  switch (localTypeId) {
+    case TypeId.INT8:
+      return "checkedInt8";
+    case TypeId.INT16:
+      return "checkedInt16";
+    case TypeId.INT32:
+      return "checkedInt32";
+    case TypeId.INT64:
+      return "checkedInt64";
+    case TypeId.UINT8:
+      return "checkedUint8";
+    case TypeId.UINT16:
+      return "checkedUint16";
+    case TypeId.UINT32:
+      return "checkedUint32";
+    case TypeId.UINT64:
+      return "checkedUint64";
+    default:
+      return null;
+  }
+}
+
+function integerRangeFits(remoteTypeId: number, localTypeId: number): boolean {
+  switch (localTypeId) {
+    case TypeId.INT16:
+      return remoteTypeId === TypeId.INT8 || remoteTypeId === TypeId.UINT8;
+    case TypeId.INT32:
+      return remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16;
+    case TypeId.INT64:
+      return remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.INT32
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32;
+    case TypeId.UINT16:
+      return remoteTypeId === TypeId.UINT8;
+    case TypeId.UINT32:
+      return remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16;
+    case TypeId.UINT64:
+      return remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32;
+    default:
+      return false;
+  }
+}
+
+function scalarToFloatExpr(
+  remoteTypeId: number,
+  localTypeId: number,
+  value: string,
+  converter: string,
+): string | null {
+  const method = floatMethod("Float", localTypeId);
+  if (method === null) {
+    return null;
+  }
+  switch (remoteTypeId) {
+    case TypeId.BOOL:
+      return `(${value} ? 1 : 0)`;
+    case TypeId.STRING:
+      return `${converter}.stringTo${method}(${value})`;
+    case TypeId.DECIMAL:
+      return `${converter}.decimalTo${method}(${value})`;
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+    case TypeId.FLOAT32:
+    case TypeId.FLOAT64:
+      if (remoteTypeId === localTypeId) {
+        return value;
+      }
+      return `${converter}.floatTo${method}(${value})`;
+    default:
+      if (integerRangeFitsFloat(remoteTypeId, localTypeId)) {
+        return `Number(${value})`;
+      }
+      return `${converter}.integerTo${method}(${value})`;
+  }
+}
+
+function floatMethod(prefix: string, localTypeId: number): string | null {
+  switch (localTypeId) {
+    case TypeId.FLOAT16:
+      return `${prefix}16`;
+    case TypeId.BFLOAT16:
+      return `${prefix === "Float" ? "Bfloat" : "bfloat"}16`;
+    case TypeId.FLOAT32:
+      return `${prefix}32`;
+    case TypeId.FLOAT64:
+      return `${prefix}64`;
+    default:
+      return null;
+  }
+}
+
+function integerRangeFitsFloat(
+  remoteTypeId: number,
+  localTypeId: number,
+): boolean {
+  switch (localTypeId) {
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+      return remoteTypeId === TypeId.INT8 || remoteTypeId === TypeId.UINT8;
+    case TypeId.FLOAT32:
+      return remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16;
+    case TypeId.FLOAT64:
+      return remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.INT32
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32;
+    default:
+      return false;
+  }
+}
+
 class StructSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   sortedProps: { key: string; typeInfo: TypeInfo }[];
@@ -183,10 +584,56 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       && this.sortedProps.every(({ typeInfo }) => isDepthFreeField(typeInfo));
   }
 
-  readField(fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
+  readField(fieldName: string, fieldTypeInfo: TypeInfo, assignStmt: (expr: string) => string, embedGenerator: SerializerGenerator) {
     const { nullable = false, dynamic, trackingRef } = fieldTypeInfo;
     const refMode = toRefMode(trackingRef, nullable);
     const assignCompatible = (expr: string) => assignStmt(compatibleReadTargetExpr(fieldTypeInfo, expr));
+    if (shouldSkipCompatibleRead(fieldTypeInfo)) {
+      const discard = (expr: string) => `${expr};`;
+      if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {
+        if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
+          return embedGenerator.readRefWithoutTypeInfo(discard);
+        }
+        if (isDepthFreeField(fieldTypeInfo)) {
+          return embedGenerator.read(discard, "false");
+        }
+        return embedGenerator.readWithDepth(discard, "false");
+      }
+      if (refMode == RefMode.TRACKING || refMode === RefMode.NULL_ONLY) {
+        return embedGenerator.readRef(discard);
+      }
+      return embedGenerator.readNoRef(discard, "false");
+    }
+    const scalarAction = getCompatibleScalarReadAction(fieldTypeInfo);
+    if (scalarAction) {
+      const readValue = compatibleScalarFieldReadExpr(
+        scalarAction.remoteTypeId,
+        scalarAction.localTypeId,
+        this.builder,
+      );
+      if (readValue === null) {
+        throw new Error(
+          `Unsupported compatible scalar conversion from ${scalarAction.remoteTypeId} to ${scalarAction.localTypeId}`,
+        );
+      }
+      if (scalarAction.remoteNullable !== true) {
+        return assignStmt(readValue);
+      }
+      const refFlag = this.scope.uniqueName("refFlag");
+      return `
+        const ${refFlag} = ${this.builder.reader.readInt8()};
+        switch (${refFlag}) {
+          case ${RefFlags.NotNullValueFlag}:
+            ${assignStmt(readValue)}
+            break;
+          case ${RefFlags.NullFlag}:
+            ${assignStmt("null")}
+            break;
+          default:
+            throw new Error("Invalid reference flag for compatible scalar field ${CodecBuilder.replaceBackslashAndQuote(fieldName)}");
+        }
+      `;
+    }
     let stmt = "";
     // polymorphic type
     if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {
@@ -402,8 +849,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         : `
           const ${result} = {
             ${this.sortedProps.map(({ key }) => {
+          if (shouldSkipCompatibleRead(this.typeInfo.options!.props![key])) {
+            return "";
+          }
           return `${CodecBuilder.safePropName(key)}: null`;
-        }).join(",\n")}
+        }).filter(Boolean).join(",\n")}
           };
         `
       }
@@ -415,7 +865,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         }
         const innerGenerator = new InnerGeneratorClass(typeInfo, this.builder, this.scope);
         return `
-          ${this.readField(typeInfo, expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
+          ${this.readField(key, typeInfo, expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
         `;
       }).join(";\n")}
       ${accessor(result)}
@@ -435,7 +885,19 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     }
     const fields: Array<{ key: string; expr: string }> = [];
     for (const { key, typeInfo } of this.sortedProps) {
-      const expr = directNumericFieldReadExpr(typeInfo, this.builder);
+      if (shouldSkipCompatibleRead(typeInfo)) {
+        return null;
+      }
+      const scalarAction = getCompatibleScalarReadAction(typeInfo);
+      const expr = scalarAction?.remoteNullable === true
+        ? null
+        : scalarAction
+          ? compatibleScalarFieldReadExpr(
+            scalarAction.remoteTypeId,
+            scalarAction.localTypeId,
+            this.builder,
+          )
+          : directNumericFieldReadExpr(typeInfo, this.builder);
       if (expr === null) {
         return null;
       }
@@ -458,11 +920,23 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     if (
       this.typeInfo.options!.withConstructor
       || this.sortedProps.length === 0
-      || !this.sortedProps.every(({ typeInfo }) =>
-        isDirectVarInt32Field(typeInfo, this.builder.resolver)
-      )
     ) {
       return null;
+    }
+    const fields = [];
+    for (const { key, typeInfo } of this.sortedProps) {
+      if (shouldSkipCompatibleRead(typeInfo)) {
+        return null;
+      }
+      const kind = varInt32ObjectReadKind(typeInfo, this.builder.resolver);
+      if (kind === null) {
+        return null;
+      }
+      fields.push({
+        key,
+        kind,
+        local: this.scope.uniqueName(key),
+      });
     }
     const cursor = this.scope.uniqueName("cursor");
     const dataView = this.scope.uniqueName("dataView");
@@ -471,11 +945,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const byte = this.scope.uniqueName("byte");
     const value = this.scope.uniqueName("value");
     const result = this.scope.uniqueName("result");
-    const fields = this.sortedProps.map(({ key }) => ({
-      key,
-      local: this.scope.uniqueName(key),
-    }));
-    const reads = fields.map(({ local }) => `
+    const reads = fields.map(({ local, kind }) => `
       if (${byteLength} - ${cursor} >= 5) {
         ${fourByteValue} = ${dataView}.getUint32(${cursor}, true);
         ${cursor}++;
@@ -515,7 +985,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           }
         }
       }
-      const ${local} = (${value} >>> 1) ^ -(${value} & 1);
+      const ${local} = ${kind === "bigint" ? "BigInt(" : ""}(${value} >>> 1) ^ -(${value} & 1)${kind === "bigint" ? ")" : ""};
     `).join("\n");
     return `
       let ${cursor} = ${this.builder.reader.readGetCursor()};

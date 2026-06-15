@@ -46,7 +46,7 @@ public class FingerprintTest extends ForyTestBase {
 
   @Test
   public void testUnsignedScalarFieldsFingerprint() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = Descriptor.getDescriptors(UnsignedScalarFields.class);
 
     String fingerprint = Fingerprint.computeStructFingerprint(fory, descriptors);
@@ -83,7 +83,7 @@ public class FingerprintTest extends ForyTestBase {
 
   @Test
   public void testUnsignedArrayFieldsFingerprint() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = Descriptor.getDescriptors(UnsignedArrayFields.class);
 
     String fingerprint = Fingerprint.computeStructFingerprint(fory, descriptors);
@@ -110,7 +110,7 @@ public class FingerprintTest extends ForyTestBase {
 
   @Test
   public void testAllUnsignedFieldsFingerprint() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     List<Descriptor> descriptors = Descriptor.getDescriptors(AllUnsignedFields.class);
 
     String fingerprint = Fingerprint.computeStructFingerprint(fory, descriptors);
@@ -150,7 +150,12 @@ public class FingerprintTest extends ForyTestBase {
 
   @Test
   public void testRefWithoutForyFieldAffectsFingerprintAndTypeDef() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).withRefTracking(true).build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(true)
+            .withCompatible(true)
+            .build();
     fory.register(RefWithoutForyFieldStruct.class, 701);
     List<Descriptor> descriptors = Descriptor.getDescriptors(RefWithoutForyFieldStruct.class);
 

@@ -264,8 +264,8 @@ SLOTS_STRUCT_OBJECT = SlotsStruct(
 )
 
 # Global fory instances
-fory_with_ref = pyfory.Fory(ref=True)
-fory_without_ref = pyfory.Fory(ref=False)
+fory_with_ref = pyfory.Fory(ref=True, compatible=True)
+fory_without_ref = pyfory.Fory(ref=False, compatible=True)
 
 # Register all custom types on both instances
 for fory_instance in (fory_with_ref, fory_without_ref):

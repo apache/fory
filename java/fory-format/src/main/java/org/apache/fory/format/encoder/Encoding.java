@@ -23,7 +23,6 @@ import java.util.Collection;
 import java.util.Map;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
-import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.Field;
@@ -46,8 +45,6 @@ interface Encoding {
       TypeRef<? extends Collection<?>> collectionType, TypeRef<?> elementType);
 
   MapEncoderBuilder newMapEncoder(TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken);
-
-  BinaryRow newRow(Schema schema);
 
   BinaryArray newArray(Field field);
 

@@ -32,6 +32,7 @@ const Fory = core.default;
 const { BoolArray, Type } = core;
 
 const DEFAULT_DURATION_SECONDS = 3;
+const SCHEMA_MISMATCH_ENV = "FORY_BENCH_SCHEMA_MISMATCH";
 const SERIALIZER_ORDER = ["fory", "protobuf", "json"];
 const DATA_ORDER = [
   "struct",
@@ -220,6 +221,83 @@ function createSchemas() {
       uri: stringField(1),
       title: stringField(2),
       width: int32Field(3),
+      height: int32Field(4),
+      size: enumField(5, 102, SIZE_ENUM),
+    }),
+    MediaContent: Type.struct(5, {
+      media: structField(1, 3),
+      images: listField(2, Type.struct(4)),
+    }),
+    NumericStructList: Type.struct(6, {
+      struct_list: listField(1, Type.struct(1)),
+    }),
+    SampleList: Type.struct(7, {
+      sample_list: listField(1, Type.struct(2)),
+    }),
+    MediaContentList: Type.struct(8, {
+      media_content_list: listField(1, Type.struct(5)),
+    }),
+  };
+}
+
+function createSchemasV2() {
+  return {
+    NumericStruct: Type.struct(1, {
+      f1: int64Field(1),
+      f2: int32Field(2),
+      f3: int32Field(3),
+      f4: int32Field(4),
+      f5: int32Field(5),
+      f6: int32Field(6),
+      f7: int32Field(7),
+      f8: int32Field(8),
+      f9: int32Field(9),
+      f10: int32Field(10),
+      f11: int32Field(11),
+      f12: int32Field(12),
+    }),
+    Sample: Type.struct(2, {
+      int_value: int64Field(1),
+      long_value: int64Field(2),
+      float_value: float32Field(3),
+      double_value: float64Field(4),
+      short_value: int32Field(5),
+      char_value: int32Field(6),
+      boolean_value: boolField(7),
+      int_value_boxed: int32Field(8),
+      long_value_boxed: int64Field(9),
+      float_value_boxed: float32Field(10),
+      double_value_boxed: float64Field(11),
+      short_value_boxed: int32Field(12),
+      char_value_boxed: int32Field(13),
+      boolean_value_boxed: boolField(14),
+      int_array: int32ArrayField(15),
+      long_array: int64ArrayField(16),
+      float_array: float32ArrayField(17),
+      double_array: float64ArrayField(18),
+      short_array: int32ArrayField(19),
+      char_array: int32ArrayField(20),
+      boolean_array: boolArrayField(21),
+      string: stringField(22),
+    }),
+    Media: Type.struct(3, {
+      uri: stringField(1),
+      title: stringField(2),
+      width: int64Field(3),
+      height: int32Field(4),
+      format: stringField(5),
+      duration: int64Field(6),
+      size: int64Field(7),
+      bitrate: int32Field(8),
+      has_bitrate: boolField(9),
+      persons: listField(10, Type.string()),
+      player: enumField(11, 101, PLAYER_ENUM),
+      copyright: stringField(12),
+    }),
+    Image: Type.struct(4, {
+      uri: stringField(1),
+      title: stringField(2),
+      width: int64Field(3),
       height: int32Field(4),
       size: enumField(5, 102, SIZE_ENUM),
     }),
@@ -526,13 +604,8 @@ function fromProtoMediaContentList(value) {
   };
 }
 
-function createForyBenchmarks() {
-  const fory = new Fory({
-    compatible: true,
-    ref: false,
-  });
-  const schemas = createSchemas();
-  const serializers = {
+function registerForySchemas(fory, schemas) {
+  return {
     struct: fory.register(schemas.NumericStruct),
     sample: fory.register(schemas.Sample),
     media: fory.register(schemas.Media),
@@ -542,10 +615,28 @@ function createForyBenchmarks() {
     samplelist: fory.register(schemas.SampleList),
     mediacontentlist: fory.register(schemas.MediaContentList),
   };
-  return { fory, serializers };
 }
 
-function createDatasets(root) {
+function createForyBenchmarks(schemaMismatch) {
+  const fory = new Fory({
+    compatible: true,
+    ref: false,
+  });
+  const writerSerializers = registerForySchemas(fory, createSchemas());
+  if (!schemaMismatch) {
+    return { writerSerializers, readerSerializers: writerSerializers };
+  }
+  const reader = new Fory({
+    compatible: true,
+    ref: false,
+  });
+  return {
+    writerSerializers,
+    readerSerializers: registerForySchemas(reader, createSchemasV2()),
+  };
+}
+
+function createDatasets(root, schemaMismatch) {
   const StructType = root.lookupType("protobuf.NumericStruct");
   const SampleType = root.lookupType("protobuf.Sample");
   const MediaContentType = root.lookupType("protobuf.MediaContent");
@@ -553,7 +644,8 @@ function createDatasets(root) {
   const SampleListType = root.lookupType("protobuf.SampleList");
   const MediaContentListType = root.lookupType("protobuf.MediaContentList");
 
-  const { serializers } = createForyBenchmarks();
+  const { writerSerializers, readerSerializers } =
+    createForyBenchmarks(schemaMismatch);
 
   return [
     {
@@ -563,7 +655,8 @@ function createDatasets(root) {
       toProto: toProtoStruct,
       fromProto: fromProtoStruct,
       protoType: StructType,
-      forySerializer: serializers.struct,
+      foryWriter: writerSerializers.struct,
+      foryReader: readerSerializers.struct,
       sizeKey: "struct",
     },
     {
@@ -573,7 +666,8 @@ function createDatasets(root) {
       toProto: toProtoSample,
       fromProto: fromProtoSample,
       protoType: SampleType,
-      forySerializer: serializers.sample,
+      foryWriter: writerSerializers.sample,
+      foryReader: readerSerializers.sample,
       sizeKey: "sample",
     },
     {
@@ -583,7 +677,8 @@ function createDatasets(root) {
       toProto: toProtoMediaContent,
       fromProto: fromProtoMediaContent,
       protoType: MediaContentType,
-      forySerializer: serializers.mediacontent,
+      foryWriter: writerSerializers.mediacontent,
+      foryReader: readerSerializers.mediacontent,
       sizeKey: "media",
     },
     {
@@ -593,7 +688,8 @@ function createDatasets(root) {
       toProto: toProtoNumericStructList,
       fromProto: fromProtoNumericStructList,
       protoType: StructListType,
-      forySerializer: serializers.structlist,
+      foryWriter: writerSerializers.structlist,
+      foryReader: readerSerializers.structlist,
       sizeKey: "struct_list",
     },
     {
@@ -603,7 +699,8 @@ function createDatasets(root) {
       toProto: toProtoSampleList,
       fromProto: fromProtoSampleList,
       protoType: SampleListType,
-      forySerializer: serializers.samplelist,
+      foryWriter: writerSerializers.samplelist,
+      foryReader: readerSerializers.samplelist,
       sizeKey: "sample_list",
     },
     {
@@ -613,10 +710,26 @@ function createDatasets(root) {
       toProto: toProtoMediaContentList,
       fromProto: fromProtoMediaContentList,
       protoType: MediaContentListType,
-      forySerializer: serializers.mediacontentlist,
+      foryWriter: writerSerializers.mediacontentlist,
+      foryReader: readerSerializers.mediacontentlist,
       sizeKey: "media_list",
     },
   ];
+}
+
+function schemaMismatchEnabled() {
+  return process.env[SCHEMA_MISMATCH_ENV] === "1";
+}
+
+function validateSchemaMismatchSelection(options, schemaMismatch) {
+  if (!schemaMismatch) {
+    return;
+  }
+  if (options.serializer !== "fory") {
+    throw new Error(
+      `${SCHEMA_MISMATCH_ENV}=1 supports only Fory benchmarks; rerun with --serializer fory`
+    );
+  }
 }
 
 function decodeProtoObject(protoType, bytes) {
@@ -717,8 +830,8 @@ function normalizeProtobufValue(datasetKey, value) {
 function ensureSerializationWorks(dataset) {
   const value = dataset.createValue();
   const foryValue = normalizeForyValue(dataset.key, value);
-  const foryBytes = dataset.forySerializer.serialize(foryValue);
-  const foryRoundTrip = dataset.forySerializer.deserialize(foryBytes);
+  const foryBytes = dataset.foryWriter.serialize(foryValue);
+  const foryRoundTrip = dataset.foryReader.deserialize(foryBytes);
   assert.deepStrictEqual(
     normalizeForyRoundTripValue(dataset.key, foryRoundTrip),
     foryValue
@@ -734,10 +847,49 @@ function ensureSerializationWorks(dataset) {
   assert.deepStrictEqual(jsonRoundTrip, value);
 }
 
+function verifySchemaMismatch(dataset) {
+  const value = dataset.createValue();
+  const foryValue = normalizeForyValue(dataset.key, value);
+  const decoded = dataset.foryReader.deserialize(dataset.foryWriter.serialize(foryValue));
+  switch (dataset.key) {
+    case "struct":
+      assert.equal(decoded.f1, BigInt(value.f1));
+      break;
+    case "sample":
+      assert.equal(decoded.int_value, BigInt(value.int_value));
+      break;
+    case "mediacontent":
+      assert.equal(decoded.media.width, BigInt(value.media.width));
+      assert.equal(decoded.images[0].width, BigInt(value.images[0].width));
+      break;
+    case "structlist":
+      assert.equal(decoded.struct_list[0].f1, BigInt(value.struct_list[0].f1));
+      break;
+    case "samplelist":
+      assert.equal(
+        decoded.sample_list[0].int_value,
+        BigInt(value.sample_list[0].int_value)
+      );
+      break;
+    case "mediacontentlist":
+      assert.equal(
+        decoded.media_content_list[0].media.width,
+        BigInt(value.media_content_list[0].media.width)
+      );
+      assert.equal(
+        decoded.media_content_list[0].images[0].width,
+        BigInt(value.media_content_list[0].images[0].width)
+      );
+      break;
+    default:
+      throw new Error(`Unknown dataset ${dataset.key}`);
+  }
+}
+
 function serializeBytes(serializerName, dataset, value) {
   switch (serializerName) {
     case "fory":
-      return dataset.forySerializer.serialize(normalizeForyValue(dataset.key, value));
+      return dataset.foryWriter.serialize(normalizeForyValue(dataset.key, value));
     case "protobuf":
       return dataset.protoType.encode(dataset.toProto(value)).finish();
     case "json":
@@ -754,13 +906,13 @@ function createBenchmarkCase(serializerName, dataset, operation) {
     const foryValue = normalizeForyValue(dataset.key, value);
     if (operation === "Serialize") {
       return () => {
-        const bytes = dataset.forySerializer.serialize(foryValue);
+        const bytes = dataset.foryWriter.serialize(foryValue);
         blackhole ^= bytes.length;
       };
     }
-    const bytes = dataset.forySerializer.serialize(foryValue);
+    const bytes = dataset.foryWriter.serialize(foryValue);
     return () => {
-      const decoded = dataset.forySerializer.deserialize(bytes);
+      const decoded = dataset.foryReader.deserialize(bytes);
       blackhole ^= Array.isArray(decoded) ? decoded.length : 1;
     };
   }
@@ -858,9 +1010,10 @@ function buildResults(datasets, options) {
   const sizeCounters = {
     name: "BM_PrintSerializedSizes",
   };
+  const sizeSerializers = options.schemaMismatch ? ["fory"] : SERIALIZER_ORDER;
   for (const dataset of datasets) {
     const value = dataset.createValue();
-    for (const serializerName of SERIALIZER_ORDER) {
+    for (const serializerName of sizeSerializers) {
       const bytes = serializeBytes(serializerName, dataset, value);
       sizeCounters[`${serializerName}_${dataset.sizeKey}_size`] = bytes.length;
     }
@@ -871,9 +1024,16 @@ function buildResults(datasets, options) {
 
 function main() {
   const options = parseArgs(process.argv.slice(2));
+  options.schemaMismatch = schemaMismatchEnabled();
+  validateSchemaMismatchSelection(options, options.schemaMismatch);
   const root = protobuf.loadSync(path.join(REPO_ROOT, "benchmarks", "proto", "bench.proto"));
-  const datasets = createDatasets(root);
-  datasets.forEach(ensureSerializationWorks);
+  const datasets = createDatasets(root, options.schemaMismatch);
+  const verificationDatasets = options.data
+    ? datasets.filter((dataset) => dataset.key === options.data)
+    : datasets;
+  verificationDatasets.forEach(
+    options.schemaMismatch ? verifySchemaMismatch : ensureSerializationWorks
+  );
 
   const structSize = serializeBytes("fory", datasets.find((item) => item.key === "struct"), createNumericStruct()).length;
   console.log(`Fory NumericStruct serialized size: ${structSize} bytes`);
@@ -887,6 +1047,7 @@ function main() {
       node_version: process.version,
       v8_version: process.versions.v8,
       duration_seconds: options.durationSeconds,
+      schema_mismatch: options.schemaMismatch,
     },
     benchmarks: buildResults(datasets, options),
   };

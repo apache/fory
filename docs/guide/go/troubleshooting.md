@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 13
+sidebar_position: 14
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -112,11 +112,11 @@ f2.RegisterStruct(User{}, 1)  // Same ID!
 
 **Solutions**:
 
-1. **Enable compatible mode**:
+1. **Keep compatible mode enabled**:
 
 ```go
-// Add WithCompatible(true) to the same option set on every peer.
-f := fory.New(/* existing options */, fory.WithCompatible(true))
+// Remove any WithCompatible(false) override from the peers.
+f := fory.New(/* existing options */)
 ```
 
 2. **Ensure struct definitions match**:
@@ -248,7 +248,7 @@ type Good struct {
 
 **Symptom**: Data deserializes but fields have wrong values.
 
-**Cause**: Different field ordering between languages. In schema-consistent mode, fields are sorted by their snake_case names. CamelCase field names (e.g., `FirstName`) are converted to snake_case (e.g., `first_name`) for sorting.
+**Cause**: Different field ordering between languages. When compatible mode is disabled, fields are sorted by their snake_case names. CamelCase field names (e.g., `FirstName`) are converted to snake_case (e.g., `first_name`) for sorting.
 
 **Solutions**:
 
@@ -287,7 +287,7 @@ f.RegisterStructByName(User{}, "example.User")
 fory.register(User.class, "example.User");
 
 // Python
-fory.register(User, typename="example.User")
+fory.register_type(User, name="example.User")
 ```
 
 ## Performance Issues

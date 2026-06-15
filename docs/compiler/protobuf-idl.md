@@ -41,21 +41,22 @@ how protobuf concepts map to Fory, and how to use protobuf-only Fory extension o
 
 ## Protobuf vs Fory at a Glance
 
-| Aspect             | Protocol Buffers              | Fory                                  |
-| ------------------ | ----------------------------- | ------------------------------------- |
-| Primary purpose    | RPC/message contracts         | High-performance object serialization |
-| Encoding model     | Tag-length-value              | Fory binary protocol                  |
-| Reference tracking | Not built-in                  | First-class (`ref`)                   |
-| Circular refs      | Not supported                 | Supported                             |
-| Unknown fields     | Preserved                     | Not preserved                         |
-| Generated types    | Protobuf-specific model types | Native language constructs            |
-| gRPC ecosystem     | Native                        | Java/Python service codegen           |
+| Aspect             | Protocol Buffers              | Fory                                                           |
+| ------------------ | ----------------------------- | -------------------------------------------------------------- |
+| Primary purpose    | RPC/message contracts         | High-performance object serialization                          |
+| Encoding model     | Tag-length-value              | Fory binary protocol                                           |
+| Reference tracking | Not built-in                  | First-class (`ref`)                                            |
+| Circular refs      | Not supported                 | Supported                                                      |
+| Unknown fields     | Preserved                     | Not preserved                                                  |
+| Generated types    | Protobuf-specific model types | Native language constructs                                     |
+| gRPC ecosystem     | Native                        | Java/Python/Go/Rust/C#/Scala/Kotlin/JavaScript service codegen |
 
-Fory can generate Java and Python gRPC service companions with `--grpc`. Those
-services use normal gRPC transports but serialize request and response payloads
-with Fory rather than protobuf. For broad gRPC ecosystem tooling, schema
-reflection, and protobuf-native interceptors, protobuf remains the mature/default
-choice.
+Fory can generate Java, Python, Go, Rust, C#, Scala, Kotlin, and JavaScript gRPC
+service companions with `--grpc`. JavaScript browser clients are generated with
+`--grpc-web`. Those services use normal gRPC transports but serialize request
+and response payloads with Fory rather than protobuf. For broad gRPC ecosystem
+tooling, schema reflection, and protobuf-native interceptors, protobuf remains
+the mature/default choice.
 
 ## Why Use Apache Fory
 
@@ -232,14 +233,14 @@ message TreeNode {
 
 ### Field-Level Options
 
-| Option                       | Type   | Description                                                                 |
-| ---------------------------- | ------ | --------------------------------------------------------------------------- |
-| `(fory).ref`                 | bool   | Enable reference tracking for this field                                    |
-| `(fory).nullable`            | bool   | Treat field as nullable (`optional`)                                        |
-| `(fory).weak_ref`            | bool   | Generate weak pointer semantics (C++/Rust codegen)                          |
-| `(fory).thread_safe_pointer` | bool   | Use Rust `Arc`/`ArcWeak` for ref fields; default `false` uses `Rc`/`RcWeak` |
-| `(fory).deprecated`          | bool   | Mark field as deprecated                                                    |
-| `(fory).type`                | string | Primitive override for tagged 64-bit integer encoding                       |
+| Option                       | Type   | Description                                                                                          |
+| ---------------------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| `(fory).ref`                 | bool   | Enable reference tracking for this field                                                             |
+| `(fory).nullable`            | bool   | Treat field as nullable (`optional`)                                                                 |
+| `(fory).weak_ref`            | bool   | Generate weak pointer semantics (C++/Rust codegen)                                                   |
+| `(fory).thread_safe_pointer` | bool   | Rust ref carrier selection; default `true` uses `Arc`/`ArcWeak`, explicit `false` uses `Rc`/`RcWeak` |
+| `(fory).deprecated`          | bool   | Mark field as deprecated                                                                             |
+| `(fory).type`                | string | Primitive override for tagged 64-bit integer encoding                                                |
 
 Reference option behavior:
 
@@ -247,19 +248,20 @@ Reference option behavior:
 - For `repeated` fields, `(fory).ref = true` applies to list elements.
 - For `map<K, V>` fields, `(fory).ref = true` applies to map values.
 - `weak_ref` and `thread_safe_pointer` are codegen hints for C++/Rust.
-- `thread_safe_pointer` defaults to `false`; it changes only the generated Rust
+- `thread_safe_pointer` defaults to `true`; it changes only the generated Rust
   pointer carrier and does not change the wire format.
-- In Rust codegen, `(fory).weak_ref = true` uses `RcWeak` by default and switches
-  to `ArcWeak` only when `(fory).thread_safe_pointer = true`.
+- In Rust codegen, `(fory).weak_ref = true` uses `ArcWeak` by default and
+  switches to `RcWeak` only when `(fory).thread_safe_pointer = false`.
 
 ### Option Examples by Shape
 
 ```protobuf
 message Graph {
-  Node root = 1 [(fory).ref = true, (fory).thread_safe_pointer = true];
+  Node root = 1 [(fory).ref = true];
   repeated Node nodes = 2 [(fory).ref = true];
   map<string, Node> cache = 3 [(fory).ref = true];
   Node parent = 4 [(fory).weak_ref = true];
+  Node local = 5 [(fory).ref = true, (fory).thread_safe_pointer = false];
 }
 ```
 
@@ -310,18 +312,24 @@ modifiers (and optional `ref(weak=true)` where needed).
 Replace protobuf generation steps with the Fory compiler invocation for target
 languages.
 
-For Java and Python services, add `--grpc` to emit gRPC companion code:
+For supported service outputs, add `--grpc` to emit gRPC companion code:
 
 ```bash
-foryc api.proto --java_out=./generated/java --python_out=./generated/python --grpc
+foryc api.proto --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
-Generated Java service files compile against grpc-java, and generated Python
-service modules import `grpc`. Add those dependencies in your application build;
-Fory runtime packages do not add gRPC as a hard dependency. Protobuf `oneof`
-fields are translated to Fory union fields inside request and response messages.
-Direct union RPC request or response types are not part of normal protobuf RPC
-syntax.
+Generated Java service files compile against grpc-java, generated Python service
+modules import `grpc`, generated Rust service files import `tonic` and `bytes`,
+generated Go service files import grpc-go, generated JavaScript Node.js service
+files import `@grpc/grpc-js`,
+generated C# service files import `Grpc.Core.Api` types, generated Scala service
+files compile against grpc-java, and generated Kotlin service files compile
+against grpc-java and grpc-kotlin. Add those dependencies in your application
+build; Fory packages do not add gRPC as a hard dependency. Use `--grpc-web`
+with JavaScript output to generate browser clients that import `grpc-web`.
+Protobuf `oneof` fields are translated to Fory union fields inside request and
+response messages. Direct union RPC request or response types are not part of
+normal protobuf RPC syntax.
 
 ### Step 5: Run Compatibility Checks
 

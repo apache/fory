@@ -268,7 +268,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
   }
 
   private fun directPayloadWrite(type: KotlinSourceTypeNode, value: String): String? {
-    val listWrite = directListPayloadWrite(type, value)
+    val listWrite = directListBodyWrite(type, value)
     if (listWrite != null) {
       return listWrite
     }
@@ -304,13 +304,13 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
   }
 
   private fun directPayloadRead(type: KotlinSourceTypeNode): String? {
-    val listRead = directListPayloadRead(type)
+    val listRead = directListBodyRead(type)
     if (listRead != null) {
       return listRead
     }
     val denseUnsignedArrayRead = denseUnsignedArrayRead(type)
     if (denseUnsignedArrayRead != null && !type.trackingRef) {
-      return "KotlinXlangArrayEncoding.$denseUnsignedArrayRead(readContext, typeResolver.config.maxBinarySize())"
+      return "KotlinXlangArrayEncoding.$denseUnsignedArrayRead(readContext)"
     }
     if (!canDirect(type)) {
       return null
@@ -342,7 +342,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
   private fun canDirect(type: KotlinSourceTypeNode): Boolean =
     !type.trackingRef && type.typeArguments.isEmpty() && type.componentType == null
 
-  private fun directListPayloadWrite(type: KotlinSourceTypeNode, value: String): String? {
+  private fun directListBodyWrite(type: KotlinSourceTypeNode, value: String): String? {
     if (type.typeId != "Types.LIST" || type.typeArguments.size != 1 || type.nullable) {
       return null
     }
@@ -354,7 +354,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     return "$value.let { listValue -> buffer.writeVarUInt32Small7(listValue.size); if (listValue.isNotEmpty()) { buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); for (element in listValue) { $writeElement } } }"
   }
 
-  private fun directListPayloadRead(type: KotlinSourceTypeNode): String? {
+  private fun directListBodyRead(type: KotlinSourceTypeNode): String? {
     if (type.typeId != "Types.LIST" || type.typeArguments.size != 1 || type.nullable) {
       return null
     }
@@ -364,7 +364,7 @@ internal class UnionSerializerSourceWriter(private val union: KotlinSourceUnion)
     }
     val readElement = directPayloadRead(elementType) ?: return null
     val valueType = type.valueTypeName.removeSuffix("?")
-    return "run { val size = buffer.readVarUInt32Small7(); val result = java.util.ArrayList<Any?>(size); if (size > 0) { check(buffer.readByte().toInt() == CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); for (i in 0 until size) { result.add($readElement) } }; result as $valueType }"
+    return "run { val size = buffer.readVarUInt32Small7(); val result = if (size == 0) java.util.ArrayList<Any?>(0) else { check(buffer.readByte().toInt() == CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL); buffer.checkReadableBytes(size); val values = java.util.ArrayList<Any?>(size); for (i in 0 until size) { values.add($readElement) }; values }; result as $valueType }"
   }
 
   private fun denseUnsignedArrayWrite(type: KotlinSourceTypeNode): String? =

@@ -94,6 +94,7 @@ public class SerializerFactoryTest {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .withSerializerFactory(SerializerFactoryTest::createSerializer)
+            .withCompatible(false)
             .build();
     assertKryoSerializer(fory);
   }
@@ -105,6 +106,7 @@ public class SerializerFactoryTest {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     fory.registerSerializerFactory(SerializerFactoryTest::createSerializer);
     assertKryoSerializer(fory);
@@ -125,6 +127,7 @@ public class SerializerFactoryTest {
             .requireClassRegistration(false)
             .withModule(module)
             .withModule(module)
+            .withCompatible(false)
             .build();
     assertKryoSerializer(fory);
     Assert.assertEquals(installs.get(), 1);
@@ -145,6 +148,7 @@ public class SerializerFactoryTest {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .withSerializerFactory(
                 (resolver, cls) -> {
                   calls.add("custom");

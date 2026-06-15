@@ -465,10 +465,10 @@ Container read_union_configured_list_data(ReadContext &ctx) {
   using Elem = element_type_t<Container>;
   uint32_t length = ctx.read_var_uint32(ctx.error());
   Container result;
-  if constexpr (has_reserve_v<Container>) {
-    result.reserve(length);
+  if (length == 0) {
+    return result;
   }
-  if (FORY_PREDICT_FALSE(ctx.has_error()) || length == 0) {
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
     return result;
   }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
@@ -552,7 +552,12 @@ MapType read_union_configured_map_data(ReadContext &ctx) {
   using Value = mapped_type_t<MapType>;
   uint32_t length = ctx.read_var_uint32(ctx.error());
   MapType result;
-  MapReserver<MapType>::reserve(result, length);
+  if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
+    return result;
+  }
   uint32_t read_count = 0;
   while (read_count < length && !ctx.has_error()) {
     uint8_t header = ctx.read_uint8(ctx.error());

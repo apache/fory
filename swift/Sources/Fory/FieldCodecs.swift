@@ -643,7 +643,11 @@ public enum ListFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
             typeID: TypeId.list.rawValue,
             nullable: nullable,
             trackRef: trackRef,
-            generics: [ElementCodec.fieldType(nullable: ElementCodec.isNullableType, trackRef: false)]
+            generics: [
+                ElementCodec.fieldType(
+                    nullable: ElementCodec.isNullableType,
+                    trackRef: trackRef && ElementCodec.isRefType)
+            ]
         )
     }
 
@@ -823,7 +827,11 @@ public enum SetFieldCodec<ElementCodec: FieldCodec>: FieldCodec where ElementCod
             typeID: TypeId.set.rawValue,
             nullable: nullable,
             trackRef: trackRef,
-            generics: [ElementCodec.fieldType(nullable: ElementCodec.isNullableType, trackRef: false)]
+            generics: [
+                ElementCodec.fieldType(
+                    nullable: ElementCodec.isNullableType,
+                    trackRef: trackRef && ElementCodec.isRefType)
+            ]
         )
     }
 
@@ -860,8 +868,12 @@ where KeyCodec.Value: Hashable {
             nullable: nullable,
             trackRef: trackRef,
             generics: [
-                KeyCodec.fieldType(nullable: KeyCodec.isNullableType, trackRef: false),
-                ValueCodec.fieldType(nullable: ValueCodec.isNullableType, trackRef: false)
+                KeyCodec.fieldType(
+                    nullable: KeyCodec.isNullableType,
+                    trackRef: trackRef && KeyCodec.isRefType),
+                ValueCodec.fieldType(
+                    nullable: ValueCodec.isNullableType,
+                    trackRef: trackRef && ValueCodec.isRefType)
             ]
         )
     }
@@ -951,7 +963,8 @@ where KeyCodec.Value: Hashable {
         }
 
         var map: Value = [:]
-        map.reserveCapacity(Swift.min(totalLength, context.buffer.remaining))
+        try context.ensureRemainingBytes(totalLength, label: "map")
+        map.reserveCapacity(totalLength)
         var readCount = 0
         while readCount < totalLength {
             let header = try context.buffer.readUInt8()
@@ -1499,12 +1512,12 @@ private func readPackedArrayElementCount(
     width: Int,
     label: String
 ) throws -> Int {
-    let payloadSize = Int(try context.buffer.readVarUInt32())
-    try context.ensureRemainingBytes(payloadSize, label: "primitive_array_payload")
-    if payloadSize % width != 0 {
-        throw ForyError.invalidData("\(label) payload size mismatch")
+    let byteSize = Int(try context.buffer.readVarUInt32())
+    try context.ensureRemainingBytes(byteSize, label: "primitive_array_bytes")
+    if byteSize % width != 0 {
+        throw ForyError.invalidData("\(label) byte size mismatch")
     }
-    let count = payloadSize / width
+    let count = byteSize / width
     try context.ensureCollectionLength(count, label: label)
     return count
 }
@@ -1591,6 +1604,7 @@ private func readCollectionPayload<ElementCodec: FieldCodec>(
     let sameType = (header & CollectionHeader.sameType) != 0
 
     var result: [ElementCodec.Value] = []
+    try context.ensureRemainingBytes(length, label: "array")
     result.reserveCapacity(length)
 
     if !sameType {
@@ -1686,9 +1700,6 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     let declared = (header & CollectionHeader.declaredElementType) != 0
     let sameType = (header & CollectionHeader.sameType) != 0
 
-    var result: [ElementCodec.Value] = []
-    result.reserveCapacity(length)
-
     if !sameType {
         throw ForyError.invalidData("compatible list-to-array field requires same-type elements")
     }
@@ -1702,6 +1713,9 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     } else {
         throw ForyError.invalidData("compatible list-to-array field requires declared elements")
     }
+    try context.ensureRemainingBytes(length, label: "array")
+    var result: [ElementCodec.Value] = []
+    result.reserveCapacity(length)
     return try ElementCodec.withTypeInfo(elementTypeInfo, context) {
         for _ in 0..<length {
             result.append(try readCompatibleElementPayload(

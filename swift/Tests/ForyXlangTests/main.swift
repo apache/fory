@@ -42,12 +42,15 @@ private struct Item {
 
 @ForyStruct
 private struct SimpleStruct {
-    var f1: [Int32: Double] = [:]
+    // Java xlang uses boxed collection element types for this case, so the
+    // schema marks map keys/values and list elements nullable even when the
+    // sample payload contains only non-null values.
+    var f1: [Int32?: Double?] = [:]
     var f2: Int32 = 0
     var f3: Item = .foryDefault()
     var f4: String = ""
     var f5: PeerColor = .green
-    var f6: [String] = []
+    var f6: [String?] = []
     var f7: Int32 = 0
     var f8: Int32 = 0
     var last: Int32 = 0
@@ -687,16 +690,16 @@ private func handleSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleNamedSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    try fory.register(PeerColor.self, namespace: "demo", name: "color")
-    try fory.register(Item.self, namespace: "demo", name: "item")
-    try fory.register(SimpleStruct.self, namespace: "demo", name: "simple_struct")
+    try fory.register(PeerColor.self, name: "demo.color")
+    try fory.register(Item.self, name: "demo.item")
+    try fory.register(SimpleStruct.self, name: "demo.simple_struct")
     return try roundTripSingle(bytes, fory: fory, as: SimpleStruct.self)
 }
 
 private func handleStructEvolvingOverride(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(compatible: true)
-    try fory.register(EvolvingOverrideStruct.self, namespace: "test", name: "evolving_yes")
-    try fory.register(FixedOverrideStruct.self, namespace: "test", name: "evolving_off")
+    try fory.register(EvolvingOverrideStruct.self, name: "test.evolving_yes")
+    try fory.register(FixedOverrideStruct.self, name: "test.evolving_off")
     return try roundTripStream(bytes) { buffer, out in
         let evolving: EvolvingOverrideStruct = try fory.deserialize(from: buffer)
         let fixed: FixedOverrideStruct = try fory.deserialize(from: buffer)

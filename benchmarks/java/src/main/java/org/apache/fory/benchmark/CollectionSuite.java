@@ -41,7 +41,7 @@ public class CollectionSuite {
     Main.main(args);
   }
 
-  private static Fory fory = Fory.builder().build();
+  private static Fory fory = Fory.builder().withCompatible(true).build();
   private static List<Integer> list1 = new ArrayList<>(1024);
   private static byte[] list1Bytes;
 

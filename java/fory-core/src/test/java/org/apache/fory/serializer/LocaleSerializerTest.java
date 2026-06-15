@@ -28,7 +28,12 @@ public class LocaleSerializerTest extends ForyTestBase {
 
   @Test
   public void testWrite() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(fory, Locale.US, "LocaleSerializer");
     serDeCheckSerializerAndEqual(fory, Locale.CHINESE, "LocaleSerializer");
     serDeCheckSerializerAndEqual(fory, Locale.ENGLISH, "LocaleSerializer");

@@ -20,8 +20,8 @@ license: |
 ---
 
 Field configuration is embedded directly in `FORY_STRUCT`. A field entry may be
-bare, or it may be a tuple containing the member name and a `fory::F(...)`
-builder:
+bare, it may be a tuple containing the member name and a `fory::F(...)`
+builder, or it may be a configured accessor property:
 
 ```cpp
 #include "fory/serialization/fory.h"
@@ -35,6 +35,18 @@ struct DataV2 {
 FORY_STRUCT(DataV2, id, (timestamp, fory::F().tagged()), version);
 ```
 
+Accessor properties use the same field metadata as data members:
+
+```cpp
+class Counter {
+public:
+  const uint32_t &value() const;
+  Counter &value(uint32_t value);
+
+  FORY_STRUCT(Counter, FORY_PROPERTY(value, fory::F().varint()));
+};
+```
+
 The configuration is compile-time metadata. It does not allocate codec objects
 or add virtual dispatch on the serialization path.
 
@@ -44,6 +56,7 @@ or add virtual dispatch on the serialization path.
 
 ```cpp
 FORY_STRUCT(DataV2, id, (timestamp, fory::F().tagged()), version);
+FORY_STRUCT(Counter, FORY_PROPERTY(value, fory::F().varint()));
 ```
 
 `fory::F(id)` uses explicit id-based field identity. IDs must be
@@ -112,14 +125,14 @@ FORY_STRUCT(Foo, (nested, fory::F().map(T::uint32().varint(),
 
 Supported recursive composition methods are:
 
-| Method              | Applies to                            |
-| ------------------- | ------------------------------------- |
-| `list(elem)`        | `std::vector<T>` and list-like fields |
-| `set(elem)`         | `std::set<T>` and set-like fields     |
-| `map(key, value)`   | `std::map<K, V>` and map-like fields  |
-| `map().key(spec)`   | Override only the map key             |
-| `map().value(spec)` | Override only the map value           |
-| `inner(child)`      | Transparent single-child carriers     |
+| Method              | Applies to                                                        |
+| ------------------- | ----------------------------------------------------------------- |
+| `list(elem)`        | `std::vector<T>` and list-like fields                             |
+| `set(elem)`         | `std::set<T>` and set-like fields                                 |
+| `map(key, value)`   | `std::map<K, V>`, `std::unordered_map<K, V>`, and map-like fields |
+| `map().key(spec)`   | Override only the map key                                         |
+| `map().value(spec)` | Override only the map value                                       |
+| `inner(child)`      | Transparent single-child carriers                                 |
 
 Partial map overrides are useful when only one side needs a non-default
 encoding:
@@ -165,7 +178,7 @@ struct Node {
 FORY_STRUCT(Node, name, (next, fory::F().nullable().ref()));
 ```
 
-For polymorphic pointer fields, use `.dynamic(true)` to always write runtime
+For polymorphic pointer fields, use `.dynamic(true)` to always write concrete
 type information, `.dynamic(false)` to use the declared type directly, or omit
 it to let Fory infer the behavior from the C++ type:
 

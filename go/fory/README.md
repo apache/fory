@@ -81,17 +81,17 @@ Fory Go supports configuration through functional options:
 
 ```go
 // Enable reference tracking for circular references
-f := fory.New(fory.WithXlang(true), fory.WithTrackRef(true))
+f := fory.New(fory.WithTrackRef(true))
 
 // Native mode for Go-only payloads. Use this when both sides are Go and the
 // payload should follow Go's native type system.
 f := fory.New(fory.WithXlang(false))
 
-// Enable compatible mode for schema evolution in native mode
-f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+// Same-schema optimization for Go-only payloads
+f := fory.New(fory.WithXlang(false), fory.WithCompatible(false))
 
 // Set maximum nesting depth
-f := fory.New(fory.WithXlang(true), fory.WithMaxDepth(20))
+f := fory.New(fory.WithMaxDepth(20))
 
 // Combine multiple options
 f := fory.New(

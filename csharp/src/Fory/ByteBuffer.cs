@@ -482,7 +482,7 @@ public sealed class ByteReader
 
     public void CheckBound(int need)
     {
-        if (_cursor + need > _length)
+        if (need < 0 || need > _length - _cursor)
         {
             throw new OutOfBoundsException(_cursor, need, _length);
         }

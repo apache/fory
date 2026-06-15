@@ -106,14 +106,15 @@ class DartServiceGeneratorMixin:
             "no separate registration helper needed."
         )
         lines.append("")
+        fory = f"_models.{self.module_type_name()}.getFory()"
         lines.append("List<int> _serialize<T>(T value) =>")
-        lines.append("    _models.ForyRegistration.getFory().serialize(value);")
+        lines.append(f"    {fory}.serialize(value);")
         lines.append("")
         lines.append("T _deserialize<T>(List<int> bytes) {")
         lines.append(
             "  final u8 = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);"
         )
-        lines.append("  return _models.ForyRegistration.getFory().deserialize<T>(u8);")
+        lines.append(f"  return {fory}.deserialize<T>(u8);")
         lines.append("}")
         lines.append("")
 

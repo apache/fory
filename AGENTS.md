@@ -9,6 +9,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/docs-and-formatting.md`: documentation, specification, and markdown rules.
 - `.agents/ci-and-pr.md`: CI triage, PR expectations, and commit conventions.
 - `.agents/testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
+- `docs/security/deserialization.md`: security boundaries for untrusted deserialization classification.
 - `.agents/languages/java.md`
 - `.agents/languages/csharp.md`
 - `.agents/languages/cpp.md`
@@ -27,10 +28,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Preserve architecture. Do not introduce new layers, parallel flows, or public APIs unless explicitly requested; prefer local repair in the existing owner over shared-infra expansion, and stop if a fix conflicts with an ADR, spec, or invariant.
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
+- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
 - Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
 - Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while manual serializer registration stays explicit.
-- Use semantic naming only. Name things after protocol or domain concepts, not history, runtime origin, or workaround style; avoid vague names such as `Internal`, `java_style_*`, `Runtime`, `Session`, `Plan`, or `Binding` when they do not name the real concept. Keep class, method, function, and variable names concise; do not encode the whole scenario or implementation history into one identifier. Never name a class or method with a `Plan` suffix; use the real domain concept instead.
+- Use semantic naming only. Name things after protocol or domain concepts, not history, runtime origin, or workaround style; avoid vague names such as `Internal`, `java_style_*`, `Runtime`, `Session`, `Plan`, `Payload`, or `Binding` when they do not name the real concept. Keep class, method, function, and variable names concise; do not encode the whole scenario or implementation history into one identifier. Never name a class or method with a `Plan` suffix; use the real domain concept instead. For Fory codec/read APIs, do not use generic `payload` naming; name the exact owner and data shape, such as bytes, body, frame, field, string, list, map, compressed bytes, or primitive-array encoding.
 - Keep one implementation path. Do not keep parallel helpers, serializers, harnesses, wrappers, or registration flows for the same concept; extend the existing owner path instead of inventing another one.
 - Follow current scope exactly. The latest explicit user instruction overrides earlier plans, and when scope narrows, remove leaked out-of-scope edits immediately.
 - Preserve user corrections. When a user corrects code behavior, ownership, invariants, or review feedback in a way that should prevent repeat mistakes, encode the corrected rule where future agents will see it: prefer the nearest source comment for non-obvious code invariants, or the owning docs/spec for user-visible or protocol behavior. If the correction changes API usage, defaults, generated output, tests, or cross-runtime behavior, update the matching docs, examples, or source comments in the same task so future agents do not repeat the violation. Keep the note concise, English-only, and avoid comments that merely restate obvious code.
@@ -68,7 +70,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - User guide docs must explain user-visible behavior, commands, and examples.
   Do not add implementation details, internal ownership rationale, build flags,
   or type-id-space caveats unless they directly clarify a confusion users can
-  act on.
+  act on. Translate internal owner-model details into concrete user actions, and
+  avoid phrases such as "serializer-owned capability" or "registration alone
+  does not..." in user-facing docs.
 - Add comments only when behavior is hard to understand or an algorithm is non-obvious.
 - Do not remove existing code comments unless they are stale, misleading, redundant, or no longer necessary after the change.
 - Only add tests that verify internal behaviors or fix specific bugs; do not create unnecessary tests unless requested.
@@ -88,6 +92,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Keep class registration enabled unless explicitly requested otherwise.
 - Prefer schema-consistent mode unless compatibility work requires something else.
 - When debugging test errors, always set `ENABLE_FORY_DEBUG_OUTPUT=1` to see debug output.
+- Do not set `FORY_PANIC_ON_ERROR` for normal tests, CI reproduction, or xlang validation.
+  It is a focused debug knob only; omit it from verification commands, but do not filter it
+  from test harnesses when the user command provides it.
 - Never work around failures. Find and fix the root cause. Do not hack, weaken, or bypass tests to make them pass.
 
 ## Source of Truth
@@ -129,6 +136,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 ## Shared Validation Expectations
 
 - Run the relevant tests for every touched language or subsystem before finishing.
+- A formatter-only pass after successful tests does not invalidate those test results. Do not rerun tests solely because formatting ran after the tests already passed.
 - When multiple independent language test suites are required, run them concurrently when the environment has enough resources instead of running them one by one; keep each language's logs and results separate, and rerun any failed suite with focused diagnostics.
 - Run applicable test commands in a subagent with a thinking budget one level lower than the main task budget, using medium when the current budget is unclear, unless the change is docs-only or the user explicitly asks to run them locally.
 - Reuse the same test subagent for repeated runs within one task and subsystem so it keeps failure context; create a fresh subagent when switching unrelated subsystems or when prior context may be stale or misleading.
@@ -136,6 +144,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - If xlang behavior or type mapping changes, run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`.
 - If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
 - For performance regressions or optimizations, profile or otherwise measure the current branch and a fresh `apache/main` baseline before changing code; optimize the measured hotspot, not guessed code.
+- When comparing benchmark results against `apache/main`, use a separate sibling worktree named `fory-benchmark-baseline` by default. Before creating a new worktree, check whether `../fory-benchmark-baseline` already exists and reuse it to avoid repeated benchmark dependency rebuilds. Always fetch and sync that baseline worktree to the latest `apache/main` before measuring it, and store benchmark result files under that worktree so older runs remain available as reference data. Treat stored benchmark results as historical references, not truth, because machine load and benchmark variance change over time. Create a different baseline worktree only when explicitly requested.
 - Do not change protocol behavior, benchmark payloads, or public APIs solely to manufacture performance wins.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.
 - For performance-optimization rounds, append the hypothesis, change, benchmark command, before/after numbers, and keep/revert decision to `tasks/perf_optimization_rounds.md`.

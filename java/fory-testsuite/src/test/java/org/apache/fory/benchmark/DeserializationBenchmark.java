@@ -71,6 +71,7 @@ public class DeserializationBenchmark {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     RowEncoder<Foo> encoder = Encoders.bean(Foo.class, fory, 64);
     Foo foo = Foo.create();
@@ -105,6 +106,7 @@ public class DeserializationBenchmark {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     fory.register(obj.getClass());
     // test fory

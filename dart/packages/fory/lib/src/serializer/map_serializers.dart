@@ -40,13 +40,7 @@ final class MapSerializer extends Serializer<Map> {
 
   @override
   void write(WriteContext context, Map value) {
-    writePayload(
-      context,
-      value,
-      null,
-      null,
-      trackRef: context.rootTrackRef,
-    );
+    writePayload(context, value, null, null, trackRef: context.rootTrackRef);
   }
 
   @override
@@ -61,26 +55,24 @@ final class MapSerializer extends Serializer<Map> {
     FieldType? valueFieldType, {
     required bool trackRef,
   }) {
-    if (values.length > context.config.maxCollectionSize) {
-      throw StateError(
-        'Map size ${values.length} exceeds ${context.config.maxCollectionSize}.',
-      );
-    }
     context.buffer.writeVarUint32(values.length);
-    final declaredKeyTypeInfo = keyFieldType == null || keyFieldType.isDynamic
-        ? null
-        : context.typeResolver.resolveFieldType(keyFieldType);
+    final declaredKeyTypeInfo =
+        keyFieldType == null || keyFieldType.isDynamic
+            ? null
+            : context.typeResolver.resolveFieldType(keyFieldType);
     final declaredValueTypeInfo =
         valueFieldType == null || valueFieldType.isDynamic
             ? null
             : context.typeResolver.resolveFieldType(valueFieldType);
-    final keyDeclared = declaredKeyTypeInfo != null &&
+    final keyDeclared =
+        declaredKeyTypeInfo != null &&
         usesDeclaredTypeInfo(
           context.config.compatible,
           keyFieldType!,
           declaredKeyTypeInfo,
         );
-    final valueDeclared = declaredValueTypeInfo != null &&
+    final valueDeclared =
+        declaredValueTypeInfo != null &&
         usesDeclaredTypeInfo(
           context.config.compatible,
           valueFieldType!,
@@ -109,14 +101,16 @@ final class MapSerializer extends Serializer<Map> {
       final key = entry.key;
       final value = entry.value;
       if (key == null || value == null) {
-        final keyTrackRef = keyRequestedRef &&
+        final keyTrackRef =
+            keyRequestedRef &&
             (keyDeclared
                 ? declaredKeyTypeInfo.supportsRef
                 : (key == null ||
                     context.typeResolver
                         .resolveValue(key as Object)
                         .supportsRef));
-        final valueTrackRef = valueRequestedRef &&
+        final valueTrackRef =
+            valueRequestedRef &&
             (valueDeclared
                 ? declaredValueTypeInfo.supportsRef
                 : (value == null ||
@@ -138,12 +132,14 @@ final class MapSerializer extends Serializer<Map> {
         );
         continue;
       }
-      final chunkKeyTypeInfo = keyDeclared
-          ? declaredKeyTypeInfo
-          : context.typeResolver.resolveValue(key as Object);
-      final chunkValueTypeInfo = valueDeclared
-          ? declaredValueTypeInfo
-          : context.typeResolver.resolveValue(value as Object);
+      final chunkKeyTypeInfo =
+          keyDeclared
+              ? declaredKeyTypeInfo
+              : context.typeResolver.resolveValue(key as Object);
+      final chunkValueTypeInfo =
+          valueDeclared
+              ? declaredValueTypeInfo
+              : context.typeResolver.resolveValue(value as Object);
       final chunkKeyTrackRef = keyRequestedRef && chunkKeyTypeInfo.supportsRef;
       final chunkValueTrackRef =
           valueRequestedRef && chunkValueTypeInfo.supportsRef;
@@ -164,9 +160,8 @@ final class MapSerializer extends Serializer<Map> {
         context.writeTypeMetaValue(chunkValueTypeInfo, value);
       }
       var chunkLength = 1;
-      final tracksDepth = tracksNestedPayloadDepth(
-            chunkKeyTypeInfo,
-          ) ||
+      final tracksDepth =
+          tracksNestedPayloadDepth(chunkKeyTypeInfo) ||
           tracksNestedPayloadDepth(chunkValueTypeInfo);
       if (tracksDepth) {
         context.increaseDepth();
@@ -194,12 +189,14 @@ final class MapSerializer extends Serializer<Map> {
           pendingEntry = nextEntry;
           break;
         }
-        final nextKeyTypeInfo = keyDeclared
-            ? declaredKeyTypeInfo
-            : context.typeResolver.resolveValue(nextKey as Object);
-        final nextValueTypeInfo = valueDeclared
-            ? declaredValueTypeInfo
-            : context.typeResolver.resolveValue(nextValue as Object);
+        final nextKeyTypeInfo =
+            keyDeclared
+                ? declaredKeyTypeInfo
+                : context.typeResolver.resolveValue(nextKey as Object);
+        final nextValueTypeInfo =
+            valueDeclared
+                ? declaredValueTypeInfo
+                : context.typeResolver.resolveValue(nextValue as Object);
         final nextKeyTrackRef = keyRequestedRef && nextKeyTypeInfo.supportsRef;
         final nextValueTrackRef =
             valueRequestedRef && nextValueTypeInfo.supportsRef;
@@ -208,10 +205,7 @@ final class MapSerializer extends Serializer<Map> {
             (!keyDeclared &&
                 !sameTypeInfo(chunkKeyTypeInfo, nextKeyTypeInfo)) ||
             (!valueDeclared &&
-                !sameTypeInfo(
-                  chunkValueTypeInfo,
-                  nextValueTypeInfo,
-                ))) {
+                !sameTypeInfo(chunkValueTypeInfo, nextValueTypeInfo))) {
           pendingEntry = nextEntry;
           break;
         }
@@ -263,14 +257,10 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
-  if (remaining > context.config.maxCollectionSize) {
-    throw StateError(
-      'Map size $remaining exceeds ${context.config.maxCollectionSize}.',
-    );
-  }
-  final declaredKeyTypeInfo = keyFieldType == null || keyFieldType.isDynamic
-      ? null
-      : context.typeResolver.resolveFieldType(keyFieldType);
+  final declaredKeyTypeInfo =
+      keyFieldType == null || keyFieldType.isDynamic
+          ? null
+          : context.typeResolver.resolveFieldType(keyFieldType);
   final declaredValueTypeInfo =
       valueFieldType == null || valueFieldType.isDynamic
           ? null
@@ -285,12 +275,7 @@ Map<K, V> readTypedMapPayload<K, V>(
     final valueHasNull = (header & MapFlags.valueHasNull) != 0;
     if (keyHasNull || valueHasNull) {
       result[convertKey(
-        _readNullChunkKey(
-          context,
-          header,
-          keyFieldType,
-          declaredKeyTypeInfo,
-        ),
+        _readNullChunkKey(context, header, keyFieldType, declaredKeyTypeInfo),
       )] = convertValue(
         _readNullChunkValue(
           context,
@@ -316,43 +301,45 @@ Map<K, V> readTypedMapPayload<K, V>(
     final valueTypeInfo = valueDeclared ? null : context.readTypeMetaValue();
     final tracksDepth =
         ((keyDeclared ? declaredKeyTypeInfo : keyTypeInfo) != null &&
-                tracksNestedPayloadDepth(
-                  keyDeclared ? declaredKeyTypeInfo! : keyTypeInfo!,
-                )) ||
-            ((valueDeclared ? declaredValueTypeInfo : valueTypeInfo) != null &&
-                tracksNestedPayloadDepth(
-                  valueDeclared ? declaredValueTypeInfo! : valueTypeInfo!,
-                ));
+            tracksNestedPayloadDepth(
+              keyDeclared ? declaredKeyTypeInfo! : keyTypeInfo!,
+            )) ||
+        ((valueDeclared ? declaredValueTypeInfo : valueTypeInfo) != null &&
+            tracksNestedPayloadDepth(
+              valueDeclared ? declaredValueTypeInfo! : valueTypeInfo!,
+            ));
     if (tracksDepth) {
       context.increaseDepth();
     }
     for (var index = 0; index < chunkSize; index += 1) {
-      final key = keyDeclared
-          ? _readDeclaredMapValue(
-              context,
-              keyFieldType!,
-              declaredKeyTypeInfo!,
-              trackRef: keyTrackRef,
-            )
-          : _readResolvedMapValue(
-              context,
-              keyTypeInfo!,
-              null,
-              trackRef: keyTrackRef,
-            );
-      final value = valueDeclared
-          ? _readDeclaredMapValue(
-              context,
-              valueFieldType!,
-              declaredValueTypeInfo!,
-              trackRef: valueTrackRef,
-            )
-          : _readResolvedMapValue(
-              context,
-              valueTypeInfo!,
-              null,
-              trackRef: valueTrackRef,
-            );
+      final key =
+          keyDeclared
+              ? _readDeclaredMapValue(
+                context,
+                keyFieldType!,
+                declaredKeyTypeInfo!,
+                trackRef: keyTrackRef,
+              )
+              : _readResolvedMapValue(
+                context,
+                keyTypeInfo!,
+                null,
+                trackRef: keyTrackRef,
+              );
+      final value =
+          valueDeclared
+              ? _readDeclaredMapValue(
+                context,
+                valueFieldType!,
+                declaredValueTypeInfo!,
+                trackRef: valueTrackRef,
+              )
+              : _readResolvedMapValue(
+                context,
+                valueTypeInfo!,
+                null,
+                trackRef: valueTrackRef,
+              );
       result[convertKey(key)] = convertValue(value);
     }
     if (tracksDepth) {
@@ -499,10 +486,7 @@ Object? _readNullChunkValue(
   return trackRef ? context.readRef() : context.readNonRef();
 }
 
-FieldType _declaredMapFieldType(
-  FieldType fieldType, {
-  required bool trackRef,
-}) {
+FieldType _declaredMapFieldType(FieldType fieldType, {required bool trackRef}) {
   return fieldType.withRootOverrides(nullable: false, ref: trackRef);
 }
 

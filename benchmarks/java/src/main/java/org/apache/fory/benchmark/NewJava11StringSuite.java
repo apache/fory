@@ -19,38 +19,32 @@
 
 package org.apache.fory.benchmark;
 
+import java.nio.charset.StandardCharsets;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.openjdk.jmh.Main;
 
 public class NewJava11StringSuite {
-
   static String str = StringUtils.random(10);
-  static byte[] strBytes;
-  static byte coder;
+  static byte[] strBytes = str.getBytes(StandardCharsets.ISO_8859_1);
+  static byte coder = 0;
 
   static {
     if (JdkVersion.MAJOR_VERSION > 8) {
-      strBytes =
-          (byte[]) UnsafeOps.getObject(str, ReflectionUtils.getFieldOffset(String.class, "value"));
-      coder = UnsafeOps.getByte(str, ReflectionUtils.getFieldOffset(String.class, "coder"));
+      Preconditions.checkArgument(new String(strBytes, StandardCharsets.ISO_8859_1).equals(str));
     }
   }
 
-  private static final long STRING_VALUE_FIELD_OFFSET =
-      ReflectionUtils.getFieldOffset(String.class, "value");
-  private static final long STRING_CODER_FIELD_OFFSET =
-      ReflectionUtils.getFieldOffset(String.class, "coder");
-
-  private static String stubStr = new String(new char[] {Character.MAX_VALUE, Character.MIN_VALUE});
   private static Fory fory =
-      Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
+      Fory.builder()
+          .withStringCompressed(true)
+          .requireClassRegistration(false)
+          .withCompatible(true)
+          .build();
   private static StringSerializer stringSerializer = new StringSerializer(fory.getConfig());
   private static MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(512);
 
@@ -61,14 +55,6 @@ public class NewJava11StringSuite {
   // @Benchmark
   public Object createJDK11StringByCopyStr() {
     return new String(str);
-  }
-
-  // @Benchmark
-  public Object createJDK11StringByUnsafe() {
-    String str = new String(stubStr);
-    UnsafeOps.putObject(str, STRING_VALUE_FIELD_OFFSET, strBytes);
-    UnsafeOps.putObject(str, STRING_CODER_FIELD_OFFSET, coder);
-    return str;
   }
 
   // @Benchmark
@@ -83,7 +69,6 @@ public class NewJava11StringSuite {
   }
 
   public static void main(String[] args) throws Exception {
-    Preconditions.checkArgument(new NewJava11StringSuite().createJDK11StringByUnsafe().equals(str));
     if (args.length == 0) {
       String commandLine =
           "org.apache.fory.*NewJava11StringSuite.* -f 3 -wi 5 -i 3 -t 1 -w 2s -r 2s -rf csv";

@@ -52,12 +52,15 @@ public interface BaseFory {
    */
   void register(Class<?> cls, int id);
 
-  /** register class with given type name which will be used for cross-language serialization. */
-  void register(Class<?> cls, String typeName);
+  /**
+   * Register class with a name used for cross-language serialization. Names with `.` are split by
+   * the last `.` into namespace and type name.
+   */
+  void register(Class<?> cls, String name);
 
   /**
    * register class with given type namespace and name. This can be used mapping different classes
-   * into same type when deserializing.
+   * into same type when deserializing. The type name must not contain `.`.
    */
   void register(Class<?> cls, String namespace, String typeName);
 
@@ -75,8 +78,14 @@ public interface BaseFory {
   void register(String className, int classId);
 
   /**
+   * Register class with a name used for cross-language serialization. Names with `.` are split by
+   * the last `.` into namespace and type name.
+   */
+  void register(String className, String name);
+
+  /**
    * register class with given type namespace and name. This can be used mapping different classes
-   * into same type when deserializing.
+   * into same type when deserializing. The type name must not contain `.`.
    */
   void register(String className, String namespace, String typeName);
 
@@ -91,6 +100,13 @@ public interface BaseFory {
 
   void registerUnion(Class<?> cls, int id, Serializer<?> serializer);
 
+  /**
+   * Register a union with a name used for cross-language serialization. Names with `.` are split by
+   * the last `.` into namespace and type name.
+   */
+  void registerUnion(Class<?> cls, String name, Serializer<?> serializer);
+
+  /** Register a union with explicit namespace and type name. The type name must not contain `.`. */
   void registerUnion(Class<?> cls, String namespace, String typeName, Serializer<?> serializer);
 
   /**

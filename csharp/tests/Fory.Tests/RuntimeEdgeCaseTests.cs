@@ -182,6 +182,38 @@ public sealed class RuntimeEdgeCaseTests
         Assert.Equal(0, reader.Remaining);
     }
 
+    [Theory]
+    [InlineData(TypeId.Date)]
+    [InlineData(TypeId.Timestamp)]
+    [InlineData(TypeId.Duration)]
+    public void FieldSkipperSkipsTimePayloads(TypeId typeId)
+    {
+        ByteWriter writer = new();
+        switch (typeId)
+        {
+            case TypeId.Date:
+                writer.WriteVarInt64(18_954);
+                break;
+            case TypeId.Timestamp:
+                writer.WriteInt64(1_704_164_645);
+                writer.WriteUInt32(123_456_700);
+                break;
+            case TypeId.Duration:
+                writer.WriteVarInt64(42);
+                writer.WriteInt32(700);
+                break;
+        }
+
+        writer.WriteUInt8(0xA5);
+        ByteReader reader = new(writer.ToArray());
+        ReadContext context = new(reader, new TypeResolver(), trackRef: false);
+
+        FieldSkipper.SkipFieldValue(context, new TypeMetaFieldType((uint)typeId, nullable: false));
+
+        Assert.Equal(0xA5, reader.ReadUInt8());
+        Assert.Equal(0, reader.Remaining);
+    }
+
     [Fact]
     public void DecimalRoundTripEdgeCases()
     {
@@ -372,11 +404,68 @@ public sealed class RuntimeEdgeCaseTests
     }
 
     [Fact]
-    public void ThreadSafeCustomSerializerNamedRegistrationAppliesToInitializedLocal()
+    public void DottedNameRegistrationRoundTrip()
+    {
+        ForyRuntime writer = ForyRuntime.Builder()
+            .Compatible(false)
+            .Build();
+        writer.Register<TimeEnvelope>("test.time_envelope");
+
+        ForyRuntime reader = ForyRuntime.Builder()
+            .Compatible(false)
+            .Build();
+        reader.Register<TimeEnvelope>("test", "time_envelope");
+
+        TimeEnvelope value = new() { Date = new DateOnly(2024, 6, 4) };
+        TimeEnvelope decoded = reader.Deserialize<TimeEnvelope>(writer.Serialize(value));
+
+        Assert.Equal(value.Date, decoded.Date);
+    }
+
+    [Fact]
+    public void DottedSerializerNameRoundTrip()
+    {
+        ForyRuntime writer = ForyRuntime.Builder()
+            .Compatible(false)
+            .Build();
+        writer.Register<CustomPayload, CustomPayloadSerializer>("test.custom_payload");
+
+        ForyRuntime reader = ForyRuntime.Builder()
+            .Compatible(false)
+            .Build();
+        reader.Register<CustomPayload, CustomPayloadSerializer>("test", "custom_payload");
+
+        CustomPayload decoded = reader.Deserialize<CustomPayload>(
+            writer.Serialize(new CustomPayload { Id = 7, Marker = "ignored" }));
+
+        Assert.Equal(7, decoded.Id);
+        Assert.Equal("custom", decoded.Marker);
+    }
+
+    [Fact]
+    public void SplitTypeNameRejectsDots()
+    {
+        ForyRuntime fory = ForyRuntime.Builder().Build();
+
+        Assert.Throws<ArgumentException>(() => fory.Register<TimeEnvelope>("test", string.Empty));
+        Assert.Throws<ArgumentException>(() => fory.Register<TimeEnvelope>("test", "bad.name"));
+        Assert.Throws<ArgumentException>(() => fory.Register<TimeEnvelope>(string.Empty));
+        Assert.Throws<ArgumentException>(() => fory.Register<TimeEnvelope>("test."));
+        Assert.Throws<ArgumentException>(
+            () => fory.Register<CustomPayload, CustomPayloadSerializer>("test", "bad.name"));
+
+        using ThreadSafeFory threadSafeFory = ForyRuntime.Builder().BuildThreadSafe();
+        Assert.Throws<ArgumentException>(() => threadSafeFory.Register<TimeEnvelope>("test", "bad.name"));
+        Assert.Throws<ArgumentException>(
+            () => threadSafeFory.Register<CustomPayload, CustomPayloadSerializer>("test", "bad.name"));
+    }
+
+    [Fact]
+    public void ThreadSafeDottedSerializerNameRoundTrip()
     {
         using ThreadSafeFory fory = ForyRuntime.Builder().BuildThreadSafe();
         _ = fory.Serialize(1);
-        fory.Register<CustomPayload, CustomPayloadSerializer>(string.Empty, "custom_payload");
+        fory.Register<CustomPayload, CustomPayloadSerializer>("test.custom_payload");
 
         CustomPayload decoded = fory.Deserialize<CustomPayload>(
             fory.Serialize(new CustomPayload { Id = 7, Marker = "ignored" }));

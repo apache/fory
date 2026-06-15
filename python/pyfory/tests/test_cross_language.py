@@ -418,7 +418,7 @@ class ComplexObject2:
 
 def test_serialize_simple_struct_local():
     fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    fory.register_type(ComplexObject2, name="test.ComplexObject2")
     obj = ComplexObject2(f1=True, f2={-1: 2})
     new_buf = fory.serialize(obj)
     assert fory.deserialize(new_buf) == obj
@@ -428,7 +428,7 @@ def test_serialize_simple_struct_local():
 def test_serialize_simple_struct(data_file_path):
     compatible = "compatible" in data_file_path
     fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
-    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    fory.register_type(ComplexObject2, name="test.ComplexObject2")
     obj = ComplexObject2(f1=True, f2={-1: 2})
     struct_round_back(data_file_path, fory, obj)
 
@@ -450,7 +450,7 @@ class SomeClass:
 
 def test_custom_class_roundtrip():
     fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(SomeClass, typename="example.SomeClass")
+    fory.register_type(SomeClass, name="example.SomeClass")
     obj1 = SomeClass()
     obj1.f2 = {"k1": "v1", "k2": "v2"}
     obj1.f1, obj1.f3 = obj1, obj1.f2
@@ -487,8 +487,8 @@ class EnumFieldStruct:
 def test_enum_field(data_file_path):
     compatible = "compatible" in data_file_path
     fory = pyfory.Fory(xlang=True, ref=False, compatible=compatible)
-    fory.register_type(EnumTestClass, namespace="test", typename="EnumTestClass")
-    fory.register_type(EnumFieldStruct, namespace="test", typename="EnumFieldStruct")
+    fory.register_type(EnumTestClass, name="test.EnumTestClass")
+    fory.register_type(EnumFieldStruct, name="test.EnumFieldStruct")
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
     struct_round_back(data_file_path, fory, obj)
 
@@ -510,7 +510,7 @@ def test_struct_hash(data_file_path):
     debug_print(f"len {len(data_bytes)}")
     read_hash = pyfory.Buffer(data_bytes).read_int32()
     fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
-    fory.register_type(ComplexObject1, typename="ComplexObject1")
+    fory.register_type(ComplexObject1, name="ComplexObject1")
     serializer = fory.type_resolver.get_serializer(ComplexObject1)._replace()
     from pyfory.struct import compute_struct_meta
 
@@ -528,8 +528,8 @@ def test_struct_hash(data_file_path):
 def test_serialize_complex_struct(data_file_path):
     compatible = "compatible" in data_file_path
     fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
-    fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
-    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    fory.register_type(ComplexObject1, name="test.ComplexObject1")
+    fory.register_type(ComplexObject2, name="test.ComplexObject2")
 
     obj2 = ComplexObject2(f1=True, f2={-1: 2})
     obj1 = ComplexObject1(
@@ -636,7 +636,7 @@ def test_register_serializer(data_file_path):
     fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
     fory.register_type(
         ComplexObject1,
-        typename="test.ComplexObject1",
+        name="test.ComplexObject1",
         serializer=ComplexObject1Serializer(fory.type_resolver, ComplexObject1),
     )
     expected = ComplexObject1(*[None] * 12)
@@ -715,7 +715,7 @@ def test_cross_language_meta_share(data_file_path):
         f1: Any
         f2: Dict[pyfory.Int8, pyfory.Int32]
 
-    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    fory.register_type(ComplexObject2, name="test.ComplexObject2")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
@@ -769,8 +769,8 @@ def test_cross_language_meta_share_complex(data_file_path):
         f11: pyfory.PyArray[pyfory.Int16]
         f12: List[pyfory.Int16]
 
-    fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
-    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    fory.register_type(ComplexObject1, name="test.ComplexObject1")
+    fory.register_type(ComplexObject2, name="test.ComplexObject2")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
@@ -812,7 +812,7 @@ def test_schema_evolution(data_file_path):
         name: str
         age: pyfory.Int32  # Use specific fory type to match Java Integer
 
-    fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
+    fory.register_type(CompatTestV1, name="test.CompatTest")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
@@ -852,7 +852,7 @@ def test_backward_compatibility(data_file_path):
         name: str
         age: pyfory.Int32
 
-    fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
+    fory.register_type(CompatTestV1, name="test.CompatTest")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
@@ -890,7 +890,7 @@ def test_field_reordering_compatibility(data_file_path):
         email: str
         active: bool  # New field
 
-    fory.register_type(CompatTestV3, namespace="test", typename="CompatTest")
+    fory.register_type(CompatTestV3, name="test.CompatTest")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
@@ -937,9 +937,9 @@ def test_cross_version_compatibility(data_file_path):
         oldObject: CompatTestV1
         newObject: CompatTestV2
 
-    fory.register_type(CompatContainer, namespace="test", typename="CompatContainer")
-    fory.register_type(CompatTestV1, namespace="test", typename="CompatTestV1")
-    fory.register_type(CompatTestV2, namespace="test", typename="CompatTestV2")
+    fory.register_type(CompatContainer, name="test.CompatContainer")
+    fory.register_type(CompatTestV1, name="test.CompatTestV1")
+    fory.register_type(CompatTestV2, name="test.CompatTestV2")
 
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()

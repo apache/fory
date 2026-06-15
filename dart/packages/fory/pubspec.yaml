@@ -17,7 +17,7 @@
 
 name: fory
 description: Cross-language Apache Fory runtime for Dart with generated serializers, schema evolution, and custom type support.
-version: 1.1.0-dev
+version: 1.2.0-dev
 homepage: https://github.com/apache/fory
 repository: https://github.com/apache/fory/tree/main/dart/packages/fory
 issue_tracker: https://github.com/apache/fory/issues

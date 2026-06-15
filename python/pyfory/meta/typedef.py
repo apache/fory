@@ -121,6 +121,24 @@ def xlang_non_struct_type_id(kind_code: int) -> int:
         raise ValueError(f"Unsupported TypeDef kind code {kind_code}") from exc
 
 
+def _normalize_user_type_id(type_id: int) -> int:
+    if type_id in {
+        TypeId.STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.UNKNOWN,
+    }:
+        return TypeId.STRUCT
+    if type_id in {TypeId.ENUM, TypeId.NAMED_ENUM}:
+        return TypeId.ENUM
+    if type_id in {TypeId.EXT, TypeId.NAMED_EXT}:
+        return TypeId.EXT
+    if type_id in {TypeId.UNION, TypeId.TYPED_UNION, TypeId.NAMED_UNION}:
+        return TypeId.UNION
+    return type_id
+
+
 def _typedef_header_hash(encoded: bytes, header_low_bits: int) -> int:
     hash_input = encoded + bytes((header_low_bits & 0xFF, (header_low_bits >> 8) & 0xFF))
     hash_value = hash_buffer(hash_input, 47)[0]
@@ -261,6 +279,10 @@ class TypeDef:
                 field_info.field_type,
                 local_info.field_type if local_info is not None else None,
             )
+            if local_info is not None and not can_assign:
+                from pyfory.error import TypeNotCompatibleError
+
+                raise TypeNotCompatibleError(f"Compatible field {resolved_name!r} cannot be read as local field {local_info.name!r}")
             type_hint = type_hints.get(resolved_name, typing.Any)
             unwrapped_type, _ = unwrap_optional(type_hint, field_nullable=resolver.field_nullable)
             serializer = _create_compatible_field_serializer(
@@ -631,13 +653,21 @@ _ARRAY_ELEMENT_TYPE_IDS = {
 }
 
 
-def _list_array_element_type_matches(list_field_type: FieldType, array_field_type: FieldType) -> bool:
+def _list_array_element_type_matches(list_field_type: FieldType, array_field_type: FieldType, *, require_unframed_element: bool) -> bool:
     array_element_type_id = _ARRAY_ELEMENT_TYPE_IDS.get(array_field_type.type_id)
     if array_element_type_id is None:
         return False
-    return list_field_type.type_id == TypeId.LIST and _list_element_type_matches_array_element(
-        list_field_type.element_type.type_id, array_element_type_id
-    )
+    if list_field_type.is_nullable or list_field_type.is_tracking_ref or array_field_type.is_nullable or array_field_type.is_tracking_ref:
+        return False
+    element_type = list_field_type.element_type
+    if element_type is None:
+        return False
+    # Nullable element schema is allowed for list<T?> -> array<T>; actual null
+    # payload elements fail in the dense-array reader. Ref-tracked element
+    # framing is rejected here because this path stays primitive-only.
+    if require_unframed_element and element_type.is_tracking_ref:
+        return False
+    return list_field_type.type_id == TypeId.LIST and _list_element_type_matches_array_element(element_type.type_id, array_element_type_id)
 
 
 def _list_element_type_matches_array_element(list_element_type_id: TypeId, array_element_type_id: TypeId) -> bool:
@@ -651,9 +681,9 @@ def _is_root_list_array_pair(remote_field_type: FieldType, local_field_type: Fie
     if local_field_type is None:
         return False
     if remote_field_type.type_id == TypeId.LIST and local_field_type.type_id in _ARRAY_TYPE_IDS:
-        return _list_array_element_type_matches(remote_field_type, local_field_type)
+        return _list_array_element_type_matches(remote_field_type, local_field_type, require_unframed_element=True)
     if local_field_type.type_id == TypeId.LIST and remote_field_type.type_id in _ARRAY_TYPE_IDS:
-        return _list_array_element_type_matches(local_field_type, remote_field_type)
+        return _list_array_element_type_matches(local_field_type, remote_field_type, require_unframed_element=False)
     return False
 
 
@@ -672,25 +702,58 @@ def _remote_list_to_local_array_allowed(remote_field_type: FieldType, local_fiel
     return (
         remote_field_type.type_id == TypeId.LIST
         and local_field_type.type_id in _ARRAY_TYPE_IDS
-        and _list_array_element_type_matches(remote_field_type, local_field_type)
+        and _list_array_element_type_matches(remote_field_type, local_field_type, require_unframed_element=True)
     )
 
 
-def _payload_shape_matches(remote_field_type: FieldType, local_field_type: FieldType, top_level: bool = True) -> bool:
+def _exact_field_type_match(remote_field_type: FieldType, local_field_type: FieldType) -> bool:
+    if (
+        remote_field_type.is_nullable != local_field_type.is_nullable
+        or remote_field_type.is_tracking_ref != local_field_type.is_tracking_ref
+        or _normalize_user_type_id(remote_field_type.type_id) != _normalize_user_type_id(local_field_type.type_id)
+    ):
+        return False
+    remote_type_id = remote_field_type.type_id
+    local_type_id = local_field_type.type_id
+    if remote_type_id in (TypeId.LIST, TypeId.SET):
+        return local_type_id == remote_type_id and _exact_field_type_match(
+            remote_field_type.element_type,
+            local_field_type.element_type,
+        )
+    if remote_type_id == TypeId.MAP:
+        return (
+            local_type_id == TypeId.MAP
+            and _exact_field_type_match(remote_field_type.key_type, local_field_type.key_type)
+            and _exact_field_type_match(remote_field_type.value_type, local_field_type.value_type)
+        )
+    return True
+
+
+def _compatible_field_type_match(remote_field_type: FieldType, local_field_type: FieldType, top_level: bool = True) -> bool:
     if local_field_type is None:
         return False
     remote_type_id = remote_field_type.type_id
     local_type_id = local_field_type.type_id
-    if _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
+    if top_level and _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
         return True
     if top_level and _is_root_list_array_pair(remote_field_type, local_field_type):
         return True
-    if remote_type_id != local_type_id:
+    if remote_type_id in _COMPATIBLE_SCALAR_TYPE_IDS or local_type_id in _COMPATIBLE_SCALAR_TYPE_IDS:
+        return remote_type_id == local_type_id
+    if _normalize_user_type_id(remote_type_id) != _normalize_user_type_id(local_type_id):
         return False
     if remote_type_id in (TypeId.LIST, TypeId.SET):
-        return _payload_shape_matches(remote_field_type.element_type, local_field_type.element_type, False)
+        return _compatible_field_type_match(
+            remote_field_type.element_type,
+            local_field_type.element_type,
+            False,
+        )
     if remote_type_id == TypeId.MAP:
-        return _payload_shape_matches(remote_field_type.key_type, local_field_type.key_type, False) and _payload_shape_matches(
+        return _compatible_field_type_match(
+            remote_field_type.key_type,
+            local_field_type.key_type,
+            False,
+        ) and _compatible_field_type_match(
             remote_field_type.value_type,
             local_field_type.value_type,
             False,
@@ -698,10 +761,14 @@ def _payload_shape_matches(remote_field_type: FieldType, local_field_type: Field
     return True
 
 
+def _payload_shape_matches(remote_field_type: FieldType, local_field_type: FieldType, top_level: bool = True) -> bool:
+    return _compatible_field_type_match(remote_field_type, local_field_type, top_level)
+
+
 def _payload_shape_needs_local_carrier(remote_field_type: FieldType, local_field_type: FieldType, top_level: bool = True) -> bool:
     remote_type_id = remote_field_type.type_id
     local_type_id = local_field_type.type_id
-    if _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
+    if top_level and _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
         return True
     if top_level and _is_root_list_array_pair(remote_field_type, local_field_type):
         return True
@@ -728,6 +795,20 @@ def _create_local_typehint_serializer(resolver, field_name, type_hint):
     return infer_field(field_name, unwrapped_type, StructFieldSerializerVisitor(resolver))
 
 
+def _can_direct_read_integer_scalar(remote_field_type: FieldType, local_field_type: FieldType) -> bool:
+    if remote_field_type.is_nullable or local_field_type.is_nullable:
+        return False
+    if remote_field_type.is_tracking_ref or local_field_type.is_tracking_ref:
+        return False
+    remote_domain = _INT_TYPE_DOMAINS.get(remote_field_type.type_id)
+    local_domain = _INT_TYPE_DOMAINS.get(local_field_type.type_id)
+    if remote_domain is None or local_domain is None:
+        return False
+    remote_signed, remote_bits = remote_domain
+    local_signed, local_bits = local_domain
+    return remote_signed == local_signed and remote_bits <= local_bits
+
+
 def _create_compatible_field_serializer(
     resolver,
     field_name,
@@ -745,9 +826,11 @@ def _create_compatible_field_serializer(
         raise TypeNotCompatibleError(f"Field {field_name!r} has unsupported list/array schema mismatch")
 
     if _is_root_list_array_pair(remote_field_type, local_field_type):
-        from pyfory.serializer import (
+        from pyfory.converter import (
             CompatibleArrayToListFieldSerializer,
             CompatibleListToArrayFieldSerializer,
+        )
+        from pyfory.serializer import (
             ForyArrayFieldSerializer,
             fory_array_wrapper_type,
         )
@@ -786,20 +869,59 @@ def _create_compatible_field_serializer(
         serializer = _create_local_typehint_serializer(resolver, field_name, type_hint)
         if serializer is not None:
             return serializer
+    if local_field_type is not None:
+        from pyfory.converter import CompatibleScalarFieldSerializer, supports_compatible_scalar_conversion
+
+        exact_scalar_field_type = (
+            remote_field_type.type_id == local_field_type.type_id
+            and remote_field_type.is_nullable == local_field_type.is_nullable
+            and remote_field_type.is_tracking_ref == local_field_type.is_tracking_ref
+        )
+        if (
+            not remote_field_type.is_tracking_ref
+            and not local_field_type.is_tracking_ref
+            and not exact_scalar_field_type
+            and supports_compatible_scalar_conversion(remote_field_type.type_id, local_field_type.type_id)
+        ):
+            if _can_direct_read_integer_scalar(remote_field_type, local_field_type):
+                return remote_field_type.create_serializer(resolver, local_declared_type)
+            remote_serializer = remote_field_type.create_serializer(resolver, local_declared_type)
+            return CompatibleScalarFieldSerializer(
+                resolver,
+                remote_serializer,
+                remote_field_type.type_id,
+                local_field_type.type_id,
+                field_name,
+            )
     return remote_field_type.create_serializer(resolver, local_declared_type)
 
 
+_SIGNED_INT8_TYPE_IDS = frozenset((TypeId.INT8,))
+_SIGNED_INT16_TYPE_IDS = frozenset((TypeId.INT16,))
 _SIGNED_INT32_TYPE_IDS = frozenset((TypeId.INT32, TypeId.VARINT32))
 _SIGNED_INT64_TYPE_IDS = frozenset((TypeId.INT64, TypeId.VARINT64, TypeId.TAGGED_INT64))
+_UNSIGNED_INT8_TYPE_IDS = frozenset((TypeId.UINT8,))
+_UNSIGNED_INT16_TYPE_IDS = frozenset((TypeId.UINT16,))
 _UNSIGNED_INT32_TYPE_IDS = frozenset((TypeId.UINT32, TypeId.VAR_UINT32))
 _UNSIGNED_INT64_TYPE_IDS = frozenset((TypeId.UINT64, TypeId.VAR_UINT64, TypeId.TAGGED_UINT64))
 _INT_TYPE_DOMAINS = {type_id: (True, 32) for type_id in _SIGNED_INT32_TYPE_IDS}
+_INT_TYPE_DOMAINS.update({type_id: (True, 8) for type_id in _SIGNED_INT8_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (True, 16) for type_id in _SIGNED_INT16_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (True, 64) for type_id in _SIGNED_INT64_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (False, 8) for type_id in _UNSIGNED_INT8_TYPE_IDS})
+_INT_TYPE_DOMAINS.update({type_id: (False, 16) for type_id in _UNSIGNED_INT16_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (False, 32) for type_id in _UNSIGNED_INT32_TYPE_IDS})
 _INT_TYPE_DOMAINS.update({type_id: (False, 64) for type_id in _UNSIGNED_INT64_TYPE_IDS})
+_COMPATIBLE_SCALAR_TYPE_IDS = frozenset(
+    (TypeId.BOOL, TypeId.STRING, TypeId.FLOAT16, TypeId.BFLOAT16, TypeId.FLOAT32, TypeId.FLOAT64, TypeId.DECIMAL)
+) | frozenset(_INT_TYPE_DOMAINS)
 _INT_RANGES = {
+    (True, 8): (-(1 << 7), (1 << 7) - 1),
+    (True, 16): (-(1 << 15), (1 << 15) - 1),
     (True, 32): (-(1 << 31), (1 << 31) - 1),
     (True, 64): (-(1 << 63), (1 << 63) - 1),
+    (False, 8): (0, (1 << 8) - 1),
+    (False, 16): (0, (1 << 16) - 1),
     (False, 32): (0, (1 << 32) - 1),
     (False, 64): (0, (1 << 64) - 1),
 }
@@ -821,53 +943,42 @@ def _field_type_assignment(remote_field_type: FieldType, local_field_type: Field
     needs_validation = _requires_nullable_validation(remote_field_type, local_field_type)
     remote_type_id = remote_field_type.type_id
     local_type_id = local_field_type.type_id
-    if local_type_id == TypeId.UNKNOWN:
+    if top_level and local_type_id == TypeId.UNKNOWN:
         return True, needs_validation
-    if remote_type_id == TypeId.UNKNOWN:
+    if top_level and remote_type_id == TypeId.UNKNOWN:
         return True, True
     if top_level and _is_root_list_array_pair(remote_field_type, local_field_type):
         return True, True
-    if remote_type_id in (TypeId.LIST, TypeId.SET):
-        if local_type_id != remote_type_id:
-            return False, False
-        child_assignable, child_needs_validation = _field_type_assignment(
-            remote_field_type.element_type,
-            local_field_type.element_type,
-            False,
-        )
-        return child_assignable, needs_validation or child_needs_validation
-    if remote_type_id == TypeId.MAP:
-        if local_type_id != TypeId.MAP:
-            return False, False
-        key_assignable, key_needs_validation = _field_type_assignment(
-            remote_field_type.key_type,
-            local_field_type.key_type,
-            False,
-        )
-        value_assignable, value_needs_validation = _field_type_assignment(
-            remote_field_type.value_type,
-            local_field_type.value_type,
-            False,
-        )
-        return (
-            key_assignable and value_assignable,
-            needs_validation or key_needs_validation or value_needs_validation,
-        )
-    if _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
+    if top_level and _is_bytes_uint8_array_pair(remote_type_id, local_type_id):
         return True, True
-    remote_int_domain = _INT_TYPE_DOMAINS.get(remote_type_id)
-    local_int_domain = _INT_TYPE_DOMAINS.get(local_type_id)
-    if remote_int_domain is not None or local_int_domain is not None:
-        if remote_int_domain is None or local_int_domain is None:
-            return False, False
-        remote_signed, remote_width = remote_int_domain
-        local_signed, local_width = local_int_domain
-        if remote_signed != local_signed:
-            return False, False
-        return True, needs_validation or remote_width > local_width
-    if remote_type_id == local_type_id:
-        return True, needs_validation
-    return False, False
+    if top_level:
+        from pyfory.converter import supports_compatible_scalar_conversion
+
+        scalar_pair = _is_compatible_scalar_type_id(remote_type_id) and _is_compatible_scalar_type_id(local_type_id)
+        if scalar_pair:
+            if remote_field_type.is_tracking_ref != local_field_type.is_tracking_ref:
+                return False, False
+            if (remote_field_type.is_tracking_ref or local_field_type.is_tracking_ref) and (
+                remote_type_id != local_type_id or remote_field_type.is_nullable != local_field_type.is_nullable
+            ):
+                return False, False
+            if (
+                not remote_field_type.is_tracking_ref
+                and remote_type_id == local_type_id
+                and remote_field_type.is_nullable != local_field_type.is_nullable
+            ):
+                return True, needs_validation
+        if (
+            not remote_field_type.is_tracking_ref
+            and not local_field_type.is_tracking_ref
+            and supports_compatible_scalar_conversion(remote_type_id, local_type_id)
+        ):
+            return True, needs_validation
+    return _compatible_field_type_match(remote_field_type, local_field_type), needs_validation
+
+
+def _is_compatible_scalar_type_id(type_id: TypeId) -> bool:
+    return type_id in _COMPATIBLE_SCALAR_TYPE_IDS
 
 
 def plan_field_assignment(

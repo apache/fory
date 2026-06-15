@@ -1145,6 +1145,8 @@ fory::serialization::Fory make_xlang_fory() {
   return fory::serialization::Fory::builder()
       .xlang(true)
       .track_ref(false)
+
+      .compatible(true)
       .build();
 }
 

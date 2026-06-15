@@ -872,7 +872,8 @@ public class TypeUtils {
         || ctx.getCustomTypeRegistry().isExtraSupportedType(typeRef)) {
       return false;
     }
-    // if ReflectionUtils.hasNoArgConstructor(cls) return false, we use Unsafe to create object.
+    // Bean shape detection is independent of the later object-creation strategy. Records use the
+    // record path; ordinary beans are created later by TypeResolver's object-instantiator owner.
     // bean class can be static nested class, but can't be not a non-static inner class
     if (cls.getEnclosingClass() != null && !Modifier.isStatic(cls.getModifiers())) {
       return false;

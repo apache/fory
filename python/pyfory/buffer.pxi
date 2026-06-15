@@ -18,6 +18,7 @@ from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.utility cimport move
 from cython.operator cimport dereference as deref
 from libcpp.string cimport string as c_string
+from libc.string cimport memcpy
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport(
@@ -125,11 +126,8 @@ cdef class Buffer:
         object output_stream
         Py_ssize_t shape[1]
         Py_ssize_t stride[1]
-        int32_t max_binary_size
-
-    def __init__(self,  data not None, int32_t offset=0, length=None, int32_t max_binary_size= 64 * 1024 * 1024):
+    def __init__(self,  data not None, int32_t offset=0, length=None):
         self.data = data
-        self.max_binary_size = max_binary_size
         cdef int32_t buffer_len = len(data)
         cdef int length_
         if length is None:
@@ -150,7 +148,7 @@ cdef class Buffer:
         self.output_stream = None
 
     @classmethod
-    def from_stream(cls, stream not None, uint32_t buffer_size=4096, int32_t max_binary_size=64 * 1024 * 1024):
+    def from_stream(cls, stream not None, uint32_t buffer_size=4096):
         cdef CBuffer* stream_buffer
         cdef c_string stream_error
         if Fory_PyCreateBufferFromStream(
@@ -160,7 +158,6 @@ cdef class Buffer:
         if stream_buffer == NULL:
             raise ValueError("failed to create stream buffer")
         cdef Buffer buffer = Buffer.__new__(Buffer)
-        buffer.max_binary_size = max_binary_size
         buffer.c_buffer_owner.reset(stream_buffer)
         buffer.c_buffer = buffer.c_buffer_owner.get()
         buffer.data = stream
@@ -172,7 +169,6 @@ cdef class Buffer:
     @staticmethod
     cdef Buffer wrap(shared_ptr[CBuffer] c_buffer):
         cdef Buffer buffer = Buffer.__new__(Buffer)
-        buffer.max_binary_size = 64 * 1024 * 1024
         cdef CBuffer* ptr = c_buffer.get()
         buffer.c_buffer = ptr
         cdef _SharedBufferOwner owner = _SharedBufferOwner.__new__(_SharedBufferOwner)
@@ -184,12 +180,11 @@ cdef class Buffer:
         return buffer
 
     @classmethod
-    def allocate(cls, int32_t size, int32_t max_binary_size=64 * 1024 * 1024):
+    def allocate(cls, int32_t size):
         cdef CBuffer* buf = allocate_buffer(size)
         if buf == NULL:
             raise MemoryError("out of memory")
         cdef Buffer buffer = Buffer.__new__(Buffer)
-        buffer.max_binary_size = max_binary_size
         buffer.c_buffer_owner.reset(buf)
         buffer.c_buffer = buffer.c_buffer_owner.get()
         buffer.data = None
@@ -334,7 +329,7 @@ cdef class Buffer:
 
     cpdef inline check_bound(self, int32_t offset, int32_t length):
         cdef int32_t size_ = self.c_buffer.size()
-        if offset | length | (offset + length) | (size_- (offset + length)) < 0:
+        if offset < 0 or length < 0 or offset > size_ or length > size_ - offset:
             raise_fory_error(
                 CErrorCode.BufferOutOfBound,
                 f"Address range {offset, offset + length} out of bound {0, size_}",
@@ -419,17 +414,19 @@ cdef class Buffer:
     cpdef inline bytes read_bytes(self, int32_t length):
         if length == 0:
             return b""
-
-        if length > self.max_binary_size:
-            raise ValueError(f"Binary size {length} exceeds the configured limit of {self.max_binary_size}")
+        if length < 0:
+            raise_fory_error(CErrorCode.InvalidData, f"Binary size {length} is negative")
+        if not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
+            if not self._error.ok():
+                self._raise_if_error()
 
         cdef bytes py_bytes = PyBytes_FromStringAndSize(NULL, length)
         if py_bytes is None:
             raise MemoryError("out of memory")
         cdef char* buf = PyBytes_AS_STRING(py_bytes)
-        self.c_buffer.read_bytes(buf, length, self._error)
-        if not self._error.ok():
-            self._raise_if_error()
+        cdef uint32_t offset = self.c_buffer.reader_index()
+        memcpy(buf, self.c_buffer.data() + offset, <size_t>length)
+        self.c_buffer.reader_index(offset + <uint32_t>length)
         return py_bytes
 
     cpdef inline int64_t read_bytes_as_int64(self, int32_t length):
@@ -713,8 +710,6 @@ cdef class Buffer:
     cpdef inline str read_string(self):
         cdef uint64_t header = self.read_var_uint64()
         cdef uint64_t size64 = header >> 2
-        if size64 > <uint64_t>self.max_binary_size:
-            raise ValueError(f"String size {size64} exceeds the configured limit of {self.max_binary_size}")
         if size64 > <uint64_t>2147483647:
             raise ValueError(f"String size {size64} exceeds the maximum supported size")
         cdef uint32_t size = <uint32_t>size64

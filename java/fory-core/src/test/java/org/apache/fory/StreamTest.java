@@ -21,6 +21,7 @@ package org.apache.fory;
 
 import static org.apache.fory.io.ForyStreamReader.of;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.Lists;
@@ -112,6 +113,7 @@ public class StreamTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     byte[] bytes = fory.serialize(new byte[1000 * 1000]);
     checkBuffer(fory);
@@ -155,7 +157,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testOutputStream() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     BeanA beanA = BeanA.createBeanA(2);
     fory.serialize(bas, beanA);
@@ -173,7 +180,12 @@ public class StreamTest extends ForyTestBase {
     newObj = fory.deserialize(buf);
     assertEquals(newObj, beanA);
 
-    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
@@ -190,7 +202,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testBufferedStream() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     BeanA beanA = BeanA.createBeanA(2);
     fory.serialize(bas, beanA);
@@ -210,7 +227,12 @@ public class StreamTest extends ForyTestBase {
     newObj = fory.deserialize(stream);
     assertEquals(newObj, beanA);
 
-    fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
@@ -228,7 +250,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testOutputStreamWithType() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     ByteArrayOutputStream bas = new ByteArrayOutputStream();
     fory.serialize(bas, beanA);
@@ -249,7 +276,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testReadableChannel() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     {
       ByteArrayOutputStream bas = new ByteArrayOutputStream();
@@ -283,7 +315,12 @@ public class StreamTest extends ForyTestBase {
 
   @Test
   public void testReadableChannelRequiresExactReads() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     BeanA beanA = BeanA.createBeanA(2);
     byte[] serialized = fory.serialize(beanA);
 
@@ -297,6 +334,40 @@ public class StreamTest extends ForyTestBase {
     try (ForyReadableChannel channel =
         new ForyReadableChannel(new ChunkedReadableByteChannel(truncated, 1))) {
       Assert.assertThrows(DeserializationException.class, () -> fory.deserialize(channel));
+    }
+  }
+
+  @Test
+  public void testStreamFillGrowsFromBufferedBytes() throws IOException {
+    byte[] complete = new byte[100];
+    ForyInputStream inputWithAvailable = new ForyInputStream(new ByteArrayInputStream(complete), 4);
+    assertEquals(inputWithAvailable.fillBuffer(100), 100);
+    assertEquals(inputWithAvailable.getBuffer().getHeapMemory().length, 100);
+
+    byte[] truncated = new byte[17];
+    ForyInputStream input = new ForyInputStream(new ByteArrayInputStream(truncated), 4);
+    Assert.assertThrows(IndexOutOfBoundsException.class, () -> input.fillBuffer(100));
+    int inputCapacity = input.getBuffer().getHeapMemory().length;
+    assertTrue(inputCapacity < 100);
+    assertTrue(inputCapacity <= 32);
+
+    try (ForyReadableChannel channel =
+        new ForyReadableChannel(
+            new ChunkedReadableByteChannel(truncated, truncated.length), ByteBuffer.allocate(4))) {
+      Assert.assertThrows(DeserializationException.class, () -> channel.fillBuffer(100));
+      int channelCapacity = channel.getBuffer().getHeapMemory().length;
+      assertTrue(channelCapacity < 100);
+      assertTrue(channelCapacity <= 32);
+    }
+
+    Path tempFile = Files.createTempFile("readable_channel_available", "data");
+    Files.write(tempFile, complete);
+    try (ForyReadableChannel channel =
+        new ForyReadableChannel(Files.newByteChannel(tempFile), ByteBuffer.allocate(4))) {
+      assertEquals(channel.fillBuffer(100), 100);
+      assertEquals(channel.getBuffer().getHeapMemory().length, 100);
+    } finally {
+      Files.delete(tempFile);
     }
   }
 
@@ -434,7 +505,7 @@ public class StreamTest extends ForyTestBase {
   }
 
   @Test
-  public void testPrimitiveArrayStreamReaderUsesTypedReads() throws IOException {
+  public void testStreamPrimitiveArrayBody() throws IOException {
     Fory fory = builder().requireClassRegistration(false).build();
 
     int[] ints = new int[257];
@@ -444,7 +515,7 @@ public class StreamTest extends ForyTestBase {
     TrackingForyInputStream input =
         new TrackingForyInputStream(new ChunkedInputStream(fory.serialize(ints), 1), 3);
     Assert.assertEquals((int[]) fory.deserialize(input), ints);
-    assertTrue(input.readIntsCalled);
+    assertFalse(input.readIntsCalled);
 
     long[] longs = new long[257];
     for (int i = 0; i < longs.length; i++) {
@@ -455,7 +526,16 @@ public class StreamTest extends ForyTestBase {
         new TrackingForyReadableChannel(
             new ChunkedReadableByteChannel(serialized, 1), ByteBuffer.allocateDirect(5))) {
       Assert.assertEquals((long[]) fory.deserialize(channel), longs);
-      assertTrue(channel.readLongsCalled);
+      assertFalse(channel.readLongsCalled);
+    }
+
+    ByteBuffer limitedDirectBuffer = ByteBuffer.allocateDirect(serialized.length + 8);
+    limitedDirectBuffer.limit(5);
+    try (TrackingForyReadableChannel channel =
+        new TrackingForyReadableChannel(
+            new ChunkedReadableByteChannel(serialized, 1), limitedDirectBuffer)) {
+      Assert.assertEquals((long[]) fory.deserialize(channel), longs);
+      assertFalse(channel.readLongsCalled);
     }
   }
 

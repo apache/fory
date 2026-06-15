@@ -224,7 +224,6 @@ The text of each license is the standard Apache 2.0 license.
 * spark (https://github.com/apache/spark)
     Files:
       java/fory-core/src/main/java/org/apache/fory/codegen/Code.java
-      java/fory-core/src/main/java/org/apache/fory/platform/UnsafeOps.java
 
 * commons-io (https://github.com/apache/commons-io)
     Files:

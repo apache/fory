@@ -79,7 +79,7 @@ import {
 import { Color, Monster, registerMonsterTypes } from "../generated/monster";
 import { TreeNode, registerTreeTypes } from "../generated/tree";
 
-type RegisterFn = (fory: Fory, type: typeof Type) => void;
+type RegisterFn = (fory: Fory) => unknown;
 type RegisteredTypeInfo =
   | ReturnType<typeof Type.struct>
   | ReturnType<typeof Type.union>;
@@ -96,7 +96,7 @@ function buildFory(
 ): Fory {
   const fory = new Fory({ compatible, ref });
   for (const registerFn of registerFns) {
-    registerFn(fory, Type);
+    registerFn(fory);
   }
   return fory;
 }

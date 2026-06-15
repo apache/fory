@@ -30,8 +30,11 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Random;
+import org.apache.fory.TestUtils;
 import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.JdkVersion;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class MemoryBufferTest {
@@ -79,6 +82,36 @@ public class MemoryBufferTest {
     assertEquals(buffer.readFloat64(), Double.MAX_VALUE, 0.1);
     assertEquals(buffer.readBytes(bytes.length), bytes);
     assertEquals(buffer.readerIndex(), buffer.writerIndex());
+  }
+
+  @Test
+  public void testReadCharsAndSizeRequiresBodyBeforeAlloc() {
+    MemoryBuffer buffer = MemoryUtils.buffer(8);
+    buffer.writeVarUInt32(1 << 20);
+    assertThrows(IndexOutOfBoundsException.class, buffer::readCharsAndSize);
+  }
+
+  @Test
+  public void testDirectBufferRejectsHeap() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> MemoryBuffer.fromDirectByteBuffer(ByteBuffer.allocate(8), 8, null));
+  }
+
+  @Test
+  public void testDirectByteBufferNoNioOpen() throws Exception {
+    ProcessBuilder processBuilder =
+        new ProcessBuilder(TestUtils.javaCommand(DirectByteBufferNoNioOpenProbe.class))
+            .redirectErrorStream(true);
+    for (String commandPart : processBuilder.command()) {
+      assertTrue(!commandPart.contains("java.base/java.nio"), processBuilder.command().toString());
+    }
+    processBuilder.environment().remove("JDK_JAVA_OPTIONS");
+    processBuilder.environment().remove("JAVA_TOOL_OPTIONS");
+    processBuilder.environment().remove("_JAVA_OPTIONS");
+    Process process = processBuilder.start();
+    String output = readFully(process.getInputStream());
+    assertEquals(process.waitFor(), 0, output);
   }
 
   @Test
@@ -182,10 +215,11 @@ public class MemoryBufferTest {
       check(source.equalTo(target, 0, 0, 4), true);
       check(source.getBytes(1, 2), new byte[] {2, 3});
 
-      assertThrows(
-          UnsupportedOperationException.class, () -> source.copyToUnsafe(0, new byte[4], 0, 4));
-      assertThrows(
-          UnsupportedOperationException.class, () -> target.copyFromUnsafe(0, new byte[4], 0, 4));
+      byte[] bytes = new byte[4];
+      source.copyToByteArray(0, bytes, 0, 4);
+      check(bytes, new byte[] {1, 2, 3, 4});
+      target.copyFromByteArray(0, new byte[] {4, 3, 2, 1}, 0, 4);
+      check(target.getBytes(0, 4), new byte[] {4, 3, 2, 1});
     }
 
     private static void check(boolean actual, boolean expected) {
@@ -247,6 +281,67 @@ public class MemoryBufferTest {
     }
   }
 
+  public static final class DirectByteBufferNoNioOpenProbe {
+    public static void main(String[] args) {
+      if (JdkVersion.MAJOR_VERSION >= 25) {
+        for (String inputArg :
+            java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+          if (inputArg.contains("java.base/java.nio")) {
+            throw new AssertionError("Unexpected java.nio open: " + inputArg);
+          }
+        }
+        if (isNioOpenToProbe()) {
+          throw new AssertionError("java.base/java.nio must not be open to this test probe");
+        }
+      }
+      MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.allocateDirect(128));
+      buffer.writeInt32(17);
+      buffer.writeInt64(19);
+      checkEqual(buffer.readInt32(), 17);
+      checkEqual(buffer.readInt64(), 19L);
+
+      int[] ints = new int[] {1, 2, 3, 4};
+      buffer.writerIndex(0);
+      buffer.copyFromIntArray(0, ints, 0, ints.length * Integer.BYTES);
+      int[] readInts = new int[ints.length];
+      buffer.copyToIntArray(0, readInts, 0, readInts.length * Integer.BYTES);
+      if (!java.util.Arrays.equals(readInts, ints)) {
+        throw new AssertionError(
+            "Expected "
+                + java.util.Arrays.toString(ints)
+                + " but got "
+                + java.util.Arrays.toString(readInts));
+      }
+    }
+
+    private static void checkEqual(int actual, int expected) {
+      if (actual != expected) {
+        throw new AssertionError("Expected " + expected + " but got " + actual);
+      }
+    }
+
+    private static void checkEqual(long actual, long expected) {
+      if (actual != expected) {
+        throw new AssertionError("Expected " + expected + " but got " + actual);
+      }
+    }
+
+    private static boolean isNioOpenToProbe() {
+      try {
+        Class<?> moduleType = Class.forName("java.lang.Module");
+        java.lang.reflect.Method getModule = Class.class.getMethod("getModule");
+        Object byteBufferModule = getModule.invoke(ByteBuffer.class);
+        Object probeModule = getModule.invoke(DirectByteBufferNoNioOpenProbe.class);
+        java.lang.reflect.Method isOpen = moduleType.getMethod("isOpen", String.class, moduleType);
+        return (Boolean) isOpen.invoke(byteBufferModule, "java.nio", probeModule);
+      } catch (ClassNotFoundException | NoSuchMethodException e) {
+        return false;
+      } catch (ReflectiveOperationException e) {
+        throw new AssertionError("Failed to inspect java.nio module opens", e);
+      }
+    }
+  }
+
   @Test
   public void testBufferUnsafeWrite() {
     {
@@ -303,6 +398,17 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testJdk25DirectBufferNoRawAddress() {
+    if (JdkVersion.MAJOR_VERSION < 25) {
+      throw new SkipException("Skip on jdk" + JdkVersion.MAJOR_VERSION);
+    }
+    MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.allocateDirect(8));
+    buffer.writeByte((byte) 1);
+    assertThrows(UnsupportedOperationException.class, () -> buffer.getUnsafeReaderAddress());
+    assertThrows(UnsupportedOperationException.class, () -> buffer._unsafeWriterAddress());
+  }
+
+  @Test
   public void testSliceAsByteBuffer() {
     byte[] data = new byte[10];
     new Random().nextBytes(data);
@@ -340,8 +446,11 @@ public class MemoryBufferTest {
     buf1.putByte(9, (byte) 1);
     buf2.putByte(9, (byte) 1);
     Assert.assertTrue(buf1.equalTo(buf2, 0, 0, buf1.size()));
+    Assert.assertTrue(buf1.equalTo(buf2, 1, 1, 9));
+    Assert.assertTrue(buf1.equalTo(new byte[] {0, 0, 0, 0, 0, 0, 0, 0, 1}, 0, 1, 9));
     buf1.putByte(9, (byte) 2);
     Assert.assertFalse(buf1.equalTo(buf2, 0, 0, buf1.size()));
+    Assert.assertFalse(buf1.equalTo(buf2, 1, 1, 9));
   }
 
   @Test
@@ -349,6 +458,112 @@ public class MemoryBufferTest {
     MemoryBuffer buf1 = MemoryUtils.buffer(0);
     MemoryBuffer buf2 = MemoryUtils.buffer(0);
     Assert.assertTrue(buf1.equalTo(buf2, 0, 0, buf1.size()));
+  }
+
+  @Test
+  public void testDirectCopyTo() {
+    byte[] values = new byte[16];
+    for (int i = 0; i < values.length; i++) {
+      values[i] = (byte) i;
+    }
+    MemoryBuffer source = MemoryUtils.wrap(ByteBuffer.allocateDirect(values.length));
+    source.writeBytes(values);
+    MemoryBuffer directTarget = MemoryUtils.wrap(ByteBuffer.allocateDirect(values.length));
+    source.copyTo(0, directTarget, 0, values.length);
+    assertEquals(directTarget.getBytes(0, values.length), values);
+
+    MemoryBuffer heapTarget = MemoryUtils.buffer(values.length);
+    source.copyTo(0, heapTarget, 0, values.length);
+    assertEquals(heapTarget.getBytes(0, values.length), values);
+
+    MemoryBuffer heapSource = MemoryUtils.wrap(values);
+    MemoryBuffer directFromHeap = MemoryUtils.wrap(ByteBuffer.allocateDirect(values.length));
+    heapSource.copyTo(0, directFromHeap, 0, values.length);
+    assertEquals(directFromHeap.getBytes(0, values.length), values);
+
+    source.copyTo(0, source, 4, 8);
+    assertEquals(source.getBytes(4, 8), new byte[] {0, 1, 2, 3, 4, 5, 6, 7});
+  }
+
+  @Test
+  public void testDirectPrimitiveArrays() {
+    MemoryBuffer direct = MemoryUtils.wrap(ByteBuffer.allocateDirect(64));
+    int[] ints = {1, -2, 3, Integer.MIN_VALUE};
+    long[] longs = {4L, -5L, Long.MAX_VALUE};
+    direct.writeInts(ints);
+    direct.writeLongs(longs);
+
+    int[] readInts = new int[ints.length];
+    long[] readLongs = new long[longs.length];
+    direct.readerIndex(0);
+    direct.readInts(readInts, 0, readInts.length);
+    direct.readLongs(readLongs, 0, readLongs.length);
+    assertEquals(readInts, ints);
+    assertEquals(readLongs, longs);
+  }
+
+  @Test
+  public void testTypedArrayCopies() {
+    assertTypedArrayCopies(MemoryUtils.buffer(256));
+    assertTypedArrayCopies(MemoryUtils.wrap(ByteBuffer.allocateDirect(256)));
+  }
+
+  private void assertTypedArrayCopies(MemoryBuffer buffer) {
+    byte[] bytes = {1, 2, 3, 4};
+    int byteOffset = buffer.writerIndex();
+    buffer.writeBytes(bytes);
+    byte[] byteCopy = new byte[bytes.length];
+    buffer.copyToByteArray(byteOffset, byteCopy, 0, bytes.length);
+    assertEquals(byteCopy, bytes);
+
+    boolean[] booleans = {true, false, true};
+    int booleanOffset = buffer.writerIndex();
+    buffer.writeBooleans(booleans);
+    boolean[] booleanCopy = new boolean[booleans.length];
+    buffer.copyToBooleanArray(booleanOffset, booleanCopy, 0, booleans.length);
+    assertEquals(booleanCopy, booleans);
+
+    char[] chars = {'a', 0x1234, Character.MAX_VALUE};
+    int charOffset = buffer.writerIndex();
+    buffer.writeChars(chars);
+    char[] charCopy = new char[chars.length];
+    buffer.copyToCharArray(charOffset, charCopy, 0, chars.length * Character.BYTES);
+    assertEquals(charCopy, chars);
+
+    short[] shorts = {1, -2, Short.MAX_VALUE};
+    int shortOffset = buffer.writerIndex();
+    buffer.writeShorts(shorts);
+    short[] shortCopy = new short[shorts.length];
+    buffer.copyToShortArray(shortOffset, shortCopy, 0, shorts.length * Short.BYTES);
+    assertEquals(shortCopy, shorts);
+
+    int[] ints = {1, -2, Integer.MIN_VALUE};
+    int intOffset = buffer.writerIndex();
+    buffer.writeInts(ints);
+    int[] intCopy = new int[ints.length];
+    buffer.copyToIntArray(intOffset, intCopy, 0, ints.length * Integer.BYTES);
+    assertEquals(intCopy, ints);
+
+    long[] longs = {1L, -2L, Long.MAX_VALUE};
+    int longOffset = buffer.writerIndex();
+    buffer.writeLongs(longs);
+    long[] longCopy = new long[longs.length];
+    buffer.copyToLongArray(longOffset, longCopy, 0, longs.length * Long.BYTES);
+    assertEquals(longCopy, longs);
+
+    float[] floats = {1.5f, -2.5f, Float.MAX_VALUE};
+    int floatOffset = buffer.writerIndex();
+    buffer.writeFloats(floats);
+    float[] floatCopy = new float[floats.length];
+    buffer.copyToFloatArray(floatOffset, floatCopy, 0, floats.length * Float.BYTES);
+    assertEquals(floatCopy, floats);
+
+    double[] doubles = {1.5d, -2.5d, Double.MAX_VALUE};
+    int doubleOffset = buffer.writerIndex();
+    buffer.writeDoubles(doubles);
+    double[] doubleCopy = new double[doubles.length];
+    buffer.copyToDoubleArray(doubleOffset, doubleCopy, 0, doubles.length * Double.BYTES);
+    assertEquals(doubleCopy, doubles);
   }
 
   @Test
@@ -367,6 +582,14 @@ public class MemoryBufferTest {
     char[] readChars = new char[buf.readVarUInt32() >>> 1];
     buf.readChars(readChars, 0, readChars.length);
     assertEquals(chars, readChars);
+  }
+
+  @Test
+  public void testReadCharsAndSizeAlignment() {
+    MemoryBuffer buf = MemoryUtils.buffer(8);
+    buf.writeVarUInt32(3);
+    buf.writeBytes(new byte[] {1, 2, 3});
+    assertThrows(IllegalArgumentException.class, buf::readCharsAndSize);
   }
 
   @Test
@@ -404,7 +627,7 @@ public class MemoryBufferTest {
   }
 
   @Test
-  public void testReadVarUInt32RejectsMalformedFifthByte() {
+  public void testReadVarUInt32RejectsFifthByte() {
     byte[] malformed = new byte[] {(byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 0x10};
     assertThrows(IllegalArgumentException.class, () -> MemoryUtils.wrap(malformed).readVarUInt32());
     assertThrows(

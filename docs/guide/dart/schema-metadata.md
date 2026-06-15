@@ -29,7 +29,7 @@ Add `@ForyField(...)` to a field inside a `@ForyStruct()` class to change how th
   id: 10,           // stable field ID for schema evolution
   nullable: true,   // override nullability detection
   ref: true,        // enable reference tracking for this field
-  dynamic: false,   // control whether the runtime type is written
+  dynamic: false,   // control whether the concrete type is written
 )
 ```
 
@@ -62,7 +62,7 @@ Explicitly marks a field as nullable or non-nullable, overriding what Fory infer
 String nickname = '';
 ```
 
-In cross-language scenarios, make sure the nullability contract also matches what peer runtimes expect.
+In cross-language scenarios, make sure the nullability contract also matches what peer languages expect.
 
 ## `ref`
 
@@ -77,20 +77,20 @@ Note: scalar types like `int`, `double`, and `bool` never benefit from reference
 
 ## `dynamic`
 
-Controls whether Fory writes the concrete runtime type of the field value into the payload.
+Controls whether Fory writes the concrete type of the field value into the payload.
 
 - `null` (default) — Fory decides automatically based on the declared type.
 - `false` — always use the declared field type; more compact but the deserializer must know the exact type.
-- `true` — always write the actual runtime type; needed when the field is declared as `Object?` or a base class but can hold different concrete types at runtime (polymorphism).
+- `true` — always write the actual concrete type; needed when the field is declared as `Object?` or a base class but can hold different concrete types (polymorphism).
 
 ```dart
 @ForyField(dynamic: true)
-Object? payload;  // can hold any registered type at runtime
+Object? payload;  // can hold any registered type
 ```
 
 ## Numeric Field Types
 
-Dart `int` is a 64-bit value at runtime. When exchanging messages with Java, Go, or C#, the receiving side may expect a narrower integer. Use `@ForyField(type: ...)` to pin the exact wire format:
+Dart `int` stores a 64-bit value. When exchanging messages with Java, Go, or C#, the receiving side may expect a narrower integer. Use `@ForyField(type: ...)` to pin the exact wire format:
 
 ```dart
 @ForyStruct()

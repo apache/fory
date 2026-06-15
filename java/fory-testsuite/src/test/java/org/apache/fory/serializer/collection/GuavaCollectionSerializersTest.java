@@ -200,6 +200,7 @@ public class GuavaCollectionSerializersTest extends TestBase {
             .withXlang(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(true)
             .build();
     serDe(fory, ImmutableBiMap.of());
     serDe(fory, ImmutableBiMap.of(1, 2));

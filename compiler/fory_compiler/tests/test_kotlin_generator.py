@@ -247,6 +247,48 @@ def test_registration_type_path_collision_rejected(tmp_path, capsys):
     assert not out.exists()
 
 
+def test_grpc_service_path_collision_rejected(tmp_path, capsys):
+    schema_file = tmp_path / "demo.fdl"
+    schema_file.write_text(
+        """
+        package app;
+
+        message GreeterGrpcKt [id=200] {
+            string name = 1;
+        }
+
+        message Req [id=201] {}
+        message Res [id=202] {}
+
+        service Greeter {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    schema = resolve_imports(schema_file)
+    validator = SchemaValidator(schema)
+    assert validator.validate(), validator.errors
+    with pytest.raises(ValueError, match="generated file path collision"):
+        KotlinGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+
+    out = tmp_path / "out"
+    result = foryc_main(
+        [
+            "--lang",
+            "kotlin",
+            "--kotlin_out",
+            str(out),
+            "--grpc",
+            str(schema_file),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "generated file path collision" in captured.err
+    assert not out.exists()
+
+
 def test_module_name_sanitizes_source_stem(tmp_path):
     schema = tmp_path / "123-my-schema.fdl"
     schema.write_text(

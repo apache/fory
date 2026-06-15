@@ -33,7 +33,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_with_single_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [None]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -41,7 +41,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_with_multiple_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [None, None, None]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -49,7 +49,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_with_mixed_none_and_int(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [1, None, 2, None, 3]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -57,7 +57,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_with_mixed_none_and_string(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = ["a", None, "b", None]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -65,7 +65,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_nested_list_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [5, [5, None]]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -73,7 +73,7 @@ class TestListWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_deeply_nested_list_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [1, [2, [3, None, [4, None]]]]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -85,7 +85,7 @@ class TestSetWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_set_with_single_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {None}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -93,7 +93,7 @@ class TestSetWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_set_with_none_and_values(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {None, 1, 2, 3}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -101,7 +101,7 @@ class TestSetWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_set_with_none_and_strings(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {None, "a", "b"}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -113,28 +113,28 @@ class TestTupleWithNone:
     @pytest.mark.parametrize("ref", [False, True])
     def test_tuple_with_single_none(self, ref):
         # Tuple is Python-only, xlang=False
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         data = (None,)
         result = fory.loads(fory.dumps(data))
         assert result == data
 
     @pytest.mark.parametrize("ref", [False, True])
     def test_tuple_with_multiple_none(self, ref):
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         data = (None, None, None)
         result = fory.loads(fory.dumps(data))
         assert result == data
 
     @pytest.mark.parametrize("ref", [False, True])
     def test_tuple_with_mixed_none(self, ref):
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         data = (None, 1, None, "a")
         result = fory.loads(fory.dumps(data))
         assert result == data
 
     @pytest.mark.parametrize("ref", [False, True])
     def test_nested_tuple_with_none(self, ref):
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         data = (1, (2, None, (3, None)))
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -162,7 +162,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_with_none_value(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"key": None}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -170,7 +170,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_with_none_key(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {None: "value"}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -178,7 +178,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_with_none_key_and_value(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {None: None}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -186,7 +186,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_with_list_containing_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"a": [None]}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -194,7 +194,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_with_multiple_none_values(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"a": None, "b": None, "c": 1}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -202,7 +202,7 @@ class TestDictWithNone:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_nested_dict_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"outer": {"inner": None, "list": [1, None, 3]}}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -214,7 +214,7 @@ class TestComplexNestedStructures:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_complex_nested_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"a": [1, None, 3], "b": None, "c": [None, None]}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -222,7 +222,7 @@ class TestComplexNestedStructures:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_of_dicts_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [{"a": None}, {"b": [None, 1]}, None]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -230,7 +230,7 @@ class TestComplexNestedStructures:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_dict_of_sets_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {"set1": {1, None, 2}, "set2": {None}}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -246,7 +246,7 @@ class TestStructWithCollections:
         class MyStruct:
             items: List[Optional[int]]
 
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         fory.register(MyStruct)
         data = MyStruct(items=[1, None, 3])
         result = fory.loads(fory.dumps(data))
@@ -258,7 +258,7 @@ class TestStructWithCollections:
         class MyStruct:
             mapping: Dict[Optional[str], Optional[int]]
 
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         fory.register(MyStruct)
         # Test normal dict
         data = MyStruct(mapping={"a": 1, "b": 2})
@@ -283,7 +283,7 @@ class TestStructWithCollections:
         class MyStruct:
             items: Set[Optional[int]]
 
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         fory.register(MyStruct)
         # Test normal set
         data = MyStruct(items={1, 2, 3})
@@ -304,7 +304,7 @@ class TestStructWithCollections:
         class MyStruct:
             nested: List[Optional[Dict[Optional[str], Optional[List[Optional[int]]]]]]
 
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         fory.register(MyStruct)
         # Test normal nested structure
         data = MyStruct(nested=[{"a": [1, 2]}, {"b": [3, 4]}])
@@ -338,7 +338,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_empty_list(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = []
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -346,7 +346,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_empty_set(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = set()
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -354,7 +354,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_empty_dict(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = {}
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -362,7 +362,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("ref", [False, True])
     def test_empty_tuple(self, ref):
         # Tuple is Python-only
-        fory = pyfory.Fory(xlang=False, ref=ref)
+        fory = pyfory.Fory(xlang=False, ref=ref, compatible=False)
         data = ()
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -370,7 +370,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_single_element_collections(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         for data in [[1], {1}, {"a": 1}]:
             result = fory.loads(fory.dumps(data))
             assert result == data
@@ -378,7 +378,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_large_list_with_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [i if i % 3 != 0 else None for i in range(100)]
         result = fory.loads(fory.dumps(data))
         assert result == data
@@ -386,7 +386,7 @@ class TestEdgeCases:
     @pytest.mark.parametrize("xlang", [False, True])
     @pytest.mark.parametrize("ref", [False, True])
     def test_list_with_different_types_and_none(self, xlang, ref):
-        fory = pyfory.Fory(xlang=xlang, ref=ref)
+        fory = pyfory.Fory(xlang=xlang, ref=ref, compatible=xlang)
         data = [1, "string", 3.14, None, True, [1, 2], {"a": 1}]
         result = fory.loads(fory.dumps(data))
         assert result == data

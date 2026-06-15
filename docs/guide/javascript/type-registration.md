@@ -42,7 +42,7 @@ const fory = new Fory();
 const { serialize, deserialize } = fory.register(userType);
 ```
 
-The same number must be used in every runtime that reads or writes this type.
+The same number must be used in every peer that reads or writes this type.
 
 ### Register by name
 
@@ -61,19 +61,10 @@ const fory = new Fory();
 const { serialize, deserialize } = fory.register(userType);
 ```
 
-You can also split namespace and type name explicitly:
+Use `.` inside `typeName` to add a namespace prefix. Fory splits the namespace from
+the final type-name segment.
 
-```ts
-const userType = Type.struct(
-  { namespace: "example", typeName: "user" },
-  {
-    id: Type.int64(),
-    name: Type.string(),
-  },
-);
-```
-
-> **Do not mix strategies for the same type across runtimes.** If one side uses a numeric ID and the other uses a name, deserialization will fail.
+> **Do not mix strategies for the same type across peers.** If one side uses a numeric ID and the other uses a name, deserialization will fail.
 
 ## Registering with Decorators
 
@@ -163,7 +154,7 @@ Use **names** when:
 
 ## Xlang
 
-For a message to round-trip between JavaScript and another runtime, both sides must use the same identity for a given type: same numeric ID, or same `namespace + typeName`. See [Xlang Serialization](xlang-serialization.md).
+For a message to round-trip between JavaScript and another language, both sides must use the same identity for a given type: same numeric ID, or same `typeName`. Use `.` inside `typeName` to add a namespace prefix. See [Xlang Serialization](xlang-serialization.md).
 
 ## Related Topics
 

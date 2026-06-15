@@ -25,7 +25,6 @@ import java.io.Serializable;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.fory.Fory;
@@ -42,13 +41,13 @@ public class PackagePrivateMapKeyTest {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .buildThreadSafeFory();
 
     ReproContainer container = new ReproContainer("v1");
     ReproNode parent = new ReproNode(ReproType.TYPE_A, "p1");
     ReproNode child = new ReproNode(ReproType.TYPE_B, "c1");
     parent.children.add(child);
-    child.parents.computeIfAbsent(parent.type, k -> new LinkedHashSet<>()).add(parent);
     container.nodes.computeIfAbsent(ReproType.TYPE_A, k -> new HashMap<>()).put("p1", parent);
     container.nodes.computeIfAbsent(ReproType.TYPE_B, k -> new HashMap<>()).put("c1", child);
 
@@ -68,20 +67,32 @@ enum ReproType implements Serializable {
 class ReproNode implements Serializable {
   final ReproType type;
   final String id;
-  final Set<ReproNode> children = new HashSet<>();
-  final Map<ReproType, Set<ReproNode>> parents = new EnumMap<>(ReproType.class);
+  Set<ReproNode> children;
+  Map<ReproType, Set<ReproNode>> parents;
 
   ReproNode(ReproType type, String id) {
+    this(type, id, new HashSet<>(), new EnumMap<>(ReproType.class));
+  }
+
+  ReproNode(
+      ReproType type, String id, Set<ReproNode> children, Map<ReproType, Set<ReproNode>> parents) {
     this.type = type;
     this.id = id;
+    this.children = children;
+    this.parents = parents;
   }
 }
 
 class ReproContainer implements Serializable {
-  final Map<ReproType, Map<String, ReproNode>> nodes = new EnumMap<>(ReproType.class);
+  final Map<ReproType, Map<String, ReproNode>> nodes;
   final String version;
 
   ReproContainer(String version) {
+    this(new EnumMap<>(ReproType.class), version);
+  }
+
+  ReproContainer(Map<ReproType, Map<String, ReproNode>> nodes, String version) {
+    this.nodes = nodes;
     this.version = version;
   }
 }

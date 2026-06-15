@@ -26,7 +26,7 @@
   <parent>
     <artifactId>fory-parent</artifactId>
     <groupId>org.apache.fory</groupId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>benchmark</artifactId>
@@ -38,16 +38,59 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <jmh.version>1.33</jmh.version>
+    <jmh.version>1.37</jmh.version>
     <uberjar.name>benchmarks</uberjar.name>
-    <protostuff.version>1.7.2</protostuff.version>
-    <fastjson2.version>2.0.34</fastjson2.version>
+    <protostuff.version>1.8.0</protostuff.version>
+    <fastjson2.version>2.0.62</fastjson2.version>
     <protobuf.version>3.25.5</protobuf.version>
+    <jackson.version>2.18.6</jackson.version>
+    <build-helper-maven-plugin.version>3.6.1</build-helper-maven-plugin.version>
+    <exec-maven-plugin.version>3.6.2</exec-maven-plugin.version>
+    <maven-clean-plugin.version>3.5.0</maven-clean-plugin.version>
+    <maven-dependency-plugin.version>3.11.0</maven-dependency-plugin.version>
+    <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
+    <maven-install-plugin.version>3.1.4</maven-install-plugin.version>
+    <maven-invoker-plugin.version>3.10.1</maven-invoker-plugin.version>
+    <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+    <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
+    <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
+    <maven-remote-resources-plugin.version>3.3.0</maven-remote-resources-plugin.version>
+    <maven-resources-plugin.version>3.3.1</maven-resources-plugin.version>
+    <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
+    <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+    <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
+    <os-maven-plugin.version>1.7.1</os-maven-plugin.version>
+    <protobuf-maven-plugin.version>0.6.1</protobuf-maven-plugin.version>
     <checkstyle.skip>true</checkstyle.skip>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-core</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-annotations</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.fasterxml.jackson.datatype</groupId>
+        <artifactId>jackson-datatype-jsr310</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <dependencies>
     <dependency>
@@ -72,17 +115,17 @@
     <dependency>
       <groupId>org.msgpack</groupId>
       <artifactId>jackson-dataformat-msgpack</artifactId>
-      <version>0.9.8</version>
+      <version>0.9.12</version>
     </dependency>
     <dependency>
       <groupId>com.esotericsoftware</groupId>
       <artifactId>kryo</artifactId>
-      <version>5.5.0</version>
+      <version>5.6.2</version>
     </dependency>
     <dependency>
       <groupId>de.javakaffee</groupId>
       <artifactId>kryo-serializers</artifactId>
-      <version>0.42</version>
+      <version>0.45</version>
     </dependency>
     <dependency>
       <groupId>com.esotericsoftware.minlog</groupId>
@@ -92,12 +135,12 @@
     <dependency>
       <groupId>com.esotericsoftware</groupId>
       <artifactId>reflectasm</artifactId>
-      <version>1.11.3</version>
+      <version>1.11.9</version>
     </dependency>
     <dependency>
       <groupId>org.objenesis</groupId>
       <artifactId>objenesis</artifactId>
-      <version>2.5.1</version>
+      <version>3.5</version>
     </dependency>
     <dependency>
       <groupId>de.ruedigermoeller</groupId>
@@ -113,7 +156,7 @@
     <dependency>
       <groupId>com.caucho</groupId>
       <artifactId>hessian</artifactId>
-      <version>4.0.63</version>
+      <version>4.0.66</version>
     </dependency>
     <dependency>
       <groupId>io.protostuff</groupId>
@@ -138,12 +181,12 @@
     <dependency>
       <groupId>com.google.flatbuffers</groupId>
       <artifactId>flatbuffers-java</artifactId>
-      <version>2.0.3</version>
+      <version>25.2.10</version>
     </dependency>
     <dependency>
       <groupId>org.apache.avro</groupId>
       <artifactId>avro</artifactId>
-      <version>1.11.5</version>
+      <version>1.12.1</version>
       <exclusions>
         <exclusion>
           <artifactId>jackson-core</artifactId>
@@ -183,7 +226,7 @@
           <plugin>
             <groupId>org.codehaus.mojo</groupId>
             <artifactId>build-helper-maven-plugin</artifactId>
-            <version>3.4.0</version>
+            <version>${build-helper-maven-plugin.version}</version>
             <executions>
               <execution>
                 <id>add-source</id>
@@ -212,13 +255,6 @@
           </plugin>
         </plugins>
       </build>
-      <dependencies>
-        <dependency>
-          <groupId>org.apache.fory</groupId>
-          <artifactId>fory-simd</artifactId>
-          <version>${project.version}</version>
-        </dependency>
-      </dependencies>
     </profile>
     <profile>
       <id>jmh</id>
@@ -236,9 +272,210 @@
         </dependency>
       </dependencies>
     </profile>
+    <profile>
+      <id>jdk25-benchmark-mrjar-check</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <argLine>--add-opens=java.base/java.lang.invoke=ALL-UNNAMED</argLine>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>verify-benchmark-mrjar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <property
+                      name="jdk25.benchmark.check.dir"
+                      value="${project.build.directory}/jdk25-benchmark-check"/>
+                    <delete dir="${jdk25.benchmark.check.dir}"/>
+                    <mkdir dir="${jdk25.benchmark.check.dir}"/>
+                    <unzip
+                      src="${project.build.directory}/${uberjar.name}.jar"
+                      dest="${jdk25.benchmark.check.dir}">
+                      <patternset>
+                        <include
+                          name="org/apache/fory/platform/UnsafeOps.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/platform/UnsafeOps.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/memory/LittleEndian.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/memory/MemoryBuffer.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/platform/internal/_UnsafeUtils.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"/>
+                        <include
+                          name="META-INF/versions/25/org/apache/fory/serializer/PlatformStringUtils.class"/>
+                      </patternset>
+                    </unzip>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/org/apache/fory/platform/UnsafeOps.class"
+                      property="jdk25.benchmark.rootunsafeops.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/platform/UnsafeOps.class"
+                      property="jdk25.benchmark.unsafeops.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/memory/LittleEndian.class"
+                      property="jdk25.benchmark.littleendian.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/memory/MemoryBuffer.class"
+                      property="jdk25.benchmark.memorybuffer.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/platform/internal/_UnsafeUtils.class"
+                      property="jdk25.benchmark.unsafeutils.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
+                      property="jdk25.benchmark.instancefieldaccessors.present"/>
+                    <available
+                      file="${jdk25.benchmark.check.dir}/META-INF/versions/25/org/apache/fory/serializer/PlatformStringUtils.class"
+                      property="jdk25.benchmark.platformstring.present"/>
+                    <fail
+                      if="jdk25.benchmark.rootunsafeops.present"
+                      message="JDK25 benchmark jar must not contain root UnsafeOps class."/>
+                    <fail
+                      if="jdk25.benchmark.unsafeops.present"
+                      message="JDK25 benchmark jar must not contain versioned UnsafeOps class."/>
+                    <fail
+                      unless="jdk25.benchmark.littleendian.present"
+                      message="JDK25 benchmark jar is missing the versioned LittleEndian class."/>
+                    <fail
+                      unless="jdk25.benchmark.memorybuffer.present"
+                      message="JDK25 benchmark jar is missing the versioned MemoryBuffer class."/>
+                    <fail
+                      unless="jdk25.benchmark.unsafeutils.present"
+                      message="JDK25 benchmark jar is missing the versioned _UnsafeUtils class."/>
+                    <fail
+                      unless="jdk25.benchmark.instancefieldaccessors.present"
+                      message="JDK25 benchmark jar is missing the versioned InstanceFieldAccessors class."/>
+                    <fail
+                      unless="jdk25.benchmark.platformstring.present"
+                      message="JDK25 benchmark jar is missing the versioned PlatformStringUtils class."/>
+                    <exec
+                      executable="${java.home}/bin/jdeps"
+                      failonerror="true"
+                      outputproperty="jdk25.benchmark.jdeps.output">
+                      <arg value="--multi-release"/>
+                      <arg value="25"/>
+                      <arg value="--ignore-missing-deps"/>
+                      <arg value="-include"/>
+                      <arg value="org\.apache\.fory\..*"/>
+                      <arg value="-verbose:class"/>
+                      <arg value="${project.build.directory}/${uberjar.name}.jar"/>
+                    </exec>
+                    <condition property="jdk25.benchmark.jdeps.sunmisc.present">
+                      <contains string="${jdk25.benchmark.jdeps.output}" substring="-&gt; sun.misc"/>
+                    </condition>
+                    <condition property="jdk25.benchmark.jdeps.jdkinternalreflect.present">
+                      <contains
+                        string="${jdk25.benchmark.jdeps.output}"
+                        substring="-&gt; jdk.internal.reflect"/>
+                    </condition>
+                    <fail
+                      if="jdk25.benchmark.jdeps.sunmisc.present"
+                      message="JDK25 benchmark jar must not expose sun.misc dependencies in the resolved class graph."/>
+                    <fail
+                      if="jdk25.benchmark.jdeps.jdkinternalreflect.present"
+                      message="JDK25 benchmark jar must not expose jdk.internal.reflect dependencies in the resolved class graph."/>
+                    <java
+                      classname="org.apache.fory.benchmark.Jdk25MrJarCheck"
+                      fork="true"
+                      failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.directory}/${uberjar.name}.jar"/>
+                      </classpath>
+                      <jvmarg value="--add-opens=java.base/java.lang.invoke=ALL-UNNAMED"/>
+                      <jvmarg value="--sun-misc-unsafe-memory-access=deny"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
   </profiles>
 
   <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>${maven-clean-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>${maven-resources-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>${maven-jar-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>${maven-install-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <version>${maven-deploy-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-site-plugin</artifactId>
+          <version>${maven-site-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-release-plugin</artifactId>
+          <version>${maven-release-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-invoker-plugin</artifactId>
+          <version>${maven-invoker-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>${maven-source-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>${maven-javadoc-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-remote-resources-plugin</artifactId>
+          <version>${maven-remote-resources-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>${maven-surefire-plugin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -266,6 +503,7 @@
         <configuration>
           <archive>
             <manifestEntries>
+              <Multi-Release>true</Multi-Release>
               <Automatic-Module-Name>org.apache.fory.benchmark</Automatic-Module-Name>
             </manifestEntries>
           </archive>
@@ -287,6 +525,10 @@
                 <transformer
                   implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                   <mainClass>org.openjdk.jmh.Main</mainClass>
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                    <Automatic-Module-Name>org.apache.fory.benchmark</Automatic-Module-Name>
+                  </manifestEntries>
                 </transformer>
               </transformers>
               <filters>
@@ -298,6 +540,18 @@
                     <exclude>META-INF/*.RSA</exclude>
                   </excludes>
                 </filter>
+                <filter>
+                  <artifact>org.apache.logging.log4j:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/versions/**</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <artifact>com.fasterxml.jackson.core:jackson-core</artifact>
+                  <excludes>
+                    <exclude>META-INF/versions/**</exclude>
+                  </excludes>
+                </filter>
               </filters>
             </configuration>
           </execution>
@@ -306,7 +560,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
-        <version>3.3.0</version>
+        <version>${maven-dependency-plugin.version}</version>
         <executions>
           <execution>
             <id>build-classpath</id>
@@ -323,7 +577,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>exec-maven-plugin</artifactId>
-        <version>1.4.0</version>
+        <version>${exec-maven-plugin.version}</version>
         <executions>
           <execution>
             <id>run-tests</id>
@@ -345,7 +599,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-deploy-plugin</artifactId>
-        <version>2.7</version>
+        <version>${maven-deploy-plugin.version}</version>
         <configuration>
           <skip>true</skip>
         </configuration>
@@ -353,7 +607,7 @@
       <plugin>
         <groupId>org.xolstice.maven.plugins</groupId>
         <artifactId>protobuf-maven-plugin</artifactId>
-        <version>0.5.1</version>
+        <version>${protobuf-maven-plugin.version}</version>
         <extensions>true</extensions>
         <configuration>
           <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${os.detected.classifier}</protocArtifact>
@@ -374,7 +628,7 @@
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.0.0</version>
+        <version>${build-helper-maven-plugin.version}</version>
         <executions>
           <execution>
             <id>add-source</id>
@@ -403,8 +657,7 @@
               <exclude>**/generated/**/*.java</exclude>
             </excludes>
             <googleJavaFormat>
-              <!-- 1.19.1 support JDK21 -->
-              <version>1.19.1</version>
+              <version>${google-java-format.version}</version>
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
@@ -416,7 +669,7 @@
         <!--set os properties such as${os.detected.classifier} -->
         <groupId>kr.motd.maven</groupId>
         <artifactId>os-maven-plugin</artifactId>
-        <version>1.5.0.Final</version>
+        <version>${os-maven-plugin.version}</version>
       </extension>
     </extensions>
   </build>

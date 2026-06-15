@@ -116,6 +116,20 @@ public sealed class ByteBufferTests
         Assert.Equal(0, reader.Remaining);
     }
 
+    [Fact]
+    public void CheckBoundRejectsNegativeAndOverflowingNeed()
+    {
+        ByteReader reader = new([0x01]);
+
+        Assert.Throws<OutOfBoundsException>(() => reader.CheckBound(-1));
+        Assert.Throws<OutOfBoundsException>(() => reader.ReadBytes(-1));
+        Assert.Throws<OutOfBoundsException>(() => reader.ReadSpan(-1));
+        Assert.Throws<OutOfBoundsException>(() => reader.Skip(-1));
+
+        reader.SetCursor(1);
+        Assert.Throws<OutOfBoundsException>(() => reader.CheckBound(int.MaxValue));
+    }
+
     [Theory]
     [MemberData(nameof(VarUInt32Cases))]
     public void VarUInt32RoundTripAndSize(uint value, int expectedBytes)

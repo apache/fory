@@ -40,6 +40,17 @@ impl Serializer for Timestamp {
         let nanos = context.reader.read_u32()?;
         Timestamp::new(seconds, nanos)
     }
+    #[inline]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+            context,
+        )?))
+    }
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
@@ -109,6 +120,17 @@ impl Serializer for Date {
         };
         Ok(Date::from_epoch_days(days))
     }
+    #[inline]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+            context,
+        )?))
+    }
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
@@ -167,6 +189,17 @@ impl Serializer for Duration {
         let seconds = context.reader.read_var_i64()?;
         let nanos = context.reader.read_i32()?;
         Duration::new(seconds, nanos)
+    }
+    #[inline]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+            context,
+        )?))
     }
 
     #[inline(always)]
@@ -228,6 +261,17 @@ mod chrono_support {
         fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Timestamp::fory_read_data(context)?.try_into()
         }
+        #[inline]
+        fn fory_read_data_as_send_sync_any(
+            context: &mut ReadContext,
+        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+        where
+            Self: Sized + ForyDefault,
+        {
+            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+                context,
+            )?))
+        }
 
         #[inline(always)]
         fn fory_reserved_space() -> usize {
@@ -281,6 +325,17 @@ mod chrono_support {
         #[inline(always)]
         fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Date::fory_read_data(context)?.try_into()
+        }
+        #[inline]
+        fn fory_read_data_as_send_sync_any(
+            context: &mut ReadContext,
+        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+        where
+            Self: Sized + ForyDefault,
+        {
+            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+                context,
+            )?))
         }
 
         #[inline(always)]
@@ -336,6 +391,17 @@ mod chrono_support {
         fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Duration::fory_read_data(context)?.try_into()
         }
+        #[inline]
+        fn fory_read_data_as_send_sync_any(
+            context: &mut ReadContext,
+        ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+        where
+            Self: Sized + ForyDefault,
+        {
+            Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+                context,
+            )?))
+        }
 
         #[inline(always)]
         fn fory_reserved_space() -> usize {
@@ -388,7 +454,7 @@ mod tests {
 
     #[test]
     fn test_temporal_carrier_serialization() {
-        let fory = Fory::builder().xlang(false).build();
+        let fory = Fory::builder().xlang(false).compatible(false).build();
 
         let timestamps = [
             Timestamp::UNIX_EPOCH,
@@ -438,7 +504,7 @@ mod tests {
     fn test_chrono_temporal_feature_serialization() {
         use chrono::{DateTime, Duration as ChronoDuration, NaiveDate, NaiveDateTime};
 
-        let fory = Fory::builder().xlang(false).build();
+        let fory = Fory::builder().xlang(false).compatible(false).build();
         let date = NaiveDate::from_ymd_opt(2024, 2, 3).unwrap();
         let timestamp = DateTime::from_timestamp(100, 1).unwrap().naive_utc();
         let duration = ChronoDuration::nanoseconds(-1);

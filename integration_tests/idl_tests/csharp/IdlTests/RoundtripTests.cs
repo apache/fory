@@ -29,7 +29,7 @@ public sealed class RoundtripTests
     public void AddressBookRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        addressbook.AddressbookForyRegistration.Register(fory);
+        addressbook.AddressbookForyModule.Install(fory);
 
         addressbook.AddressBook book = BuildAddressBook();
         addressbook.AddressBook decoded = fory.Deserialize<addressbook.AddressBook>(fory.Serialize(book));
@@ -44,7 +44,7 @@ public sealed class RoundtripTests
     public void AutoIdRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        auto_id.AutoIdForyRegistration.Register(fory);
+        auto_id.AutoIdForyModule.Install(fory);
 
         auto_id.Envelope envelope = BuildEnvelope();
         auto_id.Wrapper wrapper = new auto_id.Wrapper.Envelope(envelope);
@@ -66,7 +66,7 @@ public sealed class RoundtripTests
     public void PrimitiveTypesRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        complex_pb.ComplexPbForyRegistration.Register(fory);
+        complex_pb.ComplexPbForyModule.Install(fory);
 
         complex_pb.PrimitiveTypes types = BuildPrimitiveTypes();
         complex_pb.PrimitiveTypes decoded = fory.Deserialize<complex_pb.PrimitiveTypes>(fory.Serialize(types));
@@ -81,7 +81,7 @@ public sealed class RoundtripTests
     public void CollectionRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        collection.CollectionForyRegistration.Register(fory);
+        collection.CollectionForyModule.Install(fory);
 
         collection.NumericCollections collections = BuildNumericCollections();
         collection.NumericCollectionUnion unionValue = BuildNumericCollectionUnion();
@@ -116,7 +116,7 @@ public sealed class RoundtripTests
     public void ExampleRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        example.ExampleForyRegistration.Register(fory);
+        example.ExampleForyModule.Install(fory);
 
         example.ExampleMessage message = BuildExampleMessage();
         example.ExampleMessage decoded = fory.Deserialize<example.ExampleMessage>(fory.Serialize(message));
@@ -142,7 +142,7 @@ public sealed class RoundtripTests
     public void OptionalTypesRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        optional_types.OptionalTypesForyRegistration.Register(fory);
+        optional_types.OptionalTypesForyModule.Install(fory);
 
         optional_types.OptionalHolder holder = BuildOptionalHolder();
         optional_types.OptionalHolder decoded = fory.Deserialize<optional_types.OptionalHolder>(fory.Serialize(holder));
@@ -157,7 +157,7 @@ public sealed class RoundtripTests
     public void AnyRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        any_example.AnyExampleForyRegistration.Register(fory);
+        any_example.AnyExampleForyModule.Install(fory);
 
         any_example.AnyHolder holder = BuildAnyHolder();
         any_example.AnyHolder decoded = fory.Deserialize<any_example.AnyHolder>(fory.Serialize(holder));
@@ -172,7 +172,7 @@ public sealed class RoundtripTests
     public void AnyProtoRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        any_example_pb.AnyExamplePbForyRegistration.Register(fory);
+        any_example_pb.AnyExampleForyModule.Install(fory);
 
         any_example_pb.AnyHolder holder = BuildAnyProtoHolder();
         any_example_pb.AnyHolder decoded = fory.Deserialize<any_example_pb.AnyHolder>(fory.Serialize(holder));
@@ -187,8 +187,8 @@ public sealed class RoundtripTests
     public void FlatbuffersRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        monster.MonsterForyRegistration.Register(fory);
-        complex_fbs.ComplexFbsForyRegistration.Register(fory);
+        monster.MonsterForyModule.Install(fory);
+        complex_fbs.ComplexFbsForyModule.Install(fory);
 
         monster.Monster monsterValue = BuildMonster();
         monster.Monster monsterDecoded = fory.Deserialize<monster.Monster>(fory.Serialize(monsterValue));
@@ -208,7 +208,7 @@ public sealed class RoundtripTests
     public void TreeRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        tree.TreeForyRegistration.Register(fory);
+        tree.TreeForyModule.Install(fory);
 
         tree.TreeNode treeRoot = BuildTree();
         tree.TreeNode decoded = fory.Deserialize<tree.TreeNode>(fory.Serialize(treeRoot));
@@ -223,7 +223,7 @@ public sealed class RoundtripTests
     public void GraphRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        graph.GraphForyRegistration.Register(fory);
+        graph.GraphForyModule.Install(fory);
 
         graph.Graph graphValue = BuildGraph();
         graph.Graph decoded = fory.Deserialize<graph.Graph>(fory.Serialize(graphValue));
@@ -237,8 +237,8 @@ public sealed class RoundtripTests
     {
         ForyRuntime foryV1 = BuildFory(true, false);
         ForyRuntime foryV2 = BuildFory(true, false);
-        evolving1.Evolving1ForyRegistration.Register(foryV1);
-        evolving2.Evolving2ForyRegistration.Register(foryV2);
+        evolving1.Evolving1ForyModule.Install(foryV1);
+        evolving2.Evolving2ForyModule.Install(foryV2);
 
         evolving1.EvolvingMessage messageV1 = new()
         {
@@ -320,7 +320,7 @@ public sealed class RoundtripTests
     public void RootRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, true);
-        root.RootForyRegistration.Register(fory);
+        root.RootForyModule.Install(fory);
 
         root.MultiHolder holder = BuildRootHolder();
         root.MultiHolder decoded = fory.Deserialize<root.MultiHolder>(fory.Serialize(holder));

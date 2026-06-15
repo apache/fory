@@ -45,96 +45,18 @@ Fory _newFory({bool compatible = false}) {
 }
 
 void _registerCommon(Fory fory) {
-  addressbook.ForyRegistration.register(fory, addressbook.Person, id: 100);
-  addressbook.ForyRegistration.register(
-    fory,
-    addressbook.Person_PhoneType,
-    id: 101,
-  );
-  addressbook.ForyRegistration.register(
-    fory,
-    addressbook.Person_PhoneNumber,
-    id: 102,
-  );
-  addressbook.ForyRegistration.register(fory, addressbook.AddressBook, id: 103);
-  addressbook.ForyRegistration.register(fory, addressbook.Dog, id: 104);
-  addressbook.ForyRegistration.register(fory, addressbook.Cat, id: 105);
-  addressbook.ForyRegistration.register(fory, addressbook.Animal, id: 106);
-
-  auto_id.ForyRegistration.register(fory, auto_id.Status);
-  auto_id.ForyRegistration.register(fory, auto_id.Envelope_Payload);
-  auto_id.ForyRegistration.register(fory, auto_id.Envelope_Detail);
-  auto_id.ForyRegistration.register(fory, auto_id.Envelope);
-  auto_id.ForyRegistration.register(fory, auto_id.Wrapper);
-
-  collection.ForyRegistration.register(
-    fory,
-    collection.NumericCollections,
-    id: 210,
-  );
-  collection.ForyRegistration.register(
-    fory,
-    collection.NumericCollectionUnion,
-    id: 211,
-  );
-  collection.ForyRegistration.register(
-    fory,
-    collection.NumericCollectionsArray,
-    id: 212,
-  );
-  collection.ForyRegistration.register(
-    fory,
-    collection.NumericCollectionArrayUnion,
-    id: 213,
-  );
-
-  complex_pb.ForyRegistration.register(fory, complex_pb.PrimitiveTypes);
-  complex_pb.ForyRegistration.register(fory, complex_pb.PrimitiveTypes_Contact);
-
-  optional_types.ForyRegistration.register(
-    fory,
-    optional_types.AllOptionalTypes,
-    id: 120,
-  );
-  optional_types.ForyRegistration.register(
-    fory,
-    optional_types.OptionalUnion,
-    id: 121,
-  );
-  optional_types.ForyRegistration.register(
-    fory,
-    optional_types.OptionalHolder,
-    id: 122,
-  );
-
-  example.ForyRegistration.register(fory, example.ExampleState, id: 1504);
-  example.ForyRegistration.register(fory, example.ExampleLeaf, id: 1502);
-  example.ForyRegistration.register(fory, example.ExampleLeafUnion, id: 1503);
-  example.ForyRegistration.register(
-    fory,
-    example.ExampleMessageUnion,
-    id: 1501,
-  );
-  example.ForyRegistration.register(fory, example.ExampleMessage, id: 1500);
-
-  monster.ForyRegistration.register(fory, monster.Color);
-  monster.ForyRegistration.register(fory, monster.Vec3);
-  monster.ForyRegistration.register(fory, monster.Monster);
-
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.Status);
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.Payload);
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.ScalarPack);
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.Note);
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.Metric);
-  complex_fbs.ForyRegistration.register(fory, complex_fbs.Container);
+  addressbook.AddressbookForyModule.install(fory);
+  auto_id.AutoIdForyModule.install(fory);
+  collection.CollectionForyModule.install(fory);
+  optional_types.OptionalTypesForyModule.install(fory);
+  example.ExampleForyModule.install(fory);
+  monster.MonsterForyModule.install(fory);
+  complex_fbs.ComplexFbsForyModule.install(fory);
 }
 
 void _registerRefs(Fory fory) {
-  tree.ForyRegistration.register(fory, tree.TreeNode);
-  graph.ForyRegistration.register(fory, graph.Node);
-  graph.ForyRegistration.register(fory, graph.Edge);
-  graph.ForyRegistration.register(fory, graph.Graph);
-  root.ForyRegistration.register(fory, root.MultiHolder, id: 300);
+  root.RootForyModule.install(fory);
+  graph.GraphForyModule.install(fory);
 }
 
 addressbook.AddressBook buildAddressBook() {

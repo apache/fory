@@ -72,7 +72,7 @@ public class MapSerializationSuite {
 
     @Setup(Level.Trial)
     public void setup() {
-      fory = Fory.builder().build();
+      fory = Fory.builder().withCompatible(true).build();
       fory.register(StringKVMapStruct.class);
       fory.register(IntKVMapStruct.class);
       Map<String, String> stringMap = new HashMap<>(mapSize);

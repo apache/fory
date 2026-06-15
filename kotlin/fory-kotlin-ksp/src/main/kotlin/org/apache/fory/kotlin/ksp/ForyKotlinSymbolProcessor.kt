@@ -278,12 +278,31 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     val foryIds = hashSetOf<Int>()
     var nextId = 0
     for (parameter in primaryConstructor.parameters) {
-      val parameterName = parameter.name?.asString() ?: continue
-      val property = propertiesByName[parameterName]
-      if (property == null || (!parameter.isVal && !parameter.isVar)) {
+      val parameterName = parameter.name?.asString()
+      if (parameterName == null) {
         logger.error(
-          "Constructor parameter $parameterName is not a field-backed property",
+          "Kotlin KSP primary-constructor @ForyStruct requires named constructor parameters",
+          parameter,
+        )
+        return null
+      }
+      val fieldName = parameterName
+      val property = propertiesByName[fieldName]
+      if (property == null) {
+        logger.error(
+          "Constructor parameter $parameterName is not declared as an accessible schema property",
           parameter
+        )
+        return null
+      }
+      val fieldType = property.type.resolve()
+      val parameterType = parameter.type.resolve()
+      val fieldTypeName = kotlinSourceTypeName(fieldType)
+      val parameterTypeName = kotlinSourceTypeName(parameterType)
+      if (fieldTypeName != parameterTypeName) {
+        logger.error(
+          "Schema property $fieldName type $fieldTypeName must match primary constructor parameter $parameterName type $parameterTypeName",
+          parameter,
         )
         return null
       }
@@ -291,13 +310,14 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
         parseField(
           declaration,
           property,
-          parameterName,
-          parameter.type.resolve(),
+          fieldName,
+          fieldType,
           parameter,
           nextId,
           parameter.hasDefault,
           foryIds,
           requireForyId = false,
+          constructorParameterName = parameterName,
         ) ?: return null
       fields.add(field)
       nextId++
@@ -336,6 +356,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
           hasDefault = false,
           foryIds,
           requireForyId = true,
+          constructorParameterName = property.simpleName.asString(),
         ) ?: return null
       fields.add(field)
     }
@@ -352,6 +373,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     hasDefault: Boolean,
     foryIds: MutableSet<Int>,
     requireForyId: Boolean,
+    constructorParameterName: String,
   ): KotlinSourceField? {
     if (Modifier.PRIVATE in property.modifiers) {
       logger.error("Private Fory field $fieldName is inaccessible to generated code", property)
@@ -382,6 +404,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     return KotlinSourceField(
       id = id,
       name = fieldName,
+      constructorParameterName = constructorParameterName,
       type = typeNode,
       hasForyField = fieldMeta.hasAnnotation,
       foryFieldId = fieldMeta.id,
@@ -448,10 +471,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
       }
       val caseId = foryCaseId(caseDeclaration, reportMissing = false) ?: continue
       if (caseId < 0) {
-        logger.error(
-          "Schema Kotlin union @ForyCase ids must be non-negative",
-          caseDeclaration
-        )
+        logger.error("Schema Kotlin union @ForyCase ids must be non-negative", caseDeclaration)
         return null
       }
       if (!caseIds.add(caseId)) {

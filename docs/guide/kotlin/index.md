@@ -40,6 +40,7 @@ Fory Kotlin inherits all features from Fory Java, plus Kotlin-specific optimizat
 - **Default Value Support**: Automatic handling of Kotlin data class default parameters during schema evolution
 - **Static Xlang Serializers**: KSP-generated schema serializers for Kotlin/JVM and Android xlang mode
 - **Schema IDL Generation**: Fory compiler output for Kotlin models, sealed unions, and schema modules
+- **Kotlin gRPC Support**: Coroutine service companions that use Fory payload serialization
 - **Schema Evolution**: Forward/backward compatibility for class schema changes
 
 See [Java Features](../java/index.md#features) for complete feature list.
@@ -52,14 +53,29 @@ See [Java Features](../java/index.md#features) for complete feature list.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.0.0")
+implementation("org.apache.fory:fory-kotlin:1.1.0")
+```
+
+### JDK25+
+
+Kotlin uses the Fory Java core when running. On JDK25+, open `java.lang.invoke`
+to Fory. Use `ALL-UNNAMED` when Fory is on the classpath:
+
+```bash
+--add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+```
+
+Use the Fory core module name when Fory is on the module path:
+
+```bash
+--add-opens=java.base/java.lang.invoke=org.apache.fory.core
 ```
 
 ## Quick Start
@@ -90,9 +106,9 @@ fun main() {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with other Fory runtimes. Xlang mode is the default Kotlin wire mode through the JVM builder, and Kotlin examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default Kotlin wire mode through the JVM builder, and Kotlin examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Kotlin/JVM-only traffic. Native mode is selected with `.withXlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and inherits the JVM native-mode object serialization path from Fory Java while adding Kotlin-specific serializers for data classes, unsigned values, ranges, stdlib types, and generated serializers. It is optimized for JVM and Kotlin type systems and is the right path for same-language Kotlin/JVM framework replacement payloads.
+Use native mode for Kotlin/JVM-only traffic. Native mode is selected with `.withXlang(false)` and inherits the JVM native-mode object serialization path from Fory Java while adding Kotlin-specific serializers for data classes, unsigned values, ranges, stdlib types, and generated serializers. It is optimized for JVM and Kotlin type systems and is the right path for same-language Kotlin/JVM framework replacement payloads. Compatible mode is enabled by default. Set `.withCompatible(false)` only when every reader and writer uses the same Kotlin/JVM schema and you want faster serialization and smaller size.
 
 See [Configuration](configuration.md) for Kotlin builder setup and [Java Native Serialization](../java/native-serialization.md) for the full JVM native-mode behavior.
 
@@ -115,4 +131,5 @@ Fory Kotlin is built on top of Fory Java. Most configuration options, features, 
 - [Schema Metadata](schema-metadata.md) - Kotlin annotations, nullability, references, and integer metadata
 - [Default Values](default-values.md) - Kotlin data class default values support
 - [Static Generated Serializers](static-generated-serializers.md) - KSP xlang/schema serializer generation
+- [Kotlin gRPC Support](grpc-support.md) - Coroutine stubs and service bases for Fory IDL services
 - [Android Support](android-support.md) - Android setup, R8 behavior, and release-build validation

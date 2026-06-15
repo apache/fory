@@ -62,6 +62,7 @@ class BinaryArrayEncoder<T> implements ArrayEncoder<T> {
 
   @Override
   public T decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

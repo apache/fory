@@ -24,7 +24,7 @@ import java.lang.reflect.Field;
 import java.util.Set;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.util.unsafe._JDKAccess;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 

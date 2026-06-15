@@ -51,7 +51,12 @@ public class TimeSerializersTest extends ForyTestBase {
 
   @Test
   public void testBasicTime() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(fory, new Date(), "Time");
     serDeCheckSerializerAndEqual(fory, new java.sql.Date(100), "Time");
     serDeCheckSerializerAndEqual(fory, new java.sql.Time(200), "Time");
@@ -129,7 +134,12 @@ public class TimeSerializersTest extends ForyTestBase {
 
   @Test
   public void testCalendar() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(fory, GregorianCalendar.getInstance(), "Calendar");
     serDeCheckSerializerAndEqual(fory, Calendar.getInstance(), "Calendar");
   }
@@ -142,7 +152,12 @@ public class TimeSerializersTest extends ForyTestBase {
 
   @Test
   public void testZoneOffset() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(fory, ZoneOffset.UTC, "ZoneOffsetSerializer");
     serDeCheckSerializerAndEqual(fory, ZoneOffset.ofHoursMinutes(1, 15), "ZoneOffsetSerializer");
     serDeCheckSerializerAndEqual(fory, ZoneOffset.ofHoursMinutes(1, 13), "ZoneOffsetSerializer");
@@ -152,7 +167,12 @@ public class TimeSerializersTest extends ForyTestBase {
 
   @Test
   public void testZone() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     serDeCheckSerializerAndEqual(
         fory,
         ZonedDateTime.of(Year.MIN_VALUE, Month.JANUARY.getValue(), 1, 0, 0, 0, 0, ZoneOffset.UTC),
@@ -260,13 +280,23 @@ public class TimeSerializersTest extends ForyTestBase {
     struct.instant = DateTimeUtils.truncateInstantToMicros(Instant.now());
     struct.duration = Duration.between(Instant.now(), Instant.ofEpochSecond(-1));
     {
-      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       fory.registerSerializer(
           TimeStruct.class, CodegenSerializer.loadCodegenSerializer(fory, TimeStruct.class));
       serDe(fory, struct);
     }
     {
-      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       fory.registerSerializer(
           TimeStruct.class, new ObjectSerializer(fory.getTypeResolver(), TimeStruct.class));
       serDe(fory, struct);
@@ -330,6 +360,7 @@ public class TimeSerializersTest extends ForyTestBase {
               .withCodegen(true)
               .withRefTracking(true)
               .ignoreTimeRef(true)
+              .withCompatible(false)
               .build();
       fory.registerSerializer(
           TimeStructRef.class, CodegenSerializer.loadCodegenSerializer(fory, TimeStructRef.class));
@@ -348,6 +379,7 @@ public class TimeSerializersTest extends ForyTestBase {
               .requireClassRegistration(false)
               .withRefTracking(true)
               .ignoreTimeRef(false)
+              .withCompatible(false)
               .build();
       fory.registerSerializer(
           TimeStruct.class, CodegenSerializer.loadCodegenSerializer(fory, TimeStruct.class));
@@ -370,6 +402,7 @@ public class TimeSerializersTest extends ForyTestBase {
               .withCodegen(true)
               .withRefTracking(true)
               .ignoreTimeRef(true)
+              .withCompatible(false)
               .build();
       fory.registerSerializer(
           Date.class, new TimeSerializers.DateSerializer(fory.getConfig(), true));

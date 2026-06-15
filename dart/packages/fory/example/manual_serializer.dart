@@ -48,8 +48,7 @@ void main() {
   fory.registerSerializer(
     Person,
     const PersonSerializer(),
-    namespace: 'example',
-    typeName: 'Person',
+    name: 'example.Person',
   );
 
   final person = Person('Ada', Int64(36));

@@ -18,6 +18,7 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
 - For wheel or extension pipeline changes, derive extension-module paths from current build targets, packaging config, or wheel payload discovery rather than historical module names.
 - Keep new Python test names compact and behavior-focused; avoid sentence-length names that restate setup details already obvious from the test body.
 - `ENABLE_FORY_DEBUG_OUTPUT=1` enables detailed struct serialization and deserialization logs.
+- Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 
 ## Key Paths
 

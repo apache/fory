@@ -37,6 +37,7 @@ public class CollectionExample {
             .withName(CollectionExample.class.getName())
             .withXlang(false)
             .requireClassRegistration(true)
+            .withCompatible(false)
             .build();
   }
 

@@ -19,6 +19,7 @@ package fory
 
 import (
 	"math"
+	"reflect"
 	"testing"
 
 	"github.com/apache/fory/go/fory/bfloat16"
@@ -26,8 +27,16 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestPrimitiveListReadableOverflow(t *testing.T) {
+	var err Error
+	serializer := primitiveListSerializer{type_: reflect.TypeOf([]int64{}), elemTypeID: INT64}
+	length := int(^uint(0)>>1)/8 + 1
+	assert.False(t, serializer.checkBodyReadable(NewByteBuffer(nil), &err, length, false))
+	assert.True(t, err.HasError())
+}
+
 func TestFloat16Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("float16_slice", func(t *testing.T) {
 		slice := []float16.Float16{
@@ -69,7 +78,7 @@ func TestFloat16Slice(t *testing.T) {
 }
 
 func TestBFloat16Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("bfloat16_slice", func(t *testing.T) {
 		slice := []bfloat16.BFloat16{
@@ -111,7 +120,7 @@ func TestBFloat16Slice(t *testing.T) {
 }
 
 func TestIntSlice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("int_slice_large_numbers", func(t *testing.T) {
 		slice := []int{1, -2, 3, -4, math.MaxInt, math.MinInt}
@@ -149,7 +158,7 @@ func TestIntSlice(t *testing.T) {
 }
 
 func TestUintSlice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("uint_slice_large_numbers", func(t *testing.T) {
 		slice := []uint{1, 2, 3, 4, math.MaxUint}
@@ -187,7 +196,7 @@ func TestUintSlice(t *testing.T) {
 }
 
 func TestInt8Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("int8_slice_large_numbers", func(t *testing.T) {
 		slice := []int8{1, -2, 3, -4, math.MaxInt8, math.MinInt8}
@@ -225,7 +234,7 @@ func TestInt8Slice(t *testing.T) {
 }
 
 func TestInt16Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("int16_slice_large_numbers", func(t *testing.T) {
 		slice := []int16{1, -2, 3, -4, math.MaxInt16, math.MinInt16}
@@ -263,7 +272,7 @@ func TestInt16Slice(t *testing.T) {
 }
 
 func TestInt32Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("int32_slice_large_numbers", func(t *testing.T) {
 		slice := []int32{1, -2, 3, -4, math.MaxInt32, math.MinInt32}
@@ -301,7 +310,7 @@ func TestInt32Slice(t *testing.T) {
 }
 
 func TestInt64Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("int64_slice_large_numbers", func(t *testing.T) {
 		slice := []int64{1, -2, 3, -4, math.MaxInt64, math.MinInt64}
@@ -339,7 +348,7 @@ func TestInt64Slice(t *testing.T) {
 }
 
 func TestUint16Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("uint16_slice_large_numbers", func(t *testing.T) {
 		slice := []uint16{1, 2, 3, 4, math.MaxUint16}
@@ -377,7 +386,7 @@ func TestUint16Slice(t *testing.T) {
 }
 
 func TestUint32Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("uint32_slice_large_numbers", func(t *testing.T) {
 		slice := []uint32{1, 2, 3, 4, math.MaxUint32}
@@ -415,7 +424,7 @@ func TestUint32Slice(t *testing.T) {
 }
 
 func TestUint64Slice(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("uint64_slice_large_numbers", func(t *testing.T) {
 		slice := []uint64{1, 2, 3, 4, math.MaxUint64}
@@ -467,13 +476,40 @@ func TestReadInt32Slice_OOM_Bug(t *testing.T) {
 	assert.Equal(t, 0, len(result), "Expected an empty slice due to missing data")
 }
 
+func TestReadFixedWidthSliceBytes(t *testing.T) {
+	t.Run("unaligned_size", func(t *testing.T) {
+		buf := NewByteBuffer(nil)
+		buf.WriteLength(3)
+		buf.WriteBinary([]byte{1, 2, 3})
+		buf.SetReaderIndex(0)
+
+		err := &Error{}
+		result := ReadInt16Slice(buf, err)
+
+		assert.True(t, err.HasError())
+		assert.Nil(t, result)
+	})
+
+	t.Run("missing_body", func(t *testing.T) {
+		buf := NewByteBuffer(nil)
+		buf.WriteLength(40000)
+		buf.SetReaderIndex(0)
+
+		err := &Error{}
+		result := ReadFloat64Slice(buf, err)
+
+		assert.True(t, err.HasError())
+		assert.Nil(t, result)
+	})
+}
+
 func TestReadBoolSliceWrappedBuffer(t *testing.T) {
-	payload := NewByteBuffer(nil)
-	WriteBoolSlice(payload, []bool{true, false})
+	arrayBytes := NewByteBuffer(nil)
+	WriteBoolSlice(arrayBytes, []bool{true, false})
 
 	err := &Error{}
-	result := ReadBoolSlice(NewByteBuffer(payload.Bytes()), err)
+	result := ReadBoolSlice(NewByteBuffer(arrayBytes.Bytes()), err)
 
-	assert.False(t, err.HasError(), "Expected wrapped buffer reads to use the serialized payload")
+	assert.False(t, err.HasError(), "Expected wrapped buffer reads to use serialized array bytes")
 	assert.Equal(t, []bool{true, false}, result)
 }

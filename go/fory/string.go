@@ -53,6 +53,10 @@ func readString(buf *ByteBuffer, err *Error) string {
 	header := buf.ReadVaruint36Small(err)
 	size := header >> 2       // Extract byte count
 	encoding := header & 0b11 // Extract encoding type
+	if intSize == 32 && size > uint64(MaxInt) {
+		err.SetError(fmt.Errorf("string byte count %d exceeds supported int range", size))
+		return ""
+	}
 
 	switch encoding {
 	case encodingLatin1:

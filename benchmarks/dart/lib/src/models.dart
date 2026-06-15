@@ -350,17 +350,254 @@ class MediaContentList {
   Map<String, dynamic> toJson() => _$MediaContentListToJson(this);
 }
 
+@ForyStruct()
+class NumericStructV2 {
+  NumericStructV2({
+    required this.f1,
+    required this.f2,
+    required this.f3,
+    required this.f4,
+    required this.f5,
+    required this.f6,
+    required this.f7,
+    required this.f8,
+    required this.f9,
+    required this.f10,
+    required this.f11,
+    required this.f12,
+  });
+
+  @ForyField(id: 1, type: Int64Type())
+  final int f1;
+  @ForyField(id: 2, type: Int32Type())
+  final int f2;
+  @ForyField(id: 3, type: Int32Type())
+  final int f3;
+  @ForyField(id: 4, type: Int32Type())
+  final int f4;
+  @ForyField(id: 5, type: Int32Type())
+  final int f5;
+  @ForyField(id: 6, type: Int32Type())
+  final int f6;
+  @ForyField(id: 7, type: Int32Type())
+  final int f7;
+  @ForyField(id: 8, type: Int32Type())
+  final int f8;
+  @ForyField(id: 9, type: Int32Type())
+  final int f9;
+  @ForyField(id: 10, type: Int32Type())
+  final int f10;
+  @ForyField(id: 11, type: Int32Type())
+  final int f11;
+  @ForyField(id: 12, type: Int32Type())
+  final int f12;
+}
+
+@ForyStruct()
+class SampleV2 {
+  SampleV2({
+    required this.intValue,
+    required this.longValue,
+    required this.floatValue,
+    required this.doubleValue,
+    required this.shortValue,
+    required this.charValue,
+    required this.booleanValue,
+    required this.intValueBoxed,
+    required this.longValueBoxed,
+    required this.floatValueBoxed,
+    required this.doubleValueBoxed,
+    required this.shortValueBoxed,
+    required this.charValueBoxed,
+    required this.booleanValueBoxed,
+    required this.intArray,
+    required this.longArray,
+    required this.floatArray,
+    required this.doubleArray,
+    required this.shortArray,
+    required this.charArray,
+    required this.booleanArray,
+    required this.string,
+  });
+
+  @ForyField(id: 1, type: Int64Type())
+  final int intValue;
+  @ForyField(id: 2, type: Int64Type())
+  final int longValue;
+  @ForyField(id: 3)
+  final Float32 floatValue;
+  @ForyField(id: 4)
+  final double doubleValue;
+  @ForyField(id: 5, type: Int32Type())
+  final int shortValue;
+  @ForyField(id: 6, type: Int32Type())
+  final int charValue;
+  @ForyField(id: 7)
+  final bool booleanValue;
+  @ForyField(id: 8, type: Int32Type())
+  final int intValueBoxed;
+  @ForyField(id: 9, type: Int64Type())
+  final int longValueBoxed;
+  @ForyField(id: 10)
+  final Float32 floatValueBoxed;
+  @ForyField(id: 11)
+  final double doubleValueBoxed;
+  @ForyField(id: 12, type: Int32Type())
+  final int shortValueBoxed;
+  @ForyField(id: 13, type: Int32Type())
+  final int charValueBoxed;
+  @ForyField(id: 14)
+  final bool booleanValueBoxed;
+  @ForyField(id: 15)
+  final Int32List intArray;
+  @ForyField(id: 16)
+  final Int64List longArray;
+  @ForyField(id: 17)
+  final Float32List floatArray;
+  @ForyField(id: 18)
+  final Float64List doubleArray;
+  @ForyField(id: 19)
+  final Int32List shortArray;
+  @ForyField(id: 20)
+  final Int32List charArray;
+  @ArrayField(id: 21, element: BoolType())
+  final BoolList booleanArray;
+  @ForyField(id: 22)
+  final String string;
+}
+
+@ForyStruct()
+class MediaV2 {
+  MediaV2({
+    required this.uri,
+    required this.title,
+    required this.width,
+    required this.height,
+    required this.format,
+    required this.duration,
+    required this.size,
+    required this.bitrate,
+    required this.hasBitrate,
+    required this.persons,
+    required this.player,
+    required this.copyright,
+  });
+
+  @ForyField(id: 1)
+  final String uri;
+  @ForyField(id: 2)
+  final String title;
+  @ForyField(id: 3, type: Int64Type())
+  final int width;
+  @ForyField(id: 4, type: Int32Type())
+  final int height;
+  @ForyField(id: 5)
+  final String format;
+  @ForyField(id: 6, type: Int64Type())
+  final int duration;
+  @ForyField(id: 7, type: Int64Type())
+  final int size;
+  @ForyField(id: 8, type: Int32Type())
+  final int bitrate;
+  @ForyField(id: 9)
+  final bool hasBitrate;
+  @ForyField(id: 10)
+  final List<String> persons;
+  @ForyField(id: 11)
+  final Player player;
+  @ForyField(id: 12)
+  final String copyright;
+}
+
+@ForyStruct()
+class ImageV2 {
+  ImageV2({
+    required this.uri,
+    required this.title,
+    required this.width,
+    required this.height,
+    required this.size,
+  });
+
+  @ForyField(id: 1)
+  final String uri;
+  @ForyField(id: 2)
+  final String title;
+  @ForyField(id: 3, type: Int64Type())
+  final int width;
+  @ForyField(id: 4, type: Int32Type())
+  final int height;
+  @ForyField(id: 5)
+  final MediaSize size;
+}
+
+@ForyStruct()
+class MediaContentV2 {
+  MediaContentV2({
+    required this.media,
+    required this.images,
+  });
+
+  @ForyField(id: 1)
+  final MediaV2 media;
+  @ForyField(id: 2)
+  final List<ImageV2> images;
+}
+
+@ForyStruct()
+class NumericStructListV2 {
+  NumericStructListV2({
+    required this.structList,
+  });
+
+  @ForyField(id: 1)
+  final List<NumericStructV2> structList;
+}
+
+@ForyStruct()
+class SampleListV2 {
+  SampleListV2({
+    required this.sampleList,
+  });
+
+  @ForyField(id: 1)
+  final List<SampleV2> sampleList;
+}
+
+@ForyStruct()
+class MediaContentListV2 {
+  MediaContentListV2({
+    required this.mediaContentList,
+  });
+
+  @ForyField(id: 1)
+  final List<MediaContentV2> mediaContentList;
+}
+
 void registerBenchmarkTypes(Fory fory) {
-  ModelsFory.register(fory, NumericStruct, id: 1);
-  ModelsFory.register(fory, Sample, id: 2);
-  ModelsFory.register(fory, Media, id: 3);
-  ModelsFory.register(fory, Image, id: 4);
-  ModelsFory.register(fory, MediaContent, id: 5);
-  ModelsFory.register(fory, NumericStructList, id: 6);
-  ModelsFory.register(fory, SampleList, id: 7);
-  ModelsFory.register(fory, MediaContentList, id: 8);
-  ModelsFory.register(fory, Player, id: 9);
-  ModelsFory.register(fory, MediaSize, id: 10);
+  ModelsForyModule.register(fory, NumericStruct, id: 1);
+  ModelsForyModule.register(fory, Sample, id: 2);
+  ModelsForyModule.register(fory, Media, id: 3);
+  ModelsForyModule.register(fory, Image, id: 4);
+  ModelsForyModule.register(fory, MediaContent, id: 5);
+  ModelsForyModule.register(fory, NumericStructList, id: 6);
+  ModelsForyModule.register(fory, SampleList, id: 7);
+  ModelsForyModule.register(fory, MediaContentList, id: 8);
+  ModelsForyModule.register(fory, Player, id: 9);
+  ModelsForyModule.register(fory, MediaSize, id: 10);
+}
+
+void registerBenchmarkTypesV2(Fory fory) {
+  ModelsForyModule.register(fory, NumericStructV2, id: 1);
+  ModelsForyModule.register(fory, SampleV2, id: 2);
+  ModelsForyModule.register(fory, MediaV2, id: 3);
+  ModelsForyModule.register(fory, ImageV2, id: 4);
+  ModelsForyModule.register(fory, MediaContentV2, id: 5);
+  ModelsForyModule.register(fory, NumericStructListV2, id: 6);
+  ModelsForyModule.register(fory, SampleListV2, id: 7);
+  ModelsForyModule.register(fory, MediaContentListV2, id: 8);
+  ModelsForyModule.register(fory, Player, id: 9);
+  ModelsForyModule.register(fory, MediaSize, id: 10);
 }
 
 NumericStruct createNumericStruct() {

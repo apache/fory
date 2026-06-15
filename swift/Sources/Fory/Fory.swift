@@ -21,16 +21,12 @@ public struct Config {
   public let trackRef: Bool
   public let compatible: Bool
   public let checkClassVersion: Bool
-  public let maxCollectionSize: Int
-  public let maxBinarySize: Int
   public let maxDepth: Int
 
   public init(
     trackRef: Bool = false,
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
-    maxCollectionSize: Int = 1_000_000,
-    maxBinarySize: Int = 64 * 1024 * 1024,
     maxDepth: Int = 5
   ) {
     let effectiveCompatible = compatible ?? true
@@ -38,8 +34,6 @@ public struct Config {
     self.trackRef = trackRef
     self.compatible = effectiveCompatible
     self.checkClassVersion = effectiveCheckClassVersion
-    self.maxCollectionSize = maxCollectionSize
-    self.maxBinarySize = maxBinarySize
     self.maxDepth = maxDepth
   }
 }
@@ -59,8 +53,6 @@ public final class Fory {
     ref: Bool = false,
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
-    maxCollectionSize: Int = 1_000_000,
-    maxBinarySize: Int = 64 * 1024 * 1024,
     maxDepth: Int = 5
   ) {
     self.init(
@@ -68,8 +60,6 @@ public final class Fory {
         trackRef: ref,
         compatible: compatible,
         checkClassVersion: checkClassVersion,
-        maxCollectionSize: maxCollectionSize,
-        maxBinarySize: maxBinarySize,
         maxDepth: maxDepth
       ))
   }
@@ -92,8 +82,6 @@ public final class Fory {
       trackRef: self.config.trackRef,
       compatible: self.config.compatible,
       checkClassVersion: self.config.checkClassVersion,
-      maxCollectionSize: self.config.maxCollectionSize,
-      maxBinarySize: self.config.maxBinarySize,
       maxDepth: self.config.maxDepth
     )
   }
@@ -102,12 +90,9 @@ public final class Fory {
     typeResolver.register(type, id: id)
   }
 
+  /// Registers a user type by name. The last `.` separates namespace from the final type name.
   public func register<T: Serializer>(_ type: T.Type, name: String) throws {
     try typeResolver.register(type, name: name)
-  }
-
-  public func register<T: Serializer>(_ type: T.Type, namespace: String, name: String) throws {
-    try typeResolver.register(type, namespace: namespace, typeName: name)
   }
 
   public func serialize<T: Serializer>(_ value: T) throws -> Data {

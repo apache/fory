@@ -80,7 +80,7 @@ int main() {
   auto bytes_result = fory.serialize(zoo);
   assert(bytes_result.ok());
 
-  // Deserialize - runtime type is preserved
+  // Deserialize - concrete type is preserved
   auto decoded_result = fory.deserialize<Zoo>(bytes_result.value());
   assert(decoded_result.ok());
 
@@ -154,7 +154,7 @@ struct Pet {
   // Force dynamic: type info written explicitly
   std::shared_ptr<Animal> animal2;
 
-  // Force non-dynamic: skip type info (faster but no runtime subtyping)
+  // Force non-dynamic: skip type info (faster but no subtype support)
   std::shared_ptr<Animal> animal3;
 };
 FORY_STRUCT(Pet, animal1, (animal2, fory::F().dynamic(true)),
@@ -163,7 +163,7 @@ FORY_STRUCT(Pet, animal1, (animal2, fory::F().dynamic(true)),
 
 **When to use `dynamic(false)`:**
 
-- You know the runtime type will always match the declared type
+- You know the concrete type will always match the declared type
 - Performance is critical and you don't need subtype support
 - Working with monomorphic data despite having a polymorphic base class
 
@@ -237,7 +237,7 @@ shelter.registry["pet1"] = std::make_unique<Dog>();
 auto bytes = fory.serialize(shelter).value();
 auto decoded = fory.deserialize<AnimalShelter>(bytes).value();
 
-// All runtime types preserved
+// All concrete types preserved
 assert(dynamic_cast<Dog*>(decoded.animals[0].get()) != nullptr);
 assert(dynamic_cast<Cat*>(decoded.animals[1].get()) != nullptr);
 assert(dynamic_cast<Dog*>(decoded.registry["pet1"].get()) != nullptr);
@@ -361,12 +361,11 @@ auto decoded = fory.deserialize<std::shared_ptr<GraphNode>>(bytes).value();
 
 ### Polymorphism + Schema Evolution
 
-Use compatible mode for schema evolution with polymorphic types:
+Compatible mode is enabled by default for schema evolution with polymorphic types:
 
 ```cpp
 auto fory = Fory::builder()
     .xlang(true)
-    .compatible(true)  // Enable schema evolution
     .track_ref(true)
     .build();
 ```
@@ -451,11 +450,11 @@ if (!decoded_result.ok()) {
 
 - Type metadata written for each polymorphic object (~16-32 bytes)
 - Dynamic type resolution during deserialization
-- Virtual function calls for runtime dispatch
+- Virtual function calls for dynamic dispatch
 
 **Optimization tips:**
 
-1. **Use `dynamic(false)`** when runtime type matches declared type:
+1. **Use `dynamic(false)`** when the concrete type matches the declared type:
 
    ```cpp
    FORY_STRUCT(Holder, (fixed_type, fory::F().dynamic(false)));

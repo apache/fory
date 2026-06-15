@@ -1,0 +1,281 @@
+---
+title: Deserialization Security Model
+sidebar_position: 2
+---
+
+This document defines the security model for Apache Fory deserialization. It is
+a public security reference for classifying deserialization behavior and
+deciding where validation is required. It is not a vulnerability disclosure,
+does not describe exploit techniques, and does not document implementation
+history.
+
+The model is intentionally narrow. Fory should prevent resource and policy
+failures caused by untrusted input, but it should not add hot-path validation
+that only enforces byte-form strictness when doing so does not protect a Fory
+security boundary.
+
+## Scope
+
+This model applies to deserializing Fory binary data from untrusted or
+partially trusted sources.
+
+It does not treat the semantic content of a successfully deserialized value as a
+Fory security boundary. A sender can always construct protocol-valid data whose
+value is chosen by that sender. Application authorization, object-level business
+rules, and domain-specific validation remain application responsibilities.
+
+This model also does not cover trusted in-memory formats. Row format and other
+memory-format paths are trusted-data paths unless a runtime explicitly exposes
+them as untrusted deserialization APIs.
+
+## Trust Boundaries
+
+Fory deserialization should treat the encoded input as untrusted at API
+boundaries that accept external bytes or streams.
+
+Fory security boundaries include:
+
+- Resource ownership, such as memory, CPU progress, stream buffering, file
+  handles, native allocations, callbacks, and retained read-side tables.
+- Runtime safety, such as avoiding crashes, panics, undefined behavior, and
+  out-of-bounds reads or writes.
+- Explicit Fory policy checks, such as type, function, method, class, or
+  registration policies that are intended to restrict what may be materialized.
+- Cleanup boundaries, where state created during a failed read must be released
+  or reset before the next root operation.
+
+Fory security boundaries do not include:
+
+- The business meaning of a protocol-valid value.
+- Which protocol-allowed byte form was used for a value.
+- Whether a map, set, object, or metadata value uses one specific encoding
+  shape, unless rejecting other shapes is an explicit owner policy or protects
+  one of the boundaries above.
+
+## Security Invariants
+
+Deserialization code must prevent the following outcomes for untrusted input:
+
+- Crash, panic, undefined behavior, or out-of-bounds memory access.
+- OOM or disproportionate allocation compared with bytes that are already
+  supplied or proven readable.
+- No-progress loops, including loops where neither logical progress nor byte
+  progress is guaranteed after malformed input.
+- Stream-buffer growth to an attacker-declared size before the corresponding
+  bytes have been read or skipped exactly.
+- Resource leaks, including native allocations, handles, callbacks, or
+  registered cleanup work that cannot run.
+- Retained attacker-controlled state after failure when that state can affect a
+  later root operation or grow across operations.
+- Successful bypass of an explicit Fory policy boundary.
+
+When a path cannot produce one of these outcomes, earlier rejection of malformed
+bytes is normally a correctness or interoperability choice, not a security
+requirement.
+
+## Non-Security Semantics
+
+The following patterns are not vulnerabilities by default:
+
+- Protocol-allowed collection chunking, map chunking, and field ordering.
+- Duplicate keys, set elements, or compatible fields that collapse according to
+  the target data structure or owning serializer semantics.
+- Malformed ref, null, or type flags that eventually produce a read error.
+- Malformed scalar bytes that are consumed linearly and eventually produce a
+  read error.
+- Reading an encoded body before later shape validation when the operation
+  ultimately returns an error and does not create a security-invariant failure.
+
+Fory may still reject malformed forms for specification strictness or
+interoperability. That validation should be added only when it is required by
+the protocol owner, is effectively free on the relevant path, or protects a
+security invariant listed above. Do not add protocol-layer validation solely to
+reject scalar byte forms whose only effect is extra decode cost.
+
+### Value-bearing ref flags
+
+Some read paths intentionally share handling for multiple value-bearing flags.
+For example, when both `NotNullValue` and `RefValue` mean that an encoded value
+follows, a reader may merge their hot-path handling. This is not a malformed
+flag bug by itself. Treat it as a bug only if the merged handling loses required
+reference semantics, returns success across an explicit owner policy, or creates
+a resource or runtime-safety failure.
+
+## Allocation And Byte Availability
+
+Fory should not make large allocations from attacker-declared lengths before
+the required bytes are available or have been read exactly.
+
+For buffer-backed input:
+
+- Fixed-size binary values and primitive dense arrays should call the byte
+  owner's readability check for the required encoded byte size before allocating
+  the destination. For buffer-backed input this is normally a remaining-byte
+  comparison.
+- Multi-byte element arrays should compute the required byte size with overflow
+  checks before allocation.
+- Container readers that allocate, reserve, or size-hint from a declared
+  logical element count should first call the byte owner's readability check for
+  that count. This is not a full container-body validation; it is the allocation
+  proof that the sender has supplied at least proportional input bytes before
+  the reader preallocates from the count.
+
+For stream-backed input:
+
+- Reading or skipping a large byte region is the proof that the bytes exist.
+- Byte-counted variable-length result allocation should use the byte owner's
+  readability check before allocation. Skip paths may use bounded skip without
+  materializing the skipped value.
+- A stream-backed buffer may hold the full requested encoded body after that
+  body has been read from the stream. It must not reserve the attacker-declared
+  length before input bytes prove that length exists.
+- Stream-backed fill buffers should grow from the current proven buffer size,
+  such as by doubling current capacity, and cap only to the immediate target
+  when the next bounded growth step reaches it. A byte owner may use an
+  owner-local availability signal as a one-shot growth hint when the stream
+  implementation itself is caller-owned trusted code; if that hint is absent or
+  insufficient, the reader must fall back to bounded growth from already
+  buffered bytes. Serializers should not add their own availability branches.
+- A truncated stream should fail before allocating the final deserialized value
+  and should allocate only for bytes actually read plus bounded spare capacity.
+
+The byte owner should stay byte-oriented. Buffer, reader, or read-context APIs
+may expose byte read and byte skip operations, but string decoding, decimal
+parsing, primitive-array encoding, compression modes, and collection capacity
+policy belong to the owning serializers.
+
+## Collection And Map Capacity
+
+Large valid collection inputs are allowed. If the input contains many encoded
+elements, proportional deserialization is expected.
+
+The security requirement is to avoid disproportionate preallocation from a
+declared logical count before enough input bytes justify that capacity. For a
+non-empty container, a reader that will allocate or reserve from the declared
+count should call `checkReadableBytes(logicalCount)` or the runtime equivalent
+before that allocation. The check remains byte-owner-only: it does not decode
+the whole container, validate element semantics, or replace chunk validation.
+Readers that do not preallocate from the logical count may still grow
+proportionally as elements are actually read.
+
+Map or collection chunk validation is security-relevant only when missing
+validation can cause a no-progress loop, unbounded resource growth, retained
+state, or success across a Fory policy boundary. Protocol-allowed chunk
+segmentation is normal input and is not a security issue by itself.
+
+## Skip Semantics
+
+Skipping unknown or incompatible data is classified by concrete impact, not by
+whether the runtime materializes a temporary value.
+
+Directly consuming encoded contents is useful when it is simple and owned by the
+current runtime path. It is not a security requirement for complex fields such
+as lists, sets, and maps. A runtime may materialize a value and discard it when
+that preserves the existing serializer ownership model.
+
+For extension, dynamic, or user-owned types, the owning runtime may not always
+have enough information to skip without invoking a registered serializer. In
+that case, classify the behavior by concrete impact:
+
+- Resource leak, retained state, no-progress loop, or policy bypass is
+  security-relevant.
+- Bounded materialization followed by an error or discard is allowed unless it
+  creates meaningful memory or CPU pressure.
+- Pure strictness about whether a skipped value used one specific encoding shape
+  is not a security issue.
+
+## Metadata And Type Resolution
+
+Metadata parsing is security-sensitive when it affects retained read-side state,
+type dispatch, or policy decisions.
+
+Metadata readers should:
+
+- Avoid unbounded recursion in nested metadata structures.
+- Avoid unbounded table growth from attacker-controlled metadata streams.
+- Validate metadata bodies before using them to bypass or replace existing
+  policy decisions.
+- Reset or release metadata state at the correct root-operation boundary.
+
+Metadata byte-form strictness alone is not a security requirement. Rejecting a
+metadata shape is useful only when the owner wants that strictness or when the
+shape changes type identity, retained state, resource use, or policy behavior.
+
+## Reference Tracking
+
+Reference tracking is part of the wire protocol and is performance-sensitive.
+Readers may use sentinel values and shared value-bearing branches to keep hot
+paths compact.
+
+Reference tracking validation is security-relevant when malformed input can:
+
+- Access an out-of-range reference without reporting an error.
+- Leave retained reference state after a failed root operation.
+- Register unbounded callbacks or resolver state before the referenced value is
+  available.
+- Cause a no-progress loop or crash.
+
+Reference tracking validation is not required merely because a malformed flag is
+not rejected at the earliest possible byte. Lazy rejection is acceptable when
+the root operation still returns an error and no security invariant is violated.
+
+## Error Propagation And Cleanup
+
+Fory runtimes may intentionally use lazy error propagation. After a read records
+an error, later read steps may continue until the outer operation observes and
+returns the error.
+
+This is acceptable when the continued work cannot:
+
+- Crash or panic.
+- Allocate or retain attacker-controlled state.
+- Leak resources.
+- Bypass required cleanup.
+- Return success across an explicit validation or policy boundary.
+
+Nested `try`/`finally` or equivalent cleanup should be added only when the
+outer root-operation cleanup cannot cover the state or resource owned by the
+nested path.
+
+## Performance Requirements
+
+Security validation must preserve Fory hot-path performance. Do not add
+validation solely for strictness when it introduces:
+
+- Per-element object allocation.
+- Dynamic dispatch or callbacks in hot loops.
+- Wrapper objects or result carriers on success paths.
+- Extra copying for buffer-backed string, binary, or primitive-array reads.
+- Branches that do not protect a security invariant.
+
+Prefer owner-local checks that can be inlined and that already use information
+available in the current serializer. Do not move serializer-owned semantics into
+generic read-context helpers.
+
+## Classification Guide
+
+Use the following questions when reviewing deserialization behavior:
+
+1. Can this input crash, panic, or access memory out of bounds?
+2. Can a small or unproven input length cause disproportionate allocation?
+3. Can a stream-backed reader grow a buffer before exact read or skip proves the
+   bytes exist?
+4. Can a loop continue without byte progress or logical progress?
+5. Can the path retain attacker-controlled state after the root operation fails?
+6. Can the path leak resources or skip required cleanup?
+7. Can the path return success across an explicit Fory policy boundary?
+8. Is the proposed validation effectively free in the relevant hot path?
+
+If the answer to the first seven questions is no, the issue is normally not a
+security finding. If the validation is not effectively free, avoid adding it
+unless the protocol owner explicitly requires it.
+
+## Documentation Boundaries
+
+Security model documents must not include exploit samples, CVE narratives,
+line-level vulnerability candidates, branch history, migration timelines, or
+cleanup plans. Keep those details in private reports, issues, or pull requests
+as appropriate.
+
+Public security documentation should describe durable boundaries and invariants,
+not the history of how the implementation reached them.

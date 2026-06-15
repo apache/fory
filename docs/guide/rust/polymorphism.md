@@ -64,7 +64,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<Zoo>(102)?;
@@ -85,11 +85,12 @@ assert_eq!(decoded.star_animal.speak(), "Woof!");
 
 ## Serializing dyn Any Trait Objects
 
-Apache Fory™ supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for runtime type dispatch:
+Apache Fory™ supports serializing `Box<dyn Any>`, `Rc<dyn Any>`, and
+`Arc<dyn Any + Send + Sync>` for dynamic type dispatch:
 
 **Key points:**
 
-- Works with any type that implements `Serializer`
+- Works with registered concrete non-container types that implement `Serializer`
 - Requires downcasting after deserialization to access the concrete type
 - Type information is preserved during serialization
 - Useful for plugin systems and dynamic type handling
@@ -98,13 +99,10 @@ Apache Fory™ supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for runtime
 use std::rc::Rc;
 use std::any::Any;
 
-let dog_rc: Rc<dyn Animal> = Rc::new(Dog {
+let dog_any: Rc<dyn Any> = Rc::new(Dog {
     name: "Rex".to_string(),
     breed: "Golden".to_string()
 });
-
-// Convert to Rc<dyn Any> for serialization
-let dog_any: Rc<dyn Any> = dog_rc.clone();
 
 // Serialize the Any wrapper
 let bytes = fory.serialize(&dog_any)?;
@@ -115,27 +113,64 @@ let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
 assert_eq!(unwrapped.name, "Rex");
 ```
 
-For thread-safe scenarios, use `Arc<dyn Any>`:
+For thread-safe scenarios, use `Arc<dyn Any + Send + Sync>`:
 
 ```rust
 use std::sync::Arc;
 use std::any::Any;
 
-let dog_arc: Arc<dyn Animal> = Arc::new(Dog {
+let dog_any: Arc<dyn Any + Send + Sync> = Arc::new(Dog {
     name: "Buddy".to_string(),
     breed: "Labrador".to_string()
 });
 
-// Convert to Arc<dyn Any>
-let dog_any: Arc<dyn Any> = dog_arc.clone();
-
 let bytes = fory.serialize(&dog_any)?;
-let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
+let decoded: Arc<dyn Any + Send + Sync> = fory.deserialize(&bytes)?;
 
 // Downcast to concrete type
 let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
 assert_eq!(unwrapped.name, "Buddy");
 ```
+
+`Box<dyn Any>`, `Rc<dyn Any>`, and `Arc<dyn Any + Send + Sync>` are supported
+erased `Any` carriers for registered concrete non-container payloads.
+Use `Arc<dyn Any + Send + Sync>` when the erased payload must be shareable
+across threads; the concrete payload type must also satisfy `Send + Sync`.
+Registered structs, enums, and unions that satisfy those bounds can be used as
+the erased payload.
+
+The unsupported case is a generic container used directly as the top-level
+erased payload. This applies to all erased `Any` carriers: `Box<dyn Any>`,
+`Rc<dyn Any>`, and `Arc<dyn Any + Send + Sync>`. Unsupported direct payloads
+include list-, map-, and set-like containers such as `Vec<T>`, `Vec<u8>`,
+`HashMap<K, V>`, `HashSet<T>`, and `LinkedList<T>`.
+
+If you need to put a container in an erased `Any` payload, wrap it in a
+registered struct, enum, or union and use that wrapper as the erased payload:
+
+```rust
+use fory::{Fory, ForyStruct};
+use std::any::Any;
+use std::sync::Arc;
+
+#[derive(ForyStruct)]
+struct IntList {
+    values: Vec<i32>,
+}
+
+let mut fory = Fory::builder().xlang(false).build();
+fory.register::<IntList>(100)?;
+
+let value: Arc<dyn Any + Send + Sync> = Arc::new(IntList {
+    values: vec![1, 2, 3],
+});
+let bytes = fory.serialize(&value)?;
+let decoded: Arc<dyn Any + Send + Sync> = fory.deserialize(&bytes)?;
+```
+
+The wrapper makes the erased payload a concrete registered type while the
+container remains a normal typed field. The same wrapper model is the supported
+path for `Box<dyn Any>` and `Rc<dyn Any>`.
 
 ## Rc/Arc-Based Trait Objects in Structs
 
@@ -153,7 +188,7 @@ struct AnimalShelter {
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<AnimalShelter>(102)?;
@@ -185,7 +220,7 @@ assert_eq!(decoded.animals_arc[0].speak(), "Woof!");
 
 Due to Rust's orphan rule, `Rc<dyn Trait>` and `Arc<dyn Trait>` cannot implement `Serializer` directly. For standalone serialization (not inside struct fields), the `register_trait_type!` macro generates wrapper types.
 
-**Note:** If you don't want to use wrapper types, you can serialize as `Rc<dyn Any>` or `Arc<dyn Any>` instead (see the dyn Any section above).
+**Note:** If you don't want to use wrapper types for concrete non-container payloads, you can serialize as `Box<dyn Any>`, `Rc<dyn Any>`, or `Arc<dyn Any + Send + Sync>` instead (see the dyn Any section above).
 
 The `register_trait_type!` macro generates `AnimalRc` and `AnimalArc` wrapper types:
 
@@ -221,7 +256,7 @@ assert_eq!(unwrapped.name(), "Buddy");
 ## Best Practices
 
 1. **Use `register_trait_type!`** to register all trait implementations
-2. **Enable compatible mode** for trait objects: `.compatible(true)`
+2. **Keep compatible mode enabled** for trait objects
 3. **Register all concrete types** before serialization
 4. **Prefer dyn Any** for simpler standalone serialization
 

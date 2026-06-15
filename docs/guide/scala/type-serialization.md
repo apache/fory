@@ -23,6 +23,15 @@ This page covers serialization of Scala-specific JVM types in native mode. For
 cross-language Scala models, use the xlang path described in
 [Schema IDL And Xlang](schema-idl.md).
 
+When compatible mode is enabled, Scala readers use the JVM compatible-read rules for selected
+scalar field type changes. A matched field can read between `Boolean`, `String`, numeric scalars,
+and `java.math.BigDecimal` when the converted value has the same logical value. For example,
+`"true"` and `"false"` can be read as booleans, `"123"` can be read as a numeric field that can hold
+`123`, numbers and decimals can be read as canonical strings, and numeric widening or narrowing
+succeeds only when no precision or range is lost. Numeric strings use finite ASCII decimal syntax.
+Invalid strings and lossy conversions fail during deserialization. Optional and boxed fields still
+compose with these conversions, but reference-tracked scalar type changes are incompatible.
+
 ## Setup
 
 All examples assume the following setup:

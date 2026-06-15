@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.platform.UnsafeOps;
 import org.apache.fory.util.StringUtils;
 import org.openjdk.jmh.Main;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -133,17 +132,6 @@ public class MemorySuite {
   @org.openjdk.jmh.annotations.Benchmark
   public Object systemArrayCopy(MemoryState state) {
     System.arraycopy(state.bytes, 0, target, 0, state.bytes.length);
-    return target;
-  }
-
-  @org.openjdk.jmh.annotations.Benchmark
-  public Object unsafeCopy(MemoryState state) {
-    UnsafeOps.UNSAFE.copyMemory(
-        state.bytes,
-        UnsafeOps.BYTE_ARRAY_OFFSET,
-        target,
-        UnsafeOps.BYTE_ARRAY_OFFSET,
-        state.bytes.length);
     return target;
   }
 

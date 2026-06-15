@@ -99,8 +99,6 @@ public final class ForyBuilder {
   Integer bufferSizeLimitBytes = -1;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
   int maxDepth = 50;
-  int maxBinarySize = 64 * 1024 * 1024;
-  int maxCollectionSize = 1_000_000;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -320,17 +318,16 @@ public final class ForyBuilder {
   }
 
   boolean isCompatible() {
-    return compatible != null ? compatible : xlang;
+    return compatible != null ? compatible : true;
   }
 
   /**
-   * Whether check class schema consistency. This is disabled automatically when compatible mode is
-   * enabled. Do not disable this option unless you can ensure the class won't evolve.
+   * Whether to check class-version hashes for same-schema payloads. This is disabled automatically
+   * when compatible mode is enabled.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
     if (xlang && !isCompatible() && !checkClassVersion) {
-      throw new IllegalArgumentException(
-          "XLANG Schema consistent mode must enable class version check");
+      throw new IllegalArgumentException("Xlang same-schema mode must enable class version check");
     }
     this.checkClassVersion = checkClassVersion;
     recordAction(b -> b.withClassVersionCheck(checkClassVersion));
@@ -375,9 +372,9 @@ public final class ForyBuilder {
   }
 
   /**
-   * Configure a {@link TypeChecker} during build time so it is installed on every created runtime.
-   * This checker is only consulted for unknown class names when class registration checks are
-   * disabled.
+   * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
+   * created by this builder. This checker is only consulted for unknown class names when class
+   * registration checks are disabled.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;
@@ -511,30 +508,6 @@ public final class ForyBuilder {
     Preconditions.checkArgument(maxDepth >= 2, "maxDepth must >= 2 but got %s", maxDepth);
     this.maxDepth = maxDepth;
     recordAction(b -> b.withMaxDepth(maxDepth));
-    return this;
-  }
-
-  /**
-   * Set max binary payload size for deserialization. Binary and primitive-array byte lengths above
-   * this limit are rejected before allocation. Default max binary size is 64 MiB.
-   */
-  public ForyBuilder withMaxBinarySize(int maxBinarySize) {
-    Preconditions.checkArgument(
-        maxBinarySize >= 0, "maxBinarySize must >= 0 but got %s", maxBinarySize);
-    this.maxBinarySize = maxBinarySize;
-    recordAction(b -> b.withMaxBinarySize(maxBinarySize));
-    return this;
-  }
-
-  /**
-   * Set max collection size for deserialization. Collection lengths and collection capacity fields
-   * above this limit are rejected before allocation. Default max collection size is 1,000,000.
-   */
-  public ForyBuilder withMaxCollectionSize(int maxCollectionSize) {
-    Preconditions.checkArgument(
-        maxCollectionSize >= 0, "maxCollectionSize must >= 0 but got %s", maxCollectionSize);
-    this.maxCollectionSize = maxCollectionSize;
-    recordAction(b -> b.withMaxCollectionSize(maxCollectionSize));
     return this;
   }
 
@@ -725,7 +698,7 @@ public final class ForyBuilder {
   }
 
   /**
-   * Builds a thread-safe {@link Fory} using the default runtime for the current JDK.
+   * Builds a thread-safe {@link Fory} backed by {@link ThreadPoolFory}.
    *
    * <p>This variant uses {@link ThreadPoolFory} with a shared {@link SharedRegistry} and a fixed
    * pool sized to 4x the current JVM's available processors.

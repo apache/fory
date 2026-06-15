@@ -1,4 +1,8 @@
-## 1.1.0-dev
+## 1.2.0-dev
+
+- Start the next development cycle after the 1.1.0 release.
+
+## 1.1.0
 
 - Refresh pub.dev package metadata and documentation links.
 - Update code generation dependencies for current stable Dart tooling.

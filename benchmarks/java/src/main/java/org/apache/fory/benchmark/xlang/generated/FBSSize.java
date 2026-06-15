@@ -2,6 +2,7 @@
 
 package org.apache.fory.benchmark.xlang.generated;
 
+@SuppressWarnings("unused")
 public final class FBSSize {
   private FBSSize() { }
   public static final byte SMALL = 0;

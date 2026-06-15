@@ -540,7 +540,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
             return new NullableKeyDictionary<TKey, TValue>();
         }
 
-        NullableKeyDictionary<TKey, TValue> map = new();
+        context.Reader.CheckBound(totalLength);
+        NullableKeyDictionary<TKey, TValue> map = new(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
         int readCount = 0;

@@ -64,6 +64,7 @@ struct Harness {
   using WriteDataFn = void (*)(const void *value, WriteContext &ctx,
                                bool has_generics);
   using ReadDataFn = void *(*)(ReadContext &ctx);
+  using DestroyFn = void (*)(void *value);
   using ReadCompatibleFn = void *(*)(ReadContext &ctx,
                                      const struct TypeInfo *type_info);
   using SortedFieldInfosFn =
@@ -73,22 +74,25 @@ struct Harness {
 
   Harness() = default;
   Harness(WriteFn write, ReadFn read, WriteDataFn write_data,
-          ReadDataFn read_data, SortedFieldInfosFn sorted_fields,
+          ReadDataFn read_data, DestroyFn destroy,
+          SortedFieldInfosFn sorted_fields,
           ReadCompatibleFn read_compatible = nullptr)
       : write_fn(write), read_fn(read), write_data_fn(write_data),
-        read_data_fn(read_data), sorted_field_infos_fn(sorted_fields),
+        read_data_fn(read_data), destroy_fn(destroy),
+        sorted_field_infos_fn(sorted_fields),
         read_compatible_fn(read_compatible) {}
 
   bool valid() const {
     return write_fn != nullptr && read_fn != nullptr &&
            write_data_fn != nullptr && read_data_fn != nullptr &&
-           sorted_field_infos_fn != nullptr;
+           destroy_fn != nullptr && sorted_field_infos_fn != nullptr;
   }
 
   WriteFn write_fn = nullptr;
   ReadFn read_fn = nullptr;
   WriteDataFn write_data_fn = nullptr;
   ReadDataFn read_data_fn = nullptr;
+  DestroyFn destroy_fn = nullptr;
   SortedFieldInfosFn sorted_field_infos_fn = nullptr;
   ReadCompatibleFn read_compatible_fn = nullptr;
   AnyWriteFn any_write_fn = nullptr;

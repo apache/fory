@@ -29,7 +29,6 @@ import org.apache.fory.memory.MemoryUtils;
 
 class BinaryRowEncoder<T> implements RowEncoder<T> {
   private final Schema schema;
-  private final Encoding codecFactory;
   private final GeneratedRowEncoder codec;
   private final BaseBinaryRowWriter writer;
   private final boolean sizeEmbedded;
@@ -38,12 +37,10 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
 
   BinaryRowEncoder(
       final Schema schema,
-      final Encoding codecFactory,
       final GeneratedRowEncoder codec,
       final BaseBinaryRowWriter writer,
       final boolean sizeEmbedded) {
     this.schema = schema;
-    this.codecFactory = codecFactory;
     this.codec = codec;
     this.writer = writer;
     this.sizeEmbedded = sizeEmbedded;
@@ -81,14 +78,16 @@ class BinaryRowEncoder<T> implements RowEncoder<T> {
                   + "Please check writer schema.",
               schema, schemaHash, peerSchemaHash));
     }
-    final BinaryRow row = codecFactory.newRow(schema);
-    row.pointTo(buffer, buffer.readerIndex(), size);
-    buffer.increaseReaderIndex(size - 8);
+    final int rowSize = size - 8;
+    final BinaryRow row = writer.newRow();
+    row.pointTo(buffer, buffer.readerIndex(), rowSize);
+    buffer.increaseReaderIndex(rowSize);
     return fromRow(row);
   }
 
   @Override
   public T decode(final byte[] bytes) {
+    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

@@ -36,6 +36,10 @@ export class BinaryReaderBuilder {
     return `${this.holder}.readSetCursor(${v})`;
   }
 
+  checkReadableBytes(len: string | number) {
+    return `${this.holder}.checkReadableBytes(${len})`;
+  }
+
   getDataView() {
     return `${this.holder}.getDataView()`;
   }

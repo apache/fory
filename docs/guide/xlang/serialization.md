@@ -34,7 +34,7 @@ Reduced-precision floating-point values are also part of the built-in xlang type
 
 Use the language-specific carrier types documented in the type mapping reference. Python uses `pyfory.Float16` and `pyfory.BFloat16` as annotation markers only; scalar values are native Python `float`, and dense reduced-precision arrays use `pyfory.Float16Array` and `pyfory.BFloat16Array`. Go uses the `float16` and `bfloat16` packages for scalar, slice, and array carriers; JavaScript uses `number` for scalar `float16` and `bfloat16`, and dense array carriers `BoolArray`, `Float16Array`, and `BFloat16Array` for the corresponding `array<T>` schemas. Dart uses `double` plus `Float16Type` or `Bfloat16Type` metadata for scalar fields, and `Float16List` / `Bfloat16List` for dense arrays. Java uses `@ArrayType` on supported reduced-precision carriers for `array<float16>` / `array<bfloat16>` schema, while general object arrays stay on the `list` path; C++, Rust, and C# provide their own dedicated scalar and array carriers.
 
-When `compatible=true`, a direct struct/class field can evolve between `list<T>` and `array<T>` for dense bool/numeric `T`. Integer list element encodings in the same signedness and width domain match the corresponding dense array element domain. This applies only to the immediate matched field schema. It does not apply to nested collection, map, array, union, or generic positions. If a peer `list<T>` payload declares nullable or ref-tracked elements, reading it into a local `array<T>` field raises a compatible-read error.
+When `compatible=true`, a direct struct/class field can evolve between `list<T>` and `array<T>` for dense bool/numeric `T`. Integer list element encodings in the same signedness and width domain match the corresponding dense array element domain. This applies only to the immediate matched field schema. It does not apply to nested collection, map, array, union, or generic positions. A peer `list<T?>` schema can be read into a local `array<T>` field when the actual payload has no null elements. If the payload carries a null element or ref-tracked element encoding, reading it into a local `array<T>` field raises a compatible-read error.
 
 ### Java
 
@@ -242,8 +242,8 @@ class SomeClass2:
 
 if __name__ == "__main__":
     f = pyfory.Fory(xlang=True)
-    f.register_type(SomeClass1, typename="example.SomeClass1")
-    f.register_type(SomeClass2, typename="example.SomeClass2")
+    f.register_type(SomeClass1, name="example.SomeClass1")
+    f.register_type(SomeClass2, name="example.SomeClass2")
     obj1 = SomeClass1(f1=True, f2={-1: 2})
     obj = SomeClass2(
         f1=obj1,
@@ -399,10 +399,10 @@ fn complex_struct() {
 
     let mut fory = Fory::builder().xlang(true).build();
     fory
-        .register_by_name::<Animal>("example", "foo2")
+        .register_by_name::<Animal>("example.foo2")
         .expect("register Animal");
     fory
-        .register_by_name::<Person>("example", "foo")
+        .register_by_name::<Person>("example.foo")
         .expect("register Person");
     let bin = fory.serialize(&person).expect("serialize success");
     let obj: Person = fory.deserialize(&bin).expect("deserialize success");
@@ -462,7 +462,7 @@ class SomeClass:
     f3: Dict[str, str]
 
 fory = pyfory.Fory(xlang=True, ref=True)
-fory.register_type(SomeClass, typename="example.SomeClass")
+fory.register_type(SomeClass, name="example.SomeClass")
 obj = SomeClass()
 obj.f2 = {"k1": "v1", "k2": "v2"}
 obj.f1, obj.f3 = obj, obj.f2

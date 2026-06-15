@@ -18,7 +18,6 @@ package org.apache.fory.benchmark;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.fory.platform.UnsafeOps;
 
 // Derived from
 // https://github.com/RuedigerMoeller/fast-serialization/blob/e8da5591daa09452791dcd992ea4f83b20937be7/src/main/java/org/nustaq/serialization/util/FSTIdentity2IdMap.java.
@@ -405,20 +404,10 @@ public class Identity2IdMap {
     int count = 0;
     final int emptyArrayLength = EMPTY_INT_ARRAY.length;
     while (len - count > emptyArrayLength) {
-      UnsafeOps.copyMemory(
-          EMPTY_INT_ARRAY,
-          UnsafeOps.INT_ARRAY_OFFSET,
-          arr,
-          UnsafeOps.INT_ARRAY_OFFSET + count,
-          emptyArrayLength);
+      System.arraycopy(EMPTY_INT_ARRAY, 0, arr, count, emptyArrayLength);
       count += emptyArrayLength;
     }
-    UnsafeOps.copyMemory(
-        EMPTY_INT_ARRAY,
-        UnsafeOps.INT_ARRAY_OFFSET,
-        arr,
-        UnsafeOps.INT_ARRAY_OFFSET + count,
-        len - count);
+    System.arraycopy(EMPTY_INT_ARRAY, 0, arr, count, len - count);
   }
 
   public static void clear(Object[] arr, int len) {

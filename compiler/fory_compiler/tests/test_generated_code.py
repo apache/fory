@@ -23,7 +23,7 @@ from typing import Dict, Tuple, Type
 
 import pytest
 
-from fory_compiler.cli import resolve_imports
+from fory_compiler.cli import main as foryc_main, resolve_imports
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
@@ -203,6 +203,43 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
     assert "::fory::Date" not in rust_output
     assert "::fory::Timestamp" not in rust_output
     assert "::fory::Duration" not in rust_output
+
+
+def test_rust_nested_container_ref_uses_correct_pointer_type():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Node {
+                string value = 1;
+            }
+
+            message Request {
+                list<list<ref Node>> groups = 1;
+                map<string, map<string, ref Node>> nodes = 2;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+
+    assert (
+        "pub groups: ::std::vec::Vec<::std::vec::Vec<::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert "::std::vec::Vec<::std::vec::Vec<::std::rc::Rc<Node>>>" not in rust_output
+    assert (
+        "pub nodes: ::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::sync::Arc<Node>>>,"
+        in rust_output
+    )
+    assert (
+        "::std::collections::HashMap<::std::string::String, "
+        "::std::collections::HashMap<::std::string::String, ::std::rc::Rc<Node>>>"
+        not in rust_output
+    )
 
 
 def test_generated_code_integer_encoding_variants_equivalent():
@@ -453,14 +490,26 @@ def test_generated_code_map_types_equivalent():
     assert_all_languages_equal(schemas)
 
     rust_output = render_files(generate_files(schemas["fdl"], RustGenerator))
-    assert "RcWeak<MapValue>" in rust_output
-    assert "Option<i32>" in rust_output
+    assert "::fory::RcWeak<MapValue>" in rust_output
+    assert "::std::option::Option<i32>" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
+    assert "#include <unordered_map>" in cpp_output
+    assert "#include <map>" not in cpp_output
+    assert "std::unordered_map<std::string, int32_t> counts_;" in cpp_output
+    assert (
+        "std::optional<std::unordered_map<std::string, MapValue>> entries_;"
+        in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, fory::serialization::SharedWeak<MapValue>> "
+        "weak_entries_;" in cpp_output
+    )
     assert "SharedWeak<MapValue>" in cpp_output
+    assert "std::map<" not in cpp_output
 
 
-def test_rust_generated_ref_pointer_default_and_thread_safe_option():
+def test_rust_generated_ref_pointer_default_and_opt_out():
     schema = parse_fdl(
         dedent(
             """
@@ -472,25 +521,24 @@ def test_rust_generated_ref_pointer_default_and_thread_safe_option():
 
             message Holder {
                 ref Node default_ref = 1;
-                ref(thread_safe=true) Node thread_safe_ref = 2;
+                ref(thread_safe=false) Node rc_ref = 2;
                 ref(weak=true) Node default_weak_ref = 3;
-                ref(weak=true, thread_safe=true) Node thread_safe_weak_ref = 4;
+                ref(weak=true, thread_safe=false) Node rc_weak_ref = 4;
                 list<ref Node> default_ref_list = 5;
-                list<ref(thread_safe=true) Node> thread_safe_ref_list = 6;
+                list<ref(thread_safe=false) Node> rc_ref_list = 6;
             }
             """
         )
     )
     rust_output = render_files(generate_files(schema, RustGenerator))
-    assert "pub default_ref: ::std::rc::Rc<Node>," in rust_output
-    assert "pub thread_safe_ref: ::std::sync::Arc<Node>," in rust_output
-    assert "pub default_weak_ref: ::fory::RcWeak<Node>," in rust_output
-    assert "pub thread_safe_weak_ref: ::fory::ArcWeak<Node>," in rust_output
-    assert "pub default_ref_list: ::std::vec::Vec<::std::rc::Rc<Node>>," in rust_output
+    assert "pub default_ref: ::std::sync::Arc<Node>," in rust_output
+    assert "pub rc_ref: ::std::rc::Rc<Node>," in rust_output
+    assert "pub default_weak_ref: ::fory::ArcWeak<Node>," in rust_output
+    assert "pub rc_weak_ref: ::fory::RcWeak<Node>," in rust_output
     assert (
-        "pub thread_safe_ref_list: ::std::vec::Vec<::std::sync::Arc<Node>>,"
-        in rust_output
+        "pub default_ref_list: ::std::vec::Vec<::std::sync::Arc<Node>>," in rust_output
     )
+    assert "pub rc_ref_list: ::std::vec::Vec<::std::rc::Rc<Node>>," in rust_output
 
 
 def test_generated_code_nested_messages_equivalent():
@@ -575,6 +623,77 @@ def test_java_nested_name_registration_uses_owner_namespace():
         'resolver.registerUnion(Envelope.Choice.class, "demo.Envelope", "Choice"'
         in output
     )
+
+
+def test_generated_registration_uses_single_name_for_dart_python_swift():
+    schema = parse_fdl(
+        """
+        option enable_auto_type_id = false;
+        package demo;
+
+        message Envelope {
+            message Payload {
+                int32 value = 1;
+            }
+
+            enum Kind {
+                UNKNOWN = 0;
+                ACTIVE = 1;
+            }
+
+            union Choice {
+                Payload payload = 1;
+                string note = 2;
+            }
+
+            Payload payload = 1;
+            Kind kind = 2;
+            Choice choice = 3;
+        }
+        """
+    )
+
+    dart_output = render_files(generate_files(schema, DartGenerator))
+    assert (
+        "registerGeneratedStruct(fory, _envelopeForySchema, id: null, name: 'demo.Envelope');"
+        in dart_output
+    )
+    assert (
+        "registerGeneratedEnum(fory, _envelopeKindForySchema, id: null, name: 'demo.Envelope.Kind');"
+        in dart_output
+    )
+    assert (
+        "fory.registerSerializer(Envelope_Choice, const _Envelope_ChoiceForySerializer(), id: null, name: 'demo.Envelope.Choice');"
+        in dart_output
+    )
+    assert "namespace:" not in dart_output
+    assert "typeName:" not in dart_output
+
+    python_output = render_files(generate_files(schema, PythonGenerator))
+    assert 'fory.register_type(Envelope, name="demo.Envelope")' in python_output
+    assert (
+        'fory.register_type(Envelope.Kind, name="demo.Envelope.Kind")' in python_output
+    )
+    assert (
+        'fory.register_union(Envelope.Choice, name="demo.Envelope.Choice", serializer=Envelope.ChoiceSerializer(fory.type_resolver))'
+        in python_output
+    )
+    assert "namespace=" not in python_output
+    assert "typename=" not in python_output
+
+    swift_output = render_files(generate_files(schema, SwiftGenerator))
+    assert (
+        'try fory.register(Demo.Envelope.self, name: "demo.Envelope")' in swift_output
+    )
+    assert (
+        'try fory.register(Demo.Envelope.Kind.self, name: "demo.Envelope.Kind")'
+        in swift_output
+    )
+    assert (
+        'try fory.register(Demo.Envelope.Choice.self, name: "demo.Envelope.Choice")'
+        in swift_output
+    )
+    assert "namespace:" not in swift_output
 
 
 def test_java_default_package_import_registers_dependency(tmp_path):
@@ -742,7 +861,7 @@ def test_generated_code_tree_ref_options_equivalent():
     assert_all_languages_equal(schemas)
 
     rust_output = render_files(generate_files(schemas["fdl"], RustGenerator))
-    assert "RcWeak<TreeNode>" in rust_output
+    assert "::fory::ArcWeak<TreeNode>" in rust_output
     assert "#[derive(::fory::ForyStruct, Clone, PartialEq, Eq, Default)]" in rust_output
 
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
@@ -1007,6 +1126,49 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
     assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
 
 
+def test_cpp_nested_container_ref_uses_correct_pointer_type():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Node {
+                string value = 1;
+            }
+
+            message Request {
+                list<list<ref Node>> groups = 1;
+                map<string, map<string, ref Node>> nodes = 2;
+                list<list<ref(weak=true) Node>> weak_groups = 3;
+                map<string, map<string, ref(weak=true) Node>> weak_nodes = 4;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "std::vector<std::vector<std::shared_ptr<Node>>> groups_;" in cpp_output
+    assert "std::vector<std::vector<Node>> groups_;" not in cpp_output
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, std::shared_ptr<Node>>> nodes_;" in cpp_output
+    )
+    assert (
+        "std::vector<std::vector<fory::serialization::SharedWeak<Node>>> weak_groups_;"
+        in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, fory::serialization::SharedWeak<Node>>> "
+        "weak_nodes_;" in cpp_output
+    )
+    assert (
+        "std::unordered_map<std::string, "
+        "std::unordered_map<std::string, std::shared_ptr<Node>>> weak_nodes_;"
+        not in cpp_output
+    )
+
+
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
         dedent(
@@ -1116,8 +1278,11 @@ def test_rust_generated_code_uses_absolute_paths():
         "pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,"
         in rust_output
     )
-    assert "pub payload: ::std::boxed::Box<dyn ::std::any::Any>," in rust_output
-    assert "pub parent: ::fory::RcWeak<String>," in rust_output
+    assert (
+        "pub payload: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,"
+        in rust_output
+    )
+    assert "pub parent: ::fory::ArcWeak<String>," in rust_output
     assert "pub fn register_types(fory: &mut ::fory::Fory)" in rust_output
     assert "static FORY: ::std::sync::OnceLock<::fory::Fory>" in rust_output
 
@@ -1145,3 +1310,113 @@ def test_rust_union_conflicting_payload_uses_self_path():
         "Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())" in rust_output
     )
     assert "Dog(Dog)," not in rust_output
+
+
+def test_rust_escapes_keywords():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message type {
+                string type = 1;
+                string self = 2;
+                string crate = 3;
+                string extern = 4;
+                string raw = 5;
+            }
+
+            message _1 {
+                string value = 1;
+            }
+            """
+        )
+    )
+    rust_files = generate_files(schema, RustGenerator)
+    rust_output = render_files(rust_files)
+
+    assert "demo.rs" in rust_files
+    assert "pub struct Type {" in rust_output
+    assert "pub r#type: ::std::string::String," in rust_output
+    assert "pub self_: ::std::string::String," in rust_output
+    assert "pub crate_: ::std::string::String," in rust_output
+    assert "pub r#extern: ::std::string::String," in rust_output
+    assert "pub raw: ::std::string::String," in rust_output
+    assert "pub struct _1 {" in rust_output
+
+
+def test_rust_rejects_normalized_name_collisions():
+    collision_cases = [
+        """
+        message foo_bar {}
+
+        message FooBar {}
+        """,
+        """
+        message Holder {
+            string fooBar = 1;
+            string foo_bar = 2;
+        }
+        """,
+        """
+        message Holder {
+            string self = 1;
+            string self_ = 2;
+        }
+        """,
+        """
+        union crate {
+            string self = 1;
+            string Self = 2;
+        }
+        """,
+    ]
+
+    for source in collision_cases:
+        schema = parse_fdl(dedent(source))
+        with pytest.raises(ValueError, match="Rust name collision"):
+            generate_files(schema, RustGenerator)
+
+
+def test_rust_rejects_same_output_path_collisions(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    first_fdl = tmp_path / "first.fdl"
+    second_fdl = tmp_path / "second.fdl"
+    rust_out = tmp_path / "rust"
+    first_fdl.write_text(
+        dedent(
+            """
+            package foo.bar;
+
+            message First {
+                string value = 1;
+            }
+            """
+        )
+    )
+    second_fdl.write_text(
+        dedent(
+            """
+            package foo_bar;
+
+            message Second {
+                string value = 1;
+            }
+            """
+        )
+    )
+    exit_code = foryc_main(
+        [
+            str(first_fdl),
+            str(second_fdl),
+            "--rust_out",
+            str(rust_out),
+            "-I",
+            str(tmp_path),
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "Rust output path collision" in captured.err

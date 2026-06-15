@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.exception.CopyException;
 import org.apache.fory.memory.BigEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
@@ -62,7 +63,32 @@ public class JavaSerializerTest extends ForyTestBase {
     }
   }
 
-  public static class NestedValue implements Serializable {}
+  public static class NestedValue implements Serializable {
+    String value;
+
+    NestedValue() {
+      this("nested");
+    }
+
+    NestedValue(String value) {
+      this.value = value;
+    }
+  }
+
+  public static class JavaCopyState implements Serializable {
+    String name;
+    transient int nameLength;
+
+    JavaCopyState(String name) {
+      this.name = name;
+      this.nameLength = name.length();
+    }
+
+    private void readObject(java.io.ObjectInputStream stream) throws Exception {
+      stream.defaultReadObject();
+      nameLength = name.length();
+    }
+  }
 
   @Test
   public void testWriteObject() {
@@ -71,6 +97,7 @@ public class JavaSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     serDe(fory, new CustomClass());
   }
@@ -86,7 +113,7 @@ public class JavaSerializerTest extends ForyTestBase {
     Assert.assertEquals(BigEndian.getShortB(bytes, 0), ObjectStreamConstants.STREAM_MAGIC);
     Assert.assertTrue(JavaSerializer.serializedByJDK(bytes));
     Assert.assertTrue(JavaSerializer.serializedByJDK(ByteBuffer.wrap(bytes), 0));
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     bytes = fory.serialize(1.1);
     Assert.assertFalse(JavaSerializer.serializedByJDK(bytes));
   }
@@ -99,8 +126,28 @@ public class JavaSerializerTest extends ForyTestBase {
   }
 
   @Test
+  public void testCopyUsesJavaSerialization() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefCopy(true)
+            .requireClassRegistration(false)
+            .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
+            .build();
+    fory.registerSerializer(JavaCopyState.class, JavaSerializer.class);
+    JavaCopyState state = new JavaCopyState("fory");
+    state.nameLength = -1;
+    JavaCopyState copy = fory.copy(state);
+
+    Assert.assertNotSame(copy, state);
+    Assert.assertEquals(copy.name, state.name);
+    Assert.assertEquals(copy.nameLength, 4);
+  }
+
+  @Test
   public void testJdkStreamChecksNestedClass() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Serializer serializer = new JavaSerializer(fory.getTypeResolver(), JavaBox.class);
     fory.registerSerializer(JavaBox.class, serializer);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
@@ -108,5 +155,17 @@ public class JavaSerializerTest extends ForyTestBase {
 
     Assert.assertThrows(
         InvalidClassException.class, () -> readSerializer(fory, serializer, buffer));
+  }
+
+  @Test
+  public void testCopyChecksNestedClass() {
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
+    fory.register(JavaBox.class);
+    fory.registerSerializer(JavaBox.class, JavaSerializer.class);
+
+    CopyException exception =
+        Assert.expectThrows(CopyException.class, () -> fory.copy(new JavaBox(new NestedValue())));
+    Assert.assertTrue(exception.getCause() instanceof InvalidClassException);
+    Assert.assertTrue(exception.getCause().getMessage().contains(NestedValue.class.getName()));
   }
 }

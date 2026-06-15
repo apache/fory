@@ -19,26 +19,31 @@
 
 package org.apache.fory.serializer;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.IntArray;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.RefReader;
 import org.apache.fory.context.RefWriter;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.UnsafeOps;
 import org.apache.fory.reflect.FieldAccessor;
-import org.apache.fory.reflect.ObjectCreator;
-import org.apache.fory.reflect.ObjectCreators;
+import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.RefMode;
@@ -63,10 +68,17 @@ import org.apache.fory.util.record.RecordUtils;
 
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
+  private static final Object SELF_REFERENCE = new Object();
+  // Constructor-bound objects reserve a ref id before constructor arguments are read, but the
+  // object cannot be referenced semantically until the constructor returns. Generated constructor
+  // serializers call the tracker before reading ref-tracking constructor-phase fields so nested
+  // collection/map/array elements cannot hide unresolved self-references.
+  private static final Object CONSTRUCTOR_REF_IDS = new Object();
+  private static final Object UNRESOLVED_CONSTRUCTOR_REF_IDS = new Object();
   protected final Config config;
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
-  protected final ObjectCreator<T> objectCreator;
+  protected final ObjectInstantiator<T> objectInstantiator;
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
@@ -75,20 +87,20 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.config = null;
     this.typeResolver = null;
     this.isRecord = false;
-    this.objectCreator = null;
+    this.objectInstantiator = null;
   }
 
   public AbstractObjectSerializer(TypeResolver typeResolver, Class<T> type) {
-    this(typeResolver, type, ObjectCreators.getObjectCreator(type));
+    this(typeResolver, type, typeResolver.getObjectInstantiator(type));
   }
 
   public AbstractObjectSerializer(
-      TypeResolver typeResolver, Class<T> type, ObjectCreator<T> objectCreator) {
+      TypeResolver typeResolver, Class<T> type, ObjectInstantiator<T> objectInstantiator) {
     super(typeResolver.getConfig(), type);
     this.config = typeResolver.getConfig();
     this.typeResolver = typeResolver;
     this.isRecord = RecordUtils.isRecord(type);
-    this.objectCreator = objectCreator;
+    this.objectInstantiator = objectInstantiator;
   }
 
   static void writeField(
@@ -169,7 +181,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       return null;
     }
     if (refMode == RefMode.TRACKING) {
-      int nextReadRefId = refReader.tryPreserveRefId(buffer);
+      int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         Object value =
             typeResolver
@@ -244,75 +256,6 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   /**
-   * Write a primitive field value to buffer using direct memory offset access.
-   *
-   * @param buffer the buffer to write to
-   * @param targetObject the object containing the field
-   * @param fieldOffset the memory offset of the field
-   * @param dispatchId the class ID of the primitive type
-   * @return true if dispatchId is not a primitive type and needs further write handling
-   */
-  private static boolean writePrimitiveFieldValue(
-      MemoryBuffer buffer, Object targetObject, long fieldOffset, int dispatchId) {
-    switch (dispatchId) {
-      case DispatchId.BOOL:
-        buffer.writeBoolean(UnsafeOps.getBoolean(targetObject, fieldOffset));
-        return false;
-      case DispatchId.INT8:
-        buffer.writeByte(UnsafeOps.getByte(targetObject, fieldOffset));
-        return false;
-      case DispatchId.UINT8:
-        buffer.writeByte(UnsafeOps.getInt(targetObject, fieldOffset));
-        return false;
-      case DispatchId.CHAR:
-        buffer.writeChar(UnsafeOps.getChar(targetObject, fieldOffset));
-        return false;
-      case DispatchId.INT16:
-        buffer.writeInt16(UnsafeOps.getShort(targetObject, fieldOffset));
-        return false;
-      case DispatchId.UINT16:
-        buffer.writeInt16((short) UnsafeOps.getInt(targetObject, fieldOffset));
-        return false;
-      case DispatchId.INT32:
-        buffer.writeInt32(UnsafeOps.getInt(targetObject, fieldOffset));
-        return false;
-      case DispatchId.UINT32:
-        buffer.writeInt32((int) UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.VARINT32:
-        buffer.writeVarInt32(UnsafeOps.getInt(targetObject, fieldOffset));
-        return false;
-      case DispatchId.VAR_UINT32:
-        buffer.writeVarUInt32((int) UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.FLOAT32:
-        buffer.writeFloat32(UnsafeOps.getFloat(targetObject, fieldOffset));
-        return false;
-      case DispatchId.INT64:
-      case DispatchId.UINT64:
-        buffer.writeInt64(UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.VARINT64:
-        buffer.writeVarInt64(UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.TAGGED_INT64:
-        buffer.writeTaggedInt64(UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.VAR_UINT64:
-        buffer.writeVarUInt64(UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.TAGGED_UINT64:
-        buffer.writeTaggedUInt64(UnsafeOps.getLong(targetObject, fieldOffset));
-        return false;
-      case DispatchId.FLOAT64:
-        buffer.writeFloat64(UnsafeOps.getDouble(targetObject, fieldOffset));
-        return false;
-      default:
-        return true;
-    }
-  }
-
-  /**
    * Write a primitive field value to buffer using the field accessor.
    *
    * @param buffer the buffer to write to
@@ -323,65 +266,58 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    */
   static boolean writePrimitiveFieldValue(
       MemoryBuffer buffer, Object targetObject, FieldAccessor fieldAccessor, int dispatchId) {
-    long fieldOffset = fieldAccessor.getFieldOffset();
-    if (fieldOffset != -1) {
-      return writePrimitiveFieldValue(buffer, targetObject, fieldOffset, dispatchId);
-    }
-    // graalvm use GeneratedAccessor, which will be this code path.
     switch (dispatchId) {
       case DispatchId.BOOL:
-        buffer.writeBoolean((Boolean) fieldAccessor.get(targetObject));
+        buffer.writeBoolean(fieldAccessor.getBoolean(targetObject));
         return false;
       case DispatchId.INT8:
-        buffer.writeByte((Byte) fieldAccessor.get(targetObject));
+        buffer.writeByte(fieldAccessor.getByte(targetObject));
         return false;
       case DispatchId.UINT8:
-        buffer.writeByte((Integer) fieldAccessor.get(targetObject));
+        buffer.writeByte(fieldAccessor.getInt(targetObject));
         return false;
       case DispatchId.CHAR:
-        buffer.writeChar((Character) fieldAccessor.get(targetObject));
+        buffer.writeChar(fieldAccessor.getChar(targetObject));
         return false;
       case DispatchId.INT16:
-        buffer.writeInt16((Short) fieldAccessor.get(targetObject));
+        buffer.writeInt16(fieldAccessor.getShort(targetObject));
         return false;
       case DispatchId.UINT16:
-        buffer.writeInt16(((Integer) fieldAccessor.get(targetObject)).shortValue());
+        buffer.writeInt16((short) fieldAccessor.getInt(targetObject));
         return false;
       case DispatchId.INT32:
-        buffer.writeInt32((Integer) fieldAccessor.get(targetObject));
+        buffer.writeInt32(fieldAccessor.getInt(targetObject));
         return false;
       case DispatchId.UINT32:
-        buffer.writeInt32(((Long) fieldAccessor.get(targetObject)).intValue());
+        buffer.writeInt32((int) fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.VARINT32:
-        buffer.writeVarInt32((Integer) fieldAccessor.get(targetObject));
+        buffer.writeVarInt32(fieldAccessor.getInt(targetObject));
         return false;
       case DispatchId.VAR_UINT32:
-        buffer.writeVarUInt32(((Long) fieldAccessor.get(targetObject)).intValue());
+        buffer.writeVarUInt32((int) fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.FLOAT32:
-        buffer.writeFloat32((Float) fieldAccessor.get(targetObject));
+        buffer.writeFloat32(fieldAccessor.getFloat(targetObject));
         return false;
       case DispatchId.INT64:
-        buffer.writeInt64((Long) fieldAccessor.get(targetObject));
-        return false;
       case DispatchId.UINT64:
-        buffer.writeInt64((Long) fieldAccessor.get(targetObject));
+        buffer.writeInt64(fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.VARINT64:
-        buffer.writeVarInt64((Long) fieldAccessor.get(targetObject));
+        buffer.writeVarInt64(fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.TAGGED_INT64:
-        buffer.writeTaggedInt64((Long) fieldAccessor.get(targetObject));
+        buffer.writeTaggedInt64(fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.VAR_UINT64:
-        buffer.writeVarUInt64((Long) fieldAccessor.get(targetObject));
+        buffer.writeVarUInt64(fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.TAGGED_UINT64:
-        buffer.writeTaggedUInt64((Long) fieldAccessor.get(targetObject));
+        buffer.writeTaggedUInt64(fieldAccessor.getLong(targetObject));
         return false;
       case DispatchId.FLOAT64:
-        buffer.writeFloat64((Double) fieldAccessor.get(targetObject));
+        buffer.writeFloat64(fieldAccessor.getDouble(targetObject));
         return false;
       default:
         return true;
@@ -570,8 +506,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         break;
       case TRACKING:
         generics.pushGenericType(fieldInfo.genericType, readContext.getDepth());
-        fieldValue =
-            readContainerFieldValueRef(readContext, typeResolver, refReader, fieldInfo, buffer);
+        fieldValue = readContainerFieldValueRef(readContext, typeResolver, refReader, fieldInfo);
         generics.popGenericType(readContext.getDepth());
         break;
       default:
@@ -595,9 +530,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       ReadContext readContext,
       TypeResolver typeResolver,
       RefReader refReader,
-      SerializationFieldInfo fieldInfo,
-      MemoryBuffer buffer) {
-    int nextReadRefId = refReader.tryPreserveRefId(buffer);
+      SerializationFieldInfo fieldInfo) {
+    int nextReadRefId = readContext.tryPreserveRefId();
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       Object value;
       if (fieldInfo.containerSerializerOverride != null) {
@@ -770,134 +704,59 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    */
   private static void readPrimitiveFieldValue(
       MemoryBuffer buffer, Object targetObject, FieldAccessor fieldAccessor, int dispatchId) {
-    long fieldOffset = fieldAccessor.getFieldOffset();
-    if (fieldOffset != -1) {
-      readPrimitiveFieldValue(buffer, targetObject, fieldOffset, dispatchId);
-      return;
-    }
-    // graalvm use GeneratedAccessor, which will be this code path.
     // we still need `PRIMITIVE` cases since peer may send
     switch (dispatchId) {
       case DispatchId.BOOL:
-        fieldAccessor.set(targetObject, buffer.readBoolean());
+        fieldAccessor.putBoolean(targetObject, buffer.readBoolean());
         return;
       case DispatchId.INT8:
-        fieldAccessor.set(targetObject, buffer.readByte());
+        fieldAccessor.putByte(targetObject, buffer.readByte());
         return;
       case DispatchId.UINT8:
-        fieldAccessor.set(targetObject, buffer.readByte() & 0xFF);
+        fieldAccessor.putInt(targetObject, buffer.readByte() & 0xFF);
         return;
       case DispatchId.CHAR:
-        fieldAccessor.set(targetObject, buffer.readChar());
+        fieldAccessor.putChar(targetObject, buffer.readChar());
         return;
       case DispatchId.INT16:
-        fieldAccessor.set(targetObject, buffer.readInt16());
+        fieldAccessor.putShort(targetObject, buffer.readInt16());
         return;
       case DispatchId.UINT16:
-        fieldAccessor.set(targetObject, buffer.readInt16() & 0xFFFF);
+        fieldAccessor.putInt(targetObject, buffer.readInt16() & 0xFFFF);
         return;
       case DispatchId.INT32:
-        fieldAccessor.set(targetObject, buffer.readInt32());
+        fieldAccessor.putInt(targetObject, buffer.readInt32());
         return;
       case DispatchId.UINT32:
-        fieldAccessor.set(targetObject, Integer.toUnsignedLong(buffer.readInt32()));
+        fieldAccessor.putLong(targetObject, Integer.toUnsignedLong(buffer.readInt32()));
         return;
       case DispatchId.VARINT32:
-        fieldAccessor.set(targetObject, buffer.readVarInt32());
+        fieldAccessor.putInt(targetObject, buffer.readVarInt32());
         return;
       case DispatchId.VAR_UINT32:
-        fieldAccessor.set(targetObject, Integer.toUnsignedLong(buffer.readVarUInt32()));
+        fieldAccessor.putLong(targetObject, Integer.toUnsignedLong(buffer.readVarUInt32()));
         return;
       case DispatchId.FLOAT32:
-        fieldAccessor.set(targetObject, buffer.readFloat32());
+        fieldAccessor.putFloat(targetObject, buffer.readFloat32());
         return;
       case DispatchId.INT64:
       case DispatchId.UINT64:
-        fieldAccessor.set(targetObject, buffer.readInt64());
+        fieldAccessor.putLong(targetObject, buffer.readInt64());
         return;
       case DispatchId.VARINT64:
-        fieldAccessor.set(targetObject, buffer.readVarInt64());
+        fieldAccessor.putLong(targetObject, buffer.readVarInt64());
         return;
       case DispatchId.TAGGED_INT64:
-        fieldAccessor.set(targetObject, buffer.readTaggedInt64());
+        fieldAccessor.putLong(targetObject, buffer.readTaggedInt64());
         return;
       case DispatchId.VAR_UINT64:
-        fieldAccessor.set(targetObject, buffer.readVarUInt64());
+        fieldAccessor.putLong(targetObject, buffer.readVarUInt64());
         return;
       case DispatchId.TAGGED_UINT64:
-        fieldAccessor.set(targetObject, buffer.readTaggedUInt64());
+        fieldAccessor.putLong(targetObject, buffer.readTaggedUInt64());
         return;
       case DispatchId.FLOAT64:
-        fieldAccessor.set(targetObject, buffer.readFloat64());
-        return;
-      default:
-        throw new IllegalArgumentException("Unsupported dispatch id " + dispatchId);
-    }
-  }
-
-  /**
-   * Read a primitive field value from buffer and set it using direct memory offset access.
-   *
-   * @param buffer the buffer to read from
-   * @param targetObject the object to set the field value on
-   * @param fieldOffset the memory offset of the field
-   * @param dispatchId the dispatch ID of the primitive type
-   */
-  private static void readPrimitiveFieldValue(
-      MemoryBuffer buffer, Object targetObject, long fieldOffset, int dispatchId) {
-    switch (dispatchId) {
-      case DispatchId.BOOL:
-        UnsafeOps.putBoolean(targetObject, fieldOffset, buffer.readBoolean());
-        return;
-      case DispatchId.INT8:
-        UnsafeOps.putByte(targetObject, fieldOffset, buffer.readByte());
-        return;
-      case DispatchId.UINT8:
-        UnsafeOps.putInt(targetObject, fieldOffset, buffer.readByte() & 0xFF);
-        return;
-      case DispatchId.CHAR:
-        UnsafeOps.putChar(targetObject, fieldOffset, buffer.readChar());
-        return;
-      case DispatchId.INT16:
-        UnsafeOps.putShort(targetObject, fieldOffset, buffer.readInt16());
-        return;
-      case DispatchId.UINT16:
-        UnsafeOps.putInt(targetObject, fieldOffset, buffer.readInt16() & 0xFFFF);
-        return;
-      case DispatchId.INT32:
-        UnsafeOps.putInt(targetObject, fieldOffset, buffer.readInt32());
-        return;
-      case DispatchId.UINT32:
-        UnsafeOps.putLong(targetObject, fieldOffset, Integer.toUnsignedLong(buffer.readInt32()));
-        return;
-      case DispatchId.VARINT32:
-        UnsafeOps.putInt(targetObject, fieldOffset, buffer.readVarInt32());
-        return;
-      case DispatchId.VAR_UINT32:
-        UnsafeOps.putLong(
-            targetObject, fieldOffset, Integer.toUnsignedLong(buffer.readVarUInt32()));
-        return;
-      case DispatchId.FLOAT32:
-        UnsafeOps.putFloat(targetObject, fieldOffset, buffer.readFloat32());
-        return;
-      case DispatchId.INT64:
-      case DispatchId.UINT64:
-        UnsafeOps.putLong(targetObject, fieldOffset, buffer.readInt64());
-        return;
-      case DispatchId.VARINT64:
-        UnsafeOps.putLong(targetObject, fieldOffset, buffer.readVarInt64());
-        return;
-      case DispatchId.TAGGED_INT64:
-        UnsafeOps.putLong(targetObject, fieldOffset, buffer.readTaggedInt64());
-        return;
-      case DispatchId.VAR_UINT64:
-        UnsafeOps.putLong(targetObject, fieldOffset, buffer.readVarUInt64());
-        return;
-      case DispatchId.TAGGED_UINT64:
-        UnsafeOps.putLong(targetObject, fieldOffset, buffer.readTaggedUInt64());
-        return;
-      case DispatchId.FLOAT64:
-        UnsafeOps.putDouble(targetObject, fieldOffset, buffer.readFloat64());
+        fieldAccessor.putDouble(targetObject, buffer.readFloat64());
         return;
       default:
         throw new IllegalArgumentException("Unsupported dispatch id " + dispatchId);
@@ -1022,9 +881,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private T copyRecord(CopyContext copyContext, T originObj) {
-    Object[] fieldValues = copyFields(copyContext, originObj);
+    Object[] fieldValues = copyFieldValues(copyContext, originObj);
+    fieldValues = RecordUtils.remapping(copyRecordInfo, fieldValues);
     try {
-      T t = objectCreator.newInstanceWithArguments(fieldValues);
+      T t = objectInstantiator.newInstanceWithArguments(fieldValues);
       Arrays.fill(copyRecordInfo.getRecordComponents(), null);
       copyContext.reference(originObj, t);
       return t;
@@ -1034,7 +894,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     return originObj;
   }
 
-  private Object[] copyFields(CopyContext copyContext, T originObj) {
+  private Object[] copyFieldValues(CopyContext copyContext, T originObj) {
     SerializationFieldInfo[] fieldInfos = this.fieldInfos;
     if (fieldInfos == null) {
       fieldInfos = buildFieldsInfo();
@@ -1043,21 +903,14 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     for (int i = 0; i < fieldInfos.length; i++) {
       SerializationFieldInfo fieldInfo = fieldInfos[i];
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
-      long fieldOffset = fieldAccessor.getFieldOffset();
-      if (fieldOffset != -1) {
-        if (fieldInfo.isPrimitiveField) {
-          fieldValues[i] = copyPrimitiveField(originObj, fieldOffset, fieldInfo.dispatchId);
-        } else {
-          fieldValues[i] =
-              copyNotPrimitiveField(copyContext, originObj, fieldOffset, fieldInfo.dispatchId);
-        }
+      if (fieldInfo.isPrimitiveField) {
+        fieldValues[i] = copyPrimitiveField(originObj, fieldAccessor, fieldInfo.dispatchId);
       } else {
-        // field in record class has offset -1
-        Object fieldValue = fieldAccessor.get(originObj);
-        fieldValues[i] = copyContext.copyObject(fieldValue, fieldInfo.dispatchId);
+        fieldValues[i] =
+            copyNotPrimitiveField(copyContext, originObj, fieldAccessor, fieldInfo.dispatchId);
       }
     }
-    return RecordUtils.remapping(copyRecordInfo, fieldValues);
+    return fieldValues;
   }
 
   private void copyFields(CopyContext copyContext, T originObj, T newObj) {
@@ -1075,17 +928,11 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       Object newObj) {
     for (SerializationFieldInfo fieldInfo : fieldInfos) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
-      long fieldOffset = fieldAccessor.getFieldOffset();
-      if (fieldOffset == -1) {
-        Object fieldValue = fieldAccessor.getObject(originObj);
-        fieldAccessor.putObject(
-            newObj, copyFieldValue(copyContext, fieldValue, fieldInfo.dispatchId));
-        continue;
-      }
       if (fieldInfo.isPrimitiveField) {
-        copySetPrimitiveField(originObj, newObj, fieldOffset, fieldInfo.dispatchId);
+        copySetPrimitiveField(originObj, newObj, fieldAccessor, fieldInfo.dispatchId);
       } else {
-        copySetNotPrimitiveField(copyContext, originObj, newObj, fieldOffset, fieldInfo.dispatchId);
+        copySetNotPrimitiveField(
+            copyContext, originObj, newObj, fieldAccessor, fieldInfo.dispatchId);
       }
     }
   }
@@ -1094,6 +941,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (fieldValue == null) {
       return null;
     }
+    return isCopyByReference(dispatchId) ? fieldValue : copyContext.copyObject(fieldValue);
+  }
+
+  private static boolean isCopyByReference(int dispatchId) {
     switch (dispatchId) {
       case DispatchId.BOOL:
       case DispatchId.INT8:
@@ -1122,164 +973,70 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       case DispatchId.FLOAT16:
       case DispatchId.BFLOAT16:
       case DispatchId.STRING:
-        return fieldValue;
+        return true;
       default:
-        return copyContext.copyObject(fieldValue);
+        return false;
     }
   }
 
   private static void copySetPrimitiveField(
-      Object originObj, Object newObj, long fieldOffset, int typeId) {
-    switch (typeId) {
-      case DispatchId.BOOL:
-        UnsafeOps.putBoolean(newObj, fieldOffset, UnsafeOps.getBoolean(originObj, fieldOffset));
-        break;
-      case DispatchId.INT8:
-        UnsafeOps.putByte(newObj, fieldOffset, UnsafeOps.getByte(originObj, fieldOffset));
-        break;
-      case DispatchId.UINT8:
-        UnsafeOps.putInt(newObj, fieldOffset, UnsafeOps.getInt(originObj, fieldOffset));
-        break;
-      case DispatchId.CHAR:
-        UnsafeOps.putChar(newObj, fieldOffset, UnsafeOps.getChar(originObj, fieldOffset));
-        break;
-      case DispatchId.INT16:
-        UnsafeOps.putShort(newObj, fieldOffset, UnsafeOps.getShort(originObj, fieldOffset));
-        break;
-      case DispatchId.UINT16:
-        UnsafeOps.putInt(newObj, fieldOffset, UnsafeOps.getInt(originObj, fieldOffset));
-        break;
-      case DispatchId.INT32:
-      case DispatchId.VARINT32:
-        UnsafeOps.putInt(newObj, fieldOffset, UnsafeOps.getInt(originObj, fieldOffset));
-        break;
-      case DispatchId.UINT32:
-      case DispatchId.VAR_UINT32:
-        UnsafeOps.putLong(newObj, fieldOffset, UnsafeOps.getLong(originObj, fieldOffset));
-        break;
-      case DispatchId.INT64:
-      case DispatchId.VARINT64:
-      case DispatchId.TAGGED_INT64:
-      case DispatchId.UINT64:
-      case DispatchId.VAR_UINT64:
-      case DispatchId.TAGGED_UINT64:
-        UnsafeOps.putLong(newObj, fieldOffset, UnsafeOps.getLong(originObj, fieldOffset));
-        break;
-      case DispatchId.FLOAT32:
-        UnsafeOps.putFloat(newObj, fieldOffset, UnsafeOps.getFloat(originObj, fieldOffset));
-        break;
-      case DispatchId.FLOAT64:
-        UnsafeOps.putDouble(newObj, fieldOffset, UnsafeOps.getDouble(originObj, fieldOffset));
-        break;
-      default:
-        throw new RuntimeException("Unknown primitive type: " + typeId);
-    }
+      Object originObj, Object newObj, FieldAccessor fieldAccessor, int typeId) {
+    fieldAccessor.copy(originObj, newObj);
   }
 
   private static void copySetNotPrimitiveField(
-      CopyContext copyContext, Object originObj, Object newObj, long fieldOffset, int typeId) {
-    switch (typeId) {
-      case DispatchId.BOOL:
-      case DispatchId.INT8:
-      case DispatchId.UINT8:
-      case DispatchId.EXT_UINT8:
-      case DispatchId.CHAR:
-      case DispatchId.INT16:
-      case DispatchId.UINT16:
-      case DispatchId.EXT_UINT16:
-      case DispatchId.INT32:
-      case DispatchId.VARINT32:
-      case DispatchId.UINT32:
-      case DispatchId.EXT_UINT32:
-      case DispatchId.VAR_UINT32:
-      case DispatchId.EXT_VAR_UINT32:
-      case DispatchId.INT64:
-      case DispatchId.VARINT64:
-      case DispatchId.TAGGED_INT64:
-      case DispatchId.UINT64:
-      case DispatchId.EXT_UINT64:
-      case DispatchId.VAR_UINT64:
-      case DispatchId.EXT_VAR_UINT64:
-      case DispatchId.TAGGED_UINT64:
-      case DispatchId.FLOAT32:
-      case DispatchId.FLOAT64:
-      case DispatchId.FLOAT16:
-      case DispatchId.BFLOAT16:
-      case DispatchId.STRING:
-        UnsafeOps.putObject(newObj, fieldOffset, UnsafeOps.getObject(originObj, fieldOffset));
-        break;
-      default:
-        UnsafeOps.putObject(
-            newObj,
-            fieldOffset,
-            copyContext.copyObject(UnsafeOps.getObject(originObj, fieldOffset)));
+      CopyContext copyContext,
+      Object originObj,
+      Object newObj,
+      FieldAccessor fieldAccessor,
+      int typeId) {
+    if (isCopyByReference(typeId)) {
+      fieldAccessor.copyObject(originObj, newObj);
+      return;
     }
+    Object fieldValue = fieldAccessor.getObject(originObj);
+    fieldAccessor.putObject(newObj, fieldValue == null ? null : copyContext.copyObject(fieldValue));
   }
 
-  private Object copyPrimitiveField(Object targetObject, long fieldOffset, int typeId) {
+  private Object copyPrimitiveField(Object targetObject, FieldAccessor fieldAccessor, int typeId) {
     switch (typeId) {
       case DispatchId.BOOL:
-        return UnsafeOps.getBoolean(targetObject, fieldOffset);
+        return fieldAccessor.getBoolean(targetObject);
       case DispatchId.INT8:
-        return UnsafeOps.getByte(targetObject, fieldOffset);
+        return fieldAccessor.getByte(targetObject);
       case DispatchId.UINT8:
-        return UnsafeOps.getInt(targetObject, fieldOffset);
+        return fieldAccessor.getInt(targetObject);
       case DispatchId.CHAR:
-        return UnsafeOps.getChar(targetObject, fieldOffset);
+        return fieldAccessor.getChar(targetObject);
       case DispatchId.INT16:
-        return UnsafeOps.getShort(targetObject, fieldOffset);
+        return fieldAccessor.getShort(targetObject);
       case DispatchId.UINT16:
-        return UnsafeOps.getInt(targetObject, fieldOffset);
+        return fieldAccessor.getInt(targetObject);
       case DispatchId.INT32:
       case DispatchId.VARINT32:
-        return UnsafeOps.getInt(targetObject, fieldOffset);
+        return fieldAccessor.getInt(targetObject);
       case DispatchId.UINT32:
       case DispatchId.VAR_UINT32:
-        return UnsafeOps.getLong(targetObject, fieldOffset);
+        return fieldAccessor.getLong(targetObject);
       case DispatchId.FLOAT32:
-        return UnsafeOps.getFloat(targetObject, fieldOffset);
+        return fieldAccessor.getFloat(targetObject);
       case DispatchId.INT64:
       case DispatchId.VARINT64:
       case DispatchId.TAGGED_INT64:
       case DispatchId.UINT64:
       case DispatchId.VAR_UINT64:
       case DispatchId.TAGGED_UINT64:
-        return UnsafeOps.getLong(targetObject, fieldOffset);
+        return fieldAccessor.getLong(targetObject);
       case DispatchId.FLOAT64:
-        return UnsafeOps.getDouble(targetObject, fieldOffset);
+        return fieldAccessor.getDouble(targetObject);
       default:
         throw new RuntimeException("Unknown primitive type: " + typeId);
     }
   }
 
   private Object copyNotPrimitiveField(
-      CopyContext copyContext, Object targetObject, long fieldOffset, int typeId) {
-    switch (typeId) {
-      case DispatchId.BOOL:
-      case DispatchId.INT8:
-      case DispatchId.UINT8:
-      case DispatchId.CHAR:
-      case DispatchId.INT16:
-      case DispatchId.UINT16:
-      case DispatchId.INT32:
-      case DispatchId.VARINT32:
-      case DispatchId.UINT32:
-      case DispatchId.VAR_UINT32:
-      case DispatchId.FLOAT32:
-      case DispatchId.INT64:
-      case DispatchId.VARINT64:
-      case DispatchId.TAGGED_INT64:
-      case DispatchId.UINT64:
-      case DispatchId.VAR_UINT64:
-      case DispatchId.TAGGED_UINT64:
-      case DispatchId.FLOAT64:
-      case DispatchId.FLOAT16:
-      case DispatchId.BFLOAT16:
-      case DispatchId.STRING:
-        return UnsafeOps.getObject(targetObject, fieldOffset);
-      default:
-        return copyContext.copyObject(UnsafeOps.getObject(targetObject, fieldOffset));
-    }
+      CopyContext copyContext, Object targetObject, FieldAccessor fieldAccessor, int typeId) {
+    return copyFieldValue(copyContext, fieldAccessor.getObject(targetObject), typeId);
   }
 
   private SerializationFieldInfo[] buildFieldsInfo() {
@@ -1326,6 +1083,272 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   protected T newBean() {
-    return objectCreator.newInstance();
+    ObjectInstantiator<T> instantiator = objectInstantiator;
+    if (instantiator == null) {
+      throw objectCreationUnsupported();
+    }
+    return instantiator.newInstance();
+  }
+
+  private ForyException objectCreationUnsupported() {
+    return new ForyException("Serializer for " + type.getName() + " does not create objects");
+  }
+
+  protected final void checkNoUnresolvedReadRef(ReadContext readContext) {
+    checkNoUnresolvedReadRef(readContext, type);
+  }
+
+  public static void checkNoUnresolvedReadRef(ReadContext readContext, Class<?> type) {
+    if (consumeSelfRef(readContext)) {
+      throwConstructorCycle(type);
+    }
+  }
+
+  protected final Object beginConstructorCopy(CopyContext copyContext, Object originObj) {
+    if (!copyContext.copyTrackingRef()) {
+      return null;
+    }
+    Object pendingMarker = new ConstructorCopyPending();
+    copyContext.reference(originObj, pendingMarker);
+    return pendingMarker;
+  }
+
+  protected final void checkNoConstructorCopyBackrefs(
+      Object[] fieldValues, int[] constructorFieldIndexes, Object pendingMarker) {
+    if (pendingMarker == null) {
+      return;
+    }
+    IdentityHashMap<Object, Boolean> seen = null;
+    for (int constructorFieldIndex : constructorFieldIndexes) {
+      if (constructorFieldIndex >= 0) {
+        seen =
+            checkNoConstructorCopyBackref(
+                fieldValues[constructorFieldIndex], pendingMarker, type, seen);
+      }
+    }
+  }
+
+  private static IdentityHashMap<Object, Boolean> checkNoConstructorCopyBackref(
+      Object fieldValue,
+      Object pendingMarker,
+      Class<?> type,
+      IdentityHashMap<Object, Boolean> seen) {
+    if (fieldValue == null || isConstructorBackrefLeaf(fieldValue.getClass())) {
+      return seen;
+    }
+    if (fieldValue == pendingMarker) {
+      throwConstructorCycle(type);
+    }
+    if (seen == null) {
+      seen = new IdentityHashMap<>();
+    } else if (seen.containsKey(fieldValue)) {
+      return seen;
+    }
+    seen.put(fieldValue, Boolean.TRUE);
+    Class<?> fieldClass = fieldValue.getClass();
+    if (fieldClass.isArray()) {
+      if (!fieldClass.getComponentType().isPrimitive()) {
+        int length = Array.getLength(fieldValue);
+        for (int i = 0; i < length; i++) {
+          seen = checkNoConstructorCopyBackref(Array.get(fieldValue, i), pendingMarker, type, seen);
+        }
+      }
+      return seen;
+    }
+    if (fieldValue instanceof Optional) {
+      Optional<?> optional = (Optional<?>) fieldValue;
+      if (optional.isPresent()) {
+        seen = checkNoConstructorCopyBackref(optional.get(), pendingMarker, type, seen);
+      }
+      return seen;
+    }
+    if (fieldValue instanceof AtomicReference) {
+      return checkNoConstructorCopyBackref(
+          ((AtomicReference<?>) fieldValue).get(), pendingMarker, type, seen);
+    }
+    if (fieldValue instanceof Iterable) {
+      for (Object element : (Iterable<?>) fieldValue) {
+        seen = checkNoConstructorCopyBackref(element, pendingMarker, type, seen);
+      }
+      return seen;
+    }
+    if (fieldValue instanceof Map) {
+      for (Map.Entry<?, ?> entry : ((Map<?, ?>) fieldValue).entrySet()) {
+        seen = checkNoConstructorCopyBackref(entry.getKey(), pendingMarker, type, seen);
+        seen = checkNoConstructorCopyBackref(entry.getValue(), pendingMarker, type, seen);
+      }
+      return seen;
+    }
+    if (fieldValue instanceof Map.Entry) {
+      Map.Entry<?, ?> entry = (Map.Entry<?, ?>) fieldValue;
+      seen = checkNoConstructorCopyBackref(entry.getKey(), pendingMarker, type, seen);
+      return checkNoConstructorCopyBackref(entry.getValue(), pendingMarker, type, seen);
+    }
+    if (isJdkClass(fieldClass)) {
+      return seen;
+    }
+    for (Descriptor descriptor : Descriptor.getDescriptors(fieldClass)) {
+      if (descriptor.getRawType().isPrimitive() || descriptor.getField() == null) {
+        continue;
+      }
+      Object value = FieldAccessor.createAccessor(descriptor.getField()).getObject(fieldValue);
+      seen = checkNoConstructorCopyBackref(value, pendingMarker, type, seen);
+    }
+    return seen;
+  }
+
+  private static final class ConstructorCopyPending {}
+
+  private static boolean isConstructorBackrefLeaf(Class<?> fieldClass) {
+    return fieldClass.isPrimitive()
+        || fieldClass.isEnum()
+        || fieldClass == Class.class
+        || fieldClass == String.class
+        || Number.class.isAssignableFrom(fieldClass)
+        || fieldClass == Boolean.class
+        || fieldClass == Character.class;
+  }
+
+  private static boolean isJdkClass(Class<?> fieldClass) {
+    String name = fieldClass.getName();
+    return name.startsWith("java.")
+        || name.startsWith("javax.")
+        || name.startsWith("jdk.")
+        || name.startsWith("sun.");
+  }
+
+  public static void beginConstructorRef(ReadContext readContext) {
+    if (readContext.hasPreservedRefId()) {
+      constructorRefIds(readContext).add(readContext.lastPreservedRefId());
+    }
+  }
+
+  public static void endConstructorRef(ReadContext readContext) {
+    IntArray refIds = (IntArray) readContext.getContextObject(CONSTRUCTOR_REF_IDS);
+    if (refIds != null && refIds.size > 0) {
+      refIds.pop();
+    }
+  }
+
+  public static void referenceConstructorRef(ReadContext readContext, Object object) {
+    int constructorRefId = currentConstructorRefId(readContext);
+    if (constructorRefId >= 0) {
+      readContext.setReadRef(constructorRefId, object);
+      return;
+    }
+    if (readContext.hasPreservedRefId()) {
+      readContext.reference(object);
+    }
+  }
+
+  public static Object ctorFieldValue(ReadContext readContext, Object value, Class<?> type) {
+    if (consumeSelfRef(readContext)) {
+      throwConstructorCycle(type);
+    }
+    return value;
+  }
+
+  public static Object bufferFieldValue(ReadContext readContext, Object value, Class<?> type) {
+    if (!consumeSelfRef(readContext)) {
+      return value;
+    }
+    if (value == null) {
+      return SELF_REFERENCE;
+    }
+    throwConstructorCycle(type);
+    return null;
+  }
+
+  public static Object resolveBufferedValue(Object value, Object targetObject) {
+    return value == SELF_REFERENCE ? targetObject : value;
+  }
+
+  private static boolean consumeSelfRef(ReadContext readContext) {
+    int constructorRefId = currentConstructorRefId(readContext);
+    return constructorRefId >= 0 && consumeUnresolvedConstructorRef(readContext, constructorRefId);
+  }
+
+  public static void trackConstructorRefRead(ReadContext readContext, MemoryBuffer buffer) {
+    IntArray constructorRefIds = (IntArray) readContext.getContextObject(CONSTRUCTOR_REF_IDS);
+    if (constructorRefIds == null || constructorRefIds.size == 0) {
+      return;
+    }
+    int readerIndex = buffer.readerIndex();
+    if (buffer.getByte(readerIndex) != Fory.REF_FLAG) {
+      return;
+    }
+    int refId;
+    try {
+      buffer.readerIndex(readerIndex + 1);
+      refId = buffer.readVarUInt32Small14();
+    } finally {
+      buffer.readerIndex(readerIndex);
+    }
+    if (readContext.getReadRef(refId) == null && containsRefId(constructorRefIds, refId)) {
+      unresolvedConstructorRefIds(readContext).add(refId);
+    }
+  }
+
+  private static IntArray constructorRefIds(ReadContext readContext) {
+    IntArray refIds = (IntArray) readContext.getContextObject(CONSTRUCTOR_REF_IDS);
+    if (refIds == null) {
+      refIds = new IntArray(4);
+      readContext.putContextObject(CONSTRUCTOR_REF_IDS, refIds);
+    }
+    return refIds;
+  }
+
+  private static IntArray unresolvedConstructorRefIds(ReadContext readContext) {
+    IntArray refIds = (IntArray) readContext.getContextObject(UNRESOLVED_CONSTRUCTOR_REF_IDS);
+    if (refIds == null) {
+      refIds = new IntArray(4);
+      readContext.putContextObject(UNRESOLVED_CONSTRUCTOR_REF_IDS, refIds);
+    }
+    return refIds;
+  }
+
+  private static int currentConstructorRefId(ReadContext readContext) {
+    IntArray refIds = (IntArray) readContext.getContextObject(CONSTRUCTOR_REF_IDS);
+    if (refIds == null || refIds.size == 0) {
+      return -1;
+    }
+    return refIds.get(refIds.size - 1);
+  }
+
+  private static boolean containsRefId(IntArray refIds, int refId) {
+    for (int i = refIds.size - 1; i >= 0; i--) {
+      if (refIds.get(i) == refId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean consumeUnresolvedConstructorRef(ReadContext readContext, int refId) {
+    IntArray unresolvedRefIds =
+        (IntArray) readContext.getContextObject(UNRESOLVED_CONSTRUCTOR_REF_IDS);
+    if (unresolvedRefIds == null || unresolvedRefIds.size == 0) {
+      return false;
+    }
+    boolean found = false;
+    int newSize = 0;
+    for (int i = 0; i < unresolvedRefIds.size; i++) {
+      int unresolvedRefId = unresolvedRefIds.get(i);
+      if (unresolvedRefId == refId) {
+        found = true;
+      } else {
+        unresolvedRefIds.elementData[newSize++] = unresolvedRefId;
+      }
+    }
+    unresolvedRefIds.size = newSize;
+    return found;
+  }
+
+  protected static void throwConstructorCycle(Class<?> type) {
+    throw new ForyException(
+        "Cyclic references to constructor-created type "
+            + type.getName()
+            + " cannot be restored before the object is constructed. Use a no-arg constructor "
+            + "or keep the cycle outside constructor parameters.");
   }
 }

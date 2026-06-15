@@ -149,6 +149,7 @@ public class AbstractClassExample {
             .withName(AbstractClassExample.class.getName())
             .withXlang(false)
             .registerGuavaTypes(false)
+            .withCompatible(false)
             .build();
     // Register enum type - abstract enums need to be registered
     // The fix for issue #2695 ensures that registering an abstract enum

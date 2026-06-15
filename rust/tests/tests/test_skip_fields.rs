@@ -82,7 +82,7 @@ enum TestEnumSkip {
 
 #[test]
 fn test_basic_skip_functionality() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<TestSkipFields>(1).unwrap();
 
     let original = TestSkipFields {
@@ -108,7 +108,7 @@ fn test_basic_skip_functionality() {
 
 #[test]
 fn test_nested_skip_functionality() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<TestNestedSkip>(2).unwrap();
     fory.register::<NestedStruct>(3).unwrap();
 
@@ -129,7 +129,7 @@ fn test_nested_skip_functionality() {
 
 #[test]
 fn test_multiple_skip_fields() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<MultipleSkipFields>(3).unwrap();
 
     let original = MultipleSkipFields {
@@ -152,7 +152,7 @@ fn test_multiple_skip_fields() {
 
 #[test]
 fn test_all_fields_skipped() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<AllFieldsSkipped>(4).unwrap();
 
     let original = AllFieldsSkipped {
@@ -171,7 +171,7 @@ fn test_all_fields_skipped() {
 
 #[test]
 fn test_complex_nested_skip() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<ComplexNestedSkip>(5).unwrap();
     fory.register::<TestSkipFields>(6).unwrap();
 
@@ -206,7 +206,7 @@ fn test_complex_nested_skip() {
 
 #[test]
 fn test_enum_skip() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<TestEnumSkip>(6).unwrap();
 
     let original_v1 = TestEnumSkip::Pending;
@@ -224,7 +224,7 @@ fn test_enum_skip() {
 
 #[test]
 fn test_skip_serialization_size() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<TestSkipFields>(10).unwrap();
 
     let with_skip = TestSkipFields {
@@ -274,7 +274,7 @@ fn test_skip_with_different_types() {
         field4: i64,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<MultiTypeSkip>(12).unwrap();
 
     let original = MultiTypeSkip {

@@ -43,7 +43,7 @@ import org.apache.fory.util.record.RecordUtils;
 
 /**
  * Define accessor helper methods in beanClass's classloader and same package to avoid reflective
- * call overhead. {@link sun.misc.Unsafe} is another method to avoid reflection cost.
+ * call overhead.
  */
 public class AccessorHelper {
   private static final Logger LOG = LoggerFactory.getLogger(AccessorHelper.class);

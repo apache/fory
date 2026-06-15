@@ -22,6 +22,14 @@ import (
 	"reflect"
 )
 
+func skipSizedBytes(ctx *ReadContext, size uint64) {
+	if size > uint64(MaxInt) {
+		ctx.SetError(DeserializationErrorf("skip byte length exceeds supported int range: %d", size))
+		return
+	}
+	ctx.buffer.Skip(int(size), ctx.Err())
+}
+
 // SkipFieldValue skips a field value in compatible mode when the field doesn't exist
 // or is incompatible with the local type.
 // Uses context error state for deferred error checking.
@@ -638,42 +646,46 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		encoding := header & 0b11
 		switch encoding {
 		case 0: // Latin1 - 1 byte per char
-			_ = ctx.buffer.ReadBinary(int(size), err)
+			skipSizedBytes(ctx, size)
 		case 1: // UTF-16LE - 2 bytes per char
-			_ = ctx.buffer.ReadBinary(int(size*2), err)
+			if size > uint64(MaxInt)/2 {
+				ctx.SetError(DeserializationErrorf("UTF-16 string byte length exceeds supported int range: %d", size))
+				return
+			}
+			skipSizedBytes(ctx, size*2)
 		case 2: // UTF-8 - variable, but size is byte count
-			_ = ctx.buffer.ReadBinary(int(size), err)
+			skipSizedBytes(ctx, size)
 		}
 	case BINARY:
-		length := uint32(ctx.ReadBinaryLength())
+		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
-		_ = ctx.buffer.ReadBinary(int(length), err)
+		ctx.buffer.Skip(length, err)
 	case BOOL_ARRAY, INT8_ARRAY, UINT8_ARRAY:
 		length := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
-		_ = ctx.buffer.ReadBinary(length, err)
+		ctx.buffer.Skip(length, err)
 	case INT16_ARRAY, UINT16_ARRAY, FLOAT16_ARRAY, BFLOAT16_ARRAY:
 		size := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
-		_ = ctx.buffer.ReadBinary(size, err)
+		ctx.buffer.Skip(size, err)
 	case INT32_ARRAY, UINT32_ARRAY, FLOAT32_ARRAY:
 		size := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
-		_ = ctx.buffer.ReadBinary(size, err)
+		ctx.buffer.Skip(size, err)
 	case INT64_ARRAY, UINT64_ARRAY, FLOAT64_ARRAY:
 		size := ctx.ReadBinaryLength()
 		if ctx.HasError() {
 			return
 		}
-		_ = ctx.buffer.ReadBinary(size, err)
+		ctx.buffer.Skip(size, err)
 
 	// Date/Time types
 	case DATE:

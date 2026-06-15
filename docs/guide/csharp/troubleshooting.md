@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 12
+sidebar_position: 13
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers common C# runtime issues and fixes.
+This page covers common C# issues and fixes.
 
 ## `TypeNotRegisteredException`
 
@@ -38,10 +38,10 @@ Ensure the same type-ID/name mapping exists on both write and read sides.
 
 ## `InvalidDataException: xlang bitmap mismatch`
 
-**Cause**: The payload is not an xlang Fory frame, or it came from a peer/runtime mode that does
+**Cause**: The payload is not an xlang Fory frame, or it came from a peer mode that does
 not emit the xlang header C# requires.
 
-**Fix**: Ensure the payload was produced by an xlang-compatible peer runtime. C# always expects the
+**Fix**: Ensure the payload was produced by an xlang-compatible peer. C# always expects the
 xlang header and does not expose a mode switch, so configure the writer instead:
 
 ```java
@@ -54,16 +54,17 @@ Fory fory = Fory.builder()
 fory = pyfory.Fory(xlang=True)
 ```
 
-## Schema Version Mismatch in Strict Mode
+## Schema Version Mismatch with Same-Schema Payloads
 
 **Symptom**: `InvalidDataException` while deserializing generated struct types.
 
-**Cause**: `Compatible(false)` with `CheckStructVersion(true)` enforces exact schema hashes.
+**Cause**: `Compatible(false)` with `CheckStructVersion(true)` checks schema hashes for intentional
+same-schema payloads.
 
 **Fix options**:
 
-- Enable `Compatible(true)` for schema evolution.
-- Keep writer/reader model definitions in sync.
+- Keep compatible mode enabled for schema evolution.
+- Use `Compatible(false)` only when every reader and writer always uses the same schema.
 
 ## Circular Reference Failures
 
@@ -83,6 +84,25 @@ Fory fory = Fory.Builder().TrackRef(true).Build();
 
 **Fix**: Use `BuildThreadSafe()`.
 
+## Generated gRPC Compile Errors
+
+**Symptom**: Generated `*Grpc.cs` files cannot find `Grpc.Core` types.
+
+**Cause**: gRPC packages are application dependencies. The `Apache.Fory`
+package does not add gRPC as a hard dependency.
+
+**Fix**: Add `Grpc.Core.Api` and your chosen gRPC server or client package, such
+as `Grpc.AspNetCore` for server hosting or `Grpc.Net.Client` for clients. See
+[gRPC Support](grpc-support.md).
+
+## Protobuf Client Cannot Decode a Fory gRPC Service
+
+**Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message
+bodies. They do not send protobuf message bytes.
+
+**Fix**: Use a Fory-generated client and server for the Fory endpoint, or expose
+a separate protobuf endpoint for generic protobuf clients.
+
 ## Validation Commands
 
 Run C# tests from repo root:
@@ -95,5 +115,6 @@ dotnet test Fory.sln -c Release
 ## Related Topics
 
 - [Configuration](configuration.md)
+- [gRPC Support](grpc-support.md)
 - [Schema Evolution](schema-evolution.md)
 - [Thread Safety](thread-safety.md)

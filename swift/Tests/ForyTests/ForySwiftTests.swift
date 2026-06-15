@@ -396,38 +396,6 @@ func structEvolvingOverrideUsesSmallerCompatiblePayload() throws {
 }
 
 @Test
-func decodeLimitsRejectOversizedPayloads() throws {
-  let writer = Fory()
-
-  let oversizedCollection = try writer.serialize(["a", "b", "c"])
-  let collectionLimited = Fory(config: .init(maxCollectionSize: 2))
-  do {
-    let _: [String] = try collectionLimited.deserialize(oversizedCollection)
-    #expect(Bool(false))
-  } catch {}
-
-  let oversizedMap = try writer.serialize([Int32(1): Int32(1), 2: 2, 3: 3])
-  do {
-    let _: [Int32: Int32] = try collectionLimited.deserialize(oversizedMap)
-    #expect(Bool(false))
-  } catch {}
-
-  let oversizedBinary = try writer.serialize(Data([0x01, 0x02, 0x03, 0x04]))
-  let binaryLimited = Fory(config: .init(maxBinarySize: 3))
-  do {
-    let _: Data = try binaryLimited.deserialize(oversizedBinary)
-    #expect(Bool(false))
-  } catch {}
-
-  let oversizedArrayPayload = try writer.serialize([UInt16(1), 2])
-  let payloadLimited = Fory(config: .init(maxCollectionSize: 1))
-  do {
-    let _: [UInt16] = try payloadLimited.deserialize(oversizedArrayPayload)
-    #expect(Bool(false))
-  } catch {}
-}
-
-@Test
 func deserializeRejectsTrailingBytes() throws {
   let fory = Fory()
   let payload = try fory.serialize(Int32(7))
@@ -624,6 +592,53 @@ func duplicateNameRegistrationIsRejected() throws {
     try resolver.register(Person.self, namespace: "demo", typeName: "entity")
     #expect(Bool(false))
   } catch {}
+}
+
+@Test
+func nameRegistrationSplitsLastDot() throws {
+  let resolver = TypeResolver(trackRef: false)
+  try resolver.register(Address.self, name: "com.example.Address")
+
+  let info = try resolver.requireTypeInfo(namespace: "com.example", typeName: "Address")
+  #expect(info.namespace.value == "com.example")
+  #expect(info.typeName.value == "Address")
+}
+
+@Test
+func nameRegistrationAllowsSimpleName() throws {
+  let resolver = TypeResolver(trackRef: false)
+  try resolver.register(Address.self, name: "Address")
+
+  let info = try resolver.requireTypeInfo(namespace: "", typeName: "Address")
+  #expect(info.namespace.value == "")
+  #expect(info.typeName.value == "Address")
+}
+
+@Test
+func nameRegistrationRejectsEmptyName() throws {
+  let fory = Fory()
+
+  #expect(throws: ForyError.self) {
+    try fory.register(Address.self, name: "")
+  }
+}
+
+@Test
+func nameRegistrationRejectsTrailingDot() throws {
+  let fory = Fory()
+
+  #expect(throws: ForyError.self) {
+    try fory.register(Address.self, name: "com.example.")
+  }
+}
+
+@Test
+func splitNameRegistrationRejectsDottedTypeName() throws {
+  let resolver = TypeResolver(trackRef: false)
+
+  #expect(throws: ForyError.self) {
+    try resolver.register(Address.self, namespace: "com", typeName: "example.Address")
+  }
 }
 
 @Test

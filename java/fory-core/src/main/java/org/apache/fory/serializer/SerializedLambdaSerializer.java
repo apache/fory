@@ -31,7 +31,6 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Serializer for {@link SerializedLambda}. It writes the JDK lambda payload through the public
@@ -43,7 +42,6 @@ public class SerializedLambdaSerializer extends Serializer {
   static final Class<SerializedLambda> SERIALIZED_LAMBDA = SerializedLambda.class;
   private static final MethodHandle READ_RESOLVE_HANDLE;
   private final TypeResolver typeResolver;
-  private final int maxCollectionSize;
 
   static {
     if (AndroidSupport.IS_ANDROID) {
@@ -54,7 +52,7 @@ public class SerializedLambdaSerializer extends Serializer {
         Preconditions.checkNotNull(
             readResolveMethod, "Missing readResolve for " + SERIALIZED_LAMBDA);
         READ_RESOLVE_HANDLE =
-            _JDKAccess._trustedLookup(SERIALIZED_LAMBDA).unreflect(readResolveMethod);
+            SerializationHookLookup.readResolveHandle(SERIALIZED_LAMBDA, readResolveMethod);
       } catch (IllegalAccessException e) {
         throw new ForyException(e);
       }
@@ -64,7 +62,6 @@ public class SerializedLambdaSerializer extends Serializer {
   public SerializedLambdaSerializer(TypeResolver typeResolver, Class<?> cls) {
     super(typeResolver.getConfig(), cls);
     this.typeResolver = typeResolver;
-    maxCollectionSize = typeResolver.getConfig().maxCollectionSize();
     Preconditions.checkArgument(cls == SERIALIZED_LAMBDA);
   }
 
@@ -131,9 +128,10 @@ public class SerializedLambdaSerializer extends Serializer {
     int implMethodKind = buffer.readVarInt32();
     String instantiatedMethodType = readContext.readStringRef();
     int capturedArgCount = buffer.readVarUInt32Small7();
-    if (capturedArgCount < 0 || capturedArgCount > maxCollectionSize) {
+    if (capturedArgCount < 0) {
       throwInvalidCapturedArgCount(capturedArgCount);
     }
+    buffer.checkReadableBytes(capturedArgCount);
     Object[] capturedArgs = new Object[capturedArgCount];
     for (int i = 0; i < capturedArgCount; i++) {
       capturedArgs[i] = readContext.readRef();
@@ -153,15 +151,8 @@ public class SerializedLambdaSerializer extends Serializer {
   }
 
   private void throwInvalidCapturedArgCount(int capturedArgCount) {
-    if (capturedArgCount < 0) {
-      throw new DeserializationException(
-          "SerializedLambda captured arg count must be non-negative: " + capturedArgCount);
-    }
     throw new DeserializationException(
-        "SerializedLambda captured arg count "
-            + capturedArgCount
-            + " exceeds max collection size "
-            + maxCollectionSize);
+        "SerializedLambda captured arg count must be non-negative: " + capturedArgCount);
   }
 
   static Object readResolve(Object replacement) {

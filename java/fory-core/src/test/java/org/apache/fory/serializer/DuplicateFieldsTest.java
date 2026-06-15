@@ -25,6 +25,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.memory.MemoryBuffer;
@@ -46,6 +47,61 @@ public class DuplicateFieldsTest extends ForyTestBase {
     int f1;
   }
 
+  public static class PrivateBase {
+    @ForyField(id = 1)
+    private int value;
+
+    @ForyField(id = 2)
+    private final long finalValue;
+
+    public PrivateBase() {
+      this(0, 0);
+    }
+
+    public PrivateBase(@ForyField(id = 1) int value, @ForyField(id = 2) long finalValue) {
+      this.value = value;
+      this.finalValue = finalValue;
+    }
+
+    int baseValue() {
+      return value;
+    }
+
+    long baseFinalValue() {
+      return finalValue;
+    }
+  }
+
+  public static class PrivateChild extends PrivateBase {
+    @ForyField(id = 3)
+    private int value;
+
+    @ForyField(id = 4)
+    private final long finalValue;
+
+    public PrivateChild() {
+      this(0, 0, 0, 0);
+    }
+
+    public PrivateChild(
+        @ForyField(id = 1) int baseValue,
+        @ForyField(id = 2) long baseFinalValue,
+        @ForyField(id = 3) int value,
+        @ForyField(id = 4) long finalValue) {
+      super(baseValue, baseFinalValue);
+      this.value = value;
+      this.finalValue = finalValue;
+    }
+
+    int childValue() {
+      return value;
+    }
+
+    long childFinalValue() {
+      return finalValue;
+    }
+  }
+
   @Test()
   public void testDuplicateFieldsNoCompatible() {
     C c = new C();
@@ -59,6 +115,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
             .withRefTracking(false)
             .withCodegen(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     {
       ObjectSerializer<C> serializer = new ObjectSerializer<>(fory.getTypeResolver(), C.class);
@@ -88,12 +145,38 @@ public class DuplicateFieldsTest extends ForyTestBase {
               .withRefTracking(false)
               .withCodegen(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       C newC = (C) serDeCheckSerializer(fory1, c, "Codec");
       assertEquals(newC.f1, c.f1);
       assertEquals(((B) newC).f1, ((B) c).f1);
       assertEquals(newC, c);
     }
+  }
+
+  @Test
+  public void testPrivateDuplicateFieldsNoCompatible() {
+    PrivateChild value = new PrivateChild(10, 20, -10, -20);
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(false)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Serializer<PrivateChild> serializer =
+        Serializers.newSerializer(
+            fory,
+            PrivateChild.class,
+            CodecUtils.loadOrGenObjectCodecClass(PrivateChild.class, fory));
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    writeSerializer(fory, serializer, buffer, value);
+    PrivateChild newValue = readSerializer(fory, serializer, buffer);
+    assertEquals(newValue.baseValue(), value.baseValue());
+    assertEquals(newValue.baseFinalValue(), value.baseFinalValue());
+    assertEquals(newValue.childValue(), value.childValue());
+    assertEquals(newValue.childFinalValue(), value.childFinalValue());
   }
 
   @Test
@@ -123,22 +206,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
       assertEquals(newC, c);
     }
     {
-      // Use CompatibleSerializer JIT version
-      Serializer<C> serializer =
-          Serializers.newSerializer(
-              fory,
-              C.class,
-              CodecUtils.loadOrGenCompatibleCodecClass(
-                  fory, C.class, fory.getTypeResolver().getTypeDef(C.class, true)));
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
-      writeSerializer(fory, serializer, buffer, c);
-      C newC = readSerializer(fory, serializer, buffer);
-      assertEquals(newC.f1, c.f1);
-      assertEquals(((B) newC).f1, ((B) c).f1);
-      assertEquals(newC, c);
-    }
-    {
-      // FallbackSerializer/CodegenSerializer will set itself to ClassResolver.
+      // The compatible generated serializer is schema-pair owned and installed by TypeResolver.
       Fory fory1 = builder.build();
       C newC = serDeCheckSerializer(fory1, c, ".*Codec|.*Serializer");
       assertEquals(newC.f1, c.f1);

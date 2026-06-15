@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers Scala-specific runtime configuration and Fory instance creation.
+This page covers Scala-specific Fory instance configuration and creation.
 
 ## Xlang Setup
 
@@ -47,7 +47,7 @@ fory.register(classOf[Point])
 For same-language Scala/JVM payloads that need native JVM object behavior, you
 must:
 
-1. Create the runtime with `ForyScala.builder().withXlang(false)`, or install
+1. Create the Fory instance with `ForyScala.builder().withXlang(false)`, or install
    `ForyScala` with `Fory.builder().withXlang(false).withModule(ForyScala)`.
 2. Register application classes before serialization.
 
@@ -81,7 +81,7 @@ val fory = ForyScala.builder().withXlang(false)
 Circular references are common in Scala. Reference tracking should be enabled with `withRefTracking(true)`:
 
 ```scala
-val fory = ForyScala.builder().withXlang(false)
+val fory = ForyScala.builder()
   .withRefTracking(true)
   .build()
 ```
@@ -132,8 +132,9 @@ import org.apache.fory.scala.ForyScala
 val fory = ForyScala.builder().withXlang(false)
   // Enable reference tracking for circular references
   .withRefTracking(true)
-  // Enable schema evolution support for native-mode payloads
-  .withCompatible(true)
+  // Same-schema optimization. Use only when every reader and writer
+  // always uses the same Scala/JVM schema.
+  .withCompatible(false)
   // Enable async compilation for better startup performance
   .withAsyncCompilation(true)
   .build()
@@ -159,9 +160,19 @@ In xlang mode, Scala collections use canonical `list`, `set`, and `map`
 payloads instead of Scala factory payloads. Generated optional fields use
 `Option[T]`.
 
+## Compatible Mode
+
+Compatible mode is enabled by default through the Java builder in both xlang and native mode. Keep
+this default when models may evolve independently, when services deploy separately, or when xlang
+schemas are written by hand in different languages.
+
+Use `withCompatible(false)` only when the class schema used to deserialize every payload is always
+the same as the class schema used to serialize it and you want faster serialization and smaller size.
+For xlang payloads, call `withCompatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
 ## Security
 
-Scala uses the Java runtime configuration surface. Keep class registration enabled for production
+Scala uses the Java configuration surface. Keep class registration enabled for production
 and any untrusted payload source:
 
 ```scala

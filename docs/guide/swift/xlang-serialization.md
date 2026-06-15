@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Fory Swift can exchange payloads with other Fory runtimes using the xlang protocol.
+Fory Swift can exchange payloads with other Fory implementations using the xlang protocol.
 
 ## Recommended Xlang Configuration
 
@@ -45,7 +45,7 @@ fory.register(Order.self, id: 100)
 ### Name-based registration
 
 ```swift
-try fory.register(Order.self, namespace: "com.example", name: "Order")
+try fory.register(Order.self, name: "com.example.Order")
 ```
 
 ## Xlang Rules
@@ -89,14 +89,14 @@ Generated Swift code includes:
 
 - `@ForyStruct`, `@ForyEnum`, `@ForyUnion`, and field/case metadata
 - Tagged union enums (associated-value enum cases)
-- `ForyRegistration.register(_:)` helpers with transitive import registration
+- `ForyModule.install(_:)` helpers with transitive import installation
 - `toBytes` / `fromBytes` helpers on generated types
 
-Use generated registration before xlang serialization:
+Install the generated module before xlang serialization:
 
 ```swift
 let fory = Fory(ref: true)
-try Addressbook.ForyRegistration.register(fory)
+try Addressbook.ForyModule.install(fory)
 
 let payload = try fory.serialize(book)
 let decoded: Addressbook.AddressBook = try fory.deserialize(payload)

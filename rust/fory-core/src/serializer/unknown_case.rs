@@ -18,7 +18,7 @@
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::any::check_generic_container_type;
+use crate::serializer::any::check_erased_any_payload_type;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::type_id::{self, TypeId};
 use crate::types::UnknownCase;
@@ -48,7 +48,7 @@ fn write_typed_payload(context: &mut WriteContext, unknown: &UnknownCase) -> Res
     // polymorphic value. For internal numeric ids, the id byte is the complete
     // Any type metadata. Scalar Any payloads are not ref-tracked, so their ref
     // metadata is always NotNullValue before the original numeric encoding.
-    // Other types fall back to the normal Arc<dyn Any> path.
+    // Other types fall back to the normal Arc<dyn Any + Send + Sync> path.
     context.writer.write_i8(RefFlag::NotNullValue as i8);
     context.writer.write_u8(type_id as u8);
     match type_id {
@@ -130,7 +130,7 @@ pub fn read_payload(context: &mut ReadContext, case_id: u32) -> Result<UnknownCa
             let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
             let value = context
                 .ref_reader
-                .get_arc_ref::<dyn Any>(ref_id)
+                .get_arc_ref::<dyn std::any::Any + Send + Sync>(ref_id)
                 .ok_or_else(|| {
                     Error::invalid_data(format!("UnknownCase ref {} not found", ref_id))
                 })?;
@@ -141,18 +141,26 @@ pub fn read_payload(context: &mut ReadContext, case_id: u32) -> Result<UnknownCa
             ))
         }
         RefFlag::NotNullValue | RefFlag::RefValue => {
+            let ref_id = if matches!(ref_flag, RefFlag::RefValue) {
+                // The wire ref id belongs to the unknown payload itself. Reserve it
+                // before reading nested payload fields so their own refs keep the
+                // same ids written by the normal reference engine.
+                Some(context.ref_reader.reserve_ref_id())
+            } else {
+                None
+            };
             // The unknown-case serializer owns only the union payload envelope. It must
             // not add a depth frame here: the decoded Any value is not a new nesting
             // boundary by itself, and real nested payload serializers perform their
             // own depth checks.
             let type_info = context.read_any_type_info()?;
-            check_generic_container_type(&type_info)?;
+            check_erased_any_payload_type(&type_info)?;
             let boxed = type_info
                 .get_harness()
-                .read_polymorphic_data(context, &type_info)?;
-            let value: Arc<dyn Any> = Arc::from(boxed);
-            if matches!(ref_flag, RefFlag::RefValue) {
-                context.ref_reader.store_arc_ref(value.clone());
+                .read_polymorphic_data_as_send_sync_any(context, &type_info)?;
+            let value: Arc<dyn std::any::Any + Send + Sync> = Arc::from(boxed);
+            if let Some(ref_id) = ref_id {
+                context.ref_reader.store_arc_ref_at(ref_id, value.clone());
             }
             Ok(UnknownCase::from_runtime(
                 case_id,
@@ -198,6 +206,11 @@ impl Serializer for UnknownCase {
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         read_payload(context, 0)
+    }
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+        Ok(crate::serializer::box_send_sync(read_payload(context, 0)?))
     }
 
     fn fory_get_type_id(_: &crate::resolver::TypeResolver) -> Result<TypeId, Error> {

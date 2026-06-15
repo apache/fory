@@ -293,8 +293,43 @@ public sealed class TypeResolver
         InvalidateFinalizedVersion();
     }
 
+    internal static (string NamespaceName, string TypeName) SplitTypeName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        if (name.Length == 0)
+        {
+            throw new ArgumentException("registration name must not be empty", nameof(name));
+        }
+
+        int separator = name.LastIndexOf('.');
+        if (separator == name.Length - 1)
+        {
+            throw new ArgumentException("registration name must end with a non-empty type name", nameof(name));
+        }
+
+        return separator < 0
+            ? (string.Empty, name)
+            : (name[..separator], name[(separator + 1)..]);
+    }
+
+    internal static void ValidateSplitTypeName(string namespaceName, string typeName)
+    {
+        ArgumentNullException.ThrowIfNull(namespaceName);
+        ArgumentNullException.ThrowIfNull(typeName);
+        if (typeName.Length == 0)
+        {
+            throw new ArgumentException("typeName must not be empty", nameof(typeName));
+        }
+
+        if (typeName.Contains(".", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("typeName must not contain '.'", nameof(typeName));
+        }
+    }
+
     internal void Register(Type type, string namespaceName, string typeName, TypeInfo? explicitTypeInfo = null)
     {
+        ValidateSplitTypeName(namespaceName, typeName);
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
         MetaString typeNameMeta = MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings);
@@ -1090,6 +1125,7 @@ public sealed class TypeResolver
     private static bool[] ReadBoolArray(ReadContext context)
     {
         int count = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.CheckBound(count);
         bool[] values = new bool[count];
         for (int i = 0; i < values.Length; i++)
         {
@@ -1102,6 +1138,7 @@ public sealed class TypeResolver
     private static sbyte[] ReadInt8Array(ReadContext context)
     {
         int count = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.CheckBound(count);
         sbyte[] values = new sbyte[count];
         for (int i = 0; i < values.Length; i++)
         {
@@ -1113,13 +1150,14 @@ public sealed class TypeResolver
 
     private static short[] ReadInt16Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("int16 array payload size mismatch");
+            throw new InvalidDataException("int16 array byte size mismatch");
         }
 
-        short[] values = new short[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        short[] values = new short[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt16();
@@ -1130,13 +1168,14 @@ public sealed class TypeResolver
 
     private static int[] ReadInt32Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("int32 array payload size mismatch");
+            throw new InvalidDataException("int32 array byte size mismatch");
         }
 
-        int[] values = new int[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        int[] values = new int[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt32();
@@ -1147,13 +1186,14 @@ public sealed class TypeResolver
 
     private static long[] ReadInt64Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("int64 array payload size mismatch");
+            throw new InvalidDataException("int64 array byte size mismatch");
         }
 
-        long[] values = new long[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        long[] values = new long[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt64();
@@ -1164,13 +1204,14 @@ public sealed class TypeResolver
 
     private static ushort[] ReadUInt16Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("uint16 array payload size mismatch");
+            throw new InvalidDataException("uint16 array byte size mismatch");
         }
 
-        ushort[] values = new ushort[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        ushort[] values = new ushort[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt16();
@@ -1181,13 +1222,14 @@ public sealed class TypeResolver
 
     private static uint[] ReadUInt32Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("uint32 array payload size mismatch");
+            throw new InvalidDataException("uint32 array byte size mismatch");
         }
 
-        uint[] values = new uint[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        uint[] values = new uint[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt32();
@@ -1198,13 +1240,14 @@ public sealed class TypeResolver
 
     private static ulong[] ReadUInt64Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("uint64 array payload size mismatch");
+            throw new InvalidDataException("uint64 array byte size mismatch");
         }
 
-        ulong[] values = new ulong[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        ulong[] values = new ulong[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt64();
@@ -1215,13 +1258,14 @@ public sealed class TypeResolver
 
     private static float[] ReadFloat32Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("float32 array payload size mismatch");
+            throw new InvalidDataException("float32 array byte size mismatch");
         }
 
-        float[] values = new float[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        float[] values = new float[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadFloat32();
@@ -1232,13 +1276,14 @@ public sealed class TypeResolver
 
     private static double[] ReadFloat64Array(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("float64 array payload size mismatch");
+            throw new InvalidDataException("float64 array byte size mismatch");
         }
 
-        double[] values = new double[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        double[] values = new double[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadFloat64();

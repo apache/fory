@@ -27,45 +27,18 @@ import 'xlang_test_manual.dart' as manual;
 
 part 'xlang_test_models.fory.dart';
 
-void registerXlangType(
-  Fory fory,
-  Type type, {
-  int? id,
-  String? namespace,
-  String? typeName,
-}) {
-  if (manual.registerXlangManualType(
-    fory,
-    type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  )) {
+void registerXlangType(Fory fory, Type type, {int? id, String? name}) {
+  if (manual.registerXlangManualType(fory, type, id: id, name: name)) {
     return;
   }
-  XlangTestModelsFory.register(
-    fory,
-    type,
-    id: id,
-    namespace: namespace,
-    typeName: typeName,
-  );
+  XlangTestModelsForyModule.register(fory, type, id: id, name: name);
 }
 
 @ForyStruct()
-enum Color {
-  green,
-  red,
-  blue,
-  white,
-}
+enum Color { green, red, blue, white }
 
 @ForyStruct()
-enum TestEnum {
-  valueA,
-  valueB,
-  valueC,
-}
+enum TestEnum { valueA, valueB, valueC }
 
 @ForyStruct()
 class TwoEnumFieldStructEvolution {

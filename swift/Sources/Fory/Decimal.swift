@@ -272,11 +272,11 @@ extension Decimal: Serializer {
         guard length > 0 else {
             throw ForyError.invalidData("invalid decimal magnitude length \(length)")
         }
-        let payload = try context.buffer.readBytes(count: length)
-        guard payload[length - 1] != 0 else {
-            throw ForyError.invalidData("non-canonical decimal payload: trailing zero byte")
+        let magnitudeBytes = try context.buffer.readBytes(count: length)
+        guard magnitudeBytes[length - 1] != 0 else {
+            throw ForyError.invalidData("non-canonical decimal magnitude bytes: trailing zero byte")
         }
-        let normalized = normalizeDecimalMagnitude(payload)
+        let normalized = normalizeDecimalMagnitude(magnitudeBytes)
         guard !normalized.isEmpty else {
             throw ForyError.invalidData("big decimal encoding must not represent zero")
         }

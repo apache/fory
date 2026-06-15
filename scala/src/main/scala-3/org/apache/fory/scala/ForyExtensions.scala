@@ -35,6 +35,15 @@ extension (fory: BaseFory)
       null,
       null)
 
+  def register[T](name: String)(using serializer: ForySerializer[T], tag: ClassTag[T]): Unit =
+    val (namespace, typeName) = ForySerializer.splitName(name)
+    ForySerializer.registerModule(
+      fory,
+      tag.runtimeClass.asInstanceOf[Class[T]],
+      null,
+      namespace,
+      typeName)
+
   def register[T](namespace: String, typeName: String)(using
       serializer: ForySerializer[T],
       tag: ClassTag[T]): Unit =

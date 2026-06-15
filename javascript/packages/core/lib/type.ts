@@ -149,10 +149,22 @@ export const TypeId = {
     ].includes(id as any);
   },
   polymorphicType(id: number) {
-    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.EXT, TypeId.NAMED_EXT].includes(id as any);
+    return [
+      TypeId.STRUCT,
+      TypeId.NAMED_STRUCT,
+      TypeId.COMPATIBLE_STRUCT,
+      TypeId.NAMED_COMPATIBLE_STRUCT,
+      TypeId.EXT,
+      TypeId.NAMED_EXT,
+    ].includes(id as any);
   },
   structType(id: number) {
-    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT].includes(id as any);
+    return [
+      TypeId.STRUCT,
+      TypeId.NAMED_STRUCT,
+      TypeId.COMPATIBLE_STRUCT,
+      TypeId.NAMED_COMPATIBLE_STRUCT,
+    ].includes(id as any);
   },
   extType(id: number) {
     return [TypeId.EXT, TypeId.NAMED_EXT].includes(id as any);
@@ -161,12 +173,14 @@ export const TypeId = {
     return [TypeId.ENUM, TypeId.NAMED_ENUM].includes(id as any);
   },
   userDefinedType(id: number) {
-    return this.structType(id)
+    return (
+      this.structType(id)
       || this.extType(id)
       || this.enumType(id)
       || id == TypeId.UNION
       || id == TypeId.TYPED_UNION
-      || id == TypeId.NAMED_UNION;
+      || id == TypeId.NAMED_UNION
+    );
   },
   isBuiltin(id: number) {
     return !this.userDefinedType(id) && id !== TypeId.UNKNOWN;
@@ -202,7 +216,8 @@ export const TypeId = {
     // NONE(36), DURATION(37), TIMESTAMP(38), DATE(39), DECIMAL(40), BINARY(41)
     if (typeId >= TypeId.NONE && typeId <= TypeId.BINARY) return true;
     // Typed arrays BOOL_ARRAY(43)..FLOAT64_ARRAY(56)
-    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY) return true;
+    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY)
+      return true;
     return false;
   },
 } as const;
@@ -254,7 +269,7 @@ export enum RefFlags {
 
 export const MaxInt32 = 2147483647;
 export const MinInt32 = -2147483648;
-export const MaxUInt32 = 0xFFFFFFFF;
+export const MaxUInt32 = 0xffffffff;
 export const MinUInt32 = 0;
 export const HalfMaxInt32 = MaxInt32 / 2;
 export const HalfMinInt32 = MinInt32 / 2;
@@ -276,8 +291,6 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
-  maxBinarySize?: number;
-  maxCollectionSize?: number;
   hooks: {
     afterCodeGenerated?: (code: string) => string;
   };

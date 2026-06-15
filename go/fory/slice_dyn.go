@@ -259,17 +259,30 @@ func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 }
 
 func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	s.readData(ctx, value, -1)
+}
+
+func (s sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expectedLength int) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := ctx.ReadCollectionLength()
 	sliceType := value.Type()
-	value.Set(reflect.MakeSlice(sliceType, length, length))
+	if ctx.HasError() {
+		return
+	}
+	if expectedLength >= 0 && length != expectedLength {
+		ctx.SetError(DeserializationErrorf("array length %d does not match serialized length %d", expectedLength, length))
+		return
+	}
 	if length == 0 {
+		value.Set(reflect.MakeSlice(sliceType, 0, 0))
 		return
 	}
 
 	collectFlag := buf.ReadInt8(ctxErr)
-	ctx.RefResolver().Reference(value)
+	if ctx.HasError() {
+		return
+	}
 
 	var elemTypeInfo *TypeInfo
 	var elemType reflect.Type
@@ -286,10 +299,23 @@ func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 			elemType = sliceType.Elem()
 			elemSerializer, _ = ctx.TypeResolver().getSerializerByType(elemType, false)
 		}
-		s.readSameType(ctx, buf, value, elemType, elemSerializer, collectFlag)
+		if ctx.HasError() {
+			return
+		}
+		if !buf.CheckReadable(length, ctxErr) {
+			return
+		}
+		value.Set(reflect.MakeSlice(sliceType, length, length))
+		ctx.RefResolver().Reference(value)
+		s.readSameType(ctx, buf, value, elemType, elemSerializer, collectFlag, length)
 		return
 	}
-	s.readDifferentTypes(ctx, buf, value, collectFlag)
+	if !buf.CheckReadable(length, ctxErr) {
+		return
+	}
+	value.Set(reflect.MakeSlice(sliceType, length, length))
+	ctx.RefResolver().Reference(value)
+	s.readDifferentTypes(ctx, buf, value, collectFlag, length)
 }
 
 func (s sliceDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
@@ -298,7 +324,7 @@ func (s sliceDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, 
 }
 
 // readSameType handles deserialization of slices where all elements share the same type
-func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, flag int8) {
+func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, flag int8, length int) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
 	ctxErr := ctx.Err()
@@ -316,7 +342,7 @@ func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, valu
 		isNamedStruct = true
 	}
 
-	for i := 0; i < value.Len(); i++ {
+	for i := 0; i < length; i++ {
 		if trackRefs {
 			refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 			if refErr != nil {
@@ -349,6 +375,9 @@ func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, valu
 				serializer.ReadData(ctx, elem)
 				ctx.RefResolver().Reference(elem)
 			}
+			if ctx.HasError() {
+				return
+			}
 			value.Index(i).Set(elem)
 		} else if hasNull {
 			refFlag := buf.ReadInt8(ctxErr)
@@ -357,26 +386,29 @@ func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, valu
 			}
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
+			if ctx.HasError() {
+				return
+			}
 			value.Index(i).Set(elem)
 		} else {
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
+			if ctx.HasError() {
+				return
+			}
 			value.Index(i).Set(elem)
-		}
-		if ctx.HasError() {
-			return
 		}
 	}
 }
 
 // readDifferentTypes handles deserialization of slices with mixed element types
 func (s sliceDynSerializer) readDifferentTypes(
-	ctx *ReadContext, buf *ByteBuffer, value reflect.Value, flag int8) {
+	ctx *ReadContext, buf *ByteBuffer, value reflect.Value, flag int8, length int) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
 	ctxErr := ctx.Err()
 
-	for i := 0; i < value.Len(); i++ {
+	for i := 0; i < length; i++ {
 		if trackRefs {
 			refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 			if refErr != nil {
@@ -402,6 +434,9 @@ func (s sliceDynSerializer) readDifferentTypes(
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			ctx.RefResolver().SetReadObject(refID, elem)
+			if ctx.HasError() {
+				return
+			}
 			value.Index(i).Set(elem)
 		} else {
 			if hasNull {
@@ -417,10 +452,10 @@ func (s sliceDynSerializer) readDifferentTypes(
 			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
+			if ctx.HasError() {
+				return
+			}
 			value.Index(i).Set(elem)
-		}
-		if ctx.HasError() {
-			return
 		}
 	}
 }

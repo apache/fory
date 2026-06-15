@@ -33,6 +33,10 @@ SCHEMAS = [
 OUTPUTS = {
     "java": TEST_DIR / "java/src/main/java/generated",
     "python": TEST_DIR / "python/grpc_tests/generated",
+    "go": TEST_DIR / "go/generated",
+    "rust": TEST_DIR / "rust/generated/src",
+    "csharp": TEST_DIR / "csharp/generated",
+    "kotlin": TEST_DIR / "kotlin/src/main/kotlin/generated",
 }
 
 
@@ -57,6 +61,12 @@ def main() -> int:
         )
 
     for schema in SCHEMAS:
+        # Each Go schema goes into its own subdir (named after the package) so
+        # multiple schemas with different package names can share the same
+        # generated/ root without one package's files overwriting another's.
+        pkg_name = schema.stem.replace(".", "_")
+        go_pkg_out = OUTPUTS["go"] / pkg_name
+        go_pkg_out.mkdir(parents=True, exist_ok=True)
         subprocess.check_call(
             [
                 sys.executable,
@@ -66,6 +76,10 @@ def main() -> int:
                 str(schema),
                 f"--java_out={OUTPUTS['java']}",
                 f"--python_out={OUTPUTS['python']}",
+                f"--go_out={go_pkg_out}",
+                f"--rust_out={OUTPUTS['rust']}",
+                f"--csharp_out={OUTPUTS['csharp']}",
+                f"--kotlin_out={OUTPUTS['kotlin']}",
                 "--grpc",
             ],
             env=env,

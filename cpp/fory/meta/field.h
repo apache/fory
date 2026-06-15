@@ -21,12 +21,14 @@
 
 #include "fory/meta/field_info.h"
 #include "fory/type/type.h"
+#include "fory/util/macros.h"
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
 namespace fory {
 
@@ -197,5 +199,39 @@ template <typename T> struct field_dynamic_value {
 };
 template <typename T>
 inline constexpr int field_dynamic_value_v = field_dynamic_value<T>::value;
+
+template <typename StructT, typename Entry>
+using field_value_type_t = unwrap_field_t<meta::FieldRawTypeT<
+    std::remove_cv_t<std::remove_reference_t<StructT>>, Entry>>;
+
+template <typename StructT, typename Entry>
+FORY_ALWAYS_INLINE decltype(auto) field_value_get(StructT &&obj, Entry entry) {
+  using RawFieldType =
+      meta::FieldRawTypeT<std::remove_cv_t<std::remove_reference_t<StructT>>,
+                          Entry>;
+  if constexpr (meta::IsPropertyDescriptorV<Entry>) {
+    return meta::RemoveCVRefT<Entry>::get(std::forward<StructT>(obj));
+  } else if constexpr (is_fory_field_v<RawFieldType>) {
+    return (std::forward<StructT>(obj).*entry).value;
+  } else {
+    return (std::forward<StructT>(obj).*entry);
+  }
+}
+
+template <typename StructT, typename Entry, typename Value>
+FORY_ALWAYS_INLINE void field_value_set(StructT &&obj, Entry entry,
+                                        Value &&value) {
+  using RawFieldType =
+      meta::FieldRawTypeT<std::remove_cv_t<std::remove_reference_t<StructT>>,
+                          Entry>;
+  if constexpr (meta::IsPropertyDescriptorV<Entry>) {
+    meta::RemoveCVRefT<Entry>::set(std::forward<StructT>(obj),
+                                   std::forward<Value>(value));
+  } else if constexpr (is_fory_field_v<RawFieldType>) {
+    (std::forward<StructT>(obj).*entry).value = std::forward<Value>(value);
+  } else {
+    (std::forward<StructT>(obj).*entry) = std::forward<Value>(value);
+  }
+}
 
 } // namespace fory

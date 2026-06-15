@@ -347,6 +347,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .withXlang(false)
+            .withCompatible(false)
             .build();
 
     ChildHashMap1 map1a = new ChildHashMap1();

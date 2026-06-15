@@ -48,6 +48,7 @@ public class TypeDefEncoderTest {
             .withXlang(false)
             .withMetaShare(true)
             .withMetaCompressor(new ZstdMetaCompressor())
+            .withCompatible(false)
             .build();
     Class<TestFieldsOrderClass1> type = TestFieldsOrderClass1.class;
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();

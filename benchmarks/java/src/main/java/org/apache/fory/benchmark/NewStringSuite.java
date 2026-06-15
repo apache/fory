@@ -19,14 +19,11 @@
 
 package org.apache.fory.benchmark;
 
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.util.StringUtils;
 import org.openjdk.jmh.Main;
 
 public class NewStringSuite {
-
   static String str = StringUtils.random(230);
   static char[] strData = str.toCharArray();
   static byte[] array = new byte[strData.length * 2];
@@ -39,17 +36,6 @@ public class NewStringSuite {
   // @Benchmark
   public Object createJDK8StringByCopy() {
     return new String(strData);
-  }
-
-  private static final long STRING_VALUE_FIELD_OFFSET =
-      ReflectionUtils.getFieldOffset(String.class, "value");
-  private static String stubStr = new String(new char[] {Character.MAX_VALUE, Character.MIN_VALUE});
-
-  // @Benchmark
-  public Object createJDK8StringByUnsafe() {
-    String str = new String(stubStr);
-    UnsafeOps.putObject(str, STRING_VALUE_FIELD_OFFSET, strData);
-    return str;
   }
 
   // @Benchmark

@@ -42,6 +42,13 @@ mixin _BufferMixin {
   /// Number of unread bytes between the reader and writer indices.
   int get readableBytes => _writerIndex - _readerIndex;
 
+  /// Fails if [length] bytes are not currently readable.
+  void checkReadableBytes(int length) {
+    if (length < 0 || length > readableBytes) {
+      throw StateError('Insufficient readable bytes: $length.');
+    }
+  }
+
   /// Returns the written portion of the underlying storage.
   ///
   /// The returned view shares memory with the buffer.

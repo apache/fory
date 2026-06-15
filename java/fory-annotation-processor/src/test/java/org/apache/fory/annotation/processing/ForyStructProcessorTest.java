@@ -40,7 +40,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
-import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.meta.FieldInfo;
 import org.apache.fory.meta.TypeDef;
@@ -80,6 +80,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(false)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Object serializer = fory.getTypeResolver().getTypeInfo(type).getSerializer();
       Assert.assertEquals(serializer.getClass().getName(), serializerType.getName());
@@ -182,6 +183,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(false)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Object roundTrip = fory.deserialize(fory.serialize(value));
       Assert.assertEquals(invoke(type, roundTrip, "getId"), 8);
@@ -190,18 +192,77 @@ public class ForyStructProcessorTest {
   }
 
   @Test
-  public void testPrivateFieldWithoutAccessorsFailsCompilation() throws Exception {
+  public void testPrivateFieldAccessor() throws Exception {
     CompilationResult result =
         compile(
-            "test.BadStruct",
+            "test.InaccessibleStruct",
             "package test;\n"
                 + "import org.apache.fory.annotation.ForyStruct;\n"
-                + "@ForyStruct public class BadStruct {\n"
+                + "@ForyStruct public class InaccessibleStruct {\n"
                 + "  private int id;\n"
-                + "  public BadStruct() {}\n"
+                + "  public InaccessibleStruct() {}\n"
                 + "}\n");
-    Assert.assertFalse(result.success);
-    Assert.assertTrue(result.diagnostics().contains("getter/setter"), result.diagnostics());
+    Assert.assertTrue(result.success, result.diagnostics());
+    String generatedSource =
+        result.generatedSource("test/InaccessibleStruct_ForyNativeSerializer.java");
+    Assert.assertTrue(generatedSource.contains("FieldAccessor fieldAccessor0"), generatedSource);
+    try (URLClassLoader loader = result.classLoader()) {
+      Class<?> type = loader.loadClass("test.InaccessibleStruct");
+      Object value = type.getConstructor().newInstance();
+      setField(type, value, "id", 8);
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withClassLoader(loader)
+              .withCodegen(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      Object roundTrip = fory.deserialize(fory.serialize(value));
+      Assert.assertEquals(getField(type, roundTrip, "id"), 8);
+    }
+  }
+
+  @Test
+  public void testNoArgFinalFieldsUseInstantiator() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.FinalNoArgStruct",
+            "package test;\n"
+                + "import org.apache.fory.annotation.ForyField;\n"
+                + "import org.apache.fory.annotation.ForyStruct;\n"
+                + "@ForyStruct public class FinalNoArgStruct {\n"
+                + "  @ForyField(id = 1) private final int id;\n"
+                + "  @ForyField(id = 2) private final String name;\n"
+                + "  public FinalNoArgStruct(int id, String name) {\n"
+                + "    this.id = id;\n"
+                + "    this.name = name;\n"
+                + "  }\n"
+                + "  public int id() { return id; }\n"
+                + "  public String name() { return name; }\n"
+                + "}\n");
+    Assert.assertTrue(result.success, result.diagnostics());
+    String generatedSource =
+        result.generatedSource("test/FinalNoArgStruct_ForyNativeSerializer.java");
+    Assert.assertTrue(generatedSource.contains("ObjectInstantiator generatedObjectInstantiator"));
+    Assert.assertTrue(generatedSource.contains("generatedObjectInstantiator.newInstance()"));
+    Assert.assertTrue(generatedSource.contains("FieldAccessor fieldAccessor0"));
+    Assert.assertTrue(generatedSource.contains("FieldAccessor fieldAccessor1"));
+    try (URLClassLoader loader = result.classLoader()) {
+      Class<?> type = loader.loadClass("test.FinalNoArgStruct");
+      Object value = type.getConstructor(int.class, String.class).newInstance(9, "final");
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withClassLoader(loader)
+              .withCodegen(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      Object roundTrip = fory.deserialize(fory.serialize(value));
+      Assert.assertEquals(invoke(type, roundTrip, "id"), 9);
+      Assert.assertEquals(invoke(type, roundTrip, "name"), "final");
+    }
   }
 
   @Test
@@ -350,6 +411,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(false)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       StaticGeneratedStructSerializer<?> serializer =
           (StaticGeneratedStructSerializer<?>)
@@ -399,6 +461,7 @@ public class ForyStructProcessorTest {
               .withCodegen(false)
               .withRefTracking(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       StaticGeneratedStructSerializer<?> serializer =
           (StaticGeneratedStructSerializer<?>)
@@ -443,6 +506,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(false)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Object value = type.getConstructor().newInstance();
       setField(type, value, "u8", 255);
@@ -478,8 +542,16 @@ public class ForyStructProcessorTest {
                 + "}\n");
     Assert.assertTrue(result.success, result.diagnostics());
     String generatedSource = result.generatedSource("test/RecordStruct_ForyNativeSerializer.java");
-    Assert.assertTrue(generatedSource.contains("private void readCompatibleRecordField0("));
     Assert.assertTrue(generatedSource.contains("switch (remoteField.matchedId)"));
+    Assert.assertTrue(generatedSource.contains("case 0:"));
+    Assert.assertTrue(generatedSource.contains("case 1:"));
+    Assert.assertTrue(generatedSource.contains("remoteField.matchedId == -1"));
+    Assert.assertFalse(generatedSource.contains("ObjectInstantiator generatedObjectInstantiator"));
+    Assert.assertFalse(generatedSource.contains("private final Object[] recordArgs"));
+    Assert.assertFalse(generatedSource.contains("newInstanceWithArguments"));
+    Assert.assertTrue(generatedSource.contains("new test.RecordStruct("));
+    Assert.assertFalse(generatedSource.contains("Object[] values"));
+    Assert.assertFalse(generatedSource.contains("readCompatibleRecordField"));
     try (URLClassLoader loader = result.classLoader()) {
       Class<?> type = loader.loadClass("test.RecordStruct");
       Object value =
@@ -491,6 +563,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(false)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Object roundTrip = fory.deserialize(fory.serialize(value));
       Assert.assertEquals(invoke(type, roundTrip, "id"), 5);
@@ -509,18 +582,25 @@ public class ForyStructProcessorTest {
         compile(
             "test.EvolvingStruct",
             "package test;\n"
+                + "import java.math.BigDecimal;\n"
                 + "import org.apache.fory.annotation.ForyField;\n"
                 + "import org.apache.fory.annotation.ForyStruct;\n"
                 + "import org.apache.fory.annotation.Nullable;\n"
                 + "@ForyStruct public class EvolvingStruct {\n"
                 + "  @Nullable @ForyField(id = 1) public String id;\n"
                 + "  @Nullable @ForyField(id = 2) public String name;\n"
+                + "  @Nullable @ForyField(id = 4) public String flag;\n"
+                + "  @ForyField(id = 5) public int text;\n"
+                + "  @Nullable @ForyField(id = 6) public String decimalText;\n"
+                + "  @Nullable @ForyField(id = 7) public BigDecimal decimalValue;\n"
+                + "  @ForyField(id = 8) public long narrow;\n"
                 + "  public EvolvingStruct() {}\n"
                 + "}\n");
     CompilationResult readerResult =
         compile(
             "test.EvolvingStruct",
             "package test;\n"
+                + "import java.math.BigDecimal;\n"
                 + "import org.apache.fory.annotation.ForyField;\n"
                 + "import org.apache.fory.annotation.ForyStruct;\n"
                 + "import org.apache.fory.annotation.Nullable;\n"
@@ -528,6 +608,11 @@ public class ForyStructProcessorTest {
                 + "  @ForyField(id = 1) public int id;\n"
                 + "  @Nullable @ForyField(id = 2) public String name;\n"
                 + "  @Nullable @ForyField(id = 3) public String added = \"default\";\n"
+                + "  @ForyField(id = 4) public boolean flag;\n"
+                + "  @Nullable @ForyField(id = 5) public String text;\n"
+                + "  @Nullable @ForyField(id = 6) public BigDecimal decimalText;\n"
+                + "  @Nullable @ForyField(id = 7) public String decimalValue;\n"
+                + "  @ForyField(id = 8) public int narrow;\n"
                 + "  public EvolvingStruct() {}\n"
                 + "}\n");
     Assert.assertTrue(writerResult.success, writerResult.diagnostics());
@@ -538,12 +623,25 @@ public class ForyStructProcessorTest {
         generatedSource.contains("readCompatibleField(readContext, value, remoteField)"));
     Assert.assertTrue(generatedSource.contains("private void readCompatibleField0("));
     Assert.assertTrue(generatedSource.contains("switch (remoteField.matchedId)"));
+    Assert.assertTrue(generatedSource.contains("case 0:"));
+    Assert.assertTrue(generatedSource.contains("case 1:"));
+    Assert.assertTrue(generatedSource.contains("remoteField.matchedId == -1"));
+    Assert.assertTrue(generatedSource.contains("ObjectInstantiator generatedObjectInstantiator"));
+    Assert.assertTrue(generatedSource.contains("generatedObjectInstantiator.newInstance()"));
+    Assert.assertFalse(generatedSource.contains("canReadGeneratedField"));
+    Assert.assertTrue(generatedSource.contains("FieldConverters.readIntTarget"));
+    Assert.assertTrue(generatedSource.contains("FieldConverters.readBooleanTarget"));
     try (URLClassLoader writerLoader = writerResult.classLoader();
         URLClassLoader readerLoader = readerResult.classLoader()) {
       Class<?> writerType = writerLoader.loadClass("test.EvolvingStruct");
       Object value = writerType.getConstructor().newInstance();
       setField(writerType, value, "id", "42");
       setField(writerType, value, "name", "old");
+      setField(writerType, value, "flag", "true");
+      setField(writerType, value, "text", 7);
+      setField(writerType, value, "decimalText", "12.50");
+      setField(writerType, value, "decimalValue", new java.math.BigDecimal("10.500"));
+      setField(writerType, value, "narrow", 123L);
       Fory writer =
           Fory.builder()
               .withXlang(false)
@@ -574,6 +672,14 @@ public class ForyStructProcessorTest {
       Assert.assertEquals(getField(readerType, roundTrip, "id"), 42);
       Assert.assertEquals(getField(readerType, roundTrip, "name"), "old");
       Assert.assertEquals(getField(readerType, roundTrip, "added"), "default");
+      Assert.assertEquals(getField(readerType, roundTrip, "flag"), true);
+      Assert.assertEquals(getField(readerType, roundTrip, "text"), "7");
+      Assert.assertEquals(
+          ((java.math.BigDecimal) getField(readerType, roundTrip, "decimalText"))
+              .compareTo(new java.math.BigDecimal("12.5")),
+          0);
+      Assert.assertEquals(getField(readerType, roundTrip, "decimalValue"), "10.5");
+      Assert.assertEquals(getField(readerType, roundTrip, "narrow"), 123);
       Object serializer = reader.getTypeResolver().getTypeInfo(readerType).getSerializer();
       Assert.assertTrue(serializer instanceof StaticGeneratedStructSerializer);
     }
@@ -621,6 +727,7 @@ public class ForyStructProcessorTest {
               .withCodegen(false)
               .withRefTracking(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Object serializer = fory.getTypeResolver().getTypeInfo(type).getSerializer();
       Assert.assertTrue(serializer instanceof StaticGeneratedStructSerializer);
@@ -652,6 +759,7 @@ public class ForyStructProcessorTest {
               .withClassLoader(loader)
               .withCodegen(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       List<Descriptor> descriptors = fory.getTypeResolver().getFieldDescriptors(type, true);
       Assert.assertEquals(descriptors.size(), 2);
@@ -878,7 +986,7 @@ public class ForyStructProcessorTest {
   }
 
   @Test
-  public void testStaticListArrayCompatibleReadPayloadValidation() throws Exception {
+  public void testStaticListArraySchemaValidation() throws Exception {
     CompilationResult nullableListWriter =
         compile(
             "test.ListArrayMismatchStruct",
@@ -911,12 +1019,9 @@ public class ForyStructProcessorTest {
       Object result = reader.deserialize(writer.serialize(writerValue));
       Assert.assertTrue(
           Arrays.equals((int[]) getField(readerType, result, "values"), new int[] {1, 2, 3}));
-
-      Object nullElementWriterValue = writerType.getConstructor().newInstance();
-      setField(writerType, nullElementWriterValue, "values", Arrays.asList(1, null, 3));
-      byte[] nullElementPayload = writer.serialize(nullElementWriterValue);
-      Assert.expectThrows(
-          DeserializationException.class, () -> reader.deserialize(nullElementPayload));
+      setField(writerType, writerValue, "values", Arrays.asList(1, null, 3));
+      byte[] nullElementPayload = writer.serialize(writerValue);
+      Assert.expectThrows(ForyException.class, () -> reader.deserialize(nullElementPayload));
     }
 
     CompilationResult nestedListWriter =
@@ -953,8 +1058,7 @@ public class ForyStructProcessorTest {
       Object writerValue = writerType.getConstructor().newInstance();
       setField(writerType, writerValue, "values", Arrays.asList(Arrays.asList(1, 2, 3)));
       byte[] payload = writer.serialize(writerValue);
-      Object result = reader.deserialize(payload);
-      Assert.assertNull(getField(readerType, result, "values"));
+      Assert.expectThrows(ForyException.class, () -> reader.deserialize(payload));
     }
   }
 

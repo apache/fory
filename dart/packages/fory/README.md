@@ -1,6 +1,6 @@
 # Apache Fory™ Dart
 
-Apache Fory™ Dart is the Dart xlang runtime for
+Apache Fory™ Dart is the Dart xlang implementation for
 [Apache Fory™](https://github.com/apache/fory). It reads and writes Fory's
 cross-language wire format and is designed around generated serializers for
 annotated Dart models, with customized serializers available for advanced use
@@ -23,7 +23,7 @@ Add `fory` to your package dependencies.
 
 ```yaml
 dependencies:
-  fory: ^1.0.0
+  fory: ^1.1.0
 
 dev_dependencies:
   build_runner: ^2.4.13
@@ -59,17 +59,15 @@ class Person {
 void main() {
   final fory = Fory();
 
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Color,
-    namespace: 'example',
-    typeName: 'Color',
+    name: 'example.Color',
   );
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Person,
-    namespace: 'example',
-    typeName: 'Person',
+    name: 'example.Person',
   );
 
   final person = Person()
@@ -93,49 +91,46 @@ dart run build_runner build --delete-conflicting-outputs
 
 ## Type Registration
 
-Generated types register through the generated library namespace. The namespace
-class is named `<FileName>Fory` based on the source file that contains the
+Generated types register through the generated Fory module. The module
+class is named `<FileName>ForyModule` based on the source file that contains the
 annotated types.
 
 ```dart
-PersonFory.register(fory, Person, id: 100);
+PersonForyModule.register(fory, Person, id: 100);
 ```
 
-Or use namespace and type name registration:
+Or use named registration:
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
-  namespace: 'example',
-  typeName: 'Person',
+  name: 'example.Person',
 );
 ```
 
 Exactly one registration mode is required:
 
 - `id: ...`
-- `namespace: ...` and `typeName: ...`
+- `name: ...`
 
-Keep the same registration identity on all runtimes that exchange the type.
+Use `.` inside `name` to add a namespace prefix, for example `example.Person`.
+
+Keep the same registration identity on every peer that exchanges the type.
 
 ## Configuration
 
 ```dart
 final fory = Fory(
   maxDepth: 256,
-  maxCollectionSize: 1 << 20,
-  maxBinarySize: 64 * 1024 * 1024,
 );
 ```
 
-| Option               | Default    | Description                                             |
-| -------------------- | ---------- | ------------------------------------------------------- |
-| `compatible`         | `true`     | Enables compatible struct encoding for schema evolution |
-| `checkStructVersion` | `false`    | Validates struct version in schema-consistent mode      |
-| `maxDepth`           | `256`      | Maximum nesting depth per operation                     |
-| `maxCollectionSize`  | `1 << 20`  | Maximum collection and map payload size                 |
-| `maxBinarySize`      | `64 << 20` | Maximum binary payload size                             |
+| Option               | Default | Description                                             |
+| -------------------- | ------- | ------------------------------------------------------- |
+| `compatible`         | `true`  | Enables compatible struct encoding for schema evolution |
+| `checkStructVersion` | `false` | Validates struct version for same-schema payloads       |
+| `maxDepth`           | `256`   | Maximum nesting depth per operation                     |
 
 ## Reference Tracking
 
@@ -220,8 +215,7 @@ void main() {
   fory.registerSerializer(
     Person,
     const PersonSerializer(),
-    namespace: 'example',
-    typeName: 'Person',
+    name: 'example.Person',
   );
 
   final bytes = fory.serialize(Person('Ada', 36));
@@ -283,7 +277,7 @@ rounding. For 16-bit floating-point arrays, Dart exposes `Float16List` and
 The main exported API includes:
 
 - `Fory` — main serialization facade
-- `Config` — runtime configuration
+- `Config` — Fory configuration
 - `ForyStruct`, `ForyField`, `ListField`, `SetField`, `MapField` — struct annotations
 - `ForyUnion` — union type annotation
 - `Serializer`, `UnionSerializer`, `EnumSerializer` — serializer base classes
@@ -298,9 +292,9 @@ The main exported API includes:
 
 ## Cross-Language Notes
 
-- The Dart runtime only supports xlang payloads.
+- Fory Dart only supports xlang payloads.
 - Register user-defined types before serialization or deserialization.
-- Keep numeric IDs or `namespace + typeName` mappings consistent across
+- Keep numeric IDs or `name` mappings consistent across
   languages.
 - Use Dart `int` plus `@ForyField(type: ...)` for 8/16/32-bit integer fields,
   Dart `double` plus `Float16Type` or `Bfloat16Type` for 16-bit

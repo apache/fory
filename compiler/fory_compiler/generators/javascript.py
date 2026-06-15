@@ -17,11 +17,13 @@
 
 """JavaScript code generator."""
 
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.javascript import JavaScriptServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -38,11 +40,16 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class JavaScriptGenerator(BaseGenerator):
+class JavaScriptGenerator(JavaScriptServiceGeneratorMixin, BaseGenerator):
     """Generates JavaScript type definitions and Fory registration helpers from IDL."""
 
     language_name = "javascript"
     file_extension = ".ts"
+    RUNTIME_FORY = "__foryRuntime$Fory"
+    RUNTIME_TYPE = "__foryRuntime$Type"
+    RUNTIME_DECIMAL = "__foryRuntime$Decimal"
+    RUNTIME_SERIALIZER = "__foryRuntime$Serializer"
+    ROOT_REGISTRATION = "__foryGenerated$RootRegistration"
 
     # JavaScript reserved keywords that cannot be used as identifiers
     TS_KEYWORDS = {
@@ -142,32 +149,32 @@ class JavaScriptGenerator(BaseGenerator):
         PrimitiveKind.DATE: "Date",
         PrimitiveKind.TIMESTAMP: "Date",
         PrimitiveKind.DURATION: "number",
-        PrimitiveKind.DECIMAL: "Decimal",
+        PrimitiveKind.DECIMAL: RUNTIME_DECIMAL,
         PrimitiveKind.ANY: "any",
     }
 
     # Mapping from FDL primitive types to Fory JS runtime Type.xxx() calls
     PRIMITIVE_RUNTIME_MAP = {
-        PrimitiveKind.BOOL: "Type.bool()",
-        PrimitiveKind.INT8: "Type.int8()",
-        PrimitiveKind.INT16: "Type.int16()",
-        PrimitiveKind.INT32: "Type.int32()",
-        PrimitiveKind.INT64: "Type.int64()",
-        PrimitiveKind.UINT8: "Type.uint8()",
-        PrimitiveKind.UINT16: "Type.uint16()",
-        PrimitiveKind.UINT32: "Type.uint32()",
-        PrimitiveKind.UINT64: "Type.uint64()",
-        PrimitiveKind.FLOAT16: "Type.float16()",
-        PrimitiveKind.BFLOAT16: "Type.bfloat16()",
-        PrimitiveKind.FLOAT32: "Type.float32()",
-        PrimitiveKind.FLOAT64: "Type.float64()",
-        PrimitiveKind.STRING: "Type.string()",
-        PrimitiveKind.BYTES: "Type.binary()",
-        PrimitiveKind.DATE: "Type.date()",
-        PrimitiveKind.TIMESTAMP: "Type.timestamp()",
-        PrimitiveKind.DURATION: "Type.duration()",
-        PrimitiveKind.DECIMAL: "Type.decimal()",
-        PrimitiveKind.ANY: "Type.any()",
+        PrimitiveKind.BOOL: f"{RUNTIME_TYPE}.bool()",
+        PrimitiveKind.INT8: f"{RUNTIME_TYPE}.int8()",
+        PrimitiveKind.INT16: f"{RUNTIME_TYPE}.int16()",
+        PrimitiveKind.INT32: f"{RUNTIME_TYPE}.int32()",
+        PrimitiveKind.INT64: f"{RUNTIME_TYPE}.int64()",
+        PrimitiveKind.UINT8: f"{RUNTIME_TYPE}.uint8()",
+        PrimitiveKind.UINT16: f"{RUNTIME_TYPE}.uint16()",
+        PrimitiveKind.UINT32: f"{RUNTIME_TYPE}.uint32()",
+        PrimitiveKind.UINT64: f"{RUNTIME_TYPE}.uint64()",
+        PrimitiveKind.FLOAT16: f"{RUNTIME_TYPE}.float16()",
+        PrimitiveKind.BFLOAT16: f"{RUNTIME_TYPE}.bfloat16()",
+        PrimitiveKind.FLOAT32: f"{RUNTIME_TYPE}.float32()",
+        PrimitiveKind.FLOAT64: f"{RUNTIME_TYPE}.float64()",
+        PrimitiveKind.STRING: f"{RUNTIME_TYPE}.string()",
+        PrimitiveKind.BYTES: f"{RUNTIME_TYPE}.binary()",
+        PrimitiveKind.DATE: f"{RUNTIME_TYPE}.date()",
+        PrimitiveKind.TIMESTAMP: f"{RUNTIME_TYPE}.timestamp()",
+        PrimitiveKind.DURATION: f"{RUNTIME_TYPE}.duration()",
+        PrimitiveKind.DECIMAL: f"{RUNTIME_TYPE}.decimal()",
+        PrimitiveKind.ANY: f"{RUNTIME_TYPE}.any()",
     }
 
     PRIMITIVE_ARRAY_TS_MAP = {
@@ -187,19 +194,19 @@ class JavaScriptGenerator(BaseGenerator):
     }
 
     PRIMITIVE_ARRAY_RUNTIME_MAP = {
-        PrimitiveKind.BOOL: "Type.boolArray()",
-        PrimitiveKind.INT8: "Type.int8Array()",
-        PrimitiveKind.INT16: "Type.int16Array()",
-        PrimitiveKind.INT32: "Type.int32Array()",
-        PrimitiveKind.INT64: "Type.int64Array()",
-        PrimitiveKind.UINT8: "Type.uint8Array()",
-        PrimitiveKind.UINT16: "Type.uint16Array()",
-        PrimitiveKind.UINT32: "Type.uint32Array()",
-        PrimitiveKind.UINT64: "Type.uint64Array()",
-        PrimitiveKind.FLOAT16: "Type.float16Array()",
-        PrimitiveKind.BFLOAT16: "Type.bfloat16Array()",
-        PrimitiveKind.FLOAT32: "Type.float32Array()",
-        PrimitiveKind.FLOAT64: "Type.float64Array()",
+        PrimitiveKind.BOOL: f"{RUNTIME_TYPE}.boolArray()",
+        PrimitiveKind.INT8: f"{RUNTIME_TYPE}.int8Array()",
+        PrimitiveKind.INT16: f"{RUNTIME_TYPE}.int16Array()",
+        PrimitiveKind.INT32: f"{RUNTIME_TYPE}.int32Array()",
+        PrimitiveKind.INT64: f"{RUNTIME_TYPE}.int64Array()",
+        PrimitiveKind.UINT8: f"{RUNTIME_TYPE}.uint8Array()",
+        PrimitiveKind.UINT16: f"{RUNTIME_TYPE}.uint16Array()",
+        PrimitiveKind.UINT32: f"{RUNTIME_TYPE}.uint32Array()",
+        PrimitiveKind.UINT64: f"{RUNTIME_TYPE}.uint64Array()",
+        PrimitiveKind.FLOAT16: f"{RUNTIME_TYPE}.float16Array()",
+        PrimitiveKind.BFLOAT16: f"{RUNTIME_TYPE}.bfloat16Array()",
+        PrimitiveKind.FLOAT32: f"{RUNTIME_TYPE}.float32Array()",
+        PrimitiveKind.FLOAT64: f"{RUNTIME_TYPE}.float64Array()",
     }
 
     def __init__(self, schema: Schema, options):
@@ -325,9 +332,21 @@ class JavaScriptGenerator(BaseGenerator):
         file_path = getattr(location, "file", None) if location else None
         if file_path and self.is_imported_type(type_def):
             imported_schema = self._load_schema(file_path)
-            if imported_schema and imported_schema.package:
-                return imported_schema.package
+            if imported_schema is not None:
+                return imported_schema.package or "default"
         return self.schema.package or "default"
+
+    def _type_evolving(self, message: Message) -> bool:
+        if "evolving" in message.options:
+            return bool(message.options.get("evolving"))
+        location = getattr(message, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        if file_path and self.is_imported_type(message):
+            imported_schema = self._load_schema(file_path)
+            if imported_schema is not None:
+                file_default = imported_schema.get_option("evolving")
+                return True if file_default is None else bool(file_default)
+        return self.get_effective_evolving(message)
 
     def split_imported_types(
         self, items: List[object]
@@ -350,8 +369,15 @@ class JavaScriptGenerator(BaseGenerator):
         return "generated"
 
     def get_registration_function_name(self) -> str:
-        """Get the name of the registration function."""
+        """Get the name of the public schema registration function."""
         return f"register{self.to_pascal_case(self.get_module_name())}Types"
+
+    def _safe_module_alias(self, module_path: str, index: int) -> str:
+        stem = module_path.rsplit("/", 1)[-1]
+        normalized = re.sub(r"[^0-9A-Za-z_]", "_", stem)
+        if not normalized or normalized[0].isdigit():
+            normalized = f"module_{normalized}"
+        return f"_{self.safe_identifier(self.to_camel_case(normalized))}Module{index}"
 
     def _normalize_import_path(self, path_str: str) -> str:
         if not path_str:
@@ -382,14 +408,13 @@ class JavaScriptGenerator(BaseGenerator):
             return schema.package.replace(".", "_")
         return "generated"
 
-    def _registration_fn_for_schema(self, schema: Schema) -> str:
-        """Derive the registration function name for an imported schema."""
-        mod = self._module_name_for_schema(schema)
-        return f"register{self.to_pascal_case(mod)}Types"
+    def _registration_fn_for_module_path(self, module_path: str) -> str:
+        stem = module_path.rsplit("/", 1)[-1]
+        return f"register{self.to_pascal_case(stem)}Types"
 
-    def _collect_imported_registrations(self) -> List[Tuple[str, str]]:
-        """Collect (module_path, registration_fn) pairs for imported schemas."""
-        file_info: Dict[str, Tuple[str, str]] = {}
+    def _collect_imported_modules(self) -> List[str]:
+        """Collect generated module paths that own imported schema types."""
+        file_info: Dict[str, str] = {}
         for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
             if not self.is_imported_type(type_def):
                 continue
@@ -403,11 +428,10 @@ class JavaScriptGenerator(BaseGenerator):
             imported_schema = self._load_schema(file_path)
             if imported_schema is None:
                 continue
-            reg_fn = self._registration_fn_for_schema(imported_schema)
             mod_name = self._module_name_for_schema(imported_schema)
-            file_info[normalized] = (f"./{mod_name}", reg_fn)
+            file_info[normalized] = f"./{mod_name}"
 
-        ordered: List[Tuple[str, str]] = []
+        ordered: List[str] = []
         used: Set[str] = set()
 
         if self.schema.source_file:
@@ -425,14 +449,20 @@ class JavaScriptGenerator(BaseGenerator):
                 continue
             ordered.append(file_info[key])
 
-        deduped: List[Tuple[str, str]] = []
-        seen: Set[Tuple[str, str]] = set()
+        deduped: List[str] = []
+        seen: Set[str] = set()
         for item in ordered:
             if item in seen:
                 continue
             seen.add(item)
             deduped.append(item)
         return deduped
+
+    def _imported_module_aliases(self) -> List[Tuple[str, str]]:
+        return [
+            (module_path, self._safe_module_alias(module_path, index))
+            for index, module_path in enumerate(self._collect_imported_modules())
+        ]
 
     def _resolve_named_type(
         self, name: str, parent_stack: Optional[List[Message]] = None
@@ -527,12 +557,24 @@ class JavaScriptGenerator(BaseGenerator):
         return type_str
 
     def generate_imports(self) -> List[str]:
-        """Generate import statements for imported types and registration functions."""
+        """Generate import statements for Fory runtime and imported types."""
         lines: List[str] = []
-        imported_regs = self._collect_imported_registrations()
+        imported_modules = self._imported_module_aliases()
 
+        core_imports = [f"Type as {self.RUNTIME_TYPE}"]
         if self._schema_uses_primitive_kind(PrimitiveKind.DECIMAL):
-            lines.append("import { Decimal } from '@apache-fory/core';")
+            core_imports.append(f"Decimal as {self.RUNTIME_DECIMAL}")
+        lines.append(
+            f"import {self.RUNTIME_FORY}, {{ {', '.join(core_imports)} }} from '@apache-fory/core';"
+        )
+        if self._local_registration_roots():
+            lines.append(
+                f"import type {{ Serializer as {self.RUNTIME_SERIALIZER} }} "
+                "from '@apache-fory/core';"
+            )
+
+        for mod_path, alias in imported_modules:
+            lines.append(f"import * as {alias} from '{mod_path}';")
 
         # Collect all imported types used in this schema
         imported_types_by_module: Dict[str, Set[str]] = {}
@@ -565,12 +607,6 @@ class JavaScriptGenerator(BaseGenerator):
                 imported_types_by_module[mod_path].add(
                     self.safe_type_identifier(f"{type_def.name}Case")
                 )
-
-        # Add registration functions to the imports
-        for mod_path, reg_fn in imported_regs:
-            if mod_path not in imported_types_by_module:
-                imported_types_by_module[mod_path] = set()
-            imported_types_by_module[mod_path].add(reg_fn)
 
         # Generate import statements
         for mod_path, types in sorted(imported_types_by_module.items()):
@@ -663,8 +699,14 @@ class JavaScriptGenerator(BaseGenerator):
                 lines.extend(self.generate_message(message, indent=0))
                 lines.append("")
 
-        # Generate registration function
+        # Generate schema module helpers
+        root_registration_type = self.generate_root_registration_type()
+        if root_registration_type:
+            lines.extend(root_registration_type)
+            lines.append("")
         lines.extend(self.generate_registration())
+        lines.append("")
+        lines.extend(self.generate_default_helpers())
         lines.append("")
 
         return GeneratedFile(
@@ -838,17 +880,22 @@ class JavaScriptGenerator(BaseGenerator):
         self,
         field_type: FieldType,
         parent_stack: Optional[List[Message]] = None,
+        *,
+        nullable: bool = False,
+        ref: bool = False,
+        element_nullable_override: bool = False,
+        element_ref_override: bool = False,
     ) -> str:
         """Return the Fory JS runtime ``Type.xxx()`` expression for a field type."""
         parent_stack = parent_stack or []
         if isinstance(field_type, PrimitiveType):
             integer_expr = self._integer_type_expr(field_type)
             if integer_expr is not None:
-                return integer_expr
-            expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
-            if expr is None:
-                return "Type.any()"
-            return expr
+                expr = integer_expr
+            else:
+                expr = self.PRIMITIVE_RUNTIME_MAP.get(field_type.kind)
+                if expr is None:
+                    expr = f"{self.RUNTIME_TYPE}.any()"
         elif isinstance(field_type, NamedType):
             # Check for primitive-like shorthand names (e.g. "float", "double")
             lower = field_type.name.lower()
@@ -857,83 +904,125 @@ class JavaScriptGenerator(BaseGenerator):
                 "double": PrimitiveKind.FLOAT64,
             }
             if lower in shorthand_map:
-                return self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
-            for pk in PrimitiveKind:
-                if pk.value == lower:
-                    expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
-                    if expr is None:
-                        raise ValueError(
-                            f"Primitive type '{pk.value}' has no JavaScript "
-                            f"runtime mapping."
-                        )
-                    return expr
-
-            # Named type — could be a Message, Enum, or Union
-            resolved = self._resolve_named_type(field_type.name, parent_stack)
-            if isinstance(resolved, Enum):
-                if self.should_register_by_id(resolved):
-                    name_info = str(resolved.type_id)
+                expr = self.PRIMITIVE_RUNTIME_MAP[shorthand_map[lower]]
+            else:
+                primitive_expr: Optional[str] = None
+                for pk in PrimitiveKind:
+                    if pk.value == lower:
+                        primitive_expr = self.PRIMITIVE_RUNTIME_MAP.get(pk)
+                        if primitive_expr is None:
+                            raise ValueError(
+                                f"Primitive type '{pk.value}' has no JavaScript "
+                                f"runtime mapping."
+                            )
+                        break
+                if primitive_expr is not None:
+                    expr = primitive_expr
                 else:
-                    ns = self._get_type_package(resolved)
-                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                    name_info = f'"{ns}.{qname}"'
-                props = ", ".join(
-                    f"{self.strip_enum_prefix(resolved.name, v.name)}: {v.value}"
-                    for v in resolved.values
-                )
-                return f"Type.enum({name_info}, {{ {props} }})"
-            if isinstance(resolved, Union):
-                case_parts = []
-                for case_field in resolved.fields:
-                    case_num = (
-                        case_field.tag_id
-                        if case_field.tag_id is not None
-                        else case_field.number
-                    )
-                    if case_num is not None:
-                        case_type_expr = self._field_type_expr(
-                            case_field.field_type, parent_stack
+                    # Named type — could be a Message, Enum, or Union
+                    resolved = self._resolve_named_type(field_type.name, parent_stack)
+                    if isinstance(resolved, Enum):
+                        if self.should_register_by_id(resolved):
+                            name_info = str(resolved.type_id)
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            name_info = f'"{ns}.{qname}"'
+                        props = ", ".join(
+                            f"{self.strip_enum_prefix(resolved.name, v.name)}: {v.value}"
+                            for v in resolved.values
                         )
-                        case_parts.append(f"{case_num}: {case_type_expr}")
-                cases_arg = f", {{ {', '.join(case_parts)} }}" if case_parts else ""
-                if self.should_register_by_id(resolved):
-                    name_info = str(resolved.type_id)
-                else:
-                    ns = self._get_type_package(resolved)
-                    qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                    name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
-                return f"Type.union({name_info}{cases_arg})"
-            if isinstance(resolved, Message):
-                evolving = self.get_effective_evolving(resolved)
-                if self.should_register_by_id(resolved):
-                    if evolving:
-                        return f"Type.struct({resolved.type_id})"
+                        expr = f"{self.RUNTIME_TYPE}.enum({name_info}, {{ {props} }})"
+                    elif isinstance(resolved, Union):
+                        case_parts = []
+                        for case_field in resolved.fields:
+                            case_num = (
+                                case_field.tag_id
+                                if case_field.tag_id is not None
+                                else case_field.number
+                            )
+                            if case_num is not None:
+                                case_type_expr = self._field_type_expr(
+                                    case_field.field_type, parent_stack
+                                )
+                                case_parts.append(f"{case_num}: {case_type_expr}")
+                        cases_arg = (
+                            f", {{ {', '.join(case_parts)} }}" if case_parts else ""
+                        )
+                        if self.should_register_by_id(resolved):
+                            name_info = str(resolved.type_id)
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
+                        expr = f"{self.RUNTIME_TYPE}.union({name_info}{cases_arg})"
+                    elif isinstance(resolved, Message):
+                        evolving = self._type_evolving(resolved)
+                        if self.should_register_by_id(resolved):
+                            if evolving:
+                                expr = f"{self.RUNTIME_TYPE}.struct({resolved.type_id})"
+                            else:
+                                expr = (
+                                    f"{self.RUNTIME_TYPE}.struct({{ typeId: {resolved.type_id}, "
+                                    "evolving: false })"
+                                )
+                        else:
+                            ns = self._get_type_package(resolved)
+                            qname = self._qualified_type_names.get(
+                                id(resolved), resolved.name
+                            )
+                            if evolving:
+                                expr = (
+                                    f'{self.RUNTIME_TYPE}.struct({{ namespace: "{ns}", '
+                                    f'typeName: "{qname}" }})'
+                                )
+                            else:
+                                expr = (
+                                    f'{self.RUNTIME_TYPE}.struct({{ namespace: "{ns}", '
+                                    f'typeName: "{qname}", evolving: false }})'
+                                )
                     else:
-                        return f"Type.struct({{ typeId: {resolved.type_id}, evolving: false }})"
-                ns = self._get_type_package(resolved)
-                qname = self._qualified_type_names.get(id(resolved), resolved.name)
-                if evolving:
-                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}" }})'
-                else:
-                    return f'Type.struct({{ namespace: "{ns}", typeName: "{qname}", evolving: false }})'
-            # Unresolved — fall back to any
-            return "Type.any()"
+                        # Unresolved — fall back to any
+                        expr = f"{self.RUNTIME_TYPE}.any()"
         elif isinstance(field_type, ListType):
-            inner = self._field_type_expr(field_type.element_type, parent_stack)
-            return f"Type.list({inner})"
+            inner = self._field_type_expr(
+                field_type.element_type,
+                parent_stack,
+                nullable=field_type.element_optional or element_nullable_override,
+                ref=field_type.element_ref or element_ref_override,
+            )
+            expr = f"{self.RUNTIME_TYPE}.list({inner})"
         elif isinstance(field_type, ArrayType):
             if isinstance(field_type.element_type, PrimitiveType):
                 type_expr = self.PRIMITIVE_ARRAY_RUNTIME_MAP.get(
                     field_type.element_type.kind
                 )
                 if type_expr:
-                    return type_expr
-            return "Type.any()"
+                    expr = type_expr
+                else:
+                    expr = f"{self.RUNTIME_TYPE}.any()"
+            else:
+                expr = f"{self.RUNTIME_TYPE}.any()"
         elif isinstance(field_type, MapType):
             key = self._field_type_expr(field_type.key_type, parent_stack)
-            value = self._field_type_expr(field_type.value_type, parent_stack)
-            return f"Type.map({key}, {value})"
-        return "Type.any()"
+            value = self._field_type_expr(
+                field_type.value_type,
+                parent_stack,
+                nullable=field_type.value_optional,
+                ref=field_type.value_ref,
+            )
+            expr = f"{self.RUNTIME_TYPE}.map({key}, {value})"
+        else:
+            expr = f"{self.RUNTIME_TYPE}.any()"
+        if nullable or ref:
+            expr += ".setNullable(true)"
+        if ref:
+            expr += ".setTrackingRef(true)"
+        return expr
 
     def _integer_type_expr(self, field_type: PrimitiveType) -> Optional[str]:
         method = {
@@ -946,14 +1035,16 @@ class JavaScriptGenerator(BaseGenerator):
             return None
         encoding = field_type.encoding_modifier
         if encoding in ("fixed", "tagged"):
-            return f'Type.{method}({{ encoding: "{encoding}" }})'
-        return f"Type.{method}()"
+            return f'{self.RUNTIME_TYPE}.{method}({{ encoding: "{encoding}" }})'
+        return f"{self.RUNTIME_TYPE}.{method}()"
 
     def _register_type_line(
         self,
         type_def: TypingUnion[Message, Enum, Union],
         target_var: str = "fory",
         parent_stack: Optional[List[Message]] = None,
+        registration_var: Optional[str] = None,
+        registration_type: Optional[str] = None,
     ) -> str:
         """Return a single ``fory.register(Type.struct(...))`` statement."""
         if isinstance(type_def, Union):
@@ -966,19 +1057,22 @@ class JavaScriptGenerator(BaseGenerator):
         used_field_names: Set[str] = set()
         for field in type_def.fields:
             member = self._field_member_name(field, type_def, used_field_names)
-            expr = self._field_type_expr(field.field_type, field_parent_stack)
+            expr = self._field_type_expr(
+                field.field_type,
+                field_parent_stack,
+                nullable=field.optional or field.ref,
+                ref=field.ref,
+                element_nullable_override=field.element_optional,
+                element_ref_override=field.element_ref,
+            )
             if field.tag_id is not None:
                 expr += f".setId({field.tag_id})"
-            if field.optional:
-                expr += ".setNullable(true)"
-            if field.ref:
-                expr += ".setTrackingRef(true)"
             props_parts.append(f"{member}: {expr}")
 
         props_str = ", ".join(props_parts)
         props_arg = f", {{ {props_str} }}" if props_parts else ""
 
-        evolving = self.get_effective_evolving(type_def)
+        evolving = self._type_evolving(type_def)
         if self.should_register_by_id(type_def):
             if evolving:
                 name_info = str(type_def.type_id)
@@ -994,19 +1088,29 @@ class JavaScriptGenerator(BaseGenerator):
                     f'{{ namespace: "{ns}", typeName: "{qname}", evolving: false }}'
                 )
 
-        return f"{target_var}.register(Type.struct({name_info}{props_arg}));"
+        register_expr = (
+            f"{target_var}.register({self.RUNTIME_TYPE}.struct({name_info}{props_arg}))"
+        )
+        if registration_var is not None:
+            cast = f" as unknown as {registration_type}" if registration_type else ""
+            return f"const {registration_var} = {register_expr}{cast};"
+        return f"{register_expr};"
 
     def _register_union_line(
         self,
         union_def,
         target_var: str = "fory",
+        parent_stack: Optional[List[Message]] = None,
+        registration_var: Optional[str] = None,
+        registration_type: Optional[str] = None,
     ) -> str:
         """Return a ``fory.register(Type.union(...))`` statement."""
+        parent_stack = parent_stack or []
         case_parts: List[str] = []
         for field in union_def.fields:
             case_num = field.tag_id if field.tag_id is not None else field.number
             if case_num is not None:
-                case_type_expr = self._field_type_expr(field.field_type, [])
+                case_type_expr = self._field_type_expr(field.field_type, parent_stack)
                 case_parts.append(f"{case_num}: {case_type_expr}")
         cases_str = ", ".join(case_parts)
         cases_arg = f", {{ {cases_str} }}" if case_parts else ""
@@ -1018,7 +1122,108 @@ class JavaScriptGenerator(BaseGenerator):
             qname = self._qualified_type_names.get(id(union_def), union_def.name)
             name_info = f'{{ namespace: "{ns}", typeName: "{qname}" }}'
 
-        return f"{target_var}.register(Type.union({name_info}{cases_arg}));"
+        register_expr = (
+            f"{target_var}.register({self.RUNTIME_TYPE}.union({name_info}{cases_arg}))"
+        )
+        if registration_var is not None:
+            cast = f" as unknown as {registration_type}" if registration_type else ""
+            return f"const {registration_var} = {register_expr}{cast};"
+        return f"{register_expr};"
+
+    def _local_registration_roots(self) -> List[TypingUnion[Message, Union]]:
+        roots: List[TypingUnion[Message, Union]] = []
+
+        def visit_message(message: Message) -> None:
+            if self.is_imported_type(message):
+                return
+            roots.append(message)
+            for nested_msg in message.nested_messages:
+                visit_message(nested_msg)
+            for nested_union in message.nested_unions:
+                if not self.is_imported_type(nested_union):
+                    roots.append(nested_union)
+
+        for message in self.schema.messages:
+            visit_message(message)
+        for union in self.schema.unions:
+            if not self.is_imported_type(union):
+                roots.append(union)
+        return roots
+
+    def _root_name_parts(self, type_def: TypingUnion[Message, Union]) -> List[str]:
+        qname = self._qualified_type_names.get(id(type_def), type_def.name)
+        return [part for part in qname.split(".") if part]
+
+    def _root_helper_base_name(self, type_def: TypingUnion[Message, Union]) -> str:
+        return "".join(
+            self.safe_type_identifier(part) for part in self._root_name_parts(type_def)
+        )
+
+    def _root_registration_field_name(
+        self, type_def: TypingUnion[Message, Union]
+    ) -> str:
+        name = self.safe_identifier(
+            self.to_camel_case(self._root_helper_base_name(type_def))
+        )
+        if name == "fory":
+            return "fory_"
+        return name
+
+    def _root_serialize_helper_name(self, type_def: TypingUnion[Message, Union]) -> str:
+        return f"serialize{self._root_helper_base_name(type_def)}"
+
+    def _root_deserialize_helper_name(
+        self, type_def: TypingUnion[Message, Union]
+    ) -> str:
+        return f"deserialize{self._root_helper_base_name(type_def)}"
+
+    def _root_ts_type_name(self, type_def: TypingUnion[Message, Union]) -> str:
+        return self._ts_type_names.get(
+            id(type_def),
+            self.safe_type_identifier(type_def.name),
+        )
+
+    def _root_registration_type(self, type_def: TypingUnion[Message, Union]) -> str:
+        return f"{self.ROOT_REGISTRATION}<{self._root_ts_type_name(type_def)}>"
+
+    def generate_root_registration_type(self) -> List[str]:
+        if not self._local_registration_roots():
+            return []
+        return [
+            f"type {self.ROOT_REGISTRATION}<T> = {{",
+            f"  serializer: {self.RUNTIME_SERIALIZER};",
+            "  serialize: (value: T | null) => Uint8Array;",
+            "  deserialize: (bytes: Uint8Array) => T;",
+            "};",
+        ]
+
+    def _validate_local_root_helper_names(
+        self, roots: List[TypingUnion[Message, Union]]
+    ) -> None:
+        used_fields: Dict[str, str] = {}
+        used_helpers: Dict[str, str] = {}
+        for root in roots:
+            type_name = self._qualified_type_names.get(id(root), root.name)
+            field = self._root_registration_field_name(root)
+            previous = used_fields.get(field)
+            if previous is not None:
+                raise ValueError(
+                    "JavaScript registration field collision: "
+                    f"{previous} and {type_name} both generate {field}"
+                )
+            used_fields[field] = type_name
+
+            for helper in (
+                self._root_serialize_helper_name(root),
+                self._root_deserialize_helper_name(root),
+            ):
+                previous = used_helpers.get(helper)
+                if previous is not None:
+                    raise ValueError(
+                        "JavaScript serialization helper collision: "
+                        f"{previous} and {type_name} both generate {helper}"
+                    )
+                used_helpers[helper] = type_name
 
     def _resolve_field_deps(
         self,
@@ -1055,24 +1260,25 @@ class JavaScriptGenerator(BaseGenerator):
         return deps
 
     def generate_registration(self) -> List[str]:
-        """Generate a registration function that registers all local and
-        imported types with a Fory instance.
+        """Generate a module-level registration function for this schema.
 
         Types are emitted in dependency order (leaf types first) via a
         simple DFS so that the Fory JS runtime does not prematurely
         register bare ``Type.struct(id)`` references with empty fields."""
         lines: List[str] = []
+        imported_modules = self._imported_module_aliases()
         fn_name = self.get_registration_function_name()
-        imported_regs = self._collect_imported_registrations()
+        local_roots = self._local_registration_roots()
+        self._validate_local_root_helper_names(local_roots)
+        registered_roots: List[TypingUnion[Message, Union]] = []
 
         lines.append("// Registration helper")
-        lines.append(f"export function {fn_name}(fory: any, Type: any): void {{")
+        lines.append(f"export function {fn_name}(fory: {self.RUNTIME_FORY}) {{")
 
-        # Delegate to imported registration functions first
-        for _module_path, reg_fn in imported_regs:
-            if reg_fn == fn_name:
-                continue
-            lines.append(f"  {reg_fn}(fory, Type);")
+        # Delegate to imported schema modules first.
+        for _module_path, alias in imported_modules:
+            reg_fn = self._registration_fn_for_module_path(_module_path)
+            lines.append(f"  {alias}.{reg_fn}(fory);")
 
         # DFS emit: visit dependencies before the type itself.
         # The visited set also breaks cycles (e.g. self-referential trees).
@@ -1099,11 +1305,46 @@ class JavaScriptGenerator(BaseGenerator):
             # Emit field-level struct dependencies first
             for dep in self._resolve_field_deps(msg, parents):
                 emit_message(dep)
-            reg_line = self._register_type_line(msg, "fory", parents)
+            reg_line = self._register_type_line(
+                msg,
+                "fory",
+                parents,
+                registration_var=self._root_registration_field_name(msg),
+                registration_type=self._root_registration_type(msg),
+            )
             if reg_line:
                 lines.append(f"  {reg_line}")
+                registered_roots.append(msg)
             for nested_msg in msg.nested_messages:
                 emit_message(nested_msg)
+            for nested_union in msg.nested_unions:
+                emit_union(nested_union, parents + [msg])
+
+        emitted_unions: Set[int] = set()
+
+        def emit_union(union: Union, parent_stack: List[Message]) -> None:
+            if id(union) in emitted_unions or self.is_imported_type(union):
+                return
+            emitted_unions.add(id(union))
+            for ufield in union.fields:
+                if isinstance(ufield.field_type, NamedType):
+                    resolved = self._resolve_named_type(
+                        ufield.field_type.name, parent_stack
+                    )
+                    if isinstance(resolved, Message) and not self.is_imported_type(
+                        resolved
+                    ):
+                        emit_message(resolved)
+            reg_line = self._register_union_line(
+                union,
+                "fory",
+                parent_stack,
+                registration_var=self._root_registration_field_name(union),
+                registration_type=self._root_registration_type(union),
+            )
+            if reg_line:
+                lines.append(f"  {reg_line}")
+                registered_roots.append(union)
 
         for message in self.schema.messages:
             if self.is_imported_type(message):
@@ -1115,19 +1356,75 @@ class JavaScriptGenerator(BaseGenerator):
         # whose variants are messages defined in the same file but not used as
         # direct struct fields).
         for union in self.schema.unions:
-            if self.is_imported_type(union):
-                continue
-            for ufield in union.fields:
-                if isinstance(ufield.field_type, NamedType):
-                    resolved = self._resolve_named_type(ufield.field_type.name)
-                    if isinstance(resolved, Message) and not self.is_imported_type(
-                        resolved
-                    ):
-                        emit_message(resolved)
-            reg_line = self._register_union_line(union, "fory")
-            if reg_line:
-                lines.append(f"  {reg_line}")
+            emit_union(union, [])
 
+        if registered_roots:
+            lines.append("  return {")
+            for root in registered_roots:
+                lines.append(f"    {self._root_registration_field_name(root)},")
+            lines.append("  };")
+        else:
+            lines.append("  return {};")
         lines.append("}")
 
         return lines
+
+    def generate_default_helpers(self) -> List[str]:
+        """Generate private default Fory and root serialization helpers."""
+        needs_ref = "true" if self._schema_needs_ref_tracking() else "false"
+        lines = [
+            f"const MODEL_NEEDS_REF = {needs_ref};",
+            f"const DEFAULT_FORY = new {self.RUNTIME_FORY}({{ ref: MODEL_NEEDS_REF }});",
+            f"const DEFAULT_TYPES = {self.get_registration_function_name()}(DEFAULT_FORY);",
+        ]
+        roots = self._local_registration_roots()
+        if roots:
+            lines.append("")
+            for index, root in enumerate(roots):
+                field = self._root_registration_field_name(root)
+                lines.append(
+                    f"export const {self._root_serialize_helper_name(root)} = "
+                    f"DEFAULT_TYPES.{field}.serialize;"
+                )
+                lines.append(
+                    f"export const {self._root_deserialize_helper_name(root)} = "
+                    f"DEFAULT_TYPES.{field}.deserialize;"
+                )
+                if index != len(roots) - 1:
+                    lines.append("")
+        return lines
+
+    def _schema_needs_ref_tracking(self) -> bool:
+        def field_type_needs_ref(field_type: FieldType) -> bool:
+            if isinstance(field_type, ListType):
+                return field_type.element_ref or field_type_needs_ref(
+                    field_type.element_type
+                )
+            if isinstance(field_type, ArrayType):
+                return field_type_needs_ref(field_type.element_type)
+            if isinstance(field_type, MapType):
+                return (
+                    field_type.value_ref
+                    or field_type_needs_ref(field_type.key_type)
+                    or field_type_needs_ref(field_type.value_type)
+                )
+            return False
+
+        def message_needs_ref(message: Message) -> bool:
+            for field in message.fields:
+                if field.ref or field_type_needs_ref(field.field_type):
+                    return True
+            for nested_union in message.nested_unions:
+                if union_needs_ref(nested_union):
+                    return True
+            return any(message_needs_ref(nested) for nested in message.nested_messages)
+
+        def union_needs_ref(union: Union) -> bool:
+            return any(
+                field.ref or field_type_needs_ref(field.field_type)
+                for field in union.fields
+            )
+
+        return any(
+            message_needs_ref(message) for message in self.schema.messages
+        ) or any(union_needs_ref(union) for union in self.schema.unions)

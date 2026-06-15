@@ -66,6 +66,17 @@ impl Serializer for String {
         }?;
         Ok(s)
     }
+    #[inline]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+            context,
+        )?))
+    }
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {

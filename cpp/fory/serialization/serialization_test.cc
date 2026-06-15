@@ -22,10 +22,12 @@
 #include "fory/serialization/skip.h"
 #include "fory/thirdparty/MurmurHash3.h"
 #include "gtest/gtest.h"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <string>
 #include <thread>
@@ -76,6 +78,16 @@ FORY_ENUM(SparseStatus, UNKNOWN, OK);
 
 enum OldStatus : int32_t { OLD_NEG = -7, OLD_ZERO = 0, OLD_POS = 13 };
 FORY_ENUM(::OldStatus, OLD_NEG, OLD_ZERO, OLD_POS);
+
+static std::atomic<int> g_ext_destructor_calls{0};
+
+struct ExtWithDestructor {
+  int32_t value = 0;
+
+  ~ExtWithDestructor() { g_ext_destructor_calls.fetch_add(1); }
+
+  FORY_STRUCT(ExtWithDestructor, value);
+};
 
 namespace fory {
 namespace serialization {
@@ -179,6 +191,21 @@ TEST(SerializationTest, BoolRoundtrip) {
   test_roundtrip(false);
 }
 
+TEST(SerializationTest, HarnessDestroyRunsRegisteredDestructor) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  auto register_result = fory.register_extension_type<::ExtWithDestructor>(1);
+  ASSERT_TRUE(register_result.ok()) << register_result.error().message();
+  auto type_info_result =
+      fory.type_resolver().get_type_info<::ExtWithDestructor>();
+  ASSERT_TRUE(type_info_result.ok()) << type_info_result.error().message();
+
+  g_ext_destructor_calls.store(0);
+  void *ptr = new ExtWithDestructor();
+  type_info_result.value()->harness.destroy_fn(ptr);
+  EXPECT_EQ(g_ext_destructor_calls.load(), 1);
+}
+
 TEST(SerializationTest, Int8Roundtrip) {
   test_roundtrip<int8_t>(0);
   test_roundtrip<int8_t>(127);
@@ -226,6 +253,106 @@ TEST(SerializationTest, StringRoundtrip) {
   test_roundtrip(std::string("Hello, World!"));
   test_roundtrip(std::string("The quick brown fox jumps over the lazy dog"));
   test_roundtrip(std::string("UTF-8: 你好世界"));
+}
+
+TEST(SerializationTest, StringReadsCheckBodyBeforeAllocation) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  constexpr uint32_t huge_length = std::numeric_limits<uint32_t>::max() - 1;
+
+  for (StringEncoding encoding :
+       {StringEncoding::LATIN1, StringEncoding::UTF16, StringEncoding::UTF8}) {
+    Buffer buffer;
+    buffer.write_var_uint36_small((static_cast<uint64_t>(huge_length) << 2) |
+                                  static_cast<uint64_t>(encoding));
+    ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+    read_ctx.attach(buffer);
+
+    auto result = detail::read_string_data(read_ctx);
+
+    EXPECT_TRUE(result.empty());
+    EXPECT_TRUE(read_ctx.has_error());
+  }
+}
+
+TEST(SerializationTest, U16StringReadsCheckBodyBeforeAllocation) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  constexpr uint32_t huge_length = std::numeric_limits<uint32_t>::max() - 1;
+
+  for (StringEncoding encoding :
+       {StringEncoding::LATIN1, StringEncoding::UTF16, StringEncoding::UTF8}) {
+    Buffer buffer;
+    buffer.write_var_uint36_small((static_cast<uint64_t>(huge_length) << 2) |
+                                  static_cast<uint64_t>(encoding));
+    ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+    read_ctx.attach(buffer);
+
+    auto result = detail::read_u16string_data(read_ctx);
+
+    EXPECT_TRUE(result.empty());
+    EXPECT_TRUE(read_ctx.has_error());
+  }
+}
+
+TEST(SerializationTest, PrimitiveVectorReadsCheckBodyBeforeAllocation) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  Buffer buffer;
+  buffer.write_var_uint32(4096);
+  ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+  read_ctx.attach(buffer);
+
+  auto result = Serializer<std::vector<int32_t>>::read_data(read_ctx);
+
+  EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(read_ctx.has_error());
+}
+
+TEST(SerializationTest, BoolVectorReadsCheckBodyBeforeAllocation) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  Buffer buffer;
+  buffer.write_var_uint32(4096);
+  ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+  read_ctx.attach(buffer);
+
+  auto result = Serializer<std::vector<bool>>::read_data(read_ctx);
+
+  EXPECT_TRUE(result.empty());
+  EXPECT_TRUE(read_ctx.has_error());
+}
+
+TEST(SerializationTest, FixedPrimitiveArrayRejectsWrongByteSize) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  Buffer buffer;
+  buffer.write_var_uint32(sizeof(int32_t) + 1);
+  buffer.write_uint32(1);
+  buffer.write_uint8(0);
+  ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+  read_ctx.attach(buffer);
+
+  auto result = Serializer<std::array<int32_t, 1>>::read_data(read_ctx);
+
+  EXPECT_EQ(result[0], 0);
+  ASSERT_TRUE(read_ctx.has_error());
+  EXPECT_EQ(read_ctx.error().code(), ErrorCode::InvalidData);
+}
+
+TEST(SerializationTest, DecimalReadsCheckBodyBeforeAllocation) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  Buffer buffer;
+  buffer.write_var_int32(0);
+  buffer.write_var_uint64((static_cast<uint64_t>(4096) << 2) | 1ULL);
+  ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
+  read_ctx.attach(buffer);
+
+  auto result = Serializer<Decimal>::read_data(read_ctx);
+
+  EXPECT_TRUE(result.is_zero());
+  EXPECT_TRUE(read_ctx.has_error());
 }
 
 TEST(SerializationTest, DurationRoundtrip) {
@@ -708,7 +835,7 @@ TEST(SerializationTest, NestedStructRoundtrip) {
 // ============================================================================
 
 TEST(SerializationTest, DeserializeInvalidData) {
-  auto fory = Fory::builder().xlang(true).build();
+  auto fory = Fory::builder().xlang(true).compatible(true).build();
 
   uint8_t invalid_data[] = {0xFF, 0xFF, 0xFF};
   auto result = fory.deserialize<int32_t>(invalid_data, 3);
@@ -716,13 +843,13 @@ TEST(SerializationTest, DeserializeInvalidData) {
 }
 
 TEST(SerializationTest, DeserializeNullPointer) {
-  auto fory = Fory::builder().xlang(true).build();
+  auto fory = Fory::builder().xlang(true).compatible(true).build();
   auto result = fory.deserialize<int32_t>(nullptr, 0);
   EXPECT_FALSE(result.ok());
 }
 
 TEST(SerializationTest, DeserializeZeroSize) {
-  auto fory = Fory::builder().xlang(true).build();
+  auto fory = Fory::builder().xlang(true).compatible(true).build();
   uint8_t data[] = {0x01};
   auto result = fory.deserialize<int32_t>(data, 0);
   EXPECT_FALSE(result.ok());
@@ -730,7 +857,7 @@ TEST(SerializationTest, DeserializeZeroSize) {
 
 TEST(SerializationTest, DeserializeRejectsXlangProtocolMismatch) {
   auto writer = Fory::builder().xlang(true).compatible(false).build();
-  auto reader = Fory::builder().xlang(false).build();
+  auto reader = Fory::builder().xlang(false).compatible(false).build();
 
   auto bytes_result = writer.serialize<int32_t>(123);
   ASSERT_TRUE(bytes_result.ok())
@@ -808,7 +935,7 @@ TEST(SerializationTest, RegistrationByNameFailureDoesNotLeakTypeInfo) {
       Fory::builder().xlang(true).compatible(false).track_ref(false).build();
   TypeResolver &resolver = fory.type_resolver();
 
-  ASSERT_TRUE(fory.register_struct<::SimpleStruct>("demo", "SharedType").ok());
+  ASSERT_TRUE(fory.register_struct<::SimpleStruct>("demo.SharedType").ok());
 
   auto duplicate = fory.register_struct<::NestedStruct>("demo", "SharedType");
   EXPECT_FALSE(duplicate.ok());
@@ -823,6 +950,11 @@ TEST(SerializationTest, RegistrationByNameFailureDoesNotLeakTypeInfo) {
   auto by_name = resolver.get_type_info_by_name("demo", "SharedType");
   ASSERT_TRUE(by_name.ok());
   EXPECT_EQ(by_name.value(), simple_info.value());
+
+  auto dotted_type_name =
+      fory.register_struct<::NestedStruct>("demo", "Nested.Type");
+  EXPECT_FALSE(dotted_type_name.ok());
+  EXPECT_EQ(dotted_type_name.error().code(), ErrorCode::Invalid);
 }
 
 TEST(SerializationTest, TypeMetaRejectsOverConsumedDeclaredSize) {
@@ -1039,6 +1171,8 @@ TEST(SerializationTest, ConfigurationBuilder) {
   EXPECT_FALSE(fory1.config().track_ref);
 
   auto default_xlang = Fory::builder().xlang(true).build();
+  auto default_native = Fory::builder().xlang(false).build();
+  auto compatible_xlang = Fory::builder().xlang(true).compatible(true).build();
   auto explicit_schema_consistent =
       Fory::builder().compatible(false).xlang(true).build();
   auto explicit_schema_consistent_reverse_order =
@@ -1050,7 +1184,9 @@ TEST(SerializationTest, ConfigurationBuilder) {
                                            .build();
 
   EXPECT_TRUE(default_xlang.config().compatible);
-  EXPECT_FALSE(default_xlang.config().check_struct_version);
+  EXPECT_TRUE(default_native.config().compatible);
+  EXPECT_TRUE(compatible_xlang.config().compatible);
+  EXPECT_FALSE(compatible_xlang.config().check_struct_version);
   EXPECT_FALSE(explicit_schema_consistent.config().compatible);
   EXPECT_FALSE(explicit_schema_consistent_reverse_order.config().compatible);
   EXPECT_FALSE(compatible_with_version_check.config().check_struct_version);

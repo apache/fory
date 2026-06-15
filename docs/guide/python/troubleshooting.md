@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 13
+sidebar_position: 14
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -49,7 +49,7 @@ print(pyfory.ENABLE_FORY_CYTHON_SERIALIZATION)  # Should be True
 ```python
 # Use explicit type registration with consistent naming
 f = pyfory.Fory(xlang=True)
-f.register(MyClass, typename="com.package.MyClass")  # Use same name in all languages
+f.register(MyClass, name="com.package.MyClass")  # Use same name in all languages
 ```
 
 ### Circular Reference Errors or Duplicate Data
@@ -86,8 +86,8 @@ assert result.next.next is result  # Circular reference preserved
 ### Schema Evolution Not Working
 
 ```python
-# Keep your existing wire mode and enable compatible schema evolution.
-f = pyfory.Fory(compatible=True)
+# Keep compatible mode enabled. This is the default.
+f = pyfory.Fory()
 
 # Version 1: Original class
 @dataclass
@@ -95,7 +95,7 @@ class User:
     name: str
     age: pyfory.Int32
 
-f.register(User, typename="User")
+f.register(User, name="User")
 data = f.dumps(User("Alice", 30))
 
 # Version 2: Add new field (backward compatible)

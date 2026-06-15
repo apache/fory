@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.row.binary;
 
+import java.util.Arrays;
 import java.util.Random;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.DataTypes;
@@ -38,6 +39,109 @@ public class BinaryArrayTest {
     writer.reset(arr.length);
     writer.fromPrimitiveArray(arr);
     writer.toArray();
+  }
+
+  @Test
+  public void primitiveArrayRoundTrip() {
+    assertRoundTrip(new byte[] {1, -2, 3});
+    assertRoundTrip(new boolean[] {true, false, true});
+    assertRoundTrip(new short[] {1, -2, Short.MAX_VALUE});
+    assertRoundTrip(new int[] {1, -2, Integer.MAX_VALUE});
+    assertRoundTrip(new long[] {1L, -2L, Long.MAX_VALUE});
+    assertRoundTrip(new float[] {1.25f, -2.5f, Float.MAX_VALUE});
+    assertRoundTrip(new double[] {1.25d, -2.5d, Double.MAX_VALUE});
+  }
+
+  @Test
+  public void primitiveWireEndian() {
+    assertValueBytes(
+        BinaryArray.fromPrimitiveArray(new short[] {(short) 0x1234}), bytes(0x34, 0x12));
+    assertValueBytes(
+        BinaryArray.fromPrimitiveArray(new int[] {0x12345678}), bytes(0x78, 0x56, 0x34, 0x12));
+    assertValueBytes(
+        BinaryArray.fromPrimitiveArray(new long[] {0x0102030405060708L}),
+        bytes(0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01));
+    assertValueBytes(
+        BinaryArray.fromPrimitiveArray(new float[] {Float.intBitsToFloat(0x12345678)}),
+        bytes(0x78, 0x56, 0x34, 0x12));
+    assertValueBytes(
+        BinaryArray.fromPrimitiveArray(new double[] {Double.longBitsToDouble(0x0102030405060708L)}),
+        bytes(0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01));
+
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_INT_ARRAY_FIELD);
+    writer.reset(1);
+    writer.fromPrimitiveArray(new int[] {0x12345678});
+    assertValueBytes(writer.toArray(), bytes(0x78, 0x56, 0x34, 0x12));
+  }
+
+  private static void assertRoundTrip(byte[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toByteArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_BYTE_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toByteArray(), arr);
+  }
+
+  private static void assertRoundTrip(boolean[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toBooleanArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_BOOLEAN_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toBooleanArray(), arr);
+  }
+
+  private static void assertRoundTrip(short[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toShortArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_SHORT_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toShortArray(), arr);
+  }
+
+  private static void assertRoundTrip(int[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toIntArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_INT_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toIntArray(), arr);
+  }
+
+  private static void assertRoundTrip(long[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toLongArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_LONG_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toLongArray(), arr);
+  }
+
+  private static void assertRoundTrip(float[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toFloatArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_FLOAT_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toFloatArray(), arr);
+  }
+
+  private static void assertRoundTrip(double[] arr) {
+    Assert.assertEquals(BinaryArray.fromPrimitiveArray(arr).toDoubleArray(), arr);
+    BinaryArrayWriter writer = new BinaryArrayWriter(DataTypes.PRIMITIVE_DOUBLE_ARRAY_FIELD);
+    writer.reset(arr.length);
+    writer.fromPrimitiveArray(arr);
+    Assert.assertEquals(writer.toArray().toDoubleArray(), arr);
+  }
+
+  private static void assertValueBytes(BinaryArray array, byte[] expected) {
+    byte[] bytes = array.toBytes();
+    int offset = BinaryArray.calculateHeaderInBytes(1);
+    Assert.assertEquals(Arrays.copyOfRange(bytes, offset, offset + expected.length), expected);
+  }
+
+  private static byte[] bytes(int... values) {
+    byte[] bytes = new byte[values.length];
+    for (int i = 0; i < values.length; i++) {
+      bytes[i] = (byte) values[i];
+    }
+    return bytes;
   }
 
   private int elem;

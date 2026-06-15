@@ -53,6 +53,7 @@ class GeneratorOptions:
     go_nested_type_style: Optional[str] = None
     swift_namespace_style: Optional[str] = None
     grpc: bool = False
+    grpc_web: bool = False
 
 
 class BaseGenerator(ABC):

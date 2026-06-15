@@ -70,6 +70,7 @@ public class ZeroCopySuite {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Object o1 = fory.deserialize(fory.serialize(o));
     Preconditions.checkArgument(o.equals(o1));
@@ -159,6 +160,7 @@ public class ZeroCopySuite {
               .withClassVersionCheck(false)
               .withRefTracking(references)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       switch (bufferType) {
         case array:

@@ -19,7 +19,7 @@ use crate::util::{extract_fields, source_fields};
 use proc_macro::TokenStream;
 use quote::quote;
 
-pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
+pub fn derive_row(ast: &syn::DeriveInput, runtime_root: proc_macro2::TokenStream) -> TokenStream {
     let name = &ast.ident;
     let source_fields = match &ast.data {
         syn::Data::Struct(s) => source_fields(&s.fields),
@@ -35,7 +35,7 @@ pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
 
         quote! {
             let mut callback_info = struct_writer.write_start(#index);
-            <#ty as ::fory_core::row::Row<'a>>::write(&v.#ident, struct_writer.get_writer())?;
+            <#ty as #runtime_root::row::Row<'a>>::write(&v.#ident, struct_writer.get_writer())?;
             struct_writer.write_end(callback_info);
         }
     });
@@ -46,9 +46,9 @@ pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
         let getter_name: proc_macro2::Ident = syn::Ident::new(&format!("{ident}"), ident.span());
 
         quote! {
-            pub fn #getter_name(&self) -> <#ty as ::fory_core::row::Row<'a>>::ReadResult {
+            pub fn #getter_name(&self) -> <#ty as #runtime_root::row::Row<'a>>::ReadResult {
                 let bytes = self.struct_data.get_field_bytes(#index);
-                <#ty as ::fory_core::row::Row<'a>>::cast(bytes)
+                <#ty as #runtime_root::row::Row<'a>>::cast(bytes)
             }
         }
     });
@@ -59,25 +59,25 @@ pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
 
     let gen = quote! {
         struct #getter<'a> {
-            struct_data: ::fory_core::row::StructViewer<'a>
+            struct_data: #runtime_root::row::StructViewer<'a>
         }
 
         impl<'a> #getter<'a> {
             #(#getter_exprs)*
         }
 
-        impl<'a> ::fory_core::row::Row<'a> for #name {
+        impl<'a> #runtime_root::row::Row<'a> for #name {
 
             type ReadResult = #getter<'a>;
 
-            fn write(v: &Self, writer: &mut ::fory_core::buffer::Writer) -> Result<(), ::fory_core::error::Error> {
-                let mut struct_writer = ::fory_core::row::StructWriter::new(#num_fields, writer);
+            fn write(v: &Self, writer: &mut #runtime_root::buffer::Writer) -> Result<(), #runtime_root::error::Error> {
+                let mut struct_writer = #runtime_root::row::StructWriter::new(#num_fields, writer);
                 #(#write_exprs);*;
                 Ok(())
             }
 
             fn cast(bytes: &'a [u8]) -> Self::ReadResult {
-                #getter{ struct_data: ::fory_core::row::StructViewer::new(bytes, #num_fields) }
+                #getter{ struct_data: #runtime_root::row::StructViewer::new(bytes, #num_fields) }
             }
         }
     };

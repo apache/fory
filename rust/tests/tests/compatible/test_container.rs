@@ -288,7 +288,7 @@ fn collection_inner() {
     let mut fory1 = Fory::builder().xlang(false).compatible(true).build();
     fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::builder().xlang(false).compatible(true).build();
-    fory2.register_by_name::<Item>("", "item").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
         let mut bins = vec![
@@ -351,7 +351,7 @@ fn collection_inner_auto_conv() {
     let mut fory1 = Fory::builder().xlang(false).compatible(true).build();
     fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::builder().xlang(false).compatible(true).build();
-    fory2.register_by_name::<Item>("", "item").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non_null
         let mut bins = vec![
@@ -419,7 +419,7 @@ fn map_inner() {
     let mut fory1 = Fory::builder().xlang(false).compatible(true).build();
     fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::builder().xlang(false).compatible(true).build();
-    fory2.register_by_name::<Item>("", "item").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
         let bytes = fory.serialize(&basic_map()).unwrap();
@@ -456,7 +456,7 @@ fn map_inner_auto_conv() {
     let mut fory1 = Fory::builder().xlang(false).compatible(true).build();
     fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::builder().xlang(false).compatible(true).build();
-    fory2.register_by_name::<Item>("", "item").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non_null
         let bytes = fory.serialize(&basic_map()).unwrap();
@@ -496,7 +496,7 @@ fn complex() {
     let mut fory1 = Fory::builder().xlang(false).compatible(true).build();
     fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::builder().xlang(false).compatible(true).build();
-    fory2.register_by_name::<Item>("", "item").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         let mut bins = vec![
             fory.serialize(&nested_collection()).unwrap(),

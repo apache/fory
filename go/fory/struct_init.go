@@ -313,6 +313,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			fieldInfo := FieldInfo{
 				Offset:     0,
 				DispatchId: dispatchId,
+				ReadAction: remoteFieldReadSkip,
 				RefMode:    refMode,
 				Kind:       FieldKindValue,
 				Serializer: fieldSerializer,
@@ -405,6 +406,8 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		var localType reflect.Type
 		var localFieldSpec *FieldSpec
 		var exists bool
+		var scalarConversion *compatibleScalarConversion
+		exactSchema := false
 
 		if def.tagID >= 0 {
 			if binding, ok := fieldTagIDToBinding[def.tagID]; ok {
@@ -439,6 +442,33 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			isEnumField := internalDefTypeId == ENUM
 			if !isEnumField && fieldSerializer != nil {
 				_, isEnumField = fieldSerializer.(*enumSerializer)
+			}
+			refTrackedScalarSchemaMismatch := false
+			scalarPair := false
+			scalarExactSchema := false
+			if localFieldSpec != nil {
+				exactSchema = fieldSpecEqualForDiff(
+					def.typeSpec,
+					def.nullable,
+					def.trackRef,
+					localFieldSpec.Type,
+					localNullableByIndex[fieldIndex],
+					localTrackRefByIndex[fieldIndex],
+				)
+				remoteScalar := compatibleScalarType(def.typeSpec.TypeId())
+				localScalar := compatibleScalarType(localFieldSpec.Type.TypeId())
+				if remoteScalar && localScalar {
+					scalarPair = true
+					localTrackRef := localTrackRefByIndex[fieldIndex]
+					localNullable := localNullableByIndex[fieldIndex]
+					refTrackedScalarSchemaMismatch = def.trackRef != localTrackRef ||
+						((def.trackRef || localTrackRef) &&
+							(def.typeSpec.TypeId() != localFieldSpec.Type.TypeId() ||
+								def.nullable != localNullable))
+					scalarExactSchema = !refTrackedScalarSchemaMismatch &&
+						def.nullable == localNullable &&
+						def.typeSpec.TypeId() == localFieldSpec.Type.TypeId()
+				}
 			}
 			if isPolymorphicField && localType.Kind() == reflect.Interface {
 				shouldRead = true
@@ -522,7 +552,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			} else if defTypeId == SET && isSetReflectType(localType) {
 				shouldRead = true
 				fieldType = localType
-			} else if defTypeId == LIST && localFieldSpec != nil && listFieldCanReadLocalArray(
+			} else if defTypeId == LIST && localFieldSpec != nil && sameListSchemaCanReadLocalArray(
 				def.typeSpec,
 				def.nullable,
 				def.trackRef,
@@ -533,7 +563,15 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			) {
 				shouldRead = true
 				fieldType = localType
-			} else if defTypeId == LIST && localFieldSpec != nil && compatibleListFieldCanReadLocalArray(def.typeSpec, localFieldSpec.Type, localType) {
+			} else if defTypeId == LIST && localFieldSpec != nil && canReadCompatibleListAsLocalArray(
+				def.typeSpec,
+				def.nullable,
+				def.trackRef,
+				localFieldSpec.Type,
+				localNullableByIndex[fieldIndex],
+				localTrackRefByIndex[fieldIndex],
+				localType,
+			) {
 				shouldRead = true
 				usesCompatibleCollectionArrayReader = true
 				fieldType = localType
@@ -544,11 +582,21 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 						listReader: listReader.(primitiveListSerializer),
 					}
 				}
-			} else if defTypeId == LIST && localType.Kind() == reflect.Array {
+			} else if defTypeId == LIST && localFieldSpec != nil &&
+				isPrimitiveArrayType(localFieldSpec.Type.TypeID) {
 				shouldRead = false
-			} else if !typeLookupFailed && typesCompatible(localType, remoteType) {
+			} else if !refTrackedScalarSchemaMismatch && !typeLookupFailed && typesCompatible(localType, remoteType) && (!scalarPair || scalarExactSchema) {
 				shouldRead = true
 				fieldType = localType
+			}
+			if !refTrackedScalarSchemaMismatch && !shouldRead && localFieldSpec != nil {
+				if !def.trackRef && !localTrackRefByIndex[fieldIndex] {
+					if conversion, ok := newCompatibleScalarConversion(def.typeSpec.TypeId(), localFieldSpec.Type.TypeId(), localType); ok {
+						shouldRead = true
+						fieldType = localType
+						scalarConversion = conversion
+					}
+				}
 			}
 
 			if shouldRead {
@@ -611,9 +659,11 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					}
 				}
 			} else {
-				fieldType = remoteType
-				fieldIndex = -1
-				offset = 0
+				return fmt.Errorf(
+					"compatible field %s cannot be read as local field %s",
+					def.name,
+					localFieldName,
+				)
 			}
 		} else {
 			fieldType = remoteType
@@ -720,20 +770,23 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			Kind:       fieldKind,
 			Serializer: fieldSerializer,
 			Meta: &FieldMeta{
-				Name:           fieldName,
-				Type:           fieldType,
-				TypeId:         fieldTypeId,
-				Nullable:       def.nullable, // Use remote nullable flag
-				FieldIndex:     fieldIndex,
-				FieldDef:       def, // Save original FieldDef for skipping
-				WriteType:      writeType,
-				CachedTypeInfo: cachedTypeInfo,
-				HasGenerics:    isCollectionType(fieldTypeId), // Container fields have declared element types
-				OptionalInfo:   optionalInfo,
-				Spec:           metaSpec,
-				TypeSpec:       def.typeSpec,
+				Name:             fieldName,
+				Type:             fieldType,
+				TypeId:           fieldTypeId,
+				Nullable:         def.nullable, // Use remote nullable flag
+				FieldIndex:       fieldIndex,
+				FieldDef:         def, // Save original FieldDef for skipping
+				WriteType:        writeType,
+				CachedTypeInfo:   cachedTypeInfo,
+				HasGenerics:      isCollectionType(fieldTypeId), // Container fields have declared element types
+				OptionalInfo:     optionalInfo,
+				Spec:             metaSpec,
+				TypeSpec:         def.typeSpec,
+				CompatibleScalar: scalarConversion,
+				ExactSchema:      exactSchema,
 			},
 		}
+		fieldInfo.ReadAction = computeRemoteFieldReadAction(&fieldInfo)
 		fields = append(fields, fieldInfo)
 	}
 
@@ -800,7 +853,7 @@ func fieldSpecEqualForDiff(remoteSpec *TypeSpec, remoteNullable bool, remoteTrac
 	return remote.EqualForDiff(local)
 }
 
-func listFieldCanReadLocalArray(remoteSpec *TypeSpec, remoteNullable bool, remoteTrackRef bool, localSpec *TypeSpec, localNullable bool, localTrackRef bool, localType reflect.Type) bool {
+func sameListSchemaCanReadLocalArray(remoteSpec *TypeSpec, remoteNullable bool, remoteTrackRef bool, localSpec *TypeSpec, localNullable bool, localTrackRef bool, localType reflect.Type) bool {
 	if localType == nil || localType.Kind() != reflect.Array || remoteSpec == nil || localSpec == nil {
 		return false
 	}
@@ -810,7 +863,10 @@ func listFieldCanReadLocalArray(remoteSpec *TypeSpec, remoteNullable bool, remot
 	return fieldSpecEqualForDiff(remoteSpec, remoteNullable, remoteTrackRef, localSpec, localNullable, localTrackRef)
 }
 
-func compatibleListFieldCanReadLocalArray(remoteSpec *TypeSpec, localSpec *TypeSpec, localType reflect.Type) bool {
+func canReadCompatibleListAsLocalArray(remoteSpec *TypeSpec, remoteNullable bool, remoteTrackRef bool, localSpec *TypeSpec, localNullable bool, localTrackRef bool, localType reflect.Type) bool {
+	if remoteNullable || remoteTrackRef || localNullable || localTrackRef {
+		return false
+	}
 	if remoteSpec == nil || localSpec == nil || localType == nil {
 		return false
 	}
@@ -818,6 +874,12 @@ func compatibleListFieldCanReadLocalArray(remoteSpec *TypeSpec, localSpec *TypeS
 		return false
 	}
 	if remoteSpec.TypeID != LIST || remoteSpec.Element == nil {
+		return false
+	}
+	// Nullable element schema is allowed for list<T?> -> array<T>; actual
+	// null payload elements fail in the dense-array reader. Ref-tracked
+	// element framing is rejected here because this path stays primitive-only.
+	if remoteSpec.Element.TrackRef {
 		return false
 	}
 	if !isPrimitiveArrayType(localSpec.TypeID) {

@@ -122,7 +122,7 @@ def test_weak_ref_requires_repeated_ref():
     )
 
 
-def test_list_and_map_ref_options_with_thread_safe():
+def test_list_and_map_ref_options_preserve_explicit_opt_out():
     source = """
     message Foo {
         int32 id = 1;
@@ -134,8 +134,8 @@ def test_list_and_map_ref_options_with_thread_safe():
 
     message Holder {
         list<ref Foo> foos = 1;
-        list<ref(weak=true, thread_safe=true) Bar> bars = 2;
-        map<Foo, ref(weak=true, thread_safe=true) Bar> bar_map = 3;
+        list<ref(weak=true, thread_safe=false) Bar> bars = 2;
+        map<Foo, ref(weak=true, thread_safe=false) Bar> bar_map = 3;
     }
     """
     schema = parse_schema(source)
@@ -152,8 +152,8 @@ def test_list_and_map_ref_options_with_thread_safe():
 
     assert bars.element_ref is True
     assert bars.element_ref_options.get("weak_ref") is True
-    assert bars.element_ref_options.get("thread_safe_pointer") is True
+    assert bars.element_ref_options.get("thread_safe_pointer") is False
 
     assert bar_map.field_type.value_ref is True
     assert bar_map.field_type.value_ref_options.get("weak_ref") is True
-    assert bar_map.field_type.value_ref_options.get("thread_safe_pointer") is True
+    assert bar_map.field_type.value_ref_options.get("thread_safe_pointer") is False

@@ -31,14 +31,14 @@ This guide covers installation and basic setup for cross-language serialization 
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```gradle
-implementation 'org.apache.fory:fory-core:1.0.0'
+implementation 'org.apache.fory:fory-core:1.1.0'
 ```
 
 ### Python
@@ -57,7 +57,7 @@ go get github.com/apache/fory/go/fory
 
 ```toml
 [dependencies]
-fory = "1.0.0"
+fory = "1.1.0"
 ```
 
 ### JavaScript/TypeScript
@@ -75,13 +75,13 @@ npm install @apache-fory/core @apache-fory/hps
 ### C\#
 
 ```bash
-dotnet add package Apache.Fory --version 1.0.0
+dotnet add package Apache.Fory --version 1.1.0
 ```
 
 ### Dart
 
 ```bash
-dart pub add fory:^1.0.0
+dart pub add fory:^1.1.0
 dart pub add dev:build_runner
 ```
 
@@ -91,29 +91,29 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.0.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.1.0")
 ]
 ```
 
 ### Scala
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.0.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.1.0"
 ```
 
 ### Kotlin
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.0.0")
+implementation("org.apache.fory:fory-kotlin:1.1.0")
 ```
 
 ### C++
 
 Use Bazel or CMake to build from source. See [C++ Guide](../cpp/index.md) for details.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
-Xlang mode is the default for runtimes that expose a mode switch. Swift, C#, JavaScript/TypeScript,
+Xlang mode is the default for implementations that expose a mode switch. Swift, C#, JavaScript/TypeScript,
 and Dart only expose the xlang wire format. The examples below keep compatible schema evolution on
 the default path and show only options that change another setting.
 
@@ -237,7 +237,7 @@ fory.register(Person.class, "example.Person");
 **Python:**
 
 ```python
-fory.register_type(Person, typename="example.Person")
+fory.register_type(Person, name="example.Person")
 ```
 
 **Go:**
@@ -259,7 +259,7 @@ struct Person {
 
 let mut fory = Fory::builder().xlang(true).build();
 fory
-    .register_by_name::<Person>("example", "Person")
+    .register_by_name::<Person>("example.Person")
     .expect("register Person");
 ```
 
@@ -279,32 +279,31 @@ const { serialize, deserialize } = fory.register(personType);
 **C++:**
 
 ```cpp
-fory.register_struct<Person>("example", "Person");
+fory.register_struct<Person>("example.Person");
 // For enums, use register_enum:
-// fory.register_enum<Color>("example", "Color");
+// fory.register_enum<Color>("example.Color");
 ```
 
 **C#:**
 
 ```csharp
-fory.Register<Person>("example", "Person");
+fory.Register<Person>("example.Person");
 ```
 
 **Dart:**
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
-  namespace: 'example',
-  typeName: 'Person',
+  name: 'example.Person',
 );
 ```
 
 **Swift:**
 
 ```swift
-try fory.register(Person.self, namespace: "example", name: "Person")
+try fory.register(Person.self, name: "example.Person")
 ```
 
 **Scala:**
@@ -376,7 +375,7 @@ fory.Register<Person>(100);
 **Dart:**
 
 ```dart
-PersonFory.register(fory, Person, id: 100);
+PersonForyModule.register(fory, Person, id: 100);
 ```
 
 **Swift:**
@@ -441,7 +440,7 @@ class Person:
     age: pyfory.Int32
 
 fory = pyfory.Fory(xlang=True)
-fory.register_type(Person, typename="example.Person")
+fory.register_type(Person, name="example.Person")
 
 with open("person.bin", "rb") as f:
     data = f.read()

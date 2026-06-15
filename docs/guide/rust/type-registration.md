@@ -49,13 +49,14 @@ let decoded: User = fory.deserialize(&bytes)?;
 
 ## Register by Name
 
-For cross-language compatibility, register with namespace and type name:
+For cross-language compatibility, register with a stable name. Use `.` to separate a
+namespace prefix from the type name:
 
 ```rust
 let mut fory = Fory::builder().xlang(true).build();
 
 // Register with symbolic type identity
-fory.register_by_name::<MyStruct>("com.example", "MyStruct")?;
+fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
 ```
 
 ## Register Custom Serializer
@@ -69,7 +70,7 @@ fory.register_serializer::<CustomType>(100)?;
 
 ## Registration Consistency
 
-Rust registration APIs use explicit IDs or explicit namespace/type names. Keep the same registration mapping on serializer and deserializer peers:
+Rust registration APIs use explicit IDs or explicit names. Keep the same registration mapping on serializer and deserializer peers:
 
 ```rust
 // Serializer side

@@ -28,10 +28,10 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.SerializableFunction;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Serializer for java serializable lambda. Use fory to serialize java lambda instead of JDK

@@ -890,6 +890,22 @@ pub trait Serializer: 'static {
     where
         Self: Sized + ForyDefault;
 
+    /// Deserialize data for dynamic send-sync carriers.
+    ///
+    /// This method must construct the `Box<dyn Any + Send + Sync>` from the
+    /// concrete value before it is erased as `dyn Any`. It must never try to
+    /// upgrade a `Box<dyn Any>` returned by the ordinary dynamic read path.
+    #[inline(always)]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        let _ = context;
+        Err(crate::error::unsupported_send_sync_type::<Self>())
+    }
+
     /// Read and validate type metadata from the buffer.
     ///
     /// This method reads type information to verify that the data in the buffer
@@ -1437,6 +1453,23 @@ pub trait StructSerializer: Serializer + 'static {
     ) -> Result<Self, Error>
     where
         Self: Sized;
+
+    /// Deserialize compatible data for dynamic send-sync carriers.
+    ///
+    /// Implementations are generated only when the resulting struct/enum is
+    /// known to be `Send + Sync`.
+    #[inline(always)]
+    fn fory_read_compatible_as_send_sync_any(
+        context: &mut ReadContext,
+        type_info: Rc<TypeInfo>,
+    ) -> Result<Box<dyn Any + Send + Sync>, Error>
+    where
+        Self: Sized,
+    {
+        let _ = context;
+        let _ = type_info;
+        Err(crate::error::unsupported_send_sync_type::<Self>())
+    }
 }
 
 /// Serializes an object implementing `Serializer` to the write context.

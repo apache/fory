@@ -34,9 +34,6 @@ import { ReadContext, WriteContext } from "./context";
 
 const DEFAULT_DEPTH_LIMIT = 50 as const;
 const MIN_DEPTH_LIMIT = 2 as const;
-const DEFAULT_MAX_COLLECTION_SIZE = 1_000_000 as const;
-const DEFAULT_MAX_BINARY_SIZE = 64 * 1024 * 1024; // 64 MiB
-
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
@@ -61,20 +58,6 @@ export default class Fory {
         `maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`,
       );
     }
-    const maxBinarySize = this.config.maxBinarySize ?? DEFAULT_MAX_BINARY_SIZE;
-    if (!Number.isInteger(maxBinarySize) || maxBinarySize < 0) {
-      throw new Error(
-        `maxBinarySize must be a non-negative integer but got ${maxBinarySize}`,
-      );
-    }
-    const maxCollectionSize
-      = this.config.maxCollectionSize ?? DEFAULT_MAX_COLLECTION_SIZE;
-    if (!Number.isInteger(maxCollectionSize) || maxCollectionSize < 0) {
-      throw new Error(
-        `maxCollectionSize must be a non-negative integer but got ${maxCollectionSize}`,
-      );
-    }
-
     this.typeResolver = new TypeResolver(this.config);
     this.writeContext = new WriteContext(this.typeResolver, this.config);
     this.readContext = new ReadContext(this.typeResolver, this.config);
@@ -88,8 +71,6 @@ export default class Fory {
       ref: Boolean(config?.ref),
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
-      maxBinarySize: config?.maxBinarySize,
-      maxCollectionSize: config?.maxCollectionSize,
       hooks: config?.hooks || {},
       compatible: config?.compatible ?? true,
       hps: config?.hps,

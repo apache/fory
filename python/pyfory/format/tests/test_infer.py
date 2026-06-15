@@ -16,6 +16,7 @@
 # under the License.
 
 import datetime
+import importlib
 import pyfory
 import pytest
 
@@ -34,6 +35,7 @@ from pyfory.format import (
     TypeId,
 )
 from pyfory.tests.core import require_pyarrow
+from pyfory.types import TypeId as SerializationTypeId
 from typing import Dict, List, Tuple
 
 
@@ -97,6 +99,16 @@ def test_infer_field():
     assert result.type.id == TypeId.STRUCT
 
 
+def test_pyfory_scalar_markers_infer_row_value_types():
+    assert pyfory.format.TypeId is SerializationTypeId
+    assert _infer_field("", pyfory.Int8).type.id == TypeId.INT8
+    assert _infer_field("", pyfory.Int16).type.id == TypeId.INT16
+    assert _infer_field("", pyfory.Int32).type.id == TypeId.INT32
+    assert _infer_field("", pyfory.Int64).type.id == TypeId.INT64
+    assert _infer_field("", pyfory.Float32).type.id == TypeId.FLOAT32
+    assert _infer_field("", pyfory.Float64).type.id == TypeId.FLOAT64
+
+
 def test_infer_class_schema():
     schema = infer_schema(Foo)
     assert schema.num_fields == 7
@@ -154,6 +166,19 @@ def test_pyarrow_schema_fields_roundtrip_through_row_format_schema():
     assert fory_schema.field(1).type.id == TypeId.LIST
     assert fory_schema.field(2).type.id == TypeId.MAP
     assert roundtrip_arrow_schema == arrow_schema
+
+
+@require_pyarrow
+def test_pyarrow_type_id_helpers_use_serialization_type_id():
+    import pyarrow as pa
+
+    schema_util = importlib.import_module("pyfory.format.schema")
+
+    assert schema_util.TypeId is SerializationTypeId
+    assert schema_util.arrow_type_to_fory_type_id(pa.int32()) == SerializationTypeId.INT32
+    assert schema_util.arrow_type_to_fory_type_id(pa.float64()) == SerializationTypeId.FLOAT64
+    assert schema_util.fory_type_id_to_arrow_type(SerializationTypeId.INT16) == pa.int16()
+    assert schema_util.fory_type_id_to_arrow_type(SerializationTypeId.STRING) == pa.utf8()
 
 
 def test_row_format_rejects_xlang_array_carrier_annotations():

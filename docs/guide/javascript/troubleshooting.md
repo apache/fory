@@ -23,10 +23,10 @@ This page covers common problems when using Fory JavaScript.
 
 ## Cannot deserialize a non-cross-language payload
 
-The Fory JavaScript runtime only reads Fory cross-language payloads. If the producer is a Java or Go service using a native-mode format, the JavaScript side cannot decode it.
+Fory JavaScript only reads Fory cross-language payloads. If the producer is a Java or Go service using a native-mode format, the JavaScript side cannot decode it.
 
-Fix: switch the producer to xlang payloads. Java and Go use xlang by default; keep compatible mode
-enabled unless every peer uses the same schema.
+Fix: switch the producer to xlang payloads. Java and Go use xlang by default; use compatible mode
+unless every peer uses the same schema.
 
 ## `maxDepth must be an integer >= 2`
 
@@ -37,22 +37,6 @@ new Fory({ maxDepth: 100 });
 ```
 
 Increase this only if your data is legitimately deeply nested.
-
-## `Binary size ... exceeds maxBinarySize`
-
-A binary field or the overall message exceeded the safety limit. If the size is expected and the source is trusted, increase the limit:
-
-```ts
-new Fory({ maxBinarySize: 128 * 1024 * 1024 });
-```
-
-## `Collection size ... exceeds maxCollectionSize`
-
-A list, set, or map has more elements than the configured limit. This often means the data is unexpectedly large. If it is legitimate, increase the limit:
-
-```ts
-new Fory({ maxCollectionSize: 2_000_000 });
-```
 
 ## `Field "..." is not nullable`
 

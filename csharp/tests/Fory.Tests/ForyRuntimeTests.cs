@@ -19,6 +19,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Numerics;
 using System.Threading.Tasks;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
@@ -173,6 +174,27 @@ public sealed class CompatibleUInt32ArrayListCarrierSchema
 }
 
 [ForyStruct]
+public sealed class CompatibleBinarySchema
+{
+    [ForyField(1, Type = typeof(S.Binary))]
+    public byte[] Value { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class CompatibleUInt8ArrayBytesSchema
+{
+    [ForyField(1, Type = typeof(S.Array<S.UInt8>))]
+    public byte[] Value { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class CompatibleUInt8ArrayListSchema
+{
+    [ForyField(1, Type = typeof(S.Array<S.UInt8>))]
+    public List<byte> Value { get; set; } = [];
+}
+
+[ForyStruct]
 public sealed class CompatibleNestedListSchema
 {
     [ForyField(Type = typeof(S.Map<S.String, S.List<S.Int32>>))]
@@ -197,6 +219,152 @@ public sealed class SemanticScalarSchema
 
     [ForyField(Type = typeof(S.Tagged<S.Int64>))]
     public long TaggedI64 { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarBoolField
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableBoolField
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarStringField
+{
+    [ForyField(1, Type = typeof(S.String))]
+    public string? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarInt16Field
+{
+    [ForyField(1, Type = typeof(S.Int16))]
+    public short Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarInt32Field
+{
+    [ForyField(1, Type = typeof(S.Int32))]
+    public int Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarVarInt32Field
+{
+    [ForyField(1)]
+    public int Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableInt32Field
+{
+    [ForyField(1, Type = typeof(S.Int32))]
+    public int? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarInt64Field
+{
+    [ForyField(1, Type = typeof(S.Int64))]
+    public long Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableInt64Field
+{
+    [ForyField(1, Type = typeof(S.Int64))]
+    public long? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarUInt32Field
+{
+    [ForyField(1, Type = typeof(S.UInt32))]
+    public uint Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarUInt64Field
+{
+    [ForyField(1, Type = typeof(S.UInt64))]
+    public ulong Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFixedUInt32Field
+{
+    [ForyField(1, Type = typeof(S.Fixed<S.UInt32>))]
+    public uint Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarNullableFixedUInt32Field
+{
+    [ForyField(1, Type = typeof(S.Fixed<S.UInt32>))]
+    public uint? Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFloat32Field
+{
+    [ForyField(1, Type = typeof(S.Float32))]
+    public float Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarFloat64Field
+{
+    [ForyField(1, Type = typeof(S.Float64))]
+    public double Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarDecimalField
+{
+    [ForyField(1, Type = typeof(S.Decimal))]
+    public ForyDecimal Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarStringListField
+{
+    [ForyField(1, Type = typeof(S.List<S.String>))]
+    public List<string> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class ScalarInt32ListField
+{
+    [ForyField(1, Type = typeof(S.List<S.Int32>))]
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class ScalarTwoStringFields
+{
+    [ForyField(1, Type = typeof(S.String))]
+    public string? Flag { get; set; }
+
+    [ForyField(2, Type = typeof(S.String))]
+    public string? Count { get; set; }
+}
+
+[ForyStruct]
+public sealed class ScalarBoolIntFields
+{
+    [ForyField(1, Type = typeof(S.Bool))]
+    public bool Flag { get; set; }
+
+    [ForyField(2, Type = typeof(S.Int32))]
+    public int Count { get; set; }
 }
 
 [ForyStruct]
@@ -1124,25 +1292,57 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void CompatibleReadRejectsNullableListElementsIntoArrayCarrier()
+    public void CompatibleReadSupportsBinaryUint8ArrayPairs()
+    {
+        ForyRuntime binaryWriter = ForyRuntime.Builder().Compatible(true).Build();
+        binaryWriter.Register<CompatibleBinarySchema>(311);
+        ForyRuntime uint8ArrayReader = ForyRuntime.Builder().Compatible(true).Build();
+        uint8ArrayReader.Register<CompatibleUInt8ArrayBytesSchema>(311);
+
+        byte[] binaryPayload = [0, 1, 2, 250, 255];
+        CompatibleUInt8ArrayBytesSchema decodedArray =
+            uint8ArrayReader.Deserialize<CompatibleUInt8ArrayBytesSchema>(
+                binaryWriter.Serialize(new CompatibleBinarySchema { Value = binaryPayload }));
+        Assert.Equal(binaryPayload, decodedArray.Value);
+
+        ForyRuntime listReader = ForyRuntime.Builder().Compatible(true).Build();
+        listReader.Register<CompatibleUInt8ArrayListSchema>(311);
+        CompatibleUInt8ArrayListSchema decodedList =
+            listReader.Deserialize<CompatibleUInt8ArrayListSchema>(
+                binaryWriter.Serialize(new CompatibleBinarySchema { Value = binaryPayload }));
+        Assert.Equal(binaryPayload, decodedList.Value);
+
+        ForyRuntime uint8ArrayWriter = ForyRuntime.Builder().Compatible(true).Build();
+        uint8ArrayWriter.Register<CompatibleUInt8ArrayBytesSchema>(312);
+        ForyRuntime binaryReader = ForyRuntime.Builder().Compatible(true).Build();
+        binaryReader.Register<CompatibleBinarySchema>(312);
+
+        byte[] arrayPayload = [3, 4, 5, 253];
+        CompatibleBinarySchema decodedBinary = binaryReader.Deserialize<CompatibleBinarySchema>(
+            uint8ArrayWriter.Serialize(new CompatibleUInt8ArrayBytesSchema { Value = arrayPayload }));
+        Assert.Equal(arrayPayload, decodedBinary.Value);
+    }
+
+    [Fact]
+    public void CompatibleReadAllowsNullableListSchemaIntoArrayCarrier()
     {
         ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
         writer.Register<CompatibleNullableListSchema>(308);
         ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
         reader.Register<CompatibleArraySchema>(308);
 
-        byte[] nonNullPayload = writer.Serialize(new CompatibleNullableListSchema { Values = [1, 2] });
-        CompatibleArraySchema decoded = reader.Deserialize<CompatibleArraySchema>(nonNullPayload);
+        byte[] payload = writer.Serialize(new CompatibleNullableListSchema { Values = [1, 2] });
+        CompatibleArraySchema decoded = reader.Deserialize<CompatibleArraySchema>(payload);
         Assert.Equal([1, 2], decoded.Values);
 
-        byte[] payload = writer.Serialize(new CompatibleNullableListSchema { Values = [1, null] });
+        byte[] nullPayload = writer.Serialize(new CompatibleNullableListSchema { Values = [1, null, 3] });
         InvalidDataException exception =
-            Assert.Throws<InvalidDataException>(() => reader.Deserialize<CompatibleArraySchema>(payload));
-        Assert.Contains("compatible list to array field requires non-null elements", exception.Message);
+            Assert.Throws<InvalidDataException>(() => reader.Deserialize<CompatibleArraySchema>(nullPayload));
+        Assert.Contains("non-null elements", exception.Message);
     }
 
     [Fact]
-    public void CompatibleReadDoesNotMatchNestedListArraySchemaPairs()
+    public void RejectsNestedListArrayPairs()
     {
         List<TypeMetaFieldInfo> localFields =
         [
@@ -1182,9 +1382,455 @@ public sealed class ForyRuntimeTests
                         ])),
             ]);
 
-        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+        Assert.Contains("remote and local field schemas are not compatible", exception.Message);
+    }
 
-        Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+    [Fact]
+    public void AllowsNestedScalarNullableChanges()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(
+                null,
+                "values",
+                new TypeMetaFieldType(
+                    (uint)TypeId.List,
+                    false,
+                    false,
+                    [new TypeMetaFieldType((uint)TypeId.String, false)])),
+        ];
+
+        TypeMeta remoteNullableTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [
+                new TypeMetaFieldInfo(
+                    null,
+                    "values",
+                    new TypeMetaFieldType(
+                        (uint)TypeId.List,
+                        false,
+                        false,
+                        [new TypeMetaFieldType((uint)TypeId.String, true)])),
+            ]);
+
+        TypeMeta.AssignFieldIds(remoteNullableTypeMeta, localFields);
+        Assert.Equal(1, remoteNullableTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteTrackedTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [
+                new TypeMetaFieldInfo(
+                    null,
+                    "values",
+                    new TypeMetaFieldType(
+                        (uint)TypeId.List,
+                        false,
+                        false,
+                        [new TypeMetaFieldType((uint)TypeId.String, false, true)])),
+            ]);
+
+        Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteTrackedTypeMeta, localFields));
+    }
+
+    [Fact]
+    public void RestrictsByteSequenceCompatibility()
+    {
+        List<TypeMetaFieldInfo> localBytes =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Binary, false)),
+        ];
+        TypeMeta remoteUInt8Array = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.UInt8Array, false))]);
+
+        TypeMeta.AssignFieldIds(remoteUInt8Array, localBytes);
+        Assert.Equal(1, remoteUInt8Array.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteInt8Array = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Int8Array, false))]);
+
+        Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteInt8Array, localBytes));
+
+        List<TypeMetaFieldInfo> localNested =
+        [
+            new TypeMetaFieldInfo(
+                null,
+                "value",
+                new TypeMetaFieldType(
+                    (uint)TypeId.List,
+                    false,
+                    false,
+                    [new TypeMetaFieldType((uint)TypeId.Binary, false)])),
+        ];
+        TypeMeta remoteNested = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [
+                new TypeMetaFieldInfo(
+                    null,
+                    "value",
+                    new TypeMetaFieldType(
+                        (uint)TypeId.List,
+                        false,
+                        false,
+                        [new TypeMetaFieldType((uint)TypeId.UInt8Array, false)])),
+            ]);
+
+        Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteNested, localNested));
+    }
+
+    [Fact]
+    public void RejectsFramedListArrayPairs()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "values", new TypeMetaFieldType((uint)TypeId.Int32Array, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [
+                new TypeMetaFieldInfo(
+                    1,
+                    "$tag1",
+                    new TypeMetaFieldType(
+                        (uint)TypeId.List,
+                        true,
+                        false,
+                        [new TypeMetaFieldType((uint)TypeId.VarInt32, false)])),
+            ]);
+
+        Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+    }
+
+    [Fact]
+    public void CompatibleScalarBoolString()
+    {
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "0" }).Value);
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "1" }).Value);
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "false" }).Value);
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "true" }).Value);
+
+        Assert.Equal("true", CompatibleRead<ScalarBoolField, ScalarStringField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal("false", CompatibleRead<ScalarBoolField, ScalarStringField>(
+            new ScalarBoolField { Value = false }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "TRUE" }));
+    }
+
+    [Fact]
+    public void CompatibleScalarBoolNumber()
+    {
+        Assert.False(CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 0 }).Value);
+        Assert.True(CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 1 }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarBoolField, ScalarInt32Field>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal(0u, CompatibleRead<ScalarBoolField, ScalarUInt32Field>(
+            new ScalarBoolField { Value = false }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarBoolField>(
+            new ScalarInt32Field { Value = 2 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarBoolField>(
+            new ScalarFloat64Field { Value = 0.5d }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarBoolField>(
+            new ScalarFloat64Field { Value = double.NaN }));
+    }
+
+    [Fact]
+    public void CompatibleScalarNumberBounds()
+    {
+        Assert.Equal((short)123, CompatibleRead<ScalarInt32Field, ScalarInt16Field>(
+            new ScalarInt32Field { Value = 123 }).Value);
+        Assert.Equal(123L, CompatibleRead<ScalarInt32Field, ScalarInt64Field>(
+            new ScalarInt32Field { Value = 123 }).Value);
+        Assert.Equal((long)int.MaxValue, CompatibleRead<ScalarVarInt32Field, ScalarInt64Field>(
+            new ScalarVarInt32Field { Value = int.MaxValue }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarFloat64Field, ScalarInt32Field>(
+            new ScalarFloat64Field { Value = 1.0d }).Value);
+        Assert.Equal(double.PositiveInfinity, CompatibleRead<ScalarFloat32Field, ScalarFloat64Field>(
+            new ScalarFloat32Field { Value = float.PositiveInfinity }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarInt16Field>(
+            new ScalarInt32Field { Value = 40_000 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarInt32Field>(
+            new ScalarFloat64Field { Value = 1.5d }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarInt32Field, ScalarFloat32Field>(
+            new ScalarInt32Field { Value = 16_777_217 }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat32Field, ScalarFloat64Field>(
+            new ScalarFloat32Field { Value = float.NaN }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarUInt64Field, ScalarInt64Field>(
+            new ScalarUInt64Field { Value = ulong.MaxValue }));
+    }
+
+    [Fact]
+    public void CompatibleScalarStringNumber()
+    {
+        Assert.Equal(100, CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "1e2" }).Value);
+        Assert.Equal(0.5d, CompatibleRead<ScalarStringField, ScalarFloat64Field>(
+            new ScalarStringField { Value = "0.5" }).Value);
+
+        double negativeZero = CompatibleRead<ScalarStringField, ScalarFloat64Field>(
+            new ScalarStringField { Value = "-0" }).Value;
+        Assert.Equal(BitConverter.DoubleToUInt64Bits(-0.0d), BitConverter.DoubleToUInt64Bits(negativeZero));
+
+        Assert.Equal("-12", CompatibleRead<ScalarInt32Field, ScalarStringField>(
+            new ScalarInt32Field { Value = -12 }).Value);
+        Assert.Equal("125.0", CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = 125.0d }).Value);
+        Assert.Equal("-0.0", CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = -0.0d }).Value);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "1.5" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarFloat32Field>(
+            new ScalarStringField { Value = "0.1" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarInt32Field>(
+            new ScalarStringField { Value = "+1" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarFloat64Field, ScalarStringField>(
+            new ScalarFloat64Field { Value = double.PositiveInfinity }));
+    }
+
+    [Fact]
+    public void CompatibleScalarDecimal()
+    {
+        Assert.True(CompatibleRead<ScalarDecimalField, ScalarBoolField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(10), 1) }).Value);
+        Assert.Equal(new ForyDecimal(BigInteger.One, 0), CompatibleRead<ScalarBoolField, ScalarDecimalField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal(new ForyDecimal(new BigInteger(1234), 2), CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "12.340" }).Value);
+        Assert.Equal("12.34", CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(12340), 3) }).Value);
+
+        string digits256 = new('1', 256);
+        ForyDecimal digitBound = CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = digits256 }).Value;
+        Assert.Equal(BigInteger.Parse(digits256), digitBound.UnscaledValue);
+        Assert.Equal(0, digitBound.Scale);
+
+        ForyDecimal exponentBound = CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e255" }).Value;
+        Assert.Equal(256, exponentBound.UnscaledValue.ToString().Length);
+        Assert.Equal(0, exponentBound.Scale);
+
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarBoolField>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(5), 1) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarInt32Field>(
+            new ScalarDecimalField { Value = new ForyDecimal(new BigInteger(5), 1) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = new string('1', 257) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "0." + new string('0', 319) }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e1000000" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarStringField, ScalarDecimalField>(
+            new ScalarStringField { Value = "1e256" }));
+        Assert.Throws<InvalidDataException>(() => CompatibleRead<ScalarDecimalField, ScalarStringField>(
+            new ScalarDecimalField { Value = new ForyDecimal(BigInteger.One, -256) }));
+
+        InvalidDataException expansionError = Assert.Throws<InvalidDataException>(() =>
+            CompatibleRead<ScalarFloat64Field, ScalarDecimalField>(
+                new ScalarFloat64Field { Value = double.Epsilon }));
+        Assert.Contains("field 'value' from Float64 to Decimal", expansionError.Message);
+    }
+
+    [Fact]
+    public void CompatibleScalarNullable()
+    {
+        Assert.True(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = "1" }).Value);
+        Assert.False(CompatibleRead<ScalarStringField, ScalarBoolField>(
+            new ScalarStringField { Value = null }).Value);
+        Assert.Equal(1, CompatibleRead<ScalarBoolField, ScalarNullableInt32Field>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Equal(1L, CompatibleRead<ScalarBoolField, ScalarNullableInt64Field>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.Null(CompatibleRead<ScalarNullableInt32Field, ScalarNullableInt64Field>(
+            new ScalarNullableInt32Field { Value = null }).Value);
+    }
+
+    [Fact]
+    public void CompatibleScalarRejectsInvalidBoolPayload()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).Build();
+        writer.Register<ScalarBoolField>(813);
+        byte[] payload = writer.Serialize(new ScalarBoolField { Value = true });
+        payload[^1] = 2;
+
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).Build();
+        reader.Register<ScalarNullableBoolField>(813);
+        Assert.Throws<InvalidDataException>(() => reader.Deserialize<ScalarNullableBoolField>(payload));
+    }
+
+    [Fact]
+    public void CompatibleScalarSchemaOverride()
+    {
+        Assert.Equal(4_000_000_000u, CompatibleRead<ScalarFixedUInt32Field, ScalarUInt32Field>(
+            new ScalarFixedUInt32Field { Value = 4_000_000_000u }).Value);
+        Assert.Equal(4_000_000_000u, CompatibleRead<ScalarFixedUInt32Field, ScalarNullableFixedUInt32Field>(
+            new ScalarFixedUInt32Field { Value = 4_000_000_000u }).Value);
+    }
+
+    [Fact]
+    public void CompatibleScalarTrackingRefRules()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, false)),
+        ];
+
+        TypeMeta remoteTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false, true))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteTrackingTypeMeta, localFields));
+
+        List<TypeMetaFieldInfo> localTrackingFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, false, true)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.String, false))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteTypeMeta, localTrackingFields));
+
+        TypeMeta remoteBoolTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteBoolTrackingTypeMeta, localFields));
+
+        TypeMeta remoteBoolTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteBoolTypeMeta, localTrackingFields));
+
+        TypeMeta remoteBoolBothTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolBothTrackingTypeMeta, localTrackingFields);
+        Assert.Equal(0, remoteBoolBothTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        List<TypeMetaFieldInfo> localNullableTrackingFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.Bool, true, true)),
+        ];
+        TypeMeta remoteBoolNullableTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, true, true))]);
+        TypeMeta.AssignFieldIds(remoteBoolNullableTrackingTypeMeta, localNullableTrackingFields);
+        Assert.Equal(0, remoteBoolNullableTrackingTypeMeta.Fields[0].AssignedFieldId);
+
+        TypeMeta remoteBoolTrackingNullableTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, true, true))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteBoolTrackingNullableTypeMeta, localTrackingFields));
+
+        TypeMeta remoteBoolTrackingRequiredTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Bool, false, true))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteBoolTrackingRequiredTypeMeta, localNullableTrackingFields));
+
+        List<TypeMetaFieldInfo> localTrackingUIntFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.VarUInt32, false, true)),
+        ];
+        TypeMeta remoteFixedUIntTrackingTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            0,
+            MetaString.Empty('_', '_'),
+            new MetaString("remote", MetaStringEncoding.Utf8, '_', '_', "remote"u8.ToArray()),
+            false,
+            [new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.UInt32, false, true))]);
+        Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteFixedUIntTrackingTypeMeta, localTrackingUIntFields));
+    }
+
+    [Fact]
+    public void NestedScalarConversionRejected()
+    {
+        Assert.Throws<InvalidDataException>(
+            () => CompatibleRead<ScalarStringListField, ScalarInt32ListField>(
+                new ScalarStringListField { Values = ["1"] }));
+    }
+
+    [Fact]
+    public void SameSchemaScalarRoundTrip()
+    {
+        Assert.True(CompatibleRead<ScalarBoolField, ScalarBoolField>(
+            new ScalarBoolField { Value = true }).Value);
+        Assert.True(double.IsNaN(CompatibleRead<ScalarFloat64Field, ScalarFloat64Field>(
+            new ScalarFloat64Field { Value = double.NaN }).Value));
     }
 
     [Fact]
@@ -1926,7 +2572,7 @@ public sealed class ForyRuntimeTests
     {
         List<TypeMetaFieldInfo> localFields =
         [
-            new TypeMetaFieldInfo(1, "int_value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+            new TypeMetaFieldInfo(null, "int_value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
             new TypeMetaFieldInfo(2, "name", new TypeMetaFieldType((uint)TypeId.String, true)),
         ];
         List<TypeMetaFieldInfo> remoteFields =
@@ -1944,13 +2590,85 @@ public sealed class ForyRuntimeTests
             remoteFields);
 
         TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
-        Assert.Equal(1, remoteTypeMeta.Fields[0].AssignedFieldId);
+        Assert.Equal(2, remoteTypeMeta.Fields[0].AssignedFieldId);
         Assert.Equal(0, remoteTypeMeta.Fields[1].AssignedFieldId);
         Assert.Equal(-1, remoteTypeMeta.Fields[2].AssignedFieldId);
     }
 
     [Fact]
-    public void TypeMetaAssignFieldIdsSkipsTypeMismatchedField()
+    public void TypeMetaAssignFieldIdsDoesNotNameMatchTaggedLocalField()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            505,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
+        Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+    }
+
+    [Fact]
+    public void TypeMetaAssignFieldIdsThrowsOnDuplicateRemoteNameBinding()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+            new TypeMetaFieldInfo(null, "value", new TypeMetaFieldType((uint)TypeId.String, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            506,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(
+            () => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+        Assert.Contains("duplicates local field value", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RejectsTypeMismatchedField()
+    {
+        List<TypeMetaFieldInfo> localFields =
+        [
+            new TypeMetaFieldInfo(1, "value", new TypeMetaFieldType((uint)TypeId.VarInt32, false)),
+        ];
+        List<TypeMetaFieldInfo> remoteFields =
+        [
+            new TypeMetaFieldInfo(1, "$tag1", new TypeMetaFieldType((uint)TypeId.Binary, false)),
+        ];
+        TypeMeta remoteTypeMeta = new(
+            (uint)TypeId.CompatibleStruct,
+            501,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            remoteFields);
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => TypeMeta.AssignFieldIds(remoteTypeMeta, localFields));
+        Assert.Contains("remote and local field schemas are not compatible", exception.Message);
+    }
+
+    [Fact]
+    public void TypeMetaAssignScalarConversion()
     {
         List<TypeMetaFieldInfo> localFields =
         [
@@ -1969,7 +2687,7 @@ public sealed class ForyRuntimeTests
             remoteFields);
 
         TypeMeta.AssignFieldIds(remoteTypeMeta, localFields);
-        Assert.Equal(-1, remoteTypeMeta.Fields[0].AssignedFieldId);
+        Assert.Equal(1, remoteTypeMeta.Fields[0].AssignedFieldId);
     }
 
     [Fact]
@@ -2064,6 +2782,15 @@ public sealed class ForyRuntimeTests
         Buffer.BlockCopy(rewrittenTypeMetaBytes, 0, rewrittenPayload, typeMetaStart, rewrittenTypeMetaBytes.Length);
         Buffer.BlockCopy(payload, typeMetaEnd, rewrittenPayload, typeMetaStart + rewrittenTypeMetaBytes.Length, payload.Length - typeMetaEnd);
         return rewrittenPayload;
+    }
+
+    private static TReader CompatibleRead<TWriter, TReader>(TWriter value, bool trackRef = false)
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        writer.Register<TWriter>(812);
+        ForyRuntime reader = ForyRuntime.Builder().Compatible(true).TrackRef(trackRef).Build();
+        reader.Register<TReader>(812);
+        return reader.Deserialize<TReader>(writer.Serialize(value));
     }
 
     private static byte[] CorruptCompatibleTypeMetaBody(byte[] payload)

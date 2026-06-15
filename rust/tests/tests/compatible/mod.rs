@@ -17,5 +17,6 @@
 
 mod test_basic_type;
 mod test_container;
+mod test_scalar_conversion;
 mod test_struct;
 mod test_struct_enum;

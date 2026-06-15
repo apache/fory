@@ -26,7 +26,7 @@ type ComplexNestedTuple = ((Vec<i32>, Option<String>), (Rc<bool>, (i32, f64)));
 // Test homogeneous tuples with primitive types
 #[test]
 fn test_homogeneous_tuple_i32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (1i32, 2i32, 3i32);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (i32, i32, i32) = fory.deserialize(&bin).expect("deserialize");
@@ -35,7 +35,7 @@ fn test_homogeneous_tuple_i32() {
 
 #[test]
 fn test_homogeneous_tuple_f64() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (1.5f64, 2.5f64, 3.5f64, 4.5f64);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (f64, f64, f64, f64) = fory.deserialize(&bin).expect("deserialize");
@@ -44,7 +44,7 @@ fn test_homogeneous_tuple_f64() {
 
 #[test]
 fn test_homogeneous_tuple_string() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = ("hello".to_string(), "world".to_string(), "fory".to_string());
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (String, String, String) = fory.deserialize(&bin).expect("deserialize");
@@ -54,7 +54,7 @@ fn test_homogeneous_tuple_string() {
 // Test heterogeneous tuples with different types
 #[test]
 fn test_heterogeneous_tuple_simple() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (42i32, "hello".to_string());
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (i32, String) = fory.deserialize(&bin).expect("deserialize");
@@ -63,7 +63,7 @@ fn test_heterogeneous_tuple_simple() {
 
 #[test]
 fn test_heterogeneous_tuple_complex() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (42i32, "hello".to_string(), PI_F64, true, vec![1, 2, 3]);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (i32, String, f64, bool, Vec<i32>) = fory.deserialize(&bin).expect("deserialize");
@@ -73,7 +73,7 @@ fn test_heterogeneous_tuple_complex() {
 // Test single element tuple
 #[test]
 fn test_single_element_tuple() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (42i32,);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (i32,) = fory.deserialize(&bin).expect("deserialize");
@@ -83,7 +83,7 @@ fn test_single_element_tuple() {
 // Test tuples with Option types
 #[test]
 fn test_tuple_with_options() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (Some(42i32), None::<i32>, Some(100i32));
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (Option<i32>, Option<i32>, Option<i32>) = fory.deserialize(&bin).expect("deserialize");
@@ -92,7 +92,7 @@ fn test_tuple_with_options() {
 
 #[test]
 fn test_heterogeneous_tuple_with_options() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (Some(42i32), "hello".to_string(), None::<String>);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (Option<i32>, String, Option<String>) = fory.deserialize(&bin).expect("deserialize");
@@ -102,7 +102,7 @@ fn test_heterogeneous_tuple_with_options() {
 // Test tuples with collections
 #[test]
 fn test_tuple_with_vectors() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (vec![1, 2, 3], vec![4, 5, 6]);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (Vec<i32>, Vec<i32>) = fory.deserialize(&bin).expect("deserialize");
@@ -111,7 +111,7 @@ fn test_tuple_with_vectors() {
 
 #[test]
 fn test_tuple_with_mixed_collections() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (vec![1, 2, 3], vec!["a".to_string(), "b".to_string()]);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (Vec<i32>, Vec<String>) = fory.deserialize(&bin).expect("deserialize");
@@ -121,7 +121,7 @@ fn test_tuple_with_mixed_collections() {
 // Test nested tuples
 #[test]
 fn test_nested_tuples() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = ((1i32, 2i32), (3i32, 4i32));
     let bin = fory.serialize(&tuple).unwrap();
     let obj: ((i32, i32), (i32, i32)) = fory.deserialize(&bin).expect("deserialize");
@@ -130,7 +130,7 @@ fn test_nested_tuples() {
 
 #[test]
 fn test_deeply_nested_tuples() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (1i32, (2i32, (3i32, 4i32)));
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (i32, (i32, (i32, i32))) = fory.deserialize(&bin).expect("deserialize");
@@ -140,7 +140,7 @@ fn test_deeply_nested_tuples() {
 // Test large tuples
 #[test]
 fn test_large_homogeneous_tuple() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (
         1i32, 2i32, 3i32, 4i32, 5i32, 6i32, 7i32, 8i32, 9i32, 10i32, 11i32, 12i32,
     );
@@ -152,7 +152,7 @@ fn test_large_homogeneous_tuple() {
 
 #[test]
 fn test_large_heterogeneous_tuple() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (
         1i32,
         2i64,
@@ -172,7 +172,7 @@ fn test_large_heterogeneous_tuple() {
 // Test tuples with Rc/Arc (shared references)
 #[test]
 fn test_tuple_with_rc() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let value = Rc::new(42i32);
     let tuple = (Rc::clone(&value), Rc::clone(&value));
     let bin = fory.serialize(&tuple).unwrap();
@@ -185,7 +185,7 @@ fn test_tuple_with_rc() {
 // Test tuples with bool
 #[test]
 fn test_homogeneous_tuple_bool() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple = (true, false, true, false);
     let bin = fory.serialize(&tuple).unwrap();
     let obj: (bool, bool, bool, bool) = fory.deserialize(&bin).expect("deserialize");
@@ -195,7 +195,7 @@ fn test_homogeneous_tuple_bool() {
 // Test tuples with u8, u16, u32, u64
 #[test]
 fn test_homogeneous_tuple_unsigned() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let tuple_u8 = (1u8, 2u8, 3u8);
     let bin = fory.serialize(&tuple_u8).unwrap();
     let obj: (u8, u8, u8) = fory.deserialize(&bin).expect("deserialize");
@@ -268,7 +268,7 @@ fn run_struct_with_simple_tuple_fields(xlang: bool) {
         triple: (bool, u32, i64),
     }
 
-    let mut fory = Fory::builder().xlang(xlang).build();
+    let mut fory = Fory::builder().xlang(xlang).compatible(xlang).build();
     fory.register::<SimpleTupleStruct>(1).unwrap();
 
     let data = SimpleTupleStruct {
@@ -304,7 +304,7 @@ fn run_struct_with_complex_tuple_fields(xlang: bool) {
         complex_nested: ComplexNestedTuple,
     }
 
-    let mut fory = Fory::builder().xlang(xlang).build();
+    let mut fory = Fory::builder().xlang(xlang).compatible(xlang).build();
     fory.register::<ComplexTupleStruct>(2).unwrap();
 
     let data = ComplexTupleStruct {
@@ -348,7 +348,7 @@ fn test_struct_with_complex_tuple_fields_xlang() {
 // Test unit type () - the empty tuple / 0-element tuple
 #[test]
 fn test_tuple_with_unit() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let value: (i32, (), String) = (42, (), "hello".to_string());
     let bytes = fory.serialize(&value).unwrap();
@@ -358,7 +358,7 @@ fn test_tuple_with_unit() {
 
 #[test]
 fn test_tuple_with_multiple_units() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let value: ((), i32, (), String, ()) = ((), 42, (), "hello".to_string(), ());
     let bytes = fory.serialize(&value).unwrap();
@@ -375,7 +375,7 @@ struct StructWithUnit {
 
 #[test]
 fn test_struct_with_unit_field() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithUnit>(200).unwrap();
 
     let value = StructWithUnit {

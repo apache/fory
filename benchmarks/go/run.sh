@@ -87,6 +87,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "${FORY_BENCH_SCHEMA_MISMATCH:-0}" == "1" && "$SERIALIZER" != "fory" ]]; then
+    echo "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory."
+    exit 1
+fi
+
 # Build benchmark filter
 FILTER=""
 if [[ -n "$DATA_TYPE" ]]; then

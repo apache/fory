@@ -73,7 +73,6 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class ChildContainerSerializers {
-
   public static Class<? extends Serializer> getCollectionSerializerClass(Class<?> cls) {
     if (ChildCollectionSerializer.superClasses.contains(cls)
         || ChildSortedSetSerializer.superClasses.contains(cls)
@@ -264,7 +263,7 @@ public class ChildContainerSerializers {
     public Collection newCollection(CopyContext copyContext, Collection originCollection) {
       T newCollection =
           subclassFactory.newCollection(
-              copyContext.copyObject(((SortedSet<?>) originCollection).comparator()));
+              ComparatorCopy.copy(copyContext, ((SortedSet<?>) originCollection).comparator()));
       copyChildFields(copyContext, originCollection, newCollection);
       return newCollection;
     }
@@ -310,7 +309,7 @@ public class ChildContainerSerializers {
     public Collection newCollection(CopyContext copyContext, Collection originCollection) {
       T newCollection =
           subclassFactory.newCollection(
-              copyContext.copyObject(((PriorityQueue<?>) originCollection).comparator()),
+              ComparatorCopy.copy(copyContext, ((PriorityQueue<?>) originCollection).comparator()),
               originCollection.size());
       copyChildFields(copyContext, originCollection, newCollection);
       return newCollection;
@@ -418,7 +417,7 @@ public class ChildContainerSerializers {
     public Map newMap(CopyContext copyContext, Map originMap) {
       T newMap =
           subclassFactory.newMap(
-              copyContext.copyObject(((SortedMap<?, ?>) originMap).comparator()));
+              ComparatorCopy.copy(copyContext, ((SortedMap<?, ?>) originMap).comparator()));
       copyChildFields(copyContext, originMap, newMap);
       return newMap;
     }
@@ -626,7 +625,9 @@ public class ChildContainerSerializers {
         slotsSerializer =
             new CompatibleLayerSerializer(typeResolver, cls, layerTypeDef, layerMarkerClass);
       } else {
-        slotsSerializer = new ObjectSerializer<>(typeResolver, cls, false);
+        // Slot serializers only populate fields on the container instance created by the concrete
+        // container serializer.
+        slotsSerializer = new ObjectSerializer<>(typeResolver, cls, false, null);
       }
       serializers.add(slotsSerializer);
       cls = (Class<T>) cls.getSuperclass();

@@ -33,17 +33,25 @@ fory.Register<Order>(101);
 
 ## Register by Type Name
 
-Use namespace + type name registration when you prefer symbolic mappings.
+Use name registration when you prefer symbolic mappings. The single-string overload accepts the
+full user-facing name and splits it at the last dot.
 
 ```csharp
 Fory fory = Fory.Builder().Build();
-fory.Register<User>("com.example", "User");
+fory.Register<User>("com.example.User");
 ```
 
-You can also use the short overload:
+Names without dots use an empty namespace:
 
 ```csharp
 fory.Register<User>("User");
+```
+
+The split overload is also available when you already have the namespace and final type name
+separately:
+
+```csharp
+fory.Register<User>("com.example", "User");
 ```
 
 ## Register a Custom Serializer
@@ -53,15 +61,15 @@ Fory fory = Fory.Builder().Build();
 fory.Register<MyType, MyTypeSerializer>(200);
 ```
 
-Namespace-based custom serializer registration is also supported:
+Name-based custom serializer registration is also supported:
 
 ```csharp
-fory.Register<MyType, MyTypeSerializer>("com.example", "MyType");
+fory.Register<MyType, MyTypeSerializer>("com.example.MyType");
 ```
 
 ## Thread-Safe Registration
 
-`ThreadSafeFory` exposes the same registration APIs. Registrations are propagated to all per-thread runtimes.
+`ThreadSafeFory` exposes the same registration APIs. Registrations are propagated to all per-thread Fory instances.
 
 ```csharp
 using ThreadSafeFory fory = Fory.Builder().BuildThreadSafe();
@@ -73,7 +81,8 @@ fory.Register<Order>(101);
 
 - Register user-defined types on both writer and reader sides.
 - Keep ID/name mappings consistent across services and languages.
-- Register before high-volume serialization workloads to avoid runtime misses.
+- For the split overloads, `typeName` must be non-empty and must not contain dots.
+- Register before high-volume serialization workloads to avoid missing type metadata.
 
 ## Related Topics
 

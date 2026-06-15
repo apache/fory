@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.kotlin import KotlinServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -117,6 +118,7 @@ def _is_schema_local(type_def: object, schema: Schema) -> bool:
 def kotlin_output_paths(
     schema: Schema,
     local_only: bool = False,
+    include_services: bool = False,
 ) -> List[Tuple[str, str]]:
     """Return generated Kotlin output paths and their owning schema elements."""
     outputs: List[Tuple[str, str]] = []
@@ -144,10 +146,20 @@ def kotlin_output_paths(
     for message in schema.messages:
         add_message(message, [])
     outputs.append((kotlin_module_file_path(schema), "schema module"))
+    if include_services:
+        for service in schema.services:
+            if local_only and not _is_schema_local(service, schema):
+                continue
+            outputs.append(
+                (
+                    _kotlin_source_path(schema, f"{service.name}GrpcKt"),
+                    f"service {service.name}",
+                )
+            )
     return outputs
 
 
-class KotlinGenerator(BaseGenerator):
+class KotlinGenerator(KotlinServiceGeneratorMixin, BaseGenerator):
     """Generates Kotlin models for Fory Schema IDL."""
 
     language_name = "kotlin"
@@ -1033,7 +1045,11 @@ class KotlinGenerator(BaseGenerator):
         outputs: Dict[str, List[str]] = {}
         for source, schema in schemas:
             local_only = schema is self.schema
-            for path, owner in kotlin_output_paths(schema, local_only=local_only):
+            for path, owner in kotlin_output_paths(
+                schema,
+                local_only=local_only,
+                include_services=self.options.grpc,
+            ):
                 outputs.setdefault(path, []).append(f"{source} {owner}")
         collisions = {
             path: sources for path, sources in outputs.items() if len(sources) > 1
@@ -1048,6 +1064,20 @@ class KotlinGenerator(BaseGenerator):
             "Kotlin generated file path collision; rename schema files or schema "
             f"types, or use distinct Kotlin packages. Collisions: {details}"
         )
+
+    def kotlin_generated_output_paths(
+        self, include_services: bool = False
+    ) -> List[Tuple[str, str]]:
+        outputs: List[Tuple[str, str]] = []
+        for source, schema in self._schema_graph():
+            local_only = schema is self.schema
+            for path, owner in kotlin_output_paths(
+                schema,
+                local_only=local_only,
+                include_services=include_services,
+            ):
+                outputs.append((path, f"{source} {owner}"))
+        return outputs
 
     def _kotlin_package_for_schema(self, schema: Schema) -> Optional[str]:
         return self._schema_kotlin_package(schema)

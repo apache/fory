@@ -68,14 +68,11 @@ String decodeString(Uint8List bytes, int encoding) {
   }
 }
 
-String readStringFromBuffer(
-  Buffer buffer,
-  int byteLength,
-  int encoding,
-) {
+String readStringFromBuffer(Buffer buffer, int byteLength, int encoding) {
   if (byteLength == 0) {
     return '';
   }
+  buffer.checkReadableBytes(byteLength);
   final start = bufferReaderIndex(buffer);
   buffer.skip(byteLength);
   final bytes = bufferBytes(buffer);
@@ -84,9 +81,7 @@ String readStringFromBuffer(
       return String.fromCharCodes(bytes, start, start + byteLength);
     case stringUtf16Encoding:
       if (byteLength.isOdd) {
-        throw StateError(
-          'Invalid UTF-16 string payload length $byteLength.',
-        );
+        throw StateError('Invalid UTF-16 string payload length $byteLength.');
       }
       final codeUnitCount = byteLength ~/ 2;
       if (Endian.host == Endian.little && start.isEven) {

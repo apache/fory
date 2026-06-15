@@ -574,7 +574,7 @@ impl<'a> Reader<'a> {
     }
 
     #[inline(always)]
-    fn check_bound(&self, n: usize) -> Result<(), Error> {
+    pub(crate) fn check_bound(&self, n: usize) -> Result<(), Error> {
         let end = self
             .cursor
             .checked_add(n)

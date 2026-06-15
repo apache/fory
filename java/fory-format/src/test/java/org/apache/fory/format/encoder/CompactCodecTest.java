@@ -41,6 +41,7 @@ import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
@@ -264,6 +265,31 @@ public class CompactCodecTest {
     final InlineNestedType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
     assertEquals(buffer.size(), 7);
+  }
+
+  /** After sort, f1 sits at non-zero baseOffset; re-emitting it must use that offset. */
+  @Test
+  public void testCopyInlineStructViaWriter() {
+    final InlineNestedType bean = new InlineNestedType();
+    bean.f1 = new Nested1();
+    bean.f1.f1 = (short) 0x4242;
+    bean.f2 = new Nested2();
+    bean.f2.f1 = 0x12345678;
+    final RowEncoder<InlineNestedType> encoder =
+        Encoders.buildBeanCodec(InlineNestedType.class).compactEncoding().build().get();
+    final CompactBinaryRow source = (CompactBinaryRow) encoder.toRow(bean);
+    final MemoryBuffer sourceBuffer = MemoryUtils.wrap(source.toBytes());
+    source.pointTo(sourceBuffer, 0, sourceBuffer.size());
+
+    final CompactBinaryRowWriter writer = new CompactBinaryRowWriter(encoder.schema());
+    writer.reset();
+    writer.write(0, source.getStruct(0));
+    writer.write(1, source.getStruct(1));
+    final BinaryRow copy = writer.getRow();
+    final MemoryBuffer copyBuffer = MemoryUtils.wrap(copy.toBytes());
+    copy.pointTo(copyBuffer, 0, copyBuffer.size());
+
+    assertEquals(encoder.fromRow(copy), bean);
   }
 
   @Data

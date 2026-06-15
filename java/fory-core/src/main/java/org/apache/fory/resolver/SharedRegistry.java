@@ -39,6 +39,8 @@ import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ObjectInstantiator;
+import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
@@ -81,6 +83,10 @@ public final class SharedRegistry {
       new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, Serializer<?>> registeredSerializerCache =
       new ConcurrentIdentityMap<>();
+  private final ConcurrentHashMap<Class<?>, ObjectInstantiator<?>> objectInstantiatorCache =
+      new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Class<?>, ObjectInstantiator<?>> objectStreamInstantiatorCache =
+      new ConcurrentHashMap<>();
   final StaticGeneratedSerializerRegistry staticGeneratedSerializerRegistry =
       new StaticGeneratedSerializerRegistry();
   private final Object metaStringCacheLock = new Object();
@@ -123,6 +129,21 @@ public final class SharedRegistry {
               type.getName(), existing, serializer));
     }
     return existing;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> ObjectInstantiator<T> getObjectInstantiator(Class<T> type) {
+    return (ObjectInstantiator<T>)
+        objectInstantiatorCache.computeIfAbsent(
+            type, ObjectInstantiators::createObjectInstantiator);
+  }
+
+  /** Returns the runtime-scoped instantiator used by Java ObjectStream-compatible serializers. */
+  @SuppressWarnings("unchecked")
+  public <T> ObjectInstantiator<T> getObjectStreamInstantiator(Class<T> type) {
+    return (ObjectInstantiator<T>)
+        objectStreamInstantiatorCache.computeIfAbsent(
+            type, ObjectInstantiators::createObjectStreamInstantiator);
   }
 
   TypeInfo cacheRegisteredTypeInfo(Class<?> type, TypeInfo typeInfo) {

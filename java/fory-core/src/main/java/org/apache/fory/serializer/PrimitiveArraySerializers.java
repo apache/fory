@@ -105,47 +105,24 @@ public final class PrimitiveArraySerializers {
   public abstract static class PrimitiveArraySerializer<T> extends Serializer<T>
       implements Shareable {
     protected final Config config;
-    protected final int maxBinarySize;
 
     public PrimitiveArraySerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver.getConfig(), cls);
       this.config = typeResolver.getConfig();
-      maxBinarySize = config.maxBinarySize();
     }
   }
 
-  private static void throwBinarySizeLimitExceeded(long size, int maxBinarySize) {
-    throw new DeserializationException(
-        "Binary payload size " + size + " exceeds max binary size " + maxBinarySize);
-  }
-
   private static void throwNegativeBinarySize(int size) {
-    throw new DeserializationException("Binary payload size must be non-negative: " + size);
+    throw new DeserializationException("Binary body size must be non-negative: " + size);
   }
 
   private static void throwNegativeElementCount(int numElements) {
     throw new DeserializationException("Element count must be non-negative: " + numElements);
   }
 
-  private static void throwInvalidBinarySize(int size, int maxBinarySize) {
-    if (size < 0) {
-      throwNegativeBinarySize(size);
-    } else {
-      throwBinarySizeLimitExceeded(size, maxBinarySize);
-    }
-  }
-
-  private static void throwInvalidElementCount(int numElements, int maxBinarySize, int elemSize) {
-    if (numElements < 0) {
-      throwNegativeElementCount(numElements);
-    } else {
-      throwBinarySizeLimitExceeded((long) numElements * elemSize, maxBinarySize);
-    }
-  }
-
   private static void throwUnalignedBinarySize(int size, int elemSize) {
     throw new DeserializationException(
-        "Binary payload size " + size + " is not aligned to element size " + elemSize);
+        "Binary body size " + size + " is not aligned to element size " + elemSize);
   }
 
   public static final class BooleanArraySerializer extends PrimitiveArraySerializer<boolean[]> {
@@ -175,19 +152,18 @@ public final class PrimitiveArraySerializers {
       if (readContext.isPeerOutOfBandEnabled()) {
         MemoryBuffer buf = readContext.readBufferObject();
         int size = buf.remaining();
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
+        buf.checkReadableBytes(size);
         boolean[] values = new boolean[size];
-        buf.readBooleanArrayPayload(values, size);
+        buf.readBooleanArrayBytes(values, size);
         return values;
       }
       int size = buffer.readVarUInt32Small7();
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
+      buffer.checkReadableBytes(size);
       boolean[] values = new boolean[size];
-      buffer.readBooleanArrayPayload(values, size);
+      buffer.readBooleanArrayBytes(values, size);
       return values;
     }
   }
@@ -219,19 +195,18 @@ public final class PrimitiveArraySerializers {
       if (readContext.isPeerOutOfBandEnabled()) {
         MemoryBuffer buf = readContext.readBufferObject();
         int size = buf.remaining();
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
+        buf.checkReadableBytes(size);
         byte[] values = new byte[size];
-        buf.readByteArrayPayload(values, size);
+        buf.readByteArrayBytes(values, size);
         return values;
       }
       int size = buffer.readVarUInt32Small7();
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
+      buffer.checkReadableBytes(size);
       byte[] values = new byte[size];
-      buffer.readByteArrayPayload(values, size);
+      buffer.readByteArrayBytes(values, size);
       return values;
     }
   }
@@ -287,13 +262,11 @@ public final class PrimitiveArraySerializers {
         if ((size & 1) != 0) {
           throwUnalignedBinarySize(size, 2);
         }
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
         int numElements = size >>> 1;
+        buf.checkReadableBytes(size);
         char[] values = new char[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-          buf.readCharArrayPayload(values, size);
+          buf.readCharArrayBytes(values, size);
         } else {
           readCharBySwapEndian(buf, values, numElements);
         }
@@ -303,13 +276,14 @@ public final class PrimitiveArraySerializers {
       if ((size & 1) != 0) {
         throwUnalignedBinarySize(size, 2);
       }
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
       int numElements = size >>> 1;
+      buffer.checkReadableBytes(size);
       char[] values = new char[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-        buffer.readCharArrayPayload(values, size);
+        buffer.readCharArrayBytes(values, size);
       } else {
         readCharBySwapEndian(buffer, values, numElements);
       }
@@ -319,8 +293,8 @@ public final class PrimitiveArraySerializers {
     private void readCharBySwapEndian(MemoryBuffer buffer, char[] values, int numElements) {
       int size = numElements << 1;
       // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-      // Copy the payload once, then byte-swap the destination values locally.
-      buffer.readCharArrayPayload(values, size);
+      // Copy the body bytes once, then byte-swap the destination values locally.
+      buffer.readCharArrayBytes(values, size);
       for (int i = 0; i < numElements; i++) {
         values[i] = Character.reverseBytes(values[i]);
       }
@@ -344,7 +318,7 @@ public final class PrimitiveArraySerializers {
 
     @Override
     public short[] read(ReadContext readContext) {
-      return readShortBits(readContext, maxBinarySize);
+      return readShortBits(readContext);
     }
   }
 
@@ -397,14 +371,12 @@ public final class PrimitiveArraySerializers {
         if ((size & 3) != 0) {
           throwUnalignedBinarySize(size, 4);
         }
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
         int numElements = size >>> 2;
+        buf.checkReadableBytes(size);
         int[] values = new int[numElements];
         if (size > 0) {
           if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-            buf.readInt32ArrayPayload(values, size);
+            buf.readInt32ArrayBytes(values, size);
           } else {
             readInt32BySwapEndian(buf, values, numElements);
           }
@@ -418,14 +390,15 @@ public final class PrimitiveArraySerializers {
       if ((size & 3) != 0) {
         throwUnalignedBinarySize(size, 4);
       }
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
       int numElements = size >>> 2;
+      buffer.checkReadableBytes(size);
       int[] values = new int[numElements];
       if (size > 0) {
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-          buffer.readInt32ArrayPayload(values, size);
+          buffer.readInt32ArrayBytes(values, size);
         } else {
           readInt32BySwapEndian(buffer, values, numElements);
         }
@@ -436,8 +409,8 @@ public final class PrimitiveArraySerializers {
     private void readInt32BySwapEndian(MemoryBuffer buffer, int[] values, int numElements) {
       int size = numElements << 2;
       // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-      // Copy the payload once, then byte-swap the destination values locally.
-      buffer.readInt32ArrayPayload(values, size);
+      // Copy the body bytes once, then byte-swap the destination values locally.
+      buffer.readInt32ArrayBytes(values, size);
       for (int i = 0; i < numElements; i++) {
         values[i] = Integer.reverseBytes(values[i]);
       }
@@ -452,9 +425,10 @@ public final class PrimitiveArraySerializers {
 
     private int[] readInt32Compressed(MemoryBuffer buffer) {
       int numElements = buffer.readVarUInt32Small7();
-      if (numElements < 0 || numElements > maxBinarySize / 4) {
-        throwInvalidElementCount(numElements, maxBinarySize, 4);
+      if (numElements < 0) {
+        throwNegativeElementCount(numElements);
       }
+      buffer.checkReadableBytes(numElements);
       int[] values = new int[numElements];
       for (int i = 0; i < numElements; i++) {
         values[i] = buffer.readVarInt32();
@@ -518,14 +492,12 @@ public final class PrimitiveArraySerializers {
         if ((size & 7) != 0) {
           throwUnalignedBinarySize(size, 8);
         }
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
         int numElements = size >>> 3;
+        buf.checkReadableBytes(size);
         long[] values = new long[numElements];
         if (size > 0) {
           if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-            buf.readInt64ArrayPayload(values, size);
+            buf.readInt64ArrayBytes(values, size);
           } else {
             readInt64BySwapEndian(buf, values, numElements);
           }
@@ -539,14 +511,15 @@ public final class PrimitiveArraySerializers {
       if ((size & 7) != 0) {
         throwUnalignedBinarySize(size, 8);
       }
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
       int numElements = size >>> 3;
+      buffer.checkReadableBytes(size);
       long[] values = new long[numElements];
       if (size > 0) {
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-          buffer.readInt64ArrayPayload(values, size);
+          buffer.readInt64ArrayBytes(values, size);
         } else {
           readInt64BySwapEndian(buffer, values, numElements);
         }
@@ -557,8 +530,8 @@ public final class PrimitiveArraySerializers {
     private void readInt64BySwapEndian(MemoryBuffer buffer, long[] values, int numElements) {
       int size = numElements << 3;
       // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-      // Copy the payload once, then byte-swap the destination values locally.
-      buffer.readInt64ArrayPayload(values, size);
+      // Copy the body bytes once, then byte-swap the destination values locally.
+      buffer.readInt64ArrayBytes(values, size);
       for (int i = 0; i < numElements; i++) {
         values[i] = Long.reverseBytes(values[i]);
       }
@@ -581,9 +554,10 @@ public final class PrimitiveArraySerializers {
 
     private long[] readInt64Compressed(MemoryBuffer buffer, Int64Encoding longEncoding) {
       int numElements = buffer.readVarUInt32Small7();
-      if (numElements < 0 || numElements > maxBinarySize / 8) {
-        throwInvalidElementCount(numElements, maxBinarySize, 8);
+      if (numElements < 0) {
+        throwNegativeElementCount(numElements);
       }
+      buffer.checkReadableBytes(numElements);
       long[] values = new long[numElements];
       if (longEncoding == Int64Encoding.TAGGED) {
         for (int i = 0; i < numElements; i++) {
@@ -643,13 +617,11 @@ public final class PrimitiveArraySerializers {
         if ((size & 3) != 0) {
           throwUnalignedBinarySize(size, 4);
         }
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
         int numElements = size >>> 2;
+        buf.checkReadableBytes(size);
         float[] values = new float[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-          buf.readFloat32ArrayPayload(values, size);
+          buf.readFloat32ArrayBytes(values, size);
         } else {
           readFloat32BySwapEndian(buf, values, numElements);
         }
@@ -659,13 +631,14 @@ public final class PrimitiveArraySerializers {
       if ((size & 3) != 0) {
         throwUnalignedBinarySize(size, 4);
       }
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
       int numElements = size >>> 2;
+      buffer.checkReadableBytes(size);
       float[] values = new float[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-        buffer.readFloat32ArrayPayload(values, size);
+        buffer.readFloat32ArrayBytes(values, size);
       } else {
         readFloat32BySwapEndian(buffer, values, numElements);
       }
@@ -675,8 +648,8 @@ public final class PrimitiveArraySerializers {
     private void readFloat32BySwapEndian(MemoryBuffer buffer, float[] values, int numElements) {
       int size = numElements << 2;
       // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-      // Copy the payload once, then byte-swap the destination values locally.
-      buffer.readFloat32ArrayPayload(values, size);
+      // Copy the body bytes once, then byte-swap the destination values locally.
+      buffer.readFloat32ArrayBytes(values, size);
       for (int i = 0; i < numElements; i++) {
         values[i] = Float.intBitsToFloat(Integer.reverseBytes(Float.floatToRawIntBits(values[i])));
       }
@@ -728,13 +701,11 @@ public final class PrimitiveArraySerializers {
         if ((size & 7) != 0) {
           throwUnalignedBinarySize(size, 8);
         }
-        if (size > maxBinarySize) {
-          throwBinarySizeLimitExceeded(size, maxBinarySize);
-        }
         int numElements = size >>> 3;
+        buf.checkReadableBytes(size);
         double[] values = new double[numElements];
         if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-          buf.readFloat64ArrayPayload(values, size);
+          buf.readFloat64ArrayBytes(values, size);
         } else {
           readFloat64BySwapEndian(buf, values, numElements);
         }
@@ -744,13 +715,14 @@ public final class PrimitiveArraySerializers {
       if ((size & 7) != 0) {
         throwUnalignedBinarySize(size, 8);
       }
-      if (size < 0 || size > maxBinarySize) {
-        throwInvalidBinarySize(size, maxBinarySize);
+      if (size < 0) {
+        throwNegativeBinarySize(size);
       }
       int numElements = size >>> 3;
+      buffer.checkReadableBytes(size);
       double[] values = new double[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-        buffer.readFloat64ArrayPayload(values, size);
+        buffer.readFloat64ArrayBytes(values, size);
       } else {
         readFloat64BySwapEndian(buffer, values, numElements);
       }
@@ -760,8 +732,8 @@ public final class PrimitiveArraySerializers {
     private void readFloat64BySwapEndian(MemoryBuffer buffer, double[] values, int numElements) {
       int size = numElements << 3;
       // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-      // Copy the payload once, then byte-swap the destination values locally.
-      buffer.readFloat64ArrayPayload(values, size);
+      // Copy the body bytes once, then byte-swap the destination values locally.
+      buffer.readFloat64ArrayBytes(values, size);
       for (int i = 0; i < numElements; i++) {
         values[i] =
             Double.longBitsToDouble(Long.reverseBytes(Double.doubleToRawLongBits(values[i])));
@@ -786,7 +758,7 @@ public final class PrimitiveArraySerializers {
 
     @Override
     public Float16Array read(ReadContext readContext) {
-      return Float16Array.wrapBits(readShortBits(readContext, maxBinarySize));
+      return Float16Array.wrapBits(readShortBits(readContext));
     }
   }
 
@@ -808,7 +780,7 @@ public final class PrimitiveArraySerializers {
 
     @Override
     public BFloat16Array read(ReadContext readContext) {
-      return BFloat16Array.wrapBits(readShortBits(readContext, maxBinarySize));
+      return BFloat16Array.wrapBits(readShortBits(readContext));
     }
   }
 
@@ -837,7 +809,7 @@ public final class PrimitiveArraySerializers {
     buffer._unsafeWriterIndex(idx + length * 2);
   }
 
-  private static short[] readShortBits(ReadContext readContext, int maxBinarySize) {
+  private static short[] readShortBits(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
     if (readContext.isPeerOutOfBandEnabled()) {
       MemoryBuffer buf = readContext.readBufferObject();
@@ -845,13 +817,11 @@ public final class PrimitiveArraySerializers {
       if ((size & 1) != 0) {
         throwUnalignedBinarySize(size, 2);
       }
-      if (size > maxBinarySize) {
-        throwBinarySizeLimitExceeded(size, maxBinarySize);
-      }
       int numElements = size >>> 1;
+      buf.checkReadableBytes(size);
       short[] values = new short[numElements];
       if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-        buf.readInt16ArrayPayload(values, size);
+        buf.readInt16ArrayBytes(values, size);
       } else {
         readInt16BySwapEndian(buf, values, numElements);
       }
@@ -861,13 +831,14 @@ public final class PrimitiveArraySerializers {
     if ((size & 1) != 0) {
       throwUnalignedBinarySize(size, 2);
     }
-    if (size < 0 || size > maxBinarySize) {
-      throwInvalidBinarySize(size, maxBinarySize);
+    if (size < 0) {
+      throwNegativeBinarySize(size);
     }
     int numElements = size >>> 1;
+    buffer.checkReadableBytes(size);
     short[] values = new short[numElements];
     if (NativeByteOrder.IS_LITTLE_ENDIAN) {
-      buffer.readInt16ArrayPayload(values, size);
+      buffer.readInt16ArrayBytes(values, size);
     } else {
       readInt16BySwapEndian(buffer, values, numElements);
     }
@@ -877,8 +848,8 @@ public final class PrimitiveArraySerializers {
   private static void readInt16BySwapEndian(MemoryBuffer buffer, short[] values, int numElements) {
     int size = numElements << 1;
     // Do not loop through MemoryBuffer._unsafeGet* here; those helpers carry Android dispatch.
-    // Copy the payload once, then byte-swap the destination values locally.
-    buffer.readInt16ArrayPayload(values, size);
+    // Copy the body bytes once, then byte-swap the destination values locally.
+    buffer.readInt16ArrayBytes(values, size);
     for (int i = 0; i < numElements; i++) {
       values[i] = Short.reverseBytes(values[i]);
     }

@@ -49,6 +49,8 @@ jobs:
     name: Detect Changed Paths
     runs-on: ubuntu-latest
     outputs:
+      compiler: ${{ steps.filter.outputs.compiler }}
+      grpc_tests: ${{ steps.filter.outputs.grpc_tests }}
       cpp: ${{ steps.filter.outputs.cpp }}
       cpp_code: ${{ steps.filter.outputs.cpp_code }}
       java_code: ${{ steps.filter.outputs.java_code }}
@@ -68,6 +70,8 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            echo "compiler=true" >> "$GITHUB_OUTPUT"
+            echo "grpc_tests=true" >> "$GITHUB_OUTPUT"
             echo "cpp=true" >> "$GITHUB_OUTPUT"
             echo "cpp_code=true" >> "$GITHUB_OUTPUT"
             echo "java_code=true" >> "$GITHUB_OUTPUT"
@@ -83,6 +87,18 @@ jobs:
 
           git fetch --no-tags --depth=1 origin "$BASE_REF:refs/remotes/origin/$BASE_REF"
           changed_files="$(git diff --name-only "origin/$BASE_REF" HEAD)"
+
+          if grep -Eq '^(compiler/)' <<< "$changed_files"; then
+            echo "compiler=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "compiler=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(compiler/|integration_tests/grpc_tests/)' <<< "$changed_files"; then
+            echo "grpc_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "grpc_tests=false" >> "$GITHUB_OUTPUT"
+          fi
 
           if grep -Eq '^(cpp/|examples/cpp/|benchmarks/cpp/|integration_tests/idl_tests/cpp/|bazel/|BUILD$|WORKSPACE$|MODULE\.bazel$|\.bazelrc$)' <<< "$changed_files"; then
             echo "cpp=true" >> "$GITHUB_OUTPUT"
@@ -169,7 +185,7 @@ jobs:
       MY_VAR: "PATH"
     strategy:
       matrix:
-        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25"]' || '["8"]') }}
+        java-version: ${{ fromJSON(needs.changes.outputs.java_code == 'true' && '["8","11","17","21","25","26"]' || '["8"]') }}
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
@@ -585,18 +601,16 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-          cache: sbt
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
       - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+        with:
+          disk-cache: false
       - name: Install fory java
-        run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true && cd -
+        run: |
+          cd java
+          mvn -T10 --no-transfer-progress clean deploy -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -DaltDeploymentRepository=fory-local::default::file://${RUNNER_TEMP}/fory-maven-repo
       - name: Test
+        env:
+          SBT_OPTS: -Dfory.maven.repo=file://${{ runner.temp }}/fory-maven-repo
         run: |
           cd scala && sbt +test && cd -
 
@@ -610,26 +624,21 @@ jobs:
         with:
           java-version: 21
           distribution: "temurin"
-          cache: sbt
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
       - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+        with:
+          disk-cache: false
       - name: Run Scala Xlang Test
         env:
           FORY_SCALA_JAVA_CI: "1"
           ENABLE_FORY_DEBUG_OUTPUT: "1"
+          SBT_OPTS: -Dfory.maven.repo=file://${{ runner.temp }}/fory-maven-repo
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          mvn -T16 --no-transfer-progress clean deploy -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -DaltDeploymentRepository=fory-local::default::file://${RUNNER_TEMP}/fory-maven-repo
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.ScalaXlangTest
 
@@ -643,24 +652,20 @@ jobs:
         with:
           java-version: 21
           distribution: "temurin"
-          cache: sbt
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
-      - name: Cache Maven local repository
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
       - uses: sbt/setup-sbt@2e222825582620cc38d2a54e674f3c01b7c14f5d # v1.1.24
+        with:
+          disk-cache: false
       - name: Install Fory Java
         run: |
           cd java
-          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          mvn -T16 --no-transfer-progress clean deploy -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -DaltDeploymentRepository=fory-local::default::file://${RUNNER_TEMP}/fory-maven-repo
       - name: Run Scala IDL Tests
+        env:
+          SBT_OPTS: -Dfory.maven.repo=file://${{ runner.temp }}/fory-maven-repo
         run: ./integration_tests/idl_tests/run_scala_tests.sh
 
   integration_tests:
@@ -687,8 +692,10 @@ jobs:
       - name: Run CI
         run: python ./ci/run_ci.py java --version integration_tests
 
-  grpc_tests:
+  grpc_java_python_tests:
     name: Java/Python gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -713,8 +720,140 @@ jobs:
         run: |
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Install Python gRPC dependencies
+        run: |
+          python -m pip install "grpcio>=1.62.2,<1.71"
+          python -m pip install -v -e python
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
       - name: Run Java/Python gRPC Tests
-        run: ./integration_tests/grpc_tests/run_tests.sh
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=PythonGrpcInteropTest test
+
+  grpc_java_go_tests:
+    name: Java/Go gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build Go gRPC peer
+        run: |
+          cd integration_tests/grpc_tests/go
+          go build -o grpc-interop .
+      - name: Run Java/Go gRPC Tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=GoGrpcInteropTest test
+
+  grpc_java_rust_tests:
+    name: Java/Rust gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: integration_tests/grpc_tests/rust
+          cache-bin: "false"
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build Rust gRPC peer
+        run: cargo build --manifest-path integration_tests/grpc_tests/rust/Cargo.toml --workspace --quiet
+      - name: Run Java/Rust gRPC Tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=RustGrpcInteropTest test
+
+  grpc_java_kotlin_tests:
+    name: Java/Kotlin gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true' || needs.changes.outputs.kotlin == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Install Kotlin artifacts for gRPC tests
+        run: |
+          cd kotlin
+          mvn -T16 --batch-mode --no-transfer-progress -pl fory-kotlin,fory-kotlin-ksp -am -DskipTests install
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build Kotlin gRPC peer
+        run: |
+          cd integration_tests/grpc_tests/kotlin
+          mvn --no-transfer-progress -DskipTests package
+      - name: Run Java/Kotlin gRPC Tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=KotlinGrpcInteropTest test
 
   javascript:
     name: JavaScript CI
@@ -1611,7 +1750,7 @@ jobs:
           void main() {
             test('generated fory serializers work in flutter', () {
               final fory = Fory();
-              PersonFory.register(fory, Person, id: 1);
+              PersonForyModule.register(fory, Person, id: 1);
 
               final person = Person()
                 ..name = 'Ada'

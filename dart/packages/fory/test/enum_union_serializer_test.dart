@@ -23,11 +23,7 @@ import 'package:test/test.dart';
 part 'enum_union_serializer_test.fory.dart';
 
 @ForyStruct()
-enum SimpleColor {
-  red,
-  green,
-  blue,
-}
+enum SimpleColor { red, green, blue }
 
 @ForyStruct()
 enum StableCodeV1 {
@@ -143,53 +139,46 @@ class UnionEnvelope {
 }
 
 void _registerEnumAndUnionTypes(Fory fory) {
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     SimpleColor,
-    namespace: 'test',
-    typeName: 'SimpleColor',
+    name: 'test.SimpleColor',
   );
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     EnumEnvelope,
-    namespace: 'test',
-    typeName: 'EnumEnvelope',
+    name: 'test.EnumEnvelope',
   );
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     UnionLeaf,
-    namespace: 'test',
-    typeName: 'UnionLeaf',
+    name: 'test.UnionLeaf',
   );
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     UnionEnvelope,
-    namespace: 'test',
-    typeName: 'UnionEnvelope',
+    name: 'test.UnionEnvelope',
   );
   fory.registerSerializer(
     TestUnion,
     const TestUnionSerializer(),
-    namespace: 'test',
-    typeName: 'TestUnion',
+    name: 'test.TestUnion',
   );
 }
 
 void _registerRawEnumV1(Fory fory) {
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     StableCodeV1,
-    namespace: 'enum',
-    typeName: 'StableCode',
+    name: 'enum.StableCode',
   );
 }
 
 void _registerRawEnumV2(Fory fory) {
-  EnumUnionSerializerTestFory.register(
+  EnumUnionSerializerTestForyModule.register(
     fory,
     StableCodeV2,
-    namespace: 'enum',
-    typeName: 'StableCode',
+    name: 'enum.StableCode',
   );
 }
 
@@ -199,8 +188,9 @@ void main() {
       final fory = Fory();
       _registerEnumAndUnionTypes(fory);
 
-      final rootRoundTrip =
-          fory.deserialize<SimpleColor>(fory.serialize(SimpleColor.blue));
+      final rootRoundTrip = fory.deserialize<SimpleColor>(
+        fory.serialize(SimpleColor.blue),
+      );
       final envelopeRoundTrip = fory.deserialize<EnumEnvelope>(
         fory.serialize(EnumEnvelope()..color = SimpleColor.green),
       );
@@ -247,8 +237,9 @@ void main() {
       final fory = Fory();
       _registerEnumAndUnionTypes(fory);
 
-      final leafEnvelope = UnionEnvelope()
-        ..payload = TestUnion.ofLeaf(UnionLeaf()..label = 'branch');
+      final leafEnvelope =
+          UnionEnvelope()
+            ..payload = TestUnion.ofLeaf(UnionLeaf()..label = 'branch');
       final nullEnvelope = UnionEnvelope();
 
       final leafRoundTrip = fory.deserialize<UnionEnvelope>(

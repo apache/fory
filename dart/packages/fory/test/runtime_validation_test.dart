@@ -82,6 +82,14 @@ class DynamicAnimalEnvelope {
 }
 
 @ForyStruct()
+class ExplicitUnknownEnvelope {
+  ExplicitUnknownEnvelope();
+
+  @ForyField(dynamic: false)
+  Object value = 'unset';
+}
+
+@ForyStruct()
 class SkipEnvelope {
   SkipEnvelope();
 
@@ -140,65 +148,62 @@ class DuplicateFieldIdOrder {
 }
 
 void _registerValidationTypes(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicDog,
-    namespace: 'validation',
-    typeName: 'DynamicDog',
+    name: 'validation.DynamicDog',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicCat,
-    namespace: 'validation',
-    typeName: 'DynamicCat',
+    name: 'validation.DynamicCat',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     DynamicAnimalEnvelope,
-    namespace: 'validation',
-    typeName: 'DynamicAnimalEnvelope',
+    name: 'validation.DynamicAnimalEnvelope',
   );
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
+    fory,
+    ExplicitUnknownEnvelope,
+    name: 'validation.ExplicitUnknownEnvelope',
+  );
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipEnvelope,
-    namespace: 'validation',
-    typeName: 'SkipEnvelope',
+    name: 'validation.SkipEnvelope',
   );
 }
 
 void _registerSkipV1(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipCompatibleV1,
-    namespace: 'validation',
-    typeName: 'SkipCompatible',
+    name: 'validation.SkipCompatible',
   );
 }
 
 void _registerSkipV2(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SkipCompatibleV2,
-    namespace: 'validation',
-    typeName: 'SkipCompatible',
+    name: 'validation.SkipCompatible',
   );
 }
 
 void _registerSchemaV1(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SchemaVersionV1,
-    namespace: 'validation',
-    typeName: 'SchemaVersion',
+    name: 'validation.SchemaVersion',
   );
 }
 
 void _registerSchemaV2(Fory fory) {
-  RuntimeValidationTestFory.register(
+  RuntimeValidationTestForyModule.register(
     fory,
     SchemaVersionV2,
-    namespace: 'validation',
-    typeName: 'SchemaVersion',
+    name: 'validation.SchemaVersion',
   );
 }
 
@@ -216,11 +221,10 @@ void main() {
       final fory = Fory();
 
       expect(
-        () => RuntimeValidationTestFory.register(
+        () => RuntimeValidationTestForyModule.register(
           fory,
           DuplicateFieldIdOrder,
-          namespace: 'validation',
-          typeName: 'DuplicateFieldIdOrder',
+          name: 'validation.DuplicateFieldIdOrder',
         ),
         throwsA(
           isA<ArgumentError>().having(
@@ -260,9 +264,10 @@ void main() {
       final catEnvelope = fory.deserialize<DynamicAnimalEnvelope>(
         fory.serialize(
           DynamicAnimalEnvelope()
-            ..animal = (DynamicCat()
-              ..name = 'Misty'
-              ..lives = 7),
+            ..animal =
+                (DynamicCat()
+                  ..name = 'Misty'
+                  ..lives = 7),
         ),
       );
 
@@ -271,6 +276,17 @@ void main() {
       expect(catEnvelope.animal, isA<DynamicCat>());
       expect((catEnvelope.animal as DynamicCat).name, equals('Misty'));
       expect((catEnvelope.animal as DynamicCat).lives, equals(7));
+    });
+
+    test('unknown object fields use dynamic generated payloads', () {
+      final fory = Fory();
+      _registerValidationTypes(fory);
+
+      final roundTrip = fory.deserialize<ExplicitUnknownEnvelope>(
+        fory.serialize(ExplicitUnknownEnvelope()..value = 'dynamic-payload'),
+      );
+
+      expect(roundTrip.value, equals('dynamic-payload'));
     });
 
     test('compatible mode ignores skipped fields from older writers', () {
@@ -357,14 +373,13 @@ void main() {
         expect(
           () => fory.register(
             FreshGeneratedValue,
-            namespace: 'validation',
-            typeName: 'FreshGeneratedValue',
+            name: 'validation.FreshGeneratedValue',
           ),
           throwsA(
             isA<StateError>().having(
               (error) => error.toString(),
               'message',
-              contains('has no generated registration metadata'),
+              contains('has no generated type metadata'),
             ),
           ),
         );
@@ -385,13 +400,27 @@ void main() {
           () => fory.registerSerializer(
             PlainManualValue,
             const PlainManualValueSerializer(),
-            namespace: 'validation',
+            name: '',
           ),
           throwsA(
             isA<ArgumentError>().having(
               (error) => error.toString(),
               'message',
-              contains('Both namespace and typeName are required'),
+              contains('name must include a non-empty type name'),
+            ),
+          ),
+        );
+        expect(
+          () => fory.registerSerializer(
+            PlainManualValue,
+            const PlainManualValueSerializer(),
+            name: 'validation.',
+          ),
+          throwsA(
+            isA<ArgumentError>().having(
+              (error) => error.toString(),
+              'message',
+              contains('name must include a non-empty type name'),
             ),
           ),
         );
@@ -400,8 +429,7 @@ void main() {
             PlainManualValue,
             const PlainManualValueSerializer(),
             id: 1,
-            namespace: 'validation',
-            typeName: 'PlainManualValue',
+            name: 'validation.PlainManualValue',
           ),
           throwsA(
             isA<ArgumentError>().having(
@@ -410,6 +438,19 @@ void main() {
               contains('Exactly one registration mode is required'),
             ),
           ),
+        );
+
+        final generated = Fory();
+        RuntimeValidationTestForyModule.register(
+          generated,
+          FreshGeneratedValue,
+          name: 'FreshGeneratedValue',
+        );
+        expect(
+          generated.deserialize<FreshGeneratedValue>(
+            generated.serialize(FreshGeneratedValue()),
+          ),
+          isA<FreshGeneratedValue>(),
         );
       },
     );

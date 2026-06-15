@@ -121,10 +121,7 @@ bool tracksNestedPayloadDepth(TypeInfo typeInfo) {
   }
 }
 
-bool sameTypeInfo(
-  TypeInfo left,
-  TypeInfo right,
-) {
+bool sameTypeInfo(TypeInfo left, TypeInfo right) {
   if (left.kind != right.kind || left.typeId != right.typeId) {
     return false;
   }
@@ -208,9 +205,10 @@ T readFieldTypeValue<T>(
   }
   if (fieldType.isPrimitive && !fieldType.nullable) {
     return convertPrimitiveFieldValue(
-      context.readPrimitiveValue(fieldType.typeId),
-      fieldType,
-    ) as T;
+          context.readPrimitiveValue(fieldType.typeId),
+          fieldType,
+        )
+        as T;
   }
   if (!usesDeclaredType) {
     if (fieldType.ref) {
@@ -251,12 +249,7 @@ final class ListSerializer extends Serializer<List> {
 
   @override
   void write(WriteContext context, List value) {
-    writePayload(
-      context,
-      value,
-      null,
-      trackRef: context.rootTrackRef,
-    );
+    writePayload(context, value, null, trackRef: context.rootTrackRef);
   }
 
   @override
@@ -271,21 +264,18 @@ final class ListSerializer extends Serializer<List> {
     required bool trackRef,
   }) {
     final size = values.length;
-    if (size > context.config.maxCollectionSize) {
-      throw StateError(
-        'Collection size $size exceeds ${context.config.maxCollectionSize}.',
-      );
-    }
     context.buffer.writeVarUint32(size);
     if (size == 0) {
       return;
     }
-    final declaredTypeInfo = elementFieldType == null ||
-            elementFieldType.isDynamic ||
-            elementFieldType.typeId == TypeIds.unknown
-        ? null
-        : context.typeResolver.resolveFieldType(elementFieldType);
-    final usesDeclaredType = declaredTypeInfo != null &&
+    final declaredTypeInfo =
+        elementFieldType == null ||
+                elementFieldType.isDynamic ||
+                elementFieldType.typeId == TypeIds.unknown
+            ? null
+            : context.typeResolver.resolveFieldType(elementFieldType);
+    final usesDeclaredType =
+        declaredTypeInfo != null &&
         usesDeclaredTypeInfo(
           context.config.compatible,
           elementFieldType!,
@@ -296,7 +286,8 @@ final class ListSerializer extends Serializer<List> {
       values,
       usesDeclaredType: usesDeclaredType,
     );
-    final elementTrackRef = (elementFieldType?.ref ?? false) ||
+    final elementTrackRef =
+        (elementFieldType?.ref ?? false) ||
         (elementFieldType == null && trackRef);
     final header = _buildCollectionHeader(
       trackRef: elementTrackRef,
@@ -310,10 +301,7 @@ final class ListSerializer extends Serializer<List> {
     if (!usesDeclaredType &&
         sameTypeInfo != null &&
         analysis.firstNonNull != null) {
-      context.writeTypeMetaValue(
-        sameTypeInfo,
-        analysis.firstNonNull!,
-      );
+      context.writeTypeMetaValue(sameTypeInfo, analysis.firstNonNull!);
     }
     if (declaredTypeInfo != null) {
       _writeSameTypeElements(
@@ -337,12 +325,7 @@ final class ListSerializer extends Serializer<List> {
       );
       return;
     }
-    _writeDifferentTypeElements(
-      context,
-      values,
-      analysis,
-      elementTrackRef,
-    );
+    _writeDifferentTypeElements(context, values, analysis, elementTrackRef);
   }
 
   static List<Object?> readPayload(
@@ -351,6 +334,7 @@ final class ListSerializer extends Serializer<List> {
     bool hasPreservedRef = false,
   }) {
     final state = _prepareListRead(context, elementFieldType);
+    context.buffer.checkReadableBytes(state.size);
     final result = List<Object?>.filled(state.size, null, growable: false);
     if (hasPreservedRef) {
       context.reference(result);
@@ -423,7 +407,8 @@ Object? readCompatibleMatchedCollectionArrayField(
         _arrayElementTypeId(localType.typeId) !=
             _compatibleArrayElementTypeId(elementType.typeId)) {
       throw StateError(
-          'Compatible list-to-array field ${localField.name} is unsupported.');
+        'Compatible list-to-array field ${localField.name} is unsupported.',
+      );
     }
     return _readCompatibleListAsArrayField(
       context,
@@ -440,7 +425,8 @@ Object? readCompatibleMatchedCollectionArrayField(
         _arrayElementTypeId(remoteType.typeId) !=
             _compatibleArrayElementTypeId(localElementType.typeId)) {
       throw StateError(
-          'Compatible array-to-list field ${localField.name} is unsupported.');
+        'Compatible array-to-list field ${localField.name} is unsupported.',
+      );
     }
     final raw = readCompatibleField(context, remoteField);
     return _arrayToListValue(raw);
@@ -464,13 +450,27 @@ bool isCompatibleCollectionArrayTypePair(
   FieldType localType,
   FieldType remoteType,
 ) {
+  if (localType.nullable ||
+      remoteType.nullable ||
+      localType.ref ||
+      remoteType.ref) {
+    return false;
+  }
   if (isCompatibleArrayType(localType.typeId) &&
       remoteType.typeId == TypeIds.list) {
-    return _listElementMatchesArray(remoteType, localType.typeId);
+    return _listElementMatchesArray(
+      remoteType,
+      localType.typeId,
+      requireUnframedElement: true,
+    );
   }
   if (localType.typeId == TypeIds.list &&
       isCompatibleArrayType(remoteType.typeId)) {
-    return _listElementMatchesArray(localType, remoteType.typeId);
+    return _listElementMatchesArray(
+      localType,
+      remoteType.typeId,
+      requireUnframedElement: false,
+    );
   }
   return false;
 }
@@ -485,10 +485,18 @@ bool isCompatibleCollectionArrayRootTypePair(
       (isCompatibleArrayType(localTypeId) && remoteTypeId == TypeIds.list);
 }
 
-bool _listElementMatchesArray(FieldType listType, int arrayTypeId) {
+bool _listElementMatchesArray(
+  FieldType listType,
+  int arrayTypeId, {
+  required bool requireUnframedElement,
+}) {
   final elementType =
       listType.arguments.isEmpty ? null : listType.arguments.single;
+  // Nullable element schema is allowed for list<T?> -> array<T>; actual
+  // null payload elements fail in the dense-array reader. Ref-tracked
+  // element framing is rejected here because this path stays primitive-only.
   return elementType != null &&
+      (!requireUnframedElement || !elementType.ref) &&
       _arrayElementTypeId(arrayTypeId) ==
           _compatibleArrayElementTypeId(elementType.typeId);
 }
@@ -500,11 +508,6 @@ Object _readCompatibleListAsArrayField(
   String fieldName,
 ) {
   final size = context.buffer.readVarUint32();
-  if (size > context.config.maxCollectionSize) {
-    throw StateError(
-      'Collection size $size exceeds ${context.config.maxCollectionSize}.',
-    );
-  }
   if (size == 0) {
     return _newArrayValue(arrayTypeId, 0);
   }
@@ -525,6 +528,7 @@ Object _readCompatibleListAsArrayField(
     );
   }
   final elementResolved = context.typeResolver.resolveFieldType(elementType);
+  context.buffer.checkReadableBytes(size);
   final result = _newArrayValue(arrayTypeId, size);
   for (var index = 0; index < size; index += 1) {
     _setArrayValue(
@@ -651,17 +655,31 @@ List<T> readTypedListPayload<T>(
     if (directTypeInfo.type == T &&
         directTypeInfo.kind == RegistrationKind.struct) {
       final structSerializer = directTypeInfo.structSerializer!;
-      final result = List<T>.generate(
-        state.size,
-        (_) => structSerializer.readValue(context, directTypeInfo) as T,
-        growable: false,
-      );
+      context.buffer.checkReadableBytes(state.size);
+      final result =
+          directTypeInfo.remoteTypeDef == null
+              ? List<T>.generate(
+                state.size,
+                (_) => structSerializer.readValue(context, directTypeInfo) as T,
+                growable: false,
+              )
+              : List<T>.generate(
+                state.size,
+                (_) =>
+                    structSerializer.readGeneratedCompatibleValue(
+                          context,
+                          directTypeInfo,
+                        )
+                        as T,
+                growable: false,
+              );
       if (state.tracksDepth) {
         context.decreaseDepth();
       }
       return result;
     }
     if (directTypeInfo.type == T && directTypeInfo.typeId == TypeIds.string) {
+      context.buffer.checkReadableBytes(state.size);
       final result = List<T>.generate(
         state.size,
         (_) => StringSerializer.readPayload(context) as T,
@@ -672,6 +690,7 @@ List<T> readTypedListPayload<T>(
       }
       return result;
     }
+    context.buffer.checkReadableBytes(state.size);
     final result = List<T>.generate(
       state.size,
       (_) =>
@@ -683,6 +702,7 @@ List<T> readTypedListPayload<T>(
     }
     return result;
   }
+  context.buffer.checkReadableBytes(state.size);
   final result = List<T>.generate(
     state.size,
     (_) => convert(_readPreparedListItem(context, state)),
@@ -708,15 +728,11 @@ void writeTypedListPayload<T>(
   FieldType elementFieldType,
 ) {
   final size = values.length;
-  if (size > context.config.maxCollectionSize) {
-    throw StateError(
-      'Collection size $size exceeds ${context.config.maxCollectionSize}.',
-    );
-  }
   context.buffer.writeVarUint32(size);
   if (size == 0) return;
-  final declaredTypeInfo =
-      context.typeResolver.resolveFieldType(elementFieldType);
+  final declaredTypeInfo = context.typeResolver.resolveFieldType(
+    elementFieldType,
+  );
   final usesDeclaredType = usesDeclaredTypeInfo(
     context.config.compatible,
     elementFieldType,
@@ -749,7 +765,10 @@ void writeTypedSetPayload<T>(
   FieldType elementFieldType,
 ) {
   writeTypedListPayload<T>(
-      context, values.toList(growable: false), elementFieldType);
+    context,
+    values.toList(growable: false),
+    elementFieldType,
+  );
 }
 
 int _buildCollectionHeader({
@@ -799,19 +818,9 @@ void _writeSameTypeElements(
       );
     } else if (hasNull) {
       context.buffer.writeByte(RefWriter.notNullValueFlag);
-      _writeDirectTypeInfoValue(
-        context,
-        typeInfo,
-        fieldType,
-        value as Object,
-      );
+      _writeDirectTypeInfoValue(context, typeInfo, fieldType, value as Object);
     } else {
-      _writeDirectTypeInfoValue(
-        context,
-        typeInfo,
-        fieldType,
-        value as Object,
-      );
+      _writeDirectTypeInfoValue(context, typeInfo, fieldType, value as Object);
     }
   }
   if (tracksDepth) {
@@ -901,11 +910,6 @@ _PreparedListRead _prepareListRead(
   FieldType? elementFieldType,
 ) {
   final size = context.buffer.readVarUint32();
-  if (size > context.config.maxCollectionSize) {
-    throw StateError(
-      'Collection size $size exceeds ${context.config.maxCollectionSize}.',
-    );
-  }
   if (size == 0) {
     return _PreparedListRead(
       size: 0,
@@ -928,17 +932,21 @@ _PreparedListRead _prepareListRead(
   final usesDeclaredType =
       (header & CollectionFlags.isDeclaredElementType) != 0;
   final sameType = (header & CollectionFlags.isSameType) != 0;
-  final needsExpectedElementType = elementFieldType != null &&
+  final needsExpectedElementType =
+      elementFieldType != null &&
       (usesDeclaredType ||
           (sameType && TypeIds.isUserType(elementFieldType.typeId)));
-  final expectedElementTypeInfo = needsExpectedElementType
-      ? context.typeResolver.tryResolveFieldType(elementFieldType)
-      : null;
+  final expectedElementTypeInfo =
+      needsExpectedElementType
+          ? context.typeResolver.tryResolveFieldType(elementFieldType)
+          : null;
   final declaredTypeInfo = usesDeclaredType ? expectedElementTypeInfo : null;
-  final sameTypeInfo = (!usesDeclaredType && sameType)
-      ? context.readTypeMetaValue(expectedElementTypeInfo)
-      : null;
-  final tracksDepth = (declaredTypeInfo != null &&
+  final sameTypeInfo =
+      (!usesDeclaredType && sameType)
+          ? context.readTypeMetaValue(expectedElementTypeInfo)
+          : null;
+  final tracksDepth =
+      (declaredTypeInfo != null &&
           tracksNestedPayloadDepth(declaredTypeInfo)) ||
       (sameTypeInfo != null && tracksNestedPayloadDepth(sameTypeInfo));
   return _PreparedListRead(
@@ -954,10 +962,7 @@ _PreparedListRead _prepareListRead(
 }
 
 @pragma('vm:prefer-inline')
-Object? _readPreparedListItem(
-  ReadContext context,
-  _PreparedListRead state,
-) {
+Object? _readPreparedListItem(ReadContext context, _PreparedListRead state) {
   if (state.declaredTypeInfo != null) {
     return _readSameTypeElement(
       context,
@@ -1008,11 +1013,7 @@ Object? _readPreparedListItem(
     }
     return context.readResolvedValue(state.sameTypeInfo!, null);
   }
-  return _readDifferentTypeElement(
-    context,
-    state.trackRef,
-    state.hasNull,
-  );
+  return _readDifferentTypeElement(context, state.trackRef, state.hasNull);
 }
 
 @pragma('vm:prefer-inline')

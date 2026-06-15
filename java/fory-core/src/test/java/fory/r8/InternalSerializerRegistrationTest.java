@@ -32,7 +32,12 @@ import org.testng.annotations.Test;
 public class InternalSerializerRegistrationTest {
   @Test
   public void internalSerializerRegistrationDoesNotUsePackageNameAsOwnershipSignal() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeResolver resolver = fory.getTypeResolver();
     InternalListSerializer serializer = new InternalListSerializer(resolver);
 

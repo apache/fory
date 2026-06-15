@@ -44,7 +44,7 @@ pub fn gen_reserved_space(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_write_type_info() -> TokenStream {
     quote! {
-        ::fory_core::serializer::struct_::write_type_info_fast::<Self>(context)
+        fory_core::serializer::struct_::write_type_info_fast::<Self>(context)
     }
 }
 
@@ -73,14 +73,14 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
                         proc_macro2::Span::call_site(),
                     );
                     Some(quote! {
-                        ::fory_core::serializer::struct_::struct_before_write_field(
+                        fory_core::serializer::struct_::struct_before_write_field(
                             #struct_name_lit,
                             #field_name_lit,
                             (&#value_ts) as &dyn ::std::any::Any,
                             context,
                         );
                         #base
-                        ::fory_core::serializer::struct_::struct_after_write_field(
+                        fory_core::serializer::struct_::struct_after_write_field(
                             #struct_name_lit,
                             #field_name_lit,
                             (&#value_ts) as &dyn ::std::any::Any,
@@ -108,6 +108,6 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_write() -> TokenStream {
     quote! {
-        ::fory_core::serializer::struct_::write::<Self>(self, context, ref_mode, write_type_info)
+        fory_core::serializer::struct_::write::<Self>(self, context, ref_mode, write_type_info)
     }
 }

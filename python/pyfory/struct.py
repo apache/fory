@@ -30,24 +30,6 @@ from typing import List, Dict
 
 from pyfory.annotation import (
     ArrayMeta,
-    BFloat16,
-    Float16,
-    Float32,
-    Float64,
-    FixedInt32,
-    FixedInt64,
-    FixedUInt32,
-    FixedUInt64,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    TaggedInt64,
-    TaggedUInt64,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
 )
 from pyfory.lib.mmh3 import hash_buffer
 from pyfory.policy import DEFAULT_POLICY
@@ -68,6 +50,8 @@ from pyfory.type_util import (
     get_homogeneous_tuple_elem_type,
     is_subclass,
     get_type_hints,
+    normalize_fory_type,
+    scalar_type_id,
     unwrap_array,
     unwrap_optional,
     unwrap_ref,
@@ -98,26 +82,28 @@ logger = logging.getLogger(__name__)
 
 _MISSING_DEFAULT_INT_TYPES = {
     int,
-    Int8,
-    Int16,
-    Int32,
-    FixedInt32,
-    Int64,
-    FixedInt64,
-    TaggedInt64,
-    UInt8,
-    UInt16,
-    UInt32,
-    FixedUInt32,
-    UInt64,
-    FixedUInt64,
-    TaggedUInt64,
+    TypeId.INT8,
+    TypeId.INT16,
+    TypeId.VARINT32,
+    TypeId.INT32,
+    TypeId.VARINT64,
+    TypeId.INT64,
+    TypeId.TAGGED_INT64,
+    TypeId.UINT8,
+    TypeId.UINT16,
+    TypeId.VAR_UINT32,
+    TypeId.UINT32,
+    TypeId.VAR_UINT64,
+    TypeId.UINT64,
+    TypeId.TAGGED_UINT64,
 }
 
 _MISSING_DEFAULT_FLOAT_TYPES = {
     float,
-    Float32,
-    Float64,
+    TypeId.FLOAT16,
+    TypeId.BFLOAT16,
+    TypeId.FLOAT32,
+    TypeId.FLOAT64,
 }
 
 
@@ -353,6 +339,7 @@ def resolve_missing_field_default(
         return dc_field.default_factory
 
     if not effective_nullable:
+        unwrapped_type = normalize_fory_type(unwrapped_type)
         origin = typing.get_origin(unwrapped_type) if hasattr(typing, "get_origin") else getattr(unwrapped_type, "__origin__", None)
         origin = origin or unwrapped_type
         if is_subclass(unwrapped_type, enum.Enum):
@@ -500,8 +487,13 @@ class DataClassSerializer(Serializer):
             else {}
         )
         self._missing_field_defaults = self._build_missing_field_defaults()
+        from pyfory.converter import CompatibleScalarFieldSerializer
+
+        self._compatible_scalar_field_flags = [isinstance(serializer, CompatibleScalarFieldSerializer) for serializer in self._serializers]
         self._basic_field_flags = [
-            (not self._dynamic_fields.get(field_name, False)) and isinstance(self._serializers[index], self._BASIC_SERIALIZERS)
+            (not self._dynamic_fields.get(field_name, False))
+            and not self._compatible_scalar_field_flags[index]
+            and isinstance(self._serializers[index], self._BASIC_SERIALIZERS)
             for index, field_name in enumerate(self._field_names)
         ]
 
@@ -552,7 +544,16 @@ class DataClassSerializer(Serializer):
         else:
             write_context.write_no_ref(field_value, serializer=serializer)
 
-    def _read_field_value(self, read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref):
+    def _read_field_value(
+        self,
+        read_context,
+        serializer,
+        is_nullable,
+        is_dynamic,
+        is_basic,
+        is_tracking_ref,
+        is_compatible_scalar_field,
+    ):
         if is_nullable and is_basic:
             if read_context.read_int8() == NULL_FLAG:
                 return None
@@ -561,8 +562,14 @@ class DataClassSerializer(Serializer):
             return serializer.read(read_context)
         if is_tracking_ref:
             return read_context.read_ref(serializer=None if is_dynamic else serializer)
-        if is_nullable and read_context.read_int8() == NULL_FLAG:
-            return None
+        if is_nullable:
+            flag = read_context.read_int8()
+            if flag == NULL_FLAG:
+                return None
+            if is_compatible_scalar_field and flag != NOT_NULL_VALUE_FLAG:
+                from pyfory.error import ForyInvalidDataError
+
+                raise ForyInvalidDataError(f"Invalid compatible scalar null flag: {flag}")
         if is_dynamic:
             return read_context.read_no_ref()
         return read_context.read_no_ref(serializer=serializer)
@@ -654,10 +661,27 @@ class DataClassSerializer(Serializer):
                 is_dynamic = self._dynamic_fields.get(field_name, False)
                 is_tracking_ref = self._ref_fields.get(field_name, False)
                 is_basic = self._basic_field_flags[index]
+                is_compatible_scalar_field = self._compatible_scalar_field_flags[index]
                 if field_name not in self._current_class_field_names or not self._assign_fields[index]:
-                    self._read_missing_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                    self._read_missing_field_value(
+                        read_context,
+                        serializer,
+                        is_nullable,
+                        is_dynamic,
+                        is_basic,
+                        is_tracking_ref,
+                        is_compatible_scalar_field,
+                    )
                     continue
-                field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                field_value = self._read_field_value(
+                    read_context,
+                    serializer,
+                    is_nullable,
+                    is_dynamic,
+                    is_basic,
+                    is_tracking_ref,
+                    is_compatible_scalar_field,
+                )
                 validation_field_type = self._validation_field_types[index]
                 if validation_field_type is None:
                     interned_name = self._field_name_interned[field_name]
@@ -675,7 +699,16 @@ class DataClassSerializer(Serializer):
                     is_dynamic = self._dynamic_fields.get(field_name, False)
                     is_tracking_ref = self._ref_fields.get(field_name, False)
                     is_basic = self._basic_field_flags[index]
-                    field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                    is_compatible_scalar_field = self._compatible_scalar_field_flags[index]
+                    field_value = self._read_field_value(
+                        read_context,
+                        serializer,
+                        is_nullable,
+                        is_dynamic,
+                        is_basic,
+                        is_tracking_ref,
+                        is_compatible_scalar_field,
+                    )
                     interned_name = self._field_name_interned[field_name]
                     if obj_dict is not None:
                         obj_dict[interned_name] = field_value
@@ -688,7 +721,16 @@ class DataClassSerializer(Serializer):
                     is_dynamic = self._dynamic_fields.get(field_name, False)
                     is_tracking_ref = self._ref_fields.get(field_name, False)
                     is_basic = self._basic_field_flags[index]
-                    field_value = self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+                    is_compatible_scalar_field = self._compatible_scalar_field_flags[index]
+                    field_value = self._read_field_value(
+                        read_context,
+                        serializer,
+                        is_nullable,
+                        is_dynamic,
+                        is_basic,
+                        is_tracking_ref,
+                        is_compatible_scalar_field,
+                    )
                     validation_field_type = self._validation_field_types[index]
                     if validation_field_type is None:
                         interned_name = self._field_name_interned[field_name]
@@ -709,11 +751,28 @@ class DataClassSerializer(Serializer):
         read_context.shrink_input_buffer()
         return obj
 
-    def _read_missing_field_value(self, read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref):
+    def _read_missing_field_value(
+        self,
+        read_context,
+        serializer,
+        is_nullable,
+        is_dynamic,
+        is_basic,
+        is_tracking_ref,
+        is_compatible_scalar_field,
+    ):
         previous = self.type_resolver._allow_unregistered_typedef
         self.type_resolver._allow_unregistered_typedef = True
         try:
-            return self._read_field_value(read_context, serializer, is_nullable, is_dynamic, is_basic, is_tracking_ref)
+            return self._read_field_value(
+                read_context,
+                serializer,
+                is_nullable,
+                is_dynamic,
+                is_basic,
+                is_tracking_ref,
+                is_compatible_scalar_field,
+            )
         finally:
             self.type_resolver._allow_unregistered_typedef = previous
 
@@ -736,28 +795,6 @@ class DataClassStubSerializer(DataClassSerializer):
 
 basic_types = {
     bool,
-    # Signed integers
-    Int8,
-    Int16,
-    Int32,
-    FixedInt32,
-    Int64,
-    FixedInt64,
-    TaggedInt64,
-    # Unsigned integers
-    UInt8,
-    UInt16,
-    UInt32,
-    FixedUInt32,
-    UInt64,
-    FixedUInt64,
-    TaggedUInt64,
-    # Floats
-    Float16,
-    BFloat16,
-    Float32,
-    Float64,
-    # Python native types
     int,
     float,
     str,
@@ -767,46 +804,65 @@ basic_types = {
     datetime.time,
     datetime.timedelta,
     decimal.Decimal,
+    TypeId.INT8,
+    TypeId.INT16,
+    TypeId.VARINT32,
+    TypeId.INT32,
+    TypeId.VARINT64,
+    TypeId.INT64,
+    TypeId.TAGGED_INT64,
+    TypeId.UINT8,
+    TypeId.UINT16,
+    TypeId.VAR_UINT32,
+    TypeId.UINT32,
+    TypeId.VAR_UINT64,
+    TypeId.UINT64,
+    TypeId.TAGGED_UINT64,
+    TypeId.FLOAT16,
+    TypeId.BFLOAT16,
+    TypeId.FLOAT32,
+    TypeId.FLOAT64,
 }
 
 _ARRAY_ELEMENT_TYPE_IDS = {
     bool: TypeId.BOOL_ARRAY,
-    Int8: TypeId.INT8_ARRAY,
-    Int16: TypeId.INT16_ARRAY,
-    Int32: TypeId.INT32_ARRAY,
-    Int64: TypeId.INT64_ARRAY,
-    UInt8: TypeId.UINT8_ARRAY,
-    UInt16: TypeId.UINT16_ARRAY,
-    UInt32: TypeId.UINT32_ARRAY,
-    UInt64: TypeId.UINT64_ARRAY,
-    Float16: TypeId.FLOAT16_ARRAY,
-    BFloat16: TypeId.BFLOAT16_ARRAY,
-    Float32: TypeId.FLOAT32_ARRAY,
-    Float64: TypeId.FLOAT64_ARRAY,
+    TypeId.INT8: TypeId.INT8_ARRAY,
+    TypeId.INT16: TypeId.INT16_ARRAY,
+    TypeId.VARINT32: TypeId.INT32_ARRAY,
+    TypeId.VARINT64: TypeId.INT64_ARRAY,
+    TypeId.UINT8: TypeId.UINT8_ARRAY,
+    TypeId.UINT16: TypeId.UINT16_ARRAY,
+    TypeId.VAR_UINT32: TypeId.UINT32_ARRAY,
+    TypeId.VAR_UINT64: TypeId.UINT64_ARRAY,
+    TypeId.FLOAT16: TypeId.FLOAT16_ARRAY,
+    TypeId.BFLOAT16: TypeId.BFLOAT16_ARRAY,
+    TypeId.FLOAT32: TypeId.FLOAT32_ARRAY,
+    TypeId.FLOAT64: TypeId.FLOAT64_ARRAY,
 }
 
 _ARRAY_INVALID_SCALAR_MODIFIERS = {
-    FixedInt32,
-    FixedInt64,
-    FixedUInt32,
-    FixedUInt64,
-    TaggedInt64,
-    TaggedUInt64,
+    TypeId.INT32,
+    TypeId.INT64,
+    TypeId.UINT32,
+    TypeId.UINT64,
+    TypeId.TAGGED_INT64,
+    TypeId.TAGGED_UINT64,
 }
 
 
 def _array_type_id(elem_type, carrier):
     elem_type, ref_override = unwrap_ref(elem_type)
     elem_type, elem_nullable = unwrap_optional(elem_type)
+    elem_type = normalize_fory_type(elem_type)
     if elem_nullable:
         raise TypeError("array<T> does not allow optional elements")
     if ref_override is not None:
         raise TypeError("array<T> does not allow ref-tracked elements")
     if elem_type in _ARRAY_INVALID_SCALAR_MODIFIERS:
         raise TypeError(f"array<T> does not allow scalar encoding modifier {elem_type}")
-    if carrier == "ndarray" and elem_type is BFloat16:
+    if carrier == "ndarray" and elem_type == TypeId.BFLOAT16:
         raise TypeError("pyfory.NDArray does not support BFloat16 arrays")
-    if carrier == "pyarray" and elem_type in (bool, Float16, BFloat16):
+    if carrier == "pyarray" and elem_type in (bool, TypeId.FLOAT16, TypeId.BFLOAT16):
         raise TypeError("pyfory.PyArray supports Python array.array numeric typecodes only")
     type_id = _ARRAY_ELEMENT_TYPE_IDS.get(elem_type)
     if type_id is None:
@@ -1103,6 +1159,9 @@ def _normalize_schema_fingerprint_type_id(type_id):
 
 
 def _leaf_schema_fingerprint_type_id(type_resolver, type_hint):
+    scalar_id = scalar_type_id(type_hint)
+    if scalar_id is not None:
+        return scalar_id
     if type_hint is typing.Any or type_hint is object:
         return TypeId.UNKNOWN
     if is_primitive_array_type(type_hint):

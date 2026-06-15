@@ -50,11 +50,10 @@ class Person {
 
 void main() {
   final fory = Fory();
-  PersonFory.register(
+  PersonForyModule.register(
     fory,
     Person,
-    namespace: 'example',
-    typeName: 'Person',
+    name: 'example.Person',
   );
 
   final person = Person()
@@ -130,14 +129,14 @@ This is an optimization. For most applications the default `serialize`/`deserial
 Before you can serialize a custom class or enum, register it with `Fory`. The generated code makes this easy:
 
 ```dart
-PersonFory.register(
+PersonForyModule.register(
   fory,
   Person,
   id: 100,
 );
 ```
 
-If you skip registration, you will get a `Type ... is not registered` error at runtime. See [Type Registration](type-registration.md) and [Code Generation](code-generation.md).
+If you skip registration, deserialization fails with `Type ... is not registered`. See [Type Registration](type-registration.md) and [Code Generation](code-generation.md).
 
 ## Related Topics
 

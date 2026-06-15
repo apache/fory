@@ -87,16 +87,16 @@ final class ReadContext {
 
   @internal
   @pragma('vm:prefer-inline')
-  TypeInfo readTypeMetaValue([
-    TypeInfo? expectedNamedType,
-  ]) =>
+  TypeInfo readTypeMetaValue([TypeInfo? expectedNamedType]) =>
       _readTypeMeta(expectedNamedType);
 
   @internal
   @pragma('vm:prefer-inline')
   Object? readSerializerPayload(
-      Serializer<Object?> serializer, TypeInfo resolved,
-      {required bool hasCurrentPreservedRef}) {
+    Serializer<Object?> serializer,
+    TypeInfo resolved, {
+    required bool hasCurrentPreservedRef,
+  }) {
     return serializer.read(this);
   }
 
@@ -217,38 +217,43 @@ final class ReadContext {
       return _refReader.getReadRef();
     }
     final expectedRootType = _typeResolver.expectedRootType<T>();
-    final typeMetaResolved = expectedRootType == null
-        ? _readTypeMeta()
-        : _typeResolver.readExpectedInitialTypeDefMeta(
-              _buffer,
-              expectedRootType,
-              sharedTypes: _sharedTypes,
-            ) ??
-            _readTypeMeta(expectedRootType);
-    final resolved =
-        _typeResolver.resolveExpectedRootWireType<T>(typeMetaResolved);
-    final rootPreservedRefId = preservedRefId == null &&
-            flag == RefWriter.notNullValueFlag &&
-            _depth == 0 &&
-            resolved.needsRootRef
-        ? _refReader.preserveRefId()
-        : null;
+    final typeMetaResolved =
+        expectedRootType == null
+            ? _readTypeMeta()
+            : _typeResolver.readExpectedInitialTypeDefMeta(
+                  _buffer,
+                  expectedRootType,
+                  sharedTypes: _sharedTypes,
+                ) ??
+                _readTypeMeta(expectedRootType);
+    final resolved = _typeResolver.resolveExpectedRootWireType<T>(
+      typeMetaResolved,
+    );
+    final rootPreservedRefId =
+        preservedRefId == null &&
+                flag == RefWriter.notNullValueFlag &&
+                _depth == 0 &&
+                resolved.needsRootRef
+            ? _refReader.preserveRefId()
+            : null;
     if (preservedRefId == null &&
         rootPreservedRefId == null &&
         expectedRootType != null &&
         identical(resolved, expectedRootType) &&
         resolved.kind == RegistrationKind.struct &&
         resolved.remoteTypeDef == null) {
-      _depth += 1;
-      if (_depth > config.maxDepth) {
-        _throwMaxDepthExceeded();
-      }
-      final value = resolved.structSerializer!.readSameTypeValue(
-        this,
-        resolved,
-      );
-      _depth -= 1;
-      return value;
+      return _readRootStructValue(resolved, compatible: false);
+    }
+    if (preservedRefId == null &&
+        rootPreservedRefId == null &&
+        expectedRootType != null &&
+        resolved.kind == RegistrationKind.struct &&
+        resolved.remoteTypeDef != null &&
+        identical(
+          resolved.structSerializer,
+          expectedRootType.structSerializer,
+        )) {
+      return _readRootStructValue(resolved, compatible: true);
     }
     final value = readResolvedValue(
       resolved,
@@ -267,6 +272,19 @@ final class ReadContext {
     return value;
   }
 
+  Object _readRootStructValue(TypeInfo resolved, {required bool compatible}) {
+    _depth += 1;
+    if (_depth > config.maxDepth) {
+      _throwMaxDepthExceeded();
+    }
+    final value =
+        compatible
+            ? resolved.structSerializer!.readValue(this, resolved)
+            : resolved.structSerializer!.readSameTypeValue(this, resolved);
+    _depth -= 1;
+    return value;
+  }
+
   Object? _readRefWithResolved(TypeInfo Function(TypeInfo) resolveRootType) {
     final flag = _refReader.tryPreserveRefId(_buffer);
     final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
@@ -277,12 +295,13 @@ final class ReadContext {
       return _refReader.getReadRef();
     }
     final resolved = resolveRootType(_readTypeMeta());
-    final rootPreservedRefId = preservedRefId == null &&
-            flag == RefWriter.notNullValueFlag &&
-            _depth == 0 &&
-            resolved.needsRootRef
-        ? _refReader.preserveRefId()
-        : null;
+    final rootPreservedRefId =
+        preservedRefId == null &&
+                flag == RefWriter.notNullValueFlag &&
+                _depth == 0 &&
+                resolved.needsRootRef
+            ? _refReader.preserveRefId()
+            : null;
     final value = readResolvedValue(
       resolved,
       null,
@@ -324,8 +343,11 @@ final class ReadContext {
 
   @internal
   @pragma('vm:prefer-inline')
-  Object? readResolvedValue(TypeInfo resolved, FieldType? declaredFieldType,
-      {bool hasPreservedRef = false}) {
+  Object? readResolvedValue(
+    TypeInfo resolved,
+    FieldType? declaredFieldType, {
+    bool hasPreservedRef = false,
+  }) {
     if (!_tracksDepth(resolved)) {
       return _readPayloadValue(
         resolved,
@@ -442,9 +464,7 @@ final class ReadContext {
   }
 
   @pragma('vm:prefer-inline')
-  TypeInfo _readTypeMeta([
-    TypeInfo? expectedNamedType,
-  ]) {
+  TypeInfo _readTypeMeta([TypeInfo? expectedNamedType]) {
     return _typeResolver.readTypeMeta(
       _buffer,
       expectedNamedType: expectedNamedType,

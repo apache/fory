@@ -21,22 +21,22 @@ license: |
 
 ## Overview
 
-This guide describes the current xlang runtime ownership model used by the
-reference Java runtime and mirrored by the Dart runtime rewrite.
+This guide describes the current xlang implementation ownership model used by
+the reference Java implementation and mirrored by the Dart implementation rewrite.
 
 The wire format is defined by
 [Xlang Serialization Spec](xlang_serialization_spec.md). This document is about
-service boundaries, operation flow, and internal ownership. New runtimes do not
+service boundaries, operation flow, and internal ownership. New language implementations do not
 need the same class names, but they should preserve the same control flow:
 
-- root operations stay on the runtime facade
+- root operations stay on the `Fory` facade
 - nested payload work stays on explicit read and write contexts
 - type metadata stays in the type resolver layer
 - serializers stay payload-focused
 
 When this guide conflicts with the wire-format specification, follow
 `docs/specification/xlang_serialization_spec.md`. When it conflicts with a
-runtime-specific implementation detail, follow the current runtime code for
+language-specific implementation detail, follow the current implementation code for
 that language.
 
 ## Source Of Truth
@@ -44,10 +44,10 @@ that language.
 Use these sources in this order:
 
 1. `docs/specification/xlang_serialization_spec.md`
-2. the current runtime implementation for the language
+2. the current implementation for the language
 3. cross-language tests under `integration_tests/`
 
-For Dart, the runtime shape is centered on:
+For Dart, the implementation shape is centered on:
 
 - `Fory`
 - `WriteContext`
@@ -57,20 +57,20 @@ For Dart, the runtime shape is centered on:
 - `TypeResolver`
 - `StructSerializer`
 
-## Runtime Ownership Model
+## Implementation Ownership Model
 
 ### `Fory` is the root-operation facade
 
-`Fory` owns the reusable runtime services for one runtime instance.
+`Fory` owns the reusable services for one Fory instance.
 
-In Dart, `Fory` owns exactly four runtime members:
+In Dart, `Fory` owns exactly four reusable members:
 
 - `Buffer`
 - `WriteContext`
 - `ReadContext`
 - `TypeResolver`
 
-In Java, `Fory` also owns runtime-local services such as `JITContext` and
+In Java, `Fory` also owns instance-local services such as `JITContext` and
 `CopyContext`, but the ownership rule is the same: `Fory` is the root facade,
 not the place where nested serializers do their work.
 
@@ -104,7 +104,7 @@ That operation-local state includes:
 - logical object-graph depth
 
 Generated and hand-written serializers should treat these contexts as the only
-source of operation-local services. Serializers must not keep ambient runtime
+source of operation-local services. Serializers must not keep ambient instance
 state in thread locals, globals, or serializer instance fields.
 
 ### `WriteContext`
@@ -271,6 +271,142 @@ The current root read flow mirrors the write flow:
 Primitive and string-like hot paths should read directly from the buffer;
 complex payloads delegate to the resolved serializer.
 
+### Stream And Buffer Byte Reads
+
+Implementations must keep byte availability in the byte owner layer while
+keeping string, binary, primitive-array, compression, and collection semantics in
+serializers.
+
+The required byte-owner primitive for allocation-before-read checks is a
+readability check such as `checkReadableBytes(byteCount)`. Implementations do
+not need additional generic read-context methods for this design. After the
+readability check succeeds, serializers use their existing local buffer read,
+copy, or decode paths.
+
+The readability check is a byte operation only. It must not decode strings,
+primitive-array element counts, compression modes, or collection capacity
+policy.
+
+For large byte-counted values, every implementation should call the byte-owner
+readability check before allocating a variable-length result. This applies to
+binary values, strings, decimal or metadata bodies, and primitive wire arrays
+whose encoded body is measured in bytes. For multi-byte primitive wire arrays,
+compare the encoded byte count, not only the logical element count, with the
+readable bytes.
+
+1. Validate the encoded byte count in the serializer. For fixed-width primitive
+   arrays, check overflow and element alignment before allocation, such as
+   `wireByteCount % elementByteWidth == 0`, then derive the logical element
+   count from the encoded byte count.
+2. Call `checkReadableBytes(wireByteCount)` unconditionally before allocating
+   the variable-length result. Buffer-backed inputs normally return from this
+   check with only a bounds comparison. Stream-backed inputs use the same call;
+   the byte owner handles the fast path when enough bytes are already buffered
+   and otherwise fills the read buffer until the requested encoded body is
+   readable or an input error is recorded.
+3. After readability is proven, allocate the final value once and copy or decode
+   from the current readable buffer into the final result.
+
+`checkReadableBytes` is not an `ensureCapacity(wireByteCount)` operation. In
+stream mode it may end with the byte owner holding the full encoded body in its
+read buffer, but it must grow that buffer as bytes are successfully read from
+the stream. It should grow from current proven buffer capacity, such as by
+doubling current capacity, and cap only when that bounded growth step reaches
+the immediate target. A byte owner may use an owner-local availability signal as
+a one-shot growth hint when the stream implementation itself is caller-owned
+trusted code; if that hint is absent or insufficient, it must fall back to
+bounded growth from already buffered bytes. It must not reserve the
+attacker-declared length before input bytes or an owner-local growth hint
+justify that intermediate buffer capacity. The stream slow path may pay one
+extra intermediate buffer copy; this is preferable to serializer-local chunk
+accumulation and repeated final-container growth.
+
+For byte-counted values, the serializer should not duplicate the byte owner's
+fast-path branch by testing `availableBytes()` before calling
+`checkReadableBytes`. Keeping that branch in the byte owner gives every language
+the same correctness rule and keeps serializer hot paths focused on their own
+wire semantics.
+
+For primitive wire arrays:
+
+- Compare and prove the encoded wire byte count, not only the logical element
+  count.
+- Keep compression, bit-packing, byte-order conversion, and other primitive
+  array encoding semantics in the serializer. `checkReadableBytes` only proves
+  that the encoded bytes are present.
+- For compressed or transformed bodies, the serializer must still validate the
+  decoded length and encoding-specific metadata before allocating or returning
+  the final value.
+
+The common serializer shape is:
+
+```text
+wireByteCount = readVarUint32()
+elementWidth = primitiveWireElementWidth(kind)
+validate wireByteCount and element alignment
+elementCount = wireByteCount / elementWidth
+
+ctx.checkReadableBytes(wireByteCount)
+result = allocatePrimitiveResult(elementCount)
+copy or decode wireByteCount bytes from the current readable buffer into result
+advance the reader index by wireByteCount
+return result
+```
+
+Byte values are the `elementWidth == 1` specialization of the same policy. In
+that case the serializer shape is:
+
+```text
+byteCount = readVarUint32()
+
+ctx.checkReadableBytes(byteCount)
+result = allocateBytes(byteCount)
+copy byteCount bytes from the current readable buffer into result
+advance the reader index by byteCount
+return result
+```
+
+This policy avoids three inefficient implementation shapes:
+
+- allocating the complete final contiguous value before the encoded body is
+  readable
+- growing or repeatedly copying the final result container on stream slow paths
+- adding serializer-local chunk buffers when the byte owner can prove
+  readability once and expose a normal buffered read
+
+Scratch buffers remain appropriate when the target representation is not a
+direct byte target, such as string transcoding, compression, byte-order
+conversion that is not performed in place, bit-packed values, or runtimes whose
+stream API cannot read into a caller-provided target.
+
+For fixed-width primitive arrays, the final result must not become visible to
+callers until the exact encoded byte count has been read successfully.
+
+For list, set, map, and other container readers, the declared logical element
+count is not an encoded byte count, so serializers must still own all element,
+chunk, nullability, reference, and type-dispatch semantics. It is still the
+right allocation proof for count-based preallocation: after validating a
+non-empty count and reading any serializer-owned header or type metadata that
+precedes allocation, call `checkReadableBytes(logicalCount)` before allocating,
+reserving, or size-hinting from that count. The byte owner handles buffer versus
+stream readiness; the container serializer then allocates with the declared
+count and reads elements through its normal owner path.
+
+This check is not a full container-body validation. It only prevents a small or
+truncated input from causing a large count-based preallocation. Chunk sizes,
+duplicate keys, element value semantics, and protocol strictness remain owned by
+the container/map serializer and should be validated only when they protect a
+real owner invariant.
+
+For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
+are readable through the byte owner. Field-list allocation should happen after
+that body readability check and should not use a separate small initial-capacity
+cap as a security rule.
+
+Skip paths do not need to materialize skipped values. Existing byte-skip
+operations should consume any available buffered prefix first, then skip or drop
+remaining stream bytes in bounded steps.
+
 ### Nested reads use `ReadContext`
 
 Important rules:
@@ -306,19 +442,67 @@ In Dart that internal owner is `StructSerializer`.
 - caching compatible read layouts
 - skipping unknown compatible fields
 - passing compatible read layouts explicitly to generated serializers
+- classifying matched compatible fields as exact direct reads, compatible
+  conversions, or remote-only skips before generated dispatch
 
 When `Config.compatible` is enabled and the struct is marked evolving:
 
 - the wire type uses the compatible struct form
-- the runtime writes shared TypeDef metadata
+- the writer emits shared TypeDef metadata
 - reads map incoming fields by identifier and skip unknown fields
 - generated serializers apply matched fields directly while preserving their own
   object construction and default-value rules
+- exact matched field schemas use the same direct read shape as same-schema
+  reads and must not receive remote compatible metadata
+- matched scalar fields may use compatible scalar conversion only when the
+  layout has classified a remote/local top-level scalar pair as lossless
+  convertible and both field schemas have `trackingRef = false`
+- compatible scalar conversion applies only to the immediate matched field.
+  Nested collection, array, map key, and map value schemas must not be accepted
+  by recursively applying scalar conversion to child schemas.
+- direct top-level `list<T?>` to dense `array<T>` matched fields must be
+  classified as compatible when element domains match; the nullable element
+  schema bit alone is not a schema-pair rejection. Actual null element payloads
+  fail in the dense-array reader. Ref-tracked list-element framing is separate
+  and may remain rejected when the runtime cannot materialize it without
+  generic/reference paths.
 
 When `compatible` is disabled and `checkStructVersion` is enabled:
 
-- the runtime writes the schema hash for struct payloads
+- the writer emits the schema hash for struct payloads
 - the read side checks that hash before reading fields
+
+Compatible scalar conversion is owned by the compatible struct field reader or
+the generated compatible layout action. Root facades, read/write contexts, type
+resolvers, class resolvers, xlang type resolvers, and raw buffer utilities must
+not expose public conversion APIs or carry conversion state. Resolvers may
+provide field schema metadata for layout classification, but the conversion
+decision and value adaptation stay with the serializer-owned compatible field
+layout. Layout classification must reject top-level scalar conversions when
+either matched schema has `trackingRef = true` and must reject same scalar type
+pairs whose top-level `trackingRef` framing differs; converters must not add a
+reference-table path for scalar mismatches. Recursive schema comparison inside
+containers must reject scalar mismatches instead of reusing the top-level scalar
+conversion matrix. Generated serializers should consume the classified layout
+decision directly:
+
+- source-generated serializers use the layout's matched-field dispatch key to
+  select exact direct field code, compatible conversion code, or skip code
+- regenerated serializers may instead compile a remote-schema-specific
+  straight-line reader after classification, without a second outer matched-id
+  switch, when the generated source still has pure direct, pure conversion, and
+  explicit skip operations
+- compatible scalar conversion cases must read the concrete remote wire scalar
+  selected by classification and compose only the required lossless conversion;
+  they must not call a generic runtime converter that redispatches by remote and
+  local scalar type IDs, field descriptors, field names, or schema eligibility
+  helpers
+
+Same-schema readers with matching reference and null/optional framing must keep
+direct scalar read paths without conversion branches or per-field conversion
+objects. Same raw scalar types with different null/optional framing may still
+use the compatible nullable/optional composition path when both fields are not
+reference-tracked.
 
 ## Meta Strings And Shared Type Metadata
 
@@ -345,7 +529,7 @@ In Java:
 - `@ForyEnumId` can override that with a stable explicit tag
 - `serializeEnumByName(true)` affects native Java mode, not xlang mode
 
-Other runtimes should preserve the same wire rule even if the configuration or
+Other language implementations should preserve the same wire rule even if the configuration or
 annotation surface differs.
 
 ## Out-Of-Band Buffer Objects
@@ -355,7 +539,7 @@ Buffer-object handling follows the same split:
 - one root bit advertises whether out-of-band buffers are in play
 - nested buffer-object payloads still decide in-band vs out-of-band one value at
   a time
-- serializers use read/write context helpers rather than bypassing the runtime
+- serializers use read/write context helpers rather than bypassing the context layer
 
 ## Code Generation
 
@@ -375,9 +559,9 @@ Generated code should emit:
 - a public per-library registration helper that users call from application code
 - private generated installation helpers that keep serializer factories private
 
-The public helper should be a thin generated wrapper around the runtime
-registration API, not a public global registry or a second unrelated runtime API
-family.
+The public helper should be a thin generated wrapper around the Fory
+registration API, not a public global registry or a second unrelated
+registration API family.
 
 ## Directory Layout
 
@@ -393,19 +577,19 @@ Not allowed:
 
 - `lib/src/<area>/<subarea>/<file>.dart`
 
-## Serializer Design Rules For New Runtimes
+## Serializer Design Rules For New Implementations
 
-Any new xlang runtime should follow these rules even if its surface API looks
+Any new xlang implementation should follow these rules even if its surface API looks
 different:
 
-1. Keep root operations on the runtime facade and nested payload work on
+1. Keep root operations on the `Fory` facade and nested payload work on
    explicit read and write contexts.
 2. Keep reference tracking behind dedicated read-side and write-side services
    so the disabled path stays cheap.
 3. Make serializers payload-only. Type metadata, registration, and root
-   framing belong to the runtime and type resolver layers.
+   framing belong to the `Fory` and type resolver layers.
 4. Track per-operation state explicitly. Do not rely on ambient thread-local
-   runtime state.
+   instance state.
 5. Reserve read reference IDs before materializing new objects, and bind
    partially built objects as soon as a nested child may refer back to them.
 6. Keep operation setup and operation cleanup separate. `prepare(...)` binds
@@ -421,7 +605,7 @@ different:
 
 ## Validation
 
-For Dart runtime changes, run at minimum:
+For Dart implementation changes, run at minimum:
 
 ```bash
 cd dart

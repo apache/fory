@@ -35,19 +35,10 @@ const TRACKING_VALUE_REF: u8 = 0b1000;
 pub const VALUE_NULL: u8 = 0b10000;
 pub const DECL_VALUE_TYPE: u8 = 0b100000;
 
-#[cold]
-fn map_size_limit_exceeded(len: u32, max: u32) -> Error {
-    Error::size_limit_exceeded(format!("Map size {} exceeds limit {}", len, max))
-}
-
-fn check_map_len(context: &ReadContext, len: u32) -> Result<(), Error> {
+fn check_map_len(context: &ReadContext, len: u32) -> Result<usize, Error> {
     let len = len as usize;
-    let remaining = context.reader.slice_after_cursor().len();
-    if len > remaining {
-        let cursor = context.reader.get_cursor();
-        return Err(Error::buffer_out_of_bound(cursor, len, cursor + remaining));
-    }
-    Ok(())
+    context.reader.check_bound(len)?;
+    Ok(len)
 }
 
 fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) {
@@ -571,20 +562,16 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         if len == 0 {
             return Ok(HashMap::new());
         }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(map_size_limit_exceeded(len, max));
-        }
-        check_map_len(context, len)?;
+        let capacity = check_map_len(context, len)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
             || V::fory_is_shared_ref()
         {
-            let map: HashMap<K, V> = HashMap::with_capacity(len as usize);
+            let map: HashMap<K, V> = HashMap::with_capacity(capacity);
             return read_hashmap_data_dyn_ref(context, map, len);
         }
-        let mut map = HashMap::<K, V>::with_capacity(len as usize);
+        let mut map = HashMap::<K, V>::with_capacity(capacity);
         let mut len_counter = 0;
         loop {
             if len_counter == len {
@@ -727,11 +714,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         if len == 0 {
             return Ok(BTreeMap::new());
         }
-        let max = context.max_collection_size();
-        if len > max {
-            return Err(map_size_limit_exceeded(len, max));
-        }
-        check_map_len(context, len)?;
+        let _ = check_map_len(context, len)?;
         let mut map = BTreeMap::<K, V>::new();
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()

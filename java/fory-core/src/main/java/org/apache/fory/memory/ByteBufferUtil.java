@@ -19,39 +19,12 @@
 
 package org.apache.fory.memory;
 
-import java.lang.reflect.Field;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import org.apache.fory.platform.UnsafeOps;
-import org.apache.fory.util.Preconditions;
 
 public class ByteBufferUtil {
   public static final Class<?> HEAP_BYTE_BUFFER_CLASS = ByteBuffer.allocate(0).getClass();
   public static final Class<?> DIRECT_BYTE_BUFFER_CLASS = ByteBuffer.allocateDirect(0).getClass();
-
-  private static final class DirectBufferAccess {
-    private static final long BUFFER_ADDRESS_FIELD_OFFSET;
-
-    static {
-      try {
-        Field addressField = Buffer.class.getDeclaredField("address");
-        BUFFER_ADDRESS_FIELD_OFFSET = UnsafeOps.objectFieldOffset(addressField);
-        Preconditions.checkArgument(BUFFER_ADDRESS_FIELD_OFFSET != 0);
-      } catch (NoSuchFieldException e) {
-        throw new IllegalStateException(e);
-      }
-    }
-  }
-
-  static long getAddress(ByteBuffer buffer) {
-    Preconditions.checkNotNull(buffer, "buffer is null");
-    Preconditions.checkArgument(buffer.isDirect(), "Can't get address of a non-direct ByteBuffer.");
-    try {
-      return UnsafeOps.getLong(buffer, DirectBufferAccess.BUFFER_ADDRESS_FIELD_OFFSET);
-    } catch (Throwable t) {
-      throw new Error("Could not access direct byte buffer address field.", t);
-    }
-  }
 
   public static void clearBuffer(Buffer buffer) {
     buffer.clear();

@@ -100,7 +100,7 @@ class EvilIndex:
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_collection_list_mixed_type_shared_reference(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False, compatible=xlang)
     shared = {"name": "shared", "nums": [1, 2, 3]}
     payload = [1, True, 3.14, "v", shared, shared, [shared, {"alias": shared}]]
     restored = _roundtrip(fory, payload)
@@ -111,7 +111,7 @@ def test_collection_list_mixed_type_shared_reference(xlang):
 
 
 def test_collection_tuple_shared_reference_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     shared = {"k": [1, 2]}
     payload = (shared, shared, [shared])
     restored = _roundtrip(fory, payload)
@@ -121,7 +121,7 @@ def test_collection_tuple_shared_reference_python_mode():
 
 
 def test_collection_set_element_alias_with_outer_reference_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     token = HashKey("shared-key")
     payload = [{token}, token]
     restored = _roundtrip(fory, payload)
@@ -132,7 +132,7 @@ def test_collection_set_element_alias_with_outer_reference_python_mode():
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_map_shared_value_aliases_with_none_key(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False, compatible=xlang)
     shared = [1, 2, 3]
     payload = {None: shared, "a": shared, "nested": {"v": shared}}
     restored = _roundtrip(fory, payload)
@@ -142,7 +142,7 @@ def test_map_shared_value_aliases_with_none_key(xlang):
 
 
 def test_map_self_cycle_and_shared_submap_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     shared_submap = {"x": 1}
     payload = {"left": shared_submap, "right": shared_submap}
     payload["self"] = payload
@@ -153,7 +153,7 @@ def test_map_self_cycle_and_shared_submap_python_mode():
 
 
 def test_map_key_alias_with_outer_reference_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     key = HashKey("k")
     payload = [{key: "value"}, key]
     restored = _roundtrip(fory, payload)
@@ -163,7 +163,7 @@ def test_map_key_alias_with_outer_reference_python_mode():
 
 
 def test_struct_shared_fields_and_cross_container_alias_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(RefNode)
 
     shared = {"inner": [1, 2]}
@@ -183,10 +183,10 @@ def test_struct_shared_fields_and_cross_container_alias_python_mode():
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_struct_field_ref_override_controls_alias_preservation(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False, compatible=xlang)
     if xlang:
-        fory.register_type(RefOverrideDisabled, typename="example.RefOverrideDisabled")
-        fory.register_type(RefOverrideEnabled, typename="example.RefOverrideEnabled")
+        fory.register_type(RefOverrideDisabled, name="example.RefOverrideDisabled")
+        fory.register_type(RefOverrideEnabled, name="example.RefOverrideEnabled")
     else:
         fory.register(RefOverrideDisabled)
         fory.register(RefOverrideEnabled)
@@ -206,7 +206,7 @@ def test_struct_field_ref_override_controls_alias_preservation(xlang):
 
 def test_collection_ref_override_unsets_tracking_bit():
     fory = pyfory.Fory(xlang=True, ref=True, compatible=True)
-    fory.register_type(CollectionRefOverrideItem, typename="example.CollectionRefOverrideItem")
+    fory.register_type(CollectionRefOverrideItem, name="example.CollectionRefOverrideItem")
 
     serializer = ListSerializer(fory.type_resolver, list, elem_tracking_ref=False)
     shared = CollectionRefOverrideItem(7)
@@ -231,8 +231,8 @@ def test_ref_annotation_preserves_override():
 
 def test_collection_ref_override_disables_alias_preservation():
     fory = pyfory.Fory(xlang=True, ref=True, compatible=True)
-    fory.register_type(CollectionRefOverrideItem, typename="example.CollectionRefOverrideItem")
-    fory.register_type(CollectionRefOverrideContainer, typename="example.CollectionRefOverrideContainer")
+    fory.register_type(CollectionRefOverrideItem, name="example.CollectionRefOverrideItem")
+    fory.register_type(CollectionRefOverrideContainer, name="example.CollectionRefOverrideContainer")
 
     shared = CollectionRefOverrideItem(11)
     restored = _roundtrip(
@@ -246,7 +246,7 @@ def test_collection_ref_override_disables_alias_preservation():
 
 
 def test_struct_self_cycle_and_nested_alias_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(RefNode)
 
     shared_list = []
@@ -326,9 +326,9 @@ def test_invalid_collection_element_ref_id_raises_value_error():
 @pytest.mark.parametrize("xlang", [False, True])
 def test_optional_fixed_uint64_roundtrip(xlang):
     value = 1234567890123456789
-    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=xlang, ref=True, strict=False, compatible=xlang)
     if xlang:
-        fory.register_type(FixedUint64Pair, typename="example.FixedUint64Pair")
+        fory.register_type(FixedUint64Pair, name="example.FixedUint64Pair")
     else:
         fory.register(FixedUint64Pair)
 
@@ -340,7 +340,7 @@ def test_optional_fixed_uint64_roundtrip(xlang):
 
 
 def test_primitive_list_fastpath_mutation_typeerror():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(Holder)
     for _ in range(10):
         lst = [EvilIndex() for _ in range(64)]

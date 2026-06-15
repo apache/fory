@@ -88,7 +88,7 @@ case payload schema type. Do not put `[ForyField]` on union case payload
 members. Known case record names use PascalCase FDL case names; payload types
 use qualified references when needed to avoid name conflicts. A typed union must
 declare at least one non-`Unknown` case; `Unknown(UnknownCase)` is only the
-runtime forward-compatibility carrier. The marker only selects the carrier and
+Fory-owned forward-compatibility carrier. The marker only selects the carrier and
 does not add an entry to the schema case table.
 
 ```csharp
@@ -114,7 +114,7 @@ public abstract partial record Shape
 ## Nullability and Reference Tracking
 
 - Field nullability comes from C# type nullability (`string?`, nullable value types, etc.).
-- Reference tracking is controlled at runtime by `ForyBuilder.TrackRef(...)`.
+- Reference tracking is configured with `ForyBuilder.TrackRef(...)`.
 
 ## Related Topics
 

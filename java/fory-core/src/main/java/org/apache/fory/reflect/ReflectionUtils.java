@@ -51,13 +51,11 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.function.Functions;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /** Reflection util. */
 @Internal
@@ -456,40 +454,11 @@ public class ReflectionUtils {
   public static List<Object> getFieldValues(Collection<Field> fields, Object o) {
     List<Object> results = new ArrayList<>(fields.size());
     for (Field field : fields) {
-      // UnsafeOps.objectFieldOffset(field) can't handle primitive field.
+      // Unsafe.objectFieldOffset(field) can't handle primitive field.
       Object fieldValue = FieldAccessor.createAccessor(field).get(o);
       results.add(fieldValue);
     }
     return results;
-  }
-
-  public static long getFieldOffset(Field field) {
-    if (AndroidSupport.IS_ANDROID) {
-      throw new UnsupportedOperationException(
-          "Field offsets are not supported on Android: " + field);
-    }
-    if (GraalvmSupport.isGraalBuildTime()) {
-      // See more details at
-      // https://www.graalvm.org/latest/reference-manual/native-image/metadata/Compatibility/#unsafe-memory-access
-      throw new IllegalStateException(
-          "Field offset will change between graalvm build time and runtime, "
-              + "should bye accessed by following graalvm auto rewrite pattern.");
-    }
-    if (field == null) {
-      return -1;
-    }
-    return UnsafeOps.objectFieldOffset(field);
-  }
-
-  public static long getFieldOffset(Class<?> cls, String fieldName) {
-    Field field = getFieldNullable(cls, fieldName);
-    return getFieldOffset(field);
-  }
-
-  public static long getFieldOffsetChecked(Class<?> cls, String fieldName) {
-    long offset = getFieldOffset(cls, fieldName);
-    Preconditions.checkArgument(offset != -1);
-    return offset;
   }
 
   public static void setObjectFieldValue(Object obj, String fieldName, Object value) {
@@ -499,30 +468,13 @@ public class ReflectionUtils {
   public static void setObjectFieldValue(Object obj, Field field, Object value) {
     Preconditions.checkArgument(
         !field.getType().isPrimitive(), "Field %s is primitive type", field);
-    if (AndroidSupport.IS_ANDROID) {
-      try {
-        field.setAccessible(true);
-        field.set(obj, value);
-        return;
-      } catch (IllegalAccessException | IllegalArgumentException e) {
-        throw new ForyException("Failed to write object field reflectively: " + field, e);
-      }
-    }
-    UnsafeOps.putObject(obj, UnsafeOps.objectFieldOffset(field), value);
+    FieldAccessor.createAccessor(field).putObject(obj, value);
   }
 
   public static <T> T getObjectFieldValue(Object obj, Field field) {
     Preconditions.checkArgument(
         !field.getType().isPrimitive(), "Field %s is primitive type", field);
-    if (AndroidSupport.IS_ANDROID) {
-      try {
-        field.setAccessible(true);
-        return (T) field.get(obj);
-      } catch (IllegalAccessException | IllegalArgumentException e) {
-        throw new ForyException("Failed to read object field reflectively: " + field, e);
-      }
-    }
-    return (T) UnsafeOps.getObject(obj, UnsafeOps.objectFieldOffset(field));
+    return (T) FieldAccessor.createAccessor(field).getObject(obj);
   }
 
   /**
@@ -538,16 +490,7 @@ public class ReflectionUtils {
         Field field = cls.getDeclaredField(fieldName);
         Preconditions.checkArgument(
             !field.getType().isPrimitive(), "Field %s is primitive type", field);
-        if (AndroidSupport.IS_ANDROID) {
-          try {
-            field.setAccessible(true);
-            return field.get(obj);
-          } catch (IllegalAccessException | IllegalArgumentException e) {
-            throw new ForyException("Failed to read object field reflectively: " + field, e);
-          }
-        }
-        long fieldOffset = UnsafeOps.objectFieldOffset(field);
-        return UnsafeOps.getObject(obj, fieldOffset);
+        return FieldAccessor.createAccessor(field).getObject(obj);
         // CHECKSTYLE.OFF:EmptyCatchBlock
       } catch (NoSuchFieldException ignored) {
       }

@@ -162,6 +162,7 @@ public class ResolverValidateSerializerTest {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     assertThrows(
         IllegalArgumentException.class,

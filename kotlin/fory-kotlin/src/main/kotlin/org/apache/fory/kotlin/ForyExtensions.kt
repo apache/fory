@@ -25,15 +25,19 @@ import org.apache.fory.ForyModule
 import org.apache.fory.serializer.kotlin.KotlinSerializers
 
 public inline fun <reified T : Any> BaseFory.register() {
-  registerKotlin(this, T::class.java, null, null, null)
+  registerKotlin(this, T::class.java, null, null, null, null)
 }
 
 public inline fun <reified T : Any> BaseFory.register(typeId: Long) {
-  registerKotlin(this, T::class.java, typeId, null, null)
+  registerKotlin(this, T::class.java, typeId, null, null, null)
+}
+
+public inline fun <reified T : Any> BaseFory.register(name: String) {
+  registerKotlin(this, T::class.java, null, name, null, null)
 }
 
 public inline fun <reified T : Any> BaseFory.register(namespace: String, typeName: String) {
-  registerKotlin(this, T::class.java, null, namespace, typeName)
+  registerKotlin(this, T::class.java, null, null, namespace, typeName)
 }
 
 @PublishedApi
@@ -41,6 +45,7 @@ internal fun registerKotlin(
   fory: BaseFory,
   cls: Class<*>,
   typeId: Long?,
+  name: String?,
   namespace: String?,
   typeName: String?,
 ) {
@@ -49,6 +54,7 @@ internal fun registerKotlin(
       runtime.register(ForyKotlin)
       when {
         typeId != null -> KotlinSerializers.register(runtime, cls, typeId)
+        name != null -> KotlinSerializers.register(runtime, cls, name)
         namespace != null && typeName != null ->
           KotlinSerializers.register(runtime, cls, namespace, typeName)
         else -> KotlinSerializers.register(runtime, cls)

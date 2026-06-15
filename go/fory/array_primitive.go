@@ -25,6 +25,25 @@ import (
 	"github.com/apache/fory/go/fory/float16"
 )
 
+func checkWireArraySize(ctx *ReadContext, size, elemSize int, value reflect.Value) (int, bool) {
+	if ctx.HasError() {
+		return 0, false
+	}
+	if size%elemSize != 0 {
+		ctx.SetError(DeserializationErrorf("array byte length %d is not aligned to element size %d", size, elemSize))
+		return 0, false
+	}
+	length := size / elemSize
+	if length != value.Type().Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+		return 0, false
+	}
+	if !ctx.Buffer().CheckReadable(size, ctx.Err()) {
+		return 0, false
+	}
+	return length, true
+}
+
 // ============================================================================
 // boolArraySerializer - optimized [N]bool serialization
 // ============================================================================
@@ -65,20 +84,14 @@ func (s boolArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 
 func (s boolArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
-	err := ctx.Err()
 	length := ctx.ReadBinaryLength()
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	if _, ok := checkWireArraySize(ctx, length, 1, value); !ok {
 		return
 	}
 	if length > 0 {
 		// Direct memory copy - bool is 1 byte in Go
 		ptr := value.Addr().UnsafePointer()
-		raw := buf.ReadBinary(length, err)
-		copy(unsafe.Slice((*byte)(ptr), length), raw)
+		buf.Read(unsafe.Slice((*byte)(ptr), length))
 	}
 }
 
@@ -130,20 +143,14 @@ func (s int8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 
 func (s int8ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
-	err := ctx.Err()
 	length := ctx.ReadBinaryLength()
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	if _, ok := checkWireArraySize(ctx, length, 1, value); !ok {
 		return
 	}
 	if length > 0 {
 		// Direct memory copy - int8 is 1 byte
 		ptr := value.Addr().UnsafePointer()
-		raw := buf.ReadBinary(length, err)
-		copy(unsafe.Slice((*byte)(ptr), length), raw)
+		buf.Read(unsafe.Slice((*byte)(ptr), length))
 	}
 }
 
@@ -198,19 +205,14 @@ func (s int16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 2, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetInt(int64(buf.ReadInt16(err)))
@@ -270,19 +272,14 @@ func (s int32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 4
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 4, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetInt(int64(buf.ReadInt32(err)))
@@ -342,19 +339,14 @@ func (s int64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 8
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 8, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetInt(buf.ReadInt64(err))
@@ -414,19 +406,14 @@ func (s float32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 4
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 4, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetFloat(float64(buf.ReadFloat32(err)))
@@ -486,19 +473,14 @@ func (s float64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 8
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 8, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetFloat(buf.ReadFloat64(err))
@@ -555,20 +537,14 @@ func (s uint8ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 
 func (s uint8ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
-	err := ctx.Err()
 	length := ctx.ReadBinaryLength()
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	if _, ok := checkWireArraySize(ctx, length, 1, value); !ok {
 		return
 	}
 	if length > 0 {
 		// Direct memory copy - uint8 is 1 byte
 		ptr := value.Addr().UnsafePointer()
-		raw := buf.ReadBinary(length, err)
-		copy(unsafe.Slice((*byte)(ptr), length), raw)
+		buf.Read(unsafe.Slice((*byte)(ptr), length))
 	}
 }
 
@@ -624,19 +600,14 @@ func (s uint16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 2, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetUint(uint64(uint16(buf.ReadInt16(err))))
@@ -695,19 +666,14 @@ func (s uint32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 4
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 4, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetUint(uint64(uint32(buf.ReadInt32(err))))
@@ -765,19 +731,14 @@ func (s uint64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 8
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 8, value)
+	if !ok {
 		return
 	}
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).SetUint(uint64(buf.ReadInt64(err)))
@@ -839,20 +800,15 @@ func (s float16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 2, value)
+	if !ok {
 		return
 	}
 
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, ctxErr)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).Set(reflect.ValueOf(float16.Float16FromBits(buf.ReadUint16(ctxErr))))
@@ -913,20 +869,15 @@ func (s bfloat16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
-	if ctx.HasError() {
-		return
-	}
-	if length != value.Type().Len() {
-		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+	length, ok := checkWireArraySize(ctx, size, 2, value)
+	if !ok {
 		return
 	}
 
 	if length > 0 {
 		if isLittleEndian {
 			ptr := value.Addr().UnsafePointer()
-			raw := buf.ReadBinary(size, ctxErr)
-			copy(unsafe.Slice((*byte)(ptr), size), raw)
+			buf.Read(unsafe.Slice((*byte)(ptr), size))
 		} else {
 			for i := 0; i < length; i++ {
 				value.Index(i).Set(reflect.ValueOf(bfloat16.BFloat16FromBits(buf.ReadUint16(ctxErr))))

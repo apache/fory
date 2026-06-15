@@ -16,12 +16,15 @@
 # under the License.
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = [
+    "setuptools>=78.1.1; python_version >= '3.9'",
+    "setuptools>=70.0.0,<78.1.1; python_version < '3.9'",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "fory-idl-tests"
-version = "1.1.0.dev0"
+version = "1.2.0.dev0"
 description = "IDL compiler integration tests for Apache Fory"
 readme = "README.md"
 requires-python = ">=3.8"

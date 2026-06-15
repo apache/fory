@@ -32,11 +32,11 @@ import java.util.Set;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.unsafe._JDKAccess;
 
 /** Serializers for jdk9+ java.util.ImmutableCollections. */
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -63,7 +63,7 @@ public class ImmutableCollectionSerializers {
         SetN = Class.forName("java.util.ImmutableCollections$SetN");
         Map1 = Class.forName("java.util.ImmutableCollections$Map1");
         MapN = Class.forName("java.util.ImmutableCollections$MapN");
-        if (!AndroidSupport.IS_ANDROID) {
+        if (MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
           listFactory =
               _JDKAccess._trustedLookup(List.class)
                   .findStatic(List.class, "of", MethodType.methodType(List.class, Object[].class));
@@ -79,7 +79,7 @@ public class ImmutableCollectionSerializers {
                   .findConstructor(MapN, MethodType.methodType(void.class, Object[].class));
         }
       } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException e) {
-        if (AndroidSupport.IS_ANDROID) {
+        if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
           useStubClasses();
         } else {
           e.printStackTrace();
@@ -144,7 +144,7 @@ public class ImmutableCollectionSerializers {
       }
       Object[] elements = new Object[originCollection.size()];
       copyElements(copyContext, originCollection, elements);
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         ArrayList list = new ArrayList(elements.length);
         Collections.addAll(list, elements);
         return Collections.unmodifiableList(list);
@@ -160,9 +160,10 @@ public class ImmutableCollectionSerializers {
     public Collection onCollectionRead(Collection collection) {
       if (JdkVersion.MAJOR_VERSION > 8) {
         CollectionContainer container = (CollectionContainer) collection;
-        if (AndroidSupport.IS_ANDROID) {
-          ArrayList list = new ArrayList(container.elements.length);
-          Collections.addAll(list, container.elements);
+        if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
+          Object[] elements = container.elements;
+          ArrayList list = new ArrayList(elements.length);
+          Collections.addAll(list, elements);
           return Collections.unmodifiableList(list);
         }
         try {
@@ -204,7 +205,7 @@ public class ImmutableCollectionSerializers {
       }
       Object[] elements = new Object[originCollection.size()];
       copyElements(copyContext, originCollection, elements);
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         HashSet set = new HashSet(elements.length);
         Collections.addAll(set, elements);
         return Collections.unmodifiableSet(set);
@@ -220,9 +221,10 @@ public class ImmutableCollectionSerializers {
     public Collection onCollectionRead(Collection collection) {
       if (JdkVersion.MAJOR_VERSION > 8) {
         CollectionContainer container = (CollectionContainer) collection;
-        if (AndroidSupport.IS_ANDROID) {
-          HashSet set = new HashSet(container.elements.length);
-          Collections.addAll(set, container.elements);
+        if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
+          Object[] elements = container.elements;
+          HashSet set = new HashSet(elements.length);
+          Collections.addAll(set, elements);
           return Collections.unmodifiableSet(set);
         }
         try {
@@ -265,7 +267,7 @@ public class ImmutableCollectionSerializers {
       int size = originMap.size();
       Object[] elements = new Object[size * 2];
       copyEntry(copyContext, originMap, elements);
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         return Collections.unmodifiableMap(newHashMap(elements, size));
       }
       try {
@@ -283,12 +285,13 @@ public class ImmutableCollectionSerializers {
     public Map onMapRead(Map map) {
       if (JdkVersion.MAJOR_VERSION > 8) {
         JDKImmutableMapContainer container = (JDKImmutableMapContainer) map;
-        if (AndroidSupport.IS_ANDROID) {
+        if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
           return Collections.unmodifiableMap(newHashMap(container.array, container.size()));
         }
         try {
           if (container.size() == 1) {
-            map = (Map) map1Factory.invoke(container.array[0], container.array[1]);
+            Object[] elements = container.array;
+            map = (Map) map1Factory.invoke(elements[0], elements[1]);
           } else {
             map = (Map) mapNFactory.invoke(container.array);
           }

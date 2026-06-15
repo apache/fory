@@ -60,6 +60,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
             .withRefTracking(false)
             .withNumberCompressed(compressNumber)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     new ObjectCodecBuilder(Foo.class, fory).genCode();
     // System.out.println(code);
@@ -85,6 +86,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
             .withRefTracking(true)
             .withClassLoader(clz.getClassLoader())
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Object obj = clz.newInstance();
     Field f1 = clz.getDeclaredField("f1");
@@ -118,6 +120,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
             .withClassLoader(structClass.getClassLoader())
             .withNumberCompressed(compressNumber)
             .requireClassRegistration(false)
+            .withCompatible(xlang)
             .build();
     Object struct = Struct.createPOJO(structClass);
     fory.register(structClass);
@@ -164,6 +167,7 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
             .withXlang(false)
             .withNumberCompressed(compressNumber)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ObjectCodecBuilder codecBuilder = new ObjectCodecBuilder(SmallInlineFields.class, fory);
     CompileUnit compileUnit =
@@ -184,7 +188,12 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
 
   @Test
   public void testContainer() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     CollectionSerializersTest.Container container = new CollectionSerializersTest.Container();
     container.list1 = ofArrayList(new CollectionSerializersTest.NotFinal(1));
     container.map1 = ofHashMap("k", new CollectionSerializersTest.NotFinal(2));
@@ -200,7 +209,12 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
 
   @Test
   public void testNestedContainer() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     NestedContainer nestedContainer = new NestedContainer();
     List<List<String>> list1 = new ArrayList<>();
     list1.add(new ArrayList<>(ImmutableList.of("a", "b")));
@@ -216,7 +230,12 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
 
   @Test
   public void testAccessLevel() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     AccessBeans.PublicClass object = AccessBeans.createPublicClassObject();
     serDeCheckSerializer(fory, object, "Codec");
   }
@@ -224,7 +243,12 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
   @Test
   public void testTypeConflictWhenMethodSplits() {
     // For issue #1370
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     fory.serialize(new MethodSpiltObject());
     Assert.assertTrue(
         fory.getTypeResolver().getSerializer(MethodSpiltObject.class)

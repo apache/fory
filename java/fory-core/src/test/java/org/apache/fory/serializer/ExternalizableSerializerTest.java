@@ -38,6 +38,7 @@ public class ExternalizableSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     assertEquals(e, fory.deserialize(fory.serialize(e)));
   }

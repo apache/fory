@@ -158,8 +158,8 @@ public class AndroidJvmRoundTripTest {
     if (System.getProperty("java.specification.version").startsWith("1.")) {
       return;
     }
-    addAddOpens(command, "java.base/java.io=ALL-UNNAMED");
     addAddOpens(command, "java.base/java.lang=ALL-UNNAMED");
+    addAddOpens(command, "java.base/java.lang.reflect=ALL-UNNAMED");
     addAddOpens(command, "java.base/java.util=ALL-UNNAMED");
   }
 
@@ -193,6 +193,7 @@ public class AndroidJvmRoundTripTest {
             .requireClassRegistration(false)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .withMetaShare(kind == RoundTripKind.META_SHARED_VALUE)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(
         StreamHookValue.class,

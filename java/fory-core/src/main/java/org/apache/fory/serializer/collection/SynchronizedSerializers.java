@@ -40,8 +40,8 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -53,25 +53,23 @@ import org.apache.fory.util.Preconditions;
 public class SynchronizedSerializers {
   private static final Logger LOG = LoggerFactory.getLogger(SynchronizedSerializers.class);
 
-  private static class Offset {
-    // Graalvm unsafe offset substitution support: Make the call followed by a field store
-    // directly or by a sign extend node followed directly by a field store.
-    private static final long SOURCE_COLLECTION_FIELD_OFFSET;
-    private static final long SOURCE_MAP_FIELD_OFFSET;
+  private static class SourceAccessors {
+    private static final FieldAccessor SOURCE_COLLECTION_ACCESSOR;
+    private static final FieldAccessor SOURCE_MAP_ACCESSOR;
 
     static {
       String clsName = "java.util.Collections$SynchronizedCollection";
       try {
-        SOURCE_COLLECTION_FIELD_OFFSET =
-            UnsafeOps.UNSAFE.objectFieldOffset(Class.forName(clsName).getDeclaredField("c"));
+        SOURCE_COLLECTION_ACCESSOR =
+            FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("c"));
       } catch (Exception e) {
         LOG.info("Could not access source collection field in {}", clsName);
         throw new RuntimeException(e);
       }
       clsName = "java.util.Collections$SynchronizedMap";
       try {
-        SOURCE_MAP_FIELD_OFFSET =
-            UnsafeOps.UNSAFE.objectFieldOffset(Class.forName(clsName).getDeclaredField("m"));
+        SOURCE_MAP_ACCESSOR =
+            FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("m"));
       } catch (Exception e) {
         LOG.info("Could not access source map field in {}", clsName);
         throw new RuntimeException(e);
@@ -83,19 +81,19 @@ public class SynchronizedSerializers {
       extends CollectionSerializer<Collection> {
 
     private final Function factory;
-    private final long offset;
+    private final FieldAccessor sourceAccessor;
 
     public SynchronizedCollectionSerializer(
-        TypeResolver typeResolver, Class cls, Function factory, long offset) {
+        TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
-      this.offset = offset;
+      this.sourceAccessor = sourceAccessor;
     }
 
     @Override
     public void write(WriteContext writeContext, Collection object) {
       Preconditions.checkArgument(object.getClass() == type);
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         synchronized (object) {
           Collection source;
           if (object instanceof SortedSet) {
@@ -111,7 +109,7 @@ public class SynchronizedSerializers {
         return;
       }
       // the ordinal could be replaced by s.th. else (e.g. a explicitly managed "id")
-      Object unwrapped = UnsafeOps.getObject(object, offset);
+      Object unwrapped = sourceAccessor.getObject(object);
       synchronized (object) {
         writeContext.writeRef(unwrapped);
       }
@@ -125,11 +123,11 @@ public class SynchronizedSerializers {
 
     @Override
     public Collection copy(CopyContext copyContext, Collection object) {
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         synchronized (object) {
           Collection mutableSource;
           if (object instanceof SortedSet) {
-            Object comparator = copyContext.copyObject(((SortedSet) object).comparator());
+            Object comparator = ComparatorCopy.copy(copyContext, ((SortedSet) object).comparator());
             mutableSource = new TreeSet((java.util.Comparator) comparator);
           } else if (object instanceof Set) {
             mutableSource = new HashSet(object.size());
@@ -142,26 +140,26 @@ public class SynchronizedSerializers {
           return result;
         }
       }
-      final Object collection = UnsafeOps.getObject(object, offset);
+      final Object collection = sourceAccessor.getObject(object);
       return (Collection) factory.apply(copyContext.copyObject(collection));
     }
   }
 
   public static final class SynchronizedMapSerializer extends MapSerializer<Map> {
     private final Function factory;
-    private final long offset;
+    private final FieldAccessor sourceAccessor;
 
     public SynchronizedMapSerializer(
-        TypeResolver typeResolver, Class cls, Function factory, long offset) {
+        TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
-      this.offset = offset;
+      this.sourceAccessor = sourceAccessor;
     }
 
     @Override
     public void write(WriteContext writeContext, Map object) {
       Preconditions.checkArgument(object.getClass() == type);
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         synchronized (object) {
           Map source;
           if (object instanceof SortedMap) {
@@ -175,7 +173,7 @@ public class SynchronizedSerializers {
         return;
       }
       // the ordinal could be replaced by s.th. else (e.g. a explicitly managed "id")
-      Object unwrapped = UnsafeOps.getObject(object, offset);
+      Object unwrapped = sourceAccessor.getObject(object);
       synchronized (object) {
         writeContext.writeRef(unwrapped);
       }
@@ -183,11 +181,12 @@ public class SynchronizedSerializers {
 
     @Override
     public Map copy(CopyContext copyContext, Map originMap) {
-      if (AndroidSupport.IS_ANDROID) {
+      if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
         synchronized (originMap) {
           Map mutableSource;
           if (originMap instanceof SortedMap) {
-            Object comparator = copyContext.copyObject(((SortedMap) originMap).comparator());
+            Object comparator =
+                ComparatorCopy.copy(copyContext, ((SortedMap) originMap).comparator());
             mutableSource = new TreeMap((java.util.Comparator) comparator);
           } else {
             mutableSource = new HashMap(originMap.size());
@@ -198,7 +197,7 @@ public class SynchronizedSerializers {
           return result;
         }
       }
-      final Object unwrappedMap = UnsafeOps.getObject(originMap, offset);
+      final Object unwrappedMap = sourceAccessor.getObject(originMap);
       return (Map) factory.apply(copyContext.copyObject(unwrappedMap));
     }
 
@@ -225,13 +224,15 @@ public class SynchronizedSerializers {
           typeResolver,
           factory.f0,
           factory.f1,
-          AndroidSupport.IS_ANDROID ? -1 : Offset.SOURCE_COLLECTION_FIELD_OFFSET);
+          MemoryUtils.JDK_COLLECTION_FIELD_ACCESS
+              ? SourceAccessors.SOURCE_COLLECTION_ACCESSOR
+              : null);
     } else {
       return new SynchronizedMapSerializer(
           typeResolver,
           factory.f0,
           factory.f1,
-          AndroidSupport.IS_ANDROID ? -1 : Offset.SOURCE_MAP_FIELD_OFFSET);
+          MemoryUtils.JDK_COLLECTION_FIELD_ACCESS ? SourceAccessors.SOURCE_MAP_ACCESSOR : null);
     }
   }
 

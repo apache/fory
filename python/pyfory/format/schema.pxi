@@ -29,6 +29,7 @@ from libcpp cimport bool as c_bool
 from libc.stdint cimport int64_t
 from cython.operator cimport dereference as deref
 
+from pyfory.type_id import TypeId
 from pyfory.includes.libformat cimport (
     CDataType, CDataTypePtr, CField, CFieldPtr, CSchema, CSchemaPtr,
     CListType, CListTypePtr, CMapType, CMapTypePtr, CStructType, CStructTypePtr,
@@ -40,40 +41,6 @@ from pyfory.includes.libformat cimport (
     decimal as c_decimal, fory_list, struct_, fory_map, fory_field, fory_schema,
     get_byte_width as c_get_byte_width
 )
-
-
-# Create Python-accessible TypeId enum
-# The CTypeId enum from libformat.pxd is only accessible from Cython
-class TypeId:
-    """Type identifiers for Fory data types."""
-    BOOL = 1
-    INT8 = 2
-    INT16 = 3
-    INT32 = 4
-    INT64 = 6
-    UINT8 = 9
-    UINT16 = 10
-    UINT32 = 11
-    UINT64 = 13
-    FLOAT8 = 16
-    FLOAT16 = 17
-    BFLOAT16 = 18
-    FLOAT32 = 19
-    FLOAT64 = 20
-    STRING = 21
-    LIST = 22
-    SET = 23
-    MAP = 24
-    STRUCT = 27
-    UNION = 33
-    TYPED_UNION = 34
-    NAMED_UNION = 35
-    NONE = 36
-    DURATION = 37
-    TIMESTAMP = 38
-    DATE = 39
-    DECIMAL = 40
-    BINARY = 41
 
 
 cdef class DataType:

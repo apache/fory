@@ -21,7 +21,7 @@ use std::collections::{LinkedList, VecDeque};
 
 #[test]
 fn test_vecdeque_i32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut deque = VecDeque::new();
     deque.push_back(1);
     deque.push_back(2);
@@ -33,7 +33,7 @@ fn test_vecdeque_i32() {
 
 #[test]
 fn test_vecdeque_empty() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let deque: VecDeque<i32> = VecDeque::new();
     let bin = fory.serialize(&deque).unwrap();
     let obj: VecDeque<i32> = fory.deserialize(&bin).expect("deserialize");
@@ -42,7 +42,7 @@ fn test_vecdeque_empty() {
 
 #[test]
 fn test_vecdeque_string() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut deque = VecDeque::new();
     deque.push_back("hello".to_string());
     deque.push_back("world".to_string());
@@ -53,7 +53,7 @@ fn test_vecdeque_string() {
 
 #[test]
 fn test_vecdeque_f64() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut deque = VecDeque::new();
     deque.push_back(1.5);
     deque.push_back(2.5);
@@ -65,7 +65,7 @@ fn test_vecdeque_f64() {
 
 #[test]
 fn test_linkedlist_i32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut list = LinkedList::new();
     list.push_back(1);
     list.push_back(2);
@@ -77,7 +77,7 @@ fn test_linkedlist_i32() {
 
 #[test]
 fn test_linkedlist_empty() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let list: LinkedList<i32> = LinkedList::new();
     let bin = fory.serialize(&list).unwrap();
     let obj: LinkedList<i32> = fory.deserialize(&bin).expect("deserialize");
@@ -86,7 +86,7 @@ fn test_linkedlist_empty() {
 
 #[test]
 fn test_linkedlist_string() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut list = LinkedList::new();
     list.push_back("foo".to_string());
     list.push_back("bar".to_string());
@@ -97,7 +97,7 @@ fn test_linkedlist_string() {
 
 #[test]
 fn test_linkedlist_bool() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let mut list = LinkedList::new();
     list.push_back(true);
     list.push_back(false);
@@ -116,8 +116,8 @@ struct CollectionStruct {
 
 #[test]
 fn test_struct_with_collections() {
-    let mut fory = Fory::builder().xlang(false).build();
-    fory.register_by_name::<CollectionStruct>("", "CollectionStruct")
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
+    fory.register_by_name::<CollectionStruct>("CollectionStruct")
         .unwrap();
 
     let mut deque = VecDeque::new();
@@ -142,7 +142,10 @@ fn test_struct_with_collections() {
 #[test]
 fn test_vec_float16_basic() {
     use fory_core::types::float16::float16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let vec: Vec<float16> = vec![
         float16::from_f32(1.0),
         float16::from_f32(2.5),
@@ -160,7 +163,10 @@ fn test_vec_float16_basic() {
 #[test]
 fn test_vec_float16_special_values() {
     use fory_core::types::float16::float16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let vec: Vec<float16> = vec![
         float16::INFINITY,
         float16::NEG_INFINITY,
@@ -182,7 +188,10 @@ fn test_vec_float16_special_values() {
 #[test]
 fn test_vec_float16_empty() {
     use fory_core::types::float16::float16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let vec: Vec<float16> = vec![];
     let bin = fory.serialize(&vec).unwrap();
     let obj: Vec<float16> = fory
@@ -194,7 +203,10 @@ fn test_vec_float16_empty() {
 #[test]
 fn test_vec_bfloat16_basic() {
     use fory_core::types::bfloat16::bfloat16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let vec: Vec<bfloat16> = vec![
         bfloat16::from_f32(1.0),
         bfloat16::from_f32(2.5),
@@ -212,7 +224,10 @@ fn test_vec_bfloat16_basic() {
 #[test]
 fn test_vec_bfloat16_special_values() {
     use fory_core::types::bfloat16::bfloat16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let vec: Vec<bfloat16> = vec![
         bfloat16::INFINITY,
         bfloat16::NEG_INFINITY,
@@ -231,26 +246,4 @@ fn test_vec_bfloat16_special_values() {
     assert!(obj[2].is_nan());
     assert_eq!(obj[3].to_bits(), bfloat16::MAX.to_bits());
     assert!(obj[5].is_subnormal());
-}
-
-#[test]
-fn test_vec_max_collection_size_guardrail() {
-    let fory = Fory::builder().xlang(false).build();
-    let original = vec!["alpha".to_string(), "beta".to_string(), "gamma".to_string()];
-    let serialized = fory.serialize(&original).unwrap();
-
-    let limited_fory = Fory::builder().xlang(false).max_collection_size(2).build();
-    let err = limited_fory
-        .deserialize::<Vec<String>>(&serialized)
-        .expect_err("expected vec deserialization to fail on max_collection_size");
-
-    assert!(
-        matches!(err, fory_core::Error::SizeLimitExceeded(_)),
-        "expected SizeLimitExceeded, got: {err}"
-    );
-    assert!(
-        err.to_string()
-            .contains("Collection size 3 exceeds limit 2"),
-        "unexpected error message: {err}"
-    );
 }

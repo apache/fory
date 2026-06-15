@@ -10,6 +10,7 @@
   [Kotlin](guide/kotlin/index.md) guides.
 - For row format, see the [row format spec](specification/row_format_spec.md).
 - For using Apache Fory™ with GraalVM native image, see [graalvm support](guide/java/graalvm-support.md) doc.
+- For deserialization security boundaries, see the [security model](security/deserialization.md).
 
 ## Fory IDL Schema
 

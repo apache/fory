@@ -111,14 +111,14 @@ func writeDecimalParts(buffer *ByteBuffer, scale int32, unscaled *big.Int) {
 	}
 
 	abs := new(big.Int).Abs(unscaled)
-	payload := abs.Bytes()
-	if len(payload) == 0 {
+	magnitudeBytes := abs.Bytes()
+	if len(magnitudeBytes) == 0 {
 		panic("decimal zero must use the small encoding")
 	}
-	reverseBytes(payload)
-	meta := (uint64(len(payload)) << 1) | uint64(signBit(unscaled.Sign()))
+	reverseBytes(magnitudeBytes)
+	meta := (uint64(len(magnitudeBytes)) << 1) | uint64(signBit(unscaled.Sign()))
 	buffer.WriteVarUint64((meta << 1) | 1)
-	buffer.WriteBinary(payload)
+	buffer.WriteBinary(magnitudeBytes)
 }
 
 func readDecimalParts(ctx *ReadContext) (int32, *big.Int) {
@@ -138,19 +138,19 @@ func readDecimalParts(ctx *ReadContext) (int32, *big.Int) {
 		ctx.SetError(DeserializationErrorf("invalid decimal magnitude length %d", length))
 		return 0, nil
 	}
-	if length > uint64(ctx.maxBinarySize) {
-		ctx.SetError(MaxBinarySizeExceededError(int(length), ctx.maxBinarySize))
+	if length > uint64(MaxInt) {
+		ctx.SetError(DeserializationErrorf("invalid decimal magnitude length %d", length))
 		return 0, nil
 	}
-	payload := ctx.buffer.ReadBytes(int(length), err)
+	magnitudeBytes := ctx.buffer.ReadBytes(int(length), err)
 	if ctx.HasError() {
 		return 0, nil
 	}
-	if payload[len(payload)-1] == 0 {
-		ctx.SetError(DeserializationError("non-canonical decimal payload: trailing zero byte"))
+	if magnitudeBytes[len(magnitudeBytes)-1] == 0 {
+		ctx.SetError(DeserializationError("non-canonical decimal magnitude bytes: trailing zero byte"))
 		return 0, nil
 	}
-	bigEndian := append([]byte(nil), payload...)
+	bigEndian := append([]byte(nil), magnitudeBytes...)
 	reverseBytes(bigEndian)
 	magnitude := new(big.Int).SetBytes(bigEndian)
 	if magnitude.Sign() == 0 {

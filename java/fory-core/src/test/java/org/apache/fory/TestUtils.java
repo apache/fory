@@ -22,24 +22,100 @@ package org.apache.fory;
 import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableMap;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.meta.TypeDef;
-import org.apache.fory.platform.UnsafeOps;
+import org.apache.fory.platform.JdkVersion;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.type.Descriptor;
-import org.apache.fory.util.unsafe._JDKAccess;
 import org.testng.SkipException;
 
 /** Test utils. */
 public class TestUtils {
+  public static List<String> javaCommand(Class<?> mainClass) {
+    return javaCommand(forkClassPath(), mainClass);
+  }
+
+  public static List<String> javaCommand(
+      String classPath, Class<?> mainClass, String... extraJvmArgs) {
+    List<String> command = new ArrayList<>();
+    command.add(System.getProperty("java.home") + File.separator + "bin" + File.separator + "java");
+    command.addAll(forkJvmArgs());
+    Collections.addAll(command, extraJvmArgs);
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      String modulePath = System.getProperty("jdk.module.path");
+      if (modulePath != null && !modulePath.isEmpty()) {
+        command.add("--module-path");
+        command.add(modulePath);
+        command.add("--add-modules");
+        command.add("org.apache.fory.core");
+      }
+    }
+    command.add("-cp");
+    command.add(classPath);
+    command.add(mainClass.getName());
+    return command;
+  }
+
+  private static List<String> forkJvmArgs() {
+    List<String> args = new ArrayList<>();
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      // TestUtils.javaCommand launches probes with -cp, so Fory code is in the unnamed module.
+      // Named-module coverage lives in integration_tests/jpms_tests.
+      args.add("--add-opens=java.base/java.lang.invoke=ALL-UNNAMED");
+      if (hasInputArg("--sun-misc-unsafe-memory-access=deny")) {
+        args.add("--sun-misc-unsafe-memory-access=deny");
+      }
+      finalFieldPolicyArg().ifPresent(args::add);
+    }
+    return args;
+  }
+
+  public static String forkClassPath() {
+    LinkedHashSet<String> elements = new LinkedHashSet<>();
+    addPathElements(elements, System.getProperty("surefire.real.class.path"));
+    addPathElements(elements, System.getProperty("java.class.path"));
+    return String.join(File.pathSeparator, elements);
+  }
+
+  private static void addPathElements(Set<String> elements, String path) {
+    if (path == null || path.isEmpty()) {
+      return;
+    }
+    Collections.addAll(elements, path.split(java.util.regex.Pattern.quote(File.pathSeparator)));
+  }
+
+  private static boolean hasInputArg(String arg) {
+    return ManagementFactory.getRuntimeMXBean().getInputArguments().contains(arg);
+  }
+
+  private static Optional<String> finalFieldPolicyArg() {
+    return ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
+        .filter(arg -> arg.startsWith("--illegal-final-field-mutation="))
+        .findFirst();
+  }
+
   @SuppressWarnings("unchecked")
   public static <T> T getFieldValue(Object obj, String fieldName) {
     return (T)
@@ -106,7 +182,7 @@ public class TestUtils {
 
   public static <T> T unsafeCopy(T obj) {
     @SuppressWarnings("unchecked")
-    T newInstance = (T) UnsafeOps.newInstance(obj.getClass());
+    T newInstance = (T) ObjectInstantiators.getObjectInstantiator(obj.getClass()).newInstance();
     for (Field field : ReflectionUtils.getFields(obj.getClass(), true)) {
       if (!Modifier.isStatic(field.getModifiers())) {
         // Don't cache accessors by `obj.getClass()` using WeakHashMap, the `field` will reference

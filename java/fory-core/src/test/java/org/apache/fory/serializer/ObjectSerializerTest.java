@@ -23,13 +23,15 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.TestUtils;
+import org.apache.fory.builder.CodecUtils;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.AndroidSupport;
@@ -54,6 +56,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), Foo.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -98,6 +101,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), foo.getClass());
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -135,6 +139,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
 
@@ -171,6 +176,194 @@ public class ObjectSerializerTest extends ForyTestBase {
     assertNotSame(cyclic1, cyclic);
   }
 
+  public static final class FinalNoArgBean {
+    private final int id;
+    private final String name;
+    private int count;
+
+    public FinalNoArgBean() {
+      id = -1;
+      name = "default";
+    }
+
+    private FinalNoArgBean(int value, String text, int total) {
+      id = value;
+      name = text;
+      count = total;
+    }
+  }
+
+  public static final class FinalPostCtorBean {
+    private final int id;
+    private String label;
+
+    public FinalPostCtorBean(String label) {
+      id = -1;
+      this.label = label;
+    }
+
+    private FinalPostCtorBean(int value, String label) {
+      id = value;
+      this.label = label;
+    }
+  }
+
+  public static class PrivateNoArgParent {
+    static int noArgCalls;
+    private final String parentName;
+
+    private PrivateNoArgParent() {
+      noArgCalls++;
+      parentName = "no-arg";
+    }
+
+    PrivateNoArgParent(String parentName) {
+      this.parentName = parentName;
+    }
+
+    String parentName() {
+      return parentName;
+    }
+  }
+
+  public static final class SerializablePrivateParentBean extends PrivateNoArgParent
+      implements Serializable {
+    private String childName;
+
+    public SerializablePrivateParentBean(String parentName, String childName) {
+      super(parentName);
+      this.childName = childName;
+    }
+  }
+
+  @Test
+  public void testFinalNoArgRestore() {
+    FinalNoArgBean value = new FinalNoArgBean(7, "source", 9);
+    for (boolean codegen : new boolean[] {false, true}) {
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withRefTracking(true)
+              .withCodegen(codegen)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      FinalNoArgBean newValue = (FinalNoArgBean) fory.deserialize(fory.serialize(value));
+      assertEquals(newValue.id, value.id);
+      assertEquals(newValue.name, value.name);
+      assertEquals(newValue.count, value.count);
+    }
+  }
+
+  @Test
+  public void testFinalNoArgRestoreCodegen() {
+    FinalNoArgBean value = new FinalNoArgBean(7, "source", 9);
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Serializer<FinalNoArgBean> serializer =
+        Serializers.newSerializer(
+            fory,
+            FinalNoArgBean.class,
+            CodecUtils.loadOrGenObjectCodecClass(FinalNoArgBean.class, fory));
+    FinalNoArgBean newValue = roundTripWithSerializer(fory, serializer, value);
+    assertEquals(newValue.id, value.id);
+    assertEquals(newValue.name, value.name);
+    assertEquals(newValue.count, value.count);
+  }
+
+  @Test
+  public void testFinalPostCtorRestore() {
+    FinalPostCtorBean value = new FinalPostCtorBean(8, "ctor");
+    for (boolean codegen : new boolean[] {false, true}) {
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withRefTracking(true)
+              .withCodegen(codegen)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      FinalPostCtorBean newValue = (FinalPostCtorBean) fory.deserialize(fory.serialize(value));
+      assertEquals(newValue.id, value.id);
+      assertEquals(newValue.label, value.label);
+    }
+  }
+
+  @Test
+  public void testFinalPostCtorCodegen() {
+    FinalPostCtorBean value = new FinalPostCtorBean(8, "ctor");
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    Serializer<FinalPostCtorBean> serializer =
+        Serializers.newSerializer(
+            fory,
+            FinalPostCtorBean.class,
+            CodecUtils.loadOrGenObjectCodecClass(FinalPostCtorBean.class, fory));
+    FinalPostCtorBean newValue = roundTripWithSerializer(fory, serializer, value);
+    assertEquals(newValue.id, value.id);
+    assertEquals(newValue.label, value.label);
+  }
+
+  @Test
+  public void testNormalObjectSerializerBypassesObjectStreamParentRules() {
+    SerializablePrivateParentBean value = new SerializablePrivateParentBean("parent", "child");
+    for (boolean codegen : new boolean[] {false, true}) {
+      PrivateNoArgParent.noArgCalls = 0;
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withRefTracking(true)
+              .withCodegen(codegen)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
+      Serializer<?> serializer =
+          fory.getTypeResolver().getTypeInfo(SerializablePrivateParentBean.class).getSerializer();
+      Assert.assertFalse(
+          serializer instanceof ObjectStreamSerializer, serializer.getClass().getName());
+      SerializablePrivateParentBean newValue =
+          (SerializablePrivateParentBean) fory.deserialize(fory.serialize(value));
+      assertEquals(newValue.parentName(), value.parentName());
+      assertEquals(newValue.childName, value.childName);
+      assertEquals(PrivateNoArgParent.noArgCalls, 0);
+    }
+  }
+
+  private static <T> T roundTripWithSerializer(Fory fory, Serializer<T> serializer, T value) {
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    withWriteContext(
+        fory,
+        buffer,
+        context -> {
+          context.writeRefOrNull(value);
+          serializer.write(context, value);
+        });
+    T newValue =
+        withReadContext(
+            fory,
+            buffer,
+            context -> {
+              byte tag = context.readRefOrNull();
+              Preconditions.checkArgument(tag == Fory.REF_VALUE_FLAG);
+              context.preserveRefId();
+              return serializer.read(context);
+            });
+    fory.reset();
+    return newValue;
+  }
+
   @Data
   public static class A {
     Integer f1;
@@ -189,6 +382,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     ObjectSerializer<A> serializer = new ObjectSerializer<>(fory.getTypeResolver(), A.class);
@@ -199,17 +393,12 @@ public class ObjectSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testAndroidObjectSerializerReflectionPaths() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-    Process process =
-        new ProcessBuilder(
-                javaBin,
-                "-cp",
-                System.getProperty("java.class.path"),
-                AndroidObjectSerializerProbe.class.getName())
-            .redirectErrorStream(true)
-            .start();
+  public void testAndroidReflectionPaths() throws Exception {
+    ProcessBuilder processBuilder =
+        new ProcessBuilder(TestUtils.javaCommand(AndroidObjectSerializerProbe.class))
+            .redirectErrorStream(true);
+    processBuilder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = processBuilder.start();
     String output = readFully(process.getInputStream());
     Assert.assertEquals(process.waitFor(), 0, output);
   }
@@ -236,6 +425,7 @@ public class ObjectSerializerTest extends ForyTestBase {
               .withCodegen(true)
               .withRefTracking(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       check(!fory.getConfig().isCodeGenEnabled(), "Android must force codegen off");
 

@@ -52,6 +52,8 @@ internal sealed record BenchmarkOutput(
 
 internal sealed class BenchmarkOptions
 {
+    private const string SchemaMismatchEnv = "FORY_BENCH_SCHEMA_MISMATCH";
+
     public HashSet<string> DataFilter { get; init; } = [];
 
     public HashSet<string> SerializerFilter { get; init; } = [];
@@ -64,6 +66,8 @@ internal sealed class BenchmarkOptions
 
     public bool ShowHelp { get; init; }
 
+    public bool SchemaMismatch { get; init; }
+
     public static BenchmarkOptions Parse(string[] args)
     {
         HashSet<string> dataFilter = new(StringComparer.OrdinalIgnoreCase);
@@ -72,6 +76,7 @@ internal sealed class BenchmarkOptions
         double durationSeconds = 3.0;
         string outputPath = "benchmark_results.json";
         bool showHelp = false;
+        bool schemaMismatch = Environment.GetEnvironmentVariable(SchemaMismatchEnv) == "1";
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -114,6 +119,7 @@ internal sealed class BenchmarkOptions
             DurationSeconds = durationSeconds,
             OutputPath = outputPath,
             ShowHelp = showHelp,
+            SchemaMismatch = schemaMismatch,
         };
     }
 
@@ -125,6 +131,20 @@ internal sealed class BenchmarkOptions
     public bool IsSerializerEnabled(string serializer)
     {
         return SerializerFilter.Count == 0 || SerializerFilter.Contains(serializer);
+    }
+
+    public void ValidateSchemaMismatch()
+    {
+        if (!SchemaMismatch)
+        {
+            return;
+        }
+
+        if (SerializerFilter.Count != 1 || !SerializerFilter.Contains("fory"))
+        {
+            throw new ArgumentException(
+                $"{SchemaMismatchEnv}=1 supports only Fory benchmarks; rerun with --serializer fory");
+        }
     }
 
     private static void RequireValue(string[] args, int index)
@@ -178,6 +198,7 @@ internal static class Program
         List<BenchmarkCase> cases;
         try
         {
+            options.ValidateSchemaMismatch();
             cases = BuildBenchmarkCases(options);
         }
         catch (Exception ex)
@@ -196,6 +217,7 @@ internal static class Program
         Console.WriteLine($"Cases: {cases.Count}");
         Console.WriteLine($"Warmup: {options.WarmupSeconds.ToString("F2", CultureInfo.InvariantCulture)}s");
         Console.WriteLine($"Duration: {options.DurationSeconds.ToString("F2", CultureInfo.InvariantCulture)}s");
+        Console.WriteLine($"Schema mismatch: {options.SchemaMismatch}");
         Console.WriteLine();
 
         List<BenchmarkResult> results = new(cases.Count);
@@ -294,43 +316,103 @@ internal static class Program
     {
         List<BenchmarkCase> cases = [];
 
-        AddCases("struct", BenchmarkDataFactory.CreateNumericStruct(), options, cases);
-        AddCases("sample", BenchmarkDataFactory.CreateSample(), options, cases);
-        AddCases("mediacontent", BenchmarkDataFactory.CreateMediaContent(), options, cases);
-        AddCases("structlist", BenchmarkDataFactory.CreateNumericStructList(), options, cases);
-        AddCases("samplelist", BenchmarkDataFactory.CreateSampleList(), options, cases);
-        AddCases("mediacontentlist", BenchmarkDataFactory.CreateMediaContentList(), options, cases);
+        AddCases<NumericStruct, NumericStructV2>(
+            "struct",
+            BenchmarkDataFactory.CreateNumericStruct(),
+            options,
+            cases,
+            (decoded, expected) => decoded.F1 == expected.F1);
+        AddCases<Sample, SampleV2>(
+            "sample",
+            BenchmarkDataFactory.CreateSample(),
+            options,
+            cases,
+            (decoded, expected) => decoded.IntValue == expected.IntValue);
+        AddCases<MediaContent, MediaContentV2>(
+            "mediacontent",
+            BenchmarkDataFactory.CreateMediaContent(),
+            options,
+            cases,
+            (decoded, expected) =>
+                decoded.Media.Width == expected.Media.Width
+                && decoded.Images.Count > 0
+                && decoded.Images[0].Width == expected.Images[0].Width);
+        AddCases<NumericStructList, NumericStructListV2>(
+            "structlist",
+            BenchmarkDataFactory.CreateNumericStructList(),
+            options,
+            cases,
+            (decoded, expected) =>
+                decoded.Values.Count > 0 && decoded.Values[0].F1 == expected.Values[0].F1);
+        AddCases<SampleList, SampleListV2>(
+            "samplelist",
+            BenchmarkDataFactory.CreateSampleList(),
+            options,
+            cases,
+            (decoded, expected) =>
+                decoded.Values.Count > 0
+                && decoded.Values[0].IntValue == expected.Values[0].IntValue);
+        AddCases<MediaContentList, MediaContentListV2>(
+            "mediacontentlist",
+            BenchmarkDataFactory.CreateMediaContentList(),
+            options,
+            cases,
+            (decoded, expected) =>
+                decoded.Values.Count > 0
+                && decoded.Values[0].Media.Width == expected.Values[0].Media.Width
+                && decoded.Values[0].Images.Count > 0
+                && decoded.Values[0].Images[0].Width == expected.Values[0].Images[0].Width);
 
         return cases;
     }
 
-    private static void AddCases<T>(string dataType, T value, BenchmarkOptions options, List<BenchmarkCase> cases)
+    private static void AddCases<TWrite, TRead>(
+        string dataType,
+        TWrite value,
+        BenchmarkOptions options,
+        List<BenchmarkCase> cases,
+        Func<TRead, TWrite, bool> validateMismatch)
     {
         if (!options.IsDataEnabled(dataType))
         {
             return;
         }
 
-        List<IBenchmarkSerializer<T>> serializers = [];
+        List<IBenchmarkSerializer<TWrite>> serializers = [];
         if (options.IsSerializerEnabled("fory"))
         {
-            serializers.Add(new ForySerializer<T>());
+            if (options.SchemaMismatch)
+            {
+                serializers.Add(new ForySerializer<TWrite, TRead>(schemaMismatch: true));
+            }
+            else
+            {
+                serializers.Add(new ForySerializer<TWrite, TWrite>(schemaMismatch: false));
+            }
         }
 
-        if (options.IsSerializerEnabled("protobuf"))
+        if (!options.SchemaMismatch && options.IsSerializerEnabled("protobuf"))
         {
-            serializers.Add(new ProtobufSerializer<T>());
+            serializers.Add(new ProtobufSerializer<TWrite>());
         }
 
-        if (options.IsSerializerEnabled("msgpack"))
+        if (!options.SchemaMismatch && options.IsSerializerEnabled("msgpack"))
         {
-            serializers.Add(new MessagePackRuntimeSerializer<T>());
+            serializers.Add(new MessagePackRuntimeSerializer<TWrite>());
         }
 
-        foreach (IBenchmarkSerializer<T> serializer in serializers)
+        foreach (IBenchmarkSerializer<TWrite> serializer in serializers)
         {
             byte[] payload = serializer.Serialize(value);
             _sink = serializer.Deserialize(payload);
+            if (options.SchemaMismatch && serializer.Name == "fory")
+            {
+                if (_sink is not TRead decoded || !validateMismatch(decoded, value))
+                {
+                    throw new InvalidOperationException(
+                        $"Fory schema-mismatch validation failed for {dataType}");
+                }
+            }
 
             cases.Add(new BenchmarkCase(
                 serializer.Name,

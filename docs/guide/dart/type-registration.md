@@ -30,7 +30,7 @@ Fory offers two strategies. Pick one and use it consistently across every langua
 Compact and fast. Good when a small team can coordinate IDs across services.
 
 ```dart
-ModelsFory.register(fory, User, id: 100);
+ModelsForyModule.register(fory, User, id: 100);
 ```
 
 The same number must be used in every other language:
@@ -40,20 +40,20 @@ The same number must be used in every other language:
 fory.register(User.class, 100);
 ```
 
-### Strategy 2: Namespace + Type Name
+### Strategy 2: Name
 
 More self-describing. Good when multiple teams or packages define types independently and numeric ID coordination is impractical.
 
 ```dart
-ModelsFory.register(
+ModelsForyModule.register(
   fory,
   User,
-  namespace: 'example',
-  typeName: 'User',
+  name: 'example.User',
 );
 ```
 
-Every runtime that reads or writes this type must use the same `namespace` and `typeName`.
+Every peer that reads or writes this type must use the same name. Use `.` inside `name`
+to add a namespace prefix.
 
 > **Do not mix strategies for the same type.** If one side uses a numeric ID and the other uses a name, deserialization will fail.
 
@@ -62,7 +62,7 @@ Every runtime that reads or writes this type must use the same `namespace` and `
 Call the generated `register` function from the `.fory.dart` file. It installs all the serializer metadata for you:
 
 ```dart
-UserModelsFory.register(fory, User, id: 100);
+UserModelsForyModule.register(fory, User, id: 100);
 ```
 
 ## Registering a Custom Serializer
@@ -73,8 +73,7 @@ For types that you cannot annotate with `@ForyStruct()`, pass a serializer insta
 fory.registerSerializer(
   ExternalType,
   const ExternalTypeSerializer(),
-  namespace: 'example',
-  typeName: 'ExternalType',
+  name: 'example.ExternalType',
 );
 ```
 
@@ -89,7 +88,7 @@ See [Custom Serializers](custom-serializers.md) for how to implement a serialize
 
 ## Xlang Requirements
 
-The same numeric ID or `namespace + typeName` pair must be used in every runtime that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
+The same numeric ID or name must be used in every peer that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
 
 ## Related Topics
 

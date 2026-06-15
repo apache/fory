@@ -22,7 +22,6 @@ package org.apache.fory;
 import static org.testng.Assert.assertEquals;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Serializable;
@@ -37,16 +36,18 @@ public class JpmsOptionalClassLoadingTest {
     if (JdkVersion.MAJOR_VERSION < 9) {
       throw new SkipException("Skip on jdk" + JdkVersion.MAJOR_VERSION);
     }
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      throw new SkipException(
+          "JDK25+ optional-module coverage runs in integration_tests/jpms_tests with packaged"
+              + " MR-JAR");
+    }
     Process process =
         new ProcessBuilder(
-                javaBin,
-                "--limit-modules",
-                "java.base,java.logging,jdk.unsupported",
-                "-cp",
-                System.getProperty("java.class.path"),
-                NoJavaSqlMain.class.getName())
+                TestUtils.javaCommand(
+                    System.getProperty("java.class.path"),
+                    NoJavaSqlMain.class,
+                    "--limit-modules",
+                    "java.base,java.logging,jdk.unsupported"))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());
@@ -65,7 +66,12 @@ public class JpmsOptionalClassLoadingTest {
 
   public static final class NoJavaSqlMain {
     public static void main(String[] args) {
-      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       byte[] bytes = fory.serialize(new SampleValue("fory"));
       SampleValue value = (SampleValue) fory.deserialize(bytes);
       if (!"fory".equals(value.value)) {

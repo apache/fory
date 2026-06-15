@@ -97,6 +97,12 @@
 #define FORY_PP_TUPLE_FIRST_IMPL(a, ...) a
 #define FORY_PP_TUPLE_SECOND(tuple) FORY_PP_TUPLE_SECOND_IMPL tuple
 #define FORY_PP_TUPLE_SECOND_IMPL(a, b, ...) b
+#define FORY_PP_TUPLE_THIRD(tuple) FORY_PP_TUPLE_THIRD_IMPL tuple
+#define FORY_PP_TUPLE_THIRD_IMPL(a, b, c, ...) c
+#define FORY_PP_TUPLE_FOURTH(tuple) FORY_PP_TUPLE_FOURTH_IMPL tuple
+#define FORY_PP_TUPLE_FOURTH_IMPL(a, b, c, d, ...) d
+#define FORY_PP_TUPLE_FIFTH(tuple) FORY_PP_TUPLE_FIFTH_IMPL tuple
+#define FORY_PP_TUPLE_FIFTH_IMPL(a, b, c, d, e, ...) e
 
 #define FORY_PP_INVOKE(X, ...) X(__VA_ARGS__)
 

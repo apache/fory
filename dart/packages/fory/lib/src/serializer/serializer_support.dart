@@ -188,9 +188,10 @@ T readFieldValue<T>(
   }
   if (fieldType.isPrimitive && !fieldType.nullable) {
     return convertPrimitiveFieldValue(
-      context.readPrimitiveValue(fieldType.typeId),
-      fieldType,
-    ) as T;
+          context.readPrimitiveValue(fieldType.typeId),
+          fieldType,
+        )
+        as T;
   }
   final declaredTypeInfo = fieldDeclaredTypeInfo(context.typeResolver, field);
   final usesDeclaredType = fieldUsesDeclaredType(context.typeResolver, field);
@@ -228,15 +229,30 @@ T readFieldValue<T>(
   return context.readResolvedValue(resolved, fieldType) as T;
 }
 
-Object? readCompatibleField(
-  ReadContext context,
-  FieldInfo field,
-) {
+Object? readCompatibleField(ReadContext context, FieldInfo field) {
   final fieldType = field.fieldType;
   if (fieldType.isDynamic) {
     return context.readRef();
   }
-  if (fieldType.isPrimitive && !fieldType.nullable) {
+  if (fieldType.isPrimitive) {
+    if (fieldType.nullable) {
+      final flag = context.refReader.tryPreserveRefId(context.buffer);
+      final preservedRefId = flag >= RefWriter.refValueFlag ? flag : null;
+      if (flag == RefWriter.nullFlag) {
+        return null;
+      }
+      if (flag == RefWriter.refFlag) {
+        return context.refReader.getReadRef();
+      }
+      final value = convertPrimitiveFieldValue(
+        context.readPrimitiveValue(fieldType.typeId),
+        fieldType,
+      );
+      if (preservedRefId != null) {
+        context.refReader.setReadRef(preservedRefId, value);
+      }
+      return value;
+    }
     return convertPrimitiveFieldValue(
       context.readPrimitiveValue(fieldType.typeId),
       fieldType,
@@ -246,7 +262,8 @@ Object? readCompatibleField(
     context.typeResolver,
     field,
   );
-  final usesDeclaredType = declaredTypeInfo != null &&
+  final usesDeclaredType =
+      declaredTypeInfo != null &&
       usesDeclaredTypeInfo(
         context.typeResolver.config.compatible,
         fieldType,
@@ -301,17 +318,15 @@ FieldInfo mergeCompatibleReadField(
   FieldInfo localField,
   FieldInfo remoteField,
 ) {
-  FieldType mergeFieldType(
-    FieldType local,
-    FieldType remote,
-  ) {
+  FieldType mergeFieldType(FieldType local, FieldType remote) {
     final mergedArguments = <FieldType>[];
     final argumentCount = remote.arguments.length;
     for (var index = 0; index < argumentCount; index += 1) {
       final remoteArgument = remote.arguments[index];
-      final localArgument = index < local.arguments.length
-          ? local.arguments[index]
-          : remoteArgument;
+      final localArgument =
+          index < local.arguments.length
+              ? local.arguments[index]
+              : remoteArgument;
       mergedArguments.add(mergeFieldType(localArgument, remoteArgument));
     }
     return FieldType(
@@ -320,7 +335,7 @@ FieldInfo mergeCompatibleReadField(
       typeId: remote.typeId,
       nullable: remote.nullable,
       ref: remote.ref,
-      dynamic: local.dynamic ?? remote.dynamic,
+      dynamic: remote.dynamic ?? local.dynamic,
       arguments: mergedArguments,
     );
   }

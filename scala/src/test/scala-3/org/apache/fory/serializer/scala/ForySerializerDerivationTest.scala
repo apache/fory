@@ -33,8 +33,10 @@ import org.apache.fory.annotation.{
 import org.apache.fory.config.Int64Encoding
 import org.apache.fory.memory.MemoryBuffer
 import org.apache.fory.meta.TypeDef
+import org.apache.fory.reflect.{FieldAccessor, ObjectInstantiators}
 import org.apache.fory.scala.ForySerializer
 import org.apache.fory.scala.ForyScala
+import org.apache.fory.scala.register
 import org.apache.fory.serializer.StaticGeneratedStructSerializer
 import org.apache.fory.`type`.{Types, TypeUtils}
 import org.apache.fory.`type`.union.UnknownCase
@@ -80,6 +82,57 @@ object ForySerializerDerivationTest {
       @ForyField(id = 4) keyed: Map[Option[String], Int],
       @ForyField(id = 5) extra: String)
       derives ForySerializer
+
+  @ForyStruct
+  final case class CompatibleScalarWriter(
+      @ForyField(id = 1) flag: Option[String],
+      @ForyField(id = 2) numberText: String,
+      @ForyField(id = 3) text: Int,
+      @ForyField(id = 4) decimalText: String,
+      @ForyField(id = 5) decimalValue: java.math.BigDecimal,
+      @ForyField(id = 6) narrow: Long)
+      derives ForySerializer
+
+  @ForyStruct
+  final case class CompatibleScalarReader(
+      @ForyField(id = 1) flag: Boolean,
+      @ForyField(id = 2) numberText: Int,
+      @ForyField(id = 3) text: String,
+      @ForyField(id = 4) decimalText: java.math.BigDecimal,
+      @ForyField(id = 5) decimalValue: String,
+      @ForyField(id = 6) narrow: Int)
+      derives ForySerializer
+
+  @ForyStruct
+  final class AccessorScalarWriter private () derives ForySerializer {
+    @ForyField(id = 1)
+    private var id: Long = 0L
+
+    @ForyField(id = 2)
+    private var name: String = ""
+
+    @ForyField(id = 3)
+    private var ignored: String = ""
+
+    def idValue: Long = id
+
+    def nameValue: String = name
+
+    def ignoredValue: String = ignored
+  }
+
+  @ForyStruct
+  final class AccessorScalarReader private () derives ForySerializer {
+    @ForyField(id = 1)
+    private val id: Int = 0
+
+    @ForyField(id = 2)
+    private var name: String = ""
+
+    def idValue: Int = id
+
+    def nameValue: String = name
+  }
 
   @ForyStruct
   final case class CopyBox(
@@ -156,21 +209,20 @@ object ForySerializerDerivationTest {
       .requireClassRegistration(true)
       .suppressClassRegistrationWarnings(false)
       .build()
-    ForySerializer.register(fory, classOf[Person], "scala_test", "Person")
-    ForySerializer.register(fory, classOf[SearchUser], "scala_test", "SearchUser")
-    ForySerializer.register(fory, classOf[CollectionBox], "scala_test", "CollectionBox")
+    ForySerializer.register(fory, classOf[Person], "scala_test.Person")
+    ForySerializer.register(fory, classOf[SearchUser], "scala_test.SearchUser")
+    ForySerializer.register(fory, classOf[CollectionBox], "scala_test.CollectionBox")
     ForySerializer.register(
       fory,
       classOf[OptionalCollectionBox],
-      "scala_test",
-      "OptionalCollectionBox")
-    ForySerializer.register(fory, classOf[CopyBox], "scala_test", "CopyBox")
-    ForySerializer.register(fory, classOf[RefMetadataBox], "scala_test", "RefMetadataBox")
-    ForySerializer.register(fory, classOf[RefNode], "scala_test", "RefNode")
-    ForySerializer.register(fory, classOf[UnionRefNode], "scala_test", "UnionRefNode")
-    ForySerializer.register(fory, classOf[MixedRecord], "scala_test", "MixedRecord")
-    ForySerializer.register(fory, classOf[SearchTarget], "scala_test", "SearchTarget")
-    ForySerializer.register(fory, classOf[UnionCycle], "scala_test", "UnionCycle")
+      "scala_test.OptionalCollectionBox")
+    ForySerializer.register(fory, classOf[CopyBox], "scala_test.CopyBox")
+    ForySerializer.register(fory, classOf[RefMetadataBox], "scala_test.RefMetadataBox")
+    ForySerializer.register(fory, classOf[RefNode], "scala_test.RefNode")
+    ForySerializer.register(fory, classOf[UnionRefNode], "scala_test.UnionRefNode")
+    ForySerializer.register(fory, classOf[MixedRecord], "scala_test.MixedRecord")
+    ForySerializer.register(fory, classOf[SearchTarget], "scala_test.SearchTarget")
+    ForySerializer.register(fory, classOf[UnionCycle], "scala_test.UnionCycle")
     fory
   }
 
@@ -185,6 +237,14 @@ object ForySerializerDerivationTest {
       .build()
     fory
   }
+
+  def newAccessorValue[T](cls: Class[T], values: (String, AnyRef)*): T = {
+    val value = ObjectInstantiators.getObjectInstantiator(cls).newInstance()
+    values.foreach { (fieldName, fieldValue) =>
+      FieldAccessor.createAccessor(cls.getDeclaredField(fieldName)).putObject(value, fieldValue)
+    }
+    value
+  }
 }
 
 class ForySerializerDerivationTest extends AnyWordSpec with Matchers {
@@ -197,6 +257,25 @@ class ForySerializerDerivationTest extends AnyWordSpec with Matchers {
         Person("Ada", 36, Some("ada@example.com"))
       fory.deserialize(fory.serialize(Person("Grace", 85, None))) shouldEqual
         Person("Grace", 85, None)
+    }
+
+    "register derived structs with dotted names" in {
+      val direct = compatibleXlangFory()
+      ForySerializer.register(direct, classOf[Person], "scala_test.Person")
+      direct.getTypeResolver.getTypeInfo(classOf[Person]).decodeNamespace() shouldBe "scala_test"
+      direct.getTypeResolver.getTypeInfo(classOf[Person]).decodeTypeName() shouldBe "Person"
+
+      val extension = compatibleXlangFory()
+      extension.register[SearchUser]("scala_test.SearchUser")
+      extension.getTypeResolver.getTypeInfo(classOf[SearchUser]).decodeNamespace() shouldBe
+        "scala_test"
+      extension.getTypeResolver.getTypeInfo(classOf[SearchUser]).decodeTypeName() shouldBe
+        "SearchUser"
+
+      val invalid = compatibleXlangFory()
+      intercept[IllegalArgumentException] {
+        ForySerializer.register(invalid, classOf[Person], "scala_test", "Bad.Name")
+      }
     }
 
     "serialize derived union enum cases" in {
@@ -262,6 +341,73 @@ class ForySerializerDerivationTest extends AnyWordSpec with Matchers {
         List(Some(1), None),
         Map("a" -> Some(9L), "b" -> None),
         Map(Some("a") -> 1, None -> 2))
+    }
+
+    "read compatible scalar conversions through derived serializers" in {
+      val writerFory = ForySerializerDerivationTest.compatibleXlangFory()
+      ForySerializer.register(
+        writerFory,
+        classOf[CompatibleScalarWriter],
+        "scala_test",
+        "CompatibleScalar")
+      val readerFory = ForySerializerDerivationTest.compatibleXlangFory()
+      ForySerializer.register(
+        readerFory,
+        classOf[CompatibleScalarReader],
+        "scala_test",
+        "CompatibleScalar")
+
+      val writerValue = CompatibleScalarWriter(
+        Some("true"),
+        "42",
+        7,
+        "12.50",
+        new java.math.BigDecimal("10.500"),
+        123L)
+      val readerValue =
+        readerFory
+          .deserialize(writerFory.serialize(writerValue))
+          .asInstanceOf[CompatibleScalarReader]
+
+      readerValue.flag shouldBe true
+      readerValue.numberText shouldBe 42
+      readerValue.text shouldBe "7"
+      readerValue.decimalText.compareTo(new java.math.BigDecimal("12.5")) shouldBe 0
+      readerValue.decimalValue shouldBe "10.5"
+      readerValue.narrow shouldBe 123
+    }
+
+    "read compatible private ordinary fields through generated accessors" in {
+      val writerFory = ForySerializerDerivationTest.compatibleXlangFory()
+      ForySerializer.register(
+        writerFory,
+        classOf[AccessorScalarWriter],
+        "scala_test",
+        "AccessorScalar")
+      val readerFory = ForySerializerDerivationTest.compatibleXlangFory()
+      ForySerializer.register(
+        readerFory,
+        classOf[AccessorScalarReader],
+        "scala_test",
+        "AccessorScalar")
+
+      val writerValue = newAccessorValue(
+        classOf[AccessorScalarWriter],
+        "id" -> java.lang.Long.valueOf(321L),
+        "name" -> "Ada",
+        "ignored" -> "remote")
+      val readerValue =
+        readerFory
+          .deserialize(writerFory.serialize(writerValue))
+          .asInstanceOf[AccessorScalarReader]
+
+      readerValue.idValue shouldBe 321
+      readerValue.nameValue shouldBe "Ada"
+
+      val copied = readerFory.copy(readerValue).asInstanceOf[AccessorScalarReader]
+      copied should not be theSameInstanceAs(readerValue)
+      copied.idValue shouldBe 321
+      copied.nameValue shouldBe "Ada"
     }
 
     "emit inner nullable metadata for Option collection elements" in {

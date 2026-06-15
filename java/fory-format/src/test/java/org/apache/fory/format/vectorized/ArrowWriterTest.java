@@ -60,6 +60,7 @@ public class ArrowWriterTest {
 
   @Test
   public void testWrite() {
+    ArrowTestSupport.skipIfArrowUnavailable();
     ArrowRecordBatch recordBatch = createArrowRecordBatch();
     System.out.println("recordBatch " + recordBatch);
     recordBatch.close();
@@ -67,6 +68,7 @@ public class ArrowWriterTest {
 
   @Test
   public void testSerializeArrowRecordBatch() {
+    ArrowTestSupport.skipIfArrowUnavailable();
     ArrowRecordBatch recordBatch = createArrowRecordBatch();
     System.out.println("recordBatch serialized body size " + recordBatch.computeBodyLength());
     MemoryBuffer buffer = MemoryUtils.buffer(32);

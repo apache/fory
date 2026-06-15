@@ -22,11 +22,6 @@ use crate::error::Error;
 use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 
-#[cold]
-fn binary_size_limit_exceeded(size_bytes: usize, max: usize) -> Error {
-    Error::size_limit_exceeded(format!("Binary size {} exceeds limit {}", size_bytes, max))
-}
-
 pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     // U128, USIZE, ISIZE, INT128 are Rust-specific and not supported in xlang mode
     if context.is_xlang() {
@@ -88,19 +83,7 @@ pub fn fory_read_data<T: Serializer>(context: &mut ReadContext) -> Result<Vec<T>
     if size_bytes % std::mem::size_of::<T>() != 0 {
         return Err(Error::invalid_data("Invalid data length"));
     }
-    let max = context.max_binary_size() as usize;
-    if size_bytes > max {
-        return Err(binary_size_limit_exceeded(size_bytes, max));
-    }
-    let remaining = context.reader.slice_after_cursor().len();
-    if size_bytes > remaining {
-        let cursor = context.reader.get_cursor();
-        return Err(Error::buffer_out_of_bound(
-            cursor,
-            size_bytes,
-            cursor + remaining,
-        ));
-    }
+    context.reader.check_bound(size_bytes)?;
     let len = size_bytes / std::mem::size_of::<T>();
     let mut vec: Vec<T> = Vec::with_capacity(len);
 

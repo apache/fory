@@ -29,7 +29,7 @@ fn test_one_field_primitive_non_compatible() {
         value: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Data>(100).unwrap();
     let data = Data { value: 42 };
     let bytes = fory.serialize(&data).unwrap();
@@ -45,7 +45,7 @@ fn test_one_field_string_non_compatible() {
         name: String,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Data>(101).unwrap();
     let data = Data {
         name: String::from("hello"),
@@ -229,7 +229,7 @@ fn test_struct_with_float16_fields() {
         arr_field: [float16; 3],
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Float16Data>(200).unwrap();
 
     let obj = Float16Data {
@@ -271,7 +271,7 @@ fn test_struct_with_bfloat16_fields() {
         arr_field: [bfloat16; 3],
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<BFloat16Data>(201).unwrap();
 
     let obj = BFloat16Data {

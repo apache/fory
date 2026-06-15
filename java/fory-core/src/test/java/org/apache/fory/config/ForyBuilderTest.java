@@ -24,11 +24,11 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.Fory;
+import org.apache.fory.TestUtils;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.meta.MetaCompressor;
 import org.testng.Assert;
@@ -95,16 +95,14 @@ public class ForyBuilderTest {
   }
 
   @Test
-  public void testXlangDefaultsToCompatibleUnlessExplicitlySet() {
-    assertTrue(new ForyBuilder().xlang);
-    Fory defaultXlang = new ForyBuilder().withXlang(true).build();
+  public void testCompatibleDefaultsAndOverrides() {
+    assertTrue(new ForyBuilder().withXlang(true).isCompatible());
+    assertTrue(new ForyBuilder().withXlang(false).isCompatible());
+
     Fory explicitSchemaConsistent =
         new ForyBuilder().withCompatible(false).withXlang(true).withClassVersionCheck(true).build();
     Fory explicitSchemaConsistentReverseOrder =
         new ForyBuilder().withXlang(true).withCompatible(false).withClassVersionCheck(true).build();
-
-    assertTrue(defaultXlang.getConfig().isCompatible());
-    assertFalse(defaultXlang.getConfig().checkClassVersion());
 
     assertFalse(explicitSchemaConsistent.getConfig().isCompatible());
     assertTrue(explicitSchemaConsistent.getConfig().checkClassVersion());
@@ -119,15 +117,21 @@ public class ForyBuilderTest {
             .withXlang(true)
             .withIntCompressed(false)
             .withLongCompressed(Int64Encoding.FIXED)
+            .withCompatible(true)
             .build();
     Fory xlangBeforeNativeCompressionOptions =
         new ForyBuilder()
             .withIntCompressed(false)
             .withLongCompressed(Int64Encoding.TAGGED)
             .withXlang(true)
+            .withCompatible(true)
             .build();
     Fory xlangLanguage =
-        new ForyBuilder().withNumberCompressed(false).withLanguage(Language.XLANG).build();
+        new ForyBuilder()
+            .withNumberCompressed(false)
+            .withLanguage(Language.XLANG)
+            .withCompatible(true)
+            .build();
 
     assertTrue(xlangAfterNativeCompressionOptions.getConfig().compressInt());
     assertEquals(
@@ -141,11 +145,17 @@ public class ForyBuilderTest {
 
   @Test
   public void testCodegenDefaultsOnOrdinaryJvm() {
-    Fory defaultFory = new ForyBuilder().withXlang(false).build();
-    Fory explicitCodegen = new ForyBuilder().withXlang(false).withCodegen(true).build();
-    Fory interpreter = new ForyBuilder().withXlang(false).withCodegen(false).build();
+    Fory defaultFory = new ForyBuilder().withXlang(false).withCompatible(false).build();
+    Fory explicitCodegen =
+        new ForyBuilder().withXlang(false).withCodegen(true).withCompatible(false).build();
+    Fory interpreter =
+        new ForyBuilder().withXlang(false).withCodegen(false).withCompatible(false).build();
     ThreadSafeFory threadSafeInterpreter =
-        new ForyBuilder().withXlang(false).withCodegen(false).buildThreadSafeForyPool(1);
+        new ForyBuilder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withCompatible(false)
+            .buildThreadSafeForyPool(1);
 
     assertTrue(defaultFory.getConfig().isCodeGenEnabled());
     assertTrue(explicitCodegen.getConfig().isCodeGenEnabled());
@@ -155,15 +165,12 @@ public class ForyBuilderTest {
 
   @Test
   public void testGraalvmRuntimeForcesCodegenOff() throws Exception {
-    String javaBin =
-        System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
     Process process =
         new ProcessBuilder(
-                javaBin,
-                "-Dorg.graalvm.nativeimage.imagecode=runtime",
-                "-cp",
-                System.getProperty("java.class.path"),
-                GraalvmCodegenConfigMain.class.getName())
+                TestUtils.javaCommand(
+                    System.getProperty("java.class.path"),
+                    GraalvmCodegenConfigMain.class,
+                    "-Dorg.graalvm.nativeimage.imagecode=runtime"))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());
@@ -182,11 +189,18 @@ public class ForyBuilderTest {
 
   public static final class GraalvmCodegenConfigMain {
     public static void main(String[] args) {
-      Fory defaultFory = new ForyBuilder().withXlang(false).build();
-      Fory explicitCodegen = new ForyBuilder().withXlang(false).withCodegen(true).build();
-      Fory interpreter = new ForyBuilder().withXlang(false).withCodegen(false).build();
+      Fory defaultFory = new ForyBuilder().withXlang(false).withCompatible(false).build();
+      Fory explicitCodegen =
+          new ForyBuilder().withXlang(false).withCodegen(true).withCompatible(false).build();
+      Fory interpreter =
+          new ForyBuilder().withXlang(false).withCodegen(false).withCompatible(false).build();
       Fory asyncRequested =
-          new ForyBuilder().withXlang(false).withCodegen(true).withAsyncCompilation(true).build();
+          new ForyBuilder()
+              .withXlang(false)
+              .withCodegen(true)
+              .withAsyncCompilation(true)
+              .withCompatible(false)
+              .build();
 
       assertDisabled(defaultFory, "default");
       assertDisabled(explicitCodegen, "explicit codegen");

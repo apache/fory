@@ -205,7 +205,7 @@ class Container:
     # Abstract class: dynamic is always True (type info written)
     shape: Shape = pyfory.field(id=0)
 
-    # Force type info for concrete type (support runtime subtypes)
+    # Force type info for concrete type (support subtypes)
     circle: Circle = pyfory.field(id=1, dynamic=True)
 
     # Skip type info for concrete type (use declared type directly)
@@ -230,6 +230,10 @@ class Container:
 ## Integer Type Annotations
 
 Fory provides type annotations to control integer encoding:
+
+Use these markers directly in Python type annotations. Field values remain
+ordinary Python `int` or `float` values, and Fory serializes them with the
+requested xlang numeric width and encoding.
 
 ### Signed Integers
 
@@ -320,9 +324,10 @@ written as tagged int64. Runtime type inference is used only for dynamic or unkn
 schemas.
 
 In compatible mode, readers consume field bytes using the remote schema metadata. Python assigns the
-decoded value only when it can safely satisfy the local declared schema. Different integer encodings
-in the same signedness and width domain are compatible, and same-signedness narrowing is assigned
-only after range validation.
+decoded value only when it can safely satisfy the local declared schema. Scalar conversion and
+integer encoding adaptation apply only to the immediate matched field schema. Nested collection
+elements, map keys, and map values must keep exact nullability, reference-tracking, and type shape
+metadata, except for user-type family normalization such as named and unnamed struct metadata.
 
 ## Complete Example
 

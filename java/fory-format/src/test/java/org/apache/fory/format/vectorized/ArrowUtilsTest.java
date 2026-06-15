@@ -53,6 +53,7 @@ public class ArrowUtilsTest {
 
   @Test
   public void testSerializeRecordBatch() {
+    ArrowTestSupport.skipIfArrowUnavailable();
     VectorSchemaRoot vectorSchemaRoot = createVectorSchemaRoot(2);
     VectorUnloader unloader = new VectorUnloader(vectorSchemaRoot);
     ArrowRecordBatch recordBatch = unloader.getRecordBatch();

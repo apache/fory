@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory::{Error, Fory};
+use fory::{Error, Fory, ForyDefault, Serializer as ForyValueSerializer};
 use fory_derive::{ForyEnum, ForyStruct};
 use serde::{Deserialize, Serialize};
 
@@ -70,6 +70,12 @@ pub trait BenchmarkCase: Clone + PartialEq + Sized + 'static {
     fn create() -> Self;
 }
 
+pub trait SchemaMismatchCase: BenchmarkCase {
+    type Read: ForyValueSerializer + ForyDefault + 'static;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self);
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, ForyStruct, Serialize, Deserialize)]
 pub struct NumericStruct {
     #[fory(id = 1)]
@@ -98,10 +104,86 @@ pub struct NumericStruct {
     pub f12: i32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct NumericStructV2 {
+    #[fory(id = 1)]
+    pub f1: i64,
+    #[fory(id = 2)]
+    pub f2: i32,
+    #[fory(id = 3)]
+    pub f3: i32,
+    #[fory(id = 4)]
+    pub f4: i32,
+    #[fory(id = 5)]
+    pub f5: i32,
+    #[fory(id = 6)]
+    pub f6: i32,
+    #[fory(id = 7)]
+    pub f7: i32,
+    #[fory(id = 8)]
+    pub f8: i32,
+    #[fory(id = 9)]
+    pub f9: i32,
+    #[fory(id = 10)]
+    pub f10: i32,
+    #[fory(id = 11)]
+    pub f11: i32,
+    #[fory(id = 12)]
+    pub f12: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, ForyStruct, Serialize, Deserialize)]
 pub struct Sample {
     #[fory(id = 1)]
     pub int_value: i32,
+    #[fory(id = 2)]
+    pub long_value: i64,
+    #[fory(id = 3)]
+    pub float_value: f32,
+    #[fory(id = 4)]
+    pub double_value: f64,
+    #[fory(id = 5)]
+    pub short_value: i32,
+    #[fory(id = 6)]
+    pub char_value: i32,
+    #[fory(id = 7)]
+    pub boolean_value: bool,
+    #[fory(id = 8)]
+    pub int_value_boxed: i32,
+    #[fory(id = 9)]
+    pub long_value_boxed: i64,
+    #[fory(id = 10)]
+    pub float_value_boxed: f32,
+    #[fory(id = 11)]
+    pub double_value_boxed: f64,
+    #[fory(id = 12)]
+    pub short_value_boxed: i32,
+    #[fory(id = 13)]
+    pub char_value_boxed: i32,
+    #[fory(id = 14)]
+    pub boolean_value_boxed: bool,
+    #[fory(id = 15, array)]
+    pub int_array: Vec<i32>,
+    #[fory(id = 16, array)]
+    pub long_array: Vec<i64>,
+    #[fory(id = 17, array)]
+    pub float_array: Vec<f32>,
+    #[fory(id = 18, array)]
+    pub double_array: Vec<f64>,
+    #[fory(id = 19, array)]
+    pub short_array: Vec<i32>,
+    #[fory(id = 20, array)]
+    pub char_array: Vec<i32>,
+    #[fory(id = 21, array)]
+    pub boolean_array: Vec<bool>,
+    #[fory(id = 22)]
+    pub string: String,
+}
+
+#[derive(Debug, Clone, PartialEq, ForyStruct)]
+pub struct SampleV2 {
+    #[fory(id = 1)]
+    pub int_value: i64,
     #[fory(id = 2)]
     pub long_value: i64,
     #[fory(id = 3)]
@@ -190,6 +272,34 @@ pub struct Media {
     pub copyright: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct MediaV2 {
+    #[fory(id = 1)]
+    pub uri: String,
+    #[fory(id = 2)]
+    pub title: String,
+    #[fory(id = 3)]
+    pub width: i64,
+    #[fory(id = 4)]
+    pub height: i32,
+    #[fory(id = 5)]
+    pub format: String,
+    #[fory(id = 6)]
+    pub duration: i64,
+    #[fory(id = 7)]
+    pub size: i64,
+    #[fory(id = 8)]
+    pub bitrate: i32,
+    #[fory(id = 9)]
+    pub has_bitrate: bool,
+    #[fory(id = 10)]
+    pub persons: Vec<String>,
+    #[fory(id = 11)]
+    pub player: Player,
+    #[fory(id = 12)]
+    pub copyright: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, ForyStruct, Serialize, Deserialize)]
 pub struct Image {
     #[fory(id = 1)]
@@ -204,6 +314,20 @@ pub struct Image {
     pub size: Size,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct ImageV2 {
+    #[fory(id = 1)]
+    pub uri: String,
+    #[fory(id = 2)]
+    pub title: String,
+    #[fory(id = 3)]
+    pub width: i64,
+    #[fory(id = 4)]
+    pub height: i32,
+    #[fory(id = 5)]
+    pub size: Size,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, ForyStruct, Serialize, Deserialize)]
 pub struct MediaContent {
     #[fory(id = 1)]
@@ -212,10 +336,24 @@ pub struct MediaContent {
     pub images: Vec<Image>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct MediaContentV2 {
+    #[fory(id = 1)]
+    pub media: MediaV2,
+    #[fory(id = 2)]
+    pub images: Vec<ImageV2>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, ForyStruct, Serialize, Deserialize)]
 pub struct NumericStructList {
     #[fory(id = 1)]
     pub struct_list: Vec<NumericStruct>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct NumericStructListV2 {
+    #[fory(id = 1)]
+    pub struct_list: Vec<NumericStructV2>,
 }
 
 #[derive(Debug, Clone, PartialEq, ForyStruct, Serialize, Deserialize)]
@@ -224,10 +362,22 @@ pub struct SampleList {
     pub sample_list: Vec<Sample>,
 }
 
+#[derive(Debug, Clone, PartialEq, ForyStruct)]
+pub struct SampleListV2 {
+    #[fory(id = 1)]
+    pub sample_list: Vec<SampleV2>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, ForyStruct, Serialize, Deserialize)]
 pub struct MediaContentList {
     #[fory(id = 1)]
     pub media_content_list: Vec<MediaContent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, ForyStruct)]
+pub struct MediaContentListV2 {
+    #[fory(id = 1)]
+    pub media_content_list: Vec<MediaContentV2>,
 }
 
 impl BenchmarkCase for NumericStruct {
@@ -235,6 +385,14 @@ impl BenchmarkCase for NumericStruct {
 
     fn create() -> Self {
         create_numeric_struct()
+    }
+}
+
+impl SchemaMismatchCase for NumericStruct {
+    type Read = NumericStructV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(decoded.f1, i64::from(expected.f1));
     }
 }
 
@@ -246,11 +404,28 @@ impl BenchmarkCase for Sample {
     }
 }
 
+impl SchemaMismatchCase for Sample {
+    type Read = SampleV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(decoded.int_value, i64::from(expected.int_value));
+    }
+}
+
 impl BenchmarkCase for MediaContent {
     const KIND: DataKind = DataKind::MediaContent;
 
     fn create() -> Self {
         create_media_content()
+    }
+}
+
+impl SchemaMismatchCase for MediaContent {
+    type Read = MediaContentV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(decoded.media.width, i64::from(expected.media.width));
+        assert_eq!(decoded.images[0].width, i64::from(expected.images[0].width));
     }
 }
 
@@ -264,6 +439,17 @@ impl BenchmarkCase for NumericStructList {
     }
 }
 
+impl SchemaMismatchCase for NumericStructList {
+    type Read = NumericStructListV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(
+            decoded.struct_list[0].f1,
+            i64::from(expected.struct_list[0].f1)
+        );
+    }
+}
+
 impl BenchmarkCase for SampleList {
     const KIND: DataKind = DataKind::SampleList;
 
@@ -274,6 +460,17 @@ impl BenchmarkCase for SampleList {
     }
 }
 
+impl SchemaMismatchCase for SampleList {
+    type Read = SampleListV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(
+            decoded.sample_list[0].int_value,
+            i64::from(expected.sample_list[0].int_value)
+        );
+    }
+}
+
 impl BenchmarkCase for MediaContentList {
     const KIND: DataKind = DataKind::MediaContentList;
 
@@ -281,6 +478,21 @@ impl BenchmarkCase for MediaContentList {
         MediaContentList {
             media_content_list: (0..LIST_SIZE).map(|_| create_media_content()).collect(),
         }
+    }
+}
+
+impl SchemaMismatchCase for MediaContentList {
+    type Read = MediaContentListV2;
+
+    fn verify_mismatch(decoded: &Self::Read, expected: &Self) {
+        assert_eq!(
+            decoded.media_content_list[0].media.width,
+            i64::from(expected.media_content_list[0].media.width)
+        );
+        assert_eq!(
+            decoded.media_content_list[0].images[0].width,
+            i64::from(expected.media_content_list[0].images[0].width)
+        );
     }
 }
 
@@ -295,6 +507,20 @@ pub fn register_fory_types(fory: &mut Fory) -> Result<(), Error> {
     fory.register::<NumericStructList>(8)?;
     fory.register::<SampleList>(9)?;
     fory.register::<MediaContentList>(10)?;
+    Ok(())
+}
+
+pub fn register_fory_types_v2(fory: &mut Fory) -> Result<(), Error> {
+    fory.register::<NumericStructV2>(1)?;
+    fory.register::<SampleV2>(2)?;
+    fory.register::<MediaV2>(3)?;
+    fory.register::<ImageV2>(4)?;
+    fory.register::<MediaContentV2>(5)?;
+    fory.register::<Player>(6)?;
+    fory.register::<Size>(7)?;
+    fory.register::<NumericStructListV2>(8)?;
+    fory.register::<SampleListV2>(9)?;
+    fory.register::<MediaContentListV2>(10)?;
     Ok(())
 }
 

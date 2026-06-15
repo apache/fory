@@ -34,7 +34,6 @@ import Fory, {
   BoolArray,
   Decimal,
   ForyFloat16Array,
-  Type,
 } from "@apache-fory/core";
 import { AnyHelper } from "@apache-fory/core/dist/lib/gen/any";
 import {
@@ -92,7 +91,7 @@ import {
 import { Monster, Color, registerMonsterTypes } from "./generated/monster";
 import { TreeNode, registerTreeTypes } from "./generated/tree";
 
-type RegisterFn = (fory: Fory, type: typeof Type) => void;
+type RegisterFn = (fory: Fory) => unknown;
 type AssertFn<T> = (expected: T, actual: unknown) => void;
 
 function resolveCompatibleModes(): boolean[] {
@@ -120,7 +119,7 @@ function buildFory(
     ref,
   });
   for (const registerFn of registerFns) {
-    registerFn(fory, Type);
+    registerFn(fory);
   }
   return fory;
 }

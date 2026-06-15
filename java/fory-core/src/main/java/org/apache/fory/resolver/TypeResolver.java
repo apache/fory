@@ -21,7 +21,7 @@ package org.apache.fory.resolver;
 
 import static org.apache.fory.type.Types.INVALID_USER_TYPE_ID;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
@@ -77,6 +77,7 @@ import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
@@ -99,6 +100,7 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.function.Functions;
 
@@ -253,7 +255,7 @@ public abstract class TypeResolver {
    *
    * @param type the class to register
    * @param namespace the namespace (can be empty if type name has no conflict)
-   * @param typeName the type name
+   * @param typeName the type name; must not contain {@code .}
    */
   public abstract void register(Class<?> type, String namespace, String typeName);
 
@@ -267,7 +269,9 @@ public abstract class TypeResolver {
     register(loadClass(className), classId);
   }
 
-  /** Registers a class by name with a namespace and type name. */
+  /**
+   * Registers a class by name with a namespace and type name. The type name must not contain `.`.
+   */
   public void register(String className, String namespace, String typeName) {
     register(loadClass(className), namespace, typeName);
   }
@@ -340,6 +344,18 @@ public abstract class TypeResolver {
   @Internal
   public abstract void registerEnum(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer);
+
+  /**
+   * Returns the runtime-scoped object instantiator for {@code type}.
+   *
+   * <p>The instantiator follows the normal Java object model used by Fory serializers. Records use
+   * their canonical constructor, while ordinary classes use supported empty construction followed
+   * by field restoration.
+   */
+  @Internal
+  public final <T> ObjectInstantiator<T> getObjectInstantiator(Class<T> type) {
+    return sharedRegistry.getObjectInstantiator(type);
+  }
 
   /**
    * Registers a custom serializer for a type.
@@ -1122,7 +1138,9 @@ public abstract class TypeResolver {
             jitContext.registerSerializerJITCallback(
                 () -> CompatibleSerializer.class,
                 () -> CodecUtils.loadOrGenCompatibleCodecClass(this, cls, typeDef),
-                c -> typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, c)));
+                c ->
+                    typeInfo.setSerializer(
+                        this, newGeneratedCompatibleSerializer(cls, c, typeDef)));
       } else if (sc == null) {
         sc = CompatibleSerializer.class;
       }
@@ -1143,10 +1161,26 @@ public abstract class TypeResolver {
       typeInfo.setSerializer(this, newStaticGeneratedStructSerializer(sc, cls, typeDef));
     } else if (sc == CompatibleSerializer.class) {
       typeInfo.setSerializer(this, new CompatibleSerializer(this, cls, typeDef));
+    } else if (GeneratedCompatibleSerializer.class.isAssignableFrom(sc)) {
+      typeInfo.setSerializer(this, newGeneratedCompatibleSerializer(cls, sc, typeDef));
     } else {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
     }
     return typeInfo;
+  }
+
+  private Serializer<?> newGeneratedCompatibleSerializer(
+      Class<?> cls, Class<? extends Serializer> serializerClass, TypeDef typeDef) {
+    try {
+      // Generated serializers can live in non-open application modules. Use Fory's trusted
+      // lookup owner instead of reflective setAccessible, which JPMS would reject there.
+      MethodHandle constructor =
+          ReflectionUtils.getCtrHandle(
+              serializerClass, TypeResolver.class, Class.class, TypeDef.class);
+      return (Serializer<?>) constructor.invoke(this, cls, typeDef);
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
+    }
   }
 
   private Class<? extends Serializer> loadGraalvmCompatibleDeserializerClass(
@@ -1731,17 +1765,14 @@ public abstract class TypeResolver {
   private StaticGeneratedStructSerializer<?> newRuntimeStaticCompatibleSerializer(
       Class<? extends Serializer> serializerClass, Class<?> cls, TypeDef typeDef) {
     try {
-      Constructor<? extends Serializer> constructor =
-          serializerClass.getDeclaredConstructor(TypeResolver.class, Class.class, TypeDef.class);
-      constructor.setAccessible(true);
-      return (StaticGeneratedStructSerializer<?>) constructor.newInstance(this, cls, typeDef);
-    } catch (ReflectiveOperationException e) {
-      throw new ForyException(
-          "Failed to create runtime static compatible serializer "
-              + serializerClass.getName()
-              + " for "
-              + cls.getName(),
-          e);
+      // Generated serializers can live in non-open application modules. Use Fory's trusted
+      // lookup owner instead of reflective setAccessible, which JPMS would reject there.
+      MethodHandle constructor =
+          ReflectionUtils.getCtrHandle(
+              serializerClass, TypeResolver.class, Class.class, TypeDef.class);
+      return (StaticGeneratedStructSerializer<?>) constructor.invoke(this, cls, typeDef);
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
     }
   }
 

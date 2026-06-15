@@ -38,7 +38,7 @@ fn basic() {
         Map(HashMap<String, Token>),
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Token>(1000).unwrap();
 
     let mut map = HashMap::new();
@@ -81,10 +81,10 @@ fn named_enum() {
         Assign { value: i32, target: String },
     }
 
-    let mut fory1 = Fory::builder().xlang(false).build();
+    let mut fory1 = Fory::builder().xlang(false).compatible(false).build();
     fory1.register::<Token1>(1000).unwrap();
 
-    let mut fory2 = Fory::builder().xlang(false).build();
+    let mut fory2 = Fory::builder().xlang(false).compatible(false).build();
     fory2.register::<Token2>(1000).unwrap();
 
     let token = Token1::Assign {
@@ -220,6 +220,109 @@ fn union_compatible_enum_xlang_format() {
     let bin2 = fory.serialize(&obj2).unwrap();
     let result2: StructWithUnion = fory.deserialize(&bin2).unwrap();
     assert_eq!(obj2, result2);
+}
+
+#[test]
+fn unknown_case_reads_send_sync_payload() {
+    use fory_core::ArcWeak;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(ForyStruct, Debug)]
+    struct FutureLeaf {
+        label: String,
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct FutureNode {
+        value: i32,
+        parent: ArcWeak<Mutex<FutureNode>>,
+        children: Vec<Arc<Mutex<FutureNode>>>,
+    }
+
+    #[derive(ForyStruct, Debug)]
+    struct FuturePayload {
+        id: i32,
+        leaf: FutureLeaf,
+        primary: Arc<String>,
+        alias: Arc<String>,
+        root: Arc<Mutex<FutureNode>>,
+    }
+
+    #[derive(ForyUnion, Debug)]
+    enum OldUnion {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+        #[fory(id = 0, default)]
+        Known(String),
+    }
+
+    #[derive(ForyUnion, Debug)]
+    enum NewUnion {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+        #[fory(id = 0, default)]
+        Known(String),
+        #[fory(id = 1)]
+        Future(FuturePayload),
+    }
+
+    let mut writer = Fory::builder()
+        .xlang(true)
+        .compatible(false)
+        .track_ref(true)
+        .build();
+    writer.register::<FutureLeaf>(400).unwrap();
+    writer.register::<FuturePayload>(401).unwrap();
+    writer.register::<NewUnion>(402).unwrap();
+    writer.register::<FutureNode>(403).unwrap();
+
+    let mut reader = Fory::builder()
+        .xlang(true)
+        .compatible(false)
+        .track_ref(true)
+        .build();
+    reader.register::<FutureLeaf>(400).unwrap();
+    reader.register::<FuturePayload>(401).unwrap();
+    reader.register::<OldUnion>(402).unwrap();
+    reader.register::<FutureNode>(403).unwrap();
+
+    let shared = Arc::new("shared".to_string());
+    let root = Arc::new(Mutex::new(FutureNode {
+        value: 10,
+        parent: ArcWeak::new(),
+        children: vec![],
+    }));
+    let child = Arc::new(Mutex::new(FutureNode {
+        value: 20,
+        parent: ArcWeak::from(&root),
+        children: vec![],
+    }));
+    root.lock().unwrap().children.push(child);
+    let value = NewUnion::Future(FuturePayload {
+        id: 7,
+        leaf: FutureLeaf {
+            label: "nested".to_string(),
+        },
+        primary: shared.clone(),
+        alias: shared,
+        root,
+    });
+
+    let bytes = writer.serialize(&value).unwrap();
+    let decoded: OldUnion = reader.deserialize(&bytes).unwrap();
+
+    let OldUnion::Unknown(unknown) = decoded else {
+        panic!("expected unknown case");
+    };
+    assert_eq!(unknown.case_id(), 1);
+    let payload = unknown.downcast_ref::<FuturePayload>().unwrap();
+    assert_eq!(payload.id, 7);
+    assert_eq!(payload.leaf.label, "nested");
+    assert!(Arc::ptr_eq(&payload.primary, &payload.alias));
+    let root = payload.root.clone();
+    let child = root.lock().unwrap().children[0].clone();
+    let parent = child.lock().unwrap().parent.upgrade().unwrap();
+    assert!(Arc::ptr_eq(&root, &parent));
 }
 
 #[test]

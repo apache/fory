@@ -50,6 +50,7 @@ import java.util.Date;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -112,11 +113,11 @@ import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferSerializers;
 import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
+import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.CopyOnlyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.ExceptionSerializers;
@@ -533,6 +534,9 @@ public class ClassResolver extends TypeResolver {
     Preconditions.checkArgument(!Functions.isLambda(cls));
     Preconditions.checkArgument(!ReflectionUtils.isJdkProxy(cls));
     Preconditions.checkArgument(!cls.isArray());
+    Preconditions.checkArgument(
+        !name.isEmpty() && !name.contains("."),
+        "Type name must be non-empty and must not contain `.` when namespace is provided");
     String fullname = name;
     if (namespace == null) {
       namespace = "";
@@ -580,6 +584,9 @@ public class ClassResolver extends TypeResolver {
     Preconditions.checkArgument(!Functions.isLambda(cls));
     Preconditions.checkArgument(!ReflectionUtils.isJdkProxy(cls));
     Preconditions.checkArgument(!cls.isArray());
+    Preconditions.checkArgument(
+        !name.isEmpty() && !name.contains("."),
+        "Type name must be non-empty and must not contain `.` when namespace is provided");
     String fullname = name;
     if (namespace == null) {
       namespace = "";
@@ -625,6 +632,9 @@ public class ClassResolver extends TypeResolver {
     Preconditions.checkArgument(!Functions.isLambda(cls));
     Preconditions.checkArgument(!ReflectionUtils.isJdkProxy(cls));
     Preconditions.checkArgument(!cls.isArray());
+    Preconditions.checkArgument(
+        !name.isEmpty() && !name.contains("."),
+        "Type name must be non-empty and must not contain `.` when namespace is provided");
     String fullname = name;
     if (namespace == null) {
       namespace = "";
@@ -1481,6 +1491,12 @@ public class ClassResolver extends TypeResolver {
       if (serializerClass != null) {
         return serializerClass;
       }
+      if (config.registerGuavaTypes()) {
+        serializerClass = GuavaCollectionSerializers.getSerializerClass(cls);
+        if (serializerClass != null) {
+          return serializerClass;
+        }
+      }
       if (config.checkJdkClassSerializable()) {
         if (cls.getName().startsWith("java") && !(Serializable.class.isAssignableFrom(cls))) {
           throw new UnsupportedOperationException(
@@ -1518,6 +1534,9 @@ public class ClassResolver extends TypeResolver {
         serializerClass = ChildContainerSerializers.getMapSerializerClass(cls);
         if (serializerClass != null) {
           return serializerClass;
+        }
+        if (!isCrossLanguage() && cls == IdentityHashMap.class) {
+          return MapSerializers.IdentityHashMapSerializer.class;
         }
         if (Externalizable.class.isAssignableFrom(cls)
             || requireJavaSerialization(cls)
@@ -1582,6 +1601,9 @@ public class ClassResolver extends TypeResolver {
       if (serializerClass != null) {
         return serializerClass;
       }
+    }
+    if (ReflectionUtils.isJdkProxy(cls)) {
+      return JdkProxySerializer.class;
     }
     Class<? extends Serializer> staticSerializerClass =
         getStaticGeneratedStructSerializerClass(cls);
@@ -1864,7 +1886,21 @@ public class ClassResolver extends TypeResolver {
       RecordUtils.getRecordConstructor(cls);
       RecordUtils.getRecordComponents(cls);
     }
-    ObjectCreators.getObjectCreator(cls);
+    if (needsGraalvmObjectInstantiator(cls, serializerClass)) {
+      getObjectInstantiator(cls);
+    }
+  }
+
+  private boolean needsGraalvmObjectInstantiator(
+      Class<?> cls, Class<? extends Serializer> serializerClass) {
+    if (cls.isArray()) {
+      return false;
+    }
+    return serializerClass == ObjectSerializer.class
+        || serializerClass == CompatibleSerializer.class
+        || serializerClass == ReplaceResolveSerializer.class
+        || serializerClass == CollectionSerializers.DefaultJavaCollectionSerializer.class
+        || serializerClass == MapSerializers.DefaultJavaMapSerializer.class;
   }
 
   private void createSerializer0(Class<?> cls) {

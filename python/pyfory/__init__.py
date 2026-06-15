@@ -135,7 +135,7 @@ from pyfory.type_util import (  # noqa: F401 # pylint: disable=unused-import
 )
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
 
-__version__ = "1.1.0.dev0"
+__version__ = "1.2.0.dev0"
 
 __all__ = [
     # Core classes

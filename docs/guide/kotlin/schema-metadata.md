@@ -91,7 +91,7 @@ data class Node(
 )
 ```
 
-Global reference tracking still comes from the runtime configuration. See
+Global reference tracking still comes from Fory configuration. See
 [Configuration](configuration.md).
 
 ## Integer Encoding

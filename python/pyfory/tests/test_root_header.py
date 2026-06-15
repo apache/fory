@@ -22,7 +22,7 @@ from pyfory import Fory
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_root_header_rejects_reserved_bits(xlang):
-    fory = Fory(xlang=xlang)
+    fory = Fory(xlang=xlang, compatible=xlang)
     data = bytearray(fory.serialize(1))
     data[0] |= 0x04
 
@@ -32,7 +32,7 @@ def test_root_header_rejects_reserved_bits(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_root_header_rejects_xlang_mismatch(xlang):
-    fory = Fory(xlang=xlang)
+    fory = Fory(xlang=xlang, compatible=xlang)
     data = bytearray(fory.serialize(1))
     data[0] ^= 0x01
 
@@ -42,7 +42,7 @@ def test_root_header_rejects_xlang_mismatch(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_root_header_oob_flag_requires_buffers(xlang):
-    fory = Fory(xlang=xlang)
+    fory = Fory(xlang=xlang, compatible=xlang)
     data = bytearray(fory.serialize(1))
     data[0] |= 0x02
 
@@ -52,7 +52,7 @@ def test_root_header_oob_flag_requires_buffers(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_root_header_rejects_buffers_without_oob_flag(xlang):
-    fory = Fory(xlang=xlang)
+    fory = Fory(xlang=xlang, compatible=xlang)
     data = fory.serialize(1)
 
     with pytest.raises(ValueError, match="Out-of-band buffers were provided"):

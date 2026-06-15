@@ -44,25 +44,26 @@ Create one instance per application and reuse it; there is no benefit to creatin
 ### `compatible`
 
 Compatible mode is enabled by default. Keep it enabled when your service needs to handle payloads
-from code that may have a different version of the same model, for example when you deploy services
-independently and cannot guarantee that both sides update at the same time.
-
-```dart
-final fory = Fory();
-```
+from different versions of the same model, for example during rolling deployments or client/server
+version skew.
 
 When `compatible: true`:
 
 - Adding or removing fields on one side does not break the other.
-- Peers must still use the same `namespace` + `typeName` (or numeric `id`) to identify types.
+- Peers must still use the same `name` (or numeric `id`) to identify types.
 
 When `compatible: false`:
 
-- Both sides must have exactly the same schema. This is slightly faster and is fine when schemas do not change or all services deploy schema changes at the same time.
+- Both sides must have exactly the same schema. Use this only when every reader and writer always
+  uses that schema and you want faster serialization and smaller size. For cross-language payloads, set `compatible: false` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
+```dart
+final fory = Fory(compatible: false);
+```
 
 ### `checkStructVersion`
 
-Relevant only when `compatible: false`. When `true`, Fory validates that the schema version in the payload matches the one the receiver knows about, catching accidental schema mismatches at runtime.
+Relevant only when `compatible: false`. When `true`, Fory validates that the schema version in the payload matches the one the receiver knows about, catching accidental mismatches for intentional same-schema payloads.
 
 ```dart
 final fory = Fory(
@@ -81,38 +82,20 @@ Limits how deeply nested an object graph can be. Increase this if you have legit
 final fory = Fory(maxDepth: 128);
 ```
 
-### `maxCollectionSize`
-
-Maximum number of elements accepted in any single list, set, or map field. Prevents runaway memory allocation from malformed messages.
-
-```dart
-final fory = Fory(maxCollectionSize: 100000);
-```
-
-### `maxBinarySize`
-
-Maximum number of bytes accepted for any single binary blob field.
-
-```dart
-final fory = Fory(maxBinarySize: 8 * 1024 * 1024);
-```
-
 ## Defaults
 
-| Option               | Default   |
-| -------------------- | --------- |
-| `compatible`         | `true`    |
-| `checkStructVersion` | `false`   |
-| `maxDepth`           | 256       |
-| `maxCollectionSize`  | 1 048 576 |
-| `maxBinarySize`      | 64 MiB    |
+| Option               | Default |
+| -------------------- | ------- |
+| `compatible`         | `true`  |
+| `checkStructVersion` | `false` |
+| `maxDepth`           | 256     |
 
 ## Xlang Notes
 
 When Fory is used to communicate between services written in different languages:
 
 - Keep compatible mode enabled on all sides if any side needs schema evolution.
-- Use the same numeric IDs or `namespace + typeName` pairs on every side.
+- Use the same numeric IDs or `name` values on every side.
 - Match the `compatible` setting on both the writing and reading side — mismatching modes will fail.
 
 ## Security
@@ -120,8 +103,8 @@ When Fory is used to communicate between services written in different languages
 Security-related configuration:
 
 - Register only the expected generated models before deserializing untrusted payloads.
-- Use `checkStructVersion: true` with `compatible: false` when exact schema matching is required.
-- Set `maxDepth`, `maxCollectionSize`, and `maxBinarySize` to reject unexpectedly large payloads.
+- Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
+- Set `maxDepth` to reject unexpectedly deep payload shapes.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.
 
 ## Related Topics

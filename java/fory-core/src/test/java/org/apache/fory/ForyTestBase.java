@@ -61,6 +61,7 @@ public abstract class ForyTestBase {
                   .withXlang(false)
                   .requireClassRegistration(false)
                   .suppressClassRegistrationWarnings(true)
+                  .withCompatible(false)
                   .build());
 
   public static Fory getJavaFory() {
@@ -71,7 +72,8 @@ public abstract class ForyTestBase {
     return Fory.builder()
         .withXlang(false)
         .suppressClassRegistrationWarnings(true)
-        .requireClassRegistration(false);
+        .requireClassRegistration(false)
+        .withCompatible(false);
   }
 
   @DataProvider
@@ -111,6 +113,7 @@ public abstract class ForyTestBase {
             .withCodegen(false)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       },
       {
@@ -120,6 +123,7 @@ public abstract class ForyTestBase {
             .withCodegen(false)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       }
     };
@@ -206,6 +210,7 @@ public abstract class ForyTestBase {
             .withCodegen(false)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       },
       {
@@ -215,6 +220,7 @@ public abstract class ForyTestBase {
             .withCodegen(false)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       },
       {
@@ -224,6 +230,7 @@ public abstract class ForyTestBase {
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       },
       {
@@ -233,6 +240,7 @@ public abstract class ForyTestBase {
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build()
       },
     };
@@ -246,12 +254,13 @@ public abstract class ForyTestBase {
                 .withXlang(false)
                 .requireClassRegistration(false)
                 .suppressClassRegistrationWarnings(true)
+                .withCompatible(true)
                 .withScopedMetaShare(false);
     return new Object[][] {
-      {builder.get().withRefTracking(true).withCodegen(false).withCompatible(true).build()},
-      {builder.get().withRefTracking(false).withCodegen(false).withCompatible(true).build()},
-      {builder.get().withRefTracking(true).withCodegen(true).withCompatible(true).build()},
-      {builder.get().withRefTracking(false).withCodegen(true).withCompatible(true).build()},
+      {builder.get().withRefTracking(true).withCodegen(false).build()},
+      {builder.get().withRefTracking(false).withCodegen(false).build()},
+      {builder.get().withRefTracking(true).withCodegen(true).build()},
+      {builder.get().withRefTracking(false).withCodegen(true).build()},
     };
   }
 

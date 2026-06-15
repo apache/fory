@@ -19,28 +19,28 @@ license: |
   limitations under the License.
 ---
 
-Field type meta configuration controls whether type information is written during serialization for struct fields. This is essential for supporting polymorphism where the actual runtime type may differ from the declared field type.
+Field type meta configuration controls whether type information is written during serialization for struct fields. This is essential for supporting polymorphism where the actual concrete type may differ from the declared field type.
 
 ## Overview
 
 When serializing a struct field, Fory needs to determine whether to write type metadata:
 
 - **Static typing**: Use the declared field type's serializer directly (no type info written)
-- **Dynamic typing**: Write type information to support runtime subtypes
+- **Dynamic typing**: Write type information to support subtypes
 
 ## When Type Meta Is Needed
 
 Type metadata is required when:
 
 1. **Interface/abstract fields**: The declared type is abstract, so concrete type must be recorded
-2. **Polymorphic fields**: The runtime type may be a subclass of the declared type
+2. **Polymorphic fields**: The concrete type may be a subclass of the declared type
 3. **Cross-language compatibility**: When the receiver needs type information to deserialize correctly
 
 Type metadata is NOT needed when:
 
 1. **Final/concrete types**: The declared type is final/sealed and cannot be subclassed
 2. **Primitive types**: Type is known at compile time
-3. **Performance optimization**: When you know the runtime type always matches the declared type
+3. **Performance optimization**: When you know the concrete type always matches the declared type
 
 ## Language-Specific Configuration
 
@@ -63,7 +63,7 @@ public class Container {
     @ForyField(id = 1, dynamic = Dynamic.FALSE)
     private Circle circle;  // Always treated as Circle
 
-    // TRUE: Always write type info (support runtime subtypes)
+    // TRUE: Always write type info (support subtypes)
     @ForyField(id = 2, dynamic = Dynamic.TRUE)
     private Shape concreteShape;  // Type info written even if concrete
 }
@@ -75,7 +75,7 @@ public class Container {
 | ------- | ------------------------------------------------------ |
 | `AUTO`  | Interface/abstract types are dynamic, concrete are not |
 | `FALSE` | Never write type info, use declared type's serializer  |
-| `TRUE`  | Always write type info to support runtime subtypes     |
+| `TRUE`  | Always write type info to support subtypes             |
 
 **Use Cases**:
 
@@ -203,7 +203,7 @@ Writing type metadata has overhead:
 
 Use `dynamic = FALSE` (Java) or `dynamic(false)` (C++) when:
 
-- You're certain the runtime type matches the declared type
+- You're certain the concrete type matches the declared type
 - Performance is critical and polymorphism is not needed
 - The field type is effectively final
 

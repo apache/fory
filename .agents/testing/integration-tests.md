@@ -7,6 +7,9 @@ Load this file when changing `integration_tests/`, xlang behavior, compiler-gene
 - Run all commands from within `integration_tests/`.
 - For Java-related integration tests, install the Java libraries first with `cd ../java && mvn -T16 install -DskipTests` if Java changed. If unsure, run it.
 - On macOS, GraalVM is usually installed under `/Library/Java/JavaVirtualMachines/graalvm-xxx`.
+- Do not set `FORY_PANIC_ON_ERROR` for normal tests, CI reproduction, or xlang validation. It is
+  only for focused debugging. Verification commands should omit it, while test harnesses must not
+  filter it when the user command provides it.
 - For `integration_tests/idl_tests`:
   - Always run `cd ../java && mvn -T16 install -DskipTests` before the test if Java changed since the last install. If unsure, run it.
   - Always run `cd ../python && pip install -v -e .` before the test if Python or Cython code changed. Rebuild Cython if needed.

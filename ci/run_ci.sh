@@ -61,6 +61,8 @@ install_pyfory() {
 }
 
 JDKS=(
+"zulu26.30.11-ca-crac-jdk26.0.1-linux_x64"
+"zulu25.30.17-ca-jdk25.0.1-linux_x64"
 "zulu21.28.85-ca-jdk21.0.0-linux_x64"
 "zulu17.44.17-ca-crac-jdk17.0.8-linux_x64"
 "zulu15.46.17-ca-jdk15.0.10-linux_x64"
@@ -78,6 +80,17 @@ install_jdks() {
 }
 
 graalvm_test() {
+  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
+  if [[ "$java_version" == 1.* ]]; then
+    java_major=$(echo "$java_version" | cut -d. -f2)
+  else
+    java_major=$(echo "$java_version" | cut -d. -f1)
+  fi
+  if [[ "$java_major" -ge 25 ]]; then
+    export JDK_JAVA_OPTIONS="$(jdk25_runtime_options "ALL-UNNAMED") $(jdk25_javac_options)"
+  else
+    unset JDK_JAVA_OPTIONS
+  fi
   cd "$ROOT"/java
   mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'
   echo "Start to build graalvm native image"
@@ -89,27 +102,108 @@ graalvm_test() {
   echo "Execute graalvm tests succeed!"
 }
 
-integration_tests() {
+jdk25_access_options() {
+  local fory_open_targets="${1:-org.apache.fory.core}"
+  printf "%s" "--sun-misc-unsafe-memory-access=deny"
+  printf " %s" "--add-opens=java.base/java.lang.invoke=${fory_open_targets}"
+}
+
+jdk25_runtime_options() {
+  local fory_targets="${1:-org.apache.fory.core}"
+  printf "%s" "$(jdk25_access_options "$fory_targets")"
+}
+
+jdk25_javac_options() {
+  printf "%s" "--add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.file=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.jvm=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.model=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED"
+  printf " %s" "--add-opens=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED"
+}
+
+use_jdk() {
+  local jdk="$1"
+  export JAVA_HOME="$ROOT/$jdk"
+  export PATH=$JAVA_HOME/bin:$PATH
+  if [[ "$jdk" =~ zulu([0-9]+) ]]; then
+    local java_major="${BASH_REMATCH[1]}"
+    if [[ "$java_major" -ge 25 ]]; then
+      export JDK_JAVA_OPTIONS="$(jdk25_runtime_options) $(jdk25_javac_options)"
+    else
+      unset JDK_JAVA_OPTIONS
+    fi
+  else
+    unset JDK_JAVA_OPTIONS
+  fi
+}
+
+install_jdk25_fory_artifacts() {
+  local old_java_home="${JAVA_HOME:-}"
+  local old_path="$PATH"
+  local old_jdk_java_options="${JDK_JAVA_OPTIONS:-}"
+  local had_java_home=0
+  local had_jdk_java_options=0
+  [[ -n "${JAVA_HOME+x}" ]] && had_java_home=1
+  [[ -n "${JDK_JAVA_OPTIONS+x}" ]] && had_jdk_java_options=1
+
+  use_jdk "zulu25.30.17-ca-jdk25.0.1-linux_x64"
+  export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
   cd "$ROOT"/java
   mvn -T10 -B --no-transfer-progress clean install -DskipTests
+  echo "Verify JDK25 benchmark multi-release jar"
+  cd "$ROOT"/benchmarks/java
+  mvn -T10 -B --no-transfer-progress -Pjmh -DskipTests install
+  unset JDK_JAVA_OPTIONS
+  echo "Verify JPMS tests on JDK25"
+  cd "$ROOT"/integration_tests/jpms_tests
+  mvn -T10 -B --no-transfer-progress clean test
+
+  if [[ "$had_java_home" -eq 1 ]]; then
+    export JAVA_HOME="$old_java_home"
+  else
+    unset JAVA_HOME
+  fi
+  export PATH="$old_path"
+  if [[ "$had_jdk_java_options" -eq 1 ]]; then
+    export JDK_JAVA_OPTIONS="$old_jdk_java_options"
+  else
+    unset JDK_JAVA_OPTIONS
+  fi
+}
+
+integration_tests() {
+  install_jdk25_fory_artifacts
   echo "benchmark tests"
   cd "$ROOT"/benchmarks/java
   mvn -T10 -B --no-transfer-progress clean test install -Pjmh
   echo "Start JPMS tests"
   cd "$ROOT"/integration_tests/jpms_tests
-  mvn -T10 -B --no-transfer-progress clean compile
+  mvn -T10 -B --no-transfer-progress clean test
+  ./run_jlink_smoke.sh
   echo "Start jdk compatibility tests"
   cd "$ROOT"/integration_tests/jdk_compatibility_tests
   mvn -T10 -B --no-transfer-progress clean test
   for jdk in "${JDKS[@]}"; do
-     export JAVA_HOME="$ROOT/$jdk"
-     export PATH=$JAVA_HOME/bin:$PATH
+     if [[ "$jdk" =~ zulu([0-9]+) && "${BASH_REMATCH[1]}" -ge 25 ]]; then
+       echo "Skipping classpath JDK compatibility data generation for ${jdk}; JDK25+ zero-Unsafe coverage runs on JPMS"
+       continue
+     fi
+     use_jdk "$jdk"
      echo "First round for generate data: ${jdk}"
      mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest
   done
   for jdk in "${JDKS[@]}"; do
-     export JAVA_HOME="$ROOT/$jdk"
-     export PATH=$JAVA_HOME/bin:$PATH
+     if [[ "$jdk" =~ zulu([0-9]+) && "${BASH_REMATCH[1]}" -ge 25 ]]; then
+       echo "Skipping classpath JDK compatibility verification for ${jdk}; JDK25+ zero-Unsafe coverage runs on JPMS"
+       continue
+     fi
+     use_jdk "$jdk"
      echo "Second round for compatibility: ${jdk}"
      mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest
   done
@@ -117,14 +211,41 @@ integration_tests() {
 
 jdk17_plus_tests() {
   java -version
-  export JDK_JAVA_OPTIONS="--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+  java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
+  if [[ "$java_version" == 1.* ]]; then
+    java_major=$(echo "$java_version" | cut -d. -f2)
+  else
+    java_major=$(echo "$java_version" | cut -d. -f1)
+  fi
+  JDK_JAVA_OPTIONS="--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+  if [[ "$java_major" -ge 25 ]]; then
+    JDK_JAVA_OPTIONS="$JDK_JAVA_OPTIONS $(jdk25_runtime_options "ALL-UNNAMED") $(jdk25_javac_options)"
+  fi
+  export JDK_JAVA_OPTIONS
   echo "Executing fory java tests"
   cd "$ROOT/java"
   set +e
-  mvn -T10 --batch-mode --no-transfer-progress install
+  if [[ "$java_major" -ge 25 ]]; then
+    # The JDK25+ profile overlays Surefire's classpath with Java25 replacement
+    # classes while keeping the test run unnamed. Keep JPMS coverage below as a
+    # separate named-module check.
+    mvn -T10 --batch-mode --no-transfer-progress clean install
+  else
+    mvn -T10 --batch-mode --no-transfer-progress install
+  fi
   testcode=$?
   if [[ $testcode -ne 0 ]]; then
     exit $testcode
+  fi
+  if [[ "$java_major" -ge 25 ]]; then
+    unset JDK_JAVA_OPTIONS
+    echo "Executing JDK${java_major} JPMS tests"
+    cd "$ROOT/integration_tests/jpms_tests"
+    mvn -T10 --batch-mode --no-transfer-progress clean test
+    testcode=$?
+    if [[ $testcode -ne 0 ]]; then
+      exit $testcode
+    fi
   fi
   echo "Executing fory java tests succeeds"
 }
@@ -178,7 +299,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress test
+      mvn -T16 --batch-mode --no-transfer-progress clean test
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode
@@ -190,7 +311,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress test
+      mvn -T16 --batch-mode --no-transfer-progress clean install
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode
@@ -204,6 +325,9 @@ case $1 in
       jdk17_plus_tests
     ;;
     java25)
+      jdk17_plus_tests
+    ;;
+    java26)
       jdk17_plus_tests
     ;;
     kotlin)

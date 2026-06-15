@@ -27,6 +27,8 @@ namespace Apache.Fory.Generator;
 [Generator(LanguageNames.CSharp)]
 public sealed class ForyModelGenerator : IIncrementalGenerator
 {
+    private const uint UInt8ArrayTypeId = 48;
+
     private static readonly SymbolDisplayFormat FullNameFormat =
         SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(
             SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier);
@@ -240,122 +242,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         EmitCompatibleFieldCodecMethods(sb, model);
 
-        sb.AppendLine("    private static bool __ForyCanReadCompatiblePrimitive(global::Apache.Fory.TypeId typeId)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        return typeId switch");
-        sb.AppendLine("        {");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Bool or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int8 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int16 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int32 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarInt32 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarInt64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.TaggedInt64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt8 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt16 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt32 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarUInt32 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarUInt64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.TaggedUInt64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float16 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.BFloat16 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float32 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float64 or");
-        sb.AppendLine("            global::Apache.Fory.TypeId.String => true,");
-        sb.AppendLine("            _ => false,");
-        sb.AppendLine("        };");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine("    private static object __ForyReadCompatiblePrimitivePayload(global::Apache.Fory.TypeId typeId, global::Apache.Fory.ReadContext context)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        return typeId switch");
-        sb.AppendLine("        {");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Bool => context.Reader.ReadUInt8() != 0,");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int8 => context.Reader.ReadInt8(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int16 => context.Reader.ReadInt16(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int32 => context.Reader.ReadInt32(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarInt32 => context.Reader.ReadVarInt32(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Int64 => context.Reader.ReadInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarInt64 => context.Reader.ReadVarInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.TaggedInt64 => context.Reader.ReadTaggedInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt8 => context.Reader.ReadUInt8(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt16 => context.Reader.ReadUInt16(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt32 => context.Reader.ReadUInt32(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarUInt32 => context.Reader.ReadVarUInt32(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.UInt64 => context.Reader.ReadUInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.VarUInt64 => context.Reader.ReadVarUInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.TaggedUInt64 => context.Reader.ReadTaggedUInt64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float16 => global::System.BitConverter.UInt16BitsToHalf(context.Reader.ReadUInt16()),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.BFloat16 => global::Apache.Fory.BFloat16.FromBits(context.Reader.ReadUInt16()),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float32 => context.Reader.ReadFloat32(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.Float64 => context.Reader.ReadFloat64(),");
-        sb.AppendLine("            global::Apache.Fory.TypeId.String => global::Apache.Fory.StringSerializer.ReadString(context),");
-        sb.AppendLine("            _ => throw new global::Apache.Fory.InvalidDataException($\"unsupported compatible primitive type id {typeId}\"),");
-        sb.AppendLine("        };");
-        sb.AppendLine("    }");
-        sb.AppendLine();
-        sb.AppendLine("    private static T __ForyReadCompatibleField<T>(");
-        sb.AppendLine("        global::Apache.Fory.ReadContext context,");
-        sb.AppendLine("        global::Apache.Fory.TypeMetaFieldType fieldType,");
-        sb.AppendLine("        global::Apache.Fory.RefMode refMode,");
-        sb.AppendLine("        bool readTypeInfo)");
-        sb.AppendLine("    {");
-        sb.AppendLine("        global::Apache.Fory.TypeId typeId = (global::Apache.Fory.TypeId)fieldType.TypeId;");
-        sb.AppendLine("        if (!readTypeInfo && __ForyCanReadCompatiblePrimitive(typeId))");
-        sb.AppendLine("        {");
-        sb.AppendLine("            object? value;");
-        sb.AppendLine("            switch (refMode)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                case global::Apache.Fory.RefMode.None:");
-        sb.AppendLine("                    value = __ForyReadCompatiblePrimitivePayload(typeId, context);");
-        sb.AppendLine("                    break;");
-        sb.AppendLine("                case global::Apache.Fory.RefMode.NullOnly:");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    sbyte refFlag = context.Reader.ReadInt8();");
-        sb.AppendLine("                    if (refFlag == (sbyte)global::Apache.Fory.RefFlag.Null)");
-        sb.AppendLine("                    {");
-        sb.AppendLine("                        value = null;");
-        sb.AppendLine("                    }");
-        sb.AppendLine("                    else if (refFlag == (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
-        sb.AppendLine("                    {");
-        sb.AppendLine("                        value = __ForyReadCompatiblePrimitivePayload(typeId, context);");
-        sb.AppendLine("                    }");
-        sb.AppendLine("                    else");
-        sb.AppendLine("                    {");
-        sb.AppendLine("                        throw new global::Apache.Fory.InvalidDataException($\"invalid compatible nullOnly ref flag {refFlag}\");");
-        sb.AppendLine("                    }");
-        sb.AppendLine();
-        sb.AppendLine("                    break;");
-        sb.AppendLine("                }");
-        sb.AppendLine("                default:");
-        sb.AppendLine("                    return context.TypeResolver.GetSerializer<T>().Read(context, refMode, readTypeInfo);");
-        sb.AppendLine("            }");
-        sb.AppendLine();
-        sb.AppendLine("            if (value is null)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return default!;");
-        sb.AppendLine("            }");
-        sb.AppendLine();
-        sb.AppendLine("            if (value is T typedValue)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return typedValue;");
-        sb.AppendLine("            }");
-        sb.AppendLine();
-        sb.AppendLine("            try");
-        sb.AppendLine("            {");
-        sb.AppendLine("                return (T)value;");
-        sb.AppendLine("            }");
-        sb.AppendLine("            catch (global::System.InvalidCastException ex)");
-        sb.AppendLine("            {");
-        sb.AppendLine("                throw new global::Apache.Fory.InvalidDataException($\"cannot cast compatible field value of type {value.GetType()} to {typeof(T)}: {ex.Message}\");");
-        sb.AppendLine("            }");
-        sb.AppendLine("        }");
-        sb.AppendLine();
-        sb.AppendLine("        return context.TypeResolver.GetSerializer<T>().Read(context, refMode, readTypeInfo);");
-        sb.AppendLine("    }");
-        sb.AppendLine();
         sb.AppendLine(
             "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo> __ForyBuildTypeMetaFields(bool trackRef)");
         sb.AppendLine("    {");
@@ -642,18 +528,44 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("            for (int i = 0; i < typeMeta.Fields.Count; i++)");
         sb.AppendLine("            {");
         sb.AppendLine("                global::Apache.Fory.TypeMetaFieldInfo remoteField = typeMeta.Fields[i];");
-        sb.AppendLine("                global::Apache.Fory.RefMode remoteRefMode = __ForyRefMode(remoteField.FieldType.Nullable, remoteField.FieldType.TrackRef);");
         sb.AppendLine("                switch (remoteField.AssignedFieldId)");
         sb.AppendLine("                {");
+        sb.AppendLine("                    case -1:");
+        sb.AppendLine("                        global::Apache.Fory.FieldSkipper.SkipFieldValue(context, remoteField.FieldType);");
+        sb.AppendLine("                        break;");
         for (int idx = 0; idx < model.SortedMembers.Length; idx++)
         {
             MemberModel member = model.SortedMembers[idx];
-            sb.AppendLine($"                    case {idx}:");
+            sb.AppendLine($"                    case {idx * 2}:");
             sb.AppendLine("                        {");
             EmitReadMemberAssignment(
                 sb,
                 member,
-                "remoteRefMode",
+                BuildWriteRefModeExpression(member),
+                BuildFieldTypeInfoLiteral(member),
+                "value",
+                "CompatDirect",
+                7,
+                true);
+            sb.AppendLine("                            break;");
+            sb.AppendLine("                        }");
+            sb.AppendLine($"                    case {idx * 2 + 1}:");
+            sb.AppendLine("                        {");
+            string compatRefModeExpr;
+            if (CompatibleCaseNeedsRemoteRefMode(member))
+            {
+                sb.AppendLine("                            global::Apache.Fory.RefMode remoteRefMode = __ForyRefMode(remoteField.FieldType.Nullable, remoteField.FieldType.TrackRef);");
+                compatRefModeExpr = "remoteRefMode";
+            }
+            else
+            {
+                compatRefModeExpr = "default";
+            }
+
+            EmitReadMemberAssignment(
+                sb,
+                member,
+                compatRefModeExpr,
                 BuildFieldTypeInfoLiteral(member),
                 "value",
                 "Compat",
@@ -664,8 +576,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine("                    default:");
-        sb.AppendLine("                        global::Apache.Fory.FieldSkipper.SkipFieldValue(context, remoteField.FieldType);");
-        sb.AppendLine("                        break;");
+        sb.AppendLine("                        throw new global::Apache.Fory.InvalidDataException($\"invalid compatible matched id {remoteField.AssignedFieldId}\");");
         sb.AppendLine("                }");
         sb.AppendLine("            }");
         sb.AppendLine("            return value;");
@@ -1024,7 +935,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         foreach (MemberModel member in model.SortedMembers)
         {
             if (member.FieldCodec is not null &&
-                TryBuildCompatibleListArrayReadCodec(member.FieldCodec, out _))
+                CanReadCompatibleField(member.FieldCodec))
             {
                 hasCompatibleField = true;
                 break;
@@ -1041,9 +952,9 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         foreach (MemberModel member in model.SortedMembers)
         {
             if (member.FieldCodec is not null &&
-                TryBuildCompatibleListArrayReadCodec(member.FieldCodec, out FieldCodecModel? alternateCodec))
+                CanReadCompatibleField(member.FieldCodec))
             {
-                EmitCompatibleFieldCodecMethod(sb, member, member.FieldCodec, alternateCodec);
+                EmitCompatibleFieldCodecMethod(sb, member, member.FieldCodec);
             }
         }
 
@@ -1054,52 +965,116 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     private static void EmitCompatibleFieldCodecMethod(
         StringBuilder sb,
         MemberModel member,
-        FieldCodecModel codec,
-        FieldCodecModel alternateCodec)
+        FieldCodecModel codec)
     {
         string memberId = Sanitize(member.Name);
         sb.AppendLine("        [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]");
         sb.AppendLine(
-            $"        internal static {member.TypeName} Read{memberId}ListArrayBridge(global::Apache.Fory.ReadContext context, global::Apache.Fory.TypeMetaFieldType remoteFieldType, global::Apache.Fory.RefMode refMode)");
+            $"        internal static {member.TypeName} Read{memberId}FieldBridge(global::Apache.Fory.ReadContext context, global::Apache.Fory.TypeMetaFieldType remoteFieldType, global::Apache.Fory.RefMode refMode)");
         sb.AppendLine("        {");
-        sb.AppendLine("            if (remoteFieldType.TypeId == " + alternateCodec.TypeId + ")");
+        sb.AppendLine("            if (remoteFieldType.TypeId == " + codec.TypeId + ")");
         sb.AppendLine("            {");
-        if (codec.Kind == FieldCodecKind.PackedArray)
-        {
-            sb.AppendLine("                if (remoteFieldType.Generics.Count != 1)");
-            sb.AppendLine("                {");
-            sb.AppendLine("                    throw new global::Apache.Fory.InvalidDataException(\"compatible list to array field requires one element schema\");");
-            sb.AppendLine("                }");
-        }
-
-        sb.AppendLine("                if (refMode == global::Apache.Fory.RefMode.NullOnly)");
-        sb.AppendLine("                {");
-        sb.AppendLine("                    sbyte refFlag = context.Reader.ReadInt8();");
-        sb.AppendLine("                    if (refFlag == (sbyte)global::Apache.Fory.RefFlag.Null)");
-        sb.AppendLine("                    {");
-        sb.AppendLine($"                        return ({member.TypeName})default!;");
-        sb.AppendLine("                    }");
-        sb.AppendLine();
-        sb.AppendLine("                    if (refFlag != (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
-        sb.AppendLine("                    {");
-        sb.AppendLine("                        throw new global::Apache.Fory.InvalidDataException($\"invalid nullOnly ref flag {refFlag}\");");
-        sb.AppendLine("                    }");
-        sb.AppendLine("                }");
-        int id = 0;
-        string compatibleResultVar = $"__{memberId}CompatibleValue";
-        if (codec.Kind == FieldCodecKind.PackedArray && alternateCodec.Kind == FieldCodecKind.List)
-        {
-            EmitReadCompatibleListArrayPayload(sb, codec, compatibleResultVar, 4, ref id);
-        }
-        else
-        {
-            EmitReadPayload(sb, alternateCodec, compatibleResultVar, 4, ref id);
-        }
-
-        sb.AppendLine($"                return {compatibleResultVar};");
+        sb.AppendLine($"                return __ForyRead{memberId}Field(context, refMode);");
         sb.AppendLine("            }");
+        sb.AppendLine();
+        if (TryBuildCompatibleListArrayReadCodec(codec, out FieldCodecModel? alternateCodec))
+        {
+            sb.AppendLine("            if (remoteFieldType.TypeId == " + alternateCodec.TypeId + ")");
+            sb.AppendLine("            {");
+            if (codec.Kind == FieldCodecKind.PackedArray)
+            {
+                sb.AppendLine("                if (remoteFieldType.Generics.Count != 1)");
+                sb.AppendLine("                {");
+                sb.AppendLine("                    throw new global::Apache.Fory.InvalidDataException(\"compatible list to array field requires one element schema\");");
+                sb.AppendLine("                }");
+            }
+
+            EmitReadNullOnlyPrefix(sb, member, 4);
+            int id = 0;
+            string compatibleResultVar = $"__{memberId}CompatibleValue";
+            if (codec.Kind == FieldCodecKind.PackedArray && alternateCodec.Kind == FieldCodecKind.List)
+            {
+                EmitReadCompatibleListArrayPayload(sb, codec, compatibleResultVar, 4, ref id);
+            }
+            else
+            {
+                EmitReadPayload(sb, alternateCodec, compatibleResultVar, 4, ref id);
+            }
+
+            sb.AppendLine($"                return {compatibleResultVar};");
+            sb.AppendLine("            }");
+        }
+
+        if (CanReadCompatibleBinaryField(codec))
+        {
+            sb.AppendLine("            if (remoteFieldType.TypeId == (uint)global::Apache.Fory.TypeId.Binary)");
+            sb.AppendLine("            {");
+            EmitReadNullOnlyPrefix(sb, member, 4);
+            EmitReadBinaryField(sb, codec, $"__{memberId}BinaryValue", 4);
+            sb.AppendLine($"                return __{memberId}BinaryValue;");
+            sb.AppendLine("            }");
+        }
+
         sb.AppendLine("            throw new global::Apache.Fory.InvalidDataException($\"unsupported compatible field schema pair: local " + codec.TypeId + ", remote {remoteFieldType.TypeId}\");");
         sb.AppendLine("        }");
+    }
+
+    private static void EmitReadNullOnlyPrefix(StringBuilder sb, MemberModel member, int indentLevel)
+    {
+        string indent = new(' ', indentLevel * 4);
+        sb.AppendLine($"{indent}if (refMode == global::Apache.Fory.RefMode.NullOnly)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    sbyte refFlag = context.Reader.ReadInt8();");
+        sb.AppendLine($"{indent}    if (refFlag == (sbyte)global::Apache.Fory.RefFlag.Null)");
+        sb.AppendLine($"{indent}    {{");
+        sb.AppendLine($"{indent}        return ({member.TypeName})default!;");
+        sb.AppendLine($"{indent}    }}");
+        sb.AppendLine();
+        sb.AppendLine($"{indent}    if (refFlag != (sbyte)global::Apache.Fory.RefFlag.NotNullValue)");
+        sb.AppendLine($"{indent}    {{");
+        sb.AppendLine($"{indent}        throw new global::Apache.Fory.InvalidDataException($\"invalid nullOnly ref flag {{refFlag}}\");");
+        sb.AppendLine($"{indent}    }}");
+        sb.AppendLine($"{indent}}}");
+    }
+
+    private static void EmitReadBinaryField(
+        StringBuilder sb,
+        FieldCodecModel codec,
+        string targetVar,
+        int indentLevel)
+    {
+        string indent = new(' ', indentLevel * 4);
+        sb.AppendLine($"{indent}int __foryLength = checked((int)context.Reader.ReadVarUInt32());");
+        if (codec.CarrierKind == CarrierKind.Array)
+        {
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = context.Reader.ReadBytes(__foryLength);");
+            return;
+        }
+
+        if (codec.CarrierKind == CarrierKind.List)
+        {
+            sb.AppendLine($"{indent}context.Reader.CheckBound(__foryLength);");
+            sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new(__foryLength);");
+            sb.AppendLine($"{indent}for (int __foryIndex = 0; __foryIndex < __foryLength; __foryIndex++)");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}    {targetVar}.Add(context.Reader.ReadUInt8());");
+            sb.AppendLine($"{indent}}}");
+            return;
+        }
+
+        throw new InvalidOperationException($"unsupported binary compatible carrier {codec.TypeName}");
+    }
+
+    private static bool CanReadCompatibleField(FieldCodecModel codec)
+    {
+        return TryBuildCompatibleListArrayReadCodec(codec, out _) || CanReadCompatibleBinaryField(codec);
+    }
+
+    private static bool CanReadCompatibleBinaryField(FieldCodecModel codec)
+    {
+        return codec.Kind == FieldCodecKind.PackedArray &&
+               codec.TypeId == UInt8ArrayTypeId &&
+               codec.CarrierKind is CarrierKind.Array or CarrierKind.List;
     }
 
     private static bool TryBuildCompatibleListArrayReadCodec(FieldCodecModel codec, out FieldCodecModel compatibleCodec)
@@ -1180,8 +1155,12 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine($"{innerIndent}    }}");
         sb.AppendLine($"{innerIndent}}}");
         sb.AppendLine($"{indent}}}");
-        string indexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{indent}if ({lengthVar} != 0)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
+        sb.AppendLine($"{indent}}}");
         string elementTypeName = codec.CarrierKind == CarrierKind.Array ? ElementTypeName(codec.TypeName) : PackedArrayElementTypeName(codec.TypeId);
+        uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
         if (codec.CarrierKind == CarrierKind.Array)
         {
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
@@ -1191,19 +1170,47 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
         }
 
-        sb.AppendLine($"{indent}for (int {indexVar} = 0; {indexVar} < {lengthVar}; {indexVar}++)");
+        string indexVar = $"__foryIndex{id++}";
+        sb.AppendLine($"{indent}switch (remoteFieldType.Generics[0].TypeId)");
         sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{innerIndent}object __foryItem = __ForyReadCompatiblePrimitivePayload((global::Apache.Fory.TypeId)remoteFieldType.Generics[0].TypeId, context);");
-        if (codec.CarrierKind == CarrierKind.Array)
+        foreach (uint remoteElementTypeId in CompatibleElementReadTypeIds(elementTypeId))
         {
-            sb.AppendLine($"{innerIndent}{targetVar}[{indexVar}] = ({elementTypeName})__foryItem;");
-        }
-        else
-        {
-            sb.AppendLine($"{innerIndent}{targetVar}.Add(({elementTypeName})__foryItem);");
-        }
+            if (!TryBuildDirectPayloadRead(remoteElementTypeId, out string? itemReadExpr))
+            {
+                throw new InvalidOperationException($"unsupported compatible list element type id {remoteElementTypeId}");
+            }
 
+            sb.AppendLine($"{indent}    case {remoteElementTypeId}:");
+            sb.AppendLine($"{indent}        for (int {indexVar} = 0; {indexVar} < {lengthVar}; {indexVar}++)");
+            sb.AppendLine($"{indent}        {{");
+            sb.AppendLine($"{indent}            {elementTypeName} __foryItem = {itemReadExpr};");
+            if (codec.CarrierKind == CarrierKind.Array)
+            {
+                sb.AppendLine($"{indent}            {targetVar}[{indexVar}] = __foryItem;");
+            }
+            else
+            {
+                sb.AppendLine($"{indent}            {targetVar}.Add(__foryItem);");
+            }
+
+            sb.AppendLine($"{indent}        }}");
+            sb.AppendLine($"{indent}        break;");
+        }
+        sb.AppendLine($"{indent}    default:");
+        sb.AppendLine($"{indent}        throw new global::Apache.Fory.InvalidDataException($\"unsupported compatible list element type {{remoteFieldType.Generics[0].TypeId}}\");");
         sb.AppendLine($"{indent}}}");
+    }
+
+    private static uint[] CompatibleElementReadTypeIds(uint elementTypeId)
+    {
+        return elementTypeId switch
+        {
+            4 or 5 => [4, 5],
+            6 or 7 or 8 => [6, 7, 8],
+            11 or 12 => [11, 12],
+            13 or 14 or 15 => [13, 14, 15],
+            _ => [elementTypeId],
+        };
     }
 
     private static void EmitWritePayload(
@@ -1486,19 +1493,20 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string indent = new(' ', indentLevel * 4);
         int width = PackedArrayElementWidth(codec.TypeId);
         uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
-        string payloadSizeVar = $"__foryPayloadSize{id++}";
+        string byteSizeVar = $"__foryByteSize{id++}";
         string countVar = $"__foryPackedCount{id++}";
-        sb.AppendLine($"{indent}int {payloadSizeVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}int {byteSizeVar} = checked((int)context.Reader.ReadVarUInt32());");
         if (width > 1)
         {
             int mask = width - 1;
-            sb.AppendLine($"{indent}if (({payloadSizeVar} & {mask}) != 0)");
+            sb.AppendLine($"{indent}if (({byteSizeVar} & {mask}) != 0)");
             sb.AppendLine($"{indent}{{");
-            sb.AppendLine($"{indent}    throw new global::Apache.Fory.InvalidDataException(\"packed array payload size mismatch\");");
+            sb.AppendLine($"{indent}    throw new global::Apache.Fory.InvalidDataException(\"packed array byte size mismatch\");");
             sb.AppendLine($"{indent}}}");
         }
 
-        sb.AppendLine($"{indent}int {countVar} = {payloadSizeVar}{(width == 1 ? string.Empty : $" / {width}")};");
+        sb.AppendLine($"{indent}context.Reader.CheckBound({byteSizeVar});");
+        sb.AppendLine($"{indent}int {countVar} = {byteSizeVar}{(width == 1 ? string.Empty : $" / {width}")};");
         if (codec.CarrierKind == CarrierKind.Array)
         {
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{countVar}];");
@@ -1544,6 +1552,10 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string sameTypeVar = $"__forySameType{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}if ({lengthVar} != 0)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
+        sb.AppendLine($"{indent}}}");
         if (isSet)
         {
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new();");
@@ -1645,6 +1657,10 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         FieldCodecModel value = codec.Generics[1];
         string totalVar = $"__foryTotal{id++}";
         sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}if ({totalVar} != 0)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.Reader.CheckBound({totalVar});");
+        sb.AppendLine($"{indent}}}");
         sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({totalVar});");
         sb.AppendLine($"{indent}int __foryRead = 0;");
         sb.AppendLine($"{indent}while (__foryRead < {totalVar})");
@@ -1722,7 +1738,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         if (!CanValidateInlineTypeInfo(codec.TypeId))
         {
             sb.AppendLine(
-                $"{indent}throw new global::Apache.Fory.InvalidDataException(\"generated field payload requires declared nested user type metadata\");");
+                $"{indent}throw new global::Apache.Fory.InvalidDataException(\"generated field value requires declared nested user type metadata\");");
             return;
         }
 
@@ -1991,21 +2007,20 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
                 throw new InvalidOperationException($"unsupported dynamic any kind {member.DynamicAnyKind}");
         }
 
+        if (variableSuffix == "Compat" &&
+            TryBuildCompatibleScalarReadExpression(member, out string? compatibleScalarReadExpr))
+        {
+            sb.AppendLine($"{indent}{assignmentTarget} = {compatibleScalarReadExpr};");
+            return;
+        }
+
         if (member.FieldCodec is not null)
         {
             if (variableSuffix == "Compat" &&
-                TryBuildCompatibleListArrayReadCodec(member.FieldCodec, out _))
+                CanReadCompatibleField(member.FieldCodec))
             {
-                sb.AppendLine($"{indent}if (remoteField.FieldType.TypeId == {member.FieldCodec.TypeId})");
-                sb.AppendLine($"{indent}{{");
                 sb.AppendLine(
-                    $"{indent}  {assignmentTarget} = __ForyRead{Sanitize(member.Name)}Field(context, {refModeExpr});");
-                sb.AppendLine($"{indent}}}");
-                sb.AppendLine($"{indent}else");
-                sb.AppendLine($"{indent}{{");
-                sb.AppendLine(
-                    $"{indent}  {assignmentTarget} = __ForyCompatibleFieldReaders.Read{Sanitize(member.Name)}ListArrayBridge(context, remoteField.FieldType, {refModeExpr});");
-                sb.AppendLine($"{indent}}}");
+                    $"{indent}{assignmentTarget} = __ForyCompatibleFieldReaders.Read{Sanitize(member.Name)}FieldBridge(context, remoteField.FieldType, {refModeExpr});");
             }
             else
             {
@@ -2031,12 +2046,75 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         if (variableSuffix == "Compat")
         {
             sb.AppendLine(
-                $"{indent}{assignmentTarget} = __ForyReadCompatibleField<{member.TypeName}>(context, remoteField.FieldType, {refModeExpr}, {readTypeInfoExpr});");
+                $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
             return;
         }
 
         sb.AppendLine(
             $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
+    }
+
+    private static bool CompatibleCaseNeedsRemoteRefMode(MemberModel member)
+    {
+        return !IsCompatibleScalarMember(member);
+    }
+
+    private static bool IsCompatibleScalarMember(MemberModel member)
+    {
+        return TryResolveCompatibleScalarTarget(member, out _);
+    }
+
+    private static bool TryBuildCompatibleScalarReadExpression(MemberModel member, out string? readExpr)
+    {
+        readExpr = null;
+        if (!TryResolveCompatibleScalarTarget(member, out string? methodTarget))
+        {
+            return false;
+        }
+
+        string methodName = member.IsNullable ? $"ReadNullable{methodTarget}Field" : $"Read{methodTarget}Field";
+        readExpr =
+            $"global::Apache.Fory.CompatibleScalarConverter.{methodName}(context, remoteField)";
+        return true;
+    }
+
+    private static bool TryResolveCompatibleScalarTarget(MemberModel member, out string? methodTarget)
+    {
+        methodTarget = null;
+        if (member.DynamicAnyKind != DynamicAnyKind.None ||
+            !IsCompatibleScalarTypeId(member.Classification.TypeId))
+        {
+            return false;
+        }
+
+        string targetName = StripNullableForTypeOf(member.TypeName);
+        methodTarget = targetName switch
+        {
+            "bool" or "global::System.Boolean" => "Bool",
+            "sbyte" or "global::System.SByte" => "SByte",
+            "short" or "global::System.Int16" => "Int16",
+            "int" or "global::System.Int32" => "Int32",
+            "long" or "global::System.Int64" => "Int64",
+            "byte" or "global::System.Byte" => "Byte",
+            "ushort" or "global::System.UInt16" => "UInt16",
+            "uint" or "global::System.UInt32" => "UInt32",
+            "ulong" or "global::System.UInt64" => "UInt64",
+            "global::System.Half" => "Half",
+            "global::Apache.Fory.BFloat16" => "BFloat16",
+            "float" or "global::System.Single" => "Float",
+            "double" or "global::System.Double" => "Double",
+            "string" or "global::System.String" => "String",
+            "decimal" or "global::System.Decimal" => "Decimal",
+            "global::Apache.Fory.ForyDecimal" => "ForyDecimal",
+            _ => null,
+        };
+
+        return methodTarget is not null;
+    }
+
+    private static bool IsCompatibleScalarTypeId(uint typeId)
+    {
+        return typeId is >= 1 and <= 15 or >= 17 and <= 21 or 40;
     }
 
     private static string StripNullableForTypeOf(string typeName)

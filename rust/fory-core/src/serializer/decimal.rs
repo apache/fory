@@ -39,6 +39,17 @@ impl Serializer for Decimal {
         let unscaled = read_decimal_unscaled(&mut context.reader)?;
         Ok(Self { unscaled, scale })
     }
+    #[inline]
+    fn fory_read_data_as_send_sync_any(
+        context: &mut ReadContext,
+    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
+            context,
+        )?))
+    }
 
     #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {

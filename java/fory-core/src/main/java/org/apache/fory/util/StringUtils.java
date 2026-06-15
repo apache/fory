@@ -26,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import org.apache.fory.memory.NativeByteOrder;
-import org.apache.fory.platform.UnsafeOps;
 
 public class StringUtils {
   // A long mask used to clear all-higher bits of char in a super-word way.
@@ -276,40 +275,6 @@ public class StringUtils {
     }
 
     return builder.toString();
-  }
-
-  public static boolean isLatin(char[] chars) {
-    return isLatin(chars, 0);
-  }
-
-  public static boolean isLatin(char[] chars, int start) {
-    if (start > chars.length) {
-      return false;
-    }
-    int byteOffset = start << 1;
-    int numChars = chars.length;
-    int vectorizedLen = numChars >> 2;
-    int vectorizedChars = vectorizedLen << 2;
-    int endOffset = UnsafeOps.CHAR_ARRAY_OFFSET + (vectorizedChars << 1);
-    boolean isLatin = true;
-    for (int offset = UnsafeOps.CHAR_ARRAY_OFFSET + byteOffset; offset < endOffset; offset += 8) {
-      // check 4 chars in a vectorized way, 4 times faster than scalar check loop.
-      // See benchmark in CompressStringSuite.latinSuperWordCheck.
-      long multiChars = UnsafeOps.getLong(chars, offset);
-      if ((multiChars & MULTI_CHARS_NON_LATIN_MASK) != 0) {
-        isLatin = false;
-        break;
-      }
-    }
-    if (isLatin) {
-      for (int i = vectorizedChars; i < numChars; i++) {
-        if (chars[i] > 0xFF) {
-          isLatin = false;
-          break;
-        }
-      }
-    }
-    return isLatin;
   }
 
   /**

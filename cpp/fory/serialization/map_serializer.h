@@ -81,6 +81,20 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+template <typename MapType>
+inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
+  // Lazy error propagation may continue into later readers; do not let that
+  // path retain attacker-controlled capacity after an earlier read failure.
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+    return false;
+  }
+  MapReserver<MapType>::reserve(map, length);
+  return true;
+}
+
 /// write chunk size at header offset
 inline void write_chunk_size(WriteContext &ctx, size_t header_offset,
                              uint8_t size) {
@@ -551,17 +565,11 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
   static_assert(!is_shared_ref_v<K> && !is_shared_ref_v<V>,
                 "Fast path is for non-shared-ref types only");
 
-  // Guardrail: Enforce max_collection_size for map reads (entry count)
-  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-    ctx.set_error(
-        Error::invalid_data("Map entry count exceeds max_collection_size"));
-    return MapType{};
-  }
-
   MapType result;
-  MapReserver<MapType>::reserve(result, length);
-
   if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
     return result;
   }
 
@@ -689,17 +697,11 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 /// Read map data for polymorphic or shared-ref maps
 template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
-  // Guardrail: Enforce max_collection_size for map reads (entry count)
-  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-    ctx.set_error(
-        Error::invalid_data("Map entry count exceeds max_collection_size"));
-    return MapType{};
-  }
-
   MapType result;
-  MapReserver<MapType>::reserve(result, length);
-
   if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
     return result;
   }
 
@@ -1080,22 +1082,15 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
   using MapType = std::unordered_map<K, V, Args...>;
 
   static inline void write(const MapType &map, WriteContext &ctx,
-                           RefMode ref_mode, bool write_type) {
+                           RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
       ctx.write_uint8(static_cast<uint8_t>(type_id));
     }
 
-    constexpr bool is_fast_path =
-        !is_polymorphic_v<K> && !is_polymorphic_v<V> && !is_shared_ref_v<K> &&
-        !is_shared_ref_v<V> && !is_nullable_v<K> && !is_nullable_v<V>;
-
-    if constexpr (is_fast_path) {
-      write_map_data_fast<K, V>(map, ctx, false);
-    } else {
-      write_map_data_slow<K, V>(map, ctx, true);
-    }
+    write_data_generic(map, ctx, has_generics);
   }
 
   static inline void write_data(const MapType &map, WriteContext &ctx) {

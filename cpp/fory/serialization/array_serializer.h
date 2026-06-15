@@ -145,11 +145,12 @@ struct Serializer<
       return std::array<T, N>();
     }
 
-    uint32_t length = size_bytes / sizeof(T);
-    if (length != N) {
-      ctx.set_error(Error::invalid_data("Array size mismatch: expected " +
-                                        std::to_string(N) + " but got " +
-                                        std::to_string(length)));
+    constexpr size_t expected_bytes = N * sizeof(T);
+    if (static_cast<size_t>(size_bytes) != expected_bytes) {
+      ctx.set_error(Error::invalid_data("Array byte size mismatch: expected " +
+                                        std::to_string(expected_bytes) +
+                                        " but got " +
+                                        std::to_string(size_bytes)));
       return std::array<T, N>();
     }
 
@@ -368,11 +369,12 @@ template <size_t N> struct Serializer<std::array<float16_t, N>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::array<float16_t, N>();
     }
-    uint32_t length = size_bytes / sizeof(float16_t);
-    if (length != N) {
-      ctx.set_error(Error::invalid_data("Array size mismatch: expected " +
-                                        std::to_string(N) + " but got " +
-                                        std::to_string(length)));
+    constexpr size_t expected_bytes = N * sizeof(float16_t);
+    if (static_cast<size_t>(size_bytes) != expected_bytes) {
+      ctx.set_error(Error::invalid_data("Array byte size mismatch: expected " +
+                                        std::to_string(expected_bytes) +
+                                        " but got " +
+                                        std::to_string(size_bytes)));
       return std::array<float16_t, N>();
     }
     std::array<float16_t, N> arr;
@@ -480,11 +482,12 @@ template <size_t N> struct Serializer<std::array<bfloat16_t, N>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::array<bfloat16_t, N>();
     }
-    uint32_t length = size_bytes / sizeof(bfloat16_t);
-    if (length != N) {
-      ctx.set_error(Error::invalid_data("Array size mismatch: expected " +
-                                        std::to_string(N) + " but got " +
-                                        std::to_string(length)));
+    constexpr size_t expected_bytes = N * sizeof(bfloat16_t);
+    if (static_cast<size_t>(size_bytes) != expected_bytes) {
+      ctx.set_error(Error::invalid_data("Array byte size mismatch: expected " +
+                                        std::to_string(expected_bytes) +
+                                        " but got " +
+                                        std::to_string(size_bytes)));
       return std::array<bfloat16_t, N>();
     }
     std::array<bfloat16_t, N> arr;

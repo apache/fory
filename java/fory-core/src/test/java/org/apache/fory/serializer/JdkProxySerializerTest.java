@@ -55,6 +55,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Function function =
         (Function)
@@ -71,6 +72,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Function function =
         (Function)
@@ -84,13 +86,19 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .withTypeChecker((resolver, className) -> !className.equals(Function.class.getName()))
+            .withCompatible(false)
             .build();
     assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
   }
 
   @Test
   public void testJdkProxyStrictInterfaces() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     fory.register(TestInvocationHandler.class);
     Function function =
         (Function)
@@ -105,7 +113,12 @@ public class JdkProxySerializerTest extends ForyTestBase {
 
   @Test
   public void testJdkProxyStrictNoDefaultInterface() {
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TestInterface function =
         (TestInterface)
             Proxy.newProxyInstance(
@@ -114,7 +127,12 @@ public class JdkProxySerializerTest extends ForyTestBase {
                 new TestInvocationHandler());
     byte[] bytes = writer.serialize(function);
 
-    Fory reader = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     reader.register(TestInvocationHandler.class);
     TestInterface deserializedFunction = (TestInterface) reader.deserialize(bytes);
     assertEquals(deserializedFunction.test(), 1);
@@ -122,7 +140,12 @@ public class JdkProxySerializerTest extends ForyTestBase {
 
   @Test
   public void testJdkProxyStrictRejectsDefaultInterface() {
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TestDefaultInterface function =
         (TestDefaultInterface)
             Proxy.newProxyInstance(
@@ -131,7 +154,12 @@ public class JdkProxySerializerTest extends ForyTestBase {
                 new TestInvocationHandler());
     byte[] bytes = writer.serialize(function);
 
-    Fory reader = Fory.builder().withXlang(false).requireClassRegistration(true).build();
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     reader.register(TestInvocationHandler.class);
     assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
   }
@@ -178,6 +206,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     RefTestInvocationHandler hdlr = new RefTestInvocationHandler();
     Function function =
@@ -214,6 +243,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     InvocationHandler deferredHandler = newDeferredInvocationHandler(new TestInvocationHandler());
     Function function =
@@ -246,7 +276,12 @@ public class JdkProxySerializerTest extends ForyTestBase {
 
   @Test
   public void testSerializeProxyWriteReplace() {
-    final Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    final Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
 
     final Object o = ProxyFactory.createProxy(TestInterface.class);
     final byte[] s = fory.serialize(o);

@@ -24,7 +24,7 @@ import (
 )
 
 func TestPrimitiveMapReaderRejectsInvalidChunkSize(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 	buf := NewByteBuffer(nil)
 	buf.WriteLength(1)
 	buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
@@ -36,7 +36,7 @@ func TestPrimitiveMapReaderRejectsInvalidChunkSize(t *testing.T) {
 }
 
 func TestPrimitiveMapReaderRejectsUnexpectedTypeInfo(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 	buf := NewByteBuffer(nil)
 	buf.WriteLength(1)
 	buf.WriteUint8(0)
@@ -50,7 +50,7 @@ func TestPrimitiveMapReaderRejectsUnexpectedTypeInfo(t *testing.T) {
 }
 
 func TestPrimitiveMapReaderRejectsNullChunks(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 	buf := NewByteBuffer(nil)
 	buf.WriteLength(1)
 	buf.WriteUint8(KEY_HAS_NULL)

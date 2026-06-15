@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -30,8 +32,9 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
@@ -39,6 +42,7 @@ import org.apache.fory.test.bean.CollectionFields;
 import org.apache.fory.test.bean.Foo;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.test.bean.Struct;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -128,6 +132,20 @@ public class CompatibleSerializerTest extends ForyTestBase {
         TestUtils.objectFieldsEquals(o3, foo, true);
       }
     }
+  }
+
+  @Test
+  public void testNullableListBodyBounds() throws Exception {
+    Method method =
+        CompatibleCollectionArrayReader.class.getDeclaredMethod(
+            "readNullableListBoxedElements", MemoryBuffer.class, int.class, int.class, int.class);
+    method.setAccessible(true);
+    MemoryBuffer buffer = MemoryUtils.buffer(0);
+    InvocationTargetException exception =
+        Assert.expectThrows(
+            InvocationTargetException.class,
+            () -> method.invoke(null, buffer, 1024, Types.INT32_ARRAY, Types.INT32));
+    Assert.assertTrue(exception.getCause() instanceof IndexOutOfBoundsException);
   }
 
   @Test
@@ -379,7 +397,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
   private static Fory catalogFory(boolean asyncCompilation, boolean codegen) {
     return Fory.builder()
         .withLanguage(Language.JAVA)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(true)
         .requireClassRegistration(false)
         .withDeserializeUnknownClass(true)
         .withAsyncCompilation(asyncCompilation)

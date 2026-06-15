@@ -1015,10 +1015,6 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		extraMetaSize = int(extra)
 		metaSize += extraMetaSize
 	}
-	if metaSize > fory.config.MaxBinarySize {
-		return nil, MaxBinarySizeExceededError(metaSize, fory.config.MaxBinarySize)
-	}
-
 	// Store the encoded bytes for the TypeDef (including meta header and metadata)
 	encodedMeta := buffer.ReadBinary(metaSize, &bufErr)
 	if bufErr.HasError() {

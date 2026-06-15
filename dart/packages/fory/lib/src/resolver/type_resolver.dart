@@ -282,24 +282,24 @@ final class TypeResolver {
     String? namespace,
     String? typeName,
   }) {
-    final registration = GeneratedRegistrationCatalog.lookup(type);
-    if (registration == null) {
+    final entry = GeneratedTypeCatalog.lookup(type);
+    if (entry == null) {
       throw StateError(
-        'Type $type has no generated registration metadata. '
-        'Register it through its generated library namespace first.',
+        'Type $type has no generated type metadata. '
+        'Register it through its generated Fory module first.',
       );
     }
     _registerResolvedSerializer(
       type,
-      registration.serializerFactory(),
-      switch (registration.kind) {
-        GeneratedRegistrationKind.enumType => RegistrationKind.enumType,
-        GeneratedRegistrationKind.struct => RegistrationKind.struct,
+      entry.serializerFactory(),
+      switch (entry.kind) {
+        GeneratedTypeKind.enumType => RegistrationKind.enumType,
+        GeneratedTypeKind.struct => RegistrationKind.struct,
       },
-      evolving: registration.evolving,
-      fields: registration.fields,
-      needsRootRef: registration.needsRootRef,
-      usesNestedTypeDefinitions: registration.usesNestedTypeDefinitions,
+      evolving: entry.evolving,
+      fields: entry.fields,
+      needsRootRef: entry.needsRootRef,
+      usesNestedTypeDefinitions: entry.usesNestedTypeDefinitions,
       id: id,
       namespace: namespace,
       typeName: typeName,
@@ -336,11 +336,17 @@ final class TypeResolver {
     String? namespace,
     String? typeName,
   }) {
-    _validateRegistrationMode(id: id, namespace: namespace, typeName: typeName);
+    final name = _resolveRegistrationName(
+      id: id,
+      namespace: namespace,
+      typeName: typeName,
+    );
+    final resolvedNamespace = name.namespace;
+    final resolvedTypeName = name.typeName;
     final encodedNamespace =
-        namespace == null ? null : packageMetaString(namespace);
+        resolvedNamespace == null ? null : packageMetaString(resolvedNamespace);
     final encodedTypeName =
-        typeName == null ? null : typeNameMetaString(typeName);
+        resolvedTypeName == null ? null : typeNameMetaString(resolvedTypeName);
     final normalizedFields =
         registrationKind == RegistrationKind.struct
             ? _validateFieldInfos(fields)
@@ -374,8 +380,8 @@ final class TypeResolver {
       serializer: payloadSerializer,
       structSerializer: structSerializer,
       userTypeId: id,
-      namespace: namespace,
-      typeName: typeName,
+      namespace: resolvedNamespace,
+      typeName: resolvedTypeName,
       encodedNamespace: encodedNamespace,
       encodedTypeName: encodedTypeName,
       typeDef: typeDef,
@@ -386,8 +392,8 @@ final class TypeResolver {
       type,
       resolved,
       id: id,
-      namespace: namespace,
-      typeName: typeName,
+      namespace: resolvedNamespace,
+      typeName: resolvedTypeName,
     );
   }
 
@@ -535,7 +541,7 @@ final class TypeResolver {
     }
     throw StateError(
       'Type $runtimeType is not registered. Register generated types with '
-      'their generated library namespace, or register a serializer explicitly.',
+      'their generated Fory module, or register a serializer explicitly.',
     );
   }
 
@@ -781,15 +787,22 @@ final class TypeResolver {
       return null;
     }
     final marker = buffer.readVarUint32Small14();
-    if (marker != 0) {
-      bufferSetReaderIndex(buffer, start);
-      return null;
+    if ((marker & 1) == 1) {
+      return sharedTypes[marker >>> 1];
     }
     final header = TypeHeader(buffer.readInt64());
     final expectedTypeDef = expected.typeDef;
     if (expectedTypeDef == null || expectedTypeDef.header != header.value) {
-      bufferSetReaderIndex(buffer, start);
-      return null;
+      final cached = _parsedTypeMetaCache.lookup(header);
+      if (cached != null) {
+        header.skipRemaining(buffer);
+        sharedTypes.add(cached);
+        return cached;
+      }
+      final resolved = _readTypeDefWithHeader(buffer, header);
+      _parsedTypeMetaCache.remember(header, resolved);
+      sharedTypes.add(resolved);
+      return resolved;
     }
     header.skipRemaining(buffer);
     sharedTypes.add(expected);
@@ -1131,6 +1144,7 @@ final class TypeResolver {
   TypeInfo _readTypeDefWithHeader(Buffer buffer, TypeHeader header) {
     header.validateGlobal();
     final metaSize = header.readMetaSize(buffer);
+    buffer.checkReadableBytes(metaSize);
     final metaBody = buffer.readBytes(metaSize);
     final metaBytes = Buffer.wrap(metaBody);
     final classHeader = metaBytes.readUint8();
@@ -1232,6 +1246,7 @@ final class TypeResolver {
     if (size == typeDefBigNameThreshold) {
       size += source.readVarUint32Small7();
     }
+    source.checkReadableBytes(size);
     return internEncodedMetaString(
       Uint8List.fromList(source.readBytes(size)),
       encoding: decodeEncoding(compactEncoding),
@@ -1256,10 +1271,13 @@ final class TypeResolver {
       nullable: fieldNullable,
       ref: fieldRef,
     );
-    final identifier =
-        isTag
-            ? tagId.toString()
-            : decodeFieldName(source.readBytes(size), encoding);
+    final String identifier;
+    if (isTag) {
+      identifier = tagId.toString();
+    } else {
+      source.checkReadableBytes(size);
+      identifier = decodeFieldName(source.readBytes(size), encoding);
+    }
     return FieldInfo(
       name: identifier,
       identifier: identifier,
@@ -1287,7 +1305,7 @@ final class TypeResolver {
       typeId: typeId,
       nullable: nullable,
       ref: ref,
-      dynamic: typeId == TypeIds.unknown ? true : false,
+      dynamic: typeId == TypeIds.unknown && !ref ? true : null,
       arguments: arguments,
     );
   }
@@ -1620,7 +1638,7 @@ final class TypeResolver {
         resolved;
   }
 
-  void _validateRegistrationMode({
+  ({String? namespace, String? typeName}) _resolveRegistrationName({
     required int? id,
     required String? namespace,
     required String? typeName,
@@ -1629,14 +1647,30 @@ final class TypeResolver {
     final hasNamed = namespace != null || typeName != null;
     if (hasNumeric == hasNamed) {
       throw ArgumentError(
-        'Exactly one registration mode is required: id, or namespace + typeName.',
+        'Exactly one registration mode is required: id, or name.',
       );
     }
-    if (hasNamed && (namespace == null || typeName == null)) {
-      throw ArgumentError(
-        'Both namespace and typeName are required for named registration.',
-      );
+    if (namespace != null && typeName == null) {
+      throw ArgumentError('typeName is required when namespace is provided.');
     }
+    if (typeName == null) {
+      return (namespace: null, typeName: null);
+    }
+    var resolvedNamespace = namespace;
+    var resolvedTypeName = typeName;
+    if (resolvedNamespace == null) {
+      final lastDot = typeName.lastIndexOf('.');
+      if (lastDot >= 0) {
+        resolvedNamespace = typeName.substring(0, lastDot);
+        resolvedTypeName = typeName.substring(lastDot + 1);
+      } else {
+        resolvedNamespace = '';
+      }
+    }
+    if (resolvedTypeName.isEmpty) {
+      throw ArgumentError('name must include a non-empty type name.');
+    }
+    return (namespace: resolvedNamespace, typeName: resolvedTypeName);
   }
 
   static String _nameKey(String namespace, String typeName) =>

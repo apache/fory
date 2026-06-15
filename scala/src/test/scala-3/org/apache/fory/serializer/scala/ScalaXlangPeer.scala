@@ -563,7 +563,7 @@ object ScalaXlangPeer {
   private def simpleStructFory(named: Boolean): Fory = {
     val fory = newFory()
     if named then {
-      ScalaSerializers.registerEnum(fory, classOf[Color], "demo", "color")
+      ScalaSerializers.registerEnum(fory, classOf[Color], "demo.color")
       registerStruct(fory, classOf[Item], "demo", "item")
       registerStruct(fory, classOf[SimpleStruct], "demo", "simple_struct")
     } else {
@@ -867,14 +867,7 @@ object ScalaXlangPeer {
   }
 
   private def listArrayListToArray(dataFile: Path): Unit = {
-    val value = readOne[XlangCompatibleInt32ListField](dataFile, int32ListFory())
-    val values = new Array[Int](value.values.size())
-    var i = 0
-    while i < value.values.size() do {
-      values(i) = value.values.get(i)
-      i += 1
-    }
-    writeOne(dataFile, int32ArrayFory(), XlangCompatibleInt32ArrayField(values))
+    roundTripValues(dataFile, int32ArrayFory())
   }
 
   private def listArrayArrayToList(dataFile: Path): Unit = {

@@ -86,11 +86,21 @@ SERIALIZERS = ["fory", "protobuf", "msgpack"]
 
 
 def format_ops_per_sec(value):
+    if value is None:
+        return "N/A"
     if HAS_MATPLOTLIB:
         return format_throughput_label(value)
     if value >= 1e6:
         return f"{value / 1e6:.2f}M"
     return f"{value / 1e3:.0f}K"
+
+
+def ns_to_ops_per_sec(value):
+    return 1e9 / value if value is not None and value > 0 else None
+
+
+def format_ns(value):
+    return f"{value:.1f}" if value is not None and value > 0 else "N/A"
 
 
 def format_ops_tick(value, _position):
@@ -321,22 +331,24 @@ def generate_markdown_report(results, output_dir):
                 continue
 
             data = results[datatype][op]
-            fory_ops = 1e9 / data.get("fory", float("inf")) if "fory" in data else 0
-            pb_ops = (
-                1e9 / data.get("protobuf", float("inf")) if "protobuf" in data else 0
-            )
-            mp_ops = 1e9 / data.get("msgpack", float("inf")) if "msgpack" in data else 0
+            fory_ops = ns_to_ops_per_sec(data.get("fory"))
+            pb_ops = ns_to_ops_per_sec(data.get("protobuf"))
+            mp_ops = ns_to_ops_per_sec(data.get("msgpack"))
 
-            fory_str = (
-                f"{fory_ops / 1e6:.2f}M"
-                if fory_ops >= 1e6
-                else f"{fory_ops / 1e3:.0f}K"
-            )
-            pb_str = f"{pb_ops / 1e6:.2f}M" if pb_ops >= 1e6 else f"{pb_ops / 1e3:.0f}K"
-            mp_str = f"{mp_ops / 1e6:.2f}M" if mp_ops >= 1e6 else f"{mp_ops / 1e3:.0f}K"
+            fory_str = format_ops_per_sec(fory_ops)
+            pb_str = format_ops_per_sec(pb_ops)
+            mp_str = format_ops_per_sec(mp_ops)
 
-            fory_vs_pb = f"{fory_ops / pb_ops:.2f}x" if pb_ops > 0 else "N/A"
-            fory_vs_mp = f"{fory_ops / mp_ops:.2f}x" if mp_ops > 0 else "N/A"
+            fory_vs_pb = (
+                f"{fory_ops / pb_ops:.2f}x"
+                if fory_ops is not None and pb_ops
+                else "N/A"
+            )
+            fory_vs_mp = (
+                f"{fory_ops / mp_ops:.2f}x"
+                if fory_ops is not None and mp_ops
+                else "N/A"
+            )
 
             report.append(
                 f"| {display_name(datatype)} | {op.title()} | {fory_str} | {pb_str} | {mp_str} | {fory_vs_pb} | {fory_vs_mp} |"
@@ -357,9 +369,9 @@ def generate_markdown_report(results, output_dir):
                 continue
 
             data = results[datatype][op]
-            fory_ns = f"{data.get('fory', 0):.1f}"
-            pb_ns = f"{data.get('protobuf', 0):.1f}"
-            mp_ns = f"{data.get('msgpack', 0):.1f}"
+            fory_ns = format_ns(data.get("fory"))
+            pb_ns = format_ns(data.get("protobuf"))
+            mp_ns = format_ns(data.get("msgpack"))
 
             report.append(
                 f"| {display_name(datatype)} | {op.title()} | {fory_ns} | {pb_ns} | {mp_ns} |"

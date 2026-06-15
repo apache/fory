@@ -465,8 +465,8 @@ internal static class Program
     private static byte[] CaseStructEvolvingOverride(byte[] input)
     {
         ForyRuntime fory = BuildFory(compatible: true);
-        fory.Register<EvolvingOverrideStruct>("test", "evolving_yes");
-        fory.Register<FixedOverrideStruct>("test", "evolving_off");
+        fory.Register<EvolvingOverrideStruct>("test.evolving_yes");
+        fory.Register<FixedOverrideStruct>("test.evolving_off");
 
         ReadOnlySequence<byte> sequence = new(input);
         EvolvingOverrideStruct evolving = fory.Deserialize<EvolvingOverrideStruct>(ref sequence);
@@ -662,7 +662,7 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: true);
         fory.Register<Color>("color");
         fory.Register<MyStruct>("my_struct");
-        fory.Register<MyExt, MyExtSerializer>(string.Empty, "my_ext");
+        fory.Register<MyExt, MyExtSerializer>("my_ext");
         fory.Register<MyWrapper>("my_wrapper");
         return RoundTripSingle<MyWrapper>(input, fory);
     }
@@ -672,7 +672,7 @@ internal static class Program
         ForyRuntime fory = BuildFory(compatible: false, checkStructVersion: true);
         fory.Register<Color>("color");
         fory.Register<MyStruct>("my_struct");
-        fory.Register<MyExt, MyExtSerializer>(string.Empty, "my_ext");
+        fory.Register<MyExt, MyExtSerializer>("my_ext");
 
         ReadOnlySequence<byte> sequence = new(input);
         List<byte> output = [];
@@ -1102,9 +1102,9 @@ internal static class Program
 
     private static void RegisterSimpleByName(ForyRuntime fory)
     {
-        fory.Register<Color>("demo", "color");
-        fory.Register<Item>("demo", "item");
-        fory.Register<SimpleStruct>("demo", "simple_struct");
+        fory.Register<Color>("demo.color");
+        fory.Register<Item>("demo.item");
+        fory.Register<SimpleStruct>("demo.simple_struct");
     }
 
     private static ForyRuntime BuildFory(bool compatible, bool trackRef = false, bool checkStructVersion = false)

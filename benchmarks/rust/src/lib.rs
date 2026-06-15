@@ -24,11 +24,13 @@ pub mod generated {
 
 use criterion::{black_box, Criterion};
 use data::{
-    BenchmarkCase, MediaContent, MediaContentList, NumericStruct, NumericStructList, Sample,
-    SampleList,
+    MediaContent, MediaContentList, NumericStruct, NumericStructList, Sample, SampleList,
+    SchemaMismatchCase,
 };
 use serializers::{
-    fory::ForySerializer, msgpack::MsgpackSerializer, protobuf::ProtobufSerializer,
+    fory::{schema_mismatch_enabled, ForySerializer},
+    msgpack::MsgpackSerializer,
+    protobuf::ProtobufSerializer,
     BenchmarkSerializer,
 };
 
@@ -81,12 +83,13 @@ fn run_benchmark_case<T>(
     protobuf_serializer: &ProtobufSerializer,
     msgpack_serializer: &MsgpackSerializer,
 ) where
-    T: BenchmarkCase,
+    T: SchemaMismatchCase,
     ForySerializer: BenchmarkSerializer<T>,
     ProtobufSerializer: BenchmarkSerializer<T>,
     MsgpackSerializer: BenchmarkSerializer<T>,
 {
     let data = T::create();
+    let mismatch = schema_mismatch_enabled();
     let mut group = c.benchmark_group(T::KIND.group_name());
 
     group.bench_function("fory_serialize", |b| {
@@ -96,48 +99,64 @@ fn run_benchmark_case<T>(
     });
 
     let fory_bytes = fory_serializer.serialize(&data).unwrap();
+    if mismatch {
+        let value: T::Read = fory_serializer.deserialize_as(&fory_bytes).unwrap();
+        T::verify_mismatch(&value, &data);
+    }
     group.bench_function("fory_deserialize", |b| {
         b.iter(|| {
-            let value: T = black_box(fory_serializer.deserialize(black_box(&fory_bytes)).unwrap());
-            black_box(value);
+            if mismatch {
+                let value: T::Read = black_box(
+                    fory_serializer
+                        .deserialize_as(black_box(&fory_bytes))
+                        .unwrap(),
+                );
+                black_box(value);
+            } else {
+                let value: T =
+                    black_box(fory_serializer.deserialize(black_box(&fory_bytes)).unwrap());
+                black_box(value);
+            }
         })
     });
 
-    group.bench_function("protobuf_serialize", |b| {
-        b.iter(|| {
-            let _ = black_box(protobuf_serializer.serialize(black_box(&data)).unwrap());
-        })
-    });
+    if !mismatch {
+        group.bench_function("protobuf_serialize", |b| {
+            b.iter(|| {
+                let _ = black_box(protobuf_serializer.serialize(black_box(&data)).unwrap());
+            })
+        });
 
-    let protobuf_bytes = protobuf_serializer.serialize(&data).unwrap();
-    group.bench_function("protobuf_deserialize", |b| {
-        b.iter(|| {
-            let value: T = black_box(
-                protobuf_serializer
-                    .deserialize(black_box(&protobuf_bytes))
-                    .unwrap(),
-            );
-            black_box(value);
-        })
-    });
+        let protobuf_bytes = protobuf_serializer.serialize(&data).unwrap();
+        group.bench_function("protobuf_deserialize", |b| {
+            b.iter(|| {
+                let value: T = black_box(
+                    protobuf_serializer
+                        .deserialize(black_box(&protobuf_bytes))
+                        .unwrap(),
+                );
+                black_box(value);
+            })
+        });
 
-    group.bench_function("msgpack_serialize", |b| {
-        b.iter(|| {
-            let _ = black_box(msgpack_serializer.serialize(black_box(&data)).unwrap());
-        })
-    });
+        group.bench_function("msgpack_serialize", |b| {
+            b.iter(|| {
+                let _ = black_box(msgpack_serializer.serialize(black_box(&data)).unwrap());
+            })
+        });
 
-    let msgpack_bytes = msgpack_serializer.serialize(&data).unwrap();
-    group.bench_function("msgpack_deserialize", |b| {
-        b.iter(|| {
-            let value: T = black_box(
-                msgpack_serializer
-                    .deserialize(black_box(&msgpack_bytes))
-                    .unwrap(),
-            );
-            black_box(value);
-        })
-    });
+        let msgpack_bytes = msgpack_serializer.serialize(&data).unwrap();
+        group.bench_function("msgpack_deserialize", |b| {
+            b.iter(|| {
+                let value: T = black_box(
+                    msgpack_serializer
+                        .deserialize(black_box(&msgpack_bytes))
+                        .unwrap(),
+                );
+                black_box(value);
+            })
+        });
+    }
 
     group.finish();
 }

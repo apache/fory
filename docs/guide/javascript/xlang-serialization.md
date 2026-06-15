@@ -20,29 +20,29 @@ license: |
 ---
 
 Fory JavaScript serializes to the same binary format as the Java, Python, C++,
-Go, Rust, C#, Swift, Dart, Scala, and Kotlin Fory runtimes. You can write a
+Go, Rust, C#, Swift, Dart, Scala, and Kotlin Fory implementations. You can write a
 message in JavaScript and read it in Java, or any other direction, without a
 conversion layer.
 
 Things to keep in mind:
 
-- The Fory JavaScript runtime reads and writes cross-language payloads only (it does not support any native-mode format).
+- Fory JavaScript reads and writes cross-language payloads only; it does not support any native-mode format.
 - JavaScript does not support out-of-band mode.
 
 ## Requirements for a Successful Round Trip
 
-For a message to survive a round trip between JavaScript and another runtime:
+For a message to survive a round trip between JavaScript and another language:
 
-1. **Same type identity** on both sides — same numeric ID, or same `namespace + typeName`.
+1. **Same type identity** on both sides — same numeric ID, or same `typeName`.
 2. **Compatible field types** — a `Type.int32()` field in JavaScript matches Java `int`, Go `int32`, C# `int`.
 3. **Same nullability** — if one side marks a field nullable, the other should too.
 4. Compatible schema evolution on both sides. JavaScript enables it by default.
 5. **Same reference tracking config** if your data has shared or circular references.
 
-## Step-by-Step: JavaScript to Another Runtime
+## Step-by-Step: JavaScript to Another Peer
 
-1. Define the JavaScript schema with the same type name or numeric ID used by the other runtime.
-2. Register the schema in both runtimes.
+1. Define the JavaScript schema with the same type name or numeric ID used by the peer.
+2. Register the schema in both peers.
 3. Match field types, nullability, and schema-evolution settings.
 4. Test a real payload end-to-end before shipping.
 
@@ -68,7 +68,7 @@ const bytes = serialize({
 });
 ```
 
-On the other side, register the same `example.message` type (same name or same numeric ID) using the peer runtime's API:
+On the other side, register the same `example.message` type (same name or same numeric ID) using the peer language's API:
 
 - [Java guide](../java/index.md)
 - [Python guide](../python/index.md)
@@ -121,7 +121,7 @@ listed below.
 
 ## Polymorphic Fields
 
-`Type.any()` lets a field hold different types at runtime, but it is harder to keep in sync across languages. Prefer explicit field schemas whenever possible.
+`Type.any()` lets a field hold different concrete types, but it is harder to keep in sync across languages. Prefer explicit field schemas whenever possible.
 
 ```ts
 const wrapperType = Type.struct(
@@ -142,11 +142,11 @@ const fory = new Fory();
 fory.register(Type.enum({ typeId: 210 }, Color));
 ```
 
-Use the same type ID or type name in every peer runtime.
+Use the same type ID or type name in every peer.
 
 ## Safety Limits
 
-The `maxDepth`, `maxBinarySize`, and `maxCollectionSize` options protect the JavaScript runtime from overly large payloads. They do not change the binary format — they only control what the local runtime is willing to accept.
+The `maxDepth` option bounds nested payloads. It does not change the binary format; it only controls what the local `Fory` instance accepts.
 
 ## Related Topics
 

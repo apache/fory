@@ -23,7 +23,6 @@ import java.util.Collection;
 import java.util.Map;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
-import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
@@ -70,11 +69,6 @@ enum DefaultCodecFormat implements Encoding {
   public MapEncoderBuilder newMapEncoder(
       final TypeRef<? extends Map<?, ?>> mapType, final TypeRef<?> beanToken) {
     return new MapEncoderBuilder(mapType, beanToken);
-  }
-
-  @Override
-  public BinaryRow newRow(final Schema schema) {
-    return new BinaryRow(schema);
   }
 
   @Override

@@ -52,16 +52,12 @@ fory.register(User.self, id: 1)
 try fory.register(User.self, name: "com.example.User")
 ```
 
-`name` is split by `.`:
+`name` is split by the last `.`:
 
 - namespace: `com.example`
 - type name: `User`
 
-### Explicit namespace + name
-
-```swift
-try fory.register(User.self, namespace: "com.example", name: "User")
-```
+Simple names such as `User` use an empty namespace. Empty names and names ending in `.` are invalid.
 
 ## Consistency Rules
 
@@ -73,4 +69,4 @@ Keep registration mapping consistent across peers:
 
 ## Dynamic Types and Registration
 
-When serializing dynamic values (`Any`, `AnyObject`, `any Serializer`) that contain user-defined types, the concrete runtime types must still be registered.
+When serializing dynamic values (`Any`, `AnyObject`, `any Serializer`) that contain user-defined types, the concrete types must still be registered.

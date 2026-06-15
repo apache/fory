@@ -121,7 +121,7 @@ class StreamPickleBufferValue:
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_roundtrip_primitives_and_strings(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     values = [
         0,
         -123456789,
@@ -140,7 +140,7 @@ def test_stream_roundtrip_primitives_and_strings(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_roundtrip_nested_collections(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     value = {
         "name": "stream-object",
         "items": [1, 2, {"k1": "v1", "k2": [3, 4, 5]}],
@@ -154,7 +154,7 @@ def test_stream_roundtrip_nested_collections(xlang):
 
 
 def test_stream_roundtrip_reference_graph_python_mode():
-    fory = pyfory.Fory(xlang=False, ref=True)
+    fory = pyfory.Fory(xlang=False, ref=True, compatible=False)
     shared = ["x", 1, 2]
     value = {"a": shared, "b": shared}
     cycle = []
@@ -172,7 +172,7 @@ def test_stream_roundtrip_reference_graph_python_mode():
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     expected = [
         2026,
         "multi-object-stream",
@@ -193,7 +193,7 @@ def test_stream_deserialize_multiple_objects_from_single_stream(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_backed_buffer_struct_deserialize_shrinks_each_struct(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     fory.register(StreamStructValue)
     first = StreamStructValue(101, "first", list(range(6000)))
     second = StreamStructValue(202, "second", list(range(6000, 0, -1)))
@@ -211,7 +211,7 @@ def test_stream_backed_buffer_struct_deserialize_shrinks_each_struct(xlang):
 
 
 def test_stream_backed_buffer_pickle_buffer_not_corrupted_after_next_struct():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(StreamPickleBufferValue)
     first_payload = b"a" * 7000
     second_payload = b"b" * 7000
@@ -239,7 +239,7 @@ def test_stream_backed_buffer_pickle_buffer_not_corrupted_after_next_struct():
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_stream_deserialize_truncated_error(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     data = fory.serialize({"k": "value", "numbers": [1, 2, 3, 4]})
     truncated = data[:-1]
 
@@ -249,7 +249,7 @@ def test_stream_deserialize_truncated_error(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_dump_matches_dumps_bytes(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     value = {
         "k": [1, 2, 3, 4],
         "nested": {"x": True, "y": "hello"},
@@ -264,7 +264,7 @@ def test_dump_matches_dumps_bytes(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_dump_map_chunk_path_matches_dumps(xlang):
-    fory = pyfory.Fory(xlang=xlang, ref=True)
+    fory = pyfory.Fory(xlang=xlang, ref=True, compatible=xlang)
     value = {f"k{i}": i for i in range(300)}
 
     sink = OneByteWriteStream()
@@ -277,7 +277,7 @@ def test_dump_map_chunk_path_matches_dumps(xlang):
 
 
 def test_dump_large_list_of_structs_multiple_flushes_matches_dumps():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(StreamStructValue)
     value = [StreamStructValue(i, f"item-{i}-{'x' * 56}", [i, i + 1, i + 2, i + 3, i + 4]) for i in range(1800)]
 
@@ -293,7 +293,7 @@ def test_dump_large_list_of_structs_multiple_flushes_matches_dumps():
 
 
 def test_dump_large_map_with_struct_values_matches_dumps():
-    fory = pyfory.Fory(xlang=False, ref=True, strict=False)
+    fory = pyfory.Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register(StreamStructValue)
     value = {f"k{i}": StreamStructValue(i, "y" * 96, [i, i + 1, i + 2, i + 3]) for i in range(900)}
 
