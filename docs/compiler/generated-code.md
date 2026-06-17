@@ -1384,9 +1384,11 @@ void main() {
 
 When a schema contains services and the compiler is run with `--grpc`, Dart
 generation emits one `<module>_grpc.dart` file per schema next to the model
-types. It targets `package:grpc` and serializes each request and response with
-the schema module's `getFory()` instance (for example
-`GreeterForyModule.getFory()`).
+types. It targets `package:grpc`. Request and response serialization uses a Fory
+runtime the companion obtains automatically and that registers the schema's
+types on first use, so no manual registration is required; an application may
+optionally inject a custom `Fory` via the schema module's `install(...)` before
+the first call.
 
 All four RPC modes are generated: unary, server-streaming, client-streaming, and
 bidirectional. The client class extends `Client`; the service base class extends
@@ -1411,9 +1413,10 @@ abstract class GreeterServiceBase extends Service {
 
 A single-response client method returns `ResponseFuture<R>` (client-streaming
 adapts the streaming call with `.single`); a streaming-response method returns
-`ResponseStream<R>`. On the server, single requests arrive as `Future<Q>` and
-streaming requests as `Stream<Q>`; implementations override the abstract methods,
-returning a `Future` for single responses or a `Stream` for streaming responses.
+`ResponseStream<R>`. On the server, implementations override the abstract methods,
+which receive a single request as `Q` and a client-streaming request as
+`Stream<Q>`, and return a `Future` for single responses or a `Stream` for
+streaming responses.
 Applications compiling these files must provide a `grpc` dependency; the Fory Dart
 runtime does not add one. The original IDL method names are used in the gRPC wire
 paths.

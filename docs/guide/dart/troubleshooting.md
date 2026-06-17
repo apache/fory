@@ -146,14 +146,6 @@ not add gRPC as a hard dependency.
 **Fix**: Add `grpc` to your `pubspec.yaml` (and the `build_runner` dev
 dependency), then run `dart pub get`. See [gRPC Support](grpc-support.md).
 
-## `getFory()` throws before the first gRPC call
-
-**Cause**: The generated gRPC companion resolves its `Fory` instance from the
-schema module, which must be installed first.
-
-**Fix**: Call `<Schema>ForyModule.install(fory)` once during startup before
-issuing or serving any RPC.
-
 ## A protobuf client cannot decode a Fory gRPC service
 
 **Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message

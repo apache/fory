@@ -81,35 +81,23 @@ generated models (this step is required before the code can run):
 dart run build_runner build --delete-conflicting-outputs
 ```
 
-For this schema, the Dart generator emits:
+For this schema, the Dart generator emits (the model file and module are named
+from the package leaf, `greeter`):
 
-| File                                             | Purpose                                              |
-| ------------------------------------------------ | ---------------------------------------------------- |
-| `demo/greeter/demo_greeter.dart`                 | Fory model types and the schema module               |
-| `demo/greeter/demo_greeter.fory.dart`            | Serializers and registration (built by build_runner) |
-| `demo/greeter/demo_greeter_grpc.dart`            | gRPC client, service base, and method descriptors    |
-| `DemoGreeterForyModule` in `demo_greeter.dart`   | Fory registration module for generated types         |
-| `GreeterServiceBase` in `demo_greeter_grpc.dart` | Base class for server implementations                |
-| `GreeterClient` in `demo_greeter_grpc.dart`      | Client stub for gRPC calls                           |
+| File                                        | Purpose                                              |
+| ------------------------------------------- | ---------------------------------------------------- |
+| `demo/greeter/greeter.dart`                 | Fory model types and the schema module               |
+| `demo/greeter/greeter.fory.dart`            | Serializers and registration (built by build_runner) |
+| `demo/greeter/greeter_grpc.dart`            | gRPC client, service base, and method descriptors    |
+| `GreeterForyModule` in `greeter.dart`       | Fory registration module for generated types         |
+| `GreeterServiceBase` in `greeter_grpc.dart` | Base class for server implementations                |
+| `GreeterClient` in `greeter_grpc.dart`      | Client stub for gRPC calls                           |
 
-## Register Types
-
-The generated gRPC companion serializes through the schema module's `Fory`
-instance. Create a `Fory`, install the module once at startup, and the generated
-client and service base pick it up automatically:
-
-```dart
-import 'package:fory/fory.dart';
-import 'demo/greeter/demo_greeter.dart';
-
-void setUpFory() {
-  DemoGreeterForyModule.install(Fory());
-}
-```
-
-`install` registers every generated type and stores the `Fory` instance that the
-companion's `getFory()` returns. Service implementations and clients do not
-perform manual serializer registration.
+The generated client and service base obtain a ready `Fory` automatically and
+register the schema's types on first use, so no manual registration step is
+required. To share a custom `Fory` (for example one configured with extra
+modules), call `GreeterForyModule.install(yourFory)` once before the first RPC;
+this is optional.
 
 ## Implement a Server
 
@@ -119,8 +107,8 @@ Extend the generated `GreeterServiceBase` and host it with grpc-dart's `Server`:
 import 'dart:io';
 
 import 'package:grpc/grpc.dart';
-import 'demo/greeter/demo_greeter.dart';
-import 'demo/greeter/demo_greeter_grpc.dart';
+import 'demo/greeter/greeter.dart';
+import 'demo/greeter/greeter_grpc.dart';
 
 class GreeterService extends GreeterServiceBase {
   @override
@@ -131,7 +119,6 @@ class GreeterService extends GreeterServiceBase {
 }
 
 Future<void> main() async {
-  DemoGreeterForyModule.install(Fory());
   final server = Server.create(services: [GreeterService()]);
   await server.serve(address: InternetAddress.loopbackIPv4, port: 50051);
 }
@@ -143,11 +130,10 @@ Use the generated client with a `ClientChannel`:
 
 ```dart
 import 'package:grpc/grpc.dart';
-import 'demo/greeter/demo_greeter.dart';
-import 'demo/greeter/demo_greeter_grpc.dart';
+import 'demo/greeter/greeter.dart';
+import 'demo/greeter/greeter_grpc.dart';
 
 Future<void> main() async {
-  DemoGreeterForyModule.install(Fory());
   final channel = ClientChannel(
     'localhost',
     port: 50051,
@@ -258,14 +244,15 @@ the gRPC path, while the Dart methods use camelCase names.
 
 ## Generated Module Names
 
-Dart schema module names come from the source file stem. They do not come from
-the package and they do not come from gRPC service names.
+Dart model files and schema modules are named after the package's last segment,
+not the gRPC service name. (When a schema has no package, the source file stem is
+used instead.)
 
-| Schema input       | Model file          | Schema module           |
-| ------------------ | ------------------- | ----------------------- |
-| `service.fdl`      | `service.dart`      | `ServiceForyModule`     |
-| `order-events.fdl` | `order_events.dart` | `OrderEventsForyModule` |
-| `greeter.fdl`      | `greeter.dart`      | `GreeterForyModule`     |
+| Schema input (package)          | Model file          | Schema module           |
+| ------------------------------- | ------------------- | ----------------------- |
+| `service.fdl` (`demo.greeter`)  | `greeter.dart`      | `GreeterForyModule`     |
+| `api.fdl` (`demo.order_events`) | `order_events.dart` | `OrderEventsForyModule` |
+| `greeter.fdl` (`demo.greeter`)  | `greeter.dart`      | `GreeterForyModule`     |
 
 A gRPC service named `Greeter` still generates the companion
 `<stem>_grpc.dart` with `GreeterClient` and `GreeterServiceBase`; it does not
@@ -290,12 +277,6 @@ All normal gRPC operational features still belong to your gRPC stack:
 
 Add `grpc` to your application dependencies. Generated Fory service files import
 grpc-dart APIs, but `fory` intentionally does not depend on gRPC.
-
-### `getFory()` Throws Before First Use
-
-Call `<Schema>ForyModule.install(fory)` once during startup before issuing or
-serving any RPC. The generated companion resolves its `Fory` instance through
-that module.
 
 ### Generated Code References a Missing `.fory.dart` Part
 
