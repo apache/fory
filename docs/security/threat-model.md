@@ -26,6 +26,13 @@ deserialization APIs from untrusted or partially trusted sources. The embedding
 application owns where those bytes come from and which Fory configuration,
 registered types, schemas, and policies are used to read them.
 
+The adversary model for untrusted deserialization is a sender that can craft
+encoded bytes or stream behavior presented to a Fory read API. It does not assume
+the sender can change the embedding application's Fory configuration, registered
+type set, `TypeChecker` or equivalent allow-list policy, schema definitions,
+classloader, or other active policy objects unless the application itself exposes
+those controls.
+
 Fory security boundaries include:
 
 - Runtime safety, including avoiding crashes, panics, undefined behavior, and
@@ -37,6 +44,14 @@ Fory security boundaries include:
   materialized.
 - Cleanup boundaries, where state created during a failed root operation must
   not leak into later operations.
+
+Runtime serializer code generation and JIT compilation are not paths for
+executing encoded input. They operate on types and schemas after the active
+registration check, `TypeChecker`, schema check, or policy check has accepted the
+type surface. When class registration is disabled, `TypeChecker` or an
+equivalent allow-list policy is the relevant gate. Generated serializer code is
+derived from checked type descriptors rather than from attacker-controlled byte
+contents.
 
 The [deserialization security model](deserialization.md) defines how to
 classify these boundaries for untrusted deserialization paths.
