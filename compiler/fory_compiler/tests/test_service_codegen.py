@@ -3222,3 +3222,99 @@ def test_dart_grpc_proto_and_fbs_service_codegen():
     assert (
         "class FbsSvcClient extends Client {" in fbs_dart["demo/fbs/demo_fbs_grpc.dart"]
     )
+
+
+def test_dart_grpc_nested_rpc_payloads():
+    from fory_compiler.generators.dart import DartGenerator
+
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.nested;
+
+            message Envelope {
+                message Request {
+                    string name = 1;
+                }
+                message Reply {
+                    string name = 1;
+                }
+            }
+
+            service Nested {
+                rpc Call (Envelope.Request) returns (Envelope.Reply);
+            }
+            """
+        )
+    )
+    content = generate_service_files(schema, DartGenerator)[
+        "demo/nested/demo_nested_grpc.dart"
+    ]
+    assert "ClientMethod<_models.Envelope_Request, _models.Envelope_Reply>(" in content
+    assert "Future<_models.Envelope_Reply> call(" in content
+    assert "_models.Envelope.Request" not in content
+
+
+def test_dart_grpc_imported_rpc_payloads(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.common;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            service Api {
+                rpc Call (demo.common.Shared) returns (demo.common.Shared);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../common/common.dart' as demo_common;" in content
+    assert "ClientMethod<demo_common.Shared, demo_common.Shared>(" in content
+    assert "_models.demo.common.Shared" not in content
+
+
+def test_dart_grpc_rejects_reserved_method_names():
+    from fory_compiler.generators.dart import DartGenerator
+
+    import pytest
+
+    for rpc_name, emitted in [("ToString", "toString"), ("HashCode", "hashCode")]:
+        schema = parse_fdl(
+            dedent(
+                f"""
+                package demo.names;
+
+                message Req {{}}
+                message Res {{}}
+
+                service Svc {{
+                    rpc {rpc_name} (Req) returns (Res);
+                }}
+                """
+            )
+        )
+        with pytest.raises(ValueError) as excinfo:
+            generate_service_files(schema, DartGenerator)
+        msg = str(excinfo.value)
+        assert "inherited Dart member" in msg
+        assert f"Svc.{rpc_name} -> {emitted}" in msg

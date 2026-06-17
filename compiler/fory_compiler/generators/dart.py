@@ -1292,8 +1292,10 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
         lines.extend(
             [
                 f"{self.indent_str * (indent + 1)}static Fory getFory() {{",
-                f"{self.indent_str * (indent + 2)}final fory = _fory;",
-                f"{self.indent_str * (indent + 2)}if (fory == null) throw StateError('Call {self.module_type_name()}.install(...) before using generated helpers.');",
+                f"{self.indent_str * (indent + 2)}final existing = _fory;",
+                f"{self.indent_str * (indent + 2)}if (existing != null) return existing;",
+                f"{self.indent_str * (indent + 2)}final fory = Fory();",
+                f"{self.indent_str * (indent + 2)}install(fory);",
                 f"{self.indent_str * (indent + 2)}return fory;",
                 f"{self.indent_str * (indent + 1)}}}",
                 "",

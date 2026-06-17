@@ -18,7 +18,7 @@
 """Dart gRPC service generator helpers."""
 
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 from fory_compiler.generators.base import GeneratedFile
 from fory_compiler.ir.ast import RpcMethod, Service
@@ -26,6 +26,10 @@ from fory_compiler.ir.ast import RpcMethod, Service
 
 class DartServiceGeneratorMixin:
     """Generates Dart gRPC service companions for all four RPC modes."""
+
+    _DART_RESERVED_METHOD_NAMES = frozenset(
+        {"toString", "hashCode", "noSuchMethod", "runtimeType"}
+    )
 
     def generate_services(self) -> List[GeneratedFile]:
         local_services = [
@@ -37,6 +41,7 @@ class DartServiceGeneratorMixin:
             return []
         self.check_dart_grpc_service_collisions(local_services)
         self.check_dart_grpc_method_collisions(local_services)
+        self.check_dart_grpc_reserved_method_names(local_services)
         return [self.generate_grpc_module(local_services)]
 
     def check_dart_grpc_service_collisions(self, services: List[Service]) -> None:
@@ -63,13 +68,37 @@ class DartServiceGeneratorMixin:
                     )
                 seen[emitted] = method.name
 
+    def check_dart_grpc_reserved_method_names(self, services: List[Service]) -> None:
+        offenders = []
+        for service in services:
+            for method in service.methods:
+                emitted = self.dart_grpc_method_name(method)
+                if emitted in self._DART_RESERVED_METHOD_NAMES:
+                    offenders.append(f"{service.name}.{method.name} -> {emitted}")
+        if offenders:
+            joined = "\n  - " + "\n  - ".join(offenders)
+            raise ValueError(
+                "Dart gRPC method name collides with an inherited Dart member "
+                "(Object/Client/Service) and would produce an invalid override; "
+                "rename the RPC method:" + joined
+            )
+
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Emit a grpc-dart companion module for schema services."""
         models_output = Path(
             self.output_file_path()
-        )  # e.g. "demo/greeter/demo_greeter.dart"
-        models_stem = models_output.stem  # e.g. "demo_greeter"
+        )  # e.g. "demo/greeter/greeter.dart"
+        models_stem = models_output.stem  # e.g. "greeter"
         grpc_path = str(models_output.with_name(f"{models_stem}_grpc.dart"))
+
+        self._grpc_payload_imports: Dict[str, Tuple[str, str]] = {}
+
+        body: List[str] = []
+        for service in services:
+            body.extend(self.generate_dart_grpc_client(service))
+            body.append("")
+            body.extend(self.generate_dart_grpc_service_base(service))
+            body.append("")
 
         lines: List[str] = []
         lines.append(self.get_license_header("//"))
@@ -85,6 +114,8 @@ class DartServiceGeneratorMixin:
         lines.append("import 'package:grpc/grpc.dart';")
         lines.append("")
         lines.append(f"import '{models_stem}.dart' as _models;")
+        for path, alias in sorted(self._grpc_payload_imports.values()):
+            lines.append(f"import '{path}' as {alias};")
         lines.append("")
         lines.append(
             "// grpc-dart Service self-registers via $methods; "
@@ -102,22 +133,43 @@ class DartServiceGeneratorMixin:
         lines.append(f"  return {fory}.deserialize<T>(u8);")
         lines.append("}")
         lines.append("")
-
-        for service in services:
-            lines.extend(self.generate_dart_grpc_client(service))
-            lines.append("")
-            lines.extend(self.generate_dart_grpc_service_base(service))
-            lines.append("")
+        lines.extend(body)
 
         return GeneratedFile(path=grpc_path, content="\n".join(lines))
+
+    def _dart_grpc_type_ref(self, named_type) -> str:
+        """Return the Dart reference for an RPC request/response type.
+
+        Resolves through the Dart generator's type machinery so nested types
+        use their flattened symbol (`Envelope.Request` -> `Envelope_Request`)
+        and imported types use an alias-qualified reference plus an emitted
+        import, instead of the raw IDL name.
+        """
+        type_def = self.resolve_type(named_type.name)
+        if type_def is None:
+            return f"_models.{named_type.name}"
+        if self.is_imported_type(type_def):
+            schema = self._load_schema(type_def.location.file)
+            if schema is not None:
+                alias = self.safe_identifier(
+                    schema.package.replace(".", "_")
+                    if schema.package
+                    else Path(type_def.location.file).stem
+                )
+                self._grpc_payload_imports[type_def.location.file] = (
+                    self._relative_import_path(schema),
+                    alias,
+                )
+            return self.ref_name(type_def)
+        return f"_models.{self.local_name(type_def)}"
 
     def generate_dart_grpc_client(self, service: Service) -> List[str]:
         lines: List[str] = []
         lines.append(f"class {service.name}Client extends Client {{")
         for method in service.methods:
             method_const = f"_${self.dart_grpc_method_name(method)}"
-            req_t = f"_models.{method.request_type.name}"
-            res_t = f"_models.{method.response_type.name}"
+            req_t = self._dart_grpc_type_ref(method.request_type)
+            res_t = self._dart_grpc_type_ref(method.response_type)
             full_path = self.get_grpc_method_path(service, method)
             lines.append(f"  static final {method_const} =")
             lines.append(f"      ClientMethod<{req_t}, {res_t}>(")
@@ -139,8 +191,8 @@ class DartServiceGeneratorMixin:
     def _dart_grpc_client_method(self, method: RpcMethod) -> List[str]:
         streaming_request, streaming_response = self._dart_grpc_call_kind(method)
         method_const = f"_${self.dart_grpc_method_name(method)}"
-        req_t = f"_models.{method.request_type.name}"
-        res_t = f"_models.{method.response_type.name}"
+        req_t = self._dart_grpc_type_ref(method.request_type)
+        res_t = self._dart_grpc_type_ref(method.response_type)
         method_name = self.dart_grpc_method_name(method)
 
         return_type = (
@@ -210,8 +262,8 @@ class DartServiceGeneratorMixin:
         lines.append(f"  {service.name}ServiceBase() {{")
         for method in service.methods:
             streaming_request, streaming_response = self._dart_grpc_call_kind(method)
-            req_t = f"_models.{method.request_type.name}"
-            res_t = f"_models.{method.response_type.name}"
+            req_t = self._dart_grpc_type_ref(method.request_type)
+            res_t = self._dart_grpc_type_ref(method.response_type)
             method_name = self.dart_grpc_method_name(method)
             lines.append("    $addMethod(")
             lines.append(f"      ServiceMethod<{req_t}, {res_t}>(")
@@ -234,8 +286,8 @@ class DartServiceGeneratorMixin:
 
     def _dart_grpc_service_method(self, method: RpcMethod) -> List[str]:
         streaming_request, streaming_response = self._dart_grpc_call_kind(method)
-        req_t = f"_models.{method.request_type.name}"
-        res_t = f"_models.{method.response_type.name}"
+        req_t = self._dart_grpc_type_ref(method.request_type)
+        res_t = self._dart_grpc_type_ref(method.response_type)
         method_name = self.dart_grpc_method_name(method)
 
         # grpc-dart hands the handler a Future<Q> for a single request and a
