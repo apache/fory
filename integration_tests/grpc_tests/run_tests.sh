@@ -36,6 +36,8 @@ mvn --no-transfer-progress -DskipTests package
 cd "${SCRIPT_DIR}/dart"
 dart pub get
 dart run build_runner build
+dart analyze bin lib/generated/*/*_grpc.dart
+dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \
   -Dtest="${TEST_CLASSES}" \

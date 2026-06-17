@@ -23,11 +23,11 @@ import io.grpc.Server;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
-public class DartGrpcInteropTest extends GrpcTestBase {
+public class DartGrpcTest extends GrpcTestBase {
 
   @Test
   public void testJavaServerDartClient() throws Exception {
-    Server server = startJavaFdlServer();
+    Server server = startJavaAllSchemasServer();
     try {
       runDart("dart-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
@@ -38,6 +38,7 @@ public class DartGrpcInteropTest extends GrpcTestBase {
 
   @Test
   public void testDartServerJavaClient() throws Exception {
-    exercisePeerServer("dart-grpc", "Dart", "fory-grpc-dart-", dartCommand("server"), this::exerciseFdl);
+    exercisePeerServer(
+        "dart-grpc", "Dart", "fory-grpc-dart-", dartCommand("server"), this::exerciseAllSchemas);
   }
 }

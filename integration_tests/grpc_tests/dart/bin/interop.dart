@@ -18,52 +18,14 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:fory/fory.dart';
 import 'package:grpc/grpc.dart';
 
 import 'package:fory_grpc_interop/generated/grpc_fdl/grpc_fdl.dart';
 import 'package:fory_grpc_interop/generated/grpc_fdl/grpc_fdl_grpc.dart';
-
-void _installFory() {
-  GrpcFdlForyModule.install(Fory(compatible: true));
-}
-
-GrpcFdlRequest _request(String id, int count, String payload) {
-  final r = GrpcFdlRequest();
-  r.id = id;
-  r.count = count;
-  r.payload = payload;
-  return r;
-}
-
-GrpcFdlResponse _response(GrpcFdlRequest request, String tag, int offset) {
-  final r = GrpcFdlResponse();
-  r.id = '$tag:${request.id}';
-  r.count = request.count + offset;
-  r.payload = '$tag:${request.payload}';
-  return r;
-}
-
-GrpcFdlResponse _aggregate(List<GrpcFdlRequest> requests) {
-  final r = GrpcFdlResponse();
-  r.id = 'client:${requests.map((e) => e.id).join('+')}';
-  r.count = requests.fold(0, (sum, e) => sum + e.count);
-  r.payload = 'client:${requests.map((e) => e.payload).join('+')}';
-  return r;
-}
-
-GrpcFdlUnion _unionRequest(GrpcFdlRequest request) =>
-    GrpcFdlUnion.request(request);
-
-GrpcFdlUnion _unionResponse(GrpcFdlRequest request, String tag, int offset) =>
-    GrpcFdlUnion.response(_response(request, tag, offset));
-
-GrpcFdlUnion _unionAggregate(List<GrpcFdlRequest> requests) =>
-    GrpcFdlUnion.response(_aggregate(requests));
-
-GrpcFdlRequest _requestFromUnion(GrpcFdlUnion union) => union.requestValue;
-
-// ---- Assertion helpers: throw on mismatch so main exits non-zero ----
+import 'package:fory_grpc_interop/generated/grpc_fbs/grpc_fbs.dart';
+import 'package:fory_grpc_interop/generated/grpc_fbs/grpc_fbs_grpc.dart';
+import 'package:fory_grpc_interop/generated/grpc_pb/grpc_pb.dart';
+import 'package:fory_grpc_interop/generated/grpc_pb/grpc_pb_grpc.dart';
 
 void _expect(Object? actual, Object? expected, String what) {
   if (actual != expected) {
@@ -84,180 +46,450 @@ void _expectList(List<Object?> actual, List<Object?> expected, String what) {
   }
 }
 
+GrpcFdlRequest _fdlRequest(String id, int count, String payload) {
+  return GrpcFdlRequest()
+    ..id = id
+    ..count = count
+    ..payload = payload;
+}
+
+GrpcFdlResponse _fdlResponse(GrpcFdlRequest request, String tag, int offset) {
+  return GrpcFdlResponse()
+    ..id = '$tag:${request.id}'
+    ..count = request.count + offset
+    ..payload = '$tag:${request.payload}';
+}
+
+GrpcFdlResponse _fdlAggregate(List<GrpcFdlRequest> requests) {
+  return GrpcFdlResponse()
+    ..id = 'client:${requests.map((e) => e.id).join('+')}'
+    ..count = requests.fold(0, (sum, e) => sum + e.count)
+    ..payload = 'client:${requests.map((e) => e.payload).join('+')}';
+}
+
+GrpcFdlUnion _fdlUnionRequest(GrpcFdlRequest request) =>
+    GrpcFdlUnion.request(request);
+
+GrpcFdlUnion _fdlUnionResponse(
+  GrpcFdlRequest request,
+  String tag,
+  int offset,
+) => GrpcFdlUnion.response(_fdlResponse(request, tag, offset));
+
+GrpcFdlUnion _fdlUnionAggregate(List<GrpcFdlRequest> requests) =>
+    GrpcFdlUnion.response(_fdlAggregate(requests));
+
+GrpcFdlRequest _fdlRequestFromUnion(GrpcFdlUnion union) => union.requestValue;
+
+GrpcFbsRequest _fbsRequest(String id, int count, String payload) {
+  return GrpcFbsRequest()
+    ..id = id
+    ..count = count
+    ..payload = payload;
+}
+
+GrpcFbsResponse _fbsResponse(GrpcFbsRequest request, String tag, int offset) {
+  return GrpcFbsResponse()
+    ..id = '$tag:${request.id}'
+    ..count = request.count + offset
+    ..payload = '$tag:${request.payload}';
+}
+
+GrpcFbsResponse _fbsAggregate(List<GrpcFbsRequest> requests) {
+  return GrpcFbsResponse()
+    ..id = 'client:${requests.map((e) => e.id).join('+')}'
+    ..count = requests.fold(0, (sum, e) => sum + e.count)
+    ..payload = 'client:${requests.map((e) => e.payload).join('+')}';
+}
+
+GrpcFbsUnion _fbsUnionRequest(GrpcFbsRequest request) =>
+    GrpcFbsUnion.grpcFbsRequest(request);
+
+GrpcFbsUnion _fbsUnionResponse(
+  GrpcFbsRequest request,
+  String tag,
+  int offset,
+) => GrpcFbsUnion.grpcFbsResponse(_fbsResponse(request, tag, offset));
+
+GrpcFbsUnion _fbsUnionAggregate(List<GrpcFbsRequest> requests) =>
+    GrpcFbsUnion.grpcFbsResponse(_fbsAggregate(requests));
+
+GrpcFbsRequest _fbsRequestFromUnion(GrpcFbsUnion union) =>
+    union.grpcFbsRequestValue;
+
+GrpcPbRequest _pbRequest(String id, int count, GrpcPbRequest_Payload payload) {
+  return GrpcPbRequest()
+    ..id = id
+    ..count = count
+    ..payload = payload;
+}
+
+GrpcPbResponse_Payload? _pbResponsePayload(
+  GrpcPbRequest_Payload? payload,
+  String tag,
+  int offset,
+) {
+  if (payload == null) return null;
+  if (payload.isText) {
+    return GrpcPbResponse_Payload.text('$tag:${payload.textValue}');
+  }
+  return GrpcPbResponse_Payload.number(payload.numberValue + offset);
+}
+
+GrpcPbResponse _pbResponse(GrpcPbRequest request, String tag, int offset) {
+  return GrpcPbResponse()
+    ..id = '$tag:${request.id}'
+    ..count = request.count + offset
+    ..payload = _pbResponsePayload(request.payload, tag, offset);
+}
+
+GrpcPbResponse _pbAggregate(List<GrpcPbRequest> requests) {
+  final ids = requests.map((e) => e.id).join('+');
+  return GrpcPbResponse()
+    ..id = 'client:$ids'
+    ..count = requests.fold(0, (sum, e) => sum + e.count)
+    ..payload = GrpcPbResponse_Payload.text('client:$ids');
+}
+
 class FdlService extends FdlGrpcServiceServiceBase {
   @override
-  Future<GrpcFdlResponse> unaryMessage(
-    ServiceCall call,
-    GrpcFdlRequest request,
-  ) async {
-    return _response(request, 'unary', 10);
-  }
+  Future<GrpcFdlResponse> unaryMessage(ServiceCall c, GrpcFdlRequest r) async =>
+      _fdlResponse(r, 'unary', 10);
 
   @override
   Stream<GrpcFdlResponse> serverStreamMessage(
-    ServiceCall call,
-    GrpcFdlRequest request,
+    ServiceCall c,
+    GrpcFdlRequest r,
   ) async* {
-    for (var index = 0; index < 3; index++) {
-      yield _response(request, 'server-$index', index);
+    for (var i = 0; i < 3; i++) {
+      yield _fdlResponse(r, 'server-$i', i);
     }
   }
 
   @override
   Future<GrpcFdlResponse> clientStreamMessage(
-    ServiceCall call,
-    Stream<GrpcFdlRequest> request,
-  ) async {
-    return _aggregate(await request.toList());
-  }
+    ServiceCall c,
+    Stream<GrpcFdlRequest> r,
+  ) async => _fdlAggregate(await r.toList());
 
   @override
   Stream<GrpcFdlResponse> bidiStreamMessage(
-    ServiceCall call,
-    Stream<GrpcFdlRequest> request,
+    ServiceCall c,
+    Stream<GrpcFdlRequest> r,
   ) async* {
-    var index = 0;
-    await for (final value in request) {
-      yield _response(value, 'bidi-$index', index);
-      index++;
+    var i = 0;
+    await for (final v in r) {
+      yield _fdlResponse(v, 'bidi-$i', i);
+      i++;
     }
   }
 
   @override
-  Future<GrpcFdlUnion> unaryUnion(
-    ServiceCall call,
-    GrpcFdlUnion request,
-  ) async {
-    return _unionResponse(_requestFromUnion(request), 'unary', 10);
-  }
+  Future<GrpcFdlUnion> unaryUnion(ServiceCall c, GrpcFdlUnion r) async =>
+      _fdlUnionResponse(_fdlRequestFromUnion(r), 'unary', 10);
 
   @override
-  Stream<GrpcFdlUnion> serverStreamUnion(
-    ServiceCall call,
-    GrpcFdlUnion request,
-  ) async* {
-    final item = _requestFromUnion(request);
-    for (var index = 0; index < 3; index++) {
-      yield _unionResponse(item, 'server-$index', index);
+  Stream<GrpcFdlUnion> serverStreamUnion(ServiceCall c, GrpcFdlUnion r) async* {
+    final item = _fdlRequestFromUnion(r);
+    for (var i = 0; i < 3; i++) {
+      yield _fdlUnionResponse(item, 'server-$i', i);
     }
   }
 
   @override
   Future<GrpcFdlUnion> clientStreamUnion(
-    ServiceCall call,
-    Stream<GrpcFdlUnion> request,
+    ServiceCall c,
+    Stream<GrpcFdlUnion> r,
   ) async {
     final requests = <GrpcFdlRequest>[];
-    await for (final item in request) {
-      requests.add(_requestFromUnion(item));
+    await for (final item in r) {
+      requests.add(_fdlRequestFromUnion(item));
     }
-    return _unionAggregate(requests);
+    return _fdlUnionAggregate(requests);
   }
 
   @override
   Stream<GrpcFdlUnion> bidiStreamUnion(
-    ServiceCall call,
-    Stream<GrpcFdlUnion> request,
+    ServiceCall c,
+    Stream<GrpcFdlUnion> r,
   ) async* {
-    var index = 0;
-    await for (final item in request) {
-      yield _unionResponse(_requestFromUnion(item), 'bidi-$index', index);
-      index++;
+    var i = 0;
+    await for (final item in r) {
+      yield _fdlUnionResponse(_fdlRequestFromUnion(item), 'bidi-$i', i);
+      i++;
     }
   }
 }
 
-Future<void> _exerciseMessages(FdlGrpcServiceClient stub) async {
-  final requests = [
-    _request('fdl-a', 1, 'alpha'),
-    _request('fdl-b', 2, 'beta'),
-  ];
-  final first = requests[0];
+class FbsService extends FbsGrpcServiceServiceBase {
+  @override
+  Future<GrpcFbsResponse> unaryMessage(ServiceCall c, GrpcFbsRequest r) async =>
+      _fbsResponse(r, 'unary', 10);
 
-  _expect(
-    await stub.unaryMessage(first),
-    _response(first, 'unary', 10),
-    'unaryMessage',
-  );
+  @override
+  Stream<GrpcFbsResponse> serverStreamMessage(
+    ServiceCall c,
+    GrpcFbsRequest r,
+  ) async* {
+    for (var i = 0; i < 3; i++) {
+      yield _fbsResponse(r, 'server-$i', i);
+    }
+  }
 
-  _expectList(await stub.serverStreamMessage(first).toList(), [
-    for (var i = 0; i < 3; i++) _response(first, 'server-$i', i),
-  ], 'serverStreamMessage');
+  @override
+  Future<GrpcFbsResponse> clientStreamMessage(
+    ServiceCall c,
+    Stream<GrpcFbsRequest> r,
+  ) async => _fbsAggregate(await r.toList());
 
-  _expect(
-    await stub.clientStreamMessage(Stream.fromIterable(requests)),
-    _aggregate(requests),
-    'clientStreamMessage',
-  );
+  @override
+  Stream<GrpcFbsResponse> bidiStreamMessage(
+    ServiceCall c,
+    Stream<GrpcFbsRequest> r,
+  ) async* {
+    var i = 0;
+    await for (final v in r) {
+      yield _fbsResponse(v, 'bidi-$i', i);
+      i++;
+    }
+  }
 
-  _expectList(
-    await stub.bidiStreamMessage(Stream.fromIterable(requests)).toList(),
-    [
-      for (var i = 0; i < requests.length; i++)
-        _response(requests[i], 'bidi-$i', i),
-    ],
-    'bidiStreamMessage',
-  );
+  @override
+  Future<GrpcFbsUnion> unaryUnion(ServiceCall c, GrpcFbsUnion r) async =>
+      _fbsUnionResponse(_fbsRequestFromUnion(r), 'unary', 10);
+
+  @override
+  Stream<GrpcFbsUnion> serverStreamUnion(ServiceCall c, GrpcFbsUnion r) async* {
+    final item = _fbsRequestFromUnion(r);
+    for (var i = 0; i < 3; i++) {
+      yield _fbsUnionResponse(item, 'server-$i', i);
+    }
+  }
+
+  @override
+  Future<GrpcFbsUnion> clientStreamUnion(
+    ServiceCall c,
+    Stream<GrpcFbsUnion> r,
+  ) async {
+    final requests = <GrpcFbsRequest>[];
+    await for (final item in r) {
+      requests.add(_fbsRequestFromUnion(item));
+    }
+    return _fbsUnionAggregate(requests);
+  }
+
+  @override
+  Stream<GrpcFbsUnion> bidiStreamUnion(
+    ServiceCall c,
+    Stream<GrpcFbsUnion> r,
+  ) async* {
+    var i = 0;
+    await for (final item in r) {
+      yield _fbsUnionResponse(_fbsRequestFromUnion(item), 'bidi-$i', i);
+      i++;
+    }
+  }
 }
 
-Future<void> _exerciseUnions(FdlGrpcServiceClient stub) async {
-  final requests = [
-    _request('fdl-u-a', 3, 'union-alpha'),
-    _request('fdl-u-b', 4, 'union-beta'),
-  ];
-  final unions = [for (final r in requests) _unionRequest(r)];
-  final first = requests[0];
+class PbService extends PbGrpcServiceServiceBase {
+  @override
+  Future<GrpcPbResponse> unaryMessage(ServiceCall c, GrpcPbRequest r) async =>
+      _pbResponse(r, 'unary', 10);
 
+  @override
+  Stream<GrpcPbResponse> serverStreamMessage(
+    ServiceCall c,
+    GrpcPbRequest r,
+  ) async* {
+    for (var i = 0; i < 3; i++) {
+      yield _pbResponse(r, 'server-$i', i);
+    }
+  }
+
+  @override
+  Future<GrpcPbResponse> clientStreamMessage(
+    ServiceCall c,
+    Stream<GrpcPbRequest> r,
+  ) async => _pbAggregate(await r.toList());
+
+  @override
+  Stream<GrpcPbResponse> bidiStreamMessage(
+    ServiceCall c,
+    Stream<GrpcPbRequest> r,
+  ) async* {
+    var i = 0;
+    await for (final v in r) {
+      yield _pbResponse(v, 'bidi-$i', i);
+      i++;
+    }
+  }
+}
+
+Future<void> _exerciseFdl(FdlGrpcServiceClient stub) async {
+  final messages = [
+    _fdlRequest('fdl-a', 1, 'alpha'),
+    _fdlRequest('fdl-b', 2, 'beta'),
+  ];
+  final first = messages[0];
+  _expect(
+    await stub.unaryMessage(first),
+    _fdlResponse(first, 'unary', 10),
+    'fdl.unaryMessage',
+  );
+  _expectList(await stub.serverStreamMessage(first).toList(), [
+    for (var i = 0; i < 3; i++) _fdlResponse(first, 'server-$i', i),
+  ], 'fdl.serverStreamMessage');
+  _expect(
+    await stub.clientStreamMessage(Stream.fromIterable(messages)),
+    _fdlAggregate(messages),
+    'fdl.clientStreamMessage',
+  );
+  _expectList(
+    await stub.bidiStreamMessage(Stream.fromIterable(messages)).toList(),
+    [
+      for (var i = 0; i < messages.length; i++)
+        _fdlResponse(messages[i], 'bidi-$i', i),
+    ],
+    'fdl.bidiStreamMessage',
+  );
+
+  final unionReqs = [
+    _fdlRequest('fdl-u-a', 3, 'union-alpha'),
+    _fdlRequest('fdl-u-b', 4, 'union-beta'),
+  ];
+  final unions = [for (final r in unionReqs) _fdlUnionRequest(r)];
+  final unionFirst = unionReqs[0];
   _expect(
     await stub.unaryUnion(unions[0]),
-    _unionResponse(first, 'unary', 10),
-    'unaryUnion',
+    _fdlUnionResponse(unionFirst, 'unary', 10),
+    'fdl.unaryUnion',
   );
-
   _expectList(await stub.serverStreamUnion(unions[0]).toList(), [
-    for (var i = 0; i < 3; i++) _unionResponse(first, 'server-$i', i),
-  ], 'serverStreamUnion');
-
+    for (var i = 0; i < 3; i++) _fdlUnionResponse(unionFirst, 'server-$i', i),
+  ], 'fdl.serverStreamUnion');
   _expect(
     await stub.clientStreamUnion(Stream.fromIterable(unions)),
-    _unionAggregate(requests),
-    'clientStreamUnion',
+    _fdlUnionAggregate(unionReqs),
+    'fdl.clientStreamUnion',
   );
-
   _expectList(
     await stub.bidiStreamUnion(Stream.fromIterable(unions)).toList(),
     [
-      for (var i = 0; i < requests.length; i++)
-        _unionResponse(requests[i], 'bidi-$i', i),
+      for (var i = 0; i < unionReqs.length; i++)
+        _fdlUnionResponse(unionReqs[i], 'bidi-$i', i),
     ],
-    'bidiStreamUnion',
+    'fdl.bidiStreamUnion',
+  );
+}
+
+Future<void> _exerciseFbs(FbsGrpcServiceClient stub) async {
+  final messages = [
+    _fbsRequest('fbs-a', 5, 'alpha'),
+    _fbsRequest('fbs-b', 6, 'beta'),
+  ];
+  final first = messages[0];
+  _expect(
+    await stub.unaryMessage(first),
+    _fbsResponse(first, 'unary', 10),
+    'fbs.unaryMessage',
+  );
+  _expectList(await stub.serverStreamMessage(first).toList(), [
+    for (var i = 0; i < 3; i++) _fbsResponse(first, 'server-$i', i),
+  ], 'fbs.serverStreamMessage');
+  _expect(
+    await stub.clientStreamMessage(Stream.fromIterable(messages)),
+    _fbsAggregate(messages),
+    'fbs.clientStreamMessage',
+  );
+  _expectList(
+    await stub.bidiStreamMessage(Stream.fromIterable(messages)).toList(),
+    [
+      for (var i = 0; i < messages.length; i++)
+        _fbsResponse(messages[i], 'bidi-$i', i),
+    ],
+    'fbs.bidiStreamMessage',
+  );
+
+  final unionReqs = [
+    _fbsRequest('fbs-u-a', 7, 'union-alpha'),
+    _fbsRequest('fbs-u-b', 8, 'union-beta'),
+  ];
+  final unions = [for (final r in unionReqs) _fbsUnionRequest(r)];
+  final unionFirst = unionReqs[0];
+  _expect(
+    await stub.unaryUnion(unions[0]),
+    _fbsUnionResponse(unionFirst, 'unary', 10),
+    'fbs.unaryUnion',
+  );
+  _expectList(await stub.serverStreamUnion(unions[0]).toList(), [
+    for (var i = 0; i < 3; i++) _fbsUnionResponse(unionFirst, 'server-$i', i),
+  ], 'fbs.serverStreamUnion');
+  _expect(
+    await stub.clientStreamUnion(Stream.fromIterable(unions)),
+    _fbsUnionAggregate(unionReqs),
+    'fbs.clientStreamUnion',
+  );
+  _expectList(
+    await stub.bidiStreamUnion(Stream.fromIterable(unions)).toList(),
+    [
+      for (var i = 0; i < unionReqs.length; i++)
+        _fbsUnionResponse(unionReqs[i], 'bidi-$i', i),
+    ],
+    'fbs.bidiStreamUnion',
+  );
+}
+
+Future<void> _exercisePb(PbGrpcServiceClient stub) async {
+  final messages = [
+    _pbRequest('pb-a', 9, GrpcPbRequest_Payload.text('alpha')),
+    _pbRequest('pb-b', 10, GrpcPbRequest_Payload.number(42)),
+  ];
+  final first = messages[0];
+  _expect(
+    await stub.unaryMessage(first),
+    _pbResponse(first, 'unary', 10),
+    'pb.unaryMessage',
+  );
+  _expectList(await stub.serverStreamMessage(first).toList(), [
+    for (var i = 0; i < 3; i++) _pbResponse(first, 'server-$i', i),
+  ], 'pb.serverStreamMessage');
+  _expect(
+    await stub.clientStreamMessage(Stream.fromIterable(messages)),
+    _pbAggregate(messages),
+    'pb.clientStreamMessage',
+  );
+  _expectList(
+    await stub.bidiStreamMessage(Stream.fromIterable(messages)).toList(),
+    [
+      for (var i = 0; i < messages.length; i++)
+        _pbResponse(messages[i], 'bidi-$i', i),
+    ],
+    'pb.bidiStreamMessage',
   );
 }
 
 Future<void> _runClient(String target) async {
   final parts = target.split(':');
-  final host = parts[0];
-  final port = int.parse(parts[1]);
   final channel = ClientChannel(
-    host,
-    port: port,
+    parts[0],
+    port: int.parse(parts[1]),
     options: const ChannelOptions(credentials: ChannelCredentials.insecure()),
   );
   try {
-    final stub = FdlGrpcServiceClient(channel);
-    await _exerciseMessages(stub);
-    await _exerciseUnions(stub);
+    await _exerciseFdl(FdlGrpcServiceClient(channel));
+    await _exerciseFbs(FbsGrpcServiceClient(channel));
+    await _exercisePb(PbGrpcServiceClient(channel));
   } finally {
     await channel.shutdown();
   }
 }
 
 Future<void> _runServer(String portFilePath) async {
-  final server = Server.create(services: [FdlService()]);
+  final server = Server.create(
+    services: [FdlService(), FbsService(), PbService()],
+  );
   await server.serve(address: InternetAddress.loopbackIPv4, port: 0);
-  final port = server.port!;
-  await File(portFilePath).writeAsString('$port', flush: true);
-  // Block forever; the Java harness terminates this process.
+  await File(portFilePath).writeAsString('${server.port!}', flush: true);
   await Completer<void>().future;
 }
 
@@ -270,7 +502,6 @@ String _flag(List<String> args, String name) {
 }
 
 Future<void> main(List<String> args) async {
-  _installFory();
   try {
     if (args.isNotEmpty && args[0] == 'client') {
       await _runClient(_flag(args, '--target'));

@@ -873,7 +873,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
         with:
           sdk: stable
       - name: Cache Maven local repository
@@ -894,10 +894,15 @@ jobs:
           cd integration_tests/grpc_tests/dart
           dart pub get
           dart run build_runner build
+      - name: Analyze and format-check generated Dart gRPC companions
+        run: |
+          cd integration_tests/grpc_tests/dart
+          dart analyze bin lib/generated/*/*_grpc.dart
+          dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
       - name: Run Java/Dart gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
-          mvn -T16 --no-transfer-progress -Dtest=DartGrpcInteropTest test
+          mvn -T16 --no-transfer-progress -Dtest=DartGrpcTest test
 
   javascript:
     name: JavaScript CI
