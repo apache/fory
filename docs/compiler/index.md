@@ -99,9 +99,10 @@ The generated service code uses normal gRPC APIs, but request and response
 objects are serialized with Fory. Applications provide their own grpc-java,
 grpc-kotlin, Scala grpc-java APIs, `grpcio`, grpc-go, Rust `tonic` and `bytes`,
 C# `Grpc.Core.Api` and hosting/client dependencies, or Dart `package:grpc`; Fory
-packages do not add gRPC as a hard dependency. JavaScript Node.js companions use
-`@grpc/grpc-js`; browser clients are generated separately with `--grpc-web` and
-use `grpc-web`.
+packages do not add gRPC as a hard dependency. Python companions use `grpc.aio`
+by default and can be generated in sync mode with `--grpc-python-mode=sync`.
+JavaScript Node.js companions use `@grpc/grpc-js`; browser clients are generated
+separately with `--grpc-web` and use `grpc-web`.
 
 ## Why Fory IDL?
 

@@ -23,6 +23,12 @@ Fory can generate JavaScript service companions for schemas that define
 services. The generated service code uses normal gRPC transports while request
 and response objects are serialized with Fory instead of protobuf.
 
+Use this mode when both RPC peers are generated from the same Fory IDL,
+protobuf IDL, or FlatBuffers IDL and both sides expect Fory-encoded message
+bodies. Use normal protobuf gRPC generation for APIs that must be consumed by
+generic protobuf clients, reflection tools, or components that expect protobuf
+message bytes.
+
 Use `--grpc` for Node.js server and client code. Use `--grpc-web` for browser
 clients that call a gRPC-Web compatible server or proxy.
 
@@ -46,6 +52,9 @@ Fory does not add gRPC packages as hard dependencies. Add only the transport
 package used by your application.
 
 ## Define a Service
+
+Service definitions can come from Fory IDL, protobuf IDL, or FlatBuffers
+`rpc_service` definitions. A Fory IDL service looks like this:
 
 ```protobuf
 package demo.greeter;
@@ -282,7 +291,7 @@ stream.on("end", () => {
 });
 ```
 
-## Operations
+## gRPC Runtime Behavior
 
 Generated service code only replaces request and response serialization. Normal
 gRPC operational features still belong to the transport package:
@@ -292,3 +301,23 @@ gRPC operational features still belong to the transport package:
 - Deadlines and cancellation
 - Client and server interceptors
 - Load balancing and deployment-specific proxy configuration
+
+## Troubleshooting
+
+### Missing gRPC Packages
+
+Add `@grpc/grpc-js` for Node.js companions or `grpc-web` for browser
+companions. `@apache-fory/core` intentionally does not depend on either
+transport package.
+
+### gRPC-Web Client-Streaming or Bidirectional RPCs Are Rejected
+
+gRPC-Web does not support client-streaming or bidirectional streaming. Generate
+Node.js companions with `--grpc` for those shapes, or expose unary and
+server-streaming methods to browser clients.
+
+### Protobuf Clients Cannot Decode the Service
+
+Fory gRPC companions do not use protobuf wire encoding for messages. Use a
+Fory-generated client for Fory-generated services, or provide a separate
+protobuf service endpoint for generic protobuf clients.

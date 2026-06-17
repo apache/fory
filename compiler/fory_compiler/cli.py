@@ -660,6 +660,12 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Generate JavaScript gRPC-Web client code",
     )
+    parser.add_argument(
+        "--grpc-python-mode",
+        choices=["async", "sync"],
+        default=None,
+        help="Python gRPC API mode: async (default) or sync",
+    )
 
     return parser.parse_args(args)
 
@@ -709,6 +715,7 @@ def compile_file(
     resolve_cache: Optional[Dict[Path, Schema]] = None,
     grpc: bool = False,
     grpc_web: bool = False,
+    grpc_python_mode: str = "async",
     *,
     generated_outputs: Optional[Dict[Path, Path]] = None,
 ) -> bool:
@@ -780,6 +787,7 @@ def compile_file(
             swift_namespace_style=swift_namespace_style,
             grpc=grpc,
             grpc_web=grpc_web,
+            grpc_python_mode=grpc_python_mode,
         )
 
         generator_class = GENERATORS[lang]
@@ -851,6 +859,7 @@ def compile_file_recursive(
     generated_outputs: Dict[Path, Path],
     grpc: bool = False,
     grpc_web: bool = False,
+    grpc_python_mode: str = "async",
 ) -> bool:
     file_path = file_path.resolve()
     if file_path in generated:
@@ -917,6 +926,7 @@ def compile_file_recursive(
             generated_outputs,
             grpc,
             grpc_web,
+            grpc_python_mode,
         ):
             stack.remove(file_path)
             return False
@@ -933,6 +943,7 @@ def compile_file_recursive(
         resolve_cache,
         grpc,
         grpc_web,
+        grpc_python_mode,
         generated_outputs=generated_outputs,
     )
     if ok:
@@ -1018,6 +1029,16 @@ def cmd_compile(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    grpc_python_mode = args.grpc_python_mode or "async"
+    if args.grpc_python_mode is not None and not args.grpc:
+        print("Error: --grpc-python-mode requires --grpc.", file=sys.stderr)
+        return 1
+    if args.grpc_python_mode is not None and "python" not in lang_output_dirs:
+        print(
+            "Error: --grpc-python-mode is only supported with Python output.",
+            file=sys.stderr,
+        )
+        return 1
 
     # Create output directories
     for out_dir in lang_output_dirs.values():
@@ -1049,6 +1070,7 @@ def cmd_compile(args: argparse.Namespace) -> int:
                 generated_outputs,
                 args.grpc,
                 args.grpc_web,
+                grpc_python_mode,
             ):
                 success = False
         except ImportError as e:

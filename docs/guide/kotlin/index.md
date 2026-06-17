@@ -53,14 +53,14 @@ See [Java Features](../java/index.md#features) for complete feature list.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.1.0")
+implementation("org.apache.fory:fory-kotlin:1.2.0")
 ```
 
 ### JDK25+

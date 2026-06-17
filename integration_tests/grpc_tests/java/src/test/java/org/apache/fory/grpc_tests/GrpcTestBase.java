@@ -355,11 +355,27 @@ public abstract class GrpcTestBase {
   }
 
   protected PeerCommand pythonCommand(String... args) {
+    Path pythonRoot =
+        repoRoot().resolve("integration_tests").resolve("grpc_tests").resolve("python");
+    return pythonCommand(
+        "grpc_tests.grpc_peer", pythonRoot.resolve("grpc_tests").resolve("generated"), args);
+  }
+
+  protected PeerCommand pythonSyncCommand(String... args) {
+    Path pythonRoot =
+        repoRoot().resolve("integration_tests").resolve("grpc_tests").resolve("python");
+    return pythonCommand(
+        "grpc_sync_tests.grpc_peer",
+        pythonRoot.resolve("grpc_sync_tests").resolve("generated"),
+        args);
+  }
+
+  private PeerCommand pythonCommand(String moduleName, Path generatedRoot, String... args) {
     Path repoRoot = repoRoot();
     Path grpcRoot = repoRoot.resolve("integration_tests").resolve("grpc_tests");
     Path pythonRoot = grpcRoot.resolve("python");
     String pythonPath =
-        pythonRoot.resolve("grpc_tests").resolve("generated")
+        generatedRoot
             + File.pathSeparator
             + pythonRoot
             + File.pathSeparator
@@ -371,7 +387,7 @@ public abstract class GrpcTestBase {
     List<String> command = new ArrayList<>();
     command.add("python");
     command.add("-m");
-    command.add("grpc_tests.grpc_interop");
+    command.add(moduleName);
     command.addAll(Arrays.asList(args));
     PeerCommand peerCommand = new PeerCommand();
     peerCommand.command = command;
@@ -442,7 +458,17 @@ public abstract class GrpcTestBase {
   }
 
   protected void runPython(String peer, String... args) throws IOException, InterruptedException {
-    Process process = startPeer(pythonCommand(args));
+    runPythonPeer(peer, pythonCommand(args));
+  }
+
+  protected void runPythonSync(String peer, String... args)
+      throws IOException, InterruptedException {
+    runPythonPeer(peer, pythonSyncCommand(args));
+  }
+
+  private void runPythonPeer(String peer, PeerCommand command)
+      throws IOException, InterruptedException {
+    Process process = startPeer(command);
     PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
     outputCollector.start();
     boolean finished = process.waitFor(180, TimeUnit.SECONDS);

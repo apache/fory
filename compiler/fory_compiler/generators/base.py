@@ -54,6 +54,7 @@ class GeneratorOptions:
     swift_namespace_style: Optional[str] = None
     grpc: bool = False
     grpc_web: bool = False
+    grpc_python_mode: str = "async"
 
 
 class BaseGenerator(ABC):

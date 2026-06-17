@@ -953,7 +953,9 @@ service PetDirectory {
   Applications that compile or run those companions provide their own gRPC
   dependency, such as grpc-java, grpc-kotlin, `grpcio`, grpc-go, Rust `tonic`
   and `bytes`, Scala grpc-java APIs, `@grpc/grpc-js`, `grpc-web`, C#
-  `Grpc.Core.Api` plus a server or client package, or Dart `package:grpc`.
+  `Grpc.Core.Api` plus a server or client package, or Dart `package:grpc`. Python
+  companions use `grpc.aio` by default and can be generated in sync mode with
+  `--grpc-python-mode=sync`.
 
 **Grammar:**
 

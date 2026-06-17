@@ -28,7 +28,7 @@ bazel_dep(name = "rules_cc", version = "0.1.1")
 
 # Fory dependency
 # Option 1: Use git_override to fetch from GitHub (recommended for external projects)
-bazel_dep(name = "fory", version = "1.1.0")
+bazel_dep(name = "fory", version = "1.2.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",
@@ -36,7 +36,7 @@ git_override(
 )
 
 # Option 2: Use local_path_override for local development
-# bazel_dep(name = "fory", version = "1.1.0")
+# bazel_dep(name = "fory", version = "1.2.0")
 # local_path_override(
 #     module_name = "fory",
 #     path = "/path/to/fory",

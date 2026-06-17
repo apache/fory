@@ -31,14 +31,14 @@ This guide covers installation and basic setup for cross-language serialization 
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
 **Gradle:**
 
 ```gradle
-implementation 'org.apache.fory:fory-core:1.1.0'
+implementation 'org.apache.fory:fory-core:1.2.0'
 ```
 
 ### Python
@@ -57,7 +57,7 @@ go get github.com/apache/fory/go/fory
 
 ```toml
 [dependencies]
-fory = "1.1.0"
+fory = "1.2.0"
 ```
 
 ### JavaScript/TypeScript
@@ -75,13 +75,13 @@ npm install @apache-fory/core @apache-fory/hps
 ### C\#
 
 ```bash
-dotnet add package Apache.Fory --version 1.1.0
+dotnet add package Apache.Fory --version 1.2.0
 ```
 
 ### Dart
 
 ```bash
-dart pub add fory:^1.1.0
+dart pub add fory:^1.2.0
 dart pub add dev:build_runner
 ```
 
@@ -91,20 +91,20 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.1.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.2.0")
 ]
 ```
 
 ### Scala
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.1.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.2.0"
 ```
 
 ### Kotlin
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.1.0")
+implementation("org.apache.fory:fory-kotlin:1.2.0")
 ```
 
 ### C++

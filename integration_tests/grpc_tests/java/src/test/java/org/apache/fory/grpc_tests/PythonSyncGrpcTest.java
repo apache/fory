@@ -23,13 +23,14 @@ import io.grpc.Server;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
-public class PythonGrpcInteropTest extends GrpcTestBase {
+public class PythonSyncGrpcTest extends GrpcTestBase {
 
   @Test
   public void testJavaServerPythonClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runPython("python-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPythonSync(
+          "python-sync-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -39,10 +40,10 @@ public class PythonGrpcInteropTest extends GrpcTestBase {
   @Test
   public void testJavaClientPythonServer() throws Exception {
     exercisePeerServer(
-        "python-grpc",
+        "python-sync-grpc",
         "Python",
-        "fory-grpc-python-",
-        pythonCommand("server"),
+        "fory-grpc-python-sync-",
+        pythonSyncCommand("server"),
         this::exerciseAllSchemas);
   }
 }

@@ -73,6 +73,7 @@ Compile options:
 | `--emit-fdl`                          | Emit translated FDL (for non-FDL inputs)               | `false`       |
 | `--emit-fdl-path`                     | Write translated FDL to this path (file or directory)  | (stdout)      |
 | `--grpc`                              | Generate gRPC service companions for supported outputs | `false`       |
+| `--grpc-python-mode=MODE`             | Python gRPC mode: `async` or `sync`                    | `async`       |
 | `--grpc-web`                          | Generate JavaScript gRPC-Web client companions         | `false`       |
 
 Schema-level file options are supported for language-specific generation choices.
@@ -155,16 +156,23 @@ foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./g
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
-payloads. Java output imports grpc-java APIs, Python output imports `grpc`, Go
-output imports grpc-go, Rust output imports `tonic` and `bytes`, Scala output
-imports grpc-java APIs, and Kotlin output imports grpc-java and grpc-kotlin APIs
-and uses coroutine stubs. C# output imports `Grpc.Core.Api` types and can be
-hosted with normal .NET gRPC packages such as `Grpc.AspNetCore` or called
-through `Grpc.Net.Client`. Dart output imports `package:grpc`. JavaScript output
-imports `@grpc/grpc-js`.
+payloads. Java output imports grpc-java APIs, Python output defaults to
+`grpc.aio`, Go output imports grpc-go, Rust output imports `tonic` and `bytes`,
+Scala output imports grpc-java APIs, and Kotlin output imports grpc-java and
+grpc-kotlin APIs and uses coroutine stubs. C# output imports `Grpc.Core.Api`
+types and can be hosted with normal .NET gRPC packages such as `Grpc.AspNetCore`
+or called through `Grpc.Net.Client`. Dart output imports `package:grpc`.
+JavaScript output imports `@grpc/grpc-js`.
 Applications that compile or run those generated service files must provide
 their own gRPC dependencies. Fory packages do not add a hard gRPC dependency for
 this feature.
+
+Generate synchronous Python gRPC companions for existing sync `grpcio`
+applications with:
+
+```bash
+foryc compiler/examples/service.fdl --python_out=./generated/python --grpc --grpc-python-mode=sync
+```
 
 **Generate JavaScript gRPC-Web browser clients:**
 
@@ -711,7 +719,7 @@ Add the Fory dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fory: ^1.1.0
+  fory: ^1.2.0
 
 dev_dependencies:
   build_runner: ^2.4.0
@@ -903,5 +911,5 @@ fory = "x.y.z"
 
 ```yaml
 dependencies:
-  fory: ^1.1.0
+  fory: ^1.2.0
 ```

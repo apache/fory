@@ -201,7 +201,7 @@ Generated Go code follows grpc-go conventions:
 - The generated codec is used for every message frame, including streaming
   frames.
 
-## Operations
+## gRPC Runtime Behavior
 
 The generated service companion only supplies Fory serialization. Operational
 behavior remains standard grpc-go behavior:

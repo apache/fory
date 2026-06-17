@@ -39,7 +39,7 @@ Server project:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.2.0-dev" />
+  <PackageReference Include="Apache.Fory" Version="1.2.0" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
 </ItemGroup>
 ```
@@ -48,7 +48,7 @@ Client project:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.2.0-dev" />
+  <PackageReference Include="Apache.Fory" Version="1.2.0" />
   <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
   <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
 </ItemGroup>
@@ -284,7 +284,7 @@ A gRPC service named `Greeter` still generates the service companion
 schema files target the same C# namespace without colliding. No
 namespace-derived or service-derived module alias is generated.
 
-## Operations
+## gRPC Runtime Behavior
 
 The generated service code only replaces request and response serialization.
 All normal gRPC operational features still belong to your gRPC stack:

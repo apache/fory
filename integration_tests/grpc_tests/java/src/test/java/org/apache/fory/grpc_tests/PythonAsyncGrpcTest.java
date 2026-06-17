@@ -23,13 +23,13 @@ import io.grpc.Server;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
-public class KotlinGrpcInteropTest extends GrpcTestBase {
+public class PythonAsyncGrpcTest extends GrpcTestBase {
 
   @Test
-  public void testJavaServerKotlinClient() throws Exception {
+  public void testJavaServerPythonClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runKotlin("kotlin-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPython("python-async-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -37,12 +37,12 @@ public class KotlinGrpcInteropTest extends GrpcTestBase {
   }
 
   @Test
-  public void testKotlinServerJavaClient() throws Exception {
+  public void testJavaClientPythonServer() throws Exception {
     exercisePeerServer(
-        "kotlin-grpc",
-        "Kotlin",
-        "fory-grpc-kotlin-",
-        kotlinCommand("server"),
+        "python-async-grpc",
+        "Python",
+        "fory-grpc-python-async-",
+        pythonCommand("server"),
         this::exerciseAllSchemas);
   }
 }

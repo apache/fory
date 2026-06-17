@@ -23,7 +23,13 @@ Fory IDL can generate Kotlin coroutine gRPC companions. The generated gRPC
 files use normal grpc-java and grpc-kotlin APIs, while each request and response
 message is serialized with Fory.
 
-## Dependencies
+Use this mode when both RPC peers are generated from the same Fory IDL,
+protobuf IDL, or FlatBuffers IDL and both sides expect Fory-encoded message
+bodies. Use normal protobuf gRPC generation for APIs that must be consumed by
+generic protobuf clients, reflection tools, or components that expect protobuf
+message bytes.
+
+## Add Dependencies
 
 Add Fory Kotlin, KSP, grpc-java, grpc-kotlin, coroutines, and one grpc-java
 transport to the application or service module that compiles the generated
@@ -51,9 +57,10 @@ Use a different grpc-java transport if your application already standardizes on
 one. Generated Kotlin Fory gRPC does not require `grpc-protobuf` for payload
 encoding.
 
-## Generate Code
+## Define a Service
 
-For a schema such as:
+Service definitions can come from Fory IDL, protobuf IDL, or FlatBuffers
+`rpc_service` definitions. A Fory IDL service looks like this:
 
 ```protobuf
 package demo.greeter;
@@ -71,18 +78,27 @@ service Greeter {
 }
 ```
 
-run:
+Generate Kotlin model and gRPC companion code with `--grpc`:
 
 ```bash
 foryc service.fdl --kotlin_out=./generated/kotlin --grpc
 ```
 
-The compiler writes Kotlin model files, a schema module such as
-`ServiceForyModule.kt`, and one service companion such as `GreeterGrpcKt.kt`.
-Run KSP when compiling the generated model files so the schema serializers are
-available at runtime.
+For this schema, the Kotlin generator emits:
 
-## Server
+| File                | Purpose                                      |
+| ------------------- | -------------------------------------------- |
+| `HelloRequest.kt`   | Fory model type for the request              |
+| `HelloReply.kt`     | Fory model type for the response             |
+| `ServiceForyModule` | Fory registration module for generated types |
+| `GreeterGrpcKt.kt`  | Coroutine service base, stubs, and codecs    |
+
+Run KSP when compiling the generated model files so the schema serializers are
+available at runtime. Generated request and response types are registered by
+the generated schema module used by the service companion, so service
+implementations do not perform manual serializer registration.
+
+## Implement a Server
 
 Implement the generated coroutine base class and register it with a normal
 grpc-java server.
@@ -108,7 +124,7 @@ val server = ServerBuilder
 Unimplemented generated methods fail with gRPC `UNIMPLEMENTED`. Exceptions
 thrown by your service method follow grpc-kotlin server behavior.
 
-## Client
+## Create a Client
 
 Construct the generated coroutine stub directly from a grpc-java channel.
 
@@ -130,7 +146,18 @@ Channel construction, shutdown, deadlines, credentials, interceptors, load
 balancing, retries, and server lifecycle stay normal grpc-java/grpc-kotlin
 responsibilities.
 
-## Streaming
+## Streaming RPCs
+
+Fory service definitions can use the same gRPC streaming shapes:
+
+```protobuf
+service Greeter {
+  rpc SayHello (HelloRequest) returns (HelloReply);
+  rpc LotsOfReplies (HelloRequest) returns (stream HelloReply);
+  rpc LotsOfGreetings (stream HelloRequest) returns (HelloReply);
+  rpc Chat (stream HelloRequest) returns (stream HelloReply);
+}
+```
 
 Streaming RPCs use `kotlinx.coroutines.flow.Flow`.
 
@@ -143,6 +170,78 @@ Streaming RPCs use `kotlinx.coroutines.flow.Flow`.
 
 The generated method path keeps the exact service and method names from the
 schema, for example `/demo.greeter.Greeter/SayHello`.
+
+Server implementations can return or consume `Flow` values directly:
+
+```kotlin
+import demo.greeter.GreeterGrpcKt
+import demo.greeter.HelloReply
+import demo.greeter.HelloRequest
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
+
+class GreeterService : GreeterGrpcKt.GreeterCoroutineImplBase() {
+  override fun lotsOfReplies(request: HelloRequest): Flow<HelloReply> = flow {
+    emit(HelloReply(reply = "Hello, ${request.name}"))
+    emit(HelloReply(reply = "Welcome, ${request.name}"))
+  }
+
+  override suspend fun lotsOfGreetings(
+    requests: Flow<HelloRequest>
+  ): HelloReply {
+    val names = requests.toList().joinToString(", ") { it.name }
+    return HelloReply(reply = names)
+  }
+
+  override fun chat(requests: Flow<HelloRequest>): Flow<HelloReply> =
+    requests.map { request ->
+      HelloReply(reply = "Hello, ${request.name}")
+    }
+}
+```
+
+Generated clients expose the matching coroutine and Flow APIs:
+
+```kotlin
+import demo.greeter.HelloRequest
+import kotlinx.coroutines.flow.flowOf
+
+stub.lotsOfReplies(HelloRequest(name = "Fory")).collect { reply ->
+  println(reply.reply)
+}
+
+val summary = stub.lotsOfGreetings(
+  flowOf(
+    HelloRequest(name = "Ada"),
+    HelloRequest(name = "Grace"),
+  )
+)
+println(summary.reply)
+
+stub.chat(
+  flowOf(
+    HelloRequest(name = "Fory"),
+    HelloRequest(name = "RPC"),
+  )
+).collect { reply ->
+  println(reply.reply)
+}
+```
+
+## gRPC Runtime Behavior
+
+The generated service code only replaces request and response serialization.
+All normal gRPC operational features still belong to grpc-java and
+grpc-kotlin:
+
+- Deadlines and cancellations
+- TLS and authentication
+- Name resolution and load balancing
+- Client and server interceptors
+- Status codes and metadata
+- Channel pooling and lifecycle management
 
 ## Interoperability
 
@@ -158,22 +257,22 @@ messages.
 
 ## Troubleshooting
 
-**Generated service file is missing**
+### Generated service file is missing
 
 Pass `--grpc` together with `--kotlin_out`. Schemas without service definitions
 only generate model files and the schema module.
 
-**Serializer class not found at runtime**
+### Serializer class not found at runtime
 
 Ensure KSP runs for the generated Kotlin model sources and that
 `fory-kotlin-ksp` uses the same Fory version as `fory-kotlin`.
 
-**gRPC classes are unresolved**
+### gRPC classes are unresolved
 
 Add grpc-java and grpc-kotlin dependencies to the application module. Fory
 Kotlin artifacts do not add those dependencies automatically.
 
-**A protobuf client cannot read responses**
+### A protobuf client cannot read responses
 
 Fory gRPC uses Fory binary protocol payloads, not protobuf wire-format messages.
 Use generated Fory gRPC companions on both sides for the same service schema.

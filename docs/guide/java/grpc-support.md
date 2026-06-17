@@ -201,14 +201,172 @@ service Greeter {
 
 Generated Java service methods follow grpc-java conventions:
 
-- Unary and server-streaming methods receive a request object and a
-  `StreamObserver` for responses.
-- Client-streaming and bidirectional methods return a `StreamObserver` for
-  incoming requests and receive a `StreamObserver` for outgoing responses.
-- Blocking stubs expose the grpc-java blocking APIs for supported streaming
-  shapes.
+| IDL shape                                 | Server method shape                                    | Client method shape                    |
+| ----------------------------------------- | ------------------------------------------------------ | -------------------------------------- |
+| `rpc A (Req) returns (Res)`               | `void a(Req request, StreamObserver<Res> responses)`   | blocking, async, and future unary stub |
+| `rpc A (Req) returns (stream Res)`        | `void a(Req request, StreamObserver<Res> responses)`   | blocking iterator or async observer    |
+| `rpc A (stream Req) returns (Res)`        | `StreamObserver<Req> a(StreamObserver<Res> responses)` | async request observer                 |
+| `rpc A (stream Req) returns (stream Res)` | `StreamObserver<Req> a(StreamObserver<Res> responses)` | async request observer                 |
 
-## Operations
+Server implementations can use the generated streaming method shapes directly:
+
+```java
+package demo.greeter;
+
+import io.grpc.stub.StreamObserver;
+import java.util.ArrayList;
+import java.util.List;
+
+final class GreeterService extends GreeterGrpc.GreeterImplBase {
+  @Override
+  public void lotsOfReplies(
+      HelloRequest request, StreamObserver<HelloReply> responseObserver) {
+    HelloReply first = new HelloReply();
+    first.setReply("Hello, " + request.getName());
+    responseObserver.onNext(first);
+
+    HelloReply second = new HelloReply();
+    second.setReply("Welcome, " + request.getName());
+    responseObserver.onNext(second);
+    responseObserver.onCompleted();
+  }
+
+  @Override
+  public StreamObserver<HelloRequest> lotsOfGreetings(
+      StreamObserver<HelloReply> responseObserver) {
+    List<String> names = new ArrayList<>();
+    return new StreamObserver<>() {
+      @Override
+      public void onNext(HelloRequest request) {
+        names.add(request.getName());
+      }
+
+      @Override
+      public void onError(Throwable error) {
+        responseObserver.onError(error);
+      }
+
+      @Override
+      public void onCompleted() {
+        HelloReply reply = new HelloReply();
+        reply.setReply(String.join(", ", names));
+        responseObserver.onNext(reply);
+        responseObserver.onCompleted();
+      }
+    };
+  }
+
+  @Override
+  public StreamObserver<HelloRequest> chat(
+      StreamObserver<HelloReply> responseObserver) {
+    return new StreamObserver<>() {
+      @Override
+      public void onNext(HelloRequest request) {
+        HelloReply reply = new HelloReply();
+        reply.setReply("Hello, " + request.getName());
+        responseObserver.onNext(reply);
+      }
+
+      @Override
+      public void onError(Throwable error) {
+        responseObserver.onError(error);
+      }
+
+      @Override
+      public void onCompleted() {
+        responseObserver.onCompleted();
+      }
+    };
+  }
+}
+```
+
+Generated clients return the standard grpc-java call shapes:
+
+```java
+package demo.greeter;
+
+import io.grpc.stub.StreamObserver;
+import java.util.Iterator;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+final class StreamingClient {
+  private final GreeterGrpc.GreeterBlockingStub blockingStub;
+  private final GreeterGrpc.GreeterStub asyncStub;
+
+  StreamingClient(
+      GreeterGrpc.GreeterBlockingStub blockingStub,
+      GreeterGrpc.GreeterStub asyncStub) {
+    this.blockingStub = blockingStub;
+    this.asyncStub = asyncStub;
+  }
+
+  void run() throws InterruptedException {
+    Iterator<HelloReply> replies =
+        blockingStub.lotsOfReplies(newRequest("Fory"));
+    while (replies.hasNext()) {
+      System.out.println(replies.next().getReply());
+    }
+
+    CountDownLatch greetingsDone = new CountDownLatch(1);
+    StreamObserver<HelloRequest> greetings =
+        asyncStub.lotsOfGreetings(new StreamObserver<>() {
+          @Override
+          public void onNext(HelloReply reply) {
+            System.out.println(reply.getReply());
+          }
+
+          @Override
+          public void onError(Throwable error) {
+            greetingsDone.countDown();
+          }
+
+          @Override
+          public void onCompleted() {
+            greetingsDone.countDown();
+          }
+        });
+    greetings.onNext(newRequest("Ada"));
+    greetings.onNext(newRequest("Grace"));
+    greetings.onCompleted();
+    greetingsDone.await(5, TimeUnit.SECONDS);
+
+    CountDownLatch chatDone = new CountDownLatch(1);
+    StreamObserver<HelloRequest> chat =
+        asyncStub.chat(new StreamObserver<>() {
+          @Override
+          public void onNext(HelloReply reply) {
+            System.out.println(reply.getReply());
+          }
+
+          @Override
+          public void onError(Throwable error) {
+            chatDone.countDown();
+          }
+
+          @Override
+          public void onCompleted() {
+            chatDone.countDown();
+          }
+        });
+    chat.onNext(newRequest("Fory"));
+    chat.onCompleted();
+    chatDone.await(5, TimeUnit.SECONDS);
+  }
+
+  private static HelloRequest newRequest(String name) {
+    HelloRequest request = new HelloRequest();
+    request.setName(name);
+    return request;
+  }
+}
+```
+
+The generated descriptors preserve the exact IDL service and method names for
+the gRPC path.
+
+## gRPC Runtime Behavior
 
 The generated service code only replaces request and response serialization.
 All normal gRPC operational features still belong to grpc-java:

@@ -58,14 +58,14 @@ Apache Fory™ provides blazingly fast Java object serialization with JIT compil
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-core:1.1.0")
+implementation("org.apache.fory:fory-core:1.2.0")
 ```
 
 ### JDK25+

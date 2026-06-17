@@ -187,16 +187,45 @@ def test_python_grpc_byte_callbacks():
     files = generate_service_files(schema, PythonGenerator)
     assert set(files) == {"demo_greeter_grpc.py"}
     content = files["demo_greeter_grpc.py"]
+    assert "import grpc.aio" in content
     assert "class GreeterStub(object):" in content
     assert "class GreeterServicer(object):" in content
     assert "def add_servicer(servicer, server):" in content
     assert "add_GreeterServicer_to_server" not in content
     assert "self.say_hello = channel.unary_unary(" in content
-    assert "def say_hello(self, request, context):" in content
+    assert "async def say_hello(self, request, context):" in content
+    assert (
+        'await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")'
+        in content
+    )
+    assert "raise NotImplementedError" not in content
     assert '        "SayHello": grpc.unary_unary_rpc_method_handler(' in content
     assert "servicer.say_hello" in content
     assert "return _models._get_fory().serialize(value)" in content
     assert "return _models._get_fory().deserialize(data)" in content
+    assert '"/demo.greeter.Greeter/SayHello"' in content
+    assert "SerializeToString" not in content
+    assert "FromString" not in content
+
+
+def test_python_grpc_sync_mode():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    generator = PythonGenerator(
+        schema,
+        GeneratorOptions(output_dir=Path("/tmp"), grpc=True, grpc_python_mode="sync"),
+    )
+    files = {item.path: item.content for item in generator.generate_services()}
+    assert set(files) == {"demo_greeter_grpc.py"}
+    content = files["demo_greeter_grpc.py"]
+    assert "import grpc.aio" not in content
+    assert "class GreeterStub(object):" in content
+    assert "class GreeterServicer(object):" in content
+    assert "self.say_hello = channel.unary_unary(" in content
+    assert "def say_hello(self, request, context):" in content
+    assert "async def say_hello" not in content
+    assert "context.set_code(grpc.StatusCode.UNIMPLEMENTED)" in content
+    assert 'context.set_details("Method not implemented!")' in content
+    assert 'raise NotImplementedError("Method not implemented!")' in content
     assert '"/demo.greeter.Greeter/SayHello"' in content
     assert "SerializeToString" not in content
     assert "FromString" not in content
@@ -977,15 +1006,31 @@ def test_grpc_streaming_method_shapes():
     assert "io.grpc.MethodDescriptor<Payload, Payload>" in java
 
     python = next(iter(generate_service_files(schema, PythonGenerator).values()))
+    assert "import grpc.aio" in python
     assert "channel.unary_unary(" in python
     assert "channel.unary_stream(" in python
     assert "channel.stream_unary(" in python
     assert "channel.stream_stream(" in python
+    assert "grpc.unary_unary_rpc_method_handler(" in python
+    assert "grpc.unary_stream_rpc_method_handler(" in python
+    assert "grpc.stream_unary_rpc_method_handler(" in python
     assert "grpc.stream_stream_rpc_method_handler(" in python
     assert "self.unary = channel.unary_unary(" in python
     assert "self.server = channel.unary_stream(" in python
     assert "self.client = channel.stream_unary(" in python
     assert "self.bidi = channel.stream_stream(" in python
+    assert "async def unary(self, request, context):" in python
+    assert "async def server(self, request, context):" in python
+    assert "async def client(self, request_iterator, context):" in python
+    assert "async def bidi(self, request_iterator, context):" in python
+    assert (
+        python.count(
+            'await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")'
+        )
+        == 4
+    )
+    assert "yield" not in python
+    assert "raise NotImplementedError" not in python
 
     go = next(iter(generate_service_files(schema, GoGenerator).values()))
     assert "ClientStreams:\ttrue" in go
@@ -1538,7 +1583,7 @@ def test_scala_grpc_preflight_collision(tmp_path: Path, capsys):
     assert "GreeterGrpc.scala" in err
 
 
-def test_java_grpc_service_class_collision_with_imported_type_fails(tmp_path: Path):
+def test_java_grpc_class_import_collision(tmp_path: Path):
     common = tmp_path / "common.fdl"
     common.write_text(
         dedent(
@@ -1962,6 +2007,28 @@ def test_compile_js_grpc_web(tmp_path: Path, capsys):
     assert output.count("service_grpc_web.ts") == 1
 
 
+def test_compile_python_grpc_sync_mode(tmp_path: Path, capsys):
+    schema_path = tmp_path / "service.fdl"
+    schema_path.write_text(_GREETER_WITH_SERVICE)
+    python_out = tmp_path / "python"
+    ok = compile_file(
+        schema_path,
+        {"python": python_out},
+        grpc=True,
+        grpc_python_mode="sync",
+        generated_outputs={},
+    )
+    output = capsys.readouterr().out
+
+    assert ok is True
+    service_file = python_out / "demo_greeter_grpc.py"
+    assert service_file.exists()
+    content = service_file.read_text()
+    assert "import grpc.aio" not in content
+    assert "def say_hello(self, request, context):" in content
+    assert output.count("demo_greeter_grpc.py") == 1
+
+
 def test_cli_rejects_grpc_web_non_js(tmp_path: Path, capsys):
     schema_path = tmp_path / "service.fdl"
     schema_path.write_text(_GREETER_WITH_SERVICE)
@@ -1977,6 +2044,44 @@ def test_cli_rejects_grpc_web_non_js(tmp_path: Path, capsys):
     assert cmd_compile(args) == 1
     assert (
         "--grpc-web is only supported with JavaScript output" in capsys.readouterr().err
+    )
+
+
+def test_cli_rejects_mode_without_grpc(tmp_path: Path, capsys):
+    schema_path = tmp_path / "service.fdl"
+    schema_path.write_text(_GREETER_WITH_SERVICE)
+    args = parse_args(
+        [
+            str(schema_path),
+            "--python_out",
+            str(tmp_path / "python"),
+            "--grpc-python-mode",
+            "sync",
+        ]
+    )
+
+    assert cmd_compile(args) == 1
+    assert "--grpc-python-mode requires --grpc" in capsys.readouterr().err
+
+
+def test_cli_rejects_mode_non_python(tmp_path: Path, capsys):
+    schema_path = tmp_path / "service.fdl"
+    schema_path.write_text(_GREETER_WITH_SERVICE)
+    args = parse_args(
+        [
+            str(schema_path),
+            "--java_out",
+            str(tmp_path / "java"),
+            "--grpc",
+            "--grpc-python-mode",
+            "sync",
+        ]
+    )
+
+    assert cmd_compile(args) == 1
+    assert (
+        "--grpc-python-mode is only supported with Python output"
+        in capsys.readouterr().err
     )
 
 

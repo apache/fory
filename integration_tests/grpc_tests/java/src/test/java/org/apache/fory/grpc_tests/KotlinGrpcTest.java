@@ -23,13 +23,13 @@ import io.grpc.Server;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
-public class GoGrpcInteropTest extends GrpcTestBase {
+public class KotlinGrpcTest extends GrpcTestBase {
 
   @Test
-  public void testJavaServerGoClient() throws Exception {
-    Server server = startJavaFdlServer();
+  public void testJavaServerKotlinClient() throws Exception {
+    Server server = startJavaAllSchemasServer();
     try {
-      runGo("go-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runKotlin("kotlin-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -37,7 +37,12 @@ public class GoGrpcInteropTest extends GrpcTestBase {
   }
 
   @Test
-  public void testGoServerJavaClient() throws Exception {
-    exercisePeerServer("go-grpc", "Go", "fory-grpc-go-", goCommand("server"), this::exerciseFdl);
+  public void testKotlinServerJavaClient() throws Exception {
+    exercisePeerServer(
+        "kotlin-grpc",
+        "Kotlin",
+        "fory-grpc-kotlin-",
+        kotlinCommand("server"),
+        this::exerciseAllSchemas);
   }
 }

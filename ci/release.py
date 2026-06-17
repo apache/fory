@@ -241,6 +241,12 @@ def bump_java_version(new_version):
             new_version,
             _update_android_tests_dependency_version,
         )
+    _bump_version(
+        "benchmarks/java25",
+        "pom.xml",
+        new_version,
+        _update_java25_benchmark_version,
+    )
     # mvn versions:set too slow
     # os.chdir(os.path.join(PROJECT_ROOT_DIR, "java"))
     # subprocess.check_output(
@@ -296,6 +302,7 @@ def bump_kotlin_version(new_version):
         "kotlin/fory-kotlin",
         "kotlin/fory-kotlin-ksp",
         "kotlin/fory-kotlin-tests",
+        "integration_tests/grpc_tests/kotlin",
         "integration_tests/idl_tests/kotlin",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
@@ -424,6 +431,12 @@ def _update_kotlin_version(lines, v):
 
 def _update_parent_pom_version(lines, v):
     return _update_pom_version(lines, v, "<packaging>pom</packaging>")
+
+
+def _update_java25_benchmark_version(lines, v):
+    return _update_pom_version(
+        lines, v, "<artifactId>java25-memory-access-benchmark</artifactId>"
+    )
 
 
 def _update_pom_version(lines, v, prev):

@@ -33,11 +33,11 @@ consume protobuf message bytes directly.
 Add `tonic` and `bytes` to the crate that compiles the generated service files.
 Fory Rust crates do not add gRPC as a hard dependency. Add `tokio` for async
 servers and clients, and `tokio-stream` when your service implementation needs
-to build streaming responses.
+to build streaming responses or request streams.
 
 ```toml
 [dependencies]
-fory = "1.1.0"
+fory = "1.2.0"
 bytes = "1"
 tonic = { version = "0.14", features = ["transport"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
@@ -180,8 +180,117 @@ Generated Rust code follows tonic conventions:
 - The generated codec is used for every message frame, including streaming
   frames.
 
-Use the generated trait signatures as the source of truth for the concrete
-associated stream types in your service implementation.
+Use the generated trait signatures as the source of truth for concrete
+associated stream types in your service implementation:
+
+```rust
+use demo_greeter::{HelloReply, HelloRequest};
+use demo_greeter_service::Greeter;
+use std::pin::Pin;
+use tokio_stream::{self as stream, Stream, StreamExt};
+use tonic::{Request, Response, Status};
+
+#[derive(Default)]
+struct MyGreeter;
+
+type ReplyStream =
+    Pin<Box<dyn Stream<Item = Result<HelloReply, Status>> + Send + 'static>>;
+
+#[tonic::async_trait]
+impl Greeter for MyGreeter {
+    type LotsOfRepliesStream = ReplyStream;
+    type ChatStream = ReplyStream;
+
+    async fn lots_of_replies(
+        &self,
+        request: Request<HelloRequest>,
+    ) -> Result<Response<Self::LotsOfRepliesStream>, Status> {
+        let name = request.into_inner().name;
+        let replies = vec![
+            Ok(HelloReply {
+                reply: format!("Hello, {name}"),
+            }),
+            Ok(HelloReply {
+                reply: format!("Welcome, {name}"),
+            }),
+        ];
+        Ok(Response::new(Box::pin(stream::iter(replies))))
+    }
+
+    async fn lots_of_greetings(
+        &self,
+        request: Request<tonic::Streaming<HelloRequest>>,
+    ) -> Result<Response<HelloReply>, Status> {
+        let mut requests = request.into_inner();
+        let mut names = Vec::new();
+        while let Some(request) = requests.next().await {
+            names.push(request?.name);
+        }
+        Ok(Response::new(HelloReply {
+            reply: names.join(", "),
+        }))
+    }
+
+    async fn chat(
+        &self,
+        request: Request<tonic::Streaming<HelloRequest>>,
+    ) -> Result<Response<Self::ChatStream>, Status> {
+        let replies = request.into_inner().map(|request| {
+            request.map(|request| HelloReply {
+                reply: format!("Hello, {}", request.name),
+            })
+        });
+        Ok(Response::new(Box::pin(replies)))
+    }
+}
+```
+
+Generated clients return tonic streaming responses:
+
+```rust
+use demo_greeter::HelloRequest;
+use demo_greeter_service_grpc::greeter_client::GreeterClient;
+use tokio_stream as stream;
+
+let mut client = GreeterClient::connect("http://[::1]:50051").await?;
+
+let mut replies = client
+    .lots_of_replies(HelloRequest {
+        name: "Fory".to_string(),
+    })
+    .await?
+    .into_inner();
+while let Some(reply) = replies.message().await? {
+    println!("{}", reply.reply);
+}
+
+let greetings = stream::iter(vec![
+    HelloRequest {
+        name: "Ada".to_string(),
+    },
+    HelloRequest {
+        name: "Grace".to_string(),
+    },
+]);
+let summary = client.lots_of_greetings(greetings).await?.into_inner();
+println!("{}", summary.reply);
+
+let chat_requests = stream::iter(vec![
+    HelloRequest {
+        name: "Fory".to_string(),
+    },
+    HelloRequest {
+        name: "RPC".to_string(),
+    },
+]);
+let mut chat = client.chat(chat_requests).await?.into_inner();
+while let Some(reply) = chat.message().await? {
+    println!("{}", reply.reply);
+}
+```
+
+The generated descriptors preserve the exact IDL service and method names for
+the gRPC path.
 
 ## Thread Safety and Payload Types
 
@@ -191,7 +300,7 @@ reference metadata for a request or response type, Rust gRPC generation rejects
 that service. Use thread-safe reference shapes for gRPC payloads, or keep the
 non-thread-safe type out of the RPC boundary.
 
-## Operations
+## gRPC Runtime Behavior
 
 The generated service companion only supplies Fory serialization and tonic
 bindings. Operational behavior remains standard tonic behavior:

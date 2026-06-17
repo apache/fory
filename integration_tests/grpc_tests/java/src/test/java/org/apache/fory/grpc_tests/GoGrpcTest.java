@@ -23,13 +23,13 @@ import io.grpc.Server;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
-public class RustGrpcInteropTest extends GrpcTestBase {
+public class GoGrpcTest extends GrpcTestBase {
 
   @Test
-  public void testJavaServerRustClient() throws Exception {
-    Server server = startJavaAllSchemasServer();
+  public void testJavaServerGoClient() throws Exception {
+    Server server = startJavaFdlServer();
     try {
-      runRust("rust-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runGo("go-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -37,8 +37,7 @@ public class RustGrpcInteropTest extends GrpcTestBase {
   }
 
   @Test
-  public void testJavaClientRustServer() throws Exception {
-    exercisePeerServer(
-        "rust-grpc", "Rust", "fory-grpc-rust-", rustCommand("server"), this::exerciseAllSchemas);
+  public void testGoServerJavaClient() throws Exception {
+    exercisePeerServer("go-grpc", "Go", "fory-grpc-go-", goCommand("server"), this::exerciseFdl);
   }
 }

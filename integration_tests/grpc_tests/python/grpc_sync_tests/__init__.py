@@ -14,23 +14,3 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-
-[build-system]
-requires = [
-    "setuptools>=78.1.1; python_version >= '3.9'",
-    "setuptools>=70.0.0,<78.1.1; python_version < '3.9'",
-]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "fory-idl-tests"
-version = "1.3.0.dev0"
-description = "IDL compiler integration tests for Apache Fory"
-readme = "README.md"
-requires-python = ">=3.8"
-license = {text = "Apache-2.0"}
-dependencies = ["pyfory"]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["idl_tests"]

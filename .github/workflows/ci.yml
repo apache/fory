@@ -729,7 +729,7 @@ jobs:
       - name: Run Java/Python gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
-          mvn -T16 --no-transfer-progress -Dtest=PythonGrpcInteropTest test
+          mvn -T16 --no-transfer-progress -Dtest=PythonAsyncGrpcTest,PythonSyncGrpcTest test
 
   grpc_java_go_tests:
     name: Java/Go gRPC Tests
@@ -768,7 +768,7 @@ jobs:
       - name: Run Java/Go gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
-          mvn -T16 --no-transfer-progress -Dtest=GoGrpcInteropTest test
+          mvn -T16 --no-transfer-progress -Dtest=GoGrpcTest test
 
   grpc_java_rust_tests:
     name: Java/Rust gRPC Tests
@@ -810,7 +810,7 @@ jobs:
       - name: Run Java/Rust gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
-          mvn -T16 --no-transfer-progress -Dtest=RustGrpcInteropTest test
+          mvn -T16 --no-transfer-progress -Dtest=RustGrpcTest test
 
   grpc_java_kotlin_tests:
     name: Java/Kotlin gRPC Tests
@@ -853,7 +853,7 @@ jobs:
       - name: Run Java/Kotlin gRPC Tests
         run: |
           cd integration_tests/grpc_tests/java
-          mvn -T16 --no-transfer-progress -Dtest=KotlinGrpcInteropTest test
+          mvn -T16 --no-transfer-progress -Dtest=KotlinGrpcTest test
 
   grpc_java_dart_tests:
     name: Java/Dart gRPC Tests

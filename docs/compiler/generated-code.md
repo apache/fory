@@ -373,9 +373,14 @@ restored = Person.from_bytes(data)
 When a schema contains services and the compiler is run with `--grpc`, Python
 generation emits a companion module named `<module>_grpc.py`. The module name is
 derived from the Fory package by replacing dots with underscores, or `generated`
-when the schema has no package.
+when the schema has no package. Python gRPC output defaults to `grpc.aio`
+AsyncIO APIs.
 
 ```python
+import grpc
+import grpc.aio
+
+
 class AddressBookServiceStub:
     def __init__(self, channel):
         self.lookup = channel.unary_unary(
@@ -386,8 +391,8 @@ class AddressBookServiceStub:
 
 
 class AddressBookServiceServicer:
-    def lookup(self, request, context):
-        raise NotImplementedError("Method not implemented!")
+    async def lookup(self, request, context):
+        await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")
 
 
 def add_servicer(servicer, server): ...
@@ -399,6 +404,11 @@ generated callbacks call the model module's `_get_fory().serialize(...)` and
 companion module must install `grpcio`; `pyfory` does not add a hard gRPC
 dependency. The Python API uses snake_case method names while preserving the
 original IDL method names in the gRPC wire paths.
+
+Generate synchronous Python `grpcio` companions with
+`--grpc --grpc-python-mode=sync`. Sync mode keeps the same generated filename
+and public names, but servicer methods use regular `def` methods and sync
+`grpc.Channel` and `grpc.Server` instances.
 
 ## Rust
 

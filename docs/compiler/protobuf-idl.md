@@ -319,15 +319,16 @@ foryc api.proto --java_out=./generated/java --python_out=./generated/python --go
 ```
 
 Generated Java service files compile against grpc-java, generated Python service
-modules import `grpc`, generated Rust service files import `tonic` and `bytes`,
-generated Go service files import grpc-go, generated JavaScript Node.js service
-files import `@grpc/grpc-js`,
-generated C# service files import `Grpc.Core.Api` types, generated Dart service
-files import `package:grpc`, generated Scala service files compile against
-grpc-java, and generated Kotlin service files compile against grpc-java and
-grpc-kotlin. Add those dependencies in your application build; Fory packages do
-not add gRPC as a hard dependency. Use `--grpc-web`
-with JavaScript output to generate browser clients that import `grpc-web`.
+modules use `grpc.aio` by default, generated Rust service files import `tonic`
+and `bytes`, generated Go service files import grpc-go, generated JavaScript
+Node.js service files import `@grpc/grpc-js`, generated C# service files import
+`Grpc.Core.Api` types, generated Dart service files import `package:grpc`,
+generated Scala service files compile against grpc-java, and generated Kotlin
+service files compile against grpc-java and grpc-kotlin. Add those dependencies
+in your application build; Fory packages do not add gRPC as a hard dependency.
+Use `--grpc-python-mode=sync` for sync Python `grpcio` companions. Use
+`--grpc-web` with JavaScript output to generate browser clients that import
+`grpc-web`.
 Protobuf `oneof` fields are translated to Fory union fields inside request and
 response messages. Direct union RPC request or response types are not part of
 normal protobuf RPC syntax.
