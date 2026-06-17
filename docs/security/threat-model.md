@@ -11,8 +11,13 @@ untrusted deserialization classification rules live in the
 Fory is an in-process serialization library. Applications link Fory into their
 own process, configure serializers and type policies, and call Fory APIs to
 serialize application-owned objects or deserialize encoded Fory data. Fory does
-not provide a network service, daemon, authentication system, or transport
-protocol.
+not provide a standalone network service, daemon, authentication system, or
+transport protocol.
+
+Fory can generate service companions for application-provided gRPC runtimes.
+Those companions provide Fory serialization for request and response objects;
+the application and gRPC stack still own listeners, channels, credentials,
+authentication, authorization, deadlines, retries, and transport lifecycle.
 
 ## Trust Boundaries
 
@@ -43,7 +48,7 @@ Fory does not provide:
 - Encoded-data authenticity, integrity, confidentiality, signing, MACs, or
   encryption.
 - Transport security or protection for bytes while they are stored or moved
-  outside Fory.
+  outside Fory, including transport security for generated service companions.
 - Application-level authorization or validation for the business meaning of a
   successfully deserialized value.
 - A sandbox for user-registered classes, functions, constructors, setters,
