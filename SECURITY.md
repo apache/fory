@@ -25,7 +25,7 @@ GitHub issues or pull requests for security reports.
 ## Security Models
 
 Apache Fory security models are documented under
-[docs/security](docs/security/). Start with the
+[docs/security](docs/security/index.md). Start with the
 [project threat model](docs/security/threat-model.md); for detailed untrusted
 deserialization classification rules, see the
 [deserialization security model](docs/security/deserialization.md).

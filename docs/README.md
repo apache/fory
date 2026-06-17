@@ -11,7 +11,7 @@
 - For row format, see the [row format spec](specification/row_format_spec.md).
 - For using Apache Fory™ with GraalVM native image, see [graalvm support](guide/java/graalvm-support.md) doc.
 - For security models and deserialization boundaries, see the
-  [security docs](security/).
+  [security docs](security/index.md).
 
 ## Fory IDL Schema
 
