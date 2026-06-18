@@ -79,6 +79,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
@@ -454,4 +455,15 @@ public class ForyCopyTest extends ForyTestBase {
       assertEquals(fory.copy(collectionFields).toCanEqual(), collectionFields.toCanEqual());
     }
   }
+
+    @Test
+    public void testCopyNonSerializablePackage() {
+        Fory fory = Fory.builder()
+                .withLanguage(Language.JAVA)
+                .withRefCopy(true)
+                .requireClassRegistration(false)   // get past the registration gate
+                .build();
+        Package pkg = String.class.getPackage(); // java.lang
+        Package copy = fory.copy(pkg);           // now expect the real bug
+    }
 }
