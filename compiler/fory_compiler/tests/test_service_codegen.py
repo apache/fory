@@ -2399,6 +2399,89 @@ def test_csharp_grpc_dotnet_fixture(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+@pytest.mark.skipif(shutil.which("swift") is None, reason="swift not installed")
+def test_swift_grpc_swiftpm_fixture(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[3]
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package shared.models;
+
+            message SharedRequest { string name = 1; }
+            message SharedReply { string text = 1; }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package greeter.api;
+
+            import "common.fdl";
+
+            message LocalRequest { string name = 1; }
+            message LocalReply { string text = 1; }
+
+            service Greeter {
+                rpc Unary (LocalRequest) returns (LocalReply);
+                rpc Server (LocalRequest) returns (stream LocalReply);
+                rpc Client (stream SharedRequest) returns (SharedReply);
+                rpc Bidi (stream LocalRequest) returns (stream SharedReply);
+            }
+
+            service Empty {}
+            """
+        )
+    )
+    pkg = tmp_path / "pkg"
+    app = pkg / "Sources" / "App"
+    app.mkdir(parents=True)
+    assert foryc_main(["--swift_out", str(app), "--grpc", str(common), str(main)]) == 0
+    assert (app / "greeter" / "api" / "GreeterGrpc.swift").is_file()
+    assert (app / "greeter" / "api" / "EmptyGrpc.swift").is_file()
+
+    (pkg / "Package.swift").write_text(
+        dedent(
+            f"""
+            // swift-tools-version:5.9
+            import PackageDescription
+            let package = Package(
+              name: "App",
+              platforms: [.macOS(.v13)],
+              dependencies: [
+                .package(url: "https://github.com/grpc/grpc-swift.git", exact: "1.24.2"),
+                .package(path: "{repo_root / "swift"}"),
+              ],
+              targets: [
+                .executableTarget(
+                  name: "App",
+                  dependencies: [
+                    .product(name: "GRPC", package: "grpc-swift"),
+                    .product(name: "Fory", package: "swift"),
+                  ],
+                  path: "Sources/App"
+                )
+              ]
+            )
+            """
+        ).strip()
+    )
+    (app / "main.swift").write_text(_SWIFT_GRPC_VALIDATION_PROGRAM)
+
+    result = subprocess.run(
+        ["swift", "run"],
+        cwd=pkg,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "GENERATED OK" in result.stdout
+
+
 def test_generated_message_signatures():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     java_files = generate_files(schema, JavaGenerator)
@@ -3122,3 +3205,68 @@ def test_rust_grpc_rejects_unsafe_refs():
         )
         with pytest.raises(ValueError, match=message):
             generator.generate_services()
+
+
+_SWIFT_GRPC_VALIDATION_PROGRAM = r"""
+import Foundation
+import GRPC
+import NIOCore
+import NIOPosix
+
+@available(macOS 10.15, *)
+final class GreeterImpl: Greeter_Api_GreeterAsyncProvider {
+  func unary(request: Greeter.Api.LocalRequest, context: GRPCAsyncServerCallContext)
+    async throws -> Greeter.Api.LocalReply {
+    Greeter.Api.LocalReply(text: "hi " + request.name)
+  }
+  func server(request: Greeter.Api.LocalRequest,
+    responseStream: Greeter_Api_GreeterAsyncResponseStream<Greeter.Api.LocalReply>,
+    context: GRPCAsyncServerCallContext) async throws {
+    try await responseStream.send(Greeter.Api.LocalReply(text: "a:" + request.name))
+    try await responseStream.send(Greeter.Api.LocalReply(text: "b:" + request.name))
+  }
+  func client(requestStream: Greeter_Api_GreeterAsyncRequestStream<Shared.Models.SharedRequest>,
+    context: GRPCAsyncServerCallContext) async throws -> Shared.Models.SharedReply {
+    var names: [String] = []
+    for try await r in requestStream { names.append(r.name) }
+    return Shared.Models.SharedReply(text: "got:" + names.joined(separator: ","))
+  }
+  func bidi(requestStream: Greeter_Api_GreeterAsyncRequestStream<Greeter.Api.LocalRequest>,
+    responseStream: Greeter_Api_GreeterAsyncResponseStream<Shared.Models.SharedReply>,
+    context: GRPCAsyncServerCallContext) async throws {
+    for try await r in requestStream {
+      try await responseStream.send(Shared.Models.SharedReply(text: "echo:" + r.name))
+    }
+  }
+}
+
+func names(_ values: [String]) -> AsyncStream<Shared.Models.SharedRequest> {
+  AsyncStream { c in for v in values { c.yield(Shared.Models.SharedRequest(name: v)) }; c.finish() }
+}
+func locals(_ values: [String]) -> AsyncStream<Greeter.Api.LocalRequest> {
+  AsyncStream { c in for v in values { c.yield(Greeter.Api.LocalRequest(name: v)) }; c.finish() }
+}
+
+guard #available(macOS 10.15, *) else { fatalError() }
+let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+defer { try? group.syncShutdownGracefully() }
+let server = try Server.insecure(group: group).withServiceProviders([GreeterImpl()])
+  .bind(host: "127.0.0.1", port: 0).wait()
+let port = server.channel.localAddress!.port!
+let channel = try GRPCChannelPool.with(target: .host("127.0.0.1", port: port),
+  transportSecurity: .plaintext, eventLoopGroup: group)
+defer { try? channel.close().wait() }
+let client = Greeter_Api_GreeterAsyncClient(channel: channel)
+
+let u = try await client.unary(Greeter.Api.LocalRequest(name: "world"))
+precondition(u.text == "hi world")
+var ss: [String] = []
+for try await m in client.server(Greeter.Api.LocalRequest(name: "x")) { ss.append(m.text) }
+precondition(ss == ["a:x", "b:x"])
+let cs = try await client.client(names(["p", "q"]))
+precondition(cs.text == "got:p,q")
+var bd: [String] = []
+for try await m in client.bidi(locals(["m", "n"])) { bd.append(m.text) }
+precondition(bd == ["echo:m", "echo:n"])
+print("GENERATED OK")
+"""
