@@ -45,6 +45,33 @@ class SwiftServiceMixin:
         prefix = self._grpc_prefix()
         return f"{prefix}_{name}" if prefix else name
 
+    def swift_grpc_output_path(self, service: Service) -> str:
+        package = self.schema.package
+        package_path = package.replace(".", "/") if package else ""
+        file_name = f"{self.to_pascal_case(service.name)}Grpc.swift"
+        return f"{package_path}/{file_name}" if package_path else file_name
+
+    def swift_grpc_service_symbols(self, service: Service) -> List[str]:
+        base = self._service_symbol(service)
+        modes = {streaming_mode(m) for m in service.methods}
+        symbols = [
+            f"{base}Metadata",
+            f"{base}Provider",
+            f"{base}AsyncProvider",
+            f"{base}AsyncClient",
+        ]
+        if modes & {StreamingMode.SERVER_STREAMING, StreamingMode.BIDIRECTIONAL}:
+            symbols += [
+                f"{base}StreamingResponseContext",
+                f"{base}AsyncResponseStream",
+                f"{base}ResponseStream",
+            ]
+        if StreamingMode.CLIENT_STREAMING in modes:
+            symbols.append(f"{base}UnaryResponseContext")
+        if modes & {StreamingMode.CLIENT_STREAMING, StreamingMode.BIDIRECTIONAL}:
+            symbols.append(f"{base}AsyncRequestStream")
+        return symbols
+
     def _swift_grpc_method_name(self, method: RpcMethod) -> str:
         return self.safe_member_name(method.name)
 
