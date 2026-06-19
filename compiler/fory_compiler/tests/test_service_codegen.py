@@ -155,6 +155,7 @@ def test_unsupported_generators_no_services():
             ScalaGenerator,
             KotlinGenerator,
             JavaScriptGenerator,
+            SwiftGenerator,
         ):
             continue
         options = GeneratorOptions(output_dir=Path("/tmp"))

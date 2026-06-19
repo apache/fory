@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Set, Union as TypingUnion
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.swift import SwiftServiceMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -38,7 +39,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class SwiftGenerator(BaseGenerator):
+class SwiftGenerator(SwiftServiceMixin, BaseGenerator):
     """Generates Swift types using Fory Swift model macros."""
 
     language_name = "swift"
