@@ -187,6 +187,16 @@ Imported request and response types resolve to their own namespace and are
 registered transitively through the owning module, so a service that crosses an
 import boundary works without extra registration.
 
+## Known Limitations
+
+Swift models put each package under a nested `enum` namespace, so two schemas that
+share a top-level package component (for example `demo.shared` and `demo.greeter`)
+both emit `public enum Demo`. Swift treats that as an invalid redeclaration when
+both compile into one module. This is a model-generation behavior, not specific to
+gRPC, but it also affects a service that imports across such packages. Give the
+schemas disjoint top-level packages (for example `shared.models` and
+`greeter.api`), or compile them as separate Swift modules.
+
 ## Troubleshooting
 
 ### Missing grpc-swift Types

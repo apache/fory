@@ -2482,6 +2482,89 @@ def test_swift_grpc_swiftpm_fixture(tmp_path: Path):
     assert "GENERATED OK" in result.stdout
 
 
+@pytest.mark.skipif(shutil.which("swift") is None, reason="swift not installed")
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Pre-existing model-generator limitation, not gRPC specific: two schemas "
+        "that share a top-level package component (demo.shared and demo.greeter) "
+        "each emit `public enum Demo`, which is an invalid redeclaration when both "
+        "compile into one Swift module. gRPC companions sit on the model and "
+        "inherit it. Disjoint top-level packages work (test_swift_grpc_swiftpm_fixture)."
+    ),
+)
+def test_swift_grpc_common_root_package(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[3]
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+
+            message SharedRequest { string name = 1; }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.greeter;
+
+            import "common.fdl";
+
+            message LocalRequest { string name = 1; }
+
+            service Greeter {
+                rpc Unary (LocalRequest) returns (LocalRequest);
+            }
+            """
+        )
+    )
+    pkg = tmp_path / "pkg"
+    app = pkg / "Sources" / "App"
+    app.mkdir(parents=True)
+    assert foryc_main(["--swift_out", str(app), "--grpc", str(common), str(main)]) == 0
+    (app / "main.swift").write_text("import Foundation\n")
+    (pkg / "Package.swift").write_text(
+        dedent(
+            f"""
+            // swift-tools-version:5.9
+            import PackageDescription
+            let package = Package(
+              name: "App",
+              platforms: [.macOS(.v13)],
+              dependencies: [
+                .package(url: "https://github.com/grpc/grpc-swift.git", exact: "1.24.2"),
+                .package(path: "{repo_root / "swift"}"),
+              ],
+              targets: [
+                .executableTarget(
+                  name: "App",
+                  dependencies: [
+                    .product(name: "GRPC", package: "grpc-swift"),
+                    .product(name: "Fory", package: "swift"),
+                  ],
+                  path: "Sources/App"
+                )
+              ]
+            )
+            """
+        ).strip()
+    )
+    result = subprocess.run(
+        ["swift", "build"],
+        cwd=pkg,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+    )
+    # Expected to fail today: `invalid redeclaration of 'Demo'`. strict xfail
+    # flags us if the model generator ever stops sharing the root enum.
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_generated_message_signatures():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     java_files = generate_files(schema, JavaGenerator)
