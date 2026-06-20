@@ -149,19 +149,21 @@ foryc user.fdl order.fdl product.fdl --output ./generated
 foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript
 ```
 
-**Generate Java, Python, Go, Rust, C#, Scala, Kotlin, and Node.js JavaScript gRPC service companions:**
+**Generate Java, Python, Go, Rust, C#, Scala, Kotlin, Node.js JavaScript, and Swift gRPC service companions:**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --swift_out=./generated/swift --grpc
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
-payloads. Java output imports grpc-java APIs, Python output defaults to
+bodies. Java output imports grpc-java APIs, Python output defaults to
 `grpc.aio`, Go output imports grpc-go, Rust output imports `tonic` and `bytes`,
 Scala output imports grpc-java APIs, and Kotlin output imports grpc-java and
 grpc-kotlin APIs and uses coroutine stubs. C# output imports `Grpc.Core.Api`
 types and can be hosted with normal .NET gRPC packages such as `Grpc.AspNetCore`
 or called through `Grpc.Net.Client`. JavaScript output imports `@grpc/grpc-js`.
+Swift output targets grpc-swift 1.x and emits `async`/`await` providers and
+clients alongside `EventLoopFuture` providers.
 Applications that compile or run those generated service files must provide
 their own gRPC dependencies. Fory packages do not add a hard gRPC dependency for
 this feature.
@@ -424,6 +426,8 @@ generated/
 - Each schema includes a schema-file module owner and `toBytes`/`fromBytes`
   helpers
 - Imported schemas are installed transitively by generated module helpers
+- With `--grpc`, one `<ServiceName>Grpc.swift` companion per service is generated
+  next to the model, targeting grpc-swift 1.x
 
 ### Dart
 
