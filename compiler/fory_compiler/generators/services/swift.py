@@ -102,6 +102,9 @@ class SwiftServiceMixin:
         lines: List[str] = []
         lines.append(self.get_license_header("//"))
         lines.append("")
+        # gRPC symbols are package-prefixed with underscores, matching grpc-swift.
+        lines.append("// swiftlint:disable type_name")
+        lines.append("")
         lines.append("import Foundation")
         lines.append("import GRPC")
         lines.append("import NIOCore")
@@ -119,6 +122,8 @@ class SwiftServiceMixin:
         lines.extend(self._async_provider(base, service))
         lines.append("")
         lines.extend(self._async_client(base, service))
+        lines.append("")
+        lines.append("// swiftlint:enable type_name")
 
         content = "\n".join(lines).rstrip() + "\n"
         package_path = (
@@ -281,11 +286,7 @@ class SwiftServiceMixin:
             f"{{ {base}Metadata.serviceDescriptor.fullName[...] }}"
         )
         lines.append("")
-        lines.append(
-            "    public func handle(method name: Substring, context: CallHandlerContext)"
-        )
-        lines.append("        -> GRPCServerHandlerProtocol?")
-        lines.append("    {")
+        lines.extend(self._handle_signature())
         lines.append("        switch name {")
         for method in service.methods:
             lines.extend(self._provider_handler_case(base, method))
@@ -294,6 +295,14 @@ class SwiftServiceMixin:
         lines.append("    }")
         lines.append("}")
         return lines
+
+    def _handle_signature(self) -> List[str]:
+        return [
+            "    public func handle(",
+            "        method name: Substring,",
+            "        context: CallHandlerContext",
+            "    ) -> GRPCServerHandlerProtocol? {",
+        ]
 
     def _provider_requirement(self, base: str, method: RpcMethod) -> List[str]:
         name = self._swift_grpc_method_name(method)
@@ -368,7 +377,8 @@ class SwiftServiceMixin:
             ".map { observer in",
             f"                        {{ (event: StreamEvent<ForyMessage<{req}>>) in",
             "                            switch event {",
-            "                            case .message(let m): observer(.message(m.value))",
+            "                            case .message(let wrapped): "
+            "observer(.message(wrapped.value))",
             "                            case .end: observer(.end)",
             "                            @unknown default: break",
             "                            }",
@@ -401,11 +411,7 @@ class SwiftServiceMixin:
             f"{{ {base}Metadata.serviceDescriptor.fullName[...] }}"
         )
         lines.append("")
-        lines.append(
-            "    public func handle(method name: Substring, context: CallHandlerContext)"
-        )
-        lines.append("        -> GRPCServerHandlerProtocol?")
-        lines.append("    {")
+        lines.extend(self._handle_signature())
         lines.append("        switch name {")
         for method in service.methods:
             lines.extend(self._async_provider_handler_case(base, method))
@@ -427,19 +433,25 @@ class SwiftServiceMixin:
             ]
         if mode is StreamingMode.SERVER_STREAMING:
             return [
-                f"    func {name}(request: {req}, "
-                f"responseStream: {base}AsyncResponseStream<{res}>,",
-                "        context: GRPCAsyncServerCallContext) async throws",
+                f"    func {name}(",
+                f"        request: {req},",
+                f"        responseStream: {base}AsyncResponseStream<{res}>,",
+                "        context: GRPCAsyncServerCallContext",
+                "    ) async throws",
             ]
         if mode is StreamingMode.CLIENT_STREAMING:
             return [
-                f"    func {name}(requestStream: {base}AsyncRequestStream<{req}>,",
-                f"        context: GRPCAsyncServerCallContext) async throws -> {res}",
+                f"    func {name}(",
+                f"        requestStream: {base}AsyncRequestStream<{req}>,",
+                "        context: GRPCAsyncServerCallContext",
+                f"    ) async throws -> {res}",
             ]
         return [
-            f"    func {name}(requestStream: {base}AsyncRequestStream<{req}>,",
+            f"    func {name}(",
+            f"        requestStream: {base}AsyncRequestStream<{req}>,",
             f"        responseStream: {base}AsyncResponseStream<{res}>,",
-            "        context: GRPCAsyncServerCallContext) async throws",
+            "        context: GRPCAsyncServerCallContext",
+            "    ) async throws",
         ]
 
     def _async_provider_handler_case(self, base: str, method: RpcMethod) -> List[str]:
