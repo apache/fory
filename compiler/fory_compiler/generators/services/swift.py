@@ -340,11 +340,13 @@ class SwiftServiceMixin:
                 f"self.{name}(request: req.value, context: ctx).map {{ ForyMessage($0) }} }})"
             )
         elif mode is StreamingMode.SERVER_STREAMING:
-            head.append(
-                f"                userFunction: {{ req, ctx in self.{name}("
-                f"request: req.value, context: {base}"
-                f"StreamingResponseContext(base: ctx)) }})"
-            )
+            head += [
+                "                userFunction: { req, ctx in",
+                f"                    self.{name}(",
+                "                        request: req.value,",
+                f"                        context: {base}StreamingResponseContext(base: ctx))",
+                "                })",
+            ]
         elif mode is StreamingMode.CLIENT_STREAMING:
             head.extend(
                 self._client_stream_observer(base, name, req, "UnaryResponseContext")
@@ -459,21 +461,31 @@ class SwiftServiceMixin:
                 f"try await self.{name}(request: $0.value, context: $1)) }})"
             )
         elif mode is StreamingMode.SERVER_STREAMING:
-            head.append(
-                f"                wrapping: {{ try await self.{name}(request: $0.value, "
-                f"responseStream: {base}AsyncResponseStream(base: $1), context: $2) }})"
-            )
+            head += [
+                "                wrapping: {",
+                f"                    try await self.{name}(",
+                "                        request: $0.value,",
+                f"                        responseStream: {base}AsyncResponseStream(base: $1),",
+                "                        context: $2)",
+                "                })",
+            ]
         elif mode is StreamingMode.CLIENT_STREAMING:
-            head.append(
-                f"                wrapping: {{ ForyMessage(try await self.{name}("
-                f"requestStream: {base}AsyncRequestStream(base: $0), context: $1)) }})"
-            )
+            head += [
+                "                wrapping: {",
+                f"                    ForyMessage(try await self.{name}(",
+                f"                        requestStream: {base}AsyncRequestStream(base: $0),",
+                "                        context: $1))",
+                "                })",
+            ]
         else:
-            head.append(
-                f"                wrapping: {{ try await self.{name}("
-                f"requestStream: {base}AsyncRequestStream(base: $0), "
-                f"responseStream: {base}AsyncResponseStream(base: $1), context: $2) }})"
-            )
+            head += [
+                "                wrapping: {",
+                f"                    try await self.{name}(",
+                f"                        requestStream: {base}AsyncRequestStream(base: $0),",
+                f"                        responseStream: {base}AsyncResponseStream(base: $1),",
+                "                        context: $2)",
+                "                })",
+            ]
         return head
 
     def _async_client(self, base: str, service: Service) -> List[str]:
