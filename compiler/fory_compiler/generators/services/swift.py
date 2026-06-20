@@ -134,18 +134,31 @@ class SwiftServiceMixin:
         return GeneratedFile(path=path, content=content)
 
     def _marshaller(self, module: str) -> List[str]:
-        # NIOCore.ByteBuffer is qualified because `import Fory` also exposes one.
+        # The Swift Fory instance is single-threaded, so keep one per thread.
         return [
+            "private enum ForyRuntime {",
+            f'    private static let key = "org.apache.fory.grpc.{module}"',
+            "    static func fory() throws -> Fory {",
+            "        let storage = Thread.current.threadDictionary",
+            "        if let existing = storage[key] as? Fory { return existing }",
+            f"        let local = Fory(config: {module}.getFory().config)",
+            f"        try {module}.install(local)",
+            "        storage[key] = local",
+            "        return local",
+            "    }",
+            "}",
+            "",
             "// Internal Fory wire wrapper for gRPC request and response messages.",
+            "// NIOCore.ByteBuffer is qualified because `import Fory` also exposes one.",
             "private struct ForyMessage<Value: Serializer>: GRPCPayload {",
             "    var value: Value",
             "    init(_ value: Value) { self.value = value }",
             "    init(serializedByteBuffer buffer: inout NIOCore.ByteBuffer) throws {",
             "        let bytes = buffer.readBytes(length: buffer.readableBytes) ?? []",
-            f"        self.value = try {module}.getFory().deserialize(Data(bytes))",
+            "        self.value = try ForyRuntime.fory().deserialize(Data(bytes))",
             "    }",
             "    func serialize(into buffer: inout NIOCore.ByteBuffer) throws {",
-            f"        buffer.writeBytes(try {module}.getFory().serialize(value))",
+            "        buffer.writeBytes(try ForyRuntime.fory().serialize(value))",
             "    }",
             "}",
         ]

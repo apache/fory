@@ -3351,5 +3351,19 @@ precondition(cs.text == "got:p,q")
 var bd: [String] = []
 for try await m in client.bidi(locals(["m", "n"])) { bd.append(m.text) }
 precondition(bd == ["echo:m", "echo:n"])
+
+// Fire many parallel unary calls to exercise the per-thread Fory marshaller.
+let burst = try await withThrowingTaskGroup(of: String.self) { group -> Int in
+  for i in 0..<200 {
+    group.addTask { try await client.unary(Greeter.Api.LocalRequest(name: "c\(i)")).text }
+  }
+  var count = 0
+  for try await text in group {
+    precondition(text.hasPrefix("hi c"))
+    count += 1
+  }
+  return count
+}
+precondition(burst == 200)
 print("GENERATED OK")
 """
