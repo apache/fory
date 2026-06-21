@@ -482,7 +482,12 @@ fn compatible_union_rc_any_read() {
         Value(String),
     }
 
-    let mut fory = Fory::builder().xlang(false).compatible(true).build();
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_type_meta_bytes(1)
+        .max_schema_versions_per_type(1)
+        .build();
     fory.register_union::<Event>(711).unwrap();
 
     let value: Rc<dyn Any> = Rc::new(Event::Value("compatible".to_string()));

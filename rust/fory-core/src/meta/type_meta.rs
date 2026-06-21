@@ -89,7 +89,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
-const MAX_TYPE_META_FIELDS: usize = i16::MAX as usize;
+const DEFAULT_MAX_TYPE_FIELDS: usize = 512;
+const DEFAULT_MAX_TYPE_META_BYTES: usize = 4096;
 const MAX_COMPATIBLE_MATCHED_FIELD_INDEX: usize = (i16::MAX as usize - 1) / 2;
 const REGISTER_BY_NAME_FLAG: u8 = 0b0010_0000;
 const COMPATIBLE_TYPEDEF_FLAG: u8 = 0b0100_0000;
@@ -194,6 +195,24 @@ fn read_type_meta_body_size(reader: &mut Reader, header: i64) -> Result<usize, E
             .ok_or_else(|| Error::invalid_data("invalid TypeMeta metadata size"))?;
     }
     Ok(meta_size)
+}
+
+fn check_type_meta_body_size(meta_size: usize, max_type_meta_bytes: usize) -> Result<(), Error> {
+    if meta_size > max_type_meta_bytes {
+        return Err(Error::invalid_data(format!(
+            "Type metadata body size {meta_size} exceeds max_type_meta_bytes {max_type_meta_bytes}. The data may be malicious. If the data is not malicious, please increase max_type_meta_bytes."
+        )));
+    }
+    Ok(())
+}
+
+fn check_type_meta_fields(num_fields: usize, max_type_fields: usize) -> Result<(), Error> {
+    if num_fields > max_type_fields {
+        return Err(Error::invalid_data(format!(
+            "Type metadata field count {num_fields} exceeds max_type_fields {max_type_fields}. The data may be malicious. If the data is not malicious, please increase max_type_fields."
+        )));
+    }
+    Ok(())
 }
 
 #[inline(always)]
@@ -1130,6 +1149,7 @@ impl TypeMeta {
     fn from_meta_bytes(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
+        max_type_fields: usize,
     ) -> Result<TypeMeta, Error> {
         let meta_header = reader.read_u8()?;
         let is_struct = (meta_header & STRUCT_TYPEDEF_FLAG) != 0;
@@ -1157,12 +1177,7 @@ impl TypeMeta {
             if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
                 num_fields += reader.read_var_u32()? as usize;
             }
-            if num_fields > MAX_TYPE_META_FIELDS {
-                return Err(Error::invalid_data(format!(
-                    "too many fields in type meta: {}, max: {}",
-                    num_fields, MAX_TYPE_META_FIELDS
-                )));
-            }
+            check_type_meta_fields(num_fields, max_type_fields)?;
         } else {
             if (meta_header & 0b0111_0000) != 0 {
                 return Err(Error::invalid_data("invalid TypeMeta kind header"));
@@ -1264,19 +1279,31 @@ impl TypeMeta {
         type_resolver: &TypeResolver,
     ) -> Result<TypeMeta, Error> {
         let header = reader.read_i64()?;
-        Self::from_bytes_with_header(reader, type_resolver, header)
+        Self::from_bytes_with_header(
+            reader,
+            type_resolver,
+            header,
+            DEFAULT_MAX_TYPE_FIELDS,
+            DEFAULT_MAX_TYPE_META_BYTES,
+        )
     }
 
     pub(crate) fn from_bytes_with_header(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
         header: i64,
+        max_type_fields: usize,
+        max_type_meta_bytes: usize,
     ) -> Result<TypeMeta, Error> {
         validate_type_meta_header(header)?;
         let meta_size = read_type_meta_body_size(reader, header)?;
+        check_type_meta_body_size(meta_size, max_type_meta_bytes)?;
+        // The size limit is not byte-availability proof. read_bytes checks
+        // the reader bound before exposing the body slice; do not allocate or
+        // copy from meta_size before this point.
         let body = reader.read_bytes(meta_size)?;
         let mut body_reader = Reader::new(body);
-        let mut meta = Self::from_meta_bytes(&mut body_reader, type_resolver)?;
+        let mut meta = Self::from_meta_bytes(&mut body_reader, type_resolver, max_type_fields)?;
         if !body_reader.slice_after_cursor().is_empty() {
             return Err(Error::invalid_data("invalid TypeMeta metadata size"));
         }
@@ -1293,7 +1320,8 @@ impl TypeMeta {
     ) -> Result<(), Error> {
         // Header-cache hits intentionally treat the current body as opaque bytes and skip by the
         // current header size. Parsed TypeMeta entries are cached only after body parse and hash
-        // validation; cache hits must not reparse or rehash that body.
+        // validation; cache hits must not reparse, rehash, allocate, or
+        // otherwise materialize that body.
         let mut meta_size = (header & META_SIZE_MASK) as usize;
         if meta_size == META_SIZE_MASK as usize {
             meta_size += reader.read_var_u32()? as usize;

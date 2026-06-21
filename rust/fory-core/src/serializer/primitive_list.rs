@@ -57,9 +57,9 @@ pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) ->
         {
             // Fast path: direct memory copy on little-endian machines
             unsafe {
-                let ptr = this.as_ptr() as *const u8;
-                let slice = std::slice::from_raw_parts(ptr, len_bytes);
-                context.writer.write_bytes(slice);
+                context
+                    .writer
+                    .write_bytes_from_ptr(this.as_ptr() as *const u8, len_bytes);
             }
         }
         #[cfg(target_endian = "big")]

@@ -154,10 +154,10 @@ final class MapSerializer extends Serializer<Map> {
       context.buffer.writeUint8(0);
       final chunkLengthOffset = bufferWriterIndex(context.buffer) - 1;
       if (!keyDeclared) {
-        context.writeTypeMetaValue(chunkKeyTypeInfo, key);
+        context.writeTypeMetaValue(chunkKeyTypeInfo);
       }
       if (!valueDeclared) {
-        context.writeTypeMetaValue(chunkValueTypeInfo, value);
+        context.writeTypeMetaValue(chunkValueTypeInfo);
       }
       var chunkLength = 1;
       final tracksDepth =

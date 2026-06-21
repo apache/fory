@@ -64,6 +64,10 @@ public class Config implements Serializable {
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
+  private final int maxTypeFields;
+  private final int maxTypeMetaBytes;
+  private final int maxSchemaVersionsPerType;
+  private final int maxAverageSchemaVersionsPerType;
   private final float mapRefLoadFactor;
   private final boolean forVirtualThread;
 
@@ -106,6 +110,10 @@ public class Config implements Serializable {
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
+    maxTypeFields = builder.maxTypeFields;
+    maxTypeMetaBytes = builder.maxTypeMetaBytes;
+    maxSchemaVersionsPerType = builder.maxSchemaVersionsPerType;
+    maxAverageSchemaVersionsPerType = builder.maxAverageSchemaVersionsPerType;
     mapRefLoadFactor = builder.mapRefLoadFactor;
     forVirtualThread = builder.forVirtualThread;
   }
@@ -292,6 +300,26 @@ public class Config implements Serializable {
     return maxDepth;
   }
 
+  /** Returns the maximum number of fields accepted in one received struct TypeDef. */
+  public int maxTypeFields() {
+    return maxTypeFields;
+  }
+
+  /** Returns the maximum body size accepted for one received TypeDef. */
+  public int maxTypeMetaBytes() {
+    return maxTypeMetaBytes;
+  }
+
+  /** Returns the maximum accepted remote metadata versions for one logical type. */
+  public int maxSchemaVersionsPerType() {
+    return maxSchemaVersionsPerType;
+  }
+
+  /** Returns the maximum average accepted remote metadata versions across logical types. */
+  public int maxAverageSchemaVersionsPerType() {
+    return maxAverageSchemaVersionsPerType;
+  }
+
   /** Returns loadFactor of MacRef's writtenObjects. */
   public float mapRefLoadFactor() {
     return mapRefLoadFactor;
@@ -336,6 +364,10 @@ public class Config implements Serializable {
         && deserializeUnknownClass == config.deserializeUnknownClass
         && xlang == config.xlang
         && compatible == config.compatible
+        && maxTypeFields == config.maxTypeFields
+        && maxTypeMetaBytes == config.maxTypeMetaBytes
+        && maxSchemaVersionsPerType == config.maxSchemaVersionsPerType
+        && maxAverageSchemaVersionsPerType == config.maxAverageSchemaVersionsPerType
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -367,6 +399,10 @@ public class Config implements Serializable {
         requireClassRegistration,
         suppressClassRegistrationWarnings,
         registerGuavaTypes,
+        maxTypeFields,
+        maxTypeMetaBytes,
+        maxSchemaVersionsPerType,
+        maxAverageSchemaVersionsPerType,
         metaShareEnabled,
         scopedMetaShareEnabled,
         metaCompressor,

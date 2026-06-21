@@ -3020,8 +3020,10 @@ public final class MemoryBuffer {
       return MemoryOps.readAlignedVarUInt32(this);
     }
     int readerIdx = readerIndex;
-    // use subtract to avoid overflow
-    if (readerIdx < size - 10) {
+    // Use subtraction to avoid overflow. The unrolled Unsafe path assumes the
+    // full aligned-varint scratch range is addressable; short buffers must use
+    // readByte() checks.
+    if (readerIdx > size - 10) {
       return slowReadAlignedVarUInt32();
     }
     long pos = address + readerIdx;

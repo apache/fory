@@ -88,6 +88,28 @@ let fory = Fory::builder().max_dyn_depth(10).build(); // Allow up to 10 levels
 
 Note: Static data types (non-dynamic types) are secure by nature and not subject to depth limits, as their structure is known at compile time.
 
+### Remote Schema Metadata Limits
+
+Compatible mode can receive remote metadata for schema evolution. These limits
+bound metadata size and accepted schema versions:
+
+```rust
+let fory = Fory::builder()
+    .max_type_fields(512)
+    .max_type_meta_bytes(4096)
+    .max_schema_versions_per_type(10)
+    .max_average_schema_versions_per_type(3)
+    .build();
+```
+
+- `max_type_fields` defaults to `512` and limits fields in one received struct metadata body.
+- `max_type_meta_bytes` defaults to `4096` and limits encoded body bytes in one received TypeDef or
+  TypeMeta body, excluding the 8-byte header and any extended-size varint.
+- `max_schema_versions_per_type` defaults to `10` and limits accepted remote metadata versions for
+  one logical type.
+- `max_average_schema_versions_per_type` defaults to `3` and limits the average across accepted
+  remote types. The effective global floor is `8192` schemas.
+
 ### Explicit Xlang Examples
 
 Set `.xlang(true)` explicitly for xlang serialization examples:
@@ -122,11 +144,15 @@ let fory = Fory::builder()
 
 ## Configuration Summary
 
-| Option               | Description                             | Default |
-| -------------------- | --------------------------------------- | ------- |
-| `compatible(bool)`   | Enable schema evolution                 | `true`  |
-| `xlang(bool)`        | Use xlang mode                          | `true`  |
-| `max_dyn_depth(u32)` | Maximum nesting depth for dynamic types | `5`     |
+| Option                                        | Description                                       | Default |
+| --------------------------------------------- | ------------------------------------------------- | ------- |
+| `compatible(bool)`                            | Enable schema evolution                           | `true`  |
+| `xlang(bool)`                                 | Use xlang mode                                    | `true`  |
+| `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`     |
+| `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`   |
+| `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`  |
+| `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`    |
+| `max_average_schema_versions_per_type(usize)` | Average remote metadata versions across types     | `3`     |
 
 ## Compatible Mode
 
@@ -143,6 +169,8 @@ Security-related configuration:
 - Register application structs and trait-object implementations before deserializing untrusted
   payloads.
 - Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
+- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
+  trusted peer sends larger metadata or many schema versions.
 - Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.
 
 ## Related Topics

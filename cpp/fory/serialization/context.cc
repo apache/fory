@@ -22,6 +22,8 @@
 #include "fory/serialization/type_resolver.h"
 #include "fory/thirdparty/MurmurHash3.h"
 #include "fory/type/type.h"
+#include <algorithm>
+#include <cstring>
 
 namespace fory {
 namespace serialization {
@@ -477,8 +479,59 @@ ReadContext::read_enum_type_info(uint32_t base_type_id) {
   return Unexpected(Error::type_mismatch(type_id, base_type_id));
 }
 
-// Maximum number of parsed type defs to cache (avoid OOM from malicious input)
-static constexpr size_t k_max_parsed_num_type_defs = 8192;
+static constexpr size_t k_min_remote_type_meta_limit = 8192;
+
+Result<std::string, Error>
+ReadContext::check_remote_type_meta_limit(const TypeMeta &type_meta) {
+  std::string key;
+  if (type_meta.register_by_name) {
+    key.reserve(type_meta.namespace_str.size() + type_meta.type_name.size() +
+                2);
+    key.push_back('n');
+    key.append(type_meta.namespace_str);
+    key.push_back('\0');
+    key.append(type_meta.type_name);
+  } else {
+    key = "i" + std::to_string(type_meta.user_type_id);
+  }
+
+  auto *entry = remote_schema_versions_by_type_.find(key);
+  const uint32_t versions_for_type = entry == nullptr ? 0 : entry->second;
+  if (FORY_PREDICT_FALSE(versions_for_type >=
+                         config_->max_schema_versions_per_type)) {
+    return Unexpected(Error::invalid_data(
+        "Remote schema version limit exceeded for one type. The data may be "
+        "malicious. If the data is not malicious, please increase "
+        "max_schema_versions_per_type=" +
+        std::to_string(config_->max_schema_versions_per_type)));
+  }
+
+  const size_t accepted_type_count =
+      remote_schema_versions_by_type_.size() + (entry == nullptr ? 1 : 0);
+  const size_t global_limit = std::max(
+      k_min_remote_type_meta_limit,
+      accepted_type_count *
+          static_cast<size_t>(config_->max_average_schema_versions_per_type));
+  if (FORY_PREDICT_FALSE(total_accepted_schema_versions_ >= global_limit)) {
+    return Unexpected(Error::invalid_data(
+        "Remote schema version limit exceeded globally. The data may be "
+        "malicious. If the data is not malicious, please increase "
+        "max_average_schema_versions_per_type=" +
+        std::to_string(config_->max_average_schema_versions_per_type)));
+  }
+
+  return key;
+}
+
+void ReadContext::record_remote_type_meta(const std::string &type_key) {
+  auto *entry = remote_schema_versions_by_type_.find(type_key);
+  if (entry == nullptr) {
+    remote_schema_versions_by_type_[type_key] = 1;
+  } else {
+    ++entry->second;
+  }
+  ++total_accepted_schema_versions_;
+}
 
 Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   Error error;
@@ -504,11 +557,12 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   }
 
   // Check if we already parsed this type meta (cache lookup by header)
-  if (has_last_meta_header_ && meta_header == last_meta_header_) {
+  if (has_cached_meta_header_ && meta_header == cached_meta_header_) {
     // Header-cache hits intentionally skip without rehashing. Entries reach
     // this cache only after a successful TypeMeta parse and 52-bit
-    // metadata-hash validation.
-    const TypeInfo *cached = last_meta_type_info_;
+    // metadata-hash validation. Do not add body/hash/schema-limit/exact-local
+    // checks here; the miss path owns them before publish.
+    const TypeInfo *cached = cached_meta_type_info_;
     reading_type_infos_.push_back(cached);
     FORY_RETURN_NOT_OK(
         TypeMeta::skip_bytes_for_validated_header(*buffer_, meta_header));
@@ -519,20 +573,25 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
   if (cache_entry != nullptr) {
     // Header-cache hits intentionally skip without rehashing. Entries reach
     // this cache only after a successful TypeMeta parse and 52-bit
-    // metadata-hash validation.
+    // metadata-hash validation. Do not add body/hash/schema-limit/exact-local
+    // checks here; the miss path owns them before publish.
     const TypeInfo *cached = cache_entry->second;
     reading_type_infos_.push_back(cached);
-    has_last_meta_header_ = true;
-    last_meta_header_ = meta_header;
-    last_meta_type_info_ = cached;
+    has_cached_meta_header_ = true;
+    cached_meta_header_ = meta_header;
+    cached_meta_type_info_ = cached;
     FORY_RETURN_NOT_OK(
         TypeMeta::skip_bytes_for_validated_header(*buffer_, meta_header));
     return cached;
   }
 
   // Not in cache - parse the TypeMeta
-  FORY_TRY(parsed_meta,
-           TypeMeta::from_bytes_with_header(*buffer_, meta_header));
+  const uint32_t type_def_start =
+      buffer_->reader_index() - static_cast<uint32_t>(sizeof(int64_t));
+  FORY_TRY(parsed_meta, TypeMeta::from_bytes_with_header(
+                            *buffer_, meta_header, config_->max_type_fields,
+                            config_->max_type_meta_bytes));
+  const uint32_t type_def_end = buffer_->reader_index();
 
   // Find local TypeInfo to get field_id mapping (optional for schema evolution)
   const TypeInfo *local_type_info = nullptr;
@@ -556,6 +615,24 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
       }
     }
   }
+
+  if (local_type_info) {
+    const auto &local_type_def = local_type_info->type_def;
+    const size_t remote_type_def_size =
+        static_cast<size_t>(type_def_end - type_def_start);
+    if (local_type_def.size() == remote_type_def_size &&
+        std::memcmp(local_type_def.data(), buffer_->data() + type_def_start,
+                    remote_type_def_size) == 0) {
+      parsed_type_infos_[meta_header] = local_type_info;
+      has_cached_meta_header_ = true;
+      cached_meta_header_ = meta_header;
+      cached_meta_type_info_ = local_type_info;
+      reading_type_infos_.push_back(local_type_info);
+      return local_type_info;
+    }
+  }
+
+  FORY_TRY(remote_schema_key, check_remote_type_meta_limit(*parsed_meta));
 
   // Create TypeInfo with field_ids assigned
   auto type_info = std::make_unique<TypeInfo>();
@@ -583,21 +660,13 @@ Result<const TypeInfo *, Error> ReadContext::read_type_meta() {
     type_info->type_meta = std::move(parsed_meta);
   }
 
-  // get raw pointer before moving into storage
-  const TypeInfo *raw_ptr = type_info.get();
-
-  // Store in primary storage
-  if (parsed_type_infos_.size() < k_max_parsed_num_type_defs) {
-    cached_type_infos_.push_back(std::move(type_info));
-    raw_ptr = cached_type_infos_.back().get();
-    parsed_type_infos_[meta_header] = raw_ptr;
-    has_last_meta_header_ = true;
-    last_meta_header_ = meta_header;
-    last_meta_type_info_ = raw_ptr;
-  } else {
-    owned_reading_type_infos_.push_back(std::move(type_info));
-    raw_ptr = owned_reading_type_infos_.back().get();
-  }
+  cached_type_infos_.push_back(std::move(type_info));
+  const TypeInfo *raw_ptr = cached_type_infos_.back().get();
+  parsed_type_infos_[meta_header] = raw_ptr;
+  has_cached_meta_header_ = true;
+  cached_meta_header_ = meta_header;
+  cached_meta_type_info_ = raw_ptr;
+  record_remote_type_meta(remote_schema_key);
 
   reading_type_infos_.push_back(raw_ptr);
   return raw_ptr;
@@ -677,7 +746,6 @@ void ReadContext::reset() {
     ref_reader_.reset();
   }
   reading_type_infos_.clear();
-  owned_reading_type_infos_.clear();
   current_dyn_depth_ = 0;
   if (meta_string_table_active_) {
     meta_string_table_.reset();

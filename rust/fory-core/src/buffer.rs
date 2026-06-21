@@ -83,6 +83,14 @@ impl<'a> Writer<'a> {
         v.len()
     }
 
+    #[inline(always)]
+    pub(crate) unsafe fn write_bytes_from_ptr(&mut self, ptr: *const u8, len: usize) {
+        let offset = self.bf.len();
+        self.bf.reserve(len);
+        std::ptr::copy_nonoverlapping(ptr, self.bf.as_mut_ptr().add(offset), len);
+        self.bf.set_len(offset + len);
+    }
+
     // ============ BOOL (TypeId = 1) ============
 
     #[inline(always)]

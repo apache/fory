@@ -183,7 +183,7 @@ private func buildClassReadCompatibleDataDecl(
       || compatibleCases.contains("__buffer")) ? "let __buffer = context.buffer\n        " : ""
   let localFieldsBinding =
     compatibleCases.contains("__foryLocalFields")
-    ? "let __foryLocalFields = Self.foryFieldsInfo(trackRef: context.trackRef)\n        " : ""
+    ? "let __foryLocalFields = remoteTypeInfo.typeMeta?.fields ?? Self.foryFieldsInfo(trackRef: context.trackRef)\n        " : ""
 
   return """
     @inline(never)
@@ -199,9 +199,10 @@ private func buildClassReadCompatibleDataDecl(
         if let reservedRefID {
             context.refReader.storeRef(value, at: reservedRefID)
         }
-        if let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
+        if let localTypeMeta = remoteTypeInfo.typeMeta,
+           let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
            typeMeta.headerHash == localHeaderHash,
-           typeMeta.fields == Self.foryFieldsInfo(trackRef: context.trackRef) {
+           typeMeta.fields == localTypeMeta.fields {
             if !remoteTypeInfo.typeDefHasUserTypeFields {
                 \(schemaAssignBody)
                 return value
@@ -235,9 +236,10 @@ private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> Str
       guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
           throw ForyError.invalidData("compatible type metadata is required")
       }
-      if let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
+      if let localTypeMeta = remoteTypeInfo.typeMeta,
+         let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
          typeMeta.headerHash == localHeaderHash,
-         typeMeta.fields == Self.foryFieldsInfo(trackRef: context.trackRef) {
+         typeMeta.fields == localTypeMeta.fields {
           return Self()
       }
       for remoteField in typeMeta.fields {
@@ -288,9 +290,10 @@ private func buildStructReadCompatibleDataDecl(
         \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
-        if let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
+        if let localTypeMeta = remoteTypeInfo.typeMeta,
+           let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
            typeMeta.headerHash == localHeaderHash,
-           typeMeta.fields == Self.foryFieldsInfo(trackRef: context.trackRef) {
+           typeMeta.fields == localTypeMeta.fields {
             if !remoteTypeInfo.typeDefHasUserTypeFields {
                 \(schemaReadBody)
                 return Self(

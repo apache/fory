@@ -93,7 +93,6 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectStreamSerializer.class);
-  private static final int MAX_CACHED_TYPE_DEFS = 8192;
 
   private final SlotInfo[] slotsInfos;
   // Instance-level cache: TypeDef ID -> TypeInfo (shared across all slots).
@@ -279,7 +278,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       ClassResolver classResolver = (ClassResolver) typeResolver;
       TreeMap<Integer, ObjectInputValidation> callbacks = new TreeMap<>(Collections.reverseOrder());
       for (int i = 0; i < numClasses; i++) {
-        // Matching layers are admitted by the registered root object type; requiring each
+        // Matching layers are accepted by the registered root object type; requiring each
         // serializable superclass to be registered would make normal ObjectStream hierarchy reads
         // unusable. Sender-only layers are checked below before their data is skipped.
         Class<?> currentClass = classResolver.readClassInternalUnchecked(readContext);
@@ -553,12 +552,25 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       TypeDef.skipTypeDef(buffer, typeDefId);
       return typeInfo;
     }
-    TypeDef typeDef =
-        typeResolver.cacheTypeDef(TypeDef.readTypeDef(typeResolver, buffer, typeDefId));
-    typeInfo = new TypeInfo(cls, typeDef);
-    if (typeDefIdToTypeInfo.size < MAX_CACHED_TYPE_DEFS) {
-      typeDefIdToTypeInfo.put(typeDefId, typeInfo);
+    return readLayerTypeDef(typeResolver, buffer, cls, typeDefId);
+  }
+
+  private TypeInfo readLayerTypeDef(
+      TypeResolver typeResolver, MemoryBuffer buffer, Class<?> cls, long typeDefId) {
+    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
+    TypeDef localTypeDef = typeResolver.getTypeDef(cls, false);
+    TypeDef typeDef;
+    if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
+      // Exact local bytes only avoid remote schema counting/parsing. They still select the
+      // target class serializer, so the class must pass the active deserialization policy.
+      typeResolver.checkClassForDeserialization(cls);
+      typeDef = localTypeDef;
+    } else {
+      typeResolver.checkClassForDeserialization(cls);
+      typeDef = typeResolver.cacheRemoteTypeDef(TypeDef.readTypeDef(typeResolver, encoded));
     }
+    TypeInfo typeInfo = new TypeInfo(cls, typeDef);
+    typeDefIdToTypeInfo.put(typeDefId, typeInfo);
     return typeInfo;
   }
 

@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -52,11 +53,10 @@ const (
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
 	// 0xffffffff is reserved for "unset".
-	maxUserTypeID           uint32 = 0xfffffffe
-	invalidUserTypeID       uint32 = 0xffffffff
-	internalTypeIDLimit            = 0xFF
-	maxCachedTypeDefs              = 8192
-	maxCachedNamedTypeInfos        = 8192
+	maxUserTypeID         uint32 = 0xfffffffe
+	invalidUserTypeID     uint32 = 0xffffffff
+	internalTypeIDLimit          = 0xFF
+	minRemoteTypeDefLimit        = 8192
 )
 
 var (
@@ -208,8 +208,10 @@ type TypeResolver struct {
 	typeNameDecoder  *meta.Decoder
 
 	// meta share related
-	typeToTypeDef  map[reflect.Type]*TypeDef
-	defIdToTypeDef map[int64]*TypeDef
+	typeToTypeDef               map[reflect.Type]*TypeDef
+	defIdToTypeDef              map[int64]*TypeDef
+	remoteSchemaVersionsByType  map[any]int
+	totalAcceptedSchemaVersions int
 
 	// Fast type cache for O(1) lookup using type pointer
 	typePointerCache map[uintptr]*TypeInfo
@@ -252,10 +254,11 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeNameEncoder:  meta.NewEncoder('$', '_'),
 		typeNameDecoder:  meta.NewDecoder('$', '_'),
 
-		typeToTypeDef:    make(map[reflect.Type]*TypeDef),
-		defIdToTypeDef:   make(map[int64]*TypeDef),
-		typePointerCache: make(map[uintptr]*TypeInfo),
-		unionTypeCache:   make(map[reflect.Type]bool),
+		typeToTypeDef:              make(map[reflect.Type]*TypeDef),
+		defIdToTypeDef:             make(map[int64]*TypeDef),
+		remoteSchemaVersionsByType: make(map[any]int),
+		typePointerCache:           make(map[uintptr]*TypeInfo),
+		unionTypeCache:             make(map[reflect.Type]bool),
 	}
 	// base type info for encode/decode types.
 	// composite types info will be constructed dynamically.
@@ -1414,30 +1417,14 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 	context := r.fory.MetaContext()
 	key := typePointer(typeInfo.Type)
 	writeTypeDefInline := func() {
-		// Only build TypeDef for struct types - enums don't have field definitions
-		actualType := typeInfo.Type
-		if actualType.Kind() == reflect.Ptr {
-			actualType = actualType.Elem()
-		}
-		if actualType.Kind() == reflect.Struct {
-			typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
-			if typeDefErr != nil {
-				err.SetError(typeDefErr)
-				return
-			}
-			// Write TypeDef bytes inline
-			typeDef.writeTypeDef(buffer, err)
-		}
-	}
-	writeTypeDefWithZeroMarker := func() {
-		actualType := typeInfo.Type
-		if actualType.Kind() == reflect.Ptr {
-			actualType = actualType.Elem()
-		}
-		if actualType.Kind() != reflect.Struct {
-			buffer.WriteUint8(0)
+		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
+		if typeDefErr != nil {
+			err.SetError(typeDefErr)
 			return
 		}
+		typeDef.writeTypeDef(buffer, err)
+	}
+	writeTypeDefWithZeroMarker := func() {
 		typeDef, typeDefErr := r.getTypeDef(typeInfo.Type, true)
 		if typeDefErr != nil {
 			err.SetError(typeDefErr)
@@ -1519,6 +1506,53 @@ func (r *TypeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 	return typeDef, nil
 }
 
+//go:noinline
+func (r *TypeResolver) checkRemoteTypeDefLimit(td *TypeDef) (any, error) {
+	var typeKey any
+	if td.registerByName {
+		if td.nsName == nil || td.typeName == nil {
+			return nil, fmt.Errorf("named remote metadata is missing namespace or type name")
+		}
+		namespace, err := r.namespaceDecoder.Decode(td.nsName.Data, td.nsName.Encoding)
+		if err != nil {
+			return nil, err
+		}
+		typeName, err := r.typeNameDecoder.Decode(td.typeName.Data, td.typeName.Encoding)
+		if err != nil {
+			return nil, err
+		}
+		typeKey = namespace + "\x00" + typeName
+	} else {
+		typeKey = td.userTypeId
+	}
+	versionsForType := r.remoteSchemaVersionsByType[typeKey]
+	if versionsForType >= r.fory.config.MaxSchemaVersionsPerType {
+		return nil, fmt.Errorf(
+			"remote schema version limit exceeded for type %v: %d >= %d. The data may be malicious. If the data is not malicious, please increase MaxSchemaVersionsPerType",
+			typeKey, versionsForType, r.fory.config.MaxSchemaVersionsPerType)
+	}
+	acceptedTypeCount := len(r.remoteSchemaVersionsByType)
+	if versionsForType == 0 {
+		acceptedTypeCount++
+	}
+	globalLimit := acceptedTypeCount * r.fory.config.MaxAverageSchemaVersionsPerType
+	if globalLimit < minRemoteTypeDefLimit {
+		globalLimit = minRemoteTypeDefLimit
+	}
+	if r.totalAcceptedSchemaVersions >= globalLimit {
+		return nil, fmt.Errorf(
+			"remote schema version limit exceeded: %d metadata versions for %d accepted remote types exceeds the average limit %d. The data may be malicious. If the data is not malicious, please increase MaxAverageSchemaVersionsPerType",
+			r.totalAcceptedSchemaVersions, acceptedTypeCount, r.fory.config.MaxAverageSchemaVersionsPerType)
+	}
+	return typeKey, nil
+}
+
+func (r *TypeResolver) recordRemoteTypeDef(typeKey any) {
+	versionsForType := r.remoteSchemaVersionsByType[typeKey]
+	r.remoteSchemaVersionsByType[typeKey] = versionsForType + 1
+	r.totalAcceptedSchemaVersions++
+}
+
 func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeInfo {
 	context := r.fory.MetaContext()
 	if context == nil {
@@ -1561,15 +1595,12 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 	var td *TypeDef
 	if existingTd, exists := r.defIdToTypeDef[id]; exists {
 		// Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-		// after a successful TypeDef parse and 52-bit metadata-hash validation.
+		// after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
+		// body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
 		skipTypeDef(buffer, id, err)
 		td = existingTd
 	} else {
-		newTd := readTypeDef(r.fory, buffer, id, err)
-		if err.HasError() {
-			return nil
-		}
-		td = newTd
+		return r.readTypeDefInfo(buffer, id, context, err)
 	}
 
 	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
@@ -1577,12 +1608,81 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 		err.SetError(typeInfoErr)
 		return nil
 	}
-	if _, exists := r.defIdToTypeDef[id]; !exists && len(r.defIdToTypeDef) < maxCachedTypeDefs {
-		r.defIdToTypeDef[id] = td
-	}
-
 	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
 	return typeInfo
+}
+
+//go:noinline
+func (r *TypeResolver) readTypeDefInfo(buffer *ByteBuffer, id int64, context *MetaContext, err *Error) *TypeInfo {
+	td := readTypeDef(r.fory, buffer, id, err)
+	if err.HasError() {
+		return nil
+	}
+	if typeInfo := r.localTypeInfoForTypeDef(td); typeInfo != nil {
+		localTd, localErr := r.localTypeDef(typeInfo)
+		if localErr != nil {
+			err.SetError(localErr)
+			return nil
+		}
+		if localTd != nil && bytes.Equal(localTd.encoded, td.encoded) {
+			r.defIdToTypeDef[id] = localTd
+			context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+			return typeInfo
+		}
+	}
+	typeKey, limitErr := r.checkRemoteTypeDefLimit(td)
+	if limitErr != nil {
+		err.SetError(limitErr)
+		return nil
+	}
+	typeInfo, typeInfoErr := td.getOrBuildTypeInfo(r)
+	if typeInfoErr != nil {
+		err.SetError(typeInfoErr)
+		return nil
+	}
+	r.defIdToTypeDef[id] = td
+	r.recordRemoteTypeDef(typeKey)
+	context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+	return typeInfo
+}
+
+func (r *TypeResolver) localTypeInfoForTypeDef(td *TypeDef) *TypeInfo {
+	var typeInfo *TypeInfo
+	if td.registerByName {
+		if td.nsName == nil || td.typeName == nil {
+			return nil
+		}
+		typeInfo = r.nsTypeToTypeInfo[nsTypeKey{td.nsName.Hashcode, td.typeName.Hashcode}]
+		if typeInfo == nil {
+			namespace, nsErr := r.namespaceDecoder.Decode(td.nsName.Data, td.nsName.Encoding)
+			typeName, nameErr := r.typeNameDecoder.Decode(td.typeName.Data, td.typeName.Encoding)
+			if nsErr == nil && nameErr == nil {
+				typeInfo = r.namedTypeToTypeInfo[[2]string{namespace, typeName}]
+			}
+		}
+	} else if td.userTypeId != invalidUserTypeID {
+		typeInfo = r.userTypeIdToTypeInfo[td.userTypeId]
+	}
+	if typeInfo == nil {
+		return nil
+	}
+	if typeInfo.Type != nil && typeInfo.Type.Kind() == reflect.Ptr {
+		if valueInfo := r.typesInfo[typeInfo.Type.Elem()]; valueInfo != nil {
+			typeInfo = valueInfo
+		}
+	}
+	return typeInfo
+}
+
+func (r *TypeResolver) localTypeDef(typeInfo *TypeInfo) (*TypeDef, error) {
+	if typeInfo == nil || typeInfo.Type == nil {
+		return nil, nil
+	}
+	type_ := typeInfo.Type
+	if type_.Kind() == reflect.Ptr {
+		type_ = type_.Elem()
+	}
+	return r.getTypeDef(type_, true)
 }
 
 func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s Serializer, err error) {
@@ -2081,9 +2181,7 @@ func (r *TypeResolver) resolveTypeInfoByMetaBytes(nsBytes, typeBytes *MetaString
 
 	nameKey := [2]string{ns, typeName}
 	if typeInfo, exists := r.namedTypeToTypeInfo[nameKey]; exists {
-		if len(r.nsTypeToTypeInfo) < maxCachedNamedTypeInfos {
-			r.nsTypeToTypeInfo[compositeKey] = typeInfo
-		}
+		r.nsTypeToTypeInfo[compositeKey] = typeInfo
 		return typeInfo
 	}
 

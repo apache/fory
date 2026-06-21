@@ -220,8 +220,6 @@ public:
 // TypeMeta - Complete type metadata (for schema evolution)
 // ============================================================================
 
-constexpr size_t MAX_PARSED_NUM_TYPE_DEFS = 8192;
-
 /// Type metadata containing all field information
 /// Used for schema evolution to compare remote and local type schemas
 class TypeMeta {
@@ -252,13 +250,17 @@ public:
   /// @param buffer Source buffer
   /// @param local_type_info Local type information (for field ID assignment)
   static Result<std::unique_ptr<TypeMeta>, Error>
-  from_bytes(Buffer &buffer, const TypeMeta *local_type_info);
+  from_bytes(Buffer &buffer, const TypeMeta *local_type_info,
+             uint32_t max_type_fields = 512,
+             uint32_t max_type_meta_bytes = 4096);
 
   /// Read type meta from buffer with pre-read header
   /// @param buffer Source buffer (positioned after header)
   /// @param header Pre-read 8-byte header
   static Result<std::unique_ptr<TypeMeta>, Error>
-  from_bytes_with_header(Buffer &buffer, int64_t header);
+  from_bytes_with_header(Buffer &buffer, int64_t header,
+                         uint32_t max_type_fields = 512,
+                         uint32_t max_type_meta_bytes = 4096);
 
   /// skip type meta in buffer without parsing
   static Result<void, Error> skip_bytes_for_validated_header(Buffer &buffer,
@@ -1964,6 +1966,14 @@ TypeResolver::build_enum_type_info(uint32_t type_id, uint32_t user_type_id,
   FORY_TRY(enc_tn, encode_meta_string(entry->type_name, false));
   entry->encoded_type_name = std::move(enc_tn);
 
+  if (register_by_name) {
+    TypeMeta meta = TypeMeta::from_fields(
+        type_id, entry->namespace_name, entry->type_name, register_by_name,
+        entry->user_type_id, std::vector<FieldInfo>{});
+    FORY_TRY(type_def, meta.to_bytes());
+    entry->type_def = std::move(type_def);
+  }
+
   return entry;
 }
 
@@ -2029,6 +2039,14 @@ TypeResolver::build_union_type_info(uint32_t type_id, uint32_t user_type_id,
   entry->encoded_namespace = std::move(enc_ns);
   FORY_TRY(enc_tn, encode_meta_string(entry->type_name, false));
   entry->encoded_type_name = std::move(enc_tn);
+
+  if (register_by_name) {
+    TypeMeta meta = TypeMeta::from_fields(
+        type_id, entry->namespace_name, entry->type_name, register_by_name,
+        entry->user_type_id, std::vector<FieldInfo>{});
+    FORY_TRY(type_def, meta.to_bytes());
+    entry->type_def = std::move(type_def);
+  }
 
   return entry;
 }

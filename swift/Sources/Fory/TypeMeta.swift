@@ -325,27 +325,45 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     return Array(buffer.storage.prefix(buffer.count))
   }
 
-  public static func decode(_ bytes: [UInt8]) throws -> TypeMeta {
-    try decode(ByteBuffer(bytes: bytes))
+  public static func decode(
+    _ bytes: [UInt8],
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096
+  ) throws -> TypeMeta {
+    try decode(
+      ByteBuffer(bytes: bytes),
+      maxTypeFields: maxTypeFields,
+      maxTypeMetaBytes: maxTypeMetaBytes)
   }
 
-  public static func decode(_ buffer: ByteBuffer) throws -> TypeMeta {
+  public static func decode(
+    _ buffer: ByteBuffer,
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096
+  ) throws -> TypeMeta {
     let header = try buffer.readUInt64()
     if (header & typeMetaReservedFlags) != 0 {
       throw ForyError.invalidData("invalid TypeMeta global header")
     }
     let compressed = (header & typeMetaCompressedFlag) != 0
+    if compressed {
+      throw ForyError.encodingError("compressed TypeMeta is not supported yet")
+    }
 
     var metaSize = Int(header & typeMetaSizeMask)
     if metaSize == Int(typeMetaSizeMask) {
       metaSize += Int(try buffer.readVarUInt32())
     }
-
-    let encodedBody = try buffer.readBytes(count: metaSize)
-    if compressed {
-      throw ForyError.encodingError("compressed TypeMeta is not supported yet")
+    if metaSize > maxTypeMetaBytes {
+      throw ForyError.invalidData(
+        "Type metadata body size \(metaSize) exceeds maxTypeMetaBytes \(maxTypeMetaBytes). "
+          + "The data may be malicious. If the data is not malicious, please increase maxTypeMetaBytes."
+      )
     }
 
+    // maxTypeMetaBytes is only a size cap. readBytes performs the buffer
+    // bound check before allocating/copying the declared body bytes.
+    let encodedBody = try buffer.readBytes(count: metaSize)
     let bodyReader = ByteBuffer(bytes: encodedBody)
     let metaHeader = try bodyReader.readUInt8()
 
@@ -363,6 +381,12 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       numFields = Int(metaHeader & UInt8(smallNumFieldsThreshold))
       if numFields == smallNumFieldsThreshold {
         numFields += Int(try bodyReader.readVarUInt32())
+      }
+      if numFields > maxTypeFields {
+        throw ForyError.invalidData(
+          "Type metadata field count \(numFields) exceeds maxTypeFields \(maxTypeFields). "
+            + "The data may be malicious. If the data is not malicious, please increase maxTypeFields."
+        )
       }
       if registerByName {
         typeID = compatible ? TypeId.namedCompatibleStruct.rawValue : TypeId.namedStruct.rawValue

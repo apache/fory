@@ -452,6 +452,8 @@
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-surefire-plugin</artifactId>
             <configuration>
+              <!-- Tests use the classpath overlay above, so target the unnamed-module launch shape. -->
+              <argLine>${argLine} --add-opens=java.base/java.lang.invoke=ALL-UNNAMED</argLine>
               <classesDirectory>${fory.jdk25.test.classes}</classesDirectory>
             </configuration>
           </plugin>

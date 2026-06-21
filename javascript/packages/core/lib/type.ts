@@ -241,6 +241,7 @@ export type Serializer<T = any> = {
   getTypeId: () => number;
   getUserTypeId: () => number;
   getHash: () => number;
+  getTypeMetaBytes?: () => Uint8Array | undefined;
 
   // for writing
   write: (v: T) => void;
@@ -291,6 +292,10 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  maxTypeFields: number;
+  maxTypeMetaBytes: number;
+  maxSchemaVersionsPerType: number;
+  maxAverageSchemaVersionsPerType: number;
   hooks: {
     afterCodeGenerated?: (code: string) => string;
   };

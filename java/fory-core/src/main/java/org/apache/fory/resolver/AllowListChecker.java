@@ -77,7 +77,13 @@ public class AllowListChecker implements TypeChecker {
   }
 
   public void setCheckLevel(CheckLevel checkLevel) {
-    this.checkLevel = checkLevel;
+    try {
+      lock.writeLock().lock();
+      this.checkLevel = checkLevel;
+      clearCheckerCache();
+    } finally {
+      lock.writeLock().unlock();
+    }
   }
 
   @Override
@@ -209,6 +215,7 @@ public class AllowListChecker implements TypeChecker {
       String prefix = classNameOrPrefix.substring(0, classNameOrPrefix.length() - 1);
       disallowListPrefix.add(prefix);
       for (ClassResolver classResolver : listeners.keySet()) {
+        classResolver.clearCheckerCacheForPrefix(prefix);
         try {
           classResolver.getJITContext().lock();
           // clear serializer may throw NullPointerException for field serialization.
@@ -220,6 +227,7 @@ public class AllowListChecker implements TypeChecker {
     } else {
       disallowList.add(classNameOrPrefix);
       for (ClassResolver classResolver : listeners.keySet()) {
+        classResolver.clearCheckerCacheForClass(classNameOrPrefix);
         try {
           classResolver.getJITContext().lock();
           // clear serializer may throw NullPointerException for field serialization.
@@ -241,6 +249,12 @@ public class AllowListChecker implements TypeChecker {
       listeners.put(classResolver, true);
     } finally {
       lock.writeLock().unlock();
+    }
+  }
+
+  private void clearCheckerCache() {
+    for (ClassResolver classResolver : listeners.keySet()) {
+      classResolver.clearCheckerCache();
     }
   }
 

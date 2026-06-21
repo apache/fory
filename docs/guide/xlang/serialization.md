@@ -23,6 +23,41 @@ This page demonstrates common cross-language serialization patterns. Data serial
 supported language can be deserialized in any other supported language when peers use matching type
 identity, field schema, and compatibility settings.
 
+## Remote Schema Metadata Limits
+
+Compatible mode may receive remote metadata (`TypeDef` or `TypeMeta`) for types that are not already
+known by the reader. Fory limits how many distinct remote metadata versions can be accepted, and
+also limits the size of each received metadata body:
+
+- `maxSchemaVersionsPerType`: maximum accepted remote metadata versions for one logical type. The
+  default is `10`.
+- `maxAverageSchemaVersionsPerType`: average accepted remote metadata versions across all accepted
+  remote types. The default is `3`; the effective global floor is `8192` metadata entries.
+- `maxTypeFields`: maximum fields declared by one received struct metadata body. The default is
+  `512`.
+- `maxTypeMetaBytes`: maximum encoded metadata body bytes for one received TypeDef or TypeMeta body,
+  excluding the 8-byte header and any extended-size varint. The default is `4096`.
+
+These limits are resource protections. They do not change wire format, registration requirements,
+dynamic type loading, unknown-type handling, or schema-evolution compatibility.
+
+Raise these values only when the data is not malicious and a trusted peer sends larger metadata or
+many schema versions.
+
+| Language              | Field-count option  | Metadata-bytes option  | Per-type option                | Average option                         |
+| --------------------- | ------------------- | ---------------------- | ------------------------------ | -------------------------------------- |
+| Java                  | `withMaxTypeFields` | `withMaxTypeMetaBytes` | `withMaxSchemaVersionsPerType` | `withMaxAverageSchemaVersionsPerType`  |
+| Scala                 | `withMaxTypeFields` | `withMaxTypeMetaBytes` | `withMaxSchemaVersionsPerType` | `withMaxAverageSchemaVersionsPerType`  |
+| Kotlin                | `withMaxTypeFields` | `withMaxTypeMetaBytes` | `withMaxSchemaVersionsPerType` | `withMaxAverageSchemaVersionsPerType`  |
+| Python                | `max_type_fields`   | `max_type_meta_bytes`  | `max_schema_versions_per_type` | `max_average_schema_versions_per_type` |
+| JavaScript/TypeScript | `maxTypeFields`     | `maxTypeMetaBytes`     | `maxSchemaVersionsPerType`     | `maxAverageSchemaVersionsPerType`      |
+| C++                   | `max_type_fields`   | `max_type_meta_bytes`  | `max_schema_versions_per_type` | `max_average_schema_versions_per_type` |
+| Go                    | `WithMaxTypeFields` | `WithMaxTypeMetaBytes` | `WithMaxSchemaVersionsPerType` | `WithMaxAverageSchemaVersionsPerType`  |
+| Rust                  | `max_type_fields`   | `max_type_meta_bytes`  | `max_schema_versions_per_type` | `max_average_schema_versions_per_type` |
+| C#                    | `MaxTypeFields`     | `MaxTypeMetaBytes`     | `MaxSchemaVersionsPerType`     | `MaxAverageSchemaVersionsPerType`      |
+| Swift                 | `maxTypeFields`     | `maxTypeMetaBytes`     | `maxSchemaVersionsPerType`     | `maxAverageSchemaVersionsPerType`      |
+| Dart                  | `maxTypeFields`     | `maxTypeMetaBytes`     | `maxSchemaVersionsPerType`     | `maxAverageSchemaVersionsPerType`      |
+
 ## Serialize Built-in Types
 
 Common types can be serialized automatically without registration: primitive numeric types, string, binary, array, list, map, and more.

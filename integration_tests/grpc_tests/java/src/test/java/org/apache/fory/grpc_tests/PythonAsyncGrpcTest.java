@@ -20,6 +20,11 @@
 package org.apache.fory.grpc_tests;
 
 import io.grpc.Server;
+import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -29,7 +34,9 @@ public class PythonAsyncGrpcTest extends GrpcTestBase {
   public void testJavaServerPythonClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runPython("python-async-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPeer(
+          "python-async-grpc-client",
+          pythonCommand("client", "--target", "127.0.0.1:" + server.getPort()));
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -44,5 +51,34 @@ public class PythonAsyncGrpcTest extends GrpcTestBase {
         "fory-grpc-python-async-",
         pythonCommand("server"),
         this::exerciseAllSchemas);
+  }
+
+  private PeerCommand pythonCommand(String... args) {
+    Path repoRoot = repoRoot();
+    Path grpcRoot = grpcRoot();
+    Path pythonRoot = grpcRoot.resolve("python");
+    Path generatedRoot = pythonRoot.resolve("grpc_tests").resolve("generated");
+    String pythonPath =
+        generatedRoot
+            + File.pathSeparator
+            + pythonRoot
+            + File.pathSeparator
+            + repoRoot.resolve("python");
+    String existingPythonPath = System.getenv("PYTHONPATH");
+    if (existingPythonPath != null && !existingPythonPath.isEmpty()) {
+      pythonPath = pythonPath + File.pathSeparator + existingPythonPath;
+    }
+    List<String> command = new ArrayList<>();
+    command.add("python");
+    command.add("-m");
+    command.add("grpc_tests.grpc_peer");
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = newPeerCommand(grpcRoot, command);
+    putEnv(peerCommand, "PYTHONPATH", pythonPath);
+    putEnv(peerCommand, "ENABLE_FORY_CYTHON_SERIALIZATION", "0");
+    putEnv(peerCommand, "ENABLE_FORY_DEBUG_OUTPUT", "1");
+    setLocalhostNoProxy(peerCommand);
+    clearProxyEnv(peerCommand);
+    return peerCommand;
   }
 }

@@ -301,7 +301,7 @@ final class ListSerializer extends Serializer<List> {
     if (!usesDeclaredType &&
         sameTypeInfo != null &&
         analysis.firstNonNull != null) {
-      context.writeTypeMetaValue(sameTypeInfo, analysis.firstNonNull!);
+      context.writeTypeMetaValue(sameTypeInfo);
     }
     if (declaredTypeInfo != null) {
       _writeSameTypeElements(
@@ -747,7 +747,7 @@ void writeTypedListPayload<T>(
     ),
   );
   if (!usesDeclaredType) {
-    context.writeTypeMetaValue(declaredTypeInfo, values.first as Object);
+    context.writeTypeMetaValue(declaredTypeInfo);
   }
   _writeSameTypeElements(
     context,

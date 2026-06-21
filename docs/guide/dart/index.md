@@ -138,6 +138,7 @@ dart run build_runner build --delete-conflicting-outputs
 | [Supported Types](supported-types.md)           | Built-in xlang values, wrappers, collections, and structs       |
 | [Schema Evolution](schema-evolution.md)         | Compatible structs and evolving schemas                         |
 | [Web Platform Support](web-platform-support.md) | Dart VM/AOT, Flutter, and web support, limits, and validation   |
+| [gRPC Support](grpc-support.md)                 | Generated Fory-backed gRPC service companions                   |
 | [Troubleshooting](troubleshooting.md)           | Common errors, diagnostics, and validation steps                |
 
 ## Related Resources

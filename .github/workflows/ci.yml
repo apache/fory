@@ -795,7 +795,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: integration_tests/grpc_tests/rust
           cache-bin: "false"
@@ -854,6 +854,55 @@ jobs:
         run: |
           cd integration_tests/grpc_tests/java
           mvn -T16 --no-transfer-progress -Dtest=KotlinGrpcTest test
+
+  grpc_java_dart_tests:
+    name: Java/Dart gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+        with:
+          sdk: stable
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build Dart gRPC peer
+        run: |
+          cd integration_tests/grpc_tests/dart
+          dart pub get
+          dart run build_runner build
+      - name: Analyze and format-check generated Dart gRPC companions
+        run: |
+          cd integration_tests/grpc_tests/dart
+          dart analyze bin lib/generated/*/*_grpc.dart
+          dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
+      - name: Run Java/Dart gRPC Tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=DartGrpcTest test
 
   javascript:
     name: JavaScript CI
@@ -959,7 +1008,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: rust
           cache-bin: "false"
@@ -988,7 +1037,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Cache Cargo dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@v2
         with:
           workspaces: rust
           cache-bin: "false"
@@ -1018,7 +1067,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1072,7 +1121,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1122,7 +1171,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1202,7 +1251,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1266,7 +1315,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1304,7 +1353,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1345,7 +1394,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
@@ -1423,7 +1472,7 @@ jobs:
           python-version: 3.8
           cache: "pip"
       - name: Set up Bazel
-        uses: bazel-contrib/setup-bazel@083175551ceeceebc757ebee2127fde78840ca77 # 0.18.0
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"

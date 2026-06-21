@@ -24,8 +24,10 @@ import static org.testng.Assert.*;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.config.Language;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.LogLevel;
 import org.apache.fory.logging.LoggerFactory;
@@ -157,6 +159,84 @@ public class AllowListCheckerTest {
   }
 
   @Test
+  public void testTypeCheckerSingleCheck() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    AtomicInteger checks = new AtomicInteger();
+    fory.getTypeResolver()
+        .setTypeChecker(
+            (resolver, className) -> {
+              if (className.equals(CheckedType.class.getName())) {
+                checks.incrementAndGet();
+              }
+              return true;
+            });
+
+    byte[] bytes = fory.serialize(new CheckedType());
+    CheckedType result = (CheckedType) fory.deserialize(bytes);
+
+    assertEquals(result.value, "test");
+    assertEquals(checks.get(), 1);
+  }
+
+  @Test
+  public void testTypeCheckerCacheClearedByDisallow() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
+    fory.getTypeResolver().setTypeChecker(checker);
+
+    byte[] bytes = fory.serialize(new CheckedType());
+    checker.disallowClass(CheckedType.class.getName());
+
+    assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
+  }
+
+  @Test
+  public void testTypeCheckerCacheSharedByRegistry() {
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory writer =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withSharedRegistry(sharedRegistry)
+            .build();
+    Fory reader =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withSharedRegistry(sharedRegistry)
+            .build();
+    AtomicInteger checks = new AtomicInteger();
+    TypeChecker checker =
+        (resolver, className) -> {
+          if (className.equals(CheckedType.class.getName())) {
+            checks.incrementAndGet();
+          }
+          return true;
+        };
+    writer.getTypeResolver().setTypeChecker(checker);
+    reader.getTypeResolver().setTypeChecker(checker);
+
+    byte[] bytes = writer.serialize(new CheckedType());
+    CheckedType result = (CheckedType) reader.deserialize(bytes);
+
+    assertEquals(result.value, "test");
+    assertEquals(checks.get(), 1);
+  }
+
+  @Test
+  public void testTypeCheckerCacheLimit() {
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    for (int i = 0; i < 8192; i++) {
+      String className = "test.C" + i;
+      sharedRegistry.markTypeAccepted(className);
+      assertTrue(sharedRegistry.isTypeAccepted(className));
+    }
+    sharedRegistry.markTypeAccepted("test.Overflow");
+
+    assertFalse(sharedRegistry.isTypeAccepted("test.Overflow"));
+  }
+
+  @Test
   public void testThreadSafeFory() {
     AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
     ThreadSafeFory fory =
@@ -171,5 +251,9 @@ public class AllowListCheckerTest {
     checker.disallowClass("org.apache.fory.*");
     assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
     assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
+  }
+
+  public static class CheckedType {
+    public String value = "test";
   }
 }

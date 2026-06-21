@@ -1,6 +1,6 @@
 ---
 title: Deserialization Security Model
-sidebar_position: 2
+sidebar_position: 3
 ---
 
 This document defines the security model for Apache Fory deserialization. It is
@@ -51,6 +51,41 @@ Fory security boundaries do not include:
 - Whether a map, set, object, or metadata value uses one specific encoding
   shape, unless rejecting other shapes is an explicit owner policy or protects
   one of the boundaries above.
+
+## Type And Class Policy
+
+Type, class, function, method, registration, and deserialization policies are
+security boundaries when they are intended to restrict what untrusted bytes may
+materialize.
+
+For untrusted data, a bypass is security-relevant when encoded bytes can
+materialize a type, function, method, class, or dynamic object that the active
+Fory policy should reject. This includes bypasses of class or type
+registration, allow-list checkers, strict-mode checks, or language-specific
+deserialization policies.
+
+Disabling registration or dynamic-type checks for trusted data is a caller
+configuration choice. That choice only removes the arbitrary-type materialization
+claim provided by that policy; it does not remove Fory's runtime-safety,
+resource, cleanup, retained-state, or no-progress-loop requirements for
+untrusted deserialization paths.
+
+Fory is not a sandbox for application-owned types. If a registered type or
+serializer is allowed by the active policy, the application owns whether that
+type's construction, hooks, setters, finalizers, or other logic is safe for the
+application's trust boundary.
+
+## Depth And Progress
+
+Deserialization paths that recurse through objects, metadata, containers, or
+references should enforce the runtime's configured depth limit before crafted
+nesting can exhaust the call stack or bypass cleanup. A malformed input that
+exceeds the configured depth should fail the root operation instead of
+continuing unbounded recursion.
+
+Loops that consume encoded data should guarantee byte progress, logical
+progress, or a terminal error. Inputs that can keep a reader in a no-progress
+loop are security-relevant even when they do not allocate memory.
 
 ## Security Invariants
 
@@ -195,7 +230,58 @@ Metadata readers should:
 - Avoid unbounded table growth from attacker-controlled metadata streams.
 - Validate metadata bodies before using them to bypass or replace existing
   policy decisions.
+- For Java metadata paths, keep name-level checks such as `TypeChecker` and the
+  disallowed-class list before `Class.forName` by routing remote class-name
+  loading through the existing `TypeResolver.loadClass` owner. Do not bypass
+  that owner with direct class loading from TypeDef or TypeMeta names. Other
+  deserialization checks that require a materialized `Class<?>`, such as
+  post-load class policy checks, remain after loading; do not move them earlier
+  or replace them with string-only approximations that change registration,
+  dynamic-loading, or unknown-type semantics.
 - Reset or release metadata state at the correct root-operation boundary.
+
+Remote metadata that can create persistent read state must be bounded before
+that state is retained. The check is resource control only: it must not change
+wire compatibility, type registration, dynamic class loading, unknown-type
+handling, deserialization policy, or schema-evolution semantics. Failed or
+incompatible metadata must not consume schema-version limits, and metadata
+cache hits or generated field readers must not add validation, hashing,
+allocation, or policy work for these limits. The concrete sequence for metadata
+parsing, cache publishing, exact-local matching, and counting belongs to the
+[xlang implementation guide](../specification/xlang_implementation_guide.md).
+
+The checked metadata cache is the only owner of whether a received TypeDef or
+TypeMeta header has already been validated. A metadata cache hit means the
+header was previously parsed, body/hash-validated, policy-checked, and
+published by the owning cache, so the reader must skip the remaining metadata
+body and use the cached metadata without repeating body validation, hash
+validation, limit checks, exact-local checks, or policy work. A metadata cache
+miss is the only path that parses the metadata body, validates its hash and
+shape, enforces metadata limits, performs exact-local byte comparison, and
+publishes to the cache. Do not add separate nullable flags, sentinel headers,
+per-TypeInfo acceptance markers, or parallel state to represent this decision.
+
+Only metadata that is actually carried as a TypeDef or TypeMeta body is subject
+to metadata body and schema-version limits. Compatible named enum, ext, and
+union metadata normally has one version, but still counts against remote
+metadata total limits when it is sent as shared metadata. Pure id-based enum,
+ext, and typed-union values use type id plus user type id and must not be moved
+onto this metadata body path.
+
+Remote metadata bodies and struct field lists must also be bounded on the cold
+metadata parse path. `maxTypeMetaBytes` limits the encoded metadata body bytes
+for one received TypeDef or TypeMeta body, excluding the 8-byte header and any
+extended-size varint. `maxTypeFields` limits the number of fields declared by
+one received struct metadata body. For Java native TypeDef class layers, the
+field limit applies to the total field count across the class layers in that
+one TypeDef. These limits are checked before copying, decompressing, reserving,
+or allocating from attacker-declared metadata sizes or field counts.
+
+The default limits are `maxTypeFields = 512` and `maxTypeMetaBytes = 4096`.
+Runtimes should report limit failures as possible malicious data and tell users
+to increase the exact option only when the data is not malicious. These limits
+must not introduce validation on metadata cache-hit, generated serializer, or
+already-resolved type-id hot paths.
 
 Metadata byte-form strictness alone is not a security requirement. Rejecting a
 metadata shape is useful only when the owner wants that strictness or when the

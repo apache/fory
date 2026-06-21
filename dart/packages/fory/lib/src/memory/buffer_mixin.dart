@@ -334,6 +334,20 @@ void bufferSetReaderIndex(Buffer buffer, int index) {
 }
 
 @internal
+bool bufferMatchesBytes(Buffer buffer, int start, Uint8List bytes) {
+  final end = start + bytes.length;
+  if (start < 0 || end > buffer._writerIndex) {
+    return false;
+  }
+  for (var i = 0; i < bytes.length; i += 1) {
+    if (buffer._bytes[start + i] != bytes[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+@internal
 void bufferWriteUint8At(Buffer buffer, int index, int value) {
   buffer._view.setUint8(index, value);
 }

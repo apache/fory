@@ -352,6 +352,7 @@ unsafe impl<'a> Sync for WriteContext<'a> {}
 pub struct ReadContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
+    config: Config,
     compatible: bool,
     share_meta: bool,
     xlang: bool,
@@ -380,6 +381,7 @@ impl<'a> ReadContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
+            config: config.clone(),
             compatible: config.compatible,
             share_meta: config.share_meta,
             xlang: config.xlang,
@@ -463,7 +465,7 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn read_type_meta(&mut self) -> Result<Rc<TypeInfo>, Error> {
         self.meta_resolver
-            .read_type_meta(&mut self.reader, &self.type_resolver)
+            .read_type_meta(&mut self.reader, &self.type_resolver, &self.config)
     }
 
     pub fn read_any_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {

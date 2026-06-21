@@ -298,6 +298,56 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the maximum field count accepted in one received struct TypeMeta.
+    pub fn max_type_fields(mut self, max_fields: usize) -> Self {
+        assert!(max_fields > 0, "max_type_fields must be positive");
+        assert!(
+            u32::try_from(max_fields).is_ok(),
+            "max_type_fields is too large"
+        );
+        self.config.max_type_fields = max_fields as u32;
+        self
+    }
+
+    /// Sets the maximum body size accepted for one received TypeMeta.
+    pub fn max_type_meta_bytes(mut self, max_bytes: usize) -> Self {
+        assert!(max_bytes > 0, "max_type_meta_bytes must be positive");
+        assert!(
+            u32::try_from(max_bytes).is_ok(),
+            "max_type_meta_bytes is too large"
+        );
+        self.config.max_type_meta_bytes = max_bytes as u32;
+        self
+    }
+
+    /// Sets the maximum accepted remote metadata versions for one logical type.
+    pub fn max_schema_versions_per_type(mut self, max_versions: usize) -> Self {
+        assert!(
+            max_versions > 0,
+            "max_schema_versions_per_type must be positive"
+        );
+        assert!(
+            u32::try_from(max_versions).is_ok(),
+            "max_schema_versions_per_type is too large"
+        );
+        self.config.max_schema_versions_per_type = max_versions as u32;
+        self
+    }
+
+    /// Sets the maximum accepted average remote metadata versions across logical types.
+    pub fn max_average_schema_versions_per_type(mut self, max_versions: usize) -> Self {
+        assert!(
+            max_versions > 0,
+            "max_average_schema_versions_per_type must be positive"
+        );
+        assert!(
+            u32::try_from(max_versions).is_ok(),
+            "max_average_schema_versions_per_type is too large"
+        );
+        self.config.max_average_schema_versions_per_type = max_versions as u32;
+        self
+    }
+
     fn finish_config(self) -> Config {
         let mut config = self.config;
         if !self.compatible_set {
@@ -363,11 +413,15 @@ impl ForyBuilder {
 pub struct Fory {
     /// Unique identifier for this Fory instance, used as key in thread-local context maps.
     id: u64,
-    /// Configuration for serialization behavior.
-    config: Config,
     type_resolver: TypeResolver,
     /// Lazy-initialized final type resolver (thread-safe, one-time initialization).
     final_type_resolver: OnceLock<Result<TypeResolver, Error>>,
+    /// Configuration for serialization behavior.
+    ///
+    /// Keep this cold field after the resolver/cache fields. Remote metadata
+    /// limits make Config larger, but serialize hot paths repeatedly access
+    /// the instance id and resolver snapshot, not the cold limit values.
+    config: Config,
 }
 
 impl Default for Fory {

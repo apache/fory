@@ -22,7 +22,7 @@ license: |
 ## Overview
 
 This guide describes the current xlang implementation ownership model used by
-the reference Java implementation and mirrored by the Dart implementation rewrite.
+the xlang runtimes.
 
 The wire format is defined by
 [Xlang Serialization Spec](xlang_serialization_spec.md). This document is about
@@ -403,6 +403,57 @@ are readable through the byte owner. Field-list allocation should happen after
 that body readability check and should not use a separate small initial-capacity
 cap as a security rule.
 
+Implementations should also bound received metadata bodies and struct field
+lists on the cold metadata parse path. `maxTypeMetaBytes` limits one encoded
+TypeDef or TypeMeta body, excluding the 8-byte header and any extended-size
+varint, and is checked before copying or decompressing that body.
+`maxTypeFields` limits the number of fields declared by one received struct
+metadata body and is checked before reserving or allocating the field list.
+These limits are runtime resource controls; they do not change wire encoding,
+type identity, dynamic loading, unknown-type behavior, deserialization policy,
+or schema-evolution semantics. Metadata cache hits and generated field readers
+remain hot paths and must not add work for these limits.
+
+Remote schema-version limits belong to the same cold metadata owner path.
+Header cache hits must skip the remaining metadata body and return cached
+metadata without schema-limit checks, hash revalidation, allocation, or policy
+work. On a header miss, keep the handling in one concrete owner path: prove and
+read the metadata body bytes, validate the body against its header, validate
+field counts, resolve the type through the existing registration and
+deserialization-policy checks, compare exact local metadata by original encoded
+bytes when applicable, check schema-version limits for non-local remote
+metadata, build the required read state, publish to the persistent metadata
+cache, and then record the schema count. Failed or incompatible metadata must
+not publish to the persistent cache and must not consume schema-version counts.
+
+Remote metadata whose encoded bytes exactly match the local registered metadata
+may use the local metadata without consuming the remote schema-version limit,
+after the existing type and deserialization-policy checks for selecting that
+local type have run. This exact-local bypass is not struct-only; it also applies
+to named enum, ext, and union metadata when those metadata bodies are present and
+match the local encoded bytes. Pure id-based enum, ext, and typed-union values
+do not carry TypeDef or TypeMeta bodies and must stay on the normal type-id plus
+user-type-id path. Compatible named enum, ext, and union metadata normally has
+one version, but it still counts against accepted remote metadata totals when it
+is sent as shared metadata and does not exactly match local metadata.
+`maxTypeFields` applies only to struct field lists.
+
+The exact-local candidate must be derived inside the metadata owner path from
+the decoded metadata identity: `userTypeId` for id-registered metadata, or
+`(namespace, typeName)` for name-registered metadata. Do not thread extra
+expected-type parameters through read callers solely for this check. This rule
+applies to every runtime. Java and Python may lazy-build the local encoded
+metadata only after this identity lookup selects a local class and the existing
+class, registration, and deserialization-policy checks for that class have run.
+
+When a statically declared compatible named enum, ext, or union field reads
+shared metadata, the decoded metadata must match the declared type id,
+namespace, and type name before the metadata owner publishes it to the
+persistent cache or records a schema count. Already accepted header or reference
+cache hits still skip the body and must not rerun body-hash, schema-limit, or
+registration checks, but the field reader must not treat metadata for a
+different declared named type as the current field's metadata.
+
 Skip paths do not need to materialize skipped values. Existing byte-skip
 operations should consume any available buffered prefix first, then skip or drop
 remaining stream bytes in bounded steps.
@@ -510,7 +561,7 @@ Two explicit pieces of state back xlang type metadata:
 
 - `MetaStringWriter` and `MetaStringReader` deduplicate and decode namespace
   and type-name strings
-- shared TypeDef write/read state tracks announced compatible struct metadata
+- shared TypeDef write/read state tracks announced TypeDef metadata
 
 Ownership rules:
 

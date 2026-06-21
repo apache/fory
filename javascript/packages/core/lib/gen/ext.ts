@@ -79,7 +79,6 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readTypeInfo(): string {
-    const typeMeta = this.scope.uniqueName("typeMeta");
     const internalTypeId = this.getInternalTypeId();
     let namesStmt = "";
     let typeMetaStmt = "";
@@ -100,7 +99,11 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
           `;
         } else {
           typeMetaStmt = `
-          const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta()};
+          ${this.builder.typeMetaResolver.readNamedTypeMeta(
+            TypeId.NAMED_EXT,
+            this.typeInfo.namespace,
+            this.typeInfo.typeName,
+          )};
           `;
         }
         break;

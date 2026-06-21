@@ -25,7 +25,6 @@ import io.grpc.Server;
 import io.grpc.ServerBuilder;
 import io.grpc.stub.StreamObserver;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -274,201 +273,35 @@ public abstract class GrpcTestBase {
             pbResponse(requests.get(0), "bidi-0", 0), pbResponse(requests.get(1), "bidi-1", 1)));
   }
 
-  protected PeerCommand goCommand(String... args) {
-    Path grpcRoot = repoRoot().resolve("integration_tests").resolve("grpc_tests");
-    Path goRoot = grpcRoot.resolve("go");
-    List<String> command = new ArrayList<>();
-    command.add(goRoot.resolve("grpc-interop").toString());
-    command.addAll(Arrays.asList(args));
+  protected PeerCommand newPeerCommand(Path workDir, List<String> command) {
     PeerCommand peerCommand = new PeerCommand();
     peerCommand.command = command;
-    peerCommand.workDir = goRoot;
-    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
-    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
+    peerCommand.workDir = workDir;
     return peerCommand;
   }
 
-  protected void runGo(String peer, String... args) throws IOException, InterruptedException {
-    Process process = startPeer(goCommand(args));
-    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
-    outputCollector.start();
-    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
-    if (!finished) {
-      process.destroyForcibly();
-      process.waitFor(10, TimeUnit.SECONDS);
-      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
-    }
-    int exitCode = process.exitValue();
-    if (exitCode != 0) {
-      Assert.fail(
-          "Peer process failed for "
-              + peer
-              + " with exit code "
-              + exitCode
-              + peerOutput(outputCollector));
-    }
-    outputCollector.awaitOutput();
+  protected void putEnv(PeerCommand command, String key, String value) {
+    command.environment.put(key, value);
   }
 
-  protected PeerCommand pythonCommand(String... args) {
-    Path pythonRoot =
-        repoRoot().resolve("integration_tests").resolve("grpc_tests").resolve("python");
-    return pythonCommand(
-        "grpc_tests.grpc_peer", pythonRoot.resolve("grpc_tests").resolve("generated"), args);
+  protected void setLocalhostNoProxy(PeerCommand command) {
+    command.environment.put("NO_PROXY", "127.0.0.1,localhost");
+    command.environment.put("no_proxy", "127.0.0.1,localhost");
   }
 
-  protected PeerCommand pythonSyncCommand(String... args) {
-    Path pythonRoot =
-        repoRoot().resolve("integration_tests").resolve("grpc_tests").resolve("python");
-    return pythonCommand(
-        "grpc_sync_tests.grpc_peer",
-        pythonRoot.resolve("grpc_sync_tests").resolve("generated"),
-        args);
-  }
-
-  private PeerCommand pythonCommand(String moduleName, Path generatedRoot, String... args) {
-    Path repoRoot = repoRoot();
-    Path grpcRoot = repoRoot.resolve("integration_tests").resolve("grpc_tests");
-    Path pythonRoot = grpcRoot.resolve("python");
-    String pythonPath =
-        generatedRoot
-            + File.pathSeparator
-            + pythonRoot
-            + File.pathSeparator
-            + repoRoot.resolve("python");
-    String existingPythonPath = System.getenv("PYTHONPATH");
-    if (existingPythonPath != null && !existingPythonPath.isEmpty()) {
-      pythonPath = pythonPath + File.pathSeparator + existingPythonPath;
-    }
-    List<String> command = new ArrayList<>();
-    command.add("python");
-    command.add("-m");
-    command.add(moduleName);
-    command.addAll(Arrays.asList(args));
-    PeerCommand peerCommand = new PeerCommand();
-    peerCommand.command = command;
-    peerCommand.workDir = grpcRoot;
-    peerCommand.environment.put("PYTHONPATH", pythonPath);
-    peerCommand.environment.put("ENABLE_FORY_CYTHON_SERIALIZATION", "0");
-    peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
-    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
-    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
-    // Some developer and CI environments set proxy variables that grpcio honors
-    // even for localhost unless no_proxy is configured correctly.
+  protected void clearProxyEnv(PeerCommand command) {
+    // Some developer and CI environments set proxy variables that peer clients
+    // can honor even for localhost unless no_proxy is configured correctly.
     for (String proxyVar :
         Arrays.asList(
             "all_proxy", "http_proxy", "https_proxy", "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY")) {
-      peerCommand.environment.put(proxyVar, "");
+      command.environment.put(proxyVar, "");
     }
-    return peerCommand;
   }
 
-  protected PeerCommand rustCommand(String... args) {
-    Path repoRoot = repoRoot();
-    Path grpcRoot = repoRoot.resolve("integration_tests").resolve("grpc_tests");
-    Path rustRoot = grpcRoot.resolve("rust");
-    List<String> command = new ArrayList<>();
-    command.add("cargo");
-    command.add("run");
-    command.add("--quiet");
-    command.add("--manifest-path");
-    command.add(rustRoot.resolve("interop").resolve("Cargo.toml").toString());
-    command.add("--");
-    command.addAll(Arrays.asList(args));
-    PeerCommand peerCommand = new PeerCommand();
-    peerCommand.command = command;
-    peerCommand.workDir = rustRoot;
-    peerCommand.environment.put("CARGO_TERM_COLOR", "never");
-    peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
-    peerCommand.environment.put("RUST_BACKTRACE", "1");
-    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
-    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
-    for (String proxyVar :
-        Arrays.asList(
-            "all_proxy", "http_proxy", "https_proxy", "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY")) {
-      peerCommand.environment.put(proxyVar, "");
-    }
-    return peerCommand;
-  }
-
-  protected PeerCommand kotlinCommand(String... args) {
-    Path grpcRoot = repoRoot().resolve("integration_tests").resolve("grpc_tests");
-    Path kotlinRoot = grpcRoot.resolve("kotlin");
-    List<String> command = new ArrayList<>();
-    command.add("java");
-    command.add("-jar");
-    command.add(kotlinRoot.resolve("target").resolve("fory-kotlin-grpc-peer.jar").toString());
-    command.addAll(Arrays.asList(args));
-    PeerCommand peerCommand = new PeerCommand();
-    peerCommand.command = command;
-    peerCommand.workDir = kotlinRoot;
-    peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
-    peerCommand.environment.put("NO_PROXY", "127.0.0.1,localhost");
-    peerCommand.environment.put("no_proxy", "127.0.0.1,localhost");
-    for (String proxyVar :
-        Arrays.asList(
-            "all_proxy", "http_proxy", "https_proxy", "ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY")) {
-      peerCommand.environment.put(proxyVar, "");
-    }
-    return peerCommand;
-  }
-
-  protected void runPython(String peer, String... args) throws IOException, InterruptedException {
-    runPythonPeer(peer, pythonCommand(args));
-  }
-
-  protected void runPythonSync(String peer, String... args)
-      throws IOException, InterruptedException {
-    runPythonPeer(peer, pythonSyncCommand(args));
-  }
-
-  private void runPythonPeer(String peer, PeerCommand command)
+  protected void runPeer(String peer, PeerCommand command)
       throws IOException, InterruptedException {
     Process process = startPeer(command);
-    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
-    outputCollector.start();
-    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
-    if (!finished) {
-      process.destroyForcibly();
-      process.waitFor(10, TimeUnit.SECONDS);
-      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
-    }
-    int exitCode = process.exitValue();
-    if (exitCode != 0) {
-      Assert.fail(
-          "Peer process failed for "
-              + peer
-              + " with exit code "
-              + exitCode
-              + peerOutput(outputCollector));
-    }
-    outputCollector.awaitOutput();
-  }
-
-  protected void runRust(String peer, String... args) throws IOException, InterruptedException {
-    Process process = startPeer(rustCommand(args));
-    PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
-    outputCollector.start();
-    boolean finished = process.waitFor(180, TimeUnit.SECONDS);
-    if (!finished) {
-      process.destroyForcibly();
-      process.waitFor(10, TimeUnit.SECONDS);
-      Assert.fail("Peer process timed out for " + peer + peerOutput(outputCollector));
-    }
-    int exitCode = process.exitValue();
-    if (exitCode != 0) {
-      Assert.fail(
-          "Peer process failed for "
-              + peer
-              + " with exit code "
-              + exitCode
-              + peerOutput(outputCollector));
-    }
-    outputCollector.awaitOutput();
-  }
-
-  protected void runKotlin(String peer, String... args) throws IOException, InterruptedException {
-    Process process = startPeer(kotlinCommand(args));
     PeerOutputCollector outputCollector = new PeerOutputCollector(process.getInputStream(), peer);
     outputCollector.start();
     boolean finished = process.waitFor(180, TimeUnit.SECONDS);
@@ -526,7 +359,11 @@ public abstract class GrpcTestBase {
     return output.isEmpty() ? "" : "\noutput:\n" + output;
   }
 
-  private Path repoRoot() {
+  protected Path grpcRoot() {
+    return repoRoot().resolve("integration_tests").resolve("grpc_tests");
+  }
+
+  protected Path repoRoot() {
     Path moduleDir = java.nio.file.Paths.get("").toAbsolutePath();
     return moduleDir.getParent().getParent().getParent();
   }

@@ -9,6 +9,8 @@ Load this file when changing `javascript/`.
 - IDL Jest tests should stay local to generated-code construction and local `Fory` serialize/deserialize assertions. Java-driven peer orchestration belongs in the existing integration harness.
 - Language peer entrypoints under `integration_tests/idl_tests` should mirror existing peers and validate semantic equality, not just deserialize and reserialize bytes.
 - Preserve generated serializer hot paths that bind writer, reader, ref, resolver, and metadata locals in outer closures; do not replace them with per-call context lookups without a measured reason.
+- Do not add parallel header-low/header-high slot caches in TypeMeta hot paths to chase benchmark gaps. Header-cache hits must use the concrete checked cache owner directly; if a small hit hint is needed, cache TypeMeta objects themselves and compare `TypeMeta.headerHash`, not separate low/high header fields or benchmark-pattern state.
+- JavaScript TypeMeta header cache hits should compare the 52-bit TypeMeta header hash directly. The hash is precise in JS `Number` and already includes the low header bits as hash input; do not add extra low-bit fields, sentinel state, nullable accepted headers, or parallel slot arrays around it.
 - Runtime value carriers such as decimal or reduced-precision numeric types belong under the core `types/` ownership boundary, with imports, exports, and codegen externals updated together.
 - Keep `TypeInfo` as schema metadata. Compatibility-sensitive decisions belong on `TypeResolver` or explicit operations, not as retained resolver state on metadata objects.
 - Normalize optional boolean config values at config construction; do not carry `null` through runtime paths when it means `false`.

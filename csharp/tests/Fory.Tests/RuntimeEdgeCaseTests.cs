@@ -206,7 +206,8 @@ public sealed class RuntimeEdgeCaseTests
 
         writer.WriteUInt8(0xA5);
         ByteReader reader = new(writer.ToArray());
-        ReadContext context = new(reader, new TypeResolver(), trackRef: false);
+        Config config = ForyRuntime.Builder().Compatible(false).Build().Config;
+        ReadContext context = new(reader, new TypeResolver(), config);
 
         FieldSkipper.SkipFieldValue(context, new TypeMetaFieldType((uint)typeId, nullable: false));
 
@@ -525,26 +526,179 @@ public sealed class RuntimeEdgeCaseTests
     }
 
     [Fact]
-    public void TypeMetaHeaderCacheStopsPublishingAtCapacity()
+    public void TypeMetaSchemaLimitRejectsExtraVersions()
     {
-        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), trackRef: false);
-        TypeMeta typeMeta = new(
-            (uint)TypeId.Struct,
-            901,
-            MetaString.Empty('.', '_'),
-            MetaString.Empty('$', '_'),
-            registerByName: false,
-            []);
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta first = RemoteStructTypeMeta(901, "first");
+        TypeMeta second = RemoteStructTypeMeta(901, "second");
 
-        for (ulong header = 1; header <= 8192; header++)
-        {
-            context.CacheReadTypeMeta(header, typeMeta);
-        }
+        ReadAndStoreTypeMeta(context, first);
 
-        Assert.True(context.TryGetCachedReadTypeMeta(8192, out _));
-        context.CacheReadTypeMeta(8193, typeMeta);
+        Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, second));
+    }
 
-        Assert.False(context.TryGetCachedReadTypeMeta(8193, out _));
+    [Fact]
+    public void NonStructTypeMetaUsesSchemaLimit()
+    {
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta first = RemoteNamedNonStructTypeMeta(TypeId.NamedEnum, "SharedEnum");
+        TypeMeta second = RemoteNamedNonStructTypeMeta(TypeId.NamedExt, "SharedEnum");
+
+        ReadAndStoreTypeMeta(context, first);
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, second));
+        Assert.Contains("MaxSchemaVersionsPerType", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IdEnumDoesNotUseTypeMetaLimits()
+    {
+        ForyRuntime fory = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxTypeMetaBytes(1)
+            .MaxSchemaVersionsPerType(1)
+            .Build();
+        fory.Register<TestColor>(901);
+
+        Assert.Equal(TestColor.Red, fory.Deserialize<TestColor>(fory.Serialize(TestColor.Red)));
+    }
+
+    [Fact]
+    public void IdExtDoesNotUseTypeMetaLimits()
+    {
+        ForyRuntime fory = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxTypeMetaBytes(1)
+            .MaxSchemaVersionsPerType(1)
+            .Build();
+        fory.Register<CustomPayload, CustomPayloadSerializer>(902);
+
+        byte[] payload = fory.Serialize<object?>(new CustomPayload { Id = 9 });
+        object? decoded = fory.Deserialize<object?>(payload);
+
+        CustomPayload result = Assert.IsType<CustomPayload>(decoded);
+        Assert.Equal(9, result.Id);
+        Assert.Equal("custom", result.Marker);
+    }
+
+    [Fact]
+    public void TypeMetaFieldLimitRejectsLargeStruct()
+    {
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxTypeFields(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta typeMeta = RemoteStructTypeMeta(901, "first", "second");
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, typeMeta));
+        Assert.Contains("MaxTypeFields", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypeMetaBodyLimitRejectsLargeMetadata()
+    {
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxTypeMetaBytes(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+
+        InvalidDataException exception =
+            Assert.Throws<InvalidDataException>(() => ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(901, "value")));
+        Assert.Contains("MaxTypeMetaBytes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TypeMetaSchemaLimitKeepsUnknownTypesSeparate()
+    {
+        Config config = ForyRuntime.Builder()
+            .Compatible(false)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), new TypeResolver(), config);
+        TypeMeta first = RemoteStructTypeMeta(901, "value");
+        TypeMeta second = RemoteStructTypeMeta(902, "value");
+
+        TypeMeta firstRead = ReadAndStoreTypeMeta(context, first);
+        TypeMeta secondRead = ReadAndStoreTypeMeta(context, second);
+
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(firstRead), out _));
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(secondRead), out _));
+    }
+
+    [Fact]
+    public void FailedAnyTypeMetaDoesNotConsumeLimit()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 901);
+        Config config = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
+
+        Assert.Throws<InvalidDataException>(() =>
+            ReadAnyTypeInfo(context, resolver, RemoteCompatibleStructTypeMeta(901, "Id", MapType())));
+        TypeMeta accepted = ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(901, "second"));
+
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(accepted), out _));
+    }
+
+    [Fact]
+    public void ExactAnyTypeMetaIsFree()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(CustomPayload), 901);
+        Config config = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
+        TypeMeta remote = ReadAndStoreTypeMeta(context, RemoteStructTypeMeta(901, "remote"));
+        TypeMeta exact = resolver.GetTypeInfo(typeof(CustomPayload)).GetTypeMetaCacheEntry(trackRef: false).TypeMeta;
+
+        TypeInfo typeInfo = ReadAnyTypeInfo(context, resolver, exact);
+
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(remote), out _));
+    }
+
+    [Fact]
+    public void ExactNonStructTypeMetaBypassesLimit()
+    {
+        TypeResolver resolver = new();
+        resolver.Register(typeof(TestColor), "example", "SharedEnum");
+        Config config = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxSchemaVersionsPerType(1)
+            .Build()
+            .Config;
+        ReadContext context = new(new ByteReader(Array.Empty<byte>()), resolver, config);
+        TypeInfo typeInfo = resolver.GetTypeInfo(typeof(TestColor));
+        TypeMeta exact = typeInfo.GetTypeMetaCacheEntry(trackRef: false).TypeMeta;
+
+        ReadAndStoreTypeMeta(context, exact);
+
+        TypeMeta remote = RemoteNamedNonStructTypeMeta(TypeId.NamedExt, "SharedEnum");
+        ReadAndStoreTypeMeta(context, remote);
+        Assert.True(context.TryGetTypeMetaByHeader(EncodedTypeMetaHeader(remote), out _));
     }
 
     [Fact]
@@ -566,11 +720,103 @@ public sealed class RuntimeEdgeCaseTests
         writer.WriteBytes(new byte[0xff]);
         writer.WriteUInt8(0x7b);
 
-        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), trackRef: false);
-        context.CacheReadTypeMeta(header, typeMeta);
+        Config config = ForyRuntime.Builder().Compatible(false).Build().Config;
+        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), config);
+        context.StoreRemoteTypeMeta(header, typeMeta);
 
         Assert.Same(typeMeta, context.ReadTypeMeta());
         Assert.Equal(0x7b, context.Reader.ReadUInt8());
+    }
+
+    private static TypeMeta RemoteStructTypeMeta(uint userTypeId, string fieldName)
+    {
+        return RemoteStructTypeMeta(userTypeId, [fieldName]);
+    }
+
+    private static TypeMeta RemoteStructTypeMeta(uint userTypeId, params string[] fieldNames)
+    {
+        TypeMetaFieldInfo[] fields = new TypeMetaFieldInfo[fieldNames.Length];
+        for (int i = 0; i < fieldNames.Length; i++)
+        {
+            fields[i] = new TypeMetaFieldInfo(null, fieldNames[i], new TypeMetaFieldType((uint)TypeId.Int32, nullable: false));
+        }
+
+        return new TypeMeta(
+            (uint)TypeId.Struct,
+            userTypeId,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            fields);
+    }
+
+    private static TypeMeta RemoteNamedNonStructTypeMeta(TypeId typeId, string typeName)
+    {
+        return new TypeMeta(
+            (uint)typeId,
+            null,
+            MetaStringEncoder.Namespace.Encode("example", TypeMetaEncodings.NamespaceMetaStringEncodings),
+            MetaStringEncoder.TypeName.Encode(typeName, TypeMetaEncodings.TypeNameMetaStringEncodings),
+            registerByName: true,
+            []);
+    }
+
+    private static TypeMeta RemoteCompatibleStructTypeMeta(uint userTypeId, string fieldName)
+    {
+        return RemoteCompatibleStructTypeMeta(
+            userTypeId,
+            fieldName,
+            new TypeMetaFieldType((uint)TypeId.Int32, nullable: false));
+    }
+
+    private static TypeMeta RemoteCompatibleStructTypeMeta(
+        uint userTypeId,
+        string fieldName,
+        TypeMetaFieldType fieldType)
+    {
+        return new TypeMeta(
+            (uint)TypeId.CompatibleStruct,
+            userTypeId,
+            MetaString.Empty('.', '_'),
+            MetaString.Empty('$', '_'),
+            registerByName: false,
+            [new TypeMetaFieldInfo(null, fieldName, fieldType)]);
+    }
+
+    private static TypeMetaFieldType MapType()
+    {
+        return new TypeMetaFieldType(
+            (uint)TypeId.Map,
+            nullable: false,
+            trackRef: false,
+            [
+                new TypeMetaFieldType((uint)TypeId.String, nullable: false),
+                new TypeMetaFieldType((uint)TypeId.Int32, nullable: false),
+            ]);
+    }
+
+    private static TypeMeta ReadAndStoreTypeMeta(ReadContext context, TypeMeta typeMeta)
+    {
+        ByteWriter writer = new();
+        writer.WriteVarUInt32(0);
+        writer.WriteBytes(typeMeta.Encode());
+        context.ResetFor(new ByteReader(writer.ToArray()));
+        return context.ReadTypeMeta();
+    }
+
+    private static TypeInfo ReadAnyTypeInfo(ReadContext context, TypeResolver resolver, TypeMeta typeMeta)
+    {
+        ByteWriter writer = new();
+        writer.WriteUInt8((byte)TypeId.CompatibleStruct);
+        writer.WriteVarUInt32(0);
+        writer.WriteBytes(typeMeta.Encode());
+        context.ResetFor(new ByteReader(writer.ToArray()));
+        return resolver.ReadAnyTypeInfo(context);
+    }
+
+    private static ulong EncodedTypeMetaHeader(TypeMeta typeMeta)
+    {
+        return BitConverter.ToUInt64(typeMeta.Encode(), 0);
     }
 
     [Fact]

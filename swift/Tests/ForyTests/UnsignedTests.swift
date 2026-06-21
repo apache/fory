@@ -76,52 +76,52 @@ func unsignedFieldCodecsPreserveExpectedWireWidths() throws {
     let fixed32 = UInt32.max
     let fixed32Context = WriteContext(
         buffer: ByteBuffer(),
-        typeResolver: TypeResolver(trackRef: false),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
     UInt32FixedCodec.writePayload(fixed32, fixed32Context)
     #expect(fixed32Context.buffer.count == 4)
     let fixed32Decoded = try UInt32FixedCodec.readPayload(
-        ReadContext(buffer: fixed32Context.buffer, typeResolver: TypeResolver(trackRef: false), trackRef: false)
+        ReadContext(buffer: fixed32Context.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(fixed32Decoded == fixed32)
 
     let fixed64 = UInt64.max
     let fixed64Context = WriteContext(
         buffer: ByteBuffer(),
-        typeResolver: TypeResolver(trackRef: false),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
     UInt64FixedCodec.writePayload(fixed64, fixed64Context)
     #expect(fixed64Context.buffer.count == 8)
     let fixed64Decoded = try UInt64FixedCodec.readPayload(
-        ReadContext(buffer: fixed64Context.buffer, typeResolver: TypeResolver(trackRef: false), trackRef: false)
+        ReadContext(buffer: fixed64Context.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(fixed64Decoded == fixed64)
 
     let compactTagged = UInt64(Int32.max)
     let compactContext = WriteContext(
         buffer: ByteBuffer(),
-        typeResolver: TypeResolver(trackRef: false),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
     UInt64TaggedCodec.writePayload(compactTagged, compactContext)
     #expect(compactContext.buffer.count == 4)
     let compactDecoded = try UInt64TaggedCodec.readPayload(
-        ReadContext(buffer: compactContext.buffer, typeResolver: TypeResolver(trackRef: false), trackRef: false)
+        ReadContext(buffer: compactContext.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(compactDecoded == compactTagged)
 
     let wideTagged = UInt64(Int32.max) + 1
     let wideContext = WriteContext(
         buffer: ByteBuffer(),
-        typeResolver: TypeResolver(trackRef: false),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
     UInt64TaggedCodec.writePayload(wideTagged, wideContext)
     #expect(wideContext.buffer.count == 9)
     let wideDecoded = try UInt64TaggedCodec.readPayload(
-        ReadContext(buffer: wideContext.buffer, typeResolver: TypeResolver(trackRef: false), trackRef: false)
+        ReadContext(buffer: wideContext.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(wideDecoded == wideTagged)
 }

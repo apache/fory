@@ -228,6 +228,49 @@ public class NativeTypeDefEncoderTest {
   }
 
   @Test
+  public void testDecodeRejectsTooManyFields() {
+    Fory writer = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    TypeDef typeDef =
+        TypeDef.buildTypeDef(writer.getTypeResolver(), TypeDefEncoderTest.ManyFields.class);
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .withMaxTypeFields(31)
+            .build();
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () ->
+                TypeDef.readTypeDef(
+                    reader.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded())));
+    Assert.assertTrue(exception.getMessage().contains("maxTypeFields"));
+  }
+
+  @Test
+  public void testDecodeRejectsTypeMetaBodySize() {
+    Fory writer = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), Foo1.class);
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .withMaxTypeMetaBytes(1)
+            .build();
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () ->
+                TypeDef.readTypeDef(
+                    reader.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded())));
+    Assert.assertTrue(exception.getMessage().contains("maxTypeMetaBytes"));
+  }
+
+  @Test
   public void testDecodeRejectsReservedGlobalBits() {
     Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);

@@ -72,14 +72,6 @@ final class StructSerializer extends Serializer<Object?> {
 
   List<SerializationFieldInfo> get localFields => _localFields;
 
-  TypeDef typeDefForWrite(
-    WriteContext context,
-    TypeInfo resolved,
-    Object value,
-  ) {
-    return resolved.typeDef!;
-  }
-
   void writeValue(WriteContext context, TypeInfo resolved, Object value) {
     if (!context.config.compatible && context.config.checkStructVersion) {
       context.buffer.writeUint32(schemaHash(_typeDef));
@@ -93,9 +85,9 @@ final class StructSerializer extends Serializer<Object?> {
     TypeInfo resolved, {
     bool hasCurrentPreservedRef = false,
   }) {
-    if (context.config.compatible &&
-        resolved.isCompatibleStruct &&
-        resolved.remoteTypeDef != null) {
+    if (resolved.remoteTypeDef != null &&
+        context.config.compatible &&
+        resolved.isCompatibleStruct) {
       return _readCompatible(context, resolved);
     }
     return readSameTypeValue(context, resolved);
@@ -136,6 +128,13 @@ final class StructSerializer extends Serializer<Object?> {
       );
     }
     return value;
+  }
+
+  @pragma('vm:never-inline')
+  void validateCompatibleTypeInfo(TypeInfo resolved) {
+    if (resolved.remoteTypeDef != null) {
+      _compatibleReadLayoutForResolved(resolved);
+    }
   }
 
   @pragma('vm:prefer-inline')
@@ -316,8 +315,8 @@ bool _compatibleFieldType(
         ) !=
         null;
   }
-  if (_isStructWireType(localType.typeId) &&
-      _isStructWireType(remoteType.typeId) &&
+  if (_isStructTypeId(localType.typeId) &&
+      _isStructTypeId(remoteType.typeId) &&
       localType.arguments.length == remoteType.arguments.length) {
     return true;
   }
@@ -328,8 +327,7 @@ bool _compatibleFieldType(
       localType.typeId == remoteType.typeId ||
       _compatibleUnknownUserType(localType, remoteType) ||
       _compatibleGeneratedManualUserType(localType, remoteType) ||
-      (_isStructWireType(localType.typeId) &&
-          _isStructWireType(remoteType.typeId));
+      (_isStructTypeId(localType.typeId) && _isStructTypeId(remoteType.typeId));
   if (!sameWireFamily ||
       localType.arguments.length != remoteType.arguments.length) {
     return false;
@@ -373,13 +371,13 @@ bool _hasUnsupportedListArrayMismatch(
   return false;
 }
 
-bool _isStructWireType(int typeId) =>
+bool _isStructTypeId(int typeId) =>
     typeId == TypeIds.struct ||
     typeId == TypeIds.compatibleStruct ||
     typeId == TypeIds.namedStruct ||
     typeId == TypeIds.namedCompatibleStruct;
 
-bool _isManualUserWireType(int typeId) =>
+bool _isManualUserTypeId(int typeId) =>
     typeId == TypeIds.ext ||
     typeId == TypeIds.namedExt ||
     typeId == TypeIds.union ||
@@ -393,10 +391,10 @@ bool _compatibleGeneratedManualUserType(
   if (localType.arguments.isNotEmpty || remoteType.arguments.isNotEmpty) {
     return false;
   }
-  return (_isStructWireType(localType.typeId) &&
-          _isManualUserWireType(remoteType.typeId)) ||
-      (_isManualUserWireType(localType.typeId) &&
-          _isStructWireType(remoteType.typeId));
+  return (_isStructTypeId(localType.typeId) &&
+          _isManualUserTypeId(remoteType.typeId)) ||
+      (_isManualUserTypeId(localType.typeId) &&
+          _isStructTypeId(remoteType.typeId));
 }
 
 bool _compatibleUnknownUserType(FieldType localType, FieldType remoteType) {

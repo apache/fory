@@ -9,6 +9,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `.agents/docs-and-formatting.md`: documentation, specification, and markdown rules.
 - `.agents/ci-and-pr.md`: CI triage, PR expectations, and commit conventions.
 - `.agents/testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
+- `docs/security/index.md`: security model index.
+- `docs/security/threat-model.md`: project-level trust boundaries, non-goals,
+  and downstream responsibilities.
 - `docs/security/deserialization.md`: security boundaries for untrusted deserialization classification.
 - `.agents/languages/java.md`
 - `.agents/languages/csharp.md`
@@ -28,7 +31,10 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Preserve architecture. Do not introduce new layers, parallel flows, or public APIs unless explicitly requested; prefer local repair in the existing owner over shared-infra expansion, and stop if a fix conflicts with an ADR, spec, or invariant.
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
+- Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
 - For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent.
+- For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. A known expected local TypeDef/TypeMeta header/hash match is a local-schema hit, not a remote cache miss: it may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, performs exact-local byte comparison when needed, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
+- When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
 - Protect hot paths. Avoid per-call allocations, callback objects, result tuples or records, unnecessary runtime branches, and wrapper-class substitutions in hot codec/runtime paths; prefer conditional imports and allocation-free concrete implementations where they fit the language.
 - Keep public APIs minimal. Public APIs must match user ownership and mental model, not internal implementation details; generated flows stay type-owned, while manual serializer registration stays explicit.
@@ -145,6 +151,9 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
 - For performance regressions or optimizations, profile or otherwise measure the current branch and a fresh `apache/main` baseline before changing code; optimize the measured hotspot, not guessed code.
 - When comparing benchmark results against `apache/main`, use a separate sibling worktree named `fory-benchmark-baseline` by default. Before creating a new worktree, check whether `../fory-benchmark-baseline` already exists and reuse it to avoid repeated benchmark dependency rebuilds. Always fetch and sync that baseline worktree to the latest `apache/main` before measuring it, and store benchmark result files under that worktree so older runs remain available as reference data. Treat stored benchmark results as historical references, not truth, because machine load and benchmark variance change over time. Create a different baseline worktree only when explicitly requested.
+- Before benchmarking a checked-out version, install or build the required Fory packages for that version, such as the Java artifacts, Python package, and the target runtime package needed by the benchmark.
+- Run and close old/new benchmark comparisons for exactly one language at a time. If that language has a slowdown greater than 1%, keep working only on that language until the slowdown is within 1% before moving to the next language.
+- Treat a same-benchmark slowdown greater than 1% as unresolved until the retained median is within 1% of the baseline. Faster results are acceptable only after verifying that generated code, benchmark shape, safety checks, and protocol semantics did not skip required work. Do not add artificial slowdowns or benchmark-shape changes to force a match.
 - Do not change protocol behavior, benchmark payloads, or public APIs solely to manufacture performance wins.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.
 - For performance-optimization rounds, append the hypothesis, change, benchmark command, before/after numbers, and keep/revert decision to `tasks/perf_optimization_rounds.md`.
@@ -177,3 +186,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - PR titles must follow Conventional Commits; `.github/workflows/pr-lint.yml` enforces this.
 - Performance changes should use the `perf` type and include benchmark data.
 - See `.agents/ci-and-pr.md` for GitHub CLI triage commands and commit message examples.
+
+## Security
+
+Security models start at `docs/security/index.md`. Read
+`docs/security/threat-model.md` for project-level trust boundaries, non-goals,
+and downstream responsibilities. For untrusted deserialization, read
+`docs/security/deserialization.md` before reporting or changing allocation,
+stream filling, skip, reference, metadata, or policy validation behavior.

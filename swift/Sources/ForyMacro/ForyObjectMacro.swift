@@ -2159,12 +2159,20 @@ private func buildSchemaHashDecl(fields: [ParsedField]) throws -> String {
 private func buildCompatibleTypeMetaFieldsDecl(sortedFields: [ParsedField], accessPrefix: String) -> String {
     let disabledExpr = compatibleTypeMetaFieldsExpr(sortedFields: sortedFields, trackRefExpression: "false")
     let enabledExpr = compatibleTypeMetaFieldsExpr(sortedFields: sortedFields, trackRefExpression: "true")
+    let resolvedBody = resolvedTypeMetaFieldsBody(sortedFields: sortedFields)
     return """
     private static let __foryFieldsInfoTrackRefDisabled: [TypeMeta.FieldInfo] = \(disabledExpr)
     private static let __foryFieldsInfoTrackRefEnabled: [TypeMeta.FieldInfo] = \(enabledExpr)
 
     \(accessPrefix)static func foryFieldsInfo(trackRef: Bool) -> [TypeMeta.FieldInfo] {
         trackRef ? __foryFieldsInfoTrackRefEnabled : __foryFieldsInfoTrackRefDisabled
+    }
+
+    \(accessPrefix)static func foryFieldsInfo(
+        trackRef: Bool,
+        resolveFieldTypeID: (Any.Type) throws -> TypeId
+    ) throws -> [TypeMeta.FieldInfo] {
+        \(resolvedBody)
     }
     """
 }
@@ -2181,6 +2189,17 @@ private func compatibleTypeMetaFieldsExpr(
         return "[]"
     }
     return "[\n            \(fieldInfos.joined(separator: ",\n            "))\n        ]"
+}
+
+private func resolvedTypeMetaFieldsBody(sortedFields: [ParsedField]) -> String {
+    let fieldInfos = sortedFields.map { field in
+        let fieldTypeExpr = resolvedTypeMetaFieldExpr(field)
+        return "TypeMeta.FieldInfo(fieldID: \(compatibleFieldIDExpr(field)), fieldName: \"\(field.name)\", fieldType: \(fieldTypeExpr))"
+    }
+    guard !fieldInfos.isEmpty else {
+        return "return []"
+    }
+    return "return [\n            \(fieldInfos.joined(separator: ",\n            "))\n        ]"
 }
 
 private func compatibleFieldIDExpr(_ field: ParsedField) -> String {
@@ -2708,6 +2727,32 @@ private func compatibleTypeMetaFieldExpression(
     )
 }
 
+private func resolvedTypeMetaFieldExpr(_ field: ParsedField) -> String {
+    let fieldTrackRefExpression: String
+    if let dynamicAnyCodec = field.dynamicAnyCodec {
+        fieldTrackRefExpression = dynamicAnyUsesContextTrackRef(dynamicAnyCodec) ? "trackRef" : "false"
+    } else if let customCodecType = field.customCodecType {
+        fieldTrackRefExpression = "trackRef && \(customCodecType).isRefType"
+    } else {
+        fieldTrackRefExpression = "trackRef && \(field.typeText).isRefType"
+    }
+
+    if let customCodecType = field.customCodecType {
+        return """
+\(customCodecType).fieldType(
+    nullable: \(field.isOptional ? "true" : "false"),
+    trackRef: \(fieldTrackRefExpression)
+)
+"""
+    }
+
+    return resolvedFieldTypeExpr(
+        typeText: field.typeText,
+        nullableExpression: field.isOptional ? "true" : "false",
+        trackRefExpression: fieldTrackRefExpression
+    )
+}
+
 func dynamicAnyWriteMethodName(_ codec: DynamicAnyCodecKind) -> String {
     switch codec {
     case .anyValue, .anyHashableValue:
@@ -2847,6 +2892,86 @@ TypeMeta.FieldType(
     } else {
         typeIDExpr = compatibleFieldTypeIDExpression(concreteType)
     }
+
+    return """
+TypeMeta.FieldType(
+    typeID: \(typeIDExpr),
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression)
+)
+"""
+}
+
+private func resolvedFieldTypeExpr(
+    typeText: String,
+    nullableExpression: String,
+    trackRefExpression: String
+) -> String {
+    let normalized = trimType(typeText)
+    let optional = unwrapOptional(normalized)
+    let concreteType = optional.type
+    let outerClassification = classifyType(concreteType)
+
+    if outerClassification.typeID == 22, let elementType = parseArrayElement(concreteType) {
+        let elementNullable = compatibleGenericNullableExpression(elementType)
+        let elementExpr = resolvedFieldTypeExpr(
+            typeText: elementType,
+            nullableExpression: elementNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMeta.FieldType(
+    typeID: TypeId.list.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(elementExpr)]
+)
+"""
+    }
+
+    if outerClassification.typeID == 23, let elementType = parseSetElement(concreteType) {
+        let elementNullable = compatibleGenericNullableExpression(elementType)
+        let elementExpr = resolvedFieldTypeExpr(
+            typeText: elementType,
+            nullableExpression: elementNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMeta.FieldType(
+    typeID: TypeId.set.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(elementExpr)]
+)
+"""
+    }
+
+    if outerClassification.typeID == 24, let (keyType, valueType) = parseDictionary(concreteType) {
+        let keyNullable = compatibleGenericNullableExpression(keyType)
+        let valueNullable = compatibleGenericNullableExpression(valueType)
+        let keyExpr = resolvedFieldTypeExpr(
+            typeText: keyType,
+            nullableExpression: keyNullable,
+            trackRefExpression: "false"
+        )
+        let valueExpr = resolvedFieldTypeExpr(
+            typeText: valueType,
+            nullableExpression: valueNullable,
+            trackRefExpression: "false"
+        )
+        return """
+TypeMeta.FieldType(
+    typeID: TypeId.map.rawValue,
+    nullable: \(nullableExpression),
+    trackRef: \(trackRefExpression),
+    generics: [\(keyExpr), \(valueExpr)]
+)
+"""
+    }
+
+    let typeIDExpr = isDynamicAnyConcreteType(concreteType)
+        ? "TypeId.unknown.rawValue"
+        : "try resolveFieldTypeID(\(concreteType).self).rawValue"
 
     return """
 TypeMeta.FieldType(

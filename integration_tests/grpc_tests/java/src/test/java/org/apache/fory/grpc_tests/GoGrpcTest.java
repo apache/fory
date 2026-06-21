@@ -20,6 +20,10 @@
 package org.apache.fory.grpc_tests;
 
 import io.grpc.Server;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -29,7 +33,7 @@ public class GoGrpcTest extends GrpcTestBase {
   public void testJavaServerGoClient() throws Exception {
     Server server = startJavaFdlServer();
     try {
-      runGo("go-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPeer("go-grpc-client", goCommand("client", "--target", "127.0.0.1:" + server.getPort()));
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -39,5 +43,15 @@ public class GoGrpcTest extends GrpcTestBase {
   @Test
   public void testGoServerJavaClient() throws Exception {
     exercisePeerServer("go-grpc", "Go", "fory-grpc-go-", goCommand("server"), this::exerciseFdl);
+  }
+
+  private PeerCommand goCommand(String... args) {
+    Path goRoot = grpcRoot().resolve("go");
+    List<String> command = new ArrayList<>();
+    command.add(goRoot.resolve("grpc-interop").toString());
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = newPeerCommand(goRoot, command);
+    setLocalhostNoProxy(peerCommand);
+    return peerCommand;
   }
 }

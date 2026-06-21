@@ -98,7 +98,7 @@ public class MetaShareContextTest extends ForyTestBase {
   }
 
   @Test
-  public void testMetaTypeDefAdmission() {
+  public void testMetaTypeDefCheck() {
     Fory writer =
         Fory.builder()
             .withXlang(false)

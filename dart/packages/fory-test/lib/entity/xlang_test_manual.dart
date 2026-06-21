@@ -196,7 +196,7 @@ final class _RefOverrideContainerForySerializer
       context.writeResolvedValue(field0Declared, field0Value, field0.fieldType);
     } else {
       final actualResolved = context.typeResolver.resolveValue(field0Value);
-      context.writeTypeMetaValue(actualResolved, field0Value);
+      context.writeTypeMetaValue(actualResolved);
       context.writeResolvedValue(actualResolved, field0Value, field0.fieldType);
     }
     final field1 = fields[1];
@@ -206,7 +206,7 @@ final class _RefOverrideContainerForySerializer
       context.writeResolvedValue(field1Declared, field1Value, field1.fieldType);
     } else {
       final actualResolved = context.typeResolver.resolveValue(field1Value);
-      context.writeTypeMetaValue(actualResolved, field1Value);
+      context.writeTypeMetaValue(actualResolved);
       context.writeResolvedValue(actualResolved, field1Value, field1.fieldType);
     }
     final field2 = fields[2];
@@ -216,7 +216,7 @@ final class _RefOverrideContainerForySerializer
       context.writeResolvedValue(field2Declared, field2Value, field2.fieldType);
     } else {
       final actualResolved = context.typeResolver.resolveValue(field2Value);
-      context.writeTypeMetaValue(actualResolved, field2Value);
+      context.writeTypeMetaValue(actualResolved);
       context.writeResolvedValue(actualResolved, field2Value, field2.fieldType);
     }
   }

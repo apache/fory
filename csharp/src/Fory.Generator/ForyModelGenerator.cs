@@ -204,18 +204,18 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("{");
         sb.AppendLine("    private static readonly object __ForyTypeMetaCacheLock = new();");
         sb.AppendLine("    private static ulong __ForyTypeMetaResolverVersion;");
-        sb.AppendLine("    private static ulong __ForyTypeMetaHeaderHashNoTrackRef;");
-        sb.AppendLine("    private static ulong __ForyTypeMetaHeaderHashTrackRef;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastTypeMetaNoTrackRef;");
-        sb.AppendLine("    private static bool __ForyLastTypeMetaMatchedNoTrackRef;");
-        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyLastTypeMetaTrackRef;");
-        sb.AppendLine("    private static bool __ForyLastTypeMetaMatchedTrackRef;");
+        sb.AppendLine("    private static ulong __ForyNoRefTypeMetaHash;");
+        sb.AppendLine("    private static ulong __ForyRefTypeMetaHash;");
+        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyNoRefMeta;");
+        sb.AppendLine("    private static bool __ForyNoRefMetaMatches;");
+        sb.AppendLine("    private static global::Apache.Fory.TypeMeta? __ForyRefMeta;");
+        sb.AppendLine("    private static bool __ForyRefMetaMatches;");
         sb.AppendLine(
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
         sb.AppendLine(
-            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyTypeMetaFieldsNoTrackRef;");
+            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyNoRefTypeMetaFields;");
         sb.AppendLine(
-            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyTypeMetaFieldsTrackRef;");
+            "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyRefTypeMetaFields;");
 
         if (model.SortedMembers.Length > 0)
         {
@@ -319,13 +319,13 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine(
             $"            global::Apache.Fory.TypeInfo typeInfo = typeResolver.GetTypeInfo<{model.TypeName}>();");
         sb.AppendLine(
-            "            __ForyTypeMetaHeaderHashNoTrackRef = typeInfo.GetTypeMetaHeaderHash(false);");
+            "            __ForyNoRefTypeMetaHash = typeInfo.GetTypeMetaHeaderHash(false);");
         sb.AppendLine(
-            "            __ForyTypeMetaHeaderHashTrackRef = typeInfo.GetTypeMetaHeaderHash(true);");
-        sb.AppendLine("            __ForyLastTypeMetaNoTrackRef = null;");
-        sb.AppendLine("            __ForyLastTypeMetaMatchedNoTrackRef = false;");
-        sb.AppendLine("            __ForyLastTypeMetaTrackRef = null;");
-        sb.AppendLine("            __ForyLastTypeMetaMatchedTrackRef = false;");
+            "            __ForyRefTypeMetaHash = typeInfo.GetTypeMetaHeaderHash(true);");
+        sb.AppendLine("            __ForyNoRefMeta = null;");
+        sb.AppendLine("            __ForyNoRefMetaMatches = false;");
+        sb.AppendLine("            __ForyRefMeta = null;");
+        sb.AppendLine("            __ForyRefMetaMatches = false;");
         sb.AppendLine("            __ForyTypeMetaResolverVersion = resolverVersion;");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
@@ -336,50 +336,50 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
         sb.AppendLine(
-            "            if (global::System.Object.ReferenceEquals(__ForyLastTypeMetaTrackRef, typeMeta))");
+            "            if (global::System.Object.ReferenceEquals(__ForyRefMeta, typeMeta))");
         sb.AppendLine("            {");
-        sb.AppendLine("                return __ForyLastTypeMetaMatchedTrackRef;");
+        sb.AppendLine("                return __ForyRefMetaMatches;");
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
         sb.AppendLine("            bool matched = false;");
-        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyTypeMetaHeaderHashTrackRef)");
+        sb.AppendLine("            if (typeMeta.HeaderHash == __ForyRefTypeMetaHash)");
         sb.AppendLine("            {");
         sb.AppendLine("                matched = __ForyMatchesTypeMeta(typeMeta, true);");
         sb.AppendLine("            }");
         sb.AppendLine();
-        sb.AppendLine("            __ForyLastTypeMetaTrackRef = typeMeta;");
-        sb.AppendLine("            __ForyLastTypeMetaMatchedTrackRef = matched;");
+        sb.AppendLine("            __ForyRefMeta = typeMeta;");
+        sb.AppendLine("            __ForyRefMetaMatches = matched;");
         sb.AppendLine("            return matched;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine(
-            "        if (global::System.Object.ReferenceEquals(__ForyLastTypeMetaNoTrackRef, typeMeta))");
+            "        if (global::System.Object.ReferenceEquals(__ForyNoRefMeta, typeMeta))");
         sb.AppendLine("        {");
-        sb.AppendLine("            return __ForyLastTypeMetaMatchedNoTrackRef;");
+        sb.AppendLine("            return __ForyNoRefMetaMatches;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        __ForyEnsureTypeMetaCache(typeResolver);");
         sb.AppendLine();
         sb.AppendLine("        bool noTrackMatched = false;");
-        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyTypeMetaHeaderHashNoTrackRef)");
+        sb.AppendLine("        if (typeMeta.HeaderHash == __ForyNoRefTypeMetaHash)");
         sb.AppendLine("        {");
         sb.AppendLine("            noTrackMatched = __ForyMatchesTypeMeta(typeMeta, false);");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine("        __ForyLastTypeMetaNoTrackRef = typeMeta;");
-        sb.AppendLine("        __ForyLastTypeMetaMatchedNoTrackRef = noTrackMatched;");
+        sb.AppendLine("        __ForyNoRefMeta = typeMeta;");
+        sb.AppendLine("        __ForyNoRefMetaMatches = noTrackMatched;");
         sb.AppendLine("        return noTrackMatched;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine("    private static uint? __ForySchemaHashNoTrackRef;");
+        sb.AppendLine("    private static uint? __ForyNoRefSchemaHash;");
         sb.AppendLine();
         sb.AppendLine("    private static uint __ForySchemaHash(bool trackRef, global::Apache.Fory.TypeResolver typeResolver)");
         sb.AppendLine("    {");
-        sb.AppendLine("        if (!trackRef && __ForySchemaHashNoTrackRef.HasValue)");
+        sb.AppendLine("        if (!trackRef && __ForyNoRefSchemaHash.HasValue)");
         sb.AppendLine("        {");
-        sb.AppendLine("            return __ForySchemaHashNoTrackRef.Value;");
+        sb.AppendLine("            return __ForyNoRefSchemaHash.Value;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.Append("        uint value = global::Apache.Fory.SchemaHash.StructHash32(");
@@ -387,7 +387,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine(");");
         sb.AppendLine("        if (!trackRef)");
         sb.AppendLine("        {");
-        sb.AppendLine("            __ForySchemaHashNoTrackRef = value;");
+        sb.AppendLine("            __ForyNoRefSchemaHash = value;");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine("        return value;");
@@ -408,11 +408,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("        if (trackRef)");
         sb.AppendLine("        {");
         sb.AppendLine(
-            "            return __ForyTypeMetaFieldsTrackRef ??= __ForyBuildTypeMetaFields(true);");
+            "            return __ForyRefTypeMetaFields ??= __ForyBuildTypeMetaFields(true);");
         sb.AppendLine("        }");
         sb.AppendLine();
         sb.AppendLine(
-            "        return __ForyTypeMetaFieldsNoTrackRef ??= __ForyBuildTypeMetaFields(false);");
+            "        return __ForyNoRefTypeMetaFields ??= __ForyBuildTypeMetaFields(false);");
         sb.AppendLine("    }");
         sb.AppendLine();
         sb.AppendLine(

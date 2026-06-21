@@ -51,8 +51,10 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -70,6 +72,7 @@ import org.apache.fory.serializer.Shareable;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
+import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
@@ -341,31 +344,220 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
-  public void testTypeDefHeaderCacheStopsAtMaxEntries() {
+  public void testRemoteTypeDefChecksTypeChecker() {
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .build();
+    reader
+        .getTypeResolver()
+        .setTypeChecker((resolver, className) -> !className.equals(BeanB.class.getName()));
+    ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
+    TypeDef typeDef = resolver.getTypeDef(BeanB.class, true);
+    ReadContext readContext = reader.getReadContext();
+    readContext.setMetaReadContext(new MetaReadContext());
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    readContext.prepare(buffer, null, false);
+    buffer.writeVarUInt32(0);
+    typeDef.writeTypeDef(buffer);
+    buffer.readerIndex(0);
+
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.readSharedClassMeta(readContext, BeanB.class));
+  }
+
+  @Test
+  public void testMetaLoadClassChecksDisallowedList() {
+    String className = ProcessBuilder.class.getName();
+    CountingClassLoader classLoader =
+        new CountingClassLoader(ClassResolverTest.class.getClassLoader(), className);
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withClassLoader(classLoader)
+            .build();
+    ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
+
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.loadClassForMeta(className, false, -1));
+    assertEquals(classLoader.loadCount, 0);
+  }
+
+  @Test
+  public void testRemoteSchemaVersionLimitByType() {
     ForyBuilder builder =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(false)
             .withCompatible(false)
-            .withMetaShare(true);
+            .withMetaShare(true)
+            .withMaxSchemaVersionsPerType(1);
     finishBuilder(builder);
     SharedRegistry sharedRegistry = new SharedRegistry();
     Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
     ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
-    TypeDef typeDef = TypeDef.buildTypeDef(resolver, BeanB.class);
-    int maxCachedTypeDefs = 8192;
-    for (long i = 0; i < maxCachedTypeDefs; i++) {
-      sharedRegistry.typeDefById.put(i, typeDef);
-    }
+    TypeDef first = TypeDef.buildTypeDef(resolver, BeanB.class);
+    TypeDef second = TypeDef.buildTypeDef(resolver, BeanA.class);
 
+    assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.Type"));
+    assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.Type"));
+    Assert.assertThrows(
+        ForyException.class, () -> sharedRegistry.getOrCreateRemoteTypeDef(second, "remote.Type"));
+  }
+
+  @Test
+  public void testSharedRegistryRemoteSchemaLimitInit() {
+    SharedRegistry sharedRegistry = new SharedRegistry();
+
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> sharedRegistry.setRemoteSchemaLimits(0, 3));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> sharedRegistry.setRemoteSchemaLimits(10, 0));
+
+    sharedRegistry.setRemoteSchemaLimits(10, 3);
+    sharedRegistry.setRemoteSchemaLimits(10, 3);
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> sharedRegistry.setRemoteSchemaLimits(11, 3));
+    Assert.assertThrows(
+        IllegalArgumentException.class, () -> sharedRegistry.setRemoteSchemaLimits(10, 4));
+  }
+
+  @Test
+  public void testRemoteEnumTypeDefUsesLimit() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxSchemaVersionsPerType(1);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    fory.register(TestNeedToWriteReferenceClass.class, "test.Enum");
+    fory.register(OtherTestNeedToWriteReferenceClass.class, "test.OtherEnum");
+    TypeResolver resolver = fory.getTypeResolver();
+    TypeDef first = resolver.getTypeDef(TestNeedToWriteReferenceClass.class, true);
+    TypeDef second = TypeDef.buildTypeDef(resolver, OtherTestNeedToWriteReferenceClass.class);
+
+    Assert.assertFalse(first.isStructSchemaKind());
+    assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.Enum"));
+    Assert.assertThrows(
+        ForyException.class, () -> sharedRegistry.getOrCreateRemoteTypeDef(second, "remote.Enum"));
+  }
+
+  @Test
+  public void testExactLocalEnumTypeDefBypassesLimit() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxSchemaVersionsPerType(1);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    fory.register(TestNeedToWriteReferenceClass.class, "test.Enum");
+    fory.register(OtherTestNeedToWriteReferenceClass.class, "test.OtherEnum");
+    TypeResolver resolver = fory.getTypeResolver();
+    TypeDef exact = resolver.getTypeDef(TestNeedToWriteReferenceClass.class, true);
+    TypeDef other = TypeDef.buildTypeDef(resolver, OtherTestNeedToWriteReferenceClass.class);
+
+    ReadContext readContext = fory.getReadContext();
+    readContext.setMetaReadContext(new MetaReadContext());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
-    typeDef.writeTypeDef(buffer);
+    readContext.prepare(buffer, null, false);
+    buffer.writeVarUInt32(0);
+    exact.writeTypeDef(buffer);
     buffer.readerIndex(0);
-    TypeDef readTypeDef = resolver.readTypeDef(buffer, buffer.readInt64());
 
-    assertNotNull(readTypeDef);
-    assertNull(sharedRegistry.typeDefById.get(typeDef.getId()));
-    assertEquals(sharedRegistry.typeDefById.size(), maxCachedTypeDefs);
+    assertSame(
+        resolver.readSharedClassMeta(readContext, TestNeedToWriteReferenceClass.class).getType(),
+        TestNeedToWriteReferenceClass.class);
+    assertSame(other, sharedRegistry.getOrCreateRemoteTypeDef(other, "test.Enum"));
+  }
+
+  @Test
+  public void testIdEnumDoesNotUseTypeDefMetaLimits() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withCompatible(true)
+            .withMaxTypeMetaBytes(1)
+            .withMaxSchemaVersionsPerType(1)
+            .build();
+    fory.register(TestNeedToWriteReferenceClass.class, 101);
+
+    serDeCheck(fory, TestNeedToWriteReferenceClass.A);
+  }
+
+  @Test
+  public void testIdExtDoesNotUseTypeDefMetaLimits() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withCompatible(true)
+            .withMaxTypeMetaBytes(1)
+            .withMaxSchemaVersionsPerType(1)
+            .build();
+    fory.register(IdLimitExt.class, 102);
+    fory.registerSerializer(IdLimitExt.class, IdLimitExtSerializer.class);
+
+    IdLimitExt value = new IdLimitExt();
+    value.value = 42;
+    serDeCheck(fory, value);
+    assertEquals(fory.getTypeResolver().getTypeInfo(IdLimitExt.class).getTypeId(), Types.EXT);
+  }
+
+  @Test
+  public void testRemoteSchemaVersionsUseRemoteTypeKey() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxSchemaVersionsPerType(1);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+
+    TypeDef first = TypeDef.buildTypeDef(resolver, BeanB.class);
+    TypeDef second = TypeDef.buildTypeDef(resolver, BeanA.class);
+
+    assertSame(first, sharedRegistry.getOrCreateRemoteTypeDef(first, "remote.UnknownA"));
+    assertSame(second, sharedRegistry.getOrCreateRemoteTypeDef(second, "remote.UnknownB"));
+  }
+
+  @Test
+  public void testRemoteTypeDefCheckOnly() {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxSchemaVersionsPerType(1);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory fory = new Fory(builder, ClassResolverTest.class.getClassLoader(), sharedRegistry);
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+
+    TypeDef checked = TypeDef.buildTypeDef(resolver, BeanB.class);
+    TypeDef accepted = TypeDef.buildTypeDef(resolver, BeanA.class);
+
+    sharedRegistry.checkRemoteTypeDefLimit(checked, "remote.Type");
+    assertSame(accepted, sharedRegistry.getOrCreateRemoteTypeDef(accepted, "remote.Type"));
   }
 
   @Test
@@ -487,6 +679,24 @@ public class ClassResolverTest extends ForyTestBase {
       finish.invoke(builder);
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
+    }
+  }
+
+  private static final class CountingClassLoader extends ClassLoader {
+    private final String countedClassName;
+    private int loadCount;
+
+    private CountingClassLoader(ClassLoader parent, String countedClassName) {
+      super(parent);
+      this.countedClassName = countedClassName;
+    }
+
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+      if (countedClassName.equals(name)) {
+        loadCount++;
+      }
+      return super.loadClass(name, resolve);
     }
   }
 
@@ -627,6 +837,11 @@ public class ClassResolverTest extends ForyTestBase {
     int f1;
   }
 
+  @Data
+  static class IdLimitExt {
+    int value;
+  }
+
   @EqualsAndHashCode(callSuper = true)
   @ToString
   static class Bar extends Foo {
@@ -642,6 +857,29 @@ public class ClassResolverTest extends ForyTestBase {
   private enum TestNeedToWriteReferenceClass {
     A,
     B
+  }
+
+  private enum OtherTestNeedToWriteReferenceClass {
+    C,
+    D
+  }
+
+  public static class IdLimitExtSerializer extends Serializer<IdLimitExt> {
+    public IdLimitExtSerializer(TypeResolver typeResolver, Class<IdLimitExt> type) {
+      super(typeResolver.getConfig(), type);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, IdLimitExt value) {
+      writeContext.getBuffer().writeInt32(value.value);
+    }
+
+    @Override
+    public IdLimitExt read(ReadContext readContext) {
+      IdLimitExt value = new IdLimitExt();
+      value.value = readContext.getBuffer().readInt32();
+      return value;
+    }
   }
 
   @Test

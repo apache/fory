@@ -36,6 +36,10 @@ class Fory:
         strict: bool = True,
         compatible: Optional[bool] = None,
         max_depth: int = 50,
+        max_type_fields: int = 512,
+        max_type_meta_bytes: int = 4096,
+        max_schema_versions_per_type: int = 10,
+        max_average_schema_versions_per_type: int = 3,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -55,17 +59,21 @@ class ThreadSafeFory:
 
 ## Parameters
 
-| Parameter         | Type                            | Default | Description                                                                                                                                              |
-| ----------------- | ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `xlang`           | `bool`                          | `True`  | Use xlang mode. Set `False` for Python native mode.                                                                                                      |
-| `ref`             | `bool`                          | `False` | Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.                          |
-| `strict`          | `bool`                          | `True`  | Require type registration for security. Keep this enabled for production unless a policy owns trust decisions.                                           |
-| `compatible`      | `bool \| None`                  | `None`  | Schema evolution mode. `None` enables compatible mode in both xlang and native mode. Set `False` only when every reader and writer uses the same schema. |
-| `max_depth`       | `int`                           | `50`    | Maximum deserialization depth for security, preventing stack overflow attacks.                                                                           |
-| `policy`          | `DeserializationPolicy \| None` | `None`  | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                               |
-| `field_nullable`  | `bool`                          | `False` | Treat dataclass fields as nullable by default.                                                                                                           |
-| `meta_compressor` | `Any`                           | `None`  | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                 |
-| `fory_factory`    | `Callable \| None`              | `None`  | `ThreadSafeFory` factory hook. When set, `ThreadSafeFory` creates instances via this callback; otherwise it forwards `**kwargs` to `Fory` construction.  |
+| Parameter                              | Type                            | Default | Description                                                                                                                                              |
+| -------------------------------------- | ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xlang`                                | `bool`                          | `True`  | Use xlang mode. Set `False` for Python native mode.                                                                                                      |
+| `ref`                                  | `bool`                          | `False` | Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.                          |
+| `strict`                               | `bool`                          | `True`  | Require type registration for security. Keep this enabled for production unless a policy owns trust decisions.                                           |
+| `compatible`                           | `bool \| None`                  | `None`  | Schema evolution mode. `None` enables compatible mode in both xlang and native mode. Set `False` only when every reader and writer uses the same schema. |
+| `max_depth`                            | `int`                           | `50`    | Maximum deserialization depth for security, preventing stack overflow attacks.                                                                           |
+| `max_type_fields`                      | `int`                           | `512`   | Maximum fields accepted in one received remote struct metadata body.                                                                                     |
+| `max_type_meta_bytes`                  | `int`                           | `4096`  | Maximum encoded body bytes accepted for one received TypeDef body, excluding the 8-byte header and any extended-size varint.                             |
+| `max_schema_versions_per_type`         | `int`                           | `10`    | Maximum accepted remote metadata versions for one logical type.                                                                                          |
+| `max_average_schema_versions_per_type` | `int`                           | `3`     | Average accepted remote metadata versions across accepted remote types. The effective global floor is `8192` schemas.                                    |
+| `policy`                               | `DeserializationPolicy \| None` | `None`  | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                               |
+| `field_nullable`                       | `bool`                          | `False` | Treat dataclass fields as nullable by default.                                                                                                           |
+| `meta_compressor`                      | `Any`                           | `None`  | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                 |
+| `fory_factory`                         | `Callable \| None`              | `None`  | `ThreadSafeFory` factory hook. When set, `ThreadSafeFory` creates instances via this callback; otherwise it forwards `**kwargs` to `Fory` construction.  |
 
 ## Key Methods
 
@@ -185,6 +193,10 @@ fory = pyfory.Fory(
     ref=False,
     strict=True,
     max_depth=50,
+    max_type_fields=512,
+    max_type_meta_bytes=4096,
+    max_schema_versions_per_type=10,
+    max_average_schema_versions_per_type=3,
 )
 
 fory.register(UserModel, name="example.User")
@@ -203,6 +215,16 @@ fory = pyfory.Fory(
     max_depth=100,
 )
 ```
+
+Received remote metadata is also limited:
+
+- `max_type_fields` limits the number of fields accepted in one received struct metadata body.
+- `max_type_meta_bytes` limits the encoded body bytes accepted for one received TypeDef body.
+- `max_schema_versions_per_type` limits accepted remote metadata versions for one logical type.
+- `max_average_schema_versions_per_type` limits the average across accepted remote types.
+
+These limits do not change `strict`, `policy`, dynamic loading, unknown-class handling, or
+schema-evolution semantics.
 
 ### DeserializationPolicy
 

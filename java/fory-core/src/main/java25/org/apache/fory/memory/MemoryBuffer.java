@@ -2965,8 +2965,10 @@ public final class MemoryBuffer {
   /** Reads the 1-9 byte int part of an aligned varint. */
   public int readAlignedVarUInt32() {
     int readerIdx = readerIndex;
-    // use subtract to avoid overflow
-    if (readerIdx < size - 10) {
+    // Use subtraction to avoid overflow. The unrolled fast path assumes the
+    // full aligned-varint scratch range is inside the logical MemoryBuffer
+    // range; shorter buffers must use readByte() checks.
+    if (readerIdx > size - 10) {
       return slowReadAlignedVarUInt32();
     }
     long pos = address + readerIdx;

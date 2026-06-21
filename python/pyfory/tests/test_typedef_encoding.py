@@ -20,12 +20,14 @@ Tests for xlang TypeDef implementation.
 """
 
 import array
+import enum
 from dataclasses import dataclass, make_dataclass
 from typing import List, Dict, Optional
 
 import pytest
 
 import pyfory
+import pyfory.meta.typedef_decoder as typedef_decoder
 from pyfory.serialization import Buffer
 from pyfory.meta.typedef import (
     TypeDef,
@@ -51,6 +53,7 @@ from pyfory.meta.typedef_encoder import (
 from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.serializer import PyArraySerializer
 from pyfory.types import TypeId
+from pyfory.union import UnionSerializer
 from pyfory import Fory
 from pyfory.error import TypeNotCompatibleError
 from pyfory.lib.mmh3 import hash_buffer
@@ -76,6 +79,16 @@ class SimpleTypeDef:
     """Simple test class."""
 
     value: int
+
+
+@dataclass
+class LateTypeDefNested:
+    value: int
+
+
+@dataclass
+class LateTypeDefHolder:
+    value: LateTypeDefNested
 
 
 @dataclass
@@ -114,6 +127,40 @@ class UInt8ArrayPayload:
 @dataclass
 class Int32ListPayload:
     payload: List[pyfory.FixedInt32]
+
+
+class IdLimitEnum(enum.Enum):
+    A = 1
+    B = 2
+
+
+@dataclass
+class IdLimitExt:
+    value: int = 0
+
+
+class IdLimitExtSerializer(pyfory.serializer.Serializer):
+    def write(self, write_context, value):
+        write_context.write_varint32(value.value)
+
+    def read(self, read_context):
+        return IdLimitExt(read_context.read_varint32())
+
+
+class IdLimitUnion:
+    def __init__(self, case_id: int, value):
+        self._case_id = case_id
+        self._value = value
+
+    def case_id(self):
+        return self._case_id
+
+    @staticmethod
+    def _from_case_id(case_id: int, value):
+        return IdLimitUnion(case_id, value)
+
+    def __eq__(self, other):
+        return isinstance(other, IdLimitUnion) and self._case_id == other._case_id and self._value == other._value
 
 
 @dataclass
@@ -311,6 +358,52 @@ def test_decode_typedef_rejects_compressed_xlang_metadata():
         decode_typedef(Buffer(malformed.to_bytes()), fory.type_resolver)
 
 
+def test_decode_typedef_checks_body_before_encoded_allocation(monkeypatch):
+    class GuardedBuffer:
+        @staticmethod
+        def allocate(_size):
+            raise AssertionError("encoded buffer allocated before readable-byte proof")
+
+    fory = Fory(xlang=True, compatible=False, max_type_meta_bytes=1024)
+    header = 16
+    truncated = header.to_bytes(8, "little", signed=False)
+    original_buffer = typedef_decoder.Buffer
+    monkeypatch.setattr(typedef_decoder, "Buffer", GuardedBuffer)
+    with pytest.raises(Exception) as exc:
+        typedef_decoder.decode_typedef(Buffer(truncated), fory.type_resolver)
+    monkeypatch.setattr(typedef_decoder, "Buffer", original_buffer)
+
+    assert "encoded buffer allocated" not in str(exc.value)
+
+
+def test_skip_typedef_does_not_materialize_body():
+    class SkipBuffer:
+        def __init__(self):
+            self.skipped = None
+
+        def skip(self, size):
+            self.skipped = size
+
+        def read_bytes(self, _size):
+            raise AssertionError("skip_typedef must not read metadata body bytes")
+
+    buffer = SkipBuffer()
+    typedef_decoder.skip_typedef(buffer, 7)
+    assert buffer.skipped == 7
+
+
+def test_skip_typedef_rejects_oversized_extended_body():
+    class SkipBuffer:
+        def read_var_uint32(self):
+            return 1 << 31
+
+        def skip(self, _size):
+            raise AssertionError("oversized TypeDef body must not reach skip")
+
+    with pytest.raises(ValueError, match="Invalid TypeDef metadata size"):
+        typedef_decoder.skip_typedef(SkipBuffer(), META_SIZE_MASKS)
+
+
 def test_id_registered_typedef_extended_field_count_header():
     many_fields_type = make_dataclass("ManyTypeDefFields", [(f"field_{i}", int) for i in range(32)])
     fory = Fory(xlang=True, compatible=False)
@@ -324,24 +417,192 @@ def test_id_registered_typedef_extended_field_count_header():
     assert len(decoded_typedef.fields) == 32
 
 
-def test_meta_shared_typedef_cache_is_bounded():
-    fory = Fory(xlang=True, compatible=True)
-    fory.register(SimpleTypeDef, name="example.SimpleTypeDef")
-    resolver = fory.type_resolver
-    read_and_build = getattr(resolver, "_read_and_build_type_info", None)
-    if read_and_build is None:
-        pytest.skip("pure-Python resolver internals are not exposed by this runtime")
-    typedef = encode_typedef(resolver, SimpleTypeDef)
-    header_buffer = Buffer(typedef.encoded)
-    header = header_buffer.read_int64()
-    for i in range(8192):
-        resolver._meta_shared_type_info[i] = object()
+@pytest.mark.parametrize("xlang", [False, True])
+def test_type_meta_field_limit_rejects_large_struct(xlang):
+    reader = Fory(xlang=xlang, strict=False, compatible=True, max_type_fields=1)
+    remote = make_dataclass("RemoteTooManyFields", [("value", int), ("extra", int)])
+    type_id, typedef = _remote_typedef(xlang, "example.TooManyFields", remote)
 
-    typeinfo = read_and_build(Buffer(typedef.encoded))
+    with pytest.raises(ValueError, match="max_type_fields"):
+        _read_remote_typedef(reader, type_id, typedef)
 
-    assert typeinfo.type_def.type_id == typedef.type_id
-    assert header not in resolver._meta_shared_type_info
-    assert len(resolver._meta_shared_type_info) == 8192
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_type_meta_body_limit_rejects_large_metadata(xlang):
+    reader = Fory(xlang=xlang, strict=False, compatible=True, max_type_meta_bytes=1)
+    remote = make_dataclass("RemoteLargeTypeMeta", [("value", int)])
+    type_id, typedef = _remote_typedef(xlang, "example.LargeTypeMeta", remote)
+
+    with pytest.raises(ValueError, match="max_type_meta_bytes"):
+        _read_remote_typedef(reader, type_id, typedef)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_remote_schema_limit_rejects_extra_versions(xlang):
+    reader = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    first = make_dataclass("RemoteLimitV1", [("value", int)])
+    second = make_dataclass("RemoteLimitV2", [("value", int), ("extra", int)])
+    first_type_id, first_typedef = _remote_typedef(xlang, "example.Unknown", first)
+    second_type_id, second_typedef = _remote_typedef(xlang, "example.Unknown", second)
+
+    _read_remote_typedef(reader, first_type_id, first_typedef)
+
+    second_header = Buffer(second_typedef).read_int64()
+    with pytest.raises(ValueError, match="max_schema_versions_per_type"):
+        _read_remote_typedef(reader, second_type_id, second_typedef)
+    assert second_header not in reader.type_resolver._meta_shared_type_info
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_remote_schema_limit_keeps_unknown_types_separate(xlang):
+    reader = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    first = make_dataclass("RemoteUnknownA", [("value", int)])
+    second = make_dataclass("RemoteUnknownB", [("value", int)])
+    first_type_id, first_typedef = _remote_typedef(xlang, "example.UnknownA", first)
+    second_type_id, second_typedef = _remote_typedef(xlang, "example.UnknownB", second)
+
+    _read_remote_typedef(reader, first_type_id, first_typedef)
+    _read_remote_typedef(reader, second_type_id, second_typedef)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_exact_local_struct_typedef_populates_cache(xlang):
+    reader = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    reader.register(SimpleTypeDef, name="example.SimpleTypeDef")
+    type_id, _ = reader.type_resolver.get_registered_type_ids(SimpleTypeDef)
+    encoded = encode_typedef(reader.type_resolver, SimpleTypeDef).encoded
+    header = Buffer(encoded).read_int64()
+
+    type_info = _read_remote_typedef(reader, type_id, encoded)
+    assert type_info.cls is SimpleTypeDef
+    assert reader.type_resolver._meta_shared_type_info[header].cls is SimpleTypeDef
+
+    invalid_body = bytearray(encoded)
+    invalid_body[-1] ^= 1
+    type_info = _read_remote_typedef(reader, type_id, bytes(invalid_body))
+    assert type_info.cls is SimpleTypeDef
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_exact_local_non_struct_typedef_bypasses_schema_limit(xlang):
+    reader = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    reader.register(IdLimitEnum, name="example.RemoteEnum")
+    type_id, _ = reader.type_resolver.get_registered_type_ids(IdLimitEnum)
+    encoded = encode_typedef(reader.type_resolver, IdLimitEnum).encoded
+
+    type_info = _read_remote_typedef(reader, type_id, encoded)
+    assert type_info.cls is IdLimitEnum
+
+    if hasattr(reader.type_resolver, "_check_remote_type_def_limit"):
+        second = TypeDef("example", "RemoteEnum", IdLimitEnum, TypeId.NAMED_EXT, [])
+        reader.type_resolver._check_remote_type_def_limit(second)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_id_enum_does_not_use_type_meta_limits(xlang):
+    fory = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_type_meta_bytes=1,
+        max_schema_versions_per_type=1,
+    )
+    fory.register_type(IdLimitEnum, type_id=310)
+
+    assert fory.deserialize(fory.serialize(IdLimitEnum.B)) == IdLimitEnum.B
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_id_ext_does_not_use_type_meta_limits(xlang):
+    fory = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_type_meta_bytes=1,
+        max_schema_versions_per_type=1,
+    )
+    fory.register_type(
+        IdLimitExt,
+        type_id=311,
+        serializer=IdLimitExtSerializer(fory.type_resolver, IdLimitExt),
+    )
+
+    assert fory.deserialize(fory.serialize(IdLimitExt(42))) == IdLimitExt(42)
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_id_union_does_not_use_type_meta_limits(xlang):
+    fory = Fory(
+        xlang=xlang,
+        strict=False,
+        compatible=True,
+        max_type_meta_bytes=1,
+        max_schema_versions_per_type=1,
+    )
+    fory.register_union(
+        IdLimitUnion,
+        type_id=312,
+        serializer=UnionSerializer(fory.type_resolver, IdLimitUnion, {0: str}),
+    )
+
+    assert fory.deserialize(fory.serialize(IdLimitUnion(0, "hello"))) == IdLimitUnion(0, "hello")
+
+
+def test_non_struct_typedef_uses_schema_limit():
+    from pyfory.registry import SharedRegistry, TypeResolver
+
+    fory = Fory(
+        xlang=True,
+        strict=False,
+        compatible=True,
+        max_schema_versions_per_type=1,
+    )
+    resolver = TypeResolver(fory.config, shared_registry=SharedRegistry())
+    first = TypeDef("example", "RemoteEnum", IdLimitEnum, TypeId.NAMED_ENUM, [])
+    second = TypeDef("example", "RemoteEnum", IdLimitEnum, TypeId.NAMED_EXT, [])
+
+    type_key = resolver._check_remote_type_def_limit(first)
+    resolver._record_remote_type_def(type_key)
+
+    with pytest.raises(ValueError, match="max_schema_versions_per_type"):
+        resolver._check_remote_type_def_limit(second)
+
+
+def _remote_typedef(xlang, remote_name, cls):
+    writer = Fory(xlang=xlang, strict=False, compatible=True)
+    writer.register(cls, name=remote_name)
+    type_id, _ = writer.type_resolver.get_registered_type_ids(cls)
+    return type_id, encode_typedef(writer.type_resolver, cls).encoded
+
+
+def _read_remote_typedef(fory, type_id, encoded):
+    buffer = Buffer.allocate(len(encoded) + 8)
+    buffer.write_uint8(type_id)
+    buffer.write_var_uint32(0)
+    buffer.write_bytes(encoded)
+    fory.read_context.reset()
+    fory.read_context.prepare(Buffer(buffer.to_bytes()))
+    return fory.type_resolver.read_type_info(fory.read_context)
 
 
 def _corrupt_encoded_field_name(typedef, field_name):
@@ -400,6 +661,16 @@ def test_nested_container_typedef_preserves_declared_encoding():
     assert decoded_values_field.field_type.key_type.type_id == TypeId.INT32
     assert decoded_values_field.field_type.value_type.type_id == TypeId.LIST
     assert decoded_values_field.field_type.value_type.element_type.type_id == TypeId.TAGGED_INT64
+
+
+def test_typedef_uses_late_registered_field_type():
+    fory = Fory(xlang=True, compatible=True)
+    fory.register(LateTypeDefHolder, name="example.LateTypeDefHolder")
+    fory.register(LateTypeDefNested, name="example.LateTypeDefNested")
+
+    typedef = encode_typedef(fory.type_resolver, LateTypeDefHolder)
+    field = next(field for field in typedef.fields if field.name == "value")
+    assert field.field_type.type_id == TypeId.NAMED_COMPATIBLE_STRUCT
 
 
 def test_python_array_typehint_lowering_keeps_list_schema_distinct():

@@ -135,6 +135,10 @@ class Fory:
         strict: bool = True,
         compatible: Optional[bool] = None,
         max_depth: int = 50,
+        max_type_fields: int = 512,
+        max_type_meta_bytes: int = 4096,
+        max_schema_versions_per_type: int = 10,
+        max_average_schema_versions_per_type: int = 3,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -169,6 +173,16 @@ class Fory:
             max_depth: Maximum nesting depth for deserialization (default: 50). Raises
                 an exception if exceeded to prevent malicious deeply-nested data attacks.
 
+            max_type_fields: Maximum accepted field count in one received struct TypeDef.
+
+            max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
+
+            max_schema_versions_per_type: Maximum accepted remote metadata versions for one
+                logical type.
+
+            max_average_schema_versions_per_type: Average remote metadata versions allowed
+                across accepted remote types.
+
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
                 **Strongly recommended** when strict=False to maintain security controls.
@@ -191,6 +205,14 @@ class Fory:
         self.compatible = compatible
         self.field_nullable = field_nullable
         self.max_depth = max_depth
+        if not isinstance(max_type_fields, int) or max_type_fields <= 0:
+            raise ValueError("max_type_fields must be a positive integer")
+        if not isinstance(max_type_meta_bytes, int) or max_type_meta_bytes <= 0:
+            raise ValueError("max_type_meta_bytes must be a positive integer")
+        if not isinstance(max_schema_versions_per_type, int) or max_schema_versions_per_type <= 0:
+            raise ValueError("max_schema_versions_per_type must be a positive integer")
+        if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
+            raise ValueError("max_average_schema_versions_per_type must be a positive integer")
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -199,6 +221,10 @@ class Fory:
             meta_share=compatible,
             scoped_meta_share_enabled=compatible,
             max_depth=max_depth,
+            max_type_fields=max_type_fields,
+            max_type_meta_bytes=max_type_meta_bytes,
+            max_schema_versions_per_type=max_schema_versions_per_type,
+            max_average_schema_versions_per_type=max_average_schema_versions_per_type,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,

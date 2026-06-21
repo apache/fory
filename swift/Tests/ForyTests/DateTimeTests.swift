@@ -86,7 +86,8 @@ func localDateConvenienceMethodsExposeEpochAndCalendarViews() throws {
 @Test
 func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
     let xlangWriteBuffer = ByteBuffer()
-    let xlangTypeResolver = TypeResolver(trackRef: false)
+    let xlangConfig = Config(trackRef: false, compatible: true, checkClassVersion: true, maxDepth: 5)
+    let xlangTypeResolver = TypeResolver(config: xlangConfig)
     let xlangWriteContext = WriteContext(
         buffer: xlangWriteBuffer,
         typeResolver: xlangTypeResolver,
@@ -109,10 +110,7 @@ func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
     let xlangReadContext = ReadContext(
         buffer: ByteBuffer(data: xlangWriteBuffer.copyToData()),
         typeResolver: xlangTypeResolver,
-        trackRef: false,
-        compatible: true,
-        checkClassVersion: true,
-        maxDepth: 5
+        config: xlangConfig
     )
     let xlangLocalDateDecoded = try xlangReadContext.readLocalDate(refMode: RefMode.nullOnly, readTypeInfo: true)
     #expect(xlangLocalDateDecoded == xlangLocalDate)
@@ -132,10 +130,7 @@ func dateAndTimestampContextHelpersUseExpectedWireProtocols() throws {
     let timestampReadContext = ReadContext(
         buffer: ByteBuffer(data: timestampBuffer.copyToData()),
         typeResolver: xlangTypeResolver,
-        trackRef: false,
-        compatible: true,
-        checkClassVersion: true,
-        maxDepth: 5
+        config: xlangConfig
     )
     let timestampDecoded = try timestampReadContext.readTimestamp(refMode: RefMode.nullOnly, readTypeInfo: true)
     #expect(abs(timestampDecoded.timeIntervalSince1970 - instant.timeIntervalSince1970) < 0.000_001)

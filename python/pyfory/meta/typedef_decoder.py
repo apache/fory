@@ -52,9 +52,7 @@ from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.meta.metastring import MetaStringDecoder, Encoding
 
 
-MAX_GENERATED_CLASSES = 1000
-MAX_FIELDS_PER_CLASS = 256
-_generated_class_count = 0
+MAX_TYPEDEF_BODY_SIZE = (1 << 31) - 1
 
 
 # Meta string decoders
@@ -71,9 +69,14 @@ def skip_typedef(buffer: Buffer, header) -> None:
     meta_size = header & META_SIZE_MASKS
     # If meta size is at maximum, read additional size
     if meta_size == META_SIZE_MASKS:
-        meta_size += buffer.read_var_uint32()
-    # Read meta data
-    buffer.read_bytes(meta_size)
+        extended_size = buffer.read_var_uint32()
+        if extended_size > MAX_TYPEDEF_BODY_SIZE - meta_size:
+            raise ValueError("Invalid TypeDef metadata size")
+        meta_size += extended_size
+    # Header-cache hits must skip opaque metadata without materializing the body.
+    # The skipped size is attacker-controlled, so do not replace this with
+    # read_bytes or any allocation-backed helper.
+    buffer.skip(meta_size)
 
 
 def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
@@ -87,8 +90,6 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     Returns:
         The decoded TypeDef.
     """
-    global _generated_class_count
-
     # Read global binary header
     if header is None:
         header = buffer.read_int64()
@@ -102,11 +103,28 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         raise ValueError("Compressed xlang TypeDef is not supported")
 
     # If meta size is at maximum, read additional size
+    has_extended_size = meta_size == META_SIZE_MASKS
+    extended_size = 0
     if meta_size == META_SIZE_MASKS:
-        meta_size += buffer.read_var_uint32()
+        extended_size = buffer.read_var_uint32()
+        if extended_size > MAX_TYPEDEF_BODY_SIZE - meta_size:
+            raise ValueError("Invalid TypeDef metadata size")
+        meta_size += extended_size
+    max_type_meta_bytes = resolver.config.max_type_meta_bytes
+    if meta_size > max_type_meta_bytes:
+        raise ValueError(
+            f"Type metadata body size {meta_size} exceeds max_type_meta_bytes {max_type_meta_bytes}. "
+            "The data may be malicious. If the data is not malicious, please increase max_type_meta_bytes."
+        )
 
-    # Read meta data
+    # Keep read_bytes before Buffer.allocate: it proves the declared body bytes
+    # are readable before we allocate/copy using the attacker-controlled size.
     encoded_meta_data = buffer.read_bytes(meta_size)
+    encoded = Buffer.allocate(meta_size + 16)
+    encoded.write_int64(header)
+    if has_extended_size:
+        encoded.write_var_uint32(extended_size)
+    encoded.write_bytes(encoded_meta_data)
     meta_data = encoded_meta_data
 
     # Create a new buffer for meta data
@@ -131,8 +149,12 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         num_fields = meta_header & SMALL_NUM_FIELDS_THRESHOLD
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD:
             num_fields += meta_buffer.read_var_uint32()
-        if num_fields > MAX_FIELDS_PER_CLASS:
-            raise ValueError(f"Class has {num_fields} fields, exceeding the maximum allowed {MAX_FIELDS_PER_CLASS} fields.")
+        max_type_fields = resolver.config.max_type_fields
+        if num_fields > max_type_fields:
+            raise ValueError(
+                f"Type metadata field count {num_fields} exceeds max_type_fields {max_type_fields}. "
+                "The data may be malicious. If the data is not malicious, please increase max_type_fields."
+            )
     else:
         if meta_header & 0b01110000:
             raise ValueError("Invalid TypeDef kind header")
@@ -170,13 +192,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     if type_cls is None and is_struct_typedef_kind(type_id):
         if getattr(resolver, "strict", False) and not getattr(resolver, "_allow_unregistered_typedef", False):
             raise ValueError(f"TypeDef {name} is not registered in strict mode")
-        # Check generated class count limit
-        if _generated_class_count >= MAX_GENERATED_CLASSES:
-            raise ValueError(
-                f"Exceeded maximum number of dynamically generated classes ({MAX_GENERATED_CLASSES}). "
-                "This may indicate malicious data causing memory issues."
-            )
-        _generated_class_count += 1
+        resolver._check_remote_type_def_meta(type_id, namespace, typename, user_type_id)
         # Generate dynamic dataclass from field definitions
         field_definitions = [(field_info.name, Any) for field_info in field_infos]
         # Use a valid Python identifier for class name
@@ -195,7 +211,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         type_cls,
         type_id,
         field_infos,
-        meta_data,
+        encoded.to_bytes(0, encoded.get_writer_index()),
         is_compressed,
         user_type_id=user_type_id,
     )

@@ -6,6 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "files": [

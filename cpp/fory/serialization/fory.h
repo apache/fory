@@ -109,6 +109,37 @@ public:
     return *this;
   }
 
+  /// Set maximum accepted field count in one received struct TypeMeta.
+  ForyBuilder &max_type_fields(uint32_t max_fields) {
+    FORY_CHECK(max_fields > 0) << "max_type_fields must be positive";
+    config_.max_type_fields = max_fields;
+    return *this;
+  }
+
+  /// Set maximum accepted body size in one received TypeMeta.
+  ForyBuilder &max_type_meta_bytes(uint32_t max_bytes) {
+    FORY_CHECK(max_bytes > 0) << "max_type_meta_bytes must be positive";
+    config_.max_type_meta_bytes = max_bytes;
+    return *this;
+  }
+
+  /// Set maximum accepted remote metadata versions for one logical type.
+  ForyBuilder &max_schema_versions_per_type(uint32_t max_versions) {
+    FORY_CHECK(max_versions > 0)
+        << "max_schema_versions_per_type must be positive";
+    config_.max_schema_versions_per_type = max_versions;
+    return *this;
+  }
+
+  /// Set maximum accepted average remote metadata versions across logical
+  /// types. The effective global minimum remains 8192 schemas.
+  ForyBuilder &max_average_schema_versions_per_type(uint32_t max_versions) {
+    FORY_CHECK(max_versions > 0)
+        << "max_average_schema_versions_per_type must be positive";
+    config_.max_average_schema_versions_per_type = max_versions;
+    return *this;
+  }
+
   /// Provide a custom type resolver instance.
   ForyBuilder &type_resolver(std::shared_ptr<TypeResolver> resolver) {
     type_resolver_ = std::move(resolver);

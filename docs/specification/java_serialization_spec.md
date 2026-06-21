@@ -410,6 +410,12 @@ Root kind codes:
 Class layers are encoded from parent to leaf. Field lists inside each layer use
 the field order defined above.
 
+Readers may reject a received TypeDef that exceeds runtime resource limits such
+as maximum metadata body bytes or maximum fields in one TypeDef. These limits
+are receive-side resource controls and do not change the TypeDef wire encoding,
+type identity, dynamic class loading, unknown-class handling, registration
+policy, or schema-evolution semantics.
+
 ### Field Info
 
 Each field is encoded as:

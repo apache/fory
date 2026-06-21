@@ -34,6 +34,10 @@ final fory = Fory();
 // customize limits while keeping default compatible mode
 final fory = Fory(
   maxDepth: 512,
+  maxTypeFields: 512,
+  maxTypeMetaBytes: 4096,
+  maxSchemaVersionsPerType: 10,
+  maxAverageSchemaVersionsPerType: 3,
 );
 ```
 
@@ -82,13 +86,38 @@ Limits how deeply nested an object graph can be. Increase this if you have legit
 final fory = Fory(maxDepth: 128);
 ```
 
+### Remote schema metadata limits
+
+Compatible mode can receive remote metadata for schema evolution. These limits
+bound metadata size and accepted schema versions:
+
+```dart
+final fory = Fory(
+  maxTypeFields: 512,
+  maxTypeMetaBytes: 4096,
+  maxSchemaVersionsPerType: 10,
+  maxAverageSchemaVersionsPerType: 3,
+);
+```
+
+- `maxTypeFields` limits fields in one received struct metadata body.
+- `maxTypeMetaBytes` limits encoded body bytes in one received TypeMeta body, excluding the 8-byte
+  header and any extended-size varint.
+- `maxSchemaVersionsPerType` limits accepted remote metadata versions for one logical type.
+- `maxAverageSchemaVersionsPerType` limits the average across accepted remote types. The
+  effective global floor is `8192` schemas.
+
 ## Defaults
 
-| Option               | Default |
-| -------------------- | ------- |
-| `compatible`         | `true`  |
-| `checkStructVersion` | `false` |
-| `maxDepth`           | 256     |
+| Option                            | Default |
+| --------------------------------- | ------- |
+| `compatible`                      | `true`  |
+| `checkStructVersion`              | `false` |
+| `maxDepth`                        | 256     |
+| `maxTypeFields`                   | 512     |
+| `maxTypeMetaBytes`                | 4096    |
+| `maxSchemaVersionsPerType`        | 10      |
+| `maxAverageSchemaVersionsPerType` | 3       |
 
 ## Xlang Notes
 
@@ -105,6 +134,8 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` to reject unexpectedly deep payload shapes.
+- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
+  trusted peer sends larger metadata or many schema versions.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.
 
 ## Related Topics

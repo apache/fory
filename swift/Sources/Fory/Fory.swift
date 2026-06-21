@@ -22,19 +22,37 @@ public struct Config {
   public let compatible: Bool
   public let checkClassVersion: Bool
   public let maxDepth: Int
+  public let maxTypeFields: Int
+  public let maxTypeMetaBytes: Int
+  public let maxSchemaVersionsPerType: Int
+  public let maxAverageSchemaVersionsPerType: Int
 
   public init(
     trackRef: Bool = false,
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
-    maxDepth: Int = 5
+    maxDepth: Int = 5,
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096,
+    maxSchemaVersionsPerType: Int = 10,
+    maxAverageSchemaVersionsPerType: Int = 3
   ) {
+    precondition(maxTypeFields > 0, "maxTypeFields must be positive")
+    precondition(maxTypeMetaBytes > 0, "maxTypeMetaBytes must be positive")
+    precondition(maxSchemaVersionsPerType > 0, "maxSchemaVersionsPerType must be positive")
+    precondition(
+      maxAverageSchemaVersionsPerType > 0,
+      "maxAverageSchemaVersionsPerType must be positive")
     let effectiveCompatible = compatible ?? true
     let effectiveCheckClassVersion = checkClassVersion ?? !effectiveCompatible
     self.trackRef = trackRef
     self.compatible = effectiveCompatible
     self.checkClassVersion = effectiveCheckClassVersion
     self.maxDepth = maxDepth
+    self.maxTypeFields = maxTypeFields
+    self.maxTypeMetaBytes = maxTypeMetaBytes
+    self.maxSchemaVersionsPerType = maxSchemaVersionsPerType
+    self.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType
   }
 }
 
@@ -44,46 +62,51 @@ public struct Config {
 /// reusable read/write context pair and must not be used concurrently from
 /// multiple threads.
 public final class Fory {
-  public let config: Config
   let typeResolver: TypeResolver
   private let writeContext: WriteContext
   private let readContext: ReadContext
+  public let config: Config
 
   public convenience init(
     ref: Bool = false,
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
-    maxDepth: Int = 5
+    maxDepth: Int = 5,
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096,
+    maxSchemaVersionsPerType: Int = 10,
+    maxAverageSchemaVersionsPerType: Int = 3
   ) {
     self.init(
       config: Config(
         trackRef: ref,
         compatible: compatible,
         checkClassVersion: checkClassVersion,
-        maxDepth: maxDepth
+        maxDepth: maxDepth,
+        maxTypeFields: maxTypeFields,
+        maxTypeMetaBytes: maxTypeMetaBytes,
+        maxSchemaVersionsPerType: maxSchemaVersionsPerType,
+        maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType
       ))
   }
 
   public init(config: Config) {
-    self.config = config
-    self.typeResolver = TypeResolver(trackRef: self.config.trackRef)
+    self.typeResolver = TypeResolver(trackRef: config.trackRef)
     self.writeContext = WriteContext(
       buffer: ByteBuffer(),
       typeResolver: typeResolver,
-      trackRef: self.config.trackRef,
-      compatible: self.config.compatible,
-      checkClassVersion: self.config.checkClassVersion,
-      maxDepth: self.config.maxDepth,
+      trackRef: config.trackRef,
+      compatible: config.compatible,
+      checkClassVersion: config.checkClassVersion,
+      maxDepth: config.maxDepth,
       metaStringWriteState: MetaStringWriteState()
     )
     self.readContext = ReadContext(
       buffer: ByteBuffer(),
       typeResolver: typeResolver,
-      trackRef: self.config.trackRef,
-      compatible: self.config.compatible,
-      checkClassVersion: self.config.checkClassVersion,
-      maxDepth: self.config.maxDepth
+      config: config
     )
+    self.config = config
   }
 
   public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
@@ -454,7 +477,7 @@ public final class Fory {
   private func serializeRoot(
     _ body: (WriteContext) throws -> Void
   ) throws -> Data {
-    typeResolver.finishRegistration()
+    try typeResolver.finishRegistration()
     let context = writeContext
     context.buffer.clear()
     defer {
@@ -470,7 +493,7 @@ public final class Fory {
     to output: inout Data,
     _ body: (WriteContext) throws -> Void
   ) throws {
-    typeResolver.finishRegistration()
+    try typeResolver.finishRegistration()
     let context = writeContext
     context.buffer.clear()
     defer {
@@ -486,7 +509,7 @@ public final class Fory {
     data: Data,
     _ body: (ReadContext) throws -> R
   ) throws -> R {
-    typeResolver.finishRegistration()
+    try typeResolver.finishRegistration()
     return try withReusableReadContext(data: data) { context in
       try readHead(buffer: context.buffer)
       let value = try body(context)
@@ -503,7 +526,7 @@ public final class Fory {
     from buffer: ByteBuffer,
     _ body: (ReadContext) throws -> R
   ) throws -> R {
-    typeResolver.finishRegistration()
+    try typeResolver.finishRegistration()
     readContext.buffer.swapState(with: buffer)
     defer {
       readContext.buffer.swapState(with: buffer)

@@ -49,6 +49,36 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
   - `foryc schema.fdl --lang <langs> --output <dir>`
 - Never edit generated code manually. Update the source schema or IDL and regenerate.
 - Protocol changes must update `docs/specification/**` and the relevant cross-language tests.
+- Remote `TypeDef` or `TypeMeta` schema limits are resource controls on cold metadata cache-miss
+  parse/publish paths only. They must not change wire format, registration, dynamic type loading,
+  unknown-type behavior, deserialization policy, schema-evolution semantics, or metadata
+  cache-hit/generated-reader hot paths. Count a remote metadata version only after the required read
+  state has been successfully built and the owning metadata cache can publish it; failed or
+  incompatible metadata must not consume the limit. Struct types may have multiple schema-evolution
+  versions; compatible named enum/ext/union metadata normally has one version but still counts
+  against remote metadata total limits when it is sent as shared metadata. Pure id-based enum, ext,
+  and typed-union values use type id plus user type id and must not be moved onto this metadata
+  cache path. Exact-local metadata bypass is not struct-only: after the existing type and
+  deserialization-policy checks for the selected local type, compare the original received encoded
+  bytes with the local encoded metadata bytes, and allow exact matches for struct and named
+  enum/ext/union metadata without consuming remote schema-version limits. Derive the local
+  exact-match candidate inside the metadata owner from the decoded `userTypeId` or
+  `(namespace, typeName)` identity; do not add caller-threaded expected-type parameters only for
+  this check in any runtime. Java and Python may lazy-build local metadata bytes only after this
+  identity lookup selects a local class and the existing class, registration, and deserialization
+  policy checks have run. When a typed read path already has a declared local type and validates the
+  decoded metadata identity against it, use that same local type for exact-local byte comparison and
+  cache publish; dynamic or Any paths resolve the local type from decoded metadata. A runtime may
+  also skip a received metadata body when the current declared type already owns an identical local
+  metadata header; that is a local-schema hit, not a remote cache publish, and it must not consume
+  schema-version limits. Other header-only skips are allowed only after the same owning remote
+  metadata cache has validated a previous body for that header.
+- Remote metadata body and struct field-count limits are also cold-path resource controls.
+  `maxTypeMetaBytes` limits one received TypeDef or TypeMeta body excluding the 8-byte header and
+  extended-size varint; `maxTypeFields` limits one received struct metadata body's field count
+  (Java native TypeDef counts total fields across class layers). Check these before body
+  copy/decompression and before field-list allocation, and never add cache-hit or generated-reader
+  hot-path work for them.
 
 ## Runtime Map
 

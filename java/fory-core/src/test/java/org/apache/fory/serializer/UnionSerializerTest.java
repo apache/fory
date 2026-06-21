@@ -139,6 +139,25 @@ public class UnionSerializerTest extends ForyTestBase {
   }
 
   @Test
+  public void testIdUnionDoesNotUseTypeDefMetaLimits() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(true)
+            .requireClassRegistration(true)
+            .withCompatible(true)
+            .withMaxTypeMetaBytes(1)
+            .withMaxSchemaVersionsPerType(1)
+            .build();
+    UnionSerializer serializer = new UnionSerializer(fory.getTypeResolver(), SchemaUnion.class);
+    fory.registerUnion(SchemaUnion.class, 107, serializer);
+
+    Union union = writeReadUnion(fory, serializer, new SchemaUnion(0, "hello", Types.STRING), 0);
+    assertTrue(union instanceof SchemaUnion);
+    assertEquals(union.getIndex(), 0);
+    assertEquals(union.getValue(), "hello");
+  }
+
+  @Test
   public void testRegisterUnionDottedName() {
     Fory fory =
         Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();

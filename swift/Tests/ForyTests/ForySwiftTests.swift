@@ -174,6 +174,31 @@ struct CompatibleNestedMapHolder: Equatable {
   var items: [Int32: CompatibleNestedItem]
 }
 
+struct LateMetaExt: Serializer, Equatable {
+  var value: Int32 = 0
+
+  static func foryDefault() -> LateMetaExt {
+    LateMetaExt()
+  }
+
+  static var staticTypeId: TypeId {
+    .ext
+  }
+
+  func foryWriteData(_ context: WriteContext, hasGenerics _: Bool) throws {
+    context.buffer.writeVarInt32(value)
+  }
+
+  static func foryReadData(_ context: ReadContext) throws -> LateMetaExt {
+    LateMetaExt(value: try context.buffer.readVarInt32())
+  }
+}
+
+@ForyStruct
+struct LateMetaHolder: Equatable {
+  var ext: LateMetaExt
+}
+
 @ForyStruct
 final class Node {
   var value: Int32 = 0
@@ -357,18 +382,47 @@ func namedInitializerBuildsConfig() {
   #expect(defaultConfig.config.compatible == true)
   #expect(defaultConfig.config.checkClassVersion == false)
   #expect(defaultConfig.config.maxDepth == 5)
+  #expect(defaultConfig.config.maxTypeFields == 512)
+  #expect(defaultConfig.config.maxTypeMetaBytes == 4096)
+  #expect(defaultConfig.config.maxSchemaVersionsPerType == 10)
+  #expect(defaultConfig.config.maxAverageSchemaVersionsPerType == 3)
 
-  let explicitConfig = Fory(ref: true, compatible: true, maxDepth: 7)
+  let explicitConfig = Fory(
+    ref: true,
+    compatible: true,
+    maxDepth: 7,
+    maxTypeFields: 31,
+    maxTypeMetaBytes: 1234,
+    maxSchemaVersionsPerType: 12,
+    maxAverageSchemaVersionsPerType: 4
+  )
   #expect(explicitConfig.config.trackRef == true)
   #expect(explicitConfig.config.compatible == true)
   #expect(explicitConfig.config.checkClassVersion == false)
   #expect(explicitConfig.config.maxDepth == 7)
+  #expect(explicitConfig.config.maxTypeFields == 31)
+  #expect(explicitConfig.config.maxTypeMetaBytes == 1234)
+  #expect(explicitConfig.config.maxSchemaVersionsPerType == 12)
+  #expect(explicitConfig.config.maxAverageSchemaVersionsPerType == 4)
 
-  let configInit = Fory(config: .init(trackRef: false, compatible: true, maxDepth: 9))
+  let configInit = Fory(
+    config: .init(
+      trackRef: false,
+      compatible: true,
+      maxDepth: 9,
+      maxTypeFields: 41,
+      maxTypeMetaBytes: 2048,
+      maxSchemaVersionsPerType: 14,
+      maxAverageSchemaVersionsPerType: 5
+    ))
   #expect(configInit.config.trackRef == false)
   #expect(configInit.config.compatible == true)
   #expect(configInit.config.checkClassVersion == false)
   #expect(configInit.config.maxDepth == 9)
+  #expect(configInit.config.maxTypeFields == 41)
+  #expect(configInit.config.maxTypeMetaBytes == 2048)
+  #expect(configInit.config.maxSchemaVersionsPerType == 14)
+  #expect(configInit.config.maxAverageSchemaVersionsPerType == 5)
 
   let schemaConsistentDirect = Fory(ref: true, compatible: false)
   let schemaConsistentViaConfig = Fory(config: Config(trackRef: true, compatible: false))
@@ -475,28 +529,346 @@ func primitiveArrayTypeIDs() throws {
 }
 
 @Test
-func typeDefHeaderCacheStopsPublishingAtCapacity() throws {
-  let resolver = TypeResolver()
-  resolver.register(Person.self, id: 901)
-  let typeInfo = try resolver.requireTypeInfo(for: Person.self)
-  let typeMeta = try #require(typeInfo.typeMeta)
-  let localHeader = try #require(typeInfo.typeDefHeader)
-  #expect(resolver.getTypeInfo(forHeader: localHeader) != nil)
+func typeMetaFieldLimitRejectsLargeStruct() throws {
+  let fieldType = TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+  let meta = try TypeMeta(
+    typeID: TypeId.structType.rawValue,
+    userTypeID: 901,
+    namespace: .empty(specialChar1: ".", specialChar2: "_"),
+    typeName: .empty(specialChar1: "$", specialChar2: "_"),
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "first", fieldType: fieldType),
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "second", fieldType: fieldType)
+    ]
+  )
+  let encoded = try meta.encode()
 
-  var header = UInt64(0x0100_0000_0000_0000)
-  var inserted = 0
-  while inserted < 8191 {
-    if header != localHeader {
-      _ = try resolver.cacheTypeInfo(typeMeta, forHeader: header)
-      inserted += 1
-    }
-    header += 1
+  #expect(throws: (any Error).self) {
+    _ = try TypeMeta.decode(encoded, maxTypeFields: 1)
+  }
+}
+
+@Test
+func typeMetaBodyLimitRejectsLargeMetadata() throws {
+  let meta = try TypeMeta(
+    typeID: TypeId.structType.rawValue,
+    userTypeID: 901,
+    namespace: .empty(specialChar1: ".", specialChar2: "_"),
+    typeName: .empty(specialChar1: "$", specialChar2: "_"),
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "value",
+        fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false))
+    ]
+  )
+  let encoded = try meta.encode()
+
+  #expect(throws: (any Error).self) {
+    _ = try TypeMeta.decode(encoded, maxTypeMetaBytes: 1)
+  }
+}
+
+@Test
+func schemaLimitTracksStructTypesSeparately() throws {
+  let config = Config(maxSchemaVersionsPerType: 1)
+  let resolver = TypeResolver(config: config)
+  resolver.register(Person.self, id: 901)
+  resolver.register(Address.self, id: 902)
+  try resolver.finishRegistration()
+
+  func remoteTypeMeta(userTypeID: UInt32, fieldName: String) throws -> TypeMeta {
+    try TypeMeta(
+      typeID: TypeId.structType.rawValue,
+      userTypeID: userTypeID,
+      namespace: .empty(specialChar1: ".", specialChar2: "_"),
+      typeName: .empty(specialChar1: "$", specialChar2: "_"),
+      registerByName: false,
+      fields: [
+        TypeMeta.FieldInfo(
+          fieldID: nil,
+          fieldName: fieldName,
+          fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+        )
+      ]
+    )
   }
 
-  let uncachedHeader = header == localHeader ? header + 1 : header
-  let current = try resolver.cacheTypeInfo(typeMeta, forHeader: uncachedHeader)
-  #expect(current.compatibleTypeMeta != nil)
-  #expect(resolver.getTypeInfo(forHeader: uncachedHeader) == nil)
+  func cache(_ typeMeta: TypeMeta) throws {
+    let encoded = try typeMeta.encode()
+    let headerReader = ByteBuffer(bytes: encoded)
+    let header = try headerReader.readUInt64()
+    let buffer = ByteBuffer(bytes: encoded)
+    let decoded = try TypeMeta.decode(buffer)
+    let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
+    _ = try resolver.cacheTypeInfo(
+      decoded,
+      forHeader: header,
+      localTypeInfo: localTypeInfo,
+      exactLocal: false,
+      config: config
+    )
+  }
+
+  try cache(remoteTypeMeta(userTypeID: 901, fieldName: "remoteA"))
+  try cache(remoteTypeMeta(userTypeID: 902, fieldName: "remoteA"))
+  #expect(throws: (any Error).self) {
+    try cache(remoteTypeMeta(userTypeID: 901, fieldName: "remoteB"))
+  }
+}
+
+@Test
+func nonStructTypeMetaUsesSchemaLimit() throws {
+  let config = Config(maxSchemaVersionsPerType: 1)
+  let resolver = TypeResolver(config: config)
+  try resolver.register(SparseStatus.self, name: "example.SharedEnum")
+  try resolver.finishRegistration()
+  let namespace = try MetaStringEncoder.namespace.encode("example")
+  let typeName = try MetaStringEncoder.typeName.encode("SharedEnum")
+
+  func remoteTypeMeta(_ typeID: TypeId) throws -> TypeMeta {
+    try TypeMeta(
+      typeID: typeID.rawValue,
+      userTypeID: nil,
+      namespace: namespace,
+      typeName: typeName,
+      registerByName: true,
+      fields: []
+    )
+  }
+
+  func cache(_ typeMeta: TypeMeta) throws {
+    let encoded = try typeMeta.encode()
+    let headerReader = ByteBuffer(bytes: encoded)
+    let header = try headerReader.readUInt64()
+    let buffer = ByteBuffer(bytes: encoded)
+    let decoded = try TypeMeta.decode(buffer)
+    let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
+    _ = try resolver.cacheTypeInfo(
+      decoded,
+      forHeader: header,
+      localTypeInfo: localTypeInfo,
+      exactLocal: false,
+      config: config
+    )
+  }
+
+  try cache(remoteTypeMeta(.namedExt))
+  #expect(throws: (any Error).self) {
+    try cache(remoteTypeMeta(.namedUnion))
+  }
+}
+
+@Test
+func exactLocalNonStructTypeMetaBypassesSchemaLimit() throws {
+  let config = Config(compatible: true, maxSchemaVersionsPerType: 1)
+  let resolver = TypeResolver(config: config)
+  try resolver.register(SparseStatus.self, name: "example.SharedEnum")
+  try resolver.finishRegistration()
+  let localTypeInfo = try resolver.requireTypeInfo(for: SparseStatus.self)
+  let namespace = try MetaStringEncoder.namespace.encode("example")
+  let typeName = try MetaStringEncoder.typeName.encode("SharedEnum")
+
+  let exactBuffer = ByteBuffer()
+  exactBuffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.namedEnum.rawValue))
+  exactBuffer.writeUInt8(0)
+  exactBuffer.writeBytes(localTypeInfo.typeDefBytes!)
+  let exactContext = ReadContext(buffer: exactBuffer, typeResolver: resolver, config: config)
+  _ = try exactContext.readTypeInfo(for: SparseStatus.self)
+
+  let remote = try TypeMeta(
+    typeID: TypeId.namedExt.rawValue,
+    userTypeID: nil,
+    namespace: namespace,
+    typeName: typeName,
+    registerByName: true,
+    fields: []
+  )
+  let encoded = try remote.encode()
+  let headerReader = ByteBuffer(bytes: encoded)
+  let header = try headerReader.readUInt64()
+  let buffer = ByteBuffer(bytes: encoded)
+  let decoded = try TypeMeta.decode(buffer)
+  let resolved = try resolver.requireTypeInfo(for: decoded)
+  _ = try resolver.cacheTypeInfo(
+    decoded,
+    forHeader: header,
+    localTypeInfo: resolved,
+    exactLocal: false,
+    config: config
+  )
+}
+
+@Test
+func typeMetaUsesFinalRegistration() throws {
+  func holderTypeDefBytes(registerFieldTypeFirst: Bool) throws -> [UInt8] {
+    let resolver = TypeResolver(config: Config(compatible: true))
+    if registerFieldTypeFirst {
+      try resolver.register(LateMetaExt.self, name: "example.LateMetaExt")
+      try resolver.register(LateMetaHolder.self, name: "example.LateMetaHolder")
+    } else {
+      try resolver.register(LateMetaHolder.self, name: "example.LateMetaHolder")
+      try resolver.register(LateMetaExt.self, name: "example.LateMetaExt")
+    }
+    try resolver.finishRegistration()
+    return try resolver.requireTypeInfo(for: LateMetaHolder.self).typeDefBytes!
+  }
+
+  let fieldFirst = try holderTypeDefBytes(registerFieldTypeFirst: true)
+  let holderFirst = try holderTypeDefBytes(registerFieldTypeFirst: false)
+  #expect(fieldFirst == holderFirst)
+
+  let typeMeta = try TypeMeta.decode(ByteBuffer(bytes: holderFirst))
+  #expect(typeMeta.fields.count == 1)
+  #expect(typeMeta.fields[0].fieldType.typeID == TypeId.namedExt.rawValue)
+}
+
+@Test
+func failedSchemaDoesNotConsumeLimit() throws {
+  let config = Config(maxSchemaVersionsPerType: 1)
+  let resolver = TypeResolver(config: config)
+  resolver.register(Person.self, id: 901)
+  resolver.register(Address.self, id: 902)
+  try resolver.finishRegistration()
+
+  func remoteTypeMeta(fieldName: String, fieldType: TypeMeta.FieldType) throws -> TypeMeta {
+    try TypeMeta(
+      typeID: TypeId.structType.rawValue,
+      userTypeID: 901,
+      namespace: .empty(specialChar1: ".", specialChar2: "_"),
+      typeName: .empty(specialChar1: "$", specialChar2: "_"),
+      registerByName: false,
+      fields: [
+        TypeMeta.FieldInfo(
+          fieldID: nil,
+          fieldName: fieldName,
+          fieldType: fieldType
+        )
+      ]
+    )
+  }
+
+  func cache(_ typeMeta: TypeMeta) throws {
+    let encoded = try typeMeta.encode()
+    let headerReader = ByteBuffer(bytes: encoded)
+    let header = try headerReader.readUInt64()
+    let buffer = ByteBuffer(bytes: encoded)
+    let decoded = try TypeMeta.decode(buffer)
+    let localTypeInfo = try resolver.requireTypeInfo(for: decoded)
+    _ = try resolver.cacheTypeInfo(
+      decoded,
+      forHeader: header,
+      localTypeInfo: localTypeInfo,
+      exactLocal: false,
+      config: config
+    )
+  }
+
+  #expect(throws: (any Error).self) {
+    try cache(remoteTypeMeta(
+      fieldName: "id",
+      fieldType: TypeMeta.FieldType(
+        typeID: TypeId.map.rawValue,
+        nullable: false,
+        generics: [
+          TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false),
+          TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+        ]
+      )
+    ))
+  }
+  try cache(remoteTypeMeta(
+    fieldName: "remoteA",
+    fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+  ))
+}
+
+@Test
+func staticTypeRejectsWrongMetaOwner() throws {
+  let config = Config(compatible: true)
+  let resolver = TypeResolver(config: config)
+  resolver.register(Person.self, id: 901)
+  resolver.register(Address.self, id: 902)
+  try resolver.finishRegistration()
+  let wrongTypeMeta = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 901,
+    namespace: .empty(specialChar1: ".", specialChar2: "_"),
+    typeName: .empty(specialChar1: "$", specialChar2: "_"),
+    registerByName: false,
+    fields: []
+  )
+  let wrongBytes = try wrongTypeMeta.encode()
+  let wrongHeader = try ByteBuffer(bytes: wrongBytes).readUInt64()
+  let buffer = ByteBuffer()
+  buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+  buffer.writeUInt8(0)
+  buffer.writeBytes(wrongBytes)
+  let context = ReadContext(buffer: buffer, typeResolver: resolver, config: config)
+
+  #expect(throws: (any Error).self) {
+    _ = try context.readTypeInfo(for: Address.self)
+  }
+  #expect(resolver.getTypeInfo(forHeader: wrongHeader) == nil)
+
+  let addressInfo = try resolver.requireTypeInfo(for: Address.self)
+  let addressBytes = try #require(addressInfo.typeDefBytes)
+  let addressHeader = try ByteBuffer(bytes: addressBytes).readUInt64()
+  let exactBuffer = ByteBuffer()
+  exactBuffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+  exactBuffer.writeUInt8(0)
+  exactBuffer.writeBytes(addressBytes)
+  let exactContext = ReadContext(buffer: exactBuffer, typeResolver: resolver, config: config)
+  _ = try exactContext.readTypeInfo(for: Address.self)
+  #expect(resolver.getTypeInfo(forHeader: addressHeader) == nil)
+}
+
+@Test
+func failedStaticMetaDoesNotCount() throws {
+  let config = Config(compatible: true, maxSchemaVersionsPerType: 1)
+  let resolver = TypeResolver(config: config)
+  resolver.register(Person.self, id: 901)
+  resolver.register(Address.self, id: 902)
+  try resolver.finishRegistration()
+
+  func typeMeta(userTypeID: UInt32, fieldName: String) throws -> TypeMeta {
+    try TypeMeta(
+      typeID: TypeId.compatibleStruct.rawValue,
+      userTypeID: userTypeID,
+      namespace: .empty(specialChar1: ".", specialChar2: "_"),
+      typeName: .empty(specialChar1: "$", specialChar2: "_"),
+      registerByName: false,
+      fields: [
+        TypeMeta.FieldInfo(
+          fieldID: nil,
+          fieldName: fieldName,
+          fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+        )
+      ]
+    )
+  }
+
+  func writeTypeInfo(_ buffer: ByteBuffer, marker: UInt8, typeMeta: TypeMeta) throws {
+    buffer.writeUInt8(UInt8(truncatingIfNeeded: TypeId.compatibleStruct.rawValue))
+    buffer.writeUInt8(marker)
+    buffer.writeBytes(try typeMeta.encode())
+  }
+
+  let failedBuffer = ByteBuffer()
+  try writeTypeInfo(failedBuffer, marker: 0, typeMeta: typeMeta(userTypeID: 902, fieldName: "zip2"))
+  try writeTypeInfo(failedBuffer, marker: 2, typeMeta: typeMeta(userTypeID: 901, fieldName: "id2"))
+  let failedContext = ReadContext(buffer: failedBuffer, typeResolver: resolver, config: config)
+  _ = try failedContext.readTypeInfo(for: Address.self)
+  #expect(throws: (any Error).self) {
+    _ = try failedContext.readTypeInfo(for: Address.self)
+  }
+
+  let validBuffer = ByteBuffer()
+  try writeTypeInfo(validBuffer, marker: 0, typeMeta: typeMeta(userTypeID: 901, fieldName: "id3"))
+  let validContext = ReadContext(buffer: validBuffer, typeResolver: resolver, config: config)
+  _ = try validContext.readTypeInfo(for: Person.self)
 }
 
 @Test
@@ -585,7 +957,7 @@ func dynamicUserTypesDecodeByID() throws {
 
 @Test
 func duplicateNameRegistrationIsRejected() throws {
-  let resolver = TypeResolver(trackRef: false)
+  let resolver = TypeResolver(config: Config(trackRef: false))
   try resolver.register(Address.self, namespace: "demo", typeName: "entity")
 
   do {
@@ -596,7 +968,7 @@ func duplicateNameRegistrationIsRejected() throws {
 
 @Test
 func nameRegistrationSplitsLastDot() throws {
-  let resolver = TypeResolver(trackRef: false)
+  let resolver = TypeResolver(config: Config(trackRef: false))
   try resolver.register(Address.self, name: "com.example.Address")
 
   let info = try resolver.requireTypeInfo(namespace: "com.example", typeName: "Address")
@@ -606,7 +978,7 @@ func nameRegistrationSplitsLastDot() throws {
 
 @Test
 func nameRegistrationAllowsSimpleName() throws {
-  let resolver = TypeResolver(trackRef: false)
+  let resolver = TypeResolver(config: Config(trackRef: false))
   try resolver.register(Address.self, name: "Address")
 
   let info = try resolver.requireTypeInfo(namespace: "", typeName: "Address")
@@ -634,7 +1006,7 @@ func nameRegistrationRejectsTrailingDot() throws {
 
 @Test
 func splitNameRegistrationRejectsDottedTypeName() throws {
-  let resolver = TypeResolver(trackRef: false)
+  let resolver = TypeResolver(config: Config(trackRef: false))
 
   #expect(throws: ForyError.self) {
     try resolver.register(Address.self, namespace: "com", typeName: "example.Address")
@@ -911,7 +1283,7 @@ func macroFieldOrderFollowsForyRules() throws {
   let second = try buffer.readVarInt64()
   let third = try buffer.readVarInt32()
 
-  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
+  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
   let fourth = try String.foryReadData(tailContext)
 
   #expect(first == value.shortValue)
@@ -939,7 +1311,7 @@ func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
   _ = try buffer.readInt32()
 
   #expect(try buffer.readVarInt32() == value.intValue)
-  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, trackRef: false)
+  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
   #expect(try String.foryReadData(tailContext) == value.textTail)
 }
 
@@ -947,7 +1319,10 @@ func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
 func macroNonPrimitiveFieldsSortByFieldIdentifier() throws {
   let fields = NonPrimitiveFieldOrder.foryFieldsInfo(trackRef: false)
 
-  #expect(fields.map(\.fieldName) == ["intValue", "mapValue", "stringValue", "addressValue", "binaryValue"])
+  #expect(
+    fields.map(\.fieldName) == [
+      "intValue", "mapValue", "stringValue", "addressValue", "binaryValue"
+    ])
   #expect(fields.map(\.fieldID) == [nil, 10, 20, nil, nil])
 }
 

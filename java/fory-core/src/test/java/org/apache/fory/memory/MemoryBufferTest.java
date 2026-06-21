@@ -918,6 +918,18 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testReadAlignedVarUInt32Bounds() {
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> MemoryBuffer.fromByteArray(new byte[] {(byte) 0xff}).readAlignedVarUInt32());
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () ->
+            MemoryBuffer.fromByteArray(new byte[] {(byte) 0xff, 0x40}, 0, 1)
+                .readAlignedVarUInt32());
+  }
+
+  @Test
   public void testGetShortB() {
     byte[] data = new byte[4];
     data[0] = (byte) 0xac;

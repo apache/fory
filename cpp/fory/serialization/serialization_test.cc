@@ -31,6 +31,7 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include "fory/type/type.h"
@@ -87,6 +88,16 @@ struct ExtWithDestructor {
   ~ExtWithDestructor() { g_ext_destructor_calls.fetch_add(1); }
 
   FORY_STRUCT(ExtWithDestructor, value);
+};
+
+struct IdLimitExt {
+  int32_t value = 0;
+
+  bool operator==(const IdLimitExt &other) const {
+    return value == other.value;
+  }
+
+  FORY_STRUCT(IdLimitExt, value);
 };
 
 namespace fory {
@@ -957,6 +968,180 @@ TEST(SerializationTest, RegistrationByNameFailureDoesNotLeakTypeInfo) {
   EXPECT_EQ(dotted_type_name.error().code(), ErrorCode::Invalid);
 }
 
+static std::vector<uint8_t> make_remote_type_meta(const std::string &type_name,
+                                                  const std::string &field) {
+  std::vector<FieldInfo> fields;
+  fields.emplace_back(
+      field, FieldType(static_cast<uint32_t>(TypeId::VARINT32), false));
+  TypeMeta meta =
+      TypeMeta::from_fields(static_cast<uint32_t>(TypeId::NAMED_STRUCT),
+                            "example", type_name, true, 0, std::move(fields));
+  auto bytes = meta.to_bytes();
+  EXPECT_TRUE(bytes.ok()) << "TypeMeta serialization failed: "
+                          << bytes.error().to_string();
+  return bytes.value();
+}
+
+static std::vector<uint8_t>
+make_remote_non_struct_type_meta(TypeId type_id, const std::string &type_name) {
+  TypeMeta meta =
+      TypeMeta::from_fields(static_cast<uint32_t>(type_id), "example",
+                            type_name, true, 0, std::vector<FieldInfo>{});
+  auto bytes = meta.to_bytes();
+  EXPECT_TRUE(bytes.ok()) << "TypeMeta serialization failed: "
+                          << bytes.error().to_string();
+  return bytes.value();
+}
+
+static Result<const TypeInfo *, Error>
+append_and_read_type_meta(ReadContext &ctx, const std::vector<uint8_t> &bytes) {
+  Buffer buffer;
+  buffer.write_var_uint32(0);
+  buffer.write_bytes(bytes.data(), static_cast<uint32_t>(bytes.size()));
+  ctx.reset();
+  ctx.attach(buffer);
+  auto result = ctx.read_type_meta();
+  ctx.detach();
+  return result;
+}
+
+TEST(SerializationTest, RemoteSchemaLimitRejectsExtraVersions) {
+  Config config;
+  config.compatible = true;
+  config.max_schema_versions_per_type = 1;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+
+  auto first = append_and_read_type_meta(
+      ctx, make_remote_type_meta("Unknown", "first_value"));
+  ASSERT_TRUE(first.ok()) << first.error().to_string();
+
+  auto second = append_and_read_type_meta(
+      ctx, make_remote_type_meta("Unknown", "second_value"));
+  EXPECT_FALSE(second.ok());
+  ASSERT_FALSE(second.ok());
+  EXPECT_EQ(second.error().code(), ErrorCode::InvalidData);
+}
+
+TEST(SerializationTest, RemoteNonStructTypeMetaUsesSchemaLimit) {
+  Config config;
+  config.compatible = true;
+  config.max_schema_versions_per_type = 1;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+
+  auto first = append_and_read_type_meta(
+      ctx, make_remote_non_struct_type_meta(TypeId::NAMED_ENUM, "RemoteEnum"));
+  ASSERT_TRUE(first.ok()) << first.error().to_string();
+
+  auto second = append_and_read_type_meta(
+      ctx, make_remote_non_struct_type_meta(TypeId::NAMED_EXT, "RemoteEnum"));
+  EXPECT_FALSE(second.ok());
+  ASSERT_FALSE(second.ok());
+  EXPECT_EQ(second.error().code(), ErrorCode::InvalidData);
+}
+
+TEST(SerializationTest, ExactLocalNonStructTypeMetaBypassesLimit) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .max_schema_versions_per_type(1)
+                  .build();
+  ASSERT_TRUE(
+      fory.register_enum<SignedScopedStatus>("example", "SharedEnum").ok());
+  auto local_type_info =
+      fory.type_resolver().get_type_info<SignedScopedStatus>();
+  ASSERT_TRUE(local_type_info.ok()) << local_type_info.error().to_string();
+  std::vector<uint8_t> exact = local_type_info.value()->type_def;
+  ReadContext ctx(fory.config(), fory.type_resolver().clone());
+
+  auto first = append_and_read_type_meta(ctx, exact);
+  ASSERT_TRUE(first.ok()) << first.error().to_string();
+  auto second = append_and_read_type_meta(
+      ctx, make_remote_non_struct_type_meta(TypeId::NAMED_EXT, "SharedEnum"));
+  ASSERT_TRUE(second.ok()) << second.error().to_string();
+}
+
+TEST(SerializationTest, ExactLocalNamedUnionTypeMetaBypassesLimit) {
+  using LocalUnion = std::variant<int32_t, std::string>;
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .max_schema_versions_per_type(1)
+                  .build();
+  ASSERT_TRUE(fory.register_union<LocalUnion>("example", "SharedUnion").ok());
+  auto local_type_info = fory.type_resolver().get_type_info<LocalUnion>();
+  ASSERT_TRUE(local_type_info.ok()) << local_type_info.error().to_string();
+  std::vector<uint8_t> exact = local_type_info.value()->type_def;
+  ASSERT_FALSE(exact.empty());
+  ReadContext ctx(fory.config(), fory.type_resolver().clone());
+
+  auto first = append_and_read_type_meta(ctx, exact);
+  ASSERT_TRUE(first.ok()) << first.error().to_string();
+  auto second = append_and_read_type_meta(
+      ctx, make_remote_non_struct_type_meta(TypeId::NAMED_EXT, "SharedUnion"));
+  ASSERT_TRUE(second.ok()) << second.error().to_string();
+}
+
+TEST(SerializationTest, RemoteSchemaLimitKeepsUnknownTypesSeparate) {
+  Config config;
+  config.compatible = true;
+  config.max_schema_versions_per_type = 1;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+
+  auto first = append_and_read_type_meta(
+      ctx, make_remote_type_meta("UnknownA", "value"));
+  ASSERT_TRUE(first.ok()) << first.error().to_string();
+  auto second = append_and_read_type_meta(
+      ctx, make_remote_type_meta("UnknownB", "value"));
+  EXPECT_TRUE(second.ok()) << second.error().to_string();
+}
+
+TEST(SerializationTest, IdEnumDoesNotUseTypeMetaLimits) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .max_type_meta_bytes(1)
+                  .max_schema_versions_per_type(1)
+                  .build();
+  ASSERT_TRUE(fory.register_enum<SignedScopedStatus>(101).ok());
+
+  auto bytes = fory.serialize(SignedScopedStatus::LARGE);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  std::vector<uint8_t> payload = std::move(bytes).value();
+  auto decoded =
+      fory.deserialize<SignedScopedStatus>(payload.data(), payload.size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded.value(), SignedScopedStatus::LARGE);
+}
+
+TEST(SerializationTest, IdExtDoesNotUseTypeMetaLimits) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .max_type_meta_bytes(1)
+                  .max_schema_versions_per_type(1)
+                  .build();
+  ASSERT_TRUE(fory.register_extension_type<IdLimitExt>(102).ok());
+
+  auto bytes = fory.serialize(IdLimitExt{42});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  std::vector<uint8_t> payload = std::move(bytes).value();
+  auto decoded = fory.deserialize<IdLimitExt>(payload.data(), payload.size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded.value(), IdLimitExt{42});
+}
+
+TEST(SerializationTest, LocalTypeMetaFinalizationIgnoresReceiveBodyLimit) {
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .max_type_meta_bytes(1)
+                  .build();
+  ASSERT_TRUE(fory.register_struct<SimpleStruct>(103).ok());
+
+  auto bytes = fory.serialize(SimpleStruct{1, 2});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+}
+
 TEST(SerializationTest, TypeMetaRejectsOverConsumedDeclaredSize) {
   TypeMeta meta =
       TypeMeta::from_fields(static_cast<uint32_t>(TypeId::STRUCT), "", "S",
@@ -1019,6 +1204,52 @@ TEST(SerializationTest, TypeMetaHeaderUses52BitMetadataHash) {
   ASSERT_TRUE(parsed.ok()) << parsed.error().to_string();
   EXPECT_EQ(static_cast<int64_t>(header >> kHashShift),
             parsed.value()->get_hash());
+}
+
+TEST(SerializationTest, TypeMetaRejectsMaxTypeFields) {
+  std::vector<FieldInfo> fields;
+  fields.emplace_back(
+      "first", FieldType(static_cast<uint32_t>(TypeId::VARINT32), false));
+  fields.emplace_back(
+      "second", FieldType(static_cast<uint32_t>(TypeId::VARINT32), false));
+  TypeMeta meta = TypeMeta::from_fields(static_cast<uint32_t>(TypeId::STRUCT),
+                                        "", "S", false, 1, std::move(fields));
+  auto bytes_result = meta.to_bytes();
+  ASSERT_TRUE(bytes_result.ok())
+      << "TypeMeta serialization failed: " << bytes_result.error().to_string();
+  std::vector<uint8_t> bytes = bytes_result.value();
+  Buffer buffer(bytes);
+  Error error;
+  int64_t header = 0;
+  buffer.read_bytes(&header, sizeof(header), error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+
+  auto parsed = TypeMeta::from_bytes_with_header(buffer, header, 1, 4096);
+  ASSERT_FALSE(parsed.ok());
+  EXPECT_NE(parsed.error().to_string().find("max_type_fields"),
+            std::string::npos);
+}
+
+TEST(SerializationTest, TypeMetaRejectsMaxTypeMetaBytes) {
+  std::vector<FieldInfo> fields;
+  fields.emplace_back(
+      "value", FieldType(static_cast<uint32_t>(TypeId::VARINT32), false));
+  TypeMeta meta = TypeMeta::from_fields(static_cast<uint32_t>(TypeId::STRUCT),
+                                        "", "S", false, 1, std::move(fields));
+  auto bytes_result = meta.to_bytes();
+  ASSERT_TRUE(bytes_result.ok())
+      << "TypeMeta serialization failed: " << bytes_result.error().to_string();
+  std::vector<uint8_t> bytes = bytes_result.value();
+  Buffer buffer(bytes);
+  Error error;
+  int64_t header = 0;
+  buffer.read_bytes(&header, sizeof(header), error);
+  ASSERT_TRUE(error.ok()) << error.to_string();
+
+  auto parsed = TypeMeta::from_bytes_with_header(buffer, header, 512, 1);
+  ASSERT_FALSE(parsed.ok());
+  EXPECT_NE(parsed.error().to_string().find("max_type_meta_bytes"),
+            std::string::npos);
 }
 
 TEST(SerializationTest, TypeMetaRejectsBodyOnlyHeaderHash) {

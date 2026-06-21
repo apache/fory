@@ -113,7 +113,7 @@ public class LambdaSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testSerializedLambdaAdmission() throws Exception {
+  public void testSerializedLambdaClassCheck() throws Exception {
     int delta = 7;
     Function<Integer, Integer> function =
         (Serializable & Function<Integer, Integer>) (x) -> x + delta;

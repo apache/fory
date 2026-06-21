@@ -651,6 +651,10 @@ After the type ID:
 - **UNION**: no extra bytes at this layer.
 - **LIST / SET / MAP / primitives**: no extra bytes at this layer.
 
+Pure id-based enum, ext, and typed-union values therefore do not carry a TypeDef
+body. Receive-side TypeDef resource limits apply only when the stream actually
+carries shared TypeDef metadata.
+
 `ARRAY (42)` is reserved for a future xlang extension for dedicated multi-dimensional arrays and
 is not used in current xlang streams.
 
@@ -742,6 +746,12 @@ Meta header byte for non-struct TypeDefs:
 - Bit 7: `IS_STRUCT` (0).
 - Bits 4-6: reserved (must be zero).
 - Bits 0-3: kind code.
+
+Readers may reject a received TypeDef that exceeds runtime resource limits such
+as maximum metadata body bytes or maximum fields in one struct TypeDef. These
+limits are receive-side resource controls and do not change TypeDef wire
+encoding, type identity, dynamic loading, unknown-type handling, registration
+policy, or schema-evolution semantics.
 
 Non-struct kind codes:
 

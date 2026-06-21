@@ -450,6 +450,30 @@ read_type_meta_size(Buffer &buffer, uint64_t header, size_t *header_size) {
   return static_cast<uint32_t>(meta_size);
 }
 
+inline Result<void, Error>
+check_type_meta_body_size(uint32_t meta_size, uint32_t max_type_meta_bytes) {
+  if (FORY_PREDICT_FALSE(meta_size > max_type_meta_bytes)) {
+    return Unexpected(Error::invalid_data(
+        "Type metadata body size " + std::to_string(meta_size) +
+        " exceeds max_type_meta_bytes " + std::to_string(max_type_meta_bytes) +
+        ". The data may be malicious. If the data is not malicious, please "
+        "increase max_type_meta_bytes."));
+  }
+  return Result<void, Error>();
+}
+
+inline Result<void, Error> check_type_meta_fields(size_t num_fields,
+                                                  uint32_t max_type_fields) {
+  if (FORY_PREDICT_FALSE(num_fields > max_type_fields)) {
+    return Unexpected(Error::invalid_data(
+        "Type metadata field count " + std::to_string(num_fields) +
+        " exceeds max_type_fields " + std::to_string(max_type_fields) +
+        ". The data may be malicious. If the data is not malicious, please "
+        "increase max_type_fields."));
+  }
+  return Result<void, Error>();
+}
+
 inline Result<void, Error> validate_type_meta_hash(Buffer &buffer,
                                                    uint32_t body_start,
                                                    uint32_t meta_size,
@@ -620,7 +644,8 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
 }
 
 Result<std::unique_ptr<TypeMeta>, Error>
-TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
+TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info,
+                     uint32_t max_type_fields, uint32_t max_type_meta_bytes) {
   size_t start_pos = buffer.reader_index();
 
   // Read global binary header
@@ -635,8 +660,12 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
   uint64_t header_bits = static_cast<uint64_t>(header);
   FORY_RETURN_IF_ERROR(validate_type_meta_header(header_bits));
   FORY_TRY(meta_size, read_type_meta_size(buffer, header_bits, &header_size));
+  FORY_RETURN_IF_ERROR(
+      check_type_meta_body_size(meta_size, max_type_meta_bytes));
   int64_t meta_hash = static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
   uint32_t body_start = static_cast<uint32_t>(start_pos + header_size);
+  // The size cap is not byte-availability proof. Ensure the declared body is
+  // readable before any parsing, copying, or cached metadata publication.
   if (FORY_PREDICT_FALSE(!buffer.ensure_readable(meta_size, error))) {
     return Unexpected(std::move(error));
   }
@@ -671,6 +700,7 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
       }
       num_fields += extra;
     }
+    FORY_RETURN_IF_ERROR(check_type_meta_fields(num_fields, max_type_fields));
   } else {
     if (FORY_PREDICT_FALSE((meta_header & NON_STRUCT_RESERVED_BITS_MASK) !=
                            0)) {
@@ -752,14 +782,20 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
 }
 
 Result<std::unique_ptr<TypeMeta>, Error>
-TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
+TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header,
+                                 uint32_t max_type_fields,
+                                 uint32_t max_type_meta_bytes) {
   uint64_t header_bits = static_cast<uint64_t>(header);
   FORY_RETURN_IF_ERROR(validate_type_meta_header(header_bits));
   FORY_TRY(meta_size, read_type_meta_size(buffer, header_bits, nullptr));
+  FORY_RETURN_IF_ERROR(
+      check_type_meta_body_size(meta_size, max_type_meta_bytes));
   int64_t meta_hash = static_cast<int64_t>(header_bits >> TYPE_META_HASH_SHIFT);
 
   uint32_t start_pos = buffer.reader_index();
   Error error;
+  // The size cap is not byte-availability proof. Ensure the declared body is
+  // readable before any parsing, copying, or cached metadata publication.
   if (FORY_PREDICT_FALSE(!buffer.ensure_readable(meta_size, error))) {
     return Unexpected(std::move(error));
   }
@@ -795,6 +831,7 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
       }
       num_fields += extra;
     }
+    FORY_RETURN_IF_ERROR(check_type_meta_fields(num_fields, max_type_fields));
   } else {
     if (FORY_PREDICT_FALSE((meta_header & NON_STRUCT_RESERVED_BITS_MASK) !=
                            0)) {
@@ -871,6 +908,8 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
 
 Result<void, Error> TypeMeta::skip_bytes_for_validated_header(Buffer &buffer,
                                                               int64_t header) {
+  // Header-cache hits intentionally skip opaque metadata. This path must not
+  // allocate or materialize the body from the attacker-declared size.
   Error error;
   uint64_t meta_size = static_cast<uint64_t>(header) & META_SIZE_MASK;
   if (meta_size == META_SIZE_MASK) {
@@ -1775,7 +1814,13 @@ TypeResolver::build_final_type_resolver() {
     Buffer buffer(partial_ptr->type_def.data(),
                   static_cast<uint32_t>(partial_ptr->type_def.size()), false);
     buffer.writer_index(static_cast<uint32_t>(partial_ptr->type_def.size()));
-    FORY_TRY(parsed_meta, TypeMeta::from_bytes(buffer, nullptr));
+    // This metadata was just generated from local registration state. Remote
+    // receive limits are enforced only on remote metadata parse/cache-miss
+    // paths, so large trusted local schemas do not fail during finalization.
+    FORY_TRY(parsed_meta,
+             TypeMeta::from_bytes(buffer, nullptr,
+                                  std::numeric_limits<uint32_t>::max(),
+                                  std::numeric_limits<uint32_t>::max()));
     partial_ptr->type_meta = std::move(parsed_meta);
   }
 

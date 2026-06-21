@@ -530,7 +530,7 @@ void main() {
 
       for (final value in cases) {
         final roundTrip = fory.deserialize<double>(
-          fory.serializeBuiltin(value, wireTypeId: TypeIds.float16),
+          fory.serializeBuiltin(value, typeId: TypeIds.float16),
         );
         expect(toFloat16Bits(roundTrip), equals(toFloat16Bits(value)));
       }
@@ -562,7 +562,7 @@ void main() {
 
       for (final value in cases) {
         final roundTrip = fory.deserialize<double>(
-          fory.serializeBuiltin(value, wireTypeId: TypeIds.bfloat16),
+          fory.serializeBuiltin(value, typeId: TypeIds.bfloat16),
         );
         expect(toBfloat16Bits(roundTrip), equals(toBfloat16Bits(value)));
       }

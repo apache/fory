@@ -440,7 +440,7 @@ void writeGeneratedUnionCaseValue(
   )) {
     return;
   }
-  context.writeTypeMetaValue(resolved, value);
+  context.writeTypeMetaValue(resolved);
   context.writeResolvedValue(resolved, value, fieldType);
 }
 

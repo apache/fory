@@ -495,7 +495,7 @@ cdef class Buffer:
         if length > self.c_buffer.size():
             self.reserve(length * 2)
 
-    cpdef inline skip(self, int32_t length):
+    cpdef inline skip(self, uint32_t length):
         self.c_buffer.skip(length, self._error)
         if not self._error.ok():
             self._raise_if_error()

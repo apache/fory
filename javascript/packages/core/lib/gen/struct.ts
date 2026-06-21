@@ -1085,7 +1085,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
           }`;
       }
       return `
-          const ${changedSerializer} = ${this.builder.typeMetaResolver.readTypeMetaIfSchemaChanged(localHash)};
+          const ${changedSerializer} = ${this.builder.typeMetaResolver.readCompatibleStructSerializer(localHash)};
           if (${changedSerializer} !== undefined) {
             ${onMetaChanged?.(changedSerializer) ?? `return ${changedSerializer};`}
           }${unchangedBranch}
@@ -1166,7 +1166,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       const hoistedHash = scope.declare("serHash", `${hoisted}.getHash()`);
       return `
               ${builder.reader.readUint8()};
-              const ${changedSerializer} = ${builder.typeMetaResolver.readTypeMetaIfSchemaChanged(hoistedHash, hoisted)};
+              const ${changedSerializer} = ${builder.typeMetaResolver.readCompatibleStructSerializer(hoistedHash, hoisted)};
               if (${changedSerializer} !== undefined) {
                 ${onMetaChanged(changedSerializer)}
               } else {
@@ -1283,7 +1283,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       case TypeId.NAMED_COMPATIBLE_STRUCT:
       case TypeId.COMPATIBLE_STRUCT:
         {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
+          const bytes = this.typeMetaBytesExpr();
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         }
         break;
@@ -1298,7 +1298,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
               ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
             `;
           } else {
-            const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
+            const bytes = this.typeMetaBytesExpr();
             typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
           }
         }
@@ -1330,6 +1330,17 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   getHash(): string {
     return TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).getHash().toString();
+  }
+
+  getTypeMetaBytes(): string {
+    return this.typeMetaBytesExpr();
+  }
+
+  private typeMetaBytesExpr(): string {
+    return this.scope.declare(
+      "typeInfoBytes",
+      `new Uint8Array([${this.typeMeta.toBytes().join(",")}])`,
+    );
   }
 }
 

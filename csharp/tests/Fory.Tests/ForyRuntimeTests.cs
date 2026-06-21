@@ -85,6 +85,33 @@ public sealed class NonPrimitiveFieldOrder
     public int IntValue { get; set; }
 }
 
+public sealed class LateTypeMetaExt
+{
+    public int Value { get; set; }
+}
+
+public sealed class LateTypeMetaExtSerializer : Serializer<LateTypeMetaExt>
+{
+    public override LateTypeMetaExt DefaultValue => null!;
+
+    public override void WriteData(WriteContext context, in LateTypeMetaExt value, bool hasGenerics)
+    {
+        _ = hasGenerics;
+        context.Writer.WriteVarInt32(value?.Value ?? 0);
+    }
+
+    public override LateTypeMetaExt ReadData(ReadContext context)
+    {
+        return new LateTypeMetaExt { Value = context.Reader.ReadVarInt32() };
+    }
+}
+
+[ForyStruct]
+public sealed class LateTypeMetaHolder
+{
+    public LateTypeMetaExt Value { get; set; } = new();
+}
+
 [ForyStruct]
 public sealed class SchemaNumbers
 {
@@ -1118,7 +1145,7 @@ public sealed class ForyRuntimeTests
         short first = reader.ReadInt16();
         long second = reader.ReadVarInt64();
         int third = reader.ReadVarInt32();
-        ReadContext tailContext = new(reader, new TypeResolver(), false, false);
+        ReadContext tailContext = new(reader, new TypeResolver(), fory.Config);
         string fourth = tailContext.TypeResolver.GetSerializer<string>().ReadData(tailContext);
 
         Assert.Equal(value.B, first);
@@ -1139,6 +1166,14 @@ public sealed class ForyRuntimeTests
         Assert.Equal(
             ["int_value", "map_value", "string_value", "binary_value", "custom_value"],
             fieldNames);
+    }
+
+    [Fact]
+    public void TypeMetaUsesLateRegisteredFieldType()
+    {
+        Assert.Equal(
+            LateHolderTypeMetaBytes(registerExtFirst: true),
+            LateHolderTypeMetaBytes(registerExtFirst: false));
     }
 
     [Fact]
@@ -2135,6 +2170,24 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
+    public void IdUnionDoesNotUseTypeMetaLimits()
+    {
+        ForyRuntime fory = ForyRuntime.Builder()
+            .Compatible(true)
+            .MaxTypeMetaBytes(1)
+            .MaxSchemaVersionsPerType(1)
+            .Build();
+        fory.Register<SourceGeneratedShape>(904);
+
+        SourceGeneratedShape value = new SourceGeneratedShape.Number(42);
+        SourceGeneratedShape decoded =
+            fory.Deserialize<SourceGeneratedShape>(fory.Serialize(value));
+
+        SourceGeneratedShape.Number number = Assert.IsType<SourceGeneratedShape.Number>(decoded);
+        Assert.Equal(42, number.Value);
+    }
+
+    [Fact]
     public void UnionFieldRoundTripCompatible()
     {
         ForyRuntime fory = ForyRuntime.Builder().Compatible(true).Build();
@@ -2157,6 +2210,7 @@ public sealed class ForyRuntimeTests
     {
         TypeResolver resolver = new();
         Serializer<Union2<string, long>> serializer = resolver.GetSerializer<Union2<string, long>>();
+        Config config = ForyRuntime.Builder().TrackRef(true).Build().Config;
 
         ByteWriter firstWriter = new();
         WriteContext firstWrite = new(firstWriter, resolver, trackRef: true);
@@ -2165,7 +2219,7 @@ public sealed class ForyRuntimeTests
         Assert.Equal(0u, firstReader.ReadVarUInt32());
 
         Union2<string, long> firstDecoded =
-            serializer.ReadData(new ReadContext(new ByteReader(firstWriter.ToArray()), resolver, trackRef: true));
+            serializer.ReadData(new ReadContext(new ByteReader(firstWriter.ToArray()), resolver, config));
         Assert.Equal(0, firstDecoded.Index);
         Assert.Equal("hello", firstDecoded.GetT1());
 
@@ -2176,7 +2230,7 @@ public sealed class ForyRuntimeTests
         Assert.Equal(1u, secondReader.ReadVarUInt32());
 
         Union2<string, long> secondDecoded =
-            serializer.ReadData(new ReadContext(new ByteReader(secondWriter.ToArray()), resolver, trackRef: true));
+            serializer.ReadData(new ReadContext(new ByteReader(secondWriter.ToArray()), resolver, config));
         Assert.Equal(1, secondDecoded.Index);
         Assert.Equal(42L, secondDecoded.GetT2());
 
@@ -2857,7 +2911,8 @@ public sealed class ForyRuntimeTests
         int byteLength = checked((int)(header >> 2));
         Assert.Equal(payload.Length - headerReader.Cursor, byteLength);
 
-        ReadContext readContext = new(new ByteReader(payload), resolver, trackRef: false, compatible: false);
+        Config config = ForyRuntime.Builder().Compatible(false).Build().Config;
+        ReadContext readContext = new(new ByteReader(payload), resolver, config);
         string decoded = StringSerializer.ReadString(readContext);
         Assert.Equal(0, readContext.Reader.Remaining);
         return (encoding, decoded);
@@ -2873,5 +2928,30 @@ public sealed class ForyRuntimeTests
         Assert.Equal(expected.U16Nullable, actual.U16Nullable);
         Assert.Equal(expected.U32Nullable, actual.U32Nullable);
         Assert.Equal(expected.U64Nullable, actual.U64Nullable);
+    }
+
+    private static byte[] LateHolderTypeMetaBytes(bool registerExtFirst)
+    {
+        TypeResolver resolver = new();
+        if (registerExtFirst)
+        {
+            RegisterLateTypeMetaExt(resolver);
+        }
+
+        resolver.Register(typeof(LateTypeMetaHolder), "example", "LateTypeMetaHolder");
+        if (!registerExtFirst)
+        {
+            RegisterLateTypeMetaExt(resolver);
+        }
+
+        return resolver.GetTypeInfo(typeof(LateTypeMetaHolder))
+            .GetTypeMetaCacheEntry(trackRef: false)
+            .EncodedBytes;
+    }
+
+    private static void RegisterLateTypeMetaExt(TypeResolver resolver)
+    {
+        TypeInfo typeInfo = TypeInfo.Create(typeof(LateTypeMetaExt), new LateTypeMetaExtSerializer());
+        resolver.Register(typeof(LateTypeMetaExt), "example", "LateTypeMetaExt", typeInfo);
     }
 }

@@ -123,9 +123,12 @@ public final class Fory implements BaseFory {
   public Fory(ForyBuilder builder, ClassLoader classLoader, SharedRegistry sharedRegistry) {
     // Prefer the explicit constructor argument over retaining loader state on the builder used to
     // create thread-safe factories.
+    config = new Config(builder);
     if (sharedRegistry == null) {
       sharedRegistry = new SharedRegistry();
     }
+    sharedRegistry.setRemoteSchemaLimits(
+        config.maxSchemaVersionsPerType(), config.maxAverageSchemaVersionsPerType());
     if (classLoader == null) {
       classLoader = Thread.currentThread().getContextClassLoader();
       if (classLoader == null) {
@@ -134,7 +137,6 @@ public final class Fory implements BaseFory {
     }
     this.sharedRegistry = sharedRegistry;
     this.classLoader = classLoader;
-    config = new Config(builder);
     headerBitmap = config.isXlang() ? isCrossLanguageFlag : 0;
     RefWriter refWriter;
     RefReader refReader;

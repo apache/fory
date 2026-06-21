@@ -33,12 +33,16 @@ f := fory.New(fory.WithXlang(true))
 
 Default settings:
 
-| Option     | Default | Description                                  |
-| ---------- | ------- | -------------------------------------------- |
-| TrackRef   | false   | Reference tracking disabled                  |
-| MaxDepth   | 20      | Maximum nesting depth                        |
-| IsXlang    | true    | Xlang mode enabled                           |
-| Compatible | true    | Compatible schema-evolution metadata enabled |
+| Option                          | Default | Description                                       |
+| ------------------------------- | ------- | ------------------------------------------------- |
+| TrackRef                        | false   | Reference tracking disabled                       |
+| MaxDepth                        | 20      | Maximum nesting depth                             |
+| IsXlang                         | true    | Xlang mode enabled                                |
+| Compatible                      | true    | Compatible schema-evolution metadata enabled      |
+| MaxTypeFields                   | 512     | Max fields in one received struct metadata body   |
+| MaxTypeMetaBytes                | 4096    | Max encoded bytes in one received metadata body   |
+| MaxSchemaVersionsPerType        | 10      | Max remote metadata versions for one logical type |
+| MaxAverageSchemaVersionsPerType | 3       | Average remote metadata versions across types     |
 
 ### With Options
 
@@ -47,6 +51,10 @@ f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(10),
+    fory.WithMaxTypeFields(512),
+    fory.WithMaxTypeMetaBytes(4096),
+    fory.WithMaxSchemaVersionsPerType(10),
+    fory.WithMaxAverageSchemaVersionsPerType(3),
 )
 ```
 
@@ -118,6 +126,40 @@ f := fory.New(fory.WithMaxDepth(30))
 - Default: 20
 - Protects against deeply nested, recursive structures or malicious data
 - Serialization fails with error when exceeded
+
+### WithMaxTypeFields
+
+Set the maximum fields accepted in one received remote struct metadata body:
+
+```go
+f := fory.New(fory.WithMaxTypeFields(512))
+```
+
+### WithMaxTypeMetaBytes
+
+Set the maximum encoded body bytes accepted for one received TypeDef body,
+excluding the 8-byte header and any extended-size varint:
+
+```go
+f := fory.New(fory.WithMaxTypeMetaBytes(4096))
+```
+
+### WithMaxSchemaVersionsPerType
+
+Set the maximum accepted remote metadata versions for one logical type:
+
+```go
+f := fory.New(fory.WithMaxSchemaVersionsPerType(10))
+```
+
+### WithMaxAverageSchemaVersionsPerType
+
+Set the average accepted remote metadata versions across accepted remote types.
+The effective global floor is `8192` schemas:
+
+```go
+f := fory.New(fory.WithMaxAverageSchemaVersionsPerType(3))
+```
 
 ### WithXlang
 
@@ -346,6 +388,8 @@ Security-related configuration:
 
 - Register only the expected structs before deserializing untrusted data.
 - Use `WithMaxDepth(...)` to reject unexpectedly deep payloads.
+- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
+  trusted peer sends larger metadata or many schema versions.
 - Prefer concrete struct fields over broad `any` or interface-typed fields for untrusted input.
 
 ## Related Topics

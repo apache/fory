@@ -41,19 +41,19 @@ how protobuf concepts map to Fory, and how to use protobuf-only Fory extension o
 
 ## Protobuf vs Fory at a Glance
 
-| Aspect             | Protocol Buffers              | Fory                                                           |
-| ------------------ | ----------------------------- | -------------------------------------------------------------- |
-| Primary purpose    | RPC/message contracts         | High-performance object serialization                          |
-| Encoding model     | Tag-length-value              | Fory binary protocol                                           |
-| Reference tracking | Not built-in                  | First-class (`ref`)                                            |
-| Circular refs      | Not supported                 | Supported                                                      |
-| Unknown fields     | Preserved                     | Not preserved                                                  |
-| Generated types    | Protobuf-specific model types | Native language constructs                                     |
-| gRPC ecosystem     | Native                        | Java/Python/Go/Rust/C#/Scala/Kotlin/JavaScript service codegen |
+| Aspect             | Protocol Buffers              | Fory                                                                |
+| ------------------ | ----------------------------- | ------------------------------------------------------------------- |
+| Primary purpose    | RPC/message contracts         | High-performance object serialization                               |
+| Encoding model     | Tag-length-value              | Fory binary protocol                                                |
+| Reference tracking | Not built-in                  | First-class (`ref`)                                                 |
+| Circular refs      | Not supported                 | Supported                                                           |
+| Unknown fields     | Preserved                     | Not preserved                                                       |
+| Generated types    | Protobuf-specific model types | Native language constructs                                          |
+| gRPC ecosystem     | Native                        | Java/Python/Go/Rust/C#/Dart/Scala/Kotlin/JavaScript service codegen |
 
-Fory can generate Java, Python, Go, Rust, C#, Scala, Kotlin, and JavaScript gRPC
-service companions with `--grpc`. JavaScript browser clients are generated with
-`--grpc-web`. Those services use normal gRPC transports but serialize request
+Fory can generate Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and
+JavaScript gRPC service companions with `--grpc`. JavaScript browser clients are
+generated with `--grpc-web`. Those services use normal gRPC transports but serialize request
 and response payloads with Fory rather than protobuf. For broad gRPC ecosystem
 tooling, schema reflection, and protobuf-native interceptors, protobuf remains
 the mature/default choice.
@@ -315,19 +315,20 @@ languages.
 For supported service outputs, add `--grpc` to emit gRPC companion code:
 
 ```bash
-foryc api.proto --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
+foryc api.proto --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
 Generated Java service files compile against grpc-java, generated Python service
 modules use `grpc.aio` by default, generated Rust service files import `tonic`
 and `bytes`, generated Go service files import grpc-go, generated JavaScript
 Node.js service files import `@grpc/grpc-js`, generated C# service files import
-`Grpc.Core.Api` types, generated Scala service files compile against grpc-java,
-and generated Kotlin service files compile against grpc-java and grpc-kotlin.
-Add those dependencies in your application build; Fory packages do not add gRPC
-as a hard dependency. Use `--grpc-python-mode=sync` for sync Python `grpcio`
-companions. Use `--grpc-web` with JavaScript output to generate browser clients
-that import `grpc-web`.
+`Grpc.Core.Api` types, generated Dart service files import `package:grpc`,
+generated Scala service files compile against grpc-java, and generated Kotlin
+service files compile against grpc-java and grpc-kotlin. Add those dependencies
+in your application build; Fory packages do not add gRPC as a hard dependency.
+Use `--grpc-python-mode=sync` for sync Python `grpcio` companions. Use
+`--grpc-web` with JavaScript output to generate browser clients that import
+`grpc-web`.
 Protobuf `oneof` fields are translated to Fory union fields inside request and
 response messages. Direct union RPC request or response types are not part of
 normal protobuf RPC syntax.

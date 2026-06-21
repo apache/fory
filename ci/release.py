@@ -22,11 +22,30 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import xml.etree.ElementTree as ET
+import zipfile
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../")
+JVM_RELEASE_LANGS = ("java", "kotlin", "scala")
+HOMEBREW_OPENJDK25 = "openjdk@25"
+HOMEBREW_BREW_PATHS = ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
+FORY_CORE_JDK25_ENTRY = (
+    "META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
+)
+FORY_CORE_ACCESSOR = "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor"
+MAVEN_RELEASE_CMD = (
+    "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
+)
+SCALA_RELEASE_CMDS = (
+    "sbt clean",
+    "sbt +publishSigned",
+    "sbt sonatypePrepare",
+    "sbt sonatypeBundleUpload",
+)
 
 
 def prepare(v: str):
@@ -132,6 +151,257 @@ def verify(v):
     logger.info("Verified signature")
     subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)
     logger.info("Verified checksum successfully")
+
+
+def publish_jvm(languages="all"):
+    """Publish Java, Kotlin, and Scala artifacts."""
+    langs = _jvm_release_langs(languages)
+    _ensure_openjdk25()
+    for lang in langs:
+        if lang == "java":
+            _publish_java()
+            _verify_fory_core_mr_jar()
+        elif lang == "kotlin":
+            _publish_kotlin()
+        elif lang == "scala":
+            _publish_scala()
+        else:
+            raise NotImplementedError(f"Unsupported JVM release language: {lang}")
+    _verify_fory_core_mr_jar()
+
+
+def publish_java():
+    publish_jvm("java")
+
+
+def publish_kotlin():
+    publish_jvm("kotlin")
+
+
+def publish_scala():
+    publish_jvm("scala")
+
+
+def _jvm_release_langs(languages):
+    if languages in (None, "", "all"):
+        return list(JVM_RELEASE_LANGS)
+    langs = [lang.strip() for lang in languages.split(",") if lang.strip()]
+    unsupported = [lang for lang in langs if lang not in JVM_RELEASE_LANGS]
+    if unsupported:
+        raise ValueError(f"Unsupported JVM release language(s): {unsupported}")
+    return langs
+
+
+def _publish_java():
+    _run_release_cmd(MAVEN_RELEASE_CMD, "java")
+
+
+def _publish_kotlin():
+    _run_release_cmd(MAVEN_RELEASE_CMD, "kotlin")
+
+
+def _publish_scala():
+    for command in SCALA_RELEASE_CMDS:
+        _run_release_cmd(command, "scala")
+
+
+def _run_release_cmd(command, path):
+    cwd = os.path.join(PROJECT_ROOT_DIR, path)
+    logger.info("Run release command in %s: %s", cwd, command)
+    subprocess.check_call(command, cwd=cwd, shell=True)
+
+
+def _ensure_openjdk25():
+    runtime = _read_java_runtime(_java_tool("java"))
+    # The JDK25 multi-release Maven profile is JVM-activated; a lower release
+    # JDK silently publishes a jar without the required JDK25 overlay.
+    if runtime and _is_openjdk25(runtime):
+        _export_java_home(runtime["props"]["java.home"])
+        logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
+        return
+    if sys.platform != "darwin":
+        raise RuntimeError(
+            "JVM releases must run with OpenJDK 25. "
+            "Install OpenJDK 25 and set JAVA_HOME/PATH before running release.py. "
+            f"Found {_java_runtime_summary(runtime)}."
+        )
+    java_home = _homebrew_openjdk25_home()
+    _export_java_home(java_home)
+    runtime = _read_java_runtime(_java_tool("java"))
+    if not runtime or not _is_openjdk25(runtime):
+        raise RuntimeError(
+            "JVM releases must run with OpenJDK 25. "
+            f"Found {_java_runtime_summary(runtime)} after setting "
+            f"JAVA_HOME={java_home}."
+        )
+    logger.info("Using OpenJDK 25 release runtime: %s", os.environ["JAVA_HOME"])
+
+
+def _homebrew_openjdk25_home():
+    brew = _brew_command()
+    if not brew:
+        raise RuntimeError(
+            "Cannot install OpenJDK 25 automatically because Homebrew was not found."
+        )
+    prefix = _homebrew_prefix(brew, HOMEBREW_OPENJDK25)
+    if not prefix:
+        logger.info("Installing %s with Homebrew", HOMEBREW_OPENJDK25)
+        subprocess.check_call([brew, "install", HOMEBREW_OPENJDK25])
+        prefix = _homebrew_prefix(brew, HOMEBREW_OPENJDK25)
+    if not prefix:
+        raise RuntimeError(f"Cannot locate Homebrew formula {HOMEBREW_OPENJDK25}")
+    for candidate in [
+        os.path.join(prefix, "libexec", "openjdk.jdk", "Contents", "Home"),
+        prefix,
+    ]:
+        if os.path.exists(os.path.join(candidate, "bin", "java")):
+            return candidate
+    raise RuntimeError(f"Cannot find a java executable under {prefix}")
+
+
+def _brew_command():
+    brew = shutil.which("brew")
+    if brew:
+        return brew
+    for brew in HOMEBREW_BREW_PATHS:
+        if os.path.exists(brew):
+            return brew
+    return None
+
+
+def _homebrew_prefix(brew, formula):
+    proc = subprocess.run(
+        [brew, "--prefix", formula],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+def _export_java_home(java_home):
+    os.environ["JAVA_HOME"] = java_home
+    java_bin = os.path.join(java_home, "bin")
+    path_entries = [
+        entry for entry in os.environ.get("PATH", "").split(os.pathsep) if entry
+    ]
+    path_entries = [entry for entry in path_entries if entry != java_bin]
+    os.environ["PATH"] = os.pathsep.join([java_bin] + path_entries)
+
+
+def _read_java_runtime(java_cmd):
+    try:
+        proc = subprocess.run(
+            [java_cmd, "-XshowSettings:properties", "-version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return {"props": _java_props(proc.stdout), "output": proc.stdout}
+
+
+def _is_openjdk25(runtime):
+    props = runtime["props"]
+    spec_version = props.get("java.specification.version", "")
+    runtime_name = props.get("java.runtime.name", "")
+    vm_name = props.get("java.vm.name", "")
+    is_openjdk = "openjdk" in f"{runtime_name} {vm_name} {runtime['output']}".lower()
+    return spec_version == "25" and is_openjdk
+
+
+def _java_runtime_summary(runtime):
+    if not runtime:
+        return "no Java runtime"
+    props = runtime["props"]
+    return (
+        f"java.home={props.get('java.home', '')}, "
+        f"java.version={props.get('java.version', '')}, "
+        f"java.specification.version={props.get('java.specification.version', '')}, "
+        f"java.runtime.name={props.get('java.runtime.name', '')}, "
+        f"java.vm.name={props.get('java.vm.name', '')}"
+    )
+
+
+def _java_tool(tool):
+    java_home = os.environ.get("JAVA_HOME")
+    if java_home:
+        return os.path.join(java_home, "bin", tool)
+    return tool
+
+
+def _java_props(output):
+    props = {}
+    for line in output.splitlines():
+        match = re.match(r"\s*([^=]+?)\s*=\s*(.*)\s*$", line)
+        if match:
+            props[match.group(1)] = match.group(2)
+    return props
+
+
+def _verify_fory_core_mr_jar():
+    jar_path = _fory_core_jar_path()
+    if not os.path.exists(jar_path):
+        raise FileNotFoundError(
+            f"Missing fory-core release jar: {jar_path}. "
+            "Run the Java release before publishing Kotlin or Scala artifacts."
+        )
+    with zipfile.ZipFile(jar_path) as jar:
+        names = set(jar.namelist())
+        manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8")
+    if "Multi-Release: true" not in manifest:
+        raise RuntimeError(f"{jar_path} is missing manifest Multi-Release: true")
+    if "Build-Jdk-Spec: 25" not in manifest:
+        raise RuntimeError(f"{jar_path} was not built with JDK 25")
+    if FORY_CORE_JDK25_ENTRY not in names:
+        raise RuntimeError(f"{jar_path} is missing {FORY_CORE_JDK25_ENTRY}")
+    javap = subprocess.run(
+        [
+            _java_tool("javap"),
+            "--multi-release",
+            "25",
+            "-classpath",
+            jar_path,
+            "-p",
+            FORY_CORE_ACCESSOR,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        universal_newlines=True,
+        check=True,
+    )
+    if "java.lang.invoke.VarHandle" not in javap.stdout:
+        raise RuntimeError(f"{FORY_CORE_ACCESSOR} is not the JDK25 VarHandle class")
+    if "sun.misc.Unsafe" in javap.stdout:
+        raise RuntimeError(f"{FORY_CORE_ACCESSOR} still exposes sun.misc.Unsafe")
+    logger.info("Verified fory-core Multi-Release JDK25 jar: %s", jar_path)
+
+
+def _fory_core_jar_path():
+    version = _read_java_version()
+    return os.path.join(
+        PROJECT_ROOT_DIR,
+        "java",
+        "fory-core",
+        "target",
+        f"fory-core-{version}.jar",
+    )
+
+
+def _read_java_version():
+    pom = os.path.join(PROJECT_ROOT_DIR, "java", "pom.xml")
+    root = ET.parse(pom).getroot()
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+    artifact = root.findtext("m:artifactId", namespaces=namespace)
+    packaging = root.findtext("m:packaging", namespaces=namespace)
+    version = root.findtext("m:version", namespaces=namespace)
+    if artifact != "fory-parent" or packaging != "pom" or not version:
+        raise ValueError("Cannot find java/fory parent version")
+    return version
 
 
 def bump_version(**kwargs):
@@ -800,6 +1070,37 @@ def _parse_args():
     )
     verify_parser.add_argument("-v", type=str, help="new version")
     verify_parser.set_defaults(func=verify)
+
+    publish_jvm_parser = subparsers.add_parser(
+        "publish_jvm",
+        description="Publish Java, Kotlin, and Scala artifacts",
+    )
+    publish_jvm_parser.add_argument(
+        "-l",
+        dest="languages",
+        type=str,
+        default="all",
+        help="comma separated JVM languages: java,kotlin,scala",
+    )
+    publish_jvm_parser.set_defaults(func=publish_jvm)
+
+    publish_java_parser = subparsers.add_parser(
+        "publish_java",
+        description="Publish Java artifacts",
+    )
+    publish_java_parser.set_defaults(func=publish_java)
+
+    publish_kotlin_parser = subparsers.add_parser(
+        "publish_kotlin",
+        description="Publish Kotlin artifacts",
+    )
+    publish_kotlin_parser.set_defaults(func=publish_kotlin)
+
+    publish_scala_parser = subparsers.add_parser(
+        "publish_scala",
+        description="Publish Scala artifacts",
+    )
+    publish_scala_parser.set_defaults(func=publish_scala)
 
     args = parser.parse_args()
     arg_dict = dict(vars(args))

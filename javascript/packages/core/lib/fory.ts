@@ -34,6 +34,10 @@ import { ReadContext, WriteContext } from "./context";
 
 const DEFAULT_DEPTH_LIMIT = 50 as const;
 const MIN_DEPTH_LIMIT = 2 as const;
+const DEFAULT_MAX_TYPE_FIELDS = 512 as const;
+const DEFAULT_MAX_TYPE_META_BYTES = 4096 as const;
+const DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE = 10 as const;
+const DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE = 3 as const;
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
@@ -67,10 +71,48 @@ export default class Fory {
   }
 
   private initConfig(config: Partial<Config> | undefined) {
+    const maxTypeFields = config?.maxTypeFields ?? DEFAULT_MAX_TYPE_FIELDS;
+    if (!Number.isInteger(maxTypeFields) || maxTypeFields <= 0) {
+      throw new Error(
+        `maxTypeFields must be a positive integer but got ${maxTypeFields}`,
+      );
+    }
+    const maxTypeMetaBytes
+      = config?.maxTypeMetaBytes ?? DEFAULT_MAX_TYPE_META_BYTES;
+    if (!Number.isInteger(maxTypeMetaBytes) || maxTypeMetaBytes <= 0) {
+      throw new Error(
+        `maxTypeMetaBytes must be a positive integer but got ${maxTypeMetaBytes}`,
+      );
+    }
+    const maxSchemaVersionsPerType
+      = config?.maxSchemaVersionsPerType ?? DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE;
+    if (
+      !Number.isInteger(maxSchemaVersionsPerType)
+      || maxSchemaVersionsPerType <= 0
+    ) {
+      throw new Error(
+        `maxSchemaVersionsPerType must be a positive integer but got ${maxSchemaVersionsPerType}`,
+      );
+    }
+    const maxAverageSchemaVersionsPerType
+      = config?.maxAverageSchemaVersionsPerType
+      ?? DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE;
+    if (
+      !Number.isInteger(maxAverageSchemaVersionsPerType)
+      || maxAverageSchemaVersionsPerType <= 0
+    ) {
+      throw new Error(
+        `maxAverageSchemaVersionsPerType must be a positive integer but got ${maxAverageSchemaVersionsPerType}`,
+      );
+    }
     return {
       ref: Boolean(config?.ref),
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
+      maxTypeFields,
+      maxTypeMetaBytes,
+      maxSchemaVersionsPerType,
+      maxAverageSchemaVersionsPerType,
       hooks: config?.hooks || {},
       compatible: config?.compatible ?? true,
       hps: config?.hps,

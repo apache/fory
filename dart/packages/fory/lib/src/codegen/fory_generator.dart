@@ -2514,7 +2514,7 @@ GeneratedFieldType(
       ..writeln(
         '${indent}final actualResolved = context.typeResolver.resolveValue($value as Object);',
       )
-      ..writeln('${indent}context.writeTypeMetaValue(actualResolved, $value);')
+      ..writeln('${indent}context.writeTypeMetaValue(actualResolved);')
       ..writeln(
         '${indent}context.writeResolvedValue(actualResolved, $value, $fieldType);',
       );

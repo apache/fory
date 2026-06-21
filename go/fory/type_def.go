@@ -286,7 +286,8 @@ func readTypeDef(fory *Fory, buffer *ByteBuffer, header int64, err *Error) *Type
 func skipTypeDef(buffer *ByteBuffer, header int64, err *Error) {
 	// Header-cache hits intentionally treat the current body as opaque bytes and skip by the size in
 	// the current header. Parsed TypeDefs are published to the cache only after successful body parse
-	// and 52-bit metadata-hash validation; cache hits must not reparse or rehash that body.
+	// and 52-bit metadata-hash validation; cache hits must not reparse, rehash, allocate, or
+	// otherwise materialize that body.
 	sz := int(header & META_SIZE_MASK)
 	if sz == META_SIZE_MASK {
 		sz += int(buffer.ReadVarUint32(err))
@@ -396,6 +397,7 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 	registerByName := IsNamespacedType(TypeId(typeId))
 	typeDef := NewTypeDef(typeId, infoPtr.UserTypeID, infoPtr.PkgPathBytes, infoPtr.NameBytes, registerByName, false, fieldDefs)
+	typeDef.type_ = value.Type()
 
 	// encoding the typeDef, and save the encoded bytes
 	encoded, err := encodingTypeDef(fory.typeResolver, typeDef)
@@ -1015,7 +1017,14 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		extraMetaSize = int(extra)
 		metaSize += extraMetaSize
 	}
-	// Store the encoded bytes for the TypeDef (including meta header and metadata)
+	if metaSize > fory.config.MaxTypeMetaBytes {
+		return nil, fmt.Errorf(
+			"type metadata body size %d exceeds MaxTypeMetaBytes %d. The data may be malicious. If the data is not malicious, please increase MaxTypeMetaBytes",
+			metaSize, fory.config.MaxTypeMetaBytes)
+	}
+	// Store the encoded bytes only through ReadBinary, which checks/fills the declared
+	// body bytes before returning a slice or allocating. MaxTypeMetaBytes is a size cap,
+	// not proof that the input contains metaSize bytes.
 	encodedMeta := buffer.ReadBinary(metaSize, &bufErr)
 	if bufErr.HasError() {
 		return nil, bufErr.TakeError()
@@ -1043,8 +1052,13 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		if metaErr.HasError() {
 			return nil, metaErr.TakeError()
 		}
-		if fieldCount > fory.config.MaxTypeFields || fieldCount > metaBuffer.remaining() {
-			return nil, fmt.Errorf("field count exceeds maximum allowed limit or available buffer size")
+		if fieldCount > fory.config.MaxTypeFields {
+			return nil, fmt.Errorf(
+				"type metadata field count %d exceeds MaxTypeFields %d. The data may be malicious. If the data is not malicious, please increase MaxTypeFields",
+				fieldCount, fory.config.MaxTypeFields)
+		}
+		if fieldCount > metaBuffer.remaining() {
+			return nil, fmt.Errorf("type metadata field count exceeds available buffer size")
 		}
 		if registeredByName {
 			if (metaHeaderByte & CompatibleTypeDefFlag) != 0 {
@@ -1172,9 +1186,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			if fallbackInfo, fallbackExists := fory.typeResolver.namedTypeToTypeInfo[nameKey]; fallbackExists {
 				info = fallbackInfo
 				exists = true
-				if len(fory.typeResolver.nsTypeToTypeInfo) < maxCachedNamedTypeInfos {
-					fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}] = info
-				}
+				fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}] = info
 			}
 		}
 		if exists {
@@ -1216,11 +1228,11 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 		fieldInfos[i] = fieldInfo
 	}
-	if !isStruct && len(fieldInfos) != 0 {
-		return nil, fmt.Errorf("non-struct TypeDef cannot carry field metadata")
-	}
 	if metaErr.HasError() {
 		return nil, metaErr.TakeError()
+	}
+	if !isStruct && len(fieldInfos) != 0 {
+		return nil, fmt.Errorf("non-struct TypeDef cannot carry field metadata")
 	}
 	if remaining := metaBuffer.remaining(); remaining != 0 {
 		return nil, fmt.Errorf("TypeDef metadata body has %d trailing bytes", remaining)

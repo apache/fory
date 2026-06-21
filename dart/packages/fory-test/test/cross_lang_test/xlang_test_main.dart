@@ -85,7 +85,7 @@ void _runIntegerCase() {
   output.add(fory.serialize(fory.deserializeFrom<Item1>(input)));
   for (var i = 0; i < 6; i += 1) {
     final value = fory.deserializeFrom<int>(input);
-    output.add(fory.serializeBuiltin(value, wireTypeId: TypeIds.varInt32));
+    output.add(fory.serializeBuiltin(value, typeId: TypeIds.varInt32));
   }
 
   if (input.readableBytes != 0) {

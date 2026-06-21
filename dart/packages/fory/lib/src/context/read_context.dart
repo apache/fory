@@ -220,15 +220,13 @@ final class ReadContext {
     final typeMetaResolved =
         expectedRootType == null
             ? _readTypeMeta()
-            : _typeResolver.readExpectedInitialTypeDefMeta(
+            : _typeResolver.readExpectedTypeDefMeta(
                   _buffer,
                   expectedRootType,
                   sharedTypes: _sharedTypes,
                 ) ??
                 _readTypeMeta(expectedRootType);
-    final resolved = _typeResolver.resolveExpectedRootWireType<T>(
-      typeMetaResolved,
-    );
+    final resolved = _typeResolver.resolveExpectedRootType<T>(typeMetaResolved);
     final rootPreservedRefId =
         preservedRefId == null &&
                 flag == RefWriter.notNullValueFlag &&

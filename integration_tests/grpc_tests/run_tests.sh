@@ -21,18 +21,37 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,KotlinGrpcTest}"
+TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,KotlinGrpcTest,DartGrpcTest}"
 
-python -m pip install "grpcio>=1.62.2,<1.71"
-python -m pip install -v -e "${ROOT_DIR}/python"
+has_test_class() {
+  [[ ",${TEST_CLASSES}," == *",$1,"* ]]
+}
+
+if has_test_class "PythonAsyncGrpcTest" || has_test_class "PythonSyncGrpcTest"; then
+  python -m pip install "grpcio>=1.62.2,<1.71"
+  python -m pip install -v -e "${ROOT_DIR}/python"
+fi
 
 python "${SCRIPT_DIR}/generate_grpc.py"
 
-cd "${SCRIPT_DIR}/go"
-go build -o grpc-interop .
-cargo build --manifest-path "${SCRIPT_DIR}/rust/Cargo.toml" --workspace --quiet
-cd "${SCRIPT_DIR}/kotlin"
-mvn --no-transfer-progress -DskipTests package
+if has_test_class "GoGrpcTest"; then
+  cd "${SCRIPT_DIR}/go"
+  go build -o grpc-interop .
+fi
+if has_test_class "RustGrpcTest"; then
+  cargo build --manifest-path "${SCRIPT_DIR}/rust/Cargo.toml" --workspace --quiet
+fi
+if has_test_class "KotlinGrpcTest"; then
+  cd "${SCRIPT_DIR}/kotlin"
+  mvn --no-transfer-progress -DskipTests package
+fi
+if has_test_class "DartGrpcTest"; then
+  cd "${SCRIPT_DIR}/dart"
+  dart pub get
+  dart run build_runner build
+  dart analyze bin lib/generated/*/*_grpc.dart
+  dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
+fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \
   -Dtest="${TEST_CLASSES}" \

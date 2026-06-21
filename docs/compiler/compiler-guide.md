@@ -143,16 +143,16 @@ foryc schema.fdl --output ./src/generated
 foryc user.fdl order.fdl product.fdl --output ./generated
 ```
 
-**Compile a simple schema containing service definitions (Java + Python + Go + Rust + C# + Scala + Kotlin + JavaScript models):**
+**Compile a simple schema containing service definitions (Java + Python + Go + Rust + C# + Dart + Scala + Kotlin + JavaScript models):**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript
 ```
 
-**Generate Java, Python, Go, Rust, C#, Scala, Kotlin, Node.js JavaScript, and Swift gRPC service companions:**
+**Generate Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, Node.js JavaScript, and Swift gRPC service companions:**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --swift_out=./generated/swift --grpc
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --swift_out=./generated/swift --grpc
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
@@ -161,9 +161,10 @@ bodies. Java output imports grpc-java APIs, Python output defaults to
 Scala output imports grpc-java APIs, and Kotlin output imports grpc-java and
 grpc-kotlin APIs and uses coroutine stubs. C# output imports `Grpc.Core.Api`
 types and can be hosted with normal .NET gRPC packages such as `Grpc.AspNetCore`
-or called through `Grpc.Net.Client`. JavaScript output imports `@grpc/grpc-js`.
-Swift output targets grpc-swift 1.x and emits `async`/`await` providers and
-clients alongside `EventLoopFuture` providers.
+or called through `Grpc.Net.Client`. Dart output imports `package:grpc`.
+JavaScript output imports `@grpc/grpc-js`. Swift output targets grpc-swift 1.x
+and emits `async`/`await` providers and clients alongside `EventLoopFuture`
+providers.
 Applications that compile or run those generated service files must provide
 their own gRPC dependencies. Fory packages do not add a hard gRPC dependency for
 this feature.
@@ -444,6 +445,9 @@ generated/
 - IDL module class included in the main file; generated serializer metadata is
   included in the part file
 - Typed arrays used for non-optional, non-ref primitive lists (e.g., `Int32List`)
+- With `--grpc`, one `<stem>_grpc.dart` companion per schema is generated next to
+  the model file, containing each service's `Client` and `ServiceBase`; it
+  imports `package:grpc`
 
 ### Scala
 

@@ -153,6 +153,28 @@ fn struct_with_enum_field() {
     assert_eq!(obj, result);
 }
 
+#[test]
+fn id_enum_does_not_use_type_meta_limits() {
+    #[derive(ForyEnum, Debug, Default, PartialEq, Clone)]
+    enum Color {
+        #[default]
+        Red,
+        Green,
+    }
+
+    let mut fory = Fory::builder()
+        .xlang(true)
+        .compatible(true)
+        .max_type_meta_bytes(1)
+        .max_schema_versions_per_type(1)
+        .build();
+    fory.register::<Color>(100).unwrap();
+
+    let bin = fory.serialize(&Color::Green).unwrap();
+    let result: Color = fory.deserialize(&bin).unwrap();
+    assert_eq!(result, Color::Green);
+}
+
 /// Test Union-compatible enum xlang serialization format.
 /// This verifies that Rust enum writes: index + ref_flag + type_id + data
 /// which should be compatible with Java's Union: index + xwriteRef(value)

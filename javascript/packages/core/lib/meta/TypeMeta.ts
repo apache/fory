@@ -45,6 +45,8 @@ const UINT64_MASK = 0xffffffffffffffffn;
 const HEADER_HASH_MASK = UINT64_MASK ^ ((1n << HASH_SHIFT_BITS) - 1n);
 const BIG_NAME_THRESHOLD = 0b111111;
 const MAX_TYPE_META_NESTING = 128;
+const DEFAULT_MAX_TYPE_FIELDS = 512;
+const DEFAULT_MAX_TYPE_META_BYTES = 4096;
 
 const PRIMITIVE_TYPE_IDS = [
   TypeId.BOOL,
@@ -286,7 +288,10 @@ function nonStructTypeId(kindCode: number): number {
   }
 }
 export class TypeMeta {
-  private headerHash: number | null;
+  // The 52-bit TypeMeta header hash is the checked metadata identity. It is
+  // precise in JS Number and already includes the low header bits as hash input;
+  // hot cache hits must compare this value directly without extra low-bit state.
+  headerHash: number | null;
   private readonly compressed: boolean;
   private bytes: Uint8Array | null = null;
 
@@ -448,6 +453,7 @@ export class TypeMeta {
   /**
    * Skip the type meta body after the caller has matched the full validated
    * header key. Only the low header bits are needed to decode the body-size field.
+   * Cache-hit skips must not allocate or materialize the opaque metadata body.
    */
   static skipBodyByHeaderLow(reader: BinaryReader, headerLow: number) {
     const metaSize = TypeMeta.readMetaSizeFromLow(reader, headerLow);
@@ -462,13 +468,21 @@ export class TypeMeta {
    * Parse the type meta body after the header has already been consumed
    * by readHeader(). Used by ReadContext to avoid re-reading the header.
    */
-  static fromBytesAfterHeader(reader: BinaryReader, header: bigint): TypeMeta {
+  static fromBytesAfterHeader(
+    reader: BinaryReader,
+    header: bigint,
+    maxTypeFields = DEFAULT_MAX_TYPE_FIELDS,
+    maxTypeMetaBytes = DEFAULT_MAX_TYPE_META_BYTES,
+  ): TypeMeta {
     TypeMeta.validateGlobalHeader(header);
     const metaSize = TypeMeta.readMetaSize(reader, header);
+    TypeMeta.checkTypeMetaBytes(metaSize, maxTypeMetaBytes);
     const compressed = false;
     const headerHash = Number(header >> HASH_SHIFT_BITS);
 
     const bodyStart = reader.readGetCursor();
+    // Size limits are not byte-availability proof. Keep this readable-byte
+    // check before parsing, slicing, copying, or caching data from metaSize.
     reader.checkReadableBytes(metaSize);
     const bodyEnd = bodyStart + metaSize;
     const classHeader = reader.readUint8();
@@ -495,6 +509,7 @@ export class TypeMeta {
       if (numFields === SMALL_NUM_FIELDS_THRESHOLD) {
         numFields += reader.readVarUInt32();
       }
+      TypeMeta.checkTypeFields(numFields, maxTypeFields);
     } else {
       if ((classHeader & 0b01110000) !== 0) {
         throw new Error("invalid TypeMeta kind header");
@@ -570,6 +585,27 @@ export class TypeMeta {
       metaSize += reader.readVarUInt32();
     }
     return metaSize;
+  }
+
+  private static checkTypeMetaBytes(
+    metaSize: number,
+    maxTypeMetaBytes: number,
+  ) {
+    if (metaSize > maxTypeMetaBytes) {
+      throw new Error(
+        `Type metadata body size ${metaSize} exceeds maxTypeMetaBytes ${maxTypeMetaBytes}. `
+        + "The data may be malicious. If the data is not malicious, please increase maxTypeMetaBytes.",
+      );
+    }
+  }
+
+  private static checkTypeFields(numFields: number, maxTypeFields: number) {
+    if (numFields > maxTypeFields) {
+      throw new Error(
+        `Type metadata field count ${numFields} exceeds maxTypeFields ${maxTypeFields}. `
+        + "The data may be malicious. If the data is not malicious, please increase maxTypeFields.",
+      );
+    }
   }
 
   private static validateParsedBodyHash(header: bigint, body: Uint8Array) {

@@ -35,12 +35,16 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 
 `Fory.Builder().Build()` uses:
 
-| Option               | Default | Description                                  |
-| -------------------- | ------- | -------------------------------------------- |
-| `TrackRef`           | `false` | Reference tracking disabled                  |
-| `Compatible`         | `true`  | Compatible schema-evolution metadata enabled |
-| `CheckStructVersion` | `false` | Struct schema hash checks disabled           |
-| `MaxDepth`           | `20`    | Max dynamic nesting depth                    |
+| Option                            | Default | Description                                       |
+| --------------------------------- | ------- | ------------------------------------------------- |
+| `TrackRef`                        | `false` | Reference tracking disabled                       |
+| `Compatible`                      | `true`  | Compatible schema-evolution metadata enabled      |
+| `CheckStructVersion`              | `false` | Struct schema hash checks disabled                |
+| `MaxDepth`                        | `20`    | Max dynamic nesting depth                         |
+| `MaxTypeFields`                   | `512`   | Max fields in one received struct metadata body   |
+| `MaxTypeMetaBytes`                | `4096`  | Max encoded bytes in one received metadata body   |
+| `MaxSchemaVersionsPerType`        | `10`    | Max remote metadata versions for one logical type |
+| `MaxAverageSchemaVersionsPerType` | `3`     | Average remote metadata versions across types     |
 
 ## Builder Options
 
@@ -92,6 +96,48 @@ Fory fory = Fory.Builder()
 
 `value` must be greater than `0`.
 
+### `MaxTypeFields(int value)`
+
+Sets the maximum fields accepted in one received remote struct metadata body.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxTypeFields(512)
+    .Build();
+```
+
+### `MaxTypeMetaBytes(int value)`
+
+Sets the maximum encoded body bytes accepted for one received TypeMeta body,
+excluding the 8-byte header and any extended-size varint.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxTypeMetaBytes(4096)
+    .Build();
+```
+
+### `MaxSchemaVersionsPerType(int value)`
+
+Sets the maximum accepted remote metadata versions for one logical type.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxSchemaVersionsPerType(10)
+    .Build();
+```
+
+### `MaxAverageSchemaVersionsPerType(int value)`
+
+Sets the average accepted remote metadata versions across accepted remote types.
+The effective global floor is `8192` schemas.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxAverageSchemaVersionsPerType(3)
+    .Build();
+```
+
 ## Common Configurations
 
 ### Compatible service
@@ -127,6 +173,8 @@ Security-related configuration:
 - Register only the expected types before deserializing untrusted payloads.
 - Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 - Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
+- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
+  trusted peer sends larger metadata or many schema versions.
 - Prefer generated or registered concrete models over broad dynamic fields for untrusted input.
 
 ## Related Topics

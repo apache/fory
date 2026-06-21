@@ -135,6 +135,8 @@ and any untrusted payload source:
 val fory = ForyKotlin.builder()
     .requireClassRegistration(true)
     .withMaxDepth(50)
+    .withMaxTypeFields(512)
+    .withMaxTypeMetaBytes(4096)
     .build()
 ```
 
@@ -142,5 +144,8 @@ Security-related configuration:
 
 - Keep `requireClassRegistration(true)` and register application classes or generated modules.
 - Use `withMaxDepth(...)` to reject unexpectedly deep object graphs.
+- Keep `withMaxTypeFields(...)`, `withMaxTypeMetaBytes(...)`, and the remote schema-version limits
+  at their defaults unless the data is not malicious and a trusted peer sends larger metadata or
+  many schema versions.
 - Follow [Java Configuration](../java/configuration.md#security) for allow-listing and unknown-class
   controls.

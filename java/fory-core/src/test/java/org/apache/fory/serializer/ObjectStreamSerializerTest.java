@@ -1378,6 +1378,39 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result2.value, 7);
   }
 
+  @Test(dataProvider = "compatibleModeProvider")
+  public void testObjectStreamExactLocalTypeDefChecksTypeChecker(boolean compatible) {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCompatible(compatible)
+            .withMetaShare(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory writerFory =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    Fory readerFory =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    writerFory.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(writerFory.getTypeResolver(), MixedSerializationClass.class));
+    readerFory.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(readerFory.getTypeResolver(), MixedSerializationClass.class));
+
+    writerFory.setMetaWriteContext(new MetaWriteContext());
+    byte[] bytes = writerFory.serialize(new MixedSerializationClass("blocked", 11));
+    readerFory
+        .getTypeResolver()
+        .setTypeChecker(
+            (resolver, className) -> !className.equals(MixedSerializationClass.class.getName()));
+    readerFory.setMetaReadContext(new MetaReadContext());
+
+    Assert.assertThrows(InsecureException.class, () -> readerFory.deserialize(bytes));
+  }
+
   // ==================== Default Value Tests ====================
 
   /** Class to test default values when fields are missing. */

@@ -394,6 +394,9 @@ public sealed class TypeMetaFieldInfo : IEquatable<TypeMetaFieldInfo>
 
 public sealed class TypeMeta : IEquatable<TypeMeta>
 {
+    private const int DefaultMaxTypeFields = 512;
+    private const int DefaultMaxTypeMetaBytes = 4096;
+
     private bool _hasAssignedFieldIds;
 
     public TypeMeta(
@@ -486,14 +489,23 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
 
     public static TypeMeta Decode(byte[] bytes)
     {
-        return Decode(new ByteReader(bytes));
+        return Decode(new ByteReader(bytes), DefaultMaxTypeFields, DefaultMaxTypeMetaBytes);
     }
 
     public static TypeMeta Decode(ByteReader reader)
     {
+        return Decode(reader, DefaultMaxTypeFields, DefaultMaxTypeMetaBytes);
+    }
+
+    internal static TypeMeta Decode(ByteReader reader, int maxTypeFields, int maxTypeMetaBytes)
+    {
         ulong header = reader.ReadUInt64();
         ValidateGlobalHeader(header);
         int metaSize = ReadBodySize(reader, header);
+        CheckBodySize(metaSize, maxTypeMetaBytes);
+        // Keep ReadBytes as the first body materialization: it checks the
+        // reader bound before allocating/copying. The size limit alone does
+        // not prove the declared bytes exist in the input.
         byte[] encodedBody = reader.ReadBytes(metaSize);
         ByteReader bodyReader = new(encodedBody);
         byte metaHeader = bodyReader.ReadUInt8();
@@ -516,6 +528,7 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             {
                 numFields += (int)bodyReader.ReadVarUInt32();
             }
+            CheckFieldCount(numFields, maxTypeFields);
         }
         else
         {
@@ -570,14 +583,6 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
             header >> TypeMetaConstants.TypeMetaHashShift);
     }
 
-    internal static void ValidateAndSkipBody(ByteReader reader, ulong header)
-    {
-        ValidateGlobalHeader(header);
-        int metaSize = ReadBodySize(reader, header);
-        ReadOnlySpan<byte> encodedBody = reader.ReadSpan(metaSize);
-        ValidateParsedTypeMetaHash(header, encodedBody);
-    }
-
     private static void ValidateGlobalHeader(ulong header)
     {
         if ((header & TypeMetaConstants.TypeMetaReservedFlags) != 0)
@@ -606,6 +611,24 @@ public sealed class TypeMeta : IEquatable<TypeMeta>
         }
 
         return metaSize;
+    }
+
+    private static void CheckBodySize(int metaSize, int maxTypeMetaBytes)
+    {
+        if (metaSize > maxTypeMetaBytes)
+        {
+            throw new InvalidDataException(
+                $"Type metadata body size {metaSize} exceeds MaxTypeMetaBytes {maxTypeMetaBytes}. The data may be malicious. If the data is not malicious, please increase MaxTypeMetaBytes.");
+        }
+    }
+
+    internal static void CheckFieldCount(int numFields, int maxTypeFields)
+    {
+        if (numFields > maxTypeFields)
+        {
+            throw new InvalidDataException(
+                $"Type metadata field count {numFields} exceeds MaxTypeFields {maxTypeFields}. The data may be malicious. If the data is not malicious, please increase MaxTypeFields.");
+        }
     }
 
     internal static void SkipBody(ByteReader reader, ulong header)

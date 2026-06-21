@@ -748,6 +748,15 @@ public sealed class TypeInfo
         byte[] encoded = typeMeta.Encode();
         ulong header = BinaryPrimitives.ReadUInt64LittleEndian(encoded);
         ulong headerHash = header >> TypeMetaConstants.TypeMetaHashShift;
+        typeMeta = new TypeMeta(
+            typeMeta.TypeId,
+            typeMeta.UserTypeId,
+            typeMeta.NamespaceName,
+            typeMeta.TypeName,
+            typeMeta.RegisterByName,
+            typeMeta.Fields,
+            typeMeta.Compressed,
+            headerHash);
         return new TypeMetaCacheEntry(typeMeta, encoded, headerHash);
     }
 }

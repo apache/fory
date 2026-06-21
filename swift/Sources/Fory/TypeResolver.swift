@@ -194,18 +194,21 @@ public final class TypeInfo: @unchecked Sendable {
   let evolving: Bool
   let namespace: MetaString
   let typeName: MetaString
-  let typeMeta: TypeMeta?
-  public let compatibleTypeMeta: TypeMeta?
-  let typeDefBytes: [UInt8]?
-  let firstTypeDefBytes: [UInt8]?
-  let typeDefHeader: UInt64?
-  public let typeDefHeaderHash: UInt64?
-  public let typeDefHasUserTypeFields: Bool
+  /// Finalized local metadata. Generated compatible readers use this for local field comparison;
+  /// remote metadata remains exposed through `compatibleTypeMeta`.
+  public private(set) var typeMeta: TypeMeta?
+  public var compatibleTypeMeta: TypeMeta? { remoteCompatibleTypeMeta ?? typeMeta }
+  private(set) var typeDefBytes: [UInt8]?
+  private(set) var typeDefHeader: UInt64?
+  public private(set) var typeDefHeaderHash: UInt64?
+  public private(set) var typeDefHasUserTypeFields: Bool
 
   private let reader: (ReadContext) throws -> Any
   private let compatibleReader: (ReadContext, TypeInfo) throws -> Any
   private let nativeWireTypeID: TypeId
   private let compatibleWireTypeID: TypeId
+  private var typeMetaFieldsBuilder: ((TypeResolver) throws -> [TypeMeta.FieldInfo])?
+  private let remoteCompatibleTypeMeta: TypeMeta?
 
   init(
     swiftTypeID: ObjectIdentifier,
@@ -215,10 +218,10 @@ public final class TypeInfo: @unchecked Sendable {
     evolving: Bool,
     namespace: MetaString,
     typeName: MetaString,
+    typeMetaFieldsBuilder: ((TypeResolver) throws -> [TypeMeta.FieldInfo])? = nil,
     typeMeta: TypeMeta? = nil,
     compatibleTypeMeta: TypeMeta? = nil,
     typeDefBytes: [UInt8]? = nil,
-    firstTypeDefBytes: [UInt8]? = nil,
     typeDefHeader: UInt64? = nil,
     typeDefHeaderHash: UInt64? = nil,
     typeDefHasUserTypeFields: Bool = true,
@@ -232,10 +235,10 @@ public final class TypeInfo: @unchecked Sendable {
     self.evolving = evolving
     self.namespace = namespace
     self.typeName = typeName
+    self.typeMetaFieldsBuilder = typeMetaFieldsBuilder
+    self.remoteCompatibleTypeMeta = compatibleTypeMeta
     self.typeMeta = typeMeta
-    self.compatibleTypeMeta = compatibleTypeMeta ?? typeMeta
     self.typeDefBytes = typeDefBytes
-    self.firstTypeDefBytes = firstTypeDefBytes
     self.typeDefHeader = typeDefHeader
     self.typeDefHeaderHash = typeDefHeaderHash
     self.typeDefHasUserTypeFields = typeDefHasUserTypeFields
@@ -263,40 +266,10 @@ public final class TypeInfo: @unchecked Sendable {
     evolving: Bool,
     namespace: MetaString,
     typeName: MetaString,
-    fields: [TypeMeta.FieldInfo],
+    fields: @escaping (TypeResolver) throws -> [TypeMeta.FieldInfo],
     reader: @escaping (ReadContext) throws -> Any,
     compatibleReader: @escaping (ReadContext, TypeInfo) throws -> Any
   ) throws {
-    let compatibleWireTypeID = resolveRegisteredWireTypeID(
-      declaredTypeID: typeID,
-      registerByName: registerByName,
-      compatible: true,
-      evolving: evolving
-    )
-    let typeMeta = try TypeMeta(
-      typeID: compatibleWireTypeID.rawValue,
-      userTypeID: registerByName ? nil : userTypeID,
-      namespace: namespace,
-      typeName: typeName,
-      registerByName: registerByName,
-      fields: fields
-    )
-    let typeDefBytes = try typeMeta.encode()
-    var firstTypeDefBytes = [UInt8]()
-    firstTypeDefBytes.reserveCapacity(typeDefBytes.count + 1)
-    firstTypeDefBytes.append(0)
-    firstTypeDefBytes.append(contentsOf: typeDefBytes)
-    let typeDefHeader = try encodedTypeDefHeader(typeDefBytes)
-    let typeDefHeaderHash = try encodedTypeDefHeaderHash(typeDefBytes)
-    let canonicalTypeMeta = try TypeMeta(
-      typeID: compatibleWireTypeID.rawValue,
-      userTypeID: registerByName ? nil : userTypeID,
-      namespace: namespace,
-      typeName: typeName,
-      registerByName: registerByName,
-      fields: fields,
-      headerHash: typeDefHeaderHash
-    )
     self.init(
       swiftTypeID: swiftTypeID,
       typeID: typeID,
@@ -305,13 +278,8 @@ public final class TypeInfo: @unchecked Sendable {
       evolving: evolving,
       namespace: namespace,
       typeName: typeName,
-      typeMeta: canonicalTypeMeta,
-      compatibleTypeMeta: canonicalTypeMeta,
-      typeDefBytes: typeDefBytes,
-      firstTypeDefBytes: firstTypeDefBytes,
-      typeDefHeader: typeDefHeader,
-      typeDefHeaderHash: typeDefHeaderHash,
-      typeDefHasUserTypeFields: encodedTypeDefHasUserTypeFields(fields),
+      typeMetaFieldsBuilder: fields,
+      typeDefHasUserTypeFields: true,
       reader: reader,
       compatibleReader: compatibleReader
     )
@@ -348,7 +316,6 @@ public final class TypeInfo: @unchecked Sendable {
       typeMeta: typeInfo.typeMeta,
       compatibleTypeMeta: compatibleTypeMeta,
       typeDefBytes: typeInfo.typeDefBytes,
-      firstTypeDefBytes: typeInfo.firstTypeDefBytes,
       typeDefHeader: typeInfo.typeDefHeader,
       typeDefHeaderHash: typeInfo.typeDefHeaderHash,
       typeDefHasUserTypeFields: typeInfo.typeDefHasUserTypeFields,
@@ -375,6 +342,39 @@ public final class TypeInfo: @unchecked Sendable {
     compatible ? compatibleWireTypeID : nativeWireTypeID
   }
 
+  @inline(never)
+  func finalizeTypeMeta(resolver: TypeResolver) throws {
+    guard typeDefBytes == nil, let typeMetaFieldsBuilder else {
+      return
+    }
+    let fields = try typeMetaFieldsBuilder(resolver)
+    let typeMeta = try TypeMeta(
+      typeID: compatibleWireTypeID.rawValue,
+      userTypeID: registerByName ? nil : userTypeID,
+      namespace: namespace,
+      typeName: typeName,
+      registerByName: registerByName,
+      fields: fields
+    )
+    let typeDefBytes = try typeMeta.encode()
+    let typeDefHeader = try encodedTypeDefHeader(typeDefBytes)
+    let typeDefHeaderHash = try encodedTypeDefHeaderHash(typeDefBytes)
+    self.typeMeta = try TypeMeta(
+      typeID: compatibleWireTypeID.rawValue,
+      userTypeID: registerByName ? nil : userTypeID,
+      namespace: namespace,
+      typeName: typeName,
+      registerByName: registerByName,
+      fields: fields,
+      headerHash: typeDefHeaderHash
+    )
+    self.typeDefBytes = typeDefBytes
+    self.typeDefHeader = typeDefHeader
+    self.typeDefHeaderHash = typeDefHeaderHash
+    self.typeDefHasUserTypeFields = encodedTypeDefHasUserTypeFields(fields)
+    self.typeMetaFieldsBuilder = nil
+  }
+
   @inline(__always)
   func read(_ context: ReadContext, typeInfo: TypeInfo? = nil) throws -> Any {
     if let typeInfo {
@@ -385,7 +385,7 @@ public final class TypeInfo: @unchecked Sendable {
         || compatibleWireTypeID == .namedCompatibleStruct) {
       return try compatibleReader(context, self)
     }
-    if compatibleTypeMeta !== typeMeta {
+    if remoteCompatibleTypeMeta != nil {
       return try compatibleReader(context, self)
     }
     return try reader(context)
@@ -399,7 +399,7 @@ private struct TypeNameKey: Hashable {
 }
 
 final class TypeResolver {
-  private static let maxCachedTypeDefHeaders = 8192
+  private static let minRemoteTypeMetaLimit = 8192
 
   private let trackRef: Bool
   private var registrationFinished = false
@@ -407,14 +407,28 @@ final class TypeResolver {
   private var bySwiftType = UInt64Map<TypeInfo>(initialCapacity: 64)
   private var byUserTypeID = UInt64Map<TypeInfo>(initialCapacity: 64)
   private var byTypeName: [TypeNameKey: TypeInfo] = [:]
+  private var registeredTypeInfos: [TypeInfo] = []
   private var builtinTypeInfoByID: [TypeInfo?] = []
   private var typeInfoByHeader = UInt64Map<TypeInfo>(initialCapacity: 64)
+  private var remoteSchemaVersionsByType: [String: Int] = [:]
+  private var totalAcceptedSchemaVersions = 0
 
   init(trackRef: Bool = false) {
     self.trackRef = trackRef
   }
 
-  func finishRegistration() {
+  convenience init(config: Config) {
+    self.init(trackRef: config.trackRef)
+  }
+
+  @inline(never)
+  func finishRegistration() throws {
+    if registrationFinished {
+      return
+    }
+    for typeInfo in registeredTypeInfos {
+      try typeInfo.finalizeTypeMeta(resolver: self)
+    }
     registrationFinished = true
   }
 
@@ -439,6 +453,7 @@ final class TypeResolver {
     let swiftTypeID = ObjectIdentifier(type)
     try validateIDRegistration(key: swiftTypeID, type: type, id: id)
     let evolving = evolving(for: type)
+    let trackRef = self.trackRef
 
     let typeInfo = try TypeInfo(
       swiftTypeID: swiftTypeID,
@@ -448,7 +463,11 @@ final class TypeResolver {
       evolving: evolving,
       namespace: MetaString.empty(specialChar1: ".", specialChar2: "_"),
       typeName: MetaString.empty(specialChar1: "$", specialChar2: "_"),
-      fields: T.foryFieldsInfo(trackRef: trackRef),
+      fields: { resolver in
+        try T.foryFieldsInfo(trackRef: trackRef) { type in
+          try resolver.fieldTypeID(for: type)
+        }
+      },
       reader: { context in
         try readRegisteredValue(context, as: T.self)
       },
@@ -495,6 +514,7 @@ final class TypeResolver {
       typeName: typeName
     )
     let evolving = evolving(for: type)
+    let trackRef = self.trackRef
 
     let typeInfo = try TypeInfo(
       swiftTypeID: swiftTypeID,
@@ -504,7 +524,11 @@ final class TypeResolver {
       evolving: evolving,
       namespace: namespaceMeta,
       typeName: typeNameMeta,
-      fields: T.foryFieldsInfo(trackRef: trackRef),
+      fields: { resolver in
+        try T.foryFieldsInfo(trackRef: trackRef) { type in
+          try resolver.fieldTypeID(for: type)
+        }
+      },
       reader: { context in
         try readRegisteredValue(context, as: T.self)
       },
@@ -555,29 +579,71 @@ final class TypeResolver {
     typeInfoByHeader.value(for: header)
   }
 
-  @inline(__always)
-  func cacheTypeInfo(_ typeMeta: TypeMeta, forHeader header: UInt64) throws -> TypeInfo {
+  @inline(never)
+  func cacheTypeInfo(
+    _ typeMeta: TypeMeta,
+    forHeader header: UInt64,
+    localTypeInfo: TypeInfo,
+    exactLocal: Bool,
+    config: Config
+  ) throws -> TypeInfo {
     if let cached = typeInfoByHeader.value(for: header) {
       return cached
     }
-    let localTypeInfo = try requireTypeInfo(for: typeMeta)
-    if header == localTypeInfo.typeDefHeader {
-      if typeInfoByHeader.count < Self.maxCachedTypeDefHeaders {
-        typeInfoByHeader.set(localTypeInfo, for: header)
-      }
+    if exactLocal {
+      typeInfoByHeader.set(localTypeInfo, for: header)
       return localTypeInfo
     }
-    let canonicalTypeMeta: TypeMeta
-    if let localTypeMeta = localTypeInfo.typeMeta {
-      canonicalTypeMeta = try typeMeta.assigningFieldIDs(from: localTypeMeta)
-    } else {
-      canonicalTypeMeta = typeMeta
+    let remoteSchemaKey = try checkRemoteTypeMetaLimit(typeMeta, config: config)
+    guard let localTypeMeta = localTypeInfo.typeMeta else {
+      throw ForyError.invalidData("local type metadata for \(localTypeInfo.typeID) is not finalized")
     }
+    let canonicalTypeMeta = try typeMeta.assigningFieldIDs(from: localTypeMeta)
     let typeInfo = TypeInfo(dynamic: localTypeInfo, compatibleTypeMeta: canonicalTypeMeta)
-    if typeInfoByHeader.count < Self.maxCachedTypeDefHeaders {
-      typeInfoByHeader.set(typeInfo, for: header)
-    }
+    typeInfoByHeader.set(typeInfo, for: header)
+    recordRemoteTypeMeta(remoteSchemaKey)
     return typeInfo
+  }
+
+  @inline(never)
+  private func checkRemoteTypeMetaLimit(_ typeMeta: TypeMeta, config: Config) throws -> String {
+    let key: String
+    if typeMeta.registerByName {
+      key = "n\(typeMeta.namespace.value)\0\(typeMeta.typeName.value)"
+    } else {
+      key = "i\(typeMeta.userTypeID ?? UInt32.max)"
+    }
+
+    let versionsForType = remoteSchemaVersionsByType[key] ?? 0
+    let maxSchemaVersionsPerType = config.maxSchemaVersionsPerType
+    if versionsForType >= maxSchemaVersionsPerType {
+      throw ForyError.invalidData(
+        "remote schema version limit exceeded for one type. The data may be malicious. "
+          + "If the data is not malicious, please increase "
+          + "maxSchemaVersionsPerType=\(maxSchemaVersionsPerType)"
+      )
+    }
+    let acceptedTypeCount =
+      versionsForType == 0 ? remoteSchemaVersionsByType.count + 1 : remoteSchemaVersionsByType.count
+    let maxAverageSchemaVersionsPerType = config.maxAverageSchemaVersionsPerType
+    let globalLimit = max(
+      Self.minRemoteTypeMetaLimit,
+      acceptedTypeCount * maxAverageSchemaVersionsPerType
+    )
+    if totalAcceptedSchemaVersions >= globalLimit {
+      throw ForyError.invalidData(
+        "remote schema version limit exceeded globally. The data may be malicious. "
+          + "If the data is not malicious, please increase "
+          + "maxAverageSchemaVersionsPerType=\(maxAverageSchemaVersionsPerType)"
+      )
+    }
+    return key
+  }
+
+  private func recordRemoteTypeMeta(_ key: String) {
+    let versionsForType = remoteSchemaVersionsByType[key] ?? 0
+    remoteSchemaVersionsByType[key] = versionsForType + 1
+    totalAcceptedSchemaVersions += 1
   }
 
   private func store(
@@ -593,15 +659,40 @@ final class TypeResolver {
     if let typeNameKey {
       byTypeName[typeNameKey] = typeInfo
     }
-    if let typeMeta = typeInfo.typeMeta,
-      let typeDefHeader = typeInfo.typeDefHeader {
-      typeInfoByHeader.set(
-        TypeInfo(
-          dynamic: typeInfo,
-          compatibleTypeMeta: typeMeta
-        ),
-        for: typeDefHeader
-      )
+    registeredTypeInfos.append(typeInfo)
+  }
+
+  @inline(never)
+  func fieldTypeID(for type: Any.Type) throws -> TypeId {
+    guard let serializerType = type as? any Serializer.Type else {
+      throw ForyError.invalidData("field type \(type) does not conform to Serializer")
+    }
+    let staticTypeID = serializerType.staticTypeId
+    guard staticTypeID.isUserTypeKind else {
+      return staticTypeID
+    }
+
+    if let typeInfo = bySwiftType.value(for: UInt64(UInt(bitPattern: ObjectIdentifier(type)))) {
+      let wireTypeID = typeInfo.wireTypeID(compatible: true)
+      // Field metadata normalizes enum and union families the same way as the
+      // protocol comparison rules; struct and ext keep the resolved registered kind.
+      switch wireTypeID {
+      case .namedEnum:
+        return .enumType
+      case .typedUnion, .namedUnion:
+        return .union
+      default:
+        return wireTypeID
+      }
+    }
+
+    switch staticTypeID {
+    case .enumType, .namedEnum:
+      return .enumType
+    case .typedUnion, .namedUnion:
+      return .union
+    default:
+      throw ForyError.typeNotRegistered("\(type) is not registered")
     }
   }
 
@@ -691,8 +782,8 @@ final class TypeResolver {
     }
   }
 
-  @inline(__always)
-  private func requireTypeInfo(for typeMeta: TypeMeta) throws -> TypeInfo {
+  @inline(never)
+  func requireTypeInfo(for typeMeta: TypeMeta) throws -> TypeInfo {
     if typeMeta.registerByName {
       guard
         let typeInfo = byTypeName[
