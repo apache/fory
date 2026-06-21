@@ -182,12 +182,24 @@ for try await reply in client.lotsOfReplies(Demo.Greeter.HelloRequest(name: "For
 ## gRPC Runtime Behavior
 
 Generated companions carry Fory-encoded bytes inside a private `GRPCPayload`
-wrapper that serializes through the schema module's shared `Fory` instance.
-Imported request and response types resolve to their own namespace and are
-registered transitively through the owning module, so a service that crosses an
-import boundary works without extra registration.
+wrapper. The Swift `Fory` instance is single-threaded, so the wrapper uses one
+`Fory` per thread, built from the schema module's configuration and registrations,
+which makes concurrent RPCs safe without sharing a single instance. Imported
+request and response types resolve to their own namespace and are registered
+transitively through the owning module, so a service that crosses an import
+boundary works without extra registration.
 
 ## Known Limitations
+
+The generated client is async/await only. grpc-swift's `EventLoopFuture` client
+returns call objects parameterized by the on-the-wire message type, which would
+expose the internal Fory wrapper, so it is not emitted. Both providers (async and
+`EventLoopFuture`) are generated.
+
+Interceptors are not generated. grpc-swift interceptors are typed on the
+on-the-wire message, which is the internal Fory wrapper; emitting interceptor
+hooks would expose that wrapper. Use a custom channel or server configuration for
+cross-cutting concerns instead.
 
 Swift models put each package under a nested `enum` namespace, so two schemas that
 share a top-level package component (for example `demo.shared` and `demo.greeter`)
