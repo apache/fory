@@ -26,6 +26,15 @@ from fory_compiler.ir.ast import RpcMethod, Service
 # Availability gate matching grpc-swift's async/await APIs.
 _ASYNC_AVAILABLE = "@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)"
 
+# Members the generated provider and client expose through their protocols and
+# base types; an rpc whose Swift name matches one would override or clash with it.
+_SWIFT_GRPC_RESERVED_MEMBERS = {
+    "handle",
+    "serviceName",
+    "channel",
+    "defaultCallOptions",
+}
+
 
 class SwiftServiceMixin:
     """Generates Swift gRPC service companions backed by Fory serialization."""
@@ -86,6 +95,12 @@ class SwiftServiceMixin:
             seen: Dict[str, str] = {}
             for method in service.methods:
                 swift_name = self._swift_grpc_method_name(method).strip("`")
+                if swift_name in _SWIFT_GRPC_RESERVED_MEMBERS:
+                    raise ValueError(
+                        f"Swift gRPC method {service.name}.{method.name} generates "
+                        f"{swift_name}, which collides with a generated provider or "
+                        "client member; rename the rpc"
+                    )
                 if swift_name in seen:
                     raise ValueError(
                         f"Swift gRPC method name collision in service {service.name}: "

@@ -1082,6 +1082,62 @@ def test_swift_grpc_imported_types(tmp_path: Path):
     assert "Demo.Greeter.ForyModule.getFory()" in content
 
 
+@pytest.mark.parametrize(
+    "rpc_name", ["Handle", "ServiceName", "Channel", "DefaultCallOptions"]
+)
+def test_swift_grpc_reserved_member_collision(rpc_name):
+    schema = parse_fdl(
+        dedent(
+            f"""
+            package demo.naming;
+
+            message Req {{}}
+            message Res {{}}
+
+            service Greeter {{ rpc {rpc_name} (Req) returns (Res); }}
+            """
+        )
+    )
+    with pytest.raises(
+        ValueError, match="collides with a generated provider or client member"
+    ):
+        generate_service_files(schema, SwiftGenerator)
+
+
+def test_swift_grpc_nested_and_imported_payloads(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+            message Outer { message Inner { string v = 1; } Inner inner = 1; }
+            """
+        )
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        dedent(
+            """
+            package demo.api;
+            import "common.fdl";
+            message Local { message Deep { string v = 1; } Deep deep = 1; }
+            service S {
+                rpc Echo (Local) returns (Outer);
+                rpc DeepEcho (Local.Deep) returns (Outer.Inner);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(main, [tmp_path])
+    content = generate_service_files(schema, SwiftGenerator)["demo/api/SGrpc.swift"]
+    # Nested local and imported nested types resolve to their full namespace paths.
+    assert "request: Demo.Api.Local," in content
+    assert "EventLoopFuture<Demo.Shared.Outer>" in content
+    assert "request: Demo.Api.Local.Deep," in content
+    assert "Demo.Shared.Outer.Inner" in content
+    assert "Demo_Api_SMessage<Demo.Api.Local.Deep>" in content
+
+
 def test_grpc_streaming_method_shapes():
     schema = parse_fdl(
         dedent(
