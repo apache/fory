@@ -20,6 +20,10 @@
 package org.apache.fory.grpc_tests;
 
 import io.grpc.Server;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -29,7 +33,8 @@ public class DartGrpcTest extends GrpcTestBase {
   public void testJavaServerDartClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runDart("dart-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPeer(
+          "dart-grpc-client", dartCommand("client", "--target", "127.0.0.1:" + server.getPort()));
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -40,5 +45,19 @@ public class DartGrpcTest extends GrpcTestBase {
   public void testDartServerJavaClient() throws Exception {
     exercisePeerServer(
         "dart-grpc", "Dart", "fory-grpc-dart-", dartCommand("server"), this::exerciseAllSchemas);
+  }
+
+  private PeerCommand dartCommand(String... args) {
+    Path dartRoot = grpcRoot().resolve("dart");
+    List<String> command = new ArrayList<>();
+    command.add("dart");
+    command.add("run");
+    command.add("bin/interop.dart");
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = newPeerCommand(dartRoot, command);
+    putEnv(peerCommand, "ENABLE_FORY_DEBUG_OUTPUT", "1");
+    setLocalhostNoProxy(peerCommand);
+    clearProxyEnv(peerCommand);
+    return peerCommand;
   }
 }

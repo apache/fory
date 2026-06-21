@@ -20,6 +20,10 @@
 package org.apache.fory.grpc_tests;
 
 import io.grpc.Server;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -29,7 +33,9 @@ public class KotlinGrpcTest extends GrpcTestBase {
   public void testJavaServerKotlinClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runKotlin("kotlin-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPeer(
+          "kotlin-grpc-client",
+          kotlinCommand("client", "--target", "127.0.0.1:" + server.getPort()));
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -44,5 +50,19 @@ public class KotlinGrpcTest extends GrpcTestBase {
         "fory-grpc-kotlin-",
         kotlinCommand("server"),
         this::exerciseAllSchemas);
+  }
+
+  private PeerCommand kotlinCommand(String... args) {
+    Path kotlinRoot = grpcRoot().resolve("kotlin");
+    List<String> command = new ArrayList<>();
+    command.add("java");
+    command.add("-jar");
+    command.add(kotlinRoot.resolve("target").resolve("fory-kotlin-grpc-peer.jar").toString());
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = newPeerCommand(kotlinRoot, command);
+    putEnv(peerCommand, "ENABLE_FORY_DEBUG_OUTPUT", "1");
+    setLocalhostNoProxy(peerCommand);
+    clearProxyEnv(peerCommand);
+    return peerCommand;
   }
 }

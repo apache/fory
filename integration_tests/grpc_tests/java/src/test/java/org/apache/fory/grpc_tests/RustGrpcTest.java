@@ -20,6 +20,10 @@
 package org.apache.fory.grpc_tests;
 
 import io.grpc.Server;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
@@ -29,7 +33,8 @@ public class RustGrpcTest extends GrpcTestBase {
   public void testJavaServerRustClient() throws Exception {
     Server server = startJavaAllSchemasServer();
     try {
-      runRust("rust-grpc-client", "client", "--target", "127.0.0.1:" + server.getPort());
+      runPeer(
+          "rust-grpc-client", rustCommand("client", "--target", "127.0.0.1:" + server.getPort()));
     } finally {
       server.shutdownNow();
       server.awaitTermination(10, TimeUnit.SECONDS);
@@ -40,5 +45,24 @@ public class RustGrpcTest extends GrpcTestBase {
   public void testJavaClientRustServer() throws Exception {
     exercisePeerServer(
         "rust-grpc", "Rust", "fory-grpc-rust-", rustCommand("server"), this::exerciseAllSchemas);
+  }
+
+  private PeerCommand rustCommand(String... args) {
+    Path rustRoot = grpcRoot().resolve("rust");
+    List<String> command = new ArrayList<>();
+    command.add("cargo");
+    command.add("run");
+    command.add("--quiet");
+    command.add("--manifest-path");
+    command.add(rustRoot.resolve("interop").resolve("Cargo.toml").toString());
+    command.add("--");
+    command.addAll(Arrays.asList(args));
+    PeerCommand peerCommand = newPeerCommand(rustRoot, command);
+    putEnv(peerCommand, "CARGO_TERM_COLOR", "never");
+    putEnv(peerCommand, "ENABLE_FORY_DEBUG_OUTPUT", "1");
+    putEnv(peerCommand, "RUST_BACKTRACE", "1");
+    setLocalhostNoProxy(peerCommand);
+    clearProxyEnv(peerCommand);
+    return peerCommand;
   }
 }
