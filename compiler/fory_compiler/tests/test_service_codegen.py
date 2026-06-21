@@ -3415,6 +3415,47 @@ def test_dart_grpc_import_alias_avoids_helpers(tmp_path: Path):
     assert "ServiceMethod<_serialize_2.Shared, _models.Res>(" in content
 
 
+def test_dart_grpc_import_alias_avoids_service_classes(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package ApiClient;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Res {}
+
+            service Api {
+                rpc Call (ApiClient.Shared) returns (Res);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../../ApiClient/ApiClient.dart' as ApiClient_2;" in content
+    assert "class ApiClient extends Client {" in content
+    assert "ClientMethod<ApiClient_2.Shared, _models.Res>(" in content
+    assert "ServiceMethod<ApiClient_2.Shared, _models.Res>(" in content
+
+
 def test_dart_grpc_rejects_reserved_method_names():
     from fory_compiler.generators.dart import DartGenerator
 
