@@ -246,6 +246,8 @@ class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
         names: Set[str] = set()
         for defs in (self.schema.enums, self.schema.unions, self.schema.messages):
             for item in defs:
+                if self.is_imported_type(item):
+                    continue
                 names.add(self.safe_type_identifier(self.to_pascal_case(item.name)))
         return names
 

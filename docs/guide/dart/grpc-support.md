@@ -256,8 +256,9 @@ used instead.)
 
 A gRPC service named `Greeter` still generates the companion
 `<stem>_grpc.dart` with `GreeterClient` and `GreeterServiceBase`; it does not
-change the schema module name. This lets several schema files share the same
-package without colliding.
+change the schema module name. If several schema files use the same package
+leaf, place them in distinct output directories or choose package/file names that
+produce distinct Dart model files.
 
 ## Operations
 

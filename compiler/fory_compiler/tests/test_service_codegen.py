@@ -3293,6 +3293,46 @@ def test_dart_grpc_imported_rpc_payloads(tmp_path: Path):
     assert "_models.demo.common.Shared" not in content
 
 
+def test_dart_grpc_imported_model_name_collision(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.common;
+
+            message GreeterClient {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Req {}
+            message Res {}
+
+            service Greeter {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "class GreeterClient extends Client {" in content
+    assert "ClientMethod<_models.Req, _models.Res>(" in content
+
+
 def test_dart_grpc_rejects_reserved_method_names():
     from fory_compiler.generators.dart import DartGenerator
 
