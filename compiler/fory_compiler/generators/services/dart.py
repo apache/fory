@@ -18,7 +18,7 @@
 """Dart gRPC service generator helpers."""
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from fory_compiler.generators.base import GeneratedFile
 from fory_compiler.ir.ast import RpcMethod, Service
@@ -91,7 +91,9 @@ class DartServiceGeneratorMixin:
         models_stem = models_output.stem  # e.g. "greeter"
         grpc_path = str(models_output.with_name(f"{models_stem}_grpc.dart"))
 
+        self._grpc_model_alias = "_models"
         self._grpc_payload_imports: Dict[str, Tuple[str, str]] = {}
+        self._grpc_used_import_aliases: Set[str] = {self._grpc_model_alias}
 
         body: List[str] = []
         for service in services:
@@ -113,7 +115,7 @@ class DartServiceGeneratorMixin:
         lines.append("")
         lines.append("import 'package:grpc/grpc.dart';")
         lines.append("")
-        lines.append(f"import '{models_stem}.dart' as _models;")
+        lines.append(f"import '{models_stem}.dart' as {self._grpc_model_alias};")
         for path, alias in sorted(self._grpc_payload_imports.values()):
             lines.append(f"import '{path}' as {alias};")
         lines.append("")
@@ -122,7 +124,7 @@ class DartServiceGeneratorMixin:
             "no separate registration helper needed."
         )
         lines.append("")
-        fory = f"_models.{self.module_type_name()}.getFory()"
+        fory = f"{self._grpc_model_alias}.{self.module_type_name()}.getFory()"
         lines.append("List<int> _serialize<T>(T value) =>")
         lines.append(f"    {fory}.serialize(value, trackRef: true);")
         lines.append("")
@@ -147,21 +149,35 @@ class DartServiceGeneratorMixin:
         """
         type_def = self.resolve_type(named_type.name)
         if type_def is None:
-            return f"_models.{named_type.name}"
+            return f"{self._grpc_model_alias}.{named_type.name}"
         if self.is_imported_type(type_def):
-            schema = self._load_schema(type_def.location.file)
-            if schema is not None:
-                alias = self.safe_identifier(
-                    schema.package.replace(".", "_")
-                    if schema.package
-                    else Path(type_def.location.file).stem
-                )
-                self._grpc_payload_imports[type_def.location.file] = (
-                    self._relative_import_path(schema),
-                    alias,
-                )
+            alias = self._dart_grpc_import_alias(type_def)
+            return f"{alias}.{self.local_name(type_def)}"
+        return f"{self._grpc_model_alias}.{self.local_name(type_def)}"
+
+    def _dart_grpc_import_alias(self, type_def) -> str:
+        file = type_def.location.file
+        existing = self._grpc_payload_imports.get(file)
+        if existing is not None:
+            return existing[1]
+        schema = self._load_schema(file)
+        if schema is None:
             return self.ref_name(type_def)
-        return f"_models.{self.local_name(type_def)}"
+        candidate = self.safe_identifier(
+            schema.package.replace(".", "_") if schema.package else Path(file).stem
+        )
+        alias = self._dart_grpc_unique_import_alias(candidate)
+        self._grpc_payload_imports[file] = (self._relative_import_path(schema), alias)
+        return alias
+
+    def _dart_grpc_unique_import_alias(self, candidate: str) -> str:
+        alias = candidate
+        index = 2
+        while alias in self._grpc_used_import_aliases:
+            alias = f"{candidate}_{index}"
+            index += 1
+        self._grpc_used_import_aliases.add(alias)
+        return alias
 
     def generate_dart_grpc_client(self, service: Service) -> List[str]:
         lines: List[str] = []
