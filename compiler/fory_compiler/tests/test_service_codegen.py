@@ -3497,6 +3497,47 @@ def test_dart_grpc_support_aliases(tmp_path: Path):
     assert "ServiceMethod<Client_2.Shared, _models.Res>(" in content
 
 
+def test_dart_grpc_local_aliases(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    value_schema = tmp_path / "value.fdl"
+    value_schema.write_text(
+        dedent(
+            """
+            package value;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "value.fdl";
+
+            service Api {
+                rpc Echo (Shared) returns (Shared);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../../value/value.dart' as value_2;" in content
+    assert "ClientMethod<value_2.Shared, value_2.Shared>(" in content
+    assert "ServiceMethod<value_2.Shared, value_2.Shared>(" in content
+    assert "_deserialize<value_2.Shared>(value)" in content
+    assert "(value_2.Shared value) => _serialize(value)" in content
+    assert "_models.value.Shared" not in content
+
+
 def test_dart_grpc_reserved_methods():
     from fory_compiler.generators.dart import DartGenerator
 

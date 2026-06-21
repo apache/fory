@@ -46,7 +46,13 @@ class DartServiceGeneratorMixin:
             "String",
             "T",
             "Uint8List",
+            "bytes",
+            "call",
             "int",
+            "options",
+            "request",
+            "u8",
+            "value",
         }
     )
 
