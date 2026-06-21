@@ -189,6 +189,17 @@ request and response types resolve to their own namespace and are registered
 transitively through the owning module, so a service that crosses an import
 boundary works without extra registration.
 
+## Swift Language Mode
+
+Compile generated companions in Swift 5 language mode (use
+`swift-tools-version:5.9`, or set `swiftLanguageMode(.v5)` on the target in a
+6.x manifest). The Fory wire wrapper is `Sendable`, but the async client's
+client-streaming and bidirectional methods pass your request and response model
+types through grpc-swift's `Sendable` streaming APIs, and the generated Fory
+Swift models are not yet `Sendable`. Server providers, the unary client, and the
+server-streaming client build under Swift 6 strict concurrency; full Swift 6
+support for the streaming client follows once generated models are `Sendable`.
+
 ## Known Limitations
 
 The generated client is async/await only. grpc-swift's `EventLoopFuture` client

@@ -165,8 +165,11 @@ class SwiftServiceMixin:
             "",
             "// Internal Fory wire wrapper for gRPC request and response messages.",
             "// NIOCore.ByteBuffer is qualified because `import Fory` also exposes one.",
-            f"struct {base}Message<Value: Serializer>: GRPCPayload {{",
-            "    var value: Value",
+            "// @unchecked Sendable: a transient per-message carrier handed to a single",
+            "// consumer and (de)serialized synchronously, never shared across threads,",
+            "// so grpc-swift's async APIs can move it under Swift 6 strict concurrency.",
+            f"struct {base}Message<Value: Serializer>: GRPCPayload, @unchecked Sendable {{",
+            "    let value: Value",
             "    init(_ value: Value) { self.value = value }",
             "    init(serializedByteBuffer buffer: inout NIOCore.ByteBuffer) throws {",
             "        let bytes = buffer.readBytes(length: buffer.readableBytes) ?? []",
@@ -191,13 +194,19 @@ class SwiftServiceMixin:
             )
             lines.append(f"            type: {self._call_type(method)})")
         lines.append("    }")
-        method_refs = ", ".join(
-            f"Methods.{self._swift_grpc_method_name(m)}" for m in service.methods
-        )
         lines.append("    static let serviceDescriptor = GRPCServiceDescriptor(")
         lines.append(f'        name: "{service.name}",')
         lines.append(f'        fullName: "{full_name}",')
-        lines.append(f"        methods: [{method_refs}])")
+        if service.methods:
+            lines.append("        methods: [")
+            for index, method in enumerate(service.methods):
+                comma = "," if index < len(service.methods) - 1 else ""
+                lines.append(
+                    f"            Methods.{self._swift_grpc_method_name(method)}{comma}"
+                )
+            lines.append("        ])")
+        else:
+            lines.append("        methods: [])")
         lines.append("}")
         return lines
 
