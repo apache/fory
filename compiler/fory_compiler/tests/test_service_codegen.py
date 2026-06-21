@@ -2571,6 +2571,10 @@ def test_swift_grpc_common_root_package(tmp_path: Path):
 
 
 @pytest.mark.skipif(shutil.which("swift") is None, reason="swift not installed")
+@pytest.mark.skipif(
+    os.environ.get("FORY_SWIFT_TSAN") != "1",
+    reason="ThreadSanitizer build is slow; set FORY_SWIFT_TSAN=1 (CI sanitizer job)",
+)
 def test_swift_grpc_marshaller_thread_safety(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[3]
     schema = tmp_path / "echo.fdl"
