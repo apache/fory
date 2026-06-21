@@ -3538,6 +3538,45 @@ def test_dart_grpc_local_aliases(tmp_path: Path):
     assert "_models.value.Shared" not in content
 
 
+def test_dart_grpc_method_aliases(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    foo_schema = tmp_path / "foo.fdl"
+    foo_schema.write_text(
+        dedent(
+            """
+            package foo;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "foo.fdl";
+
+            service Api {
+                rpc Foo (Shared) returns (Shared);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../../foo/foo.dart' as foo_2;" in content
+    assert "ResponseFuture<foo_2.Shared> foo(" in content
+    assert "Future<foo_2.Shared> foo_Pre(" in content
+    assert "foo.Shared" not in content
+
+
 def test_dart_grpc_reserved_methods():
     from fory_compiler.generators.dart import DartGenerator
 

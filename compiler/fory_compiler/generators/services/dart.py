@@ -212,6 +212,10 @@ class DartServiceGeneratorMixin:
         for service in services:
             aliases.add(f"{service.name}Client")
             aliases.add(f"{service.name}ServiceBase")
+            for method in service.methods:
+                method_name = self.dart_grpc_method_name(method)
+                aliases.add(method_name)
+                aliases.add(f"{method_name}_Pre")
         return aliases
 
     def generate_dart_grpc_client(self, service: Service) -> List[str]:
