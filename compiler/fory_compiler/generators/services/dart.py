@@ -93,7 +93,9 @@ class DartServiceGeneratorMixin:
 
         self._grpc_model_alias = "_models"
         self._grpc_payload_imports: Dict[str, Tuple[str, str]] = {}
-        self._grpc_used_import_aliases: Set[str] = {self._grpc_model_alias}
+        self._grpc_used_import_aliases = self._dart_grpc_reserved_import_aliases(
+            services
+        )
 
         body: List[str] = []
         for service in services:
@@ -178,6 +180,13 @@ class DartServiceGeneratorMixin:
             index += 1
         self._grpc_used_import_aliases.add(alias)
         return alias
+
+    def _dart_grpc_reserved_import_aliases(self, services: List[Service]) -> Set[str]:
+        aliases = {self._grpc_model_alias, "_serialize", "_deserialize"}
+        for service in services:
+            aliases.add(f"{service.name}Client")
+            aliases.add(f"{service.name}ServiceBase")
+        return aliases
 
     def generate_dart_grpc_client(self, service: Service) -> List[str]:
         lines: List[str] = []

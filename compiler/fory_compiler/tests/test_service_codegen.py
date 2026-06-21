@@ -3375,6 +3375,46 @@ def test_dart_grpc_import_alias_collision(tmp_path: Path):
     assert "ServiceMethod<_models_2.Req, _models.Res>(" in content
 
 
+def test_dart_grpc_import_alias_avoids_helpers(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package _serialize;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Res {}
+
+            service Api {
+                rpc Call (_serialize.Shared) returns (Res);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../../_serialize/_serialize.dart' as _serialize_2;" in content
+    assert "ClientMethod<_serialize_2.Shared, _models.Res>(" in content
+    assert "ServiceMethod<_serialize_2.Shared, _models.Res>(" in content
+
+
 def test_dart_grpc_rejects_reserved_method_names():
     from fory_compiler.generators.dart import DartGenerator
 
