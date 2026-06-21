@@ -18,6 +18,7 @@
 """Codegen smoke tests for schemas that contain service definitions."""
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 from textwrap import dedent
@@ -975,7 +976,11 @@ def test_swift_grpc_fory_marshaller():
     files = generate_service_files(schema, SwiftGenerator)
     assert set(files) == {"demo/greeter/GreeterGrpc.swift"}
     content = files["demo/greeter/GreeterGrpc.swift"]
-    assert "private struct ForyMessage<Value: Serializer>: GRPCPayload" in content
+    assert (
+        "struct Demo_Greeter_GreeterMessage<Value: Serializer>: GRPCPayload" in content
+    )
+    assert "enum ForyRuntime {" in content
+    assert "Thread.current.threadDictionary" in content
     assert "Demo.Greeter.ForyModule.getFory()" in content
     assert "enum Demo_Greeter_GreeterMetadata" in content
     assert 'fullName: "demo.greeter.Greeter"' in content
@@ -2565,6 +2570,71 @@ def test_swift_grpc_common_root_package(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+@pytest.mark.skipif(shutil.which("swift") is None, reason="swift not installed")
+def test_swift_grpc_marshaller_thread_safety(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[3]
+    schema = tmp_path / "echo.fdl"
+    schema.write_text(
+        dedent(
+            """
+            package demo.echo;
+
+            message Req { string name = 1; }
+            message Res { string text = 1; }
+
+            service Echoer { rpc Unary (Req) returns (Res); }
+            """
+        )
+    )
+    pkg = tmp_path / "pkg"
+    app = pkg / "Sources" / "App"
+    app.mkdir(parents=True)
+    assert foryc_main(["--swift_out", str(app), "--grpc", str(schema)]) == 0
+    (app / "main.swift").write_text(_SWIFT_GRPC_THREAD_SAFETY_PROGRAM)
+    (pkg / "Package.swift").write_text(
+        dedent(
+            f"""
+            // swift-tools-version:5.9
+            import PackageDescription
+            let package = Package(
+              name: "App",
+              platforms: [.macOS(.v13)],
+              dependencies: [
+                .package(url: "https://github.com/grpc/grpc-swift.git", exact: "1.24.2"),
+                .package(path: "{repo_root / "swift"}"),
+              ],
+              targets: [
+                .executableTarget(
+                  name: "App",
+                  dependencies: [
+                    .product(name: "GRPC", package: "grpc-swift"),
+                    .product(name: "Fory", package: "swift"),
+                  ],
+                  path: "Sources/App"
+                )
+              ]
+            )
+            """
+        ).strip()
+    )
+    # Run the marshaller from many threads under ThreadSanitizer. With the
+    # per-thread Fory this is race-free; against a shared instance TSan reports a
+    # data race and halt_on_error aborts the process.
+    env = dict(os.environ, TSAN_OPTIONS="halt_on_error=1")
+    result = subprocess.run(
+        ["swift", "run", "--sanitize=thread"],
+        cwd=pkg,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+        env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "data race" not in result.stderr.lower(), result.stderr
+    assert "THREADSAFE OK" in result.stdout
+
+
 def test_generated_message_signatures():
     schema = parse_fdl(_GREETER_WITH_SERVICE)
     java_files = generate_files(schema, JavaGenerator)
@@ -3366,4 +3436,43 @@ let burst = try await withThrowingTaskGroup(of: String.self) { group -> Int in
 }
 precondition(burst == 200)
 print("GENERATED OK")
+"""
+
+
+_SWIFT_GRPC_THREAD_SAFETY_PROGRAM = r"""
+import Foundation
+import GRPC
+import NIOCore
+import Fory
+
+// Many threads drive the generated marshaller at once.
+DispatchQueue.concurrentPerform(iterations: 2000) { i in
+  do {
+    let allocator = ByteBufferAllocator()
+    let req = Demo.Echo.Req(name: "n\(i)")
+    var out = allocator.buffer(capacity: 64)
+    try Demo_Echo_EchoerMessage(req).serialize(into: &out)
+    let back = try Demo_Echo_EchoerMessage<Demo.Echo.Req>(serializedByteBuffer: &out)
+    precondition(back.value.name == "n\(i)")
+  } catch {
+    fatalError("marshaller round-trip failed: \(error)")
+  }
+}
+
+// Wire compatibility between the model's shared Fory and the per-thread marshaller.
+let allocator = ByteBufferAllocator()
+let probe = Demo.Echo.Req(name: "probe")
+let sharedBytes = try Demo.Echo.ForyModule.getFory().serialize(probe)
+var inBuf = allocator.buffer(capacity: sharedBytes.count)
+inBuf.writeBytes(sharedBytes)
+let fromShared = try Demo_Echo_EchoerMessage<Demo.Echo.Req>(serializedByteBuffer: &inBuf)
+precondition(fromShared.value.name == "probe")
+
+var outBuf = allocator.buffer(capacity: 64)
+try Demo_Echo_EchoerMessage(probe).serialize(into: &outBuf)
+let fromMarshaller: Demo.Echo.Req =
+  try Demo.Echo.ForyModule.getFory().deserialize(Data(outBuf.readableBytesView))
+precondition(fromMarshaller.name == "probe")
+
+print("THREADSAFE OK")
 """

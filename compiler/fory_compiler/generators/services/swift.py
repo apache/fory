@@ -112,7 +112,7 @@ class SwiftServiceMixin:
         lines.append("")
 
         if methods:
-            lines.extend(self._marshaller(module))
+            lines.extend(self._marshaller(base, module))
             lines.append("")
         lines.extend(self._metadata(base, service))
         lines.append("")
@@ -133,7 +133,7 @@ class SwiftServiceMixin:
         path = f"{package_path}/{file_name}" if package_path else file_name
         return GeneratedFile(path=path, content=content)
 
-    def _marshaller(self, module: str) -> List[str]:
+    def _marshaller(self, base: str, module: str) -> List[str]:
         # The Swift Fory instance is single-threaded, so keep one per thread.
         return [
             "private enum ForyRuntime {",
@@ -150,7 +150,7 @@ class SwiftServiceMixin:
             "",
             "// Internal Fory wire wrapper for gRPC request and response messages.",
             "// NIOCore.ByteBuffer is qualified because `import Fory` also exposes one.",
-            "private struct ForyMessage<Value: Serializer>: GRPCPayload {",
+            f"struct {base}Message<Value: Serializer>: GRPCPayload {{",
             "    var value: Value",
             "    init(_ value: Value) { self.value = value }",
             "    init(serializedByteBuffer buffer: inout NIOCore.ByteBuffer) throws {",
@@ -220,11 +220,11 @@ class SwiftServiceMixin:
     def _streaming_response_context(self, base: str) -> List[str]:
         return [
             f"public struct {base}StreamingResponseContext<Response: Serializer> {{",
-            "    fileprivate let base: StreamingResponseCallContext<ForyMessage<Response>>",
+            f"    fileprivate let base: StreamingResponseCallContext<{base}Message<Response>>",
             "    public var eventLoop: EventLoop { base.eventLoop }",
             "    @discardableResult",
             "    public func sendResponse(_ response: Response) -> EventLoopFuture<Void> {",
-            "        base.sendResponse(ForyMessage(response))",
+            f"        base.sendResponse({base}Message(response))",
             "    }",
             "}",
         ]
@@ -232,10 +232,10 @@ class SwiftServiceMixin:
     def _unary_response_context(self, base: str) -> List[str]:
         return [
             f"public struct {base}UnaryResponseContext<Response: Serializer> {{",
-            "    fileprivate let base: UnaryResponseCallContext<ForyMessage<Response>>",
+            f"    fileprivate let base: UnaryResponseCallContext<{base}Message<Response>>",
             "    public var eventLoop: EventLoop { base.eventLoop }",
             "    public func respond(_ response: Response) {",
-            "        base.responsePromise.succeed(ForyMessage(response))",
+            f"        base.responsePromise.succeed({base}Message(response))",
             "    }",
             "}",
         ]
@@ -244,9 +244,9 @@ class SwiftServiceMixin:
         return [
             _ASYNC_AVAILABLE,
             f"public struct {base}AsyncResponseStream<Response: Serializer> {{",
-            "    fileprivate let base: GRPCAsyncResponseStreamWriter<ForyMessage<Response>>",
+            f"    fileprivate let base: GRPCAsyncResponseStreamWriter<{base}Message<Response>>",
             "    public func send(_ response: Response) async throws {",
-            "        try await base.send(ForyMessage(response))",
+            f"        try await base.send({base}Message(response))",
             "    }",
             "}",
         ]
@@ -256,9 +256,9 @@ class SwiftServiceMixin:
             _ASYNC_AVAILABLE,
             f"public struct {base}AsyncRequestStream<Request: Serializer>: AsyncSequence {{",
             "    public typealias Element = Request",
-            "    fileprivate let base: GRPCAsyncRequestStream<ForyMessage<Request>>",
+            f"    fileprivate let base: GRPCAsyncRequestStream<{base}Message<Request>>",
             "    public struct AsyncIterator: AsyncIteratorProtocol {",
-            "        fileprivate var base: GRPCAsyncRequestStream<ForyMessage<Request>>.AsyncIterator",
+            f"        fileprivate var base: GRPCAsyncRequestStream<{base}Message<Request>>.AsyncIterator",
             "        public mutating func next() async throws -> Request? {",
             "            try await base.next()?.value",
             "        }",
@@ -274,9 +274,9 @@ class SwiftServiceMixin:
             _ASYNC_AVAILABLE,
             f"public struct {base}ResponseStream<Response: Serializer>: AsyncSequence {{",
             "    public typealias Element = Response",
-            "    fileprivate let base: GRPCAsyncResponseStream<ForyMessage<Response>>",
+            f"    fileprivate let base: GRPCAsyncResponseStream<{base}Message<Response>>",
             "    public struct AsyncIterator: AsyncIteratorProtocol {",
-            "        fileprivate var base: GRPCAsyncResponseStream<ForyMessage<Response>>.AsyncIterator",
+            f"        fileprivate var base: GRPCAsyncResponseStream<{base}Message<Response>>.AsyncIterator",
             "        public mutating func next() async throws -> Response? {",
             "            try await base.next()?.value",
             "        }",
@@ -352,14 +352,14 @@ class SwiftServiceMixin:
             f'        case "{method.name}":',
             f"            return {self._server_handler(mode)}(",
             "                context: context,",
-            f"                requestDeserializer: GRPCPayloadDeserializer<ForyMessage<{req}>>(),",
-            f"                responseSerializer: GRPCPayloadSerializer<ForyMessage<{res}>>(),",
+            f"                requestDeserializer: GRPCPayloadDeserializer<{base}Message<{req}>>(),",
+            f"                responseSerializer: GRPCPayloadSerializer<{base}Message<{res}>>(),",
             "                interceptors: [],",
         ]
         if mode is StreamingMode.UNARY:
             head.append(
                 f"                userFunction: {{ req, ctx in "
-                f"self.{name}(request: req.value, context: ctx).map {{ ForyMessage($0) }} }})"
+                f"self.{name}(request: req.value, context: ctx).map {{ {base}Message($0) }} }})"
             )
         elif mode is StreamingMode.SERVER_STREAMING:
             head += [
@@ -388,7 +388,7 @@ class SwiftServiceMixin:
             "                observerFactory: { ctx in",
             f"                    self.{name}(context: {base}{ctx_kind}(base: ctx))"
             ".map { observer in",
-            f"                        {{ (event: StreamEvent<ForyMessage<{req}>>) in",
+            f"                        {{ (event: StreamEvent<{base}Message<{req}>>) in",
             "                            switch event {",
             "                            case .message(let wrapped): "
             "observer(.message(wrapped.value))",
@@ -476,13 +476,13 @@ class SwiftServiceMixin:
             f'        case "{method.name}":',
             "            return GRPCAsyncServerHandler(",
             "                context: context,",
-            f"                requestDeserializer: GRPCPayloadDeserializer<ForyMessage<{req}>>(),",
-            f"                responseSerializer: GRPCPayloadSerializer<ForyMessage<{res}>>(),",
+            f"                requestDeserializer: GRPCPayloadDeserializer<{base}Message<{req}>>(),",
+            f"                responseSerializer: GRPCPayloadSerializer<{base}Message<{res}>>(),",
             "                interceptors: [],",
         ]
         if mode is StreamingMode.UNARY:
             head.append(
-                f"                wrapping: {{ ForyMessage("
+                f"                wrapping: {{ {base}Message("
                 f"try await self.{name}(request: $0.value, context: $1)) }})"
             )
         elif mode is StreamingMode.SERVER_STREAMING:
@@ -497,7 +497,7 @@ class SwiftServiceMixin:
         elif mode is StreamingMode.CLIENT_STREAMING:
             head += [
                 "                wrapping: {",
-                f"                    ForyMessage(try await self.{name}(",
+                f"                    {base}Message(try await self.{name}(",
                 f"                        requestStream: {base}AsyncRequestStream(base: $0),",
                 "                        context: $1))",
                 "                })",
@@ -539,9 +539,9 @@ class SwiftServiceMixin:
         if mode is StreamingMode.UNARY:
             return [
                 f"    public func {name}(_ request: {req}) async throws -> {res} {{",
-                f"        let response: ForyMessage<{res}> = try await performAsyncUnaryCall(",
+                f"        let response: {base}Message<{res}> = try await performAsyncUnaryCall(",
                 f"            path: {path},",
-                "            request: ForyMessage(request), callOptions: defaultCallOptions)",
+                f"            request: {base}Message(request), callOptions: defaultCallOptions)",
                 "        return response.value",
                 "    }",
             ]
@@ -550,7 +550,7 @@ class SwiftServiceMixin:
                 f"    public func {name}(_ request: {req}) -> {base}ResponseStream<{res}> {{",
                 f"        {base}ResponseStream(base: performAsyncServerStreamingCall(",
                 f"            path: {path},",
-                "            request: ForyMessage(request), callOptions: defaultCallOptions))",
+                f"            request: {base}Message(request), callOptions: defaultCallOptions))",
                 "    }",
             ]
         if mode is StreamingMode.CLIENT_STREAMING:
@@ -558,9 +558,9 @@ class SwiftServiceMixin:
                 f"    public func {name}<S: AsyncSequence & Sendable>(_ requests: S)"
                 f" async throws -> {res}",
                 f"    where S.Element == {req} {{",
-                f"        let response: ForyMessage<{res}> = try await performAsyncClientStreamingCall(",
+                f"        let response: {base}Message<{res}> = try await performAsyncClientStreamingCall(",
                 f"            path: {path},",
-                "            requests: requests.map { ForyMessage($0) }, callOptions: defaultCallOptions)",
+                f"            requests: requests.map {{ {base}Message($0) }}, callOptions: defaultCallOptions)",
                 "        return response.value",
                 "    }",
             ]
@@ -570,6 +570,6 @@ class SwiftServiceMixin:
             f"    where S.Element == {req} {{",
             f"        {base}ResponseStream(base: performAsyncBidirectionalStreamingCall(",
             f"            path: {path},",
-            "            requests: requests.map { ForyMessage($0) }, callOptions: defaultCallOptions))",
+            f"            requests: requests.map {{ {base}Message($0) }}, callOptions: defaultCallOptions))",
             "    }",
         ]
