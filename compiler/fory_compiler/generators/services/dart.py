@@ -30,6 +30,25 @@ class DartServiceGeneratorMixin:
     _DART_RESERVED_METHOD_NAMES = frozenset(
         {"toString", "hashCode", "noSuchMethod", "runtimeType"}
     )
+    _DART_GRPC_SUPPORT_NAMES = frozenset(
+        {
+            "CallOptions",
+            "Client",
+            "ClientMethod",
+            "Future",
+            "List",
+            "ResponseFuture",
+            "ResponseStream",
+            "Service",
+            "ServiceCall",
+            "ServiceMethod",
+            "Stream",
+            "String",
+            "T",
+            "Uint8List",
+            "int",
+        }
+    )
 
     def generate_services(self) -> List[GeneratedFile]:
         local_services = [
@@ -182,7 +201,8 @@ class DartServiceGeneratorMixin:
         return alias
 
     def _dart_grpc_reserved_import_aliases(self, services: List[Service]) -> Set[str]:
-        aliases = {self._grpc_model_alias, "_serialize", "_deserialize"}
+        aliases = set(self._DART_GRPC_SUPPORT_NAMES)
+        aliases.update({self._grpc_model_alias, "_serialize", "_deserialize"})
         for service in services:
             aliases.add(f"{service.name}Client")
             aliases.add(f"{service.name}ServiceBase")

@@ -3068,7 +3068,7 @@ def test_dart_grpc_streaming_shapes():
     ) in content
 
 
-def test_dart_grpc_service_codegen_uses_fory_codec():
+def test_dart_grpc_fory_codec():
     from fory_compiler.generators.dart import DartGenerator
 
     schema = parse_fdl(_GREETER_WITH_SERVICE)
@@ -3174,7 +3174,7 @@ def test_dart_grpc_method_collision():
     assert "sayHello" in msg
 
 
-def test_dart_grpc_proto_and_fbs_service_codegen():
+def test_dart_grpc_proto_fbs():
     from fory_compiler.generators.dart import DartGenerator
 
     proto_schema = parse_proto(
@@ -3293,7 +3293,7 @@ def test_dart_grpc_imported_rpc_payloads(tmp_path: Path):
     assert "_models.demo.common.Shared" not in content
 
 
-def test_dart_grpc_imported_model_name_collision(tmp_path: Path):
+def test_dart_imported_model_collision(tmp_path: Path):
     from fory_compiler.generators.dart import DartGenerator
 
     common = tmp_path / "common.fdl"
@@ -3375,7 +3375,7 @@ def test_dart_grpc_import_alias_collision(tmp_path: Path):
     assert "ServiceMethod<_models_2.Req, _models.Res>(" in content
 
 
-def test_dart_grpc_import_alias_avoids_helpers(tmp_path: Path):
+def test_dart_grpc_helper_alias(tmp_path: Path):
     from fory_compiler.generators.dart import DartGenerator
 
     common = tmp_path / "common.fdl"
@@ -3415,7 +3415,7 @@ def test_dart_grpc_import_alias_avoids_helpers(tmp_path: Path):
     assert "ServiceMethod<_serialize_2.Shared, _models.Res>(" in content
 
 
-def test_dart_grpc_import_alias_avoids_service_classes(tmp_path: Path):
+def test_dart_grpc_service_alias(tmp_path: Path):
     from fory_compiler.generators.dart import DartGenerator
 
     common = tmp_path / "common.fdl"
@@ -3456,7 +3456,48 @@ def test_dart_grpc_import_alias_avoids_service_classes(tmp_path: Path):
     assert "ServiceMethod<ApiClient_2.Shared, _models.Res>(" in content
 
 
-def test_dart_grpc_rejects_reserved_method_names():
+def test_dart_grpc_support_aliases(tmp_path: Path):
+    from fory_compiler.generators.dart import DartGenerator
+
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package Client;
+
+            message Shared {
+                string id = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Res {}
+
+            service Api {
+                rpc Call (Client.Shared) returns (Res);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    generator = DartGenerator(schema, GeneratorOptions(output_dir=tmp_path, grpc=True))
+    content = generator.generate_services()[0].content
+
+    assert "import '../../Client/Client.dart' as Client_2;" in content
+    assert "class ApiClient extends Client {" in content
+    assert "ClientMethod<Client_2.Shared, _models.Res>(" in content
+    assert "ServiceMethod<Client_2.Shared, _models.Res>(" in content
+
+
+def test_dart_grpc_reserved_methods():
     from fory_compiler.generators.dart import DartGenerator
 
     import pytest
