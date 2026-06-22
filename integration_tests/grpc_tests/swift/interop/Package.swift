@@ -17,6 +17,15 @@ let package = Package(
       ],
       path: "Sources/Generated"
     ),
+    .executableTarget(
+      name: "interop",
+      dependencies: [
+        "ForyGrpcGenerated",
+        .product(name: "GRPC", package: "grpc-swift"),
+        .product(name: "Fory", package: "swift"),
+      ],
+      path: "Sources/Interop"
+    ),
     .testTarget(
       name: "ForyGrpcTests",
       dependencies: [

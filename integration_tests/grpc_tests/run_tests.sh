@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest}"
+TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest,SwiftGrpcTest}"
 
 has_test_class() {
   [[ ",${TEST_CLASSES}," == *",$1,"* ]]
@@ -64,6 +64,10 @@ if command -v swift >/dev/null 2>&1 && [ -d "${SCRIPT_DIR}/swift/interop" ]; the
   if [[ "${FORY_SWIFT_TSAN:-}" == "1" ]]; then
     swift test --sanitize=thread
   fi
+fi
+if has_test_class "SwiftGrpcTest"; then
+  cd "${SCRIPT_DIR}/swift/interop"
+  swift build -c release --product interop
 fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \
