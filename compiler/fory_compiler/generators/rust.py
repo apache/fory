@@ -615,16 +615,16 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def generate_bytes_impl(self, type_name: str) -> List[str]:
         lines = []
         lines.append(f"impl {type_name} {{")
-        lines.append(
-            "    pub fn to_bytes(&self) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {"
-        )
+        lines.append("    pub fn to_bytes(")
+        lines.append("        &self,")
+        lines.append("    ) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {")
         lines.append("        let fory = detail::get_fory();")
         lines.append("        fory.serialize(self)")
         lines.append("    }")
         lines.append("")
-        lines.append(
-            f"    pub fn from_bytes(data: &[u8]) -> ::std::result::Result<{type_name}, ::fory::Error> {{"
-        )
+        lines.append("    pub fn from_bytes(")
+        lines.append("        data: &[u8],")
+        lines.append(f"    ) -> ::std::result::Result<{type_name}, ::fory::Error> {{")
         lines.append("        let fory = detail::get_fory();")
         lines.append("        fory.deserialize(data)")
         lines.append("    }")
@@ -1622,9 +1622,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         """Generate the Fory registration function."""
         lines = []
 
-        lines.append(
-            "pub fn register_types(fory: &mut ::fory::Fory) -> ::std::result::Result<(), ::fory::Error> {"
-        )
+        lines.append("pub fn register_types(")
+        lines.append("    fory: &mut ::fory::Fory,")
+        lines.append(") -> ::std::result::Result<(), ::fory::Error> {")
 
         # Register enums (top-level)
         for enum in self.schema.enums:
@@ -1655,9 +1655,8 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         lines.append("    use super::*;")
         lines.append("")
         lines.append("    pub(super) fn get_fory() -> &'static ::fory::Fory {")
-        lines.append(
-            "        static FORY: ::std::sync::OnceLock<::fory::Fory> = ::std::sync::OnceLock::new();"
-        )
+        lines.append("        static FORY: ::std::sync::OnceLock<::fory::Fory> =")
+        lines.append("            ::std::sync::OnceLock::new();")
         lines.append("        FORY.get_or_init(|| {")
         lines.append("            let mut fory = ::fory::Fory::builder()")
         lines.append("                .xlang(true)")
