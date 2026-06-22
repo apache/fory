@@ -38,7 +38,7 @@ OUTPUTS = {
     "rust": TEST_DIR / "rust/generated/src",
     "csharp": TEST_DIR / "csharp/generated",
     "kotlin": TEST_DIR / "kotlin/src/main/kotlin/generated",
-    "swift": TEST_DIR / "swift/generated",
+    "swift": TEST_DIR / "swift/interop/Sources/Generated",
     "dart": TEST_DIR / "dart/lib/generated",
 }
 
