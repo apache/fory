@@ -1525,9 +1525,11 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
     def generate_fory_helpers(self) -> List[str]:
         lines: List[str] = []
         lines.append("func createFory() *fory.Fory {")
-        lines.append(
-            "\tf := fory.New(fory.WithXlang(true), fory.WithRefTracking(true), fory.WithCompatible(true))"
-        )
+        lines.append("\tf := fory.New(")
+        lines.append("\t\tfory.WithXlang(true),")
+        lines.append("\t\tfory.WithRefTracking(true),")
+        lines.append("\t\tfory.WithCompatible(true),")
+        lines.append("\t)")
         for alias, _, _ in self._collect_imported_type_infos():
             lines.append(f"\tif err := {alias}.RegisterTypes(f); err != nil {{")
             lines.append("\t\tpanic(err)")
