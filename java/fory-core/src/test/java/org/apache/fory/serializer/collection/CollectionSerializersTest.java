@@ -1159,6 +1159,7 @@ public class CollectionSerializersTest extends ForyTestBase {
       queue.add(2);
       LinkedBlockingQueue<Integer> deserialized = serDe(fory, queue);
       assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), Integer.MAX_VALUE);
     }
   }
 
