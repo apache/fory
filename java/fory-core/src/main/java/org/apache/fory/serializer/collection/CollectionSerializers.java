@@ -994,7 +994,6 @@ public class CollectionSerializers {
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
-      buffer.checkReadableBytes(capacity);
       LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;
