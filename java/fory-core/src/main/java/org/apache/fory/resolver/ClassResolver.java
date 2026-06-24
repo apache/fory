@@ -207,7 +207,7 @@ import org.apache.fory.util.record.RecordUtils;
  */
 @NotThreadSafe
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class ClassResolver extends TypeResolver {
+public class    ClassResolver extends TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   public static final int NATIVE_START_ID = Types.BOUND;
