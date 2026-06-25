@@ -321,8 +321,9 @@ public:
 /// ```
 template <typename E> class Result<void, E> {
 private:
-  using ErrorStorage =
-      typename std::aligned_storage<sizeof(E), alignof(E)>::type;
+  using ErrorStorage = struct alignas(E) {
+    std::byte data[sizeof(E)];
+  };
 
   ErrorStorage error_storage_;
   bool has_value_;
