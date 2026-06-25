@@ -84,6 +84,7 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
@@ -456,14 +457,52 @@ public class ForyCopyTest extends ForyTestBase {
     }
   }
 
-    @Test
-    public void testCopyNonSerializablePackage() {
-        Fory fory = Fory.builder()
-                .withLanguage(Language.JAVA)
-                .withRefCopy(true)
-                .requireClassRegistration(false)   // get past the registration gate
-                .build();
-        Package pkg = String.class.getPackage(); // java.lang
-        Package copy = fory.copy(pkg);           // now expect the real bug
-    }
+  @Test
+  public void testCopyNonSerializableJdkClass(){
+      // Issue #2941: copying an object that is (or contains) a non-serializable JDK class
+      // like java.lang.Package used to throw. It should now succeed.
+
+      Fory fory = Fory.builder()
+              .withLanguage(Language.JAVA)
+              .requireClassRegistration(false)
+              .build();
+      Package pkg = String.class.getPackage();
+      Package copy = fory.copy(pkg);
+      Assert.assertNotNull(copy);
+  }
+
+  @Test
+  public void testCopyHashMapStillWorks(){
+      // Regression for chaokunyang's concern (comments on issue #2941): HashMap keeps
+      //essential state (size, table) in transient field. The copy path copies all fields
+      // including transient, so this must still produce an equal map.
+      Fory fory = Fory.builder()
+              .withLanguage(Language.JAVA)
+              .requireClassRegistration(false)
+              .build();
+      Map<String, Integer> map = new HashMap<>();
+      map.put("a", 1);
+      map.put("b", 2);
+      Map<String, Integer> copy = fory.copy(map);
+      Assert.assertEquals(map, copy);
+  }
+
+  @Test
+  public void testSerializeNonSerializableJdkClassStillThrows(){
+      // Regression guard: we must not have weakened serialization. Serliazing a
+      // non-serliazable JDK class must still throw, jsut defered to write time.
+
+      Fory fory = Fory.builder()
+              .withLanguage(Language.JAVA)
+              .requireClassRegistration(false)
+              .build();
+      try {
+          fory.serialize(String.class.getPackage());
+          Assert.fail("Expected serialization of java.lang.Package to fail");
+      } catch (SerializationException e) {
+          Assert.assertTrue(e.getCause() instanceof UnsupportedOperationException);
+          Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
+      }
+  }
+
 }
