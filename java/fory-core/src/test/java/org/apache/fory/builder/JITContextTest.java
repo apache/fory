@@ -20,6 +20,8 @@
 package org.apache.fory.builder;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableSet;
@@ -34,6 +36,7 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
+import org.apache.fory.codegen.CompileUnit.DefinitionMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
@@ -200,10 +203,7 @@ public class JITContextTest extends ForyTestBase {
   }
 
   @Test(timeOut = 60000)
-  public void testHiddenGeneratedSerializerFieldAccessAllowAllTypes() throws Exception {
-    if (JdkVersion.MAJOR_VERSION < 15) {
-      return;
-    }
+  public void testGeneratedSerializerFieldAccessAllowAllTypes() throws Exception {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -217,18 +217,18 @@ public class JITContextTest extends ForyTestBase {
         new ContainerPayload(new NestedPayload(1, "name"), new PayloadDetails("category", true));
     assertContainerPayloadRoundTrip(fory, value);
 
-    Class<?> serializerClass = compileHiddenGeneratedSerializerClass();
+    Class<?> serializerClass = compileGeneratedSerializerClass();
+    assertGeneratedSerializerClassShape(serializerClass);
     Object generatedSerializer = serializerClass.getConstructor().newInstance();
     Field field = serializerClass.getDeclaredField("serializer1");
     Serializer<?> nestedSerializer = fory.getTypeResolver().getSerializer(NestedPayload.class);
 
     ReflectionUtils.setObjectFieldValue(generatedSerializer, field, nestedSerializer);
 
-    Assert.assertSame(
-        ReflectionUtils.getObjectFieldValue(generatedSerializer, field), nestedSerializer);
+    assertSame(ReflectionUtils.getObjectFieldValue(generatedSerializer, field), nestedSerializer);
   }
 
-  private static Class<?> compileHiddenGeneratedSerializerClass() {
+  private static Class<?> compileGeneratedSerializerClass() {
     String pkg = JITContextTest.class.getPackage().getName();
     CompileUnit unit =
         new CompileUnit(
@@ -241,9 +241,18 @@ public class JITContextTest extends ForyTestBase {
                 + "public class ContainerPayloadForyCodec_0 {\n"
                 + "  public Serializer serializer1;\n"
                 + "}"),
-            JITContextTest.class);
+            JITContextTest.class,
+            DefinitionMode.NORMAL);
     return new CodeGenerator(JITContextTest.class.getClassLoader())
         .compileAndLoad(unit, compileState -> compileState.lock.lock());
+  }
+
+  private static void assertGeneratedSerializerClassShape(Class<?> serializerClass)
+      throws ReflectiveOperationException {
+    assertSame(serializerClass.getClassLoader(), JITContextTest.class.getClassLoader());
+    if (JdkVersion.MAJOR_VERSION >= 15) {
+      assertFalse((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
+    }
   }
 
   private static void assertContainerPayloadRoundTrip(Fory fory, ContainerPayload value) {

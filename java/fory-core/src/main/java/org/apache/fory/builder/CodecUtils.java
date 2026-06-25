@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
+import org.apache.fory.codegen.CompileUnit.DefinitionMode;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.AndroidSupport;
@@ -138,7 +139,8 @@ public class CodecUtils {
             CodeGenerator.getPackage(beanClass),
             codecBuilder.codecClassName(beanClass),
             codecBuilder::genCode,
-            neighborClass);
+            neighborClass,
+            DefinitionMode.NORMAL);
     return (Class<? extends Serializer>)
         codeGenerator.compileAndLoad(compileUnit, compileState -> compileState.lock.lock());
   }

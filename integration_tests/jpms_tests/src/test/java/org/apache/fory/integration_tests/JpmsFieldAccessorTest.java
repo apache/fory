@@ -130,9 +130,8 @@ public class JpmsFieldAccessorTest {
     Assert.assertEquals(result.value(), 17);
 
     Class<?> serializerClass = serializerClass(fory, PrivateFieldBean.class);
-    Assert.assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
-    Assert.assertSame(
-        Class.class.getMethod("getNestHost").invoke(serializerClass), PrivateFieldBean.class);
+    Assert.assertFalse((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
+    Assert.assertSame(serializerClass.getClassLoader(), PrivateFieldBean.class.getClassLoader());
     assertVarHandleField(serializerClass, "value");
   }
 
