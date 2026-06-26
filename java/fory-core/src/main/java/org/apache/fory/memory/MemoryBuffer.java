@@ -77,6 +77,7 @@ public final class MemoryBuffer {
   private static final int LONG_ARRAY_OFFSET;
   private static final int FLOAT_ARRAY_OFFSET;
   private static final int DOUBLE_ARRAY_OFFSET;
+  private static final int OBJECT_ARRAY_INDEX_SCALE;
 
   // GraalVM native-image recognizes arrayBaseOffset only when the call stores directly into the
   // target static field. Keep these assignments in this shape so native images recompute heap array
@@ -91,6 +92,7 @@ public final class MemoryBuffer {
       LONG_ARRAY_OFFSET = 0;
       FLOAT_ARRAY_OFFSET = 0;
       DOUBLE_ARRAY_OFFSET = 0;
+      OBJECT_ARRAY_INDEX_SCALE = 4;
     } else {
       BOOLEAN_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(boolean[].class);
       BYTE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(byte[].class);
@@ -100,6 +102,7 @@ public final class MemoryBuffer {
       LONG_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(long[].class);
       FLOAT_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(float[].class);
       DOUBLE_ARRAY_OFFSET = UNSAFE.arrayBaseOffset(double[].class);
+      OBJECT_ARRAY_INDEX_SCALE = UNSAFE.arrayIndexScale(Object[].class);
     }
   }
 
@@ -4183,6 +4186,10 @@ public final class MemoryBuffer {
     }
     long offHeapAddress = getAddress(buffer) + buffer.position();
     return new MemoryBuffer(offHeapAddress, size, buffer, streamReader);
+  }
+
+  public static int objectArrayIndexScale() {
+    return OBJECT_ARRAY_INDEX_SCALE > 0 ? OBJECT_ARRAY_INDEX_SCALE : 4;
   }
 
   /**

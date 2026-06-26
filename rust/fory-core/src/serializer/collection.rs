@@ -239,6 +239,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
+    let len_usize = context.reserve_collection_memory::<C, T>(len)?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -257,7 +258,7 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    let _ = check_collection_len(context, len)?;
+    context.reader.check_bound(len_usize)?;
     if !has_null {
         (0..len)
             .map(|_| T::fory_read_data(context))
@@ -281,6 +282,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
+    let len_usize = context.reserve_vec_memory::<T>(len)?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -297,7 +299,8 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+    context.reader.check_bound(len_usize)?;
+    let mut vec = Vec::with_capacity(len_usize);
     if !has_null {
         for _ in 0..len {
             vec.push(T::fory_read_data(context)?);
@@ -343,7 +346,8 @@ where
         } else {
             T::fory_get_type_info(context.get_type_resolver())?
         };
-        let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+        let len_usize = check_collection_len(context, len)?;
+        let mut vec = Vec::with_capacity(len_usize);
         if elem_ref_mode == RefMode::None {
             for _ in 0..len {
                 vec.push(T::fory_read_with_type_info(
@@ -363,7 +367,8 @@ where
         }
         Ok(vec)
     } else {
-        let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+        let len_usize = check_collection_len(context, len)?;
+        let mut vec = Vec::with_capacity(len_usize);
         for _ in 0..len {
             vec.push(T::fory_read(context, elem_ref_mode, true)?);
         }
@@ -724,6 +729,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
+    let len_usize = context.reserve_vec_memory::<T>(len)?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -748,8 +754,8 @@ where
             "array-compatible list must declare element type",
         ));
     }
-    context.reader.check_bound(len as usize)?;
-    let mut vec = Vec::with_capacity(len as usize);
+    context.reader.check_bound(len_usize)?;
+    let mut vec = Vec::with_capacity(len_usize);
     for _ in 0..len {
         vec.push(T::read_list_array_element(context, element_type.type_id)?);
     }

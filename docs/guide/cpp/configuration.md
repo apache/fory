@@ -96,6 +96,29 @@ When enabled, avoids duplicating shared objects and handles cycles.
 
 **Default:** `true`
 
+### max_container_memory_bytes(int64_t)
+
+Set the maximum estimated memory that container objects may reserve during one
+root deserialization.
+
+```cpp
+auto fory = Fory::builder()
+    .max_container_memory_bytes(64 * 1024 * 1024)
+    .build();
+```
+
+Use `-1` for the automatic limit. For byte-array and `Buffer` roots, the
+automatic limit is the root input size multiplied by `8`, plus `64 KiB`. For
+stream roots, the automatic limit is `128 MiB` because the full root size is not
+known up front. Positive values always override the automatic limit.
+
+This budget is an estimate for container-owned memory such as collection
+objects, backing storage, map entries, and object/reference arrays. It is not an
+exact process heap limit. Dedicated string, binary, and primitive dense-array
+payloads continue to rely on their byte-availability checks instead.
+
+**Default:** `-1`
+
 ### max_dyn_depth(uint32_t)
 
 Set maximum allowed nesting depth for dynamically-typed objects.
@@ -205,6 +228,7 @@ auto fory = Fory::builder().build_thread_safe();  // Returns ThreadSafeFory
 | `xlang(bool)`                                    | Use xlang mode                                    | `true`  |
 | `compatible(bool)`                               | Enable schema evolution                           | `true`  |
 | `track_ref(bool)`                                | Enable reference tracking                         | `true`  |
+| `max_container_memory_bytes(int64_t)`            | Max estimated container memory per root read      | `-1`    |
 | `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`     |
 | `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`   |
 | `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`  |
@@ -218,6 +242,8 @@ Security-related configuration:
 
 - Register all structs and polymorphic implementations before deserializing untrusted payloads.
 - Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
+- Leave `max_container_memory_bytes(-1)` enabled for automatic root-size-based container limits, or
+  set a positive value for a stricter trusted-workload envelope.
 - Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
   graphs.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a

@@ -69,6 +69,7 @@ type Config struct {
 	MaxDepth                        int
 	IsXlang                         bool
 	Compatible                      bool // Schema evolution compatibility mode
+	MaxContainerMemoryBytes         int64
 	MaxTypeFields                   int
 	MaxTypeMetaBytes                int
 	MaxSchemaVersionsPerType        int
@@ -82,6 +83,7 @@ func defaultConfig() Config {
 		MaxDepth:                        20,
 		IsXlang:                         true,
 		MaxTypeFields:                   512,
+		MaxContainerMemoryBytes:         -1,
 		MaxTypeMetaBytes:                4096,
 		MaxSchemaVersionsPerType:        10,
 		MaxAverageSchemaVersionsPerType: 3,
@@ -107,6 +109,17 @@ func WithRefTracking(enabled bool) Option {
 func WithMaxDepth(depth int) Option {
 	return func(f *Fory) {
 		f.config.MaxDepth = depth
+	}
+}
+
+// WithMaxContainerMemoryBytes sets the maximum estimated container-owned memory accepted during one root deserialization.
+// Use -1 for the automatic input-shaped limit.
+func WithMaxContainerMemoryBytes(size int64) Option {
+	if size != -1 && size <= 0 {
+		panic("MaxContainerMemoryBytes must be positive or -1 for auto")
+	}
+	return func(f *Fory) {
+		f.config.MaxContainerMemoryBytes = size
 	}
 }
 
@@ -218,6 +231,7 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
+	f.readCtx.maxContainerMemoryBytes = f.config.MaxContainerMemoryBytes
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
@@ -556,6 +570,10 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
+	f.readCtx.initContainerMemoryBudget(len(data), false)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -1016,6 +1034,10 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
+	f.readCtx.initContainerMemoryBudget(len(data), false)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
 
 	// ReadData and validate header
 	readHeader(f.readCtx)

@@ -466,9 +466,9 @@ Container read_union_configured_list_data(ReadContext &ctx) {
   uint32_t length = ctx.read_var_uint32(ctx.error());
   Container result;
   if (length == 0) {
-    return result;
-  }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_collection<Container>(ctx))) {
+      return result;
+    }
     return result;
   }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
@@ -482,6 +482,9 @@ Container read_union_configured_list_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
+  }
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
   }
   for (uint32_t i = 0; i < length; ++i) {
     if constexpr (ElemNode >= 0) {
@@ -553,6 +556,9 @@ MapType read_union_configured_map_data(ReadContext &ctx) {
   uint32_t length = ctx.read_var_uint32(ctx.error());
   MapType result;
   if (length == 0) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
+      return result;
+    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {

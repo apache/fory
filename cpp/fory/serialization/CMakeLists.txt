@@ -102,6 +102,11 @@ if(FORY_BUILD_TESTS)
     target_link_libraries(fory_serialization_map_test fory_serialization GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_serialization_map_test)
 
+    add_executable(fory_serialization_container_memory_budget_test container_memory_budget_test.cc)
+    fory_configure_target(fory_serialization_container_memory_budget_test)
+    target_link_libraries(fory_serialization_container_memory_budget_test fory_serialization GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_serialization_container_memory_budget_test)
+
     add_executable(fory_serialization_variant_test variant_serializer_test.cc)
     fory_configure_target(fory_serialization_variant_test)
     target_link_libraries(fory_serialization_variant_test fory_serialization GTest::gtest GTest::gtest_main)

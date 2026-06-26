@@ -261,6 +261,18 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the maximum estimated container-owned memory accepted during one root deserialization.
+    ///
+    /// Use `-1` for the automatic input-shaped limit. Positive values are explicit byte limits.
+    pub fn max_container_memory_bytes(mut self, max_bytes: i64) -> Self {
+        assert!(
+            max_bytes == -1 || max_bytes > 0,
+            "max_container_memory_bytes must be positive or -1 for auto"
+        );
+        self.config.max_container_memory_bytes = max_bytes;
+        self
+    }
+
     /// Sets the maximum depth for nested dynamic object serialization.
     ///
     /// # Arguments
@@ -988,7 +1000,13 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = self.deserialize_with_context(context);
+            let result = match context.init_container_memory_budget(bf.len()) {
+                Ok(()) => self.deserialize_with_context(context),
+                Err(err) => {
+                    context.reset();
+                    Err(err)
+                }
+            };
             context.detach_reader();
             result
         })
@@ -1050,8 +1068,15 @@ impl Fory {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
+            let root_input_bytes = reader.bf.len().saturating_sub(reader.cursor);
             context.attach_reader(new_reader);
-            let result = self.deserialize_with_context(context);
+            let result = match context.init_container_memory_budget(root_input_bytes) {
+                Ok(()) => self.deserialize_with_context(context),
+                Err(err) => {
+                    context.reset();
+                    Err(err)
+                }
+            };
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);
             result

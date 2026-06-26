@@ -51,6 +51,19 @@ public final class ArraySerializers {
     throw new DeserializationException("Object array size must be non-negative: " + size);
   }
 
+  private static int readObjectArraySize(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int numElements = buffer.readVarUInt32Small7();
+    // Keep this as direct primitive branches. Object-array reads allocate immediately; using
+    // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
+    if (numElements < 0) {
+      throwInvalidObjectArraySize(numElements);
+    }
+    readContext.reserveObjectArrayMemory(numElements);
+    buffer.checkReadableBytes(numElements);
+    return numElements;
+  }
+
   /**
    * Returns the object-array serializer for {@code cls}.
    *
@@ -128,14 +141,7 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {
@@ -213,14 +219,7 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {
@@ -654,14 +653,7 @@ public final class ArraySerializers {
 
     @Override
     public Object[] read(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = buffer.readVarUInt32Small7();
-      // Keep this as direct primitive branches. Object-array reads allocate immediately; using
-      // Preconditions.checkArgument here would add helper/varargs overhead on the valid path.
-      if (numElements < 0) {
-        throwInvalidObjectArraySize(numElements);
-      }
-      buffer.checkReadableBytes(numElements);
+      int numElements = readObjectArraySize(readContext);
       Object[] value = newArray(numElements);
       readContext.reference(value);
       if (numElements != 0) {

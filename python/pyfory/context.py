@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import struct
+
 from pyfory.serialization import Config
 from pyfory.lib import mmh3
 from pyfory.meta.metastring import Encoding
@@ -37,6 +39,14 @@ INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
 STRING_TYPE_ID = TypeId.STRING
+_KNOWN_ROOT_BUDGET_MULTIPLIER = 8
+_KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
+_STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
+_COLLECTION_OBJECT_BYTES = 56
+_MAP_OBJECT_BYTES = 64
+_MAP_ENTRY_BYTES = 32
+_REFERENCE_BYTES = struct.calcsize("P")
+_MAX_CONTAINER_MEMORY_BYTES = (1 << 63) - 1
 
 
 def _mix64(x: int) -> int:
@@ -470,6 +480,9 @@ class ReadContext:
         "field_nullable",
         "policy",
         "max_depth",
+        "max_container_memory_bytes",
+        "container_memory_limit_bytes",
+        "remaining_container_memory_bytes",
         "ref_reader",
         "meta_string_reader",
         "meta_share_context",
@@ -490,6 +503,9 @@ class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
+        self.max_container_memory_bytes = config.max_container_memory_bytes
+        self.container_memory_limit_bytes = 0
+        self.remaining_container_memory_bytes = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -520,11 +536,26 @@ class ReadContext:
         buffers=None,
         unsupported_objects=None,
         peer_out_of_band_enabled=False,
+        root_input_bytes=None,
     ):
+        if self.max_container_memory_bytes > 0:
+            limit = self.max_container_memory_bytes
+        elif buffer.has_input_stream():
+            limit = _STREAM_ROOT_BUDGET_BYTES
+        else:
+            if root_input_bytes is None:
+                root_input_bytes = buffer.size() - buffer.get_reader_index()
+            if root_input_bytes < 0:
+                raise ValueError("root input byte count is negative")
+            if root_input_bytes > (_MAX_CONTAINER_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
+                raise ValueError("max_container_memory_bytes auto budget overflow")
+            limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
         self.buffer = buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
+        self.container_memory_limit_bytes = limit
+        self.remaining_container_memory_bytes = limit
         self.depth = 0
 
     def reset(self):
@@ -538,7 +569,39 @@ class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
+        self.container_memory_limit_bytes = 0
+        self.remaining_container_memory_bytes = 0
         self.depth = 0
+
+    def reserve_container_memory(self, num_bytes):
+        if num_bytes < 0:
+            raise ValueError("Estimated container memory is negative")
+        if num_bytes > _MAX_CONTAINER_MEMORY_BYTES:
+            raise ValueError("Estimated container memory overflow")
+        remaining = self.remaining_container_memory_bytes
+        if num_bytes > remaining:
+            used = self.container_memory_limit_bytes - remaining
+            raise ValueError(
+                f"Estimated container memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.container_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_container_memory_bytes=...) for trusted larger payloads."
+            )
+        self.remaining_container_memory_bytes = remaining - num_bytes
+
+    def reserve_collection_memory(self, num_elements):
+        if num_elements < 0:
+            raise ValueError("Container element count is negative")
+        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _COLLECTION_OBJECT_BYTES) // _REFERENCE_BYTES:
+            raise ValueError("Estimated container memory overflow")
+        self.reserve_container_memory(_COLLECTION_OBJECT_BYTES + num_elements * _REFERENCE_BYTES)
+
+    def reserve_map_memory(self, num_elements):
+        if num_elements < 0:
+            raise ValueError("Map entry count is negative")
+        bytes_per_entry = _MAP_ENTRY_BYTES + 5 * _REFERENCE_BYTES
+        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _MAP_OBJECT_BYTES) // bytes_per_entry:
+            raise ValueError("Estimated container memory overflow")
+        self.reserve_container_memory(_MAP_OBJECT_BYTES + num_elements * bytes_per_entry)
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

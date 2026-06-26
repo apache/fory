@@ -14,6 +14,15 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Java root deserialization container memory budgeting belongs to `ReadContext`
+  and is initialized by `Fory` root APIs. Public config is
+  `maxContainerMemoryBytes` with `-1` auto, positive explicit override,
+  known-length auto `inputBytes * 8 + 64 KiB`, and stream/unknown auto
+  `128 MiB`. Collection/map/object-array serializers should charge estimated
+  container-owned memory before allocation while preserving existing
+  `checkReadableBytes` guards before backing allocation or capacity
+  reservation. Do not add nested serializer-path `try/finally`, per-element
+  work, or dynamic stream bytes-read accounting for this budget.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.

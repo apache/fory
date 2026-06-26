@@ -46,7 +46,7 @@ public class MemoryBufferObjectOutputTest {
       output.writeChars("abc");
       output.writeUTF("abc");
     }
-    fory.getReadContext().prepare(buffer, null, false);
+    fory.getReadContext().prepare(buffer, null, false, buffer.remaining(), false);
     try (MemoryBufferObjectInput input =
         new MemoryBufferObjectInput(fory.getConfig(), fory.getReadContext())) {
       assertEquals(input.readByte(), 1);

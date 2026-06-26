@@ -35,12 +35,6 @@ const TRACKING_VALUE_REF: u8 = 0b1000;
 pub const VALUE_NULL: u8 = 0b10000;
 pub const DECL_VALUE_TYPE: u8 = 0b100000;
 
-fn check_map_len(context: &ReadContext, len: u32) -> Result<usize, Error> {
-    let len = len as usize;
-    context.reader.check_bound(len)?;
-    Ok(len)
-}
-
 fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) {
     context.writer.set_bytes(header_offset + 1, &[size]);
 }
@@ -559,10 +553,11 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
+        let capacity = context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
-        let capacity = check_map_len(context, len)?;
+        context.reader.check_bound(capacity)?;
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()
             || V::fory_is_polymorphic()
@@ -711,10 +706,11 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
+        let len_usize = context.reserve_map_memory::<BTreeMap<K, V>, K, V>(len)?;
         if len == 0 {
             return Ok(BTreeMap::new());
         }
-        let _ = check_map_len(context, len)?;
+        context.reader.check_bound(len_usize)?;
         let mut map = BTreeMap::<K, V>::new();
         if K::fory_is_polymorphic()
             || K::fory_is_shared_ref()

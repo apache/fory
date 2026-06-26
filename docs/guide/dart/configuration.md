@@ -38,6 +38,7 @@ final fory = Fory(
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
   maxAverageSchemaVersionsPerType: 3,
+  maxContainerMemoryBytes: 64 * 1024 * 1024,
 );
 ```
 
@@ -107,6 +108,27 @@ final fory = Fory(
 - `maxAverageSchemaVersionsPerType` limits the average across accepted remote types. The
   effective global floor is `8192` schemas.
 
+### `maxContainerMemoryBytes`
+
+Limits estimated container-owned memory for one root deserialization. The budget covers Dart lists,
+sets, maps, object/reference arrays, and compatible list/array materialization. It does not count
+strings, binary values, or dense typed-array payloads, which are protected by byte-availability
+checks.
+
+The default is `-1`, which means auto. Dart root inputs are memory-backed, so auto derives from the
+root input size:
+
+```text
+inputBytes * 8 + 64 KiB
+```
+
+Set a positive value when a trusted workload legitimately contains compact, container-heavy
+payloads:
+
+```dart
+final fory = Fory(maxContainerMemoryBytes: 256 * 1024 * 1024);
+```
+
 ## Defaults
 
 | Option                            | Default |
@@ -118,6 +140,7 @@ final fory = Fory(
 | `maxTypeMetaBytes`                | 4096    |
 | `maxSchemaVersionsPerType`        | 10      |
 | `maxAverageSchemaVersionsPerType` | 3       |
+| `maxContainerMemoryBytes`         | -1      |
 
 ## Xlang Notes
 
@@ -134,6 +157,8 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` to reject unexpectedly deep payload shapes.
+- Keep `maxContainerMemoryBytes` at the auto default for most inputs, or set an explicit positive
+  byte limit for known trusted container-heavy payloads.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.

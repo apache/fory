@@ -739,6 +739,43 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
   return result.value();
 }
 
+bool ReadContext::reserve_counted_container_checked(uint32_t length,
+                                                    size_t fixed_bytes,
+                                                    size_t elem_bytes) {
+  if (FORY_PREDICT_FALSE(
+          elem_bytes != 0 &&
+          static_cast<size_t>(length) >
+              (std::numeric_limits<size_t>::max() - fixed_bytes) /
+                  elem_bytes)) {
+    return set_container_memory_overflow(length, elem_bytes);
+  }
+  return reserve_container_memory(static_cast<size_t>(length) * elem_bytes +
+                                  fixed_bytes);
+}
+
+bool ReadContext::set_container_memory_error(const std::string &message) {
+  set_error(Error::invalid_data(message));
+  return false;
+}
+
+bool ReadContext::set_container_memory_overflow(uint32_t length,
+                                                size_t elem_bytes) {
+  set_error(Error::invalid_data(
+      "container memory estimate overflows: length=" + std::to_string(length) +
+      " elementBytes=" + std::to_string(elem_bytes)));
+  return false;
+}
+
+bool ReadContext::set_container_memory_exceeded(size_t bytes,
+                                                size_t remaining) {
+  set_error(Error::invalid_data(
+      "estimated container memory request " + std::to_string(bytes) +
+      " bytes exceeds max_container_memory_bytes remaining budget " +
+      std::to_string(remaining) + " bytes out of effective limit " +
+      std::to_string(container_memory_limit_bytes_) + " bytes"));
+  return false;
+}
+
 void ReadContext::reset() {
   // Clear error state first
   error_ = Error();
@@ -747,6 +784,9 @@ void ReadContext::reset() {
   }
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
+  // Root deserialization initializes the container budget before reading the
+  // header; direct ReadContext users start with the unlimited sentinel fields.
+  // Leave those fields untouched here so root guard cleanup stays store-light.
   if (meta_string_table_active_) {
     meta_string_table_.reset();
     meta_string_table_active_ = false;

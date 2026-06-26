@@ -25,6 +25,18 @@ import (
 type primitiveListSerializer struct {
 	type_      reflect.Type
 	elemTypeID TypeId
+	elemBytes  int64
+	maxLength  int64
+}
+
+func newPrimitiveList(type_ reflect.Type, elemTypeID TypeId, elemType reflect.Type) primitiveListSerializer {
+	elemBytes := int64(elemType.Size())
+	return primitiveListSerializer{
+		type_:      type_,
+		elemTypeID: elemTypeID,
+		elemBytes:  elemBytes,
+		maxLength:  maxSliceLength(elemBytes),
+	}
 }
 
 type compatiblePrimitiveListToArraySerializer struct {
@@ -39,43 +51,43 @@ func newPrimitiveListSerializer(type_ reflect.Type, elemTypeID TypeId) (Serializ
 	elemType := type_.Elem()
 	switch elemType.Kind() {
 	case reflect.Bool:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == BOOL
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == BOOL
 	case reflect.Int8:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT8
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT8
 	case reflect.Uint8:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT8
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT8
 	case reflect.Int16:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT16
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT16
 	case reflect.Uint16:
 		if elemType == float16Type {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT16
+			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT16
 		}
 		if elemType == bfloat16Type {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == BFLOAT16
+			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == BFLOAT16
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT16
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT16
 	case reflect.Int32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT32 || elemTypeID == VARINT32
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Int64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 	case reflect.Uint64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 	case reflect.Int:
 		if reflect.TypeOf(int(0)).Size() == 8 {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT32 || elemTypeID == VARINT32
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint:
 		if reflect.TypeOf(uint(0)).Size() == 8 {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Float32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT32
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT32
 	case reflect.Float64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT64
+		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT64
 	default:
 		return nil, false
 	}
@@ -167,6 +179,9 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	if ctx.HasError() {
 		return
 	}
+	if !ctx.reserveSliceMemory(length, s.elemBytes, s.maxLength) {
+		return
+	}
 	if length == 0 {
 		value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		return
@@ -228,6 +243,9 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if length == 0 {
 		if value.Kind() == reflect.Slice {
+			if !ctx.reserveSliceMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
+				return
+			}
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		} else if value.Len() != 0 {
 			ctx.SetError(DeserializationErrorf("array-compatible list length %d does not match array length %d", length, value.Len()))
@@ -266,6 +284,9 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 		return
 	}
 	if value.Kind() == reflect.Slice {
+		if !ctx.reserveSliceMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
+			return
+		}
 		temp := reflect.New(value.Type()).Elem()
 		s.listReader.readValues(buf, err, temp, length, false)
 		if ctx.HasError() {

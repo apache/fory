@@ -31,35 +31,43 @@ type sliceDynSerializer struct {
 	elemType        reflect.Type
 	isInterfaceElem bool
 	isPointerElem   bool
+	elemBytes       int64
+	maxLength       int64
 }
 
 // newSliceDynSerializer creates a new sliceDynSerializer.
 // This serializer is ONLY for slices with interface or pointer to interface element types.
 // For other slice types, use sliceSerializer instead.
-func newSliceDynSerializer(elemType reflect.Type) (sliceDynSerializer, error) {
+func newSliceDynSerializer(elemType reflect.Type) (*sliceDynSerializer, error) {
 	// Nil element type is allowed for fully dynamic slices (e.g., []any)
 	if elemType == nil {
-		return sliceDynSerializer{
+		elemBytes := containerSizeOf[any]()
+		return &sliceDynSerializer{
 			isInterfaceElem: true,
+			elemBytes:       elemBytes,
+			maxLength:       maxSliceLength(elemBytes),
 		}, nil
 	}
 	// Validate element type is interface or pointer to interface
 	isInterface := elemType.Kind() == reflect.Interface
 	isPointerToInterface := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Interface
 	if !isInterface && !isPointerToInterface {
-		return sliceDynSerializer{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"sliceDynSerializer only supports interface or pointer to interface element types, got %v; use sliceSerializer for other types", elemType)
 	}
-	return sliceDynSerializer{
+	elemBytes := int64(elemType.Size())
+	return &sliceDynSerializer{
 		elemType:        elemType,
 		isInterfaceElem: isInterface,
 		isPointerElem:   isPointerToInterface,
+		elemBytes:       elemBytes,
+		maxLength:       maxSliceLength(elemBytes),
 	}, nil
 }
 
 // mustNewSliceDynSerializer is like newSliceDynSerializer but panics on error.
 // Used for initialization code where the element type is known to be valid.
-func mustNewSliceDynSerializer(elemType reflect.Type) sliceDynSerializer {
+func mustNewSliceDynSerializer(elemType reflect.Type) *sliceDynSerializer {
 	s, err := newSliceDynSerializer(elemType)
 	if err != nil {
 		panic(err)
@@ -67,7 +75,7 @@ func mustNewSliceDynSerializer(elemType reflect.Type) sliceDynSerializer {
 	return s
 }
 
-func (s sliceDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+func (s *sliceDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
 	done := writeSliceRefAndType(ctx, refMode, writeType, value, LIST)
 	if done || ctx.HasError() {
 		return
@@ -75,7 +83,7 @@ func (s sliceDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType 
 	s.WriteData(ctx, value)
 }
 
-func (s sliceDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+func (s *sliceDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	// Get slice length and handle empty slice case
 	length := value.Len()
@@ -103,7 +111,7 @@ func (s sliceDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 // - Type consistency flags
 // - Element type information (if homogeneous)
 // Returns pointer to TypeInfo to avoid copy overhead.
-func (s sliceDynSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, value reflect.Value) (byte, *TypeInfo) {
+func (s *sliceDynSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, value reflect.Value) (byte, *TypeInfo) {
 	collectFlag := CollectionDefaultFlag
 	var elemTypeInfo *TypeInfo
 	hasNull := false
@@ -161,7 +169,7 @@ func (s sliceDynSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, valu
 }
 
 // writeSameType efficiently serializes a slice where all elements share the same type
-func (s sliceDynSerializer) writeSameType(
+func (s *sliceDynSerializer) writeSameType(
 	ctx *WriteContext, buf *ByteBuffer, value reflect.Value, typeInfo *TypeInfo, flag byte) {
 	if typeInfo == nil {
 		return
@@ -194,7 +202,7 @@ func (s sliceDynSerializer) writeSameType(
 }
 
 // writeDifferentTypes handles serialization of slices with mixed element types
-func (s sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, value reflect.Value, flag byte) {
+func (s *sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, value reflect.Value, flag byte) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
 
@@ -246,7 +254,7 @@ func (s sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuff
 	}
 }
 
-func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+func (s *sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
 	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
@@ -258,11 +266,11 @@ func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 	s.ReadData(ctx, value)
 }
 
-func (s sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+func (s *sliceDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	s.readData(ctx, value, -1)
 }
 
-func (s sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expectedLength int) {
+func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expectedLength int) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := ctx.ReadCollectionLength()
@@ -272,6 +280,10 @@ func (s sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expe
 	}
 	if expectedLength >= 0 && length != expectedLength {
 		ctx.SetError(DeserializationErrorf("array length %d does not match serialized length %d", expectedLength, length))
+		return
+	}
+	allocatedByCaller := expectedLength >= 0
+	if !allocatedByCaller && !ctx.reserveSliceMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 	if length == 0 {
@@ -305,7 +317,9 @@ func (s sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expe
 		if !buf.CheckReadable(length, ctxErr) {
 			return
 		}
-		value.Set(reflect.MakeSlice(sliceType, length, length))
+		if !allocatedByCaller {
+			value.Set(reflect.MakeSlice(sliceType, length, length))
+		}
 		ctx.RefResolver().Reference(value)
 		s.readSameType(ctx, buf, value, elemType, elemSerializer, collectFlag, length)
 		return
@@ -313,18 +327,20 @@ func (s sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, expe
 	if !buf.CheckReadable(length, ctxErr) {
 		return
 	}
-	value.Set(reflect.MakeSlice(sliceType, length, length))
+	if !allocatedByCaller {
+		value.Set(reflect.MakeSlice(sliceType, length, length))
+	}
 	ctx.RefResolver().Reference(value)
 	s.readDifferentTypes(ctx, buf, value, collectFlag, length)
 }
 
-func (s sliceDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+func (s *sliceDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	// typeInfo is already read, don't read it again
 	s.Read(ctx, refMode, false, false, value)
 }
 
 // readSameType handles deserialization of slices where all elements share the same type
-func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, flag int8, length int) {
+func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, flag int8, length int) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
 	ctxErr := ctx.Err()
@@ -402,7 +418,7 @@ func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, valu
 }
 
 // readDifferentTypes handles deserialization of slices with mixed element types
-func (s sliceDynSerializer) readDifferentTypes(
+func (s *sliceDynSerializer) readDifferentTypes(
 	ctx *ReadContext, buf *ByteBuffer, value reflect.Value, flag int8, length int) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
@@ -464,7 +480,7 @@ func (s sliceDynSerializer) readDifferentTypes(
 //  1. Slice element type is pointer-to-interface and the deserialized type is not a pointer, OR
 //  2. Slice element type is interface and the deserialized type doesn't directly implement it
 //     but the pointer type does (common case where interface has pointer receivers)
-func (s sliceDynSerializer) wrapSerializerIfNeeded(elemType reflect.Type, serializer Serializer) (reflect.Type, Serializer) {
+func (s *sliceDynSerializer) wrapSerializerIfNeeded(elemType reflect.Type, serializer Serializer) (reflect.Type, Serializer) {
 	if elemType.Kind() == reflect.Ptr {
 		return elemType, serializer
 	}

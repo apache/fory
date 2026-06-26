@@ -32,7 +32,8 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
 - Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
-- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent.
+- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Container memory-budget reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
+- Root deserialization container memory budgets are estimated container-owned memory, not exact heap accounting and not raw slots. Positive `maxContainerMemoryBytes` wins; `-1` auto uses `inputBytes * 8 + 64 KiB` for known-length roots and fixed `128 MiB` for true stream or unknown-length roots. Charge fixed container cost, backing/reference/inline storage, map table and entry overhead, and zero-size containers; skip only dedicated string, binary, primitive array, and primitive dense-array owners. Do not add dynamic stream bytes-read accounting or nested hot-path cleanup just for this budget.
 - For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. A known expected local TypeDef/TypeMeta header/hash match is a local-schema hit, not a remote cache miss: it may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, performs exact-local byte comparison when needed, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
 - When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
@@ -110,6 +111,19 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - If instructions conflict, follow the most specific module docs and call out the conflict.
 - `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
 - When benchmark logic, scripts, configuration, or compared serializers change, rerun the relevant benchmarks and refresh the artifacts under `docs/benchmarks/**`.
+
+## Network Error Command Log
+
+- 2026-06-26: `cargo check` from `rust/` failed while updating crates.io through
+  `127.0.0.1:7890`; retried as
+  `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cargo check`,
+  which still used the configured proxy. `cargo check --offline` succeeded using the local Cargo
+  cache.
+- 2026-06-26: `cmake -S . -B ../tasks/cpp-cmake-build -DFORY_BUILD_TESTS=ON
+-DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON` from `cpp/` failed while FetchContent tried to
+  clone googletest through `127.0.0.1:7890`; retried as
+  `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cmake -S . -B ../tasks/cpp-cmake-build -DFORY_BUILD_TESTS=ON -DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON`,
+  which still used the configured proxy in the nested clone.
 
 ## Shared Engineering Expectations
 

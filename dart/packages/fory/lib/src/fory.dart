@@ -62,7 +62,16 @@ final class Fory {
     int maxSchemaVersionsPerType = Config.defaultMaxSchemaVersionsPerType,
     int maxAverageSchemaVersionsPerType =
         Config.defaultMaxAverageSchemaVersionsPerType,
+    int maxContainerMemoryBytes = Config.defaultMaxContainerMemoryBytes,
   }) {
+    if (maxContainerMemoryBytes != Config.defaultMaxContainerMemoryBytes &&
+        maxContainerMemoryBytes <= 0) {
+      throw ArgumentError.value(
+        maxContainerMemoryBytes,
+        'maxContainerMemoryBytes',
+        'must be -1 or positive',
+      );
+    }
     final config = Config(
       compatible: compatible,
       checkStructVersion: checkStructVersion,
@@ -71,6 +80,7 @@ final class Fory {
       maxTypeMetaBytes: maxTypeMetaBytes,
       maxSchemaVersionsPerType: maxSchemaVersionsPerType,
       maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType,
+      maxContainerMemoryBytes: maxContainerMemoryBytes,
     );
     _readBuffer = Buffer();
     _writeBuffer = Buffer();

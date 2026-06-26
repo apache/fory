@@ -303,6 +303,9 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		iface := reflect.TypeOf((*any)(nil)).Elem()
 		mapType = reflect.MapOf(iface, iface)
 	}
+	if !ctx.reserveMapTypeMemory(size, mapType.Key(), mapType.Elem()) {
+		return
+	}
 	if size == 0 {
 		if value.IsNil() {
 			value.Set(reflect.MakeMap(mapType))

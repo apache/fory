@@ -388,15 +388,34 @@ chunk, nullability, reference, and type-dispatch semantics. It is still the
 right allocation proof for count-based preallocation: after validating a
 non-empty count and reading any serializer-owned header or type metadata that
 precedes allocation, call `checkReadableBytes(logicalCount)` before allocating,
-reserving, or size-hinting from that count. The byte owner handles buffer versus
-stream readiness; the container serializer then allocates with the declared
-count and reads elements through its normal owner path.
+reserving backing capacity, or size-hinting from that count. The byte owner
+handles buffer versus stream readiness; the container serializer then allocates
+with the declared count and reads elements through its normal owner path.
 
 This check is not a full container-body validation. It only prevents a small or
 truncated input from causing a large count-based preallocation. Chunk sizes,
 duplicate keys, element value semantics, and protocol strictness remain owned by
 the container/map serializer and should be validated only when they protect a
 real owner invariant.
+
+Container readers should also charge a root-operation estimated container memory
+budget before allocation or size hinting. The budget belongs to `ReadContext` or
+the equivalent root read state, not to serializers and not to ambient
+thread-local state. Positive `maxContainerMemoryBytes` configuration wins; auto
+configuration uses `inputBytes * 8 + 64 KiB` for known-length root input and
+fixed `128 MiB` for true stream or unknown-length root input. Do not add dynamic
+stream bytes-read accounting for this budget.
+
+The budget estimates container-owned memory, not exact heap bytes. Charge fixed
+container object cost, backing capacity, map table and entry overhead,
+reference arrays, and inline/value element storage where the runtime stores
+container elements inline. Charge zero-size containers for their fixed cost.
+Skip dedicated string, binary, primitive array, and primitive dense-array owners,
+but do not skip general inline-value containers such as vectors or lists of
+value objects. If reference slot size is not cheap or reliable to query, use a
+4-byte reference slot. Reject arithmetic overflow before budget comparison or
+allocation, and keep the existing `checkReadableBytes` proof before backing
+allocation or capacity reservation.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

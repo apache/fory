@@ -895,7 +895,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
    */
   public Map newMap(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readMapSize(buffer);
+    numElements = readMapSize(readContext);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -964,12 +964,14 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readMapSize(MemoryBuffer buffer) {
+  protected final int readMapSize(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int numElements = buffer.readVarUInt32Small7();
     checkMapSize(numElements);
     if (numElements > Integer.MAX_VALUE / 2) {
       throwInvalidMapBodySize(numElements);
     }
+    readContext.reserveMapMemory(numElements);
     buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }

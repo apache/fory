@@ -21,6 +21,7 @@
 
 #include "fory/serialization/serializer.h"
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -81,6 +82,9 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+constexpr size_t kMapEntryBudgetBytes = 16;
+constexpr size_t kMapReferenceBudgetBytes = sizeof(void *);
+
 template <typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
@@ -88,11 +92,32 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
+  using Key = typename MapType::key_type;
+  using Value = typename MapType::mapped_type;
+  static_assert(sizeof(Key) <= std::numeric_limits<size_t>::max() -
+                                   sizeof(Value) - kMapEntryBudgetBytes -
+                                   kMapReferenceBudgetBytes * 3,
+                "map entry memory estimate overflows");
+  constexpr size_t fixed_bytes = sizeof(MapType);
+  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value) +
+                                kMapEntryBudgetBytes +
+                                kMapReferenceBudgetBytes * 3;
+  if (FORY_PREDICT_FALSE((!ctx.template reserve_counted_container_memory<
+                           fixed_bytes, elem_bytes>(length)))) {
+    return false;
+  }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
     return false;
   }
   MapReserver<MapType>::reserve(map, length);
   return true;
+}
+
+template <typename MapType> inline bool reserve_empty_map(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  return ctx.reserve_container_memory(sizeof(MapType));
 }
 
 /// write chunk size at header offset
@@ -567,6 +592,9 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 
   MapType result;
   if (length == 0) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
+      return result;
+    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
@@ -699,6 +727,9 @@ template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
   MapType result;
   if (length == 0) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
+      return result;
+    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {

@@ -15,11 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
 namespace Apache.Fory;
 
 public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
+    internal const long KnownContainerBudgetSlackBytes = 64 * 1024;
+    internal const long UnknownContainerBudgetBytes = 128L * 1024 * 1024;
+    internal const int ContainerFixedBytes = 32;
+    internal const int ArrayHeaderBytes = 24;
+    internal const int ReferenceBytes = 4;
+    internal const int CollectionEntryOverheadBytes = 16;
+    internal const int MapEntryOverheadBytes = 24;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -40,6 +50,8 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
+    private long _containerMemoryLimitBytes = long.MaxValue;
+    private long _remainingContainerMemoryBytes = long.MaxValue;
 
     public ReadContext(
         ByteReader reader,
@@ -69,6 +81,134 @@ public sealed class ReadContext
     public bool CheckStructVersion { get; }
 
     internal RefReader RefReader { get; }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int ElementBytes<T>() => ContainerElementBytes<T>.Value;
+
+    private static class ContainerElementBytes<T>
+    {
+        internal static readonly int Value = typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+    }
+
+    private static class MapElementBytes<TKey, TValue>
+    {
+        internal static readonly int Value =
+            ElementBytes<TKey>() + ElementBytes<TValue>() + MapEntryOverheadBytes + ReferenceBytes;
+    }
+
+    /// <summary>
+    /// Reserves estimated list-owned memory for generated serializer code.
+    /// Configure <see cref="Config.MaxContainerMemoryBytes"/> instead of calling this directly.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveListMemory<T>(int length)
+    {
+        if (length == 0)
+        {
+            ReserveContainerMemory(ContainerFixedBytes);
+            return;
+        }
+
+        ReserveNonEmptyListMemory<T>(length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveNonEmptyListMemory<T>(int length)
+    {
+        ReserveContainerMemory((long)(uint)length * ElementBytes<T>() + ContainerFixedBytes + ArrayHeaderBytes);
+    }
+
+    /// <summary>
+    /// Reserves estimated array-owned memory for generated serializer code.
+    /// Configure <see cref="Config.MaxContainerMemoryBytes"/> instead of calling this directly.
+    /// </summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveArrayMemory<T>(int length)
+    {
+        ReserveCountedContainerMemory(
+            length,
+            ArrayHeaderBytes,
+            ElementBytes<T>());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveLinkedCollectionMemory<T>(int length)
+    {
+        if (length == 0)
+        {
+            ReserveContainerMemory(ContainerFixedBytes);
+            return;
+        }
+
+        ReserveContainerMemory(
+            (long)(uint)length * (ElementBytes<T>() + CollectionEntryOverheadBytes + ReferenceBytes * 2) +
+            ContainerFixedBytes);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveMapMemory<TKey, TValue>(int length)
+    {
+        if (length == 0)
+        {
+            ReserveContainerMemory(ContainerFixedBytes);
+            return;
+        }
+
+        ReserveNonEmptyMapMemory<TKey, TValue>(length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveNonEmptyMapMemory<TKey, TValue>(int length)
+    {
+        ReserveContainerMemory(
+            (long)(uint)length * MapElementBytes<TKey, TValue>.Value + ContainerFixedBytes + ArrayHeaderBytes * 2);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void InitContainerBudgetKnown(int rootBytes)
+    {
+        long limit = _config.MaxContainerMemoryBytes;
+        if (limit < 0)
+        {
+            limit = (long)rootBytes * 8 + KnownContainerBudgetSlackBytes;
+        }
+
+        _containerMemoryLimitBytes = limit;
+        _remainingContainerMemoryBytes = limit;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveContainerMemory(long bytes)
+    {
+        long remaining = _remainingContainerMemoryBytes;
+        if ((ulong)bytes > (ulong)remaining)
+        {
+            ThrowContainerBudgetExceeded(bytes, remaining, _containerMemoryLimitBytes);
+        }
+
+        _remainingContainerMemoryBytes = remaining - bytes;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void ReserveCountedContainerMemory(int count, int fixedBytes, int elementBytes)
+    {
+        ReserveContainerMemory((long)(uint)count * elementBytes + fixedBytes);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowContainerBudgetOverflow()
+    {
+        throw new InvalidDataException("container memory estimate overflows");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowContainerBudgetExceeded(long bytes, long remaining, long limit)
+    {
+        throw new InvalidDataException(
+            $"estimated container memory request {bytes} bytes exceeds MaxContainerMemoryBytes remaining budget {remaining} bytes out of effective limit {limit} bytes");
+    }
 
     internal void ResetFor(ByteReader reader)
     {

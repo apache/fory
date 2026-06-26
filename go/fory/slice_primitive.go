@@ -652,6 +652,9 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	ptr := (*[]string)(value.Addr().UnsafePointer())
+	if !ctx.reserveSliceMemory(length, stringElementBytes, stringSliceMaxLength) {
+		return
+	}
 	if length == 0 {
 		*ptr = make([]string, 0)
 		return

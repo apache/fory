@@ -1,0 +1,244 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+use fory_core::{Error, Fory, Reader};
+use fory_derive::ForyStruct;
+use std::collections::HashMap;
+use std::panic;
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetSiblings {
+    first: Vec<String>,
+    second: Vec<String>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetItem {
+    left: u64,
+    right: u64,
+}
+
+#[derive(ForyStruct, Debug)]
+struct ListWireInts {
+    values: Vec<Option<i32>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct DenseWireInts {
+    values: Vec<i32>,
+}
+
+fn fory_with_budget(max_container_memory_bytes: i64) -> Fory {
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .max_container_memory_bytes(max_container_memory_bytes)
+        .build();
+    fory.register_by_name::<BudgetSiblings>("BudgetSiblings")
+        .unwrap();
+    fory.register_by_name::<BudgetItem>("BudgetItem").unwrap();
+    fory
+}
+
+fn compatible_fory<T>(max_container_memory_bytes: i64) -> Fory
+where
+    T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+{
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_container_memory_bytes(max_container_memory_bytes)
+        .build();
+    fory.register::<T>(88_001).unwrap();
+    fory
+}
+
+fn compact_empty_lists(count: usize) -> Vec<Vec<String>> {
+    (0..count).map(|_| Vec::new()).collect()
+}
+
+fn assert_budget_error(err: Error, effective_limit: usize) {
+    let message = err.to_string();
+    assert!(
+        message.contains("estimated container memory request"),
+        "{message}"
+    );
+    assert!(
+        message.contains(&format!("effective limit {effective_limit}")),
+        "{message}"
+    );
+}
+
+#[test]
+fn config_validation() {
+    assert!(panic::catch_unwind(|| Fory::builder().max_container_memory_bytes(0)).is_err());
+    assert!(panic::catch_unwind(|| Fory::builder().max_container_memory_bytes(-2)).is_err());
+    let _ = Fory::builder().max_container_memory_bytes(-1).build();
+    let _ = Fory::builder().max_container_memory_bytes(1).build();
+}
+
+#[test]
+fn known_auto_budget() {
+    let value = compact_empty_lists(3000);
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let auto_limit = bytes.len() * 8 + 64 * 1024;
+
+    let err = writer.deserialize::<Vec<Vec<String>>>(&bytes).unwrap_err();
+    assert_budget_error(err, auto_limit);
+
+    let explicit = fory_with_budget(auto_limit as i64);
+    let err = explicit
+        .deserialize::<Vec<Vec<String>>>(&bytes)
+        .unwrap_err();
+    assert_budget_error(err, auto_limit);
+}
+
+#[test]
+fn reader_known_auto_budget() {
+    let value = compact_empty_lists(3000);
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let auto_limit = bytes.len() * 8 + 64 * 1024;
+
+    let mut reader = Reader::new(&bytes);
+    let err = writer
+        .deserialize_from::<Vec<Vec<String>>>(&mut reader)
+        .unwrap_err();
+    assert_budget_error(err, auto_limit);
+}
+
+#[test]
+fn explicit_override() {
+    let value = compact_empty_lists(3000);
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    assert!(writer.deserialize::<Vec<Vec<String>>>(&bytes).is_err());
+
+    let vec_bytes = std::mem::size_of::<Vec<String>>();
+    let estimate = std::mem::size_of::<Vec<Vec<String>>>() + value.len() * vec_bytes * 2;
+    let explicit = fory_with_budget(estimate as i64);
+    let decoded: Vec<Vec<String>> = explicit.deserialize(&bytes).unwrap();
+    assert_eq!(decoded, value);
+}
+
+#[test]
+fn empty_container_cost() {
+    let value: Vec<String> = Vec::new();
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let fixed = std::mem::size_of::<Vec<String>>() as i64;
+
+    let limited = fory_with_budget(fixed - 1);
+    assert!(limited.deserialize::<Vec<String>>(&bytes).is_err());
+}
+
+#[test]
+fn sibling_cumulative_budget() {
+    let value = BudgetSiblings {
+        first: Vec::new(),
+        second: Vec::new(),
+    };
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let one_vec = std::mem::size_of::<Vec<String>>() as i64;
+
+    let limited = fory_with_budget(one_vec);
+    assert!(limited.deserialize::<BudgetSiblings>(&bytes).is_err());
+}
+
+#[test]
+fn map_budget() {
+    let value: HashMap<String, i32> = HashMap::new();
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let fixed = std::mem::size_of::<HashMap<String, i32>>() as i64;
+
+    let limited = fory_with_budget(fixed - 1);
+    assert!(limited.deserialize::<HashMap<String, i32>>(&bytes).is_err());
+}
+
+#[test]
+fn inline_value_vec_budget() {
+    let value = (0..16)
+        .map(|i| BudgetItem {
+            left: i,
+            right: i + 1,
+        })
+        .collect::<Vec<_>>();
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let under_inline =
+        std::mem::size_of::<Vec<BudgetItem>>() + value.len() * std::mem::size_of::<u64>();
+
+    let limited = fory_with_budget(under_inline as i64);
+    assert!(limited.deserialize::<Vec<BudgetItem>>(&bytes).is_err());
+}
+
+#[test]
+fn compatible_list_array_budget() {
+    let value = ListWireInts {
+        values: (0..64).map(Some).collect(),
+    };
+    let writer = compatible_fory::<ListWireInts>(-1);
+    let bytes = writer.serialize(&value).unwrap();
+
+    let limited = compatible_fory::<DenseWireInts>(std::mem::size_of::<Vec<i32>>() as i64);
+    assert!(limited.deserialize::<DenseWireInts>(&bytes).is_err());
+
+    let enough = compatible_fory::<DenseWireInts>(i64::MAX);
+    let decoded = enough.deserialize::<DenseWireInts>(&bytes).unwrap();
+    assert_eq!(
+        decoded,
+        DenseWireInts {
+            values: (0..64).collect()
+        }
+    );
+}
+
+#[test]
+fn dense_paths_skipped() {
+    let fory = fory_with_budget(1);
+
+    let string_bytes = fory_with_budget(-1)
+        .serialize(&"hello".to_string())
+        .unwrap();
+    let decoded: String = fory.deserialize(&string_bytes).unwrap();
+    assert_eq!(decoded, "hello");
+
+    let binary = vec![1_u8, 2, 3, 4];
+    let binary_bytes = fory_with_budget(-1).serialize(&binary).unwrap();
+    let decoded: Vec<u8> = fory.deserialize(&binary_bytes).unwrap();
+    assert_eq!(decoded, binary);
+
+    let ints = vec![1_i32, 2, 3, 4];
+    let int_bytes = fory_with_budget(-1).serialize(&ints).unwrap();
+    let decoded: Vec<i32> = fory.deserialize(&int_bytes).unwrap();
+    assert_eq!(decoded, ints);
+}
+
+#[test]
+fn byte_check_preserved() {
+    let writer = fory_with_budget(-1);
+    let mut bytes = writer.serialize(&Vec::<i32>::new()).unwrap();
+    let last = bytes.len() - 1;
+    bytes[last] = 64;
+
+    let reader = fory_with_budget(i64::MAX);
+    let err = reader.deserialize::<Vec<i32>>(&bytes).unwrap_err();
+    assert!(matches!(err, Error::BufferOutOfBound(..)), "{err}");
+}

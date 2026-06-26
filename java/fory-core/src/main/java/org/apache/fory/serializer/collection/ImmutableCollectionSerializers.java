@@ -125,7 +125,7 @@ public class ImmutableCollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new CollectionContainer<>(numElements);
@@ -186,7 +186,7 @@ public class ImmutableCollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new CollectionContainer<>(numElements);
@@ -247,7 +247,7 @@ public class ImmutableCollectionSerializers {
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new JDKImmutableMapContainer(numElements);

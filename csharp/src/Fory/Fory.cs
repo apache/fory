@@ -190,6 +190,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
+        _readContext.InitContainerBudgetKnown(payload.Length);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -210,6 +211,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
+        _readContext.InitContainerBudgetKnown(payload.Length);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -230,6 +232,7 @@ public sealed class Fory
         byte[] bytes = payload.ToArray();
         ByteReader reader = _readContext.Reader;
         reader.Reset(bytes);
+        _readContext.InitContainerBudgetKnown(bytes.Length);
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;

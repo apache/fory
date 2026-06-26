@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
+import org.apache.fory.exception.InsecureException
 import org.apache.fory.scala.ForyScala
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -86,6 +87,37 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       "serialize/deserialize NestedMapStruct" in {
         val struct = NestedMapStruct(Map("K1" -> Map("k1" -> "v1", "k2" -> "v2"), "K2" -> Map("k1" -> "v1")))
         fory1.deserialize(fory1.serialize(struct)) shouldEqual struct
+      }
+    }
+  }
+
+  "fory scala container memory budget" should {
+    def runtime(maxContainerMemoryBytes: Long = -1): Fory = {
+      val builder = ForyScala.builder()
+        .withXlang(false)
+        .withRefTracking(true)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(false)
+        .withSerializerFactory(new ScalaSerializerFactory())
+      if (maxContainerMemoryBytes > 0) {
+        builder.withMaxContainerMemoryBytes(maxContainerMemoryBytes)
+      }
+      builder.build()
+    }
+
+    "charge scala collection fixed cost" in {
+      val writer = runtime()
+      val reader = runtime(maxContainerMemoryBytes = 23)
+      intercept[InsecureException] {
+        reader.deserialize(writer.serialize(List.empty[String]))
+      }
+    }
+
+    "charge scala map fixed cost" in {
+      val writer = runtime()
+      val reader = runtime(maxContainerMemoryBytes = 47)
+      intercept[InsecureException] {
+        reader.deserialize(writer.serialize(Map("k" -> "v")))
       }
     }
   }

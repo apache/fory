@@ -17,6 +17,13 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
 - Do not redesign alias-based or low-level public type shapes to add convenience methods unless the user explicitly asks for that API change.
 - For cross-language feature ports, match protocol behavior but use idiomatic C++ ownership and layering instead of mirroring Java structure literally.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
+- Root deserialization container budgets are owned by `ReadContext` and initialized by the root
+  `Fory::deserialize` overload. Keep `max_container_memory_bytes` as `-1 / auto` or a positive
+  explicit limit; known byte roots use `inputBytes * 8 + 64 KiB`, while stream roots use fixed
+  `128 MiB`. Reserve estimated container-owned memory before allocation but preserve existing
+  byte-availability checks and their non-empty metadata ordering. Skip only dedicated string,
+  binary, primitive vector, and primitive dense-array owners; general `std::vector<T>` for
+  non-primitive `T` is inline container storage and must be charged.
 
 ## Key Paths
 

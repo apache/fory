@@ -33,6 +33,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
 import org.apache.fory.config.Language;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
@@ -138,14 +139,21 @@ public class CompatibleSerializerTest extends ForyTestBase {
   public void testNullableListBodyBounds() throws Exception {
     Method method =
         CompatibleCollectionArrayReader.class.getDeclaredMethod(
-            "readNullableListBoxedElements", MemoryBuffer.class, int.class, int.class, int.class);
+            "readNullableListBoxedElements", ReadContext.class, int.class, int.class, int.class);
     method.setAccessible(true);
     MemoryBuffer buffer = MemoryUtils.buffer(0);
-    InvocationTargetException exception =
-        Assert.expectThrows(
-            InvocationTargetException.class,
-            () -> method.invoke(null, buffer, 1024, Types.INT32_ARRAY, Types.INT32));
-    Assert.assertTrue(exception.getCause() instanceof IndexOutOfBoundsException);
+    Fory fory = builder().build();
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    try {
+      InvocationTargetException exception =
+          Assert.expectThrows(
+              InvocationTargetException.class,
+              () -> method.invoke(null, readContext, 1024, Types.INT32_ARRAY, Types.INT32));
+      Assert.assertTrue(exception.getCause() instanceof IndexOutOfBoundsException);
+    } finally {
+      readContext.reset();
+    }
   }
 
   @Test

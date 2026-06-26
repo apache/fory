@@ -28,6 +28,7 @@ final class Config {
   static const int defaultMaxTypeMetaBytes = 4096;
   static const int defaultMaxSchemaVersionsPerType = 10;
   static const int defaultMaxAverageSchemaVersionsPerType = 3;
+  static const int defaultMaxContainerMemoryBytes = -1;
 
   /// Enables compatible struct encoding and decoding.
   ///
@@ -56,6 +57,11 @@ final class Config {
   /// types.
   final int maxAverageSchemaVersionsPerType;
 
+  /// Maximum estimated container-owned memory per root deserialization.
+  ///
+  /// `-1` means auto. Positive values are explicit byte limits.
+  final int maxContainerMemoryBytes;
+
   /// Creates an immutable configuration object.
   ///
   /// Invalid numeric limits fail fast. When [compatible] is `true`,
@@ -69,6 +75,7 @@ final class Config {
     this.maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
     this.maxAverageSchemaVersionsPerType =
         defaultMaxAverageSchemaVersionsPerType,
+    this.maxContainerMemoryBytes = defaultMaxContainerMemoryBytes,
   }) : checkStructVersion = compatible ? false : checkStructVersion,
        assert(maxDepth > 0, 'maxDepth must be positive'),
        assert(maxTypeFields > 0, 'maxTypeFields must be positive'),
@@ -80,5 +87,9 @@ final class Config {
        assert(
          maxAverageSchemaVersionsPerType > 0,
          'maxAverageSchemaVersionsPerType must be positive',
+       ),
+       assert(
+         maxContainerMemoryBytes == -1 || maxContainerMemoryBytes > 0,
+         'maxContainerMemoryBytes must be -1 or positive',
        );
 }

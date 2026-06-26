@@ -201,6 +201,7 @@ internal static class CollectionCodec
         int length = checked((int)context.Reader.ReadVarUInt32());
         if (length == 0)
         {
+            context.ReserveListMemory<T>(length);
             return [];
         }
 
@@ -213,6 +214,7 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
+        context.ReserveNonEmptyListMemory<T>(length);
         context.Reader.CheckBound(length);
         List<T> values = new(length);
         if (!sameType)
@@ -522,6 +524,7 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
     public override T[] ReadData(ReadContext context)
     {
         List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveArrayMemory<T>(values.Count);
         return values.ToArray();
     }
 }
@@ -554,7 +557,9 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
     public override HashSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
+        return [.. values];
     }
 }
 
@@ -570,7 +575,9 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
 
     public override SortedSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
+        return [.. values];
     }
 }
 
@@ -586,7 +593,9 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
 
     public override ImmutableHashSet<T> ReadData(ReadContext context)
     {
-        return ImmutableHashSet.CreateRange(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
+        return ImmutableHashSet.CreateRange(values);
     }
 }
 
@@ -602,7 +611,9 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 
     public override LinkedList<T> ReadData(ReadContext context)
     {
-        return new LinkedList<T>(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
+        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
+        return new LinkedList<T>(values);
     }
 }
 
@@ -619,6 +630,7 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
     public override Queue<T> ReadData(ReadContext context)
     {
         List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
         Queue<T> queue = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {
@@ -655,6 +667,7 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
     public override Stack<T> ReadData(ReadContext context)
     {
         List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        context.ReserveLinkedCollectionMemory<T>(values.Count);
         Stack<T> stack = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {

@@ -933,6 +933,7 @@ class PythonNDArraySerializer(NDArraySerializer):
         if dtype.kind == "O":
             length = read_context.read_varint32()
             _check_non_negative_size(length, "ndarray object")
+            read_context.reserve_collection_memory(length)
             read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)

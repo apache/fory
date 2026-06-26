@@ -124,6 +124,7 @@ class Fory:
         "strict",
         "buffer",
         "max_depth",
+        "max_container_memory_bytes",
         "field_nullable",
         "policy",
     )
@@ -139,6 +140,7 @@ class Fory:
         max_type_meta_bytes: int = 4096,
         max_schema_versions_per_type: int = 10,
         max_average_schema_versions_per_type: int = 3,
+        max_container_memory_bytes: int = -1,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -183,6 +185,9 @@ class Fory:
             max_average_schema_versions_per_type: Average remote metadata versions allowed
                 across accepted remote types.
 
+            max_container_memory_bytes: Maximum estimated container-owned memory per root
+                deserialization. `-1` means auto; positive values are explicit byte limits.
+
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
                 **Strongly recommended** when strict=False to maintain security controls.
@@ -213,6 +218,13 @@ class Fory:
             raise ValueError("max_schema_versions_per_type must be a positive integer")
         if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
+        if (
+            not isinstance(max_container_memory_bytes, int)
+            or (max_container_memory_bytes != -1 and max_container_memory_bytes <= 0)
+            or max_container_memory_bytes > (1 << 63) - 1
+        ):
+            raise ValueError("max_container_memory_bytes must be -1 or a positive 63-bit integer")
+        self.max_container_memory_bytes = max_container_memory_bytes
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -225,6 +237,7 @@ class Fory:
             max_type_meta_bytes=max_type_meta_bytes,
             max_schema_versions_per_type=max_schema_versions_per_type,
             max_average_schema_versions_per_type=max_average_schema_versions_per_type,
+            max_container_memory_bytes=max_container_memory_bytes,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
@@ -559,6 +572,7 @@ class Fory:
             buffers=buffers,
             unsupported_objects=unsupported_objects,
             peer_out_of_band_enabled=peer_out_of_band_enabled,
+            root_input_bytes=buffer.size() - reader_index,
         )
         return read_context.read_ref()
 

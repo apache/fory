@@ -30,6 +30,14 @@ STRING_TYPE_ID = TypeId.STRING
 SMALL_STRING_THRESHOLD = 16
 cdef int32_t MAX_CACHED_META_STRINGS = 8192
 cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
+cdef int64_t _KNOWN_ROOT_BUDGET_MULTIPLIER = 8
+cdef int64_t _KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
+cdef int64_t _STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
+cdef int64_t _COLLECTION_OBJECT_BYTES = 56
+cdef int64_t _MAP_OBJECT_BYTES = 64
+cdef int64_t _MAP_ENTRY_BYTES = 32
+cdef int64_t _REFERENCE_BYTES = sizeof(PyObject*)
+cdef int64_t _MAX_CONTAINER_MEMORY_BYTES = 9223372036854775807
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -746,6 +754,9 @@ cdef class ReadContext:
     cdef readonly bint field_nullable
     cdef readonly object policy
     cdef readonly int32_t max_depth
+    cdef public int64_t max_container_memory_bytes
+    cdef public int64_t container_memory_limit_bytes
+    cdef public int64_t remaining_container_memory_bytes
     cdef readonly RefReader ref_reader
     cdef readonly MetaStringReader meta_string_reader
     cdef readonly MetaShareReadContext meta_share_context
@@ -766,6 +777,9 @@ cdef class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
+        self.max_container_memory_bytes = config.max_container_memory_bytes
+        self.container_memory_limit_bytes = 0
+        self.remaining_container_memory_bytes = 0
         self.ref_reader = RefReader(self.track_ref)
         self.meta_string_reader = MetaStringReader(self.type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -783,12 +797,26 @@ cdef class ReadContext:
         buffers=None,
         unsupported_objects=None,
         bint peer_out_of_band_enabled=False,
+        int64_t root_input_bytes=-1,
     ):
+        cdef int64_t limit
+        if self.max_container_memory_bytes > 0:
+            limit = self.max_container_memory_bytes
+        elif buffer.has_input_stream():
+            limit = _STREAM_ROOT_BUDGET_BYTES
+        else:
+            if root_input_bytes < 0:
+                root_input_bytes = <int64_t>buffer.size() - buffer.get_reader_index()
+            if root_input_bytes > (_MAX_CONTAINER_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
+                raise ValueError("max_container_memory_bytes auto budget overflow")
+            limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
         self.buffer = buffer
         self.c_buffer = buffer.c_buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
+        self.container_memory_limit_bytes = limit
+        self.remaining_container_memory_bytes = limit
         self.depth = 0
 
     cpdef inline reset(self):
@@ -803,7 +831,60 @@ cdef class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
+        self.container_memory_limit_bytes = 0
+        self.remaining_container_memory_bytes = 0
         self.depth = 0
+
+    cdef inline void reserve_container_memory_c(self, int64_t num_bytes):
+        cdef int64_t used
+        if num_bytes < 0:
+            raise ValueError("Estimated container memory is negative")
+        if num_bytes > _MAX_CONTAINER_MEMORY_BYTES:
+            raise ValueError("Estimated container memory overflow")
+        if num_bytes > self.remaining_container_memory_bytes:
+            used = self.container_memory_limit_bytes - self.remaining_container_memory_bytes
+            raise ValueError(
+                f"Estimated container memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.container_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_container_memory_bytes=...) for trusted larger payloads."
+            )
+        self.remaining_container_memory_bytes -= num_bytes
+
+    cdef inline void reserve_container_memory_fast(self, int64_t num_bytes):
+        cdef int64_t used
+        if num_bytes > self.remaining_container_memory_bytes:
+            used = self.container_memory_limit_bytes - self.remaining_container_memory_bytes
+            raise ValueError(
+                f"Estimated container memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.container_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_container_memory_bytes=...) for trusted larger payloads."
+            )
+        self.remaining_container_memory_bytes -= num_bytes
+
+    cpdef inline reserve_container_memory(self, int64_t num_bytes):
+        self.reserve_container_memory_c(num_bytes)
+
+    cdef inline void reserve_collection_memory_c(self, int64_t num_elements):
+        if num_elements < 0:
+            raise ValueError("Container element count is negative")
+        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _COLLECTION_OBJECT_BYTES) // _REFERENCE_BYTES:
+            raise ValueError("Estimated container memory overflow")
+        self.reserve_container_memory_c(_COLLECTION_OBJECT_BYTES + num_elements * _REFERENCE_BYTES)
+
+    cpdef inline reserve_collection_memory(self, int64_t num_elements):
+        self.reserve_collection_memory_c(num_elements)
+
+    cdef inline void reserve_map_memory_c(self, int64_t num_elements):
+        cdef int64_t bytes_per_entry
+        if num_elements < 0:
+            raise ValueError("Map entry count is negative")
+        bytes_per_entry = _MAP_ENTRY_BYTES + 5 * _REFERENCE_BYTES
+        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _MAP_OBJECT_BYTES) // bytes_per_entry:
+            raise ValueError("Estimated container memory overflow")
+        self.reserve_container_memory_c(_MAP_OBJECT_BYTES + num_elements * bytes_per_entry)
+
+    cpdef inline reserve_map_memory(self, int64_t num_elements):
+        self.reserve_map_memory_c(num_elements)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

@@ -109,6 +109,16 @@ public:
     return *this;
   }
 
+  /// Set maximum estimated container-owned memory for one root deserialization.
+  ///
+  /// Use `-1` for automatic limits. Positive values are explicit byte limits.
+  ForyBuilder &max_container_memory_bytes(int64_t max_bytes) {
+    FORY_CHECK(max_bytes == -1 || max_bytes > 0)
+        << "max_container_memory_bytes must be positive or -1 for auto";
+    config_.max_container_memory_bytes = max_bytes;
+    return *this;
+  }
+
   /// Set maximum accepted field count in one received struct TypeMeta.
   ForyBuilder &max_type_fields(uint32_t max_fields) {
     FORY_CHECK(max_fields > 0) << "max_type_fields must be positive";
@@ -673,19 +683,7 @@ public:
 
     Buffer buffer(const_cast<uint8_t *>(data), static_cast<uint32_t>(size),
                   false);
-
-    Error header_error;
-    const uint8_t header = buffer.read_uint8(header_error);
-    if (FORY_PREDICT_FALSE(!header_error.ok())) {
-      return Unexpected(std::move(header_error));
-    }
-    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
-      return Unexpected(invalid_root_header(header));
-    }
-
-    read_ctx_->attach(buffer);
-    ReadContextGuard guard(*read_ctx_);
-    return deserialize_impl<T>(buffer);
+    return deserialize_buffer<T, false>(buffer);
   }
 
   /// Deserialize an object from a byte vector.
@@ -711,18 +709,7 @@ public:
     if (FORY_PREDICT_FALSE(!finalized_)) {
       ensure_finalized();
     }
-    Error header_error;
-    const uint8_t header = buffer.read_uint8(header_error);
-    if (FORY_PREDICT_FALSE(!header_error.ok())) {
-      return Unexpected(std::move(header_error));
-    }
-    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
-      return Unexpected(invalid_root_header(header));
-    }
-
-    read_ctx_->attach(buffer);
-    ReadContextGuard guard(*read_ctx_);
-    return deserialize_impl<T>(buffer);
+    return deserialize_buffer<T, false>(buffer);
   }
 
   /// Deserialize an object from an input stream.
@@ -745,7 +732,10 @@ public:
     };
     StreamShrinkGuard shrink_guard{&input_stream};
     Buffer &buffer = input_stream.get_buffer();
-    return deserialize<T>(buffer);
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    return deserialize_buffer<T, true>(buffer);
   }
 
   /// Deserialize an object from StdInputStream.
@@ -881,6 +871,34 @@ private:
 
     read_ctx_->ref_reader().resolve_callbacks();
     return result;
+  }
+
+  template <typename T, bool unknown_root>
+  FORY_ALWAYS_INLINE Result<T, Error> deserialize_buffer(Buffer &buffer) {
+    const bool budget_ok =
+        unknown_root
+            ? read_ctx_->init_container_budget_unknown()
+            : read_ctx_->init_container_budget_known(buffer.remaining_size());
+    if (FORY_PREDICT_FALSE(!budget_ok)) {
+      Error error = read_ctx_->take_error();
+      read_ctx_->reset();
+      return Unexpected(std::move(error));
+    }
+
+    Error header_error;
+    const uint8_t header = buffer.read_uint8(header_error);
+    if (FORY_PREDICT_FALSE(!header_error.ok())) {
+      read_ctx_->reset();
+      return Unexpected(std::move(header_error));
+    }
+    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
+      read_ctx_->reset();
+      return Unexpected(invalid_root_header(header));
+    }
+
+    read_ctx_->attach(buffer);
+    ReadContextGuard guard(*read_ctx_);
+    return deserialize_impl<T>(buffer);
   }
 
   template <typename T>

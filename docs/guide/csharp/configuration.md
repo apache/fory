@@ -41,6 +41,7 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 | `Compatible`                      | `true`  | Compatible schema-evolution metadata enabled      |
 | `CheckStructVersion`              | `false` | Struct schema hash checks disabled                |
 | `MaxDepth`                        | `20`    | Max dynamic nesting depth                         |
+| `MaxContainerMemoryBytes`         | `-1`    | Auto container memory budget                      |
 | `MaxTypeFields`                   | `512`   | Max fields in one received struct metadata body   |
 | `MaxTypeMetaBytes`                | `4096`  | Max encoded bytes in one received metadata body   |
 | `MaxSchemaVersionsPerType`        | `10`    | Max remote metadata versions for one logical type |
@@ -95,6 +96,20 @@ Fory fory = Fory.Builder()
 ```
 
 `value` must be greater than `0`.
+
+### `MaxContainerMemoryBytes(long value)`
+
+Sets the maximum estimated container-owned memory accepted during one root deserialization.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxContainerMemoryBytes(64L * 1024 * 1024)
+    .Build();
+```
+
+Use `-1` for the default automatic limit. For current C# inputs, auto uses the root input byte
+length times `8`, plus `64 KiB`. A positive value overrides the automatic limit. `0` and negative
+values other than `-1` are rejected.
 
 ### `MaxTypeFields(int value)`
 
@@ -173,6 +188,8 @@ Security-related configuration:
 - Register only the expected types before deserializing untrusted payloads.
 - Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 - Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
+- Set `MaxContainerMemoryBytes(...)` to cap estimated list, array, set, and map memory during one
+  root deserialization.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated or registered concrete models over broad dynamic fields for untrusted input.

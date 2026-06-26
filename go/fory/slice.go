@@ -124,6 +124,8 @@ type sliceSerializer struct {
 	type_          reflect.Type
 	elemSerializer Serializer
 	referencable   bool
+	elemBytes      int64
+	maxLength      int64
 }
 
 // newSliceSerializer creates a sliceSerializer for slices with concrete element types.
@@ -144,10 +146,13 @@ func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang boo
 		reflect.Uint8, reflect.Float32, reflect.Float64:
 		return nil, fmt.Errorf("sliceSerializer does not support primitive element type %v: use dedicated primitive slice serializer", type_)
 	}
+	elemBytes := int64(elem.Size())
 	return &sliceSerializer{
 		type_:          type_,
 		elemSerializer: elemSerializer,
 		referencable:   isRefType(elem, xlang),
+		elemBytes:      elemBytes,
+		maxLength:      maxSliceLength(elemBytes),
 	}, nil
 }
 
@@ -308,6 +313,9 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	isArrayType := value.Type().Kind() == reflect.Array
 
+	if !isArrayType && !ctx.reserveSliceMemory(length, s.elemBytes, s.maxLength) {
+		return
+	}
 	if length == 0 {
 		if !isArrayType {
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))

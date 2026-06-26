@@ -176,6 +176,9 @@ class CollectionSerializer(Serializer):
 
     def read(self, read_context):
         length = read_context.read_var_uint32()
+        read_context.reserve_collection_memory(length)
+        if length != 0:
+            read_context.check_readable_bytes(length)
         collection_ = self.new_instance(read_context, self.type_)
         if length == 0:
             return collection_
@@ -455,6 +458,9 @@ class MapSerializer(Serializer):
 
     def read(self, read_context):
         size = read_context.read_var_uint32()
+        read_context.reserve_map_memory(size)
+        if size != 0:
+            read_context.check_readable_bytes(size)
         map_ = {}
         ref_reader = read_context.ref_reader
         read_context.reference(map_)

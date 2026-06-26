@@ -318,6 +318,9 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	if length == 0 {
+		if !ctx.reserveMapTypeMemory(length, type_.Key(), type_.Elem()) {
+			return
+		}
 		// Initialize empty set if length is 0
 		value.Set(reflect.MakeMap(type_))
 		return
@@ -354,6 +357,9 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	if !buf.CheckReadable(length, err) {
+		return
+	}
+	if !ctx.reserveMapTypeMemory(length, type_.Key(), type_.Elem()) {
 		return
 	}
 

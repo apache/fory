@@ -42,7 +42,7 @@ func serializerNeedsGenericDispatch(serializer Serializer) bool {
 	switch serializer.(type) {
 	case *sliceSerializer,
 		primitiveListSerializer,
-		sliceDynSerializer,
+		*sliceDynSerializer,
 		setSerializer,
 		mapSerializer,
 		stringSliceSerializer,
@@ -68,10 +68,13 @@ func newDeclaredSliceSerializer(type_ reflect.Type, elemSerializer Serializer, r
 	if elem.Kind() == reflect.Ptr && elem.Elem().Kind() == reflect.Interface {
 		return nil, fmt.Errorf("slice serializer does not support pointer to interface element type: %v", type_)
 	}
+	elemBytes := int64(elem.Size())
 	return &sliceSerializer{
 		type_:          type_,
 		elemSerializer: elemSerializer,
 		referencable:   referencable,
+		elemBytes:      elemBytes,
+		maxLength:      maxSliceLength(elemBytes),
 	}, nil
 }
 

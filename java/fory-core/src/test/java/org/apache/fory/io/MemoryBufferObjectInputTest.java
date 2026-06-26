@@ -53,7 +53,7 @@ public class MemoryBufferObjectInputTest extends ForyTestBase {
     buffer.writeFloat32(4.1f);
     buffer.writeFloat64(4.2);
     new StringSerializer(fory.getConfig()).writeString(buffer, "abc");
-    fory.getReadContext().prepare(buffer, null, false);
+    fory.getReadContext().prepare(buffer, null, false, buffer.remaining(), false);
     try (MemoryBufferObjectInput input =
         new MemoryBufferObjectInput(fory.getConfig(), fory.getReadContext())) {
       assertEquals(input.readByte(), 1);

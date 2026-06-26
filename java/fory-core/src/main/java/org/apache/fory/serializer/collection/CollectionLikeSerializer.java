@@ -461,7 +461,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   public Collection newCollection(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readCollectionSize(buffer);
+    numElements = readCollectionSize(readContext);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -560,9 +560,11 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readCollectionSize(MemoryBuffer buffer) {
+  protected final int readCollectionSize(ReadContext readContext) {
+    MemoryBuffer buffer = readContext.getBuffer();
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
+    readContext.reserveCollectionMemory(numElements);
     buffer.checkReadableBytes(numElements);
     return numElements;
   }

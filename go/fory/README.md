@@ -93,11 +93,15 @@ f := fory.New(fory.WithXlang(false), fory.WithCompatible(false))
 // Set maximum nesting depth
 f := fory.New(fory.WithMaxDepth(20))
 
+// Set maximum estimated container memory for one root read
+f := fory.New(fory.WithMaxContainerMemoryBytes(256 * 1024 * 1024))
+
 // Combine multiple options
 f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(20),
+    fory.WithMaxContainerMemoryBytes(-1),
 )
 ```
 

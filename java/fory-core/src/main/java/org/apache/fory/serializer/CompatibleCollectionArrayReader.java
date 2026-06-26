@@ -343,18 +343,18 @@ final class CompatibleCollectionArrayReader {
       if (array == null) {
         return null;
       }
-      return materializeTarget(array, arrayTypeId, targetType);
+      return materializeTarget(readContext, array, arrayTypeId, targetType);
     }
     if (readMode == READ_LIST_TO_LIST) {
       return readListBodyAsListTarget(readContext, arrayTypeId, elementTypeId, targetType);
     }
     if (readMode == READ_ARRAY_TO_LIST) {
       Object array = readDenseArrayBody(readContext, arrayTypeId);
-      return materializeTarget(array, arrayTypeId, targetType);
+      return materializeTarget(readContext, array, arrayTypeId, targetType);
     }
     if (readMode == READ_ARRAY_TO_ARRAY) {
       Object array = readDenseArrayBody(readContext, arrayTypeId);
-      return materializeTarget(array, arrayTypeId, targetType);
+      return materializeTarget(readContext, array, arrayTypeId, targetType);
     }
     throw new IllegalStateException("Unexpected compatible read mode " + readMode);
   }
@@ -621,7 +621,7 @@ final class CompatibleCollectionArrayReader {
     validateElementCount(numElements);
     if (numElements == 0) {
       Object array = readListPrimitiveElements(buffer, 0, arrayTypeId, elementTypeId, false);
-      return materializeTarget(array, arrayTypeId, targetType);
+      return materializeTarget(readContext, array, arrayTypeId, targetType);
     }
     int flags = buffer.readByte();
     boolean hasNull = (flags & CollectionFlags.HAS_NULL) == CollectionFlags.HAS_NULL;
@@ -654,11 +654,11 @@ final class CompatibleCollectionArrayReader {
         throw new DeserializationException(
             "Cannot read null peer list<T> element into local list<T> field");
       }
-      return readNullableListBoxedElements(buffer, numElements, arrayTypeId, elementTypeId);
+      return readNullableListBoxedElements(readContext, numElements, arrayTypeId, elementTypeId);
     }
     Object array =
         readListPrimitiveElements(buffer, numElements, arrayTypeId, elementTypeId, false);
-    return materializeTarget(array, arrayTypeId, targetType);
+    return materializeTarget(readContext, array, arrayTypeId, targetType);
   }
 
   private static Object readDenseArrayBody(ReadContext readContext, int arrayTypeId) {
@@ -976,8 +976,11 @@ final class CompatibleCollectionArrayReader {
   }
 
   private static List<Object> readNullableListBoxedElements(
-      MemoryBuffer buffer, int numElements, int arrayTypeId, int elementTypeId) {
-    buffer.checkReadableBytes(minReadablePrimitiveListBytes(numElements, elementTypeId, true));
+      ReadContext readContext, int numElements, int arrayTypeId, int elementTypeId) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int bodyBytes = minReadablePrimitiveListBytes(numElements, elementTypeId, true);
+    readContext.reserveCollectionMemory(numElements);
+    buffer.checkReadableBytes(bodyBytes);
     ArrayList<Object> values = new ArrayList<>(numElements);
     for (int i = 0; i < numElements; i++) {
       byte headFlag = buffer.readByte();
@@ -1043,7 +1046,8 @@ final class CompatibleCollectionArrayReader {
     }
   }
 
-  private static Object materializeTarget(Object array, int arrayTypeId, Class<?> targetType) {
+  private static Object materializeTarget(
+      ReadContext readContext, Object array, int arrayTypeId, Class<?> targetType) {
     if (targetType.isArray()) {
       return array;
     }
@@ -1058,7 +1062,7 @@ final class CompatibleCollectionArrayReader {
       return primitiveList;
     }
     if (targetType.isAssignableFrom(ArrayList.class)) {
-      return materializeBoxedList(array, arrayTypeId);
+      return materializeBoxedList(readContext, array, arrayTypeId);
     }
     throw new DeserializationException("Unsupported compatible list/array target " + targetType);
   }
@@ -1172,8 +1176,10 @@ final class CompatibleCollectionArrayReader {
     }
   }
 
-  private static List<Object> materializeBoxedList(Object array, int arrayTypeId) {
+  private static List<Object> materializeBoxedList(
+      ReadContext readContext, Object array, int arrayTypeId) {
     int size = java.lang.reflect.Array.getLength(array);
+    readContext.reserveCollectionMemory(size);
     ArrayList<Object> list = new ArrayList<>(size);
     switch (arrayTypeId) {
       case Types.BOOL_ARRAY:

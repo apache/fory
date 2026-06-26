@@ -672,9 +672,11 @@ internal static class PrimitiveDictionaryCodecReader
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
+            context.ReserveMapMemory<TKey, TValue>(totalLength);
             return TMapOps.Create(0);
         }
 
+        context.ReserveNonEmptyMapMemory<TKey, TValue>(totalLength);
         context.Reader.CheckBound(totalLength);
         TMap map = TMapOps.Create(totalLength);
         TypeId keyTypeId = TKeyCodec.WireTypeId;

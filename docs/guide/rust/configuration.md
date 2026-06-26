@@ -110,6 +110,30 @@ let fory = Fory::builder()
 - `max_average_schema_versions_per_type` defaults to `3` and limits the average across accepted
   remote types. The effective global floor is `8192` schemas.
 
+### Container Memory Budget
+
+`max_container_memory_bytes(...)` limits the estimated memory that deserialization may allocate for
+containers such as lists, sets, and maps during one root read. The default is `-1`, which selects an
+automatic limit based on the input size:
+
+```rust
+let fory = Fory::builder().max_container_memory_bytes(-1).build();
+```
+
+For byte-slice and `Reader` roots, the automatic limit is:
+
+```text
+input bytes * 8 + 64 KiB
+```
+
+Set a positive byte value when trusted payloads need a larger or smaller limit:
+
+```rust
+let fory = Fory::builder()
+    .max_container_memory_bytes(256 * 1024 * 1024)
+    .build();
+```
+
 ### Explicit Xlang Examples
 
 Set `.xlang(true)` explicitly for xlang serialization examples:
@@ -135,6 +159,11 @@ let fory = Fory::builder().xlang(false).compatible(false).build();
 // Custom depth limit
 let fory = Fory::builder().max_dyn_depth(10).build();
 
+// Custom container memory budget
+let fory = Fory::builder()
+    .max_container_memory_bytes(256 * 1024 * 1024)
+    .build();
+
 // Combined configuration
 let fory = Fory::builder()
     .xlang(false)
@@ -149,6 +178,7 @@ let fory = Fory::builder()
 | `compatible(bool)`                            | Enable schema evolution                           | `true`  |
 | `xlang(bool)`                                 | Use xlang mode                                    | `true`  |
 | `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`     |
+| `max_container_memory_bytes(i64)`             | Estimated container memory per root read          | `-1`    |
 | `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`   |
 | `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`  |
 | `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`    |
@@ -169,6 +199,8 @@ Security-related configuration:
 - Register application structs and trait-object implementations before deserializing untrusted
   payloads.
 - Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
+- Keep `max_container_memory_bytes(-1)` for the default input-shaped container budget, or set a
+  positive byte limit for trusted workloads with larger legitimate containers.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.

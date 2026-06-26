@@ -1421,7 +1421,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false);
+    readContext.prepare(buffer, null, false, buffer.remaining(), false);
     Assert.expectThrows(
         DeserializationException.class, () -> fory.getSerializer(BitSet.class).read(readContext));
   }

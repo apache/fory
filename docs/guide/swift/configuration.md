@@ -31,6 +31,7 @@ public struct Config {
   public let compatible: Bool
   public let checkClassVersion: Bool
   public let maxDepth: Int
+  public let maxContainerMemoryBytes: Int64
   public let maxTypeFields: Int
   public let maxTypeMetaBytes: Int
   public let maxSchemaVersionsPerType: Int
@@ -90,8 +91,14 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 ### Size and Depth Limits
 
-`maxDepth` bounds decoded payload nesting depth. Compatible-mode remote metadata
-is also limited:
+`maxDepth` bounds decoded payload nesting depth.
+
+`maxContainerMemoryBytes` bounds the estimated container-owned memory accepted during one root
+deserialization. Use `-1` for the default automatic limit. Swift roots are currently `Data` or
+`ByteBuffer`, so auto uses the root input byte length times `8`, plus `64 KiB`. A positive value
+overrides the automatic limit. `0` and negative values other than `-1` are rejected.
+
+Compatible-mode remote metadata is also limited:
 
 - `maxTypeFields` defaults to `512` and limits fields in one received struct metadata body.
 - `maxTypeMetaBytes` defaults to `4096` and limits encoded body bytes in one received TypeMeta body,
@@ -104,6 +111,7 @@ is also limited:
 ```swift
 let fory = Fory(
   maxDepth: 5,
+  maxContainerMemoryBytes: -1,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
@@ -140,5 +148,7 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` for the largest nesting depth your service accepts.
+- Set `maxContainerMemoryBytes` to cap estimated list, set, array, and map memory during one root
+  deserialization.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.

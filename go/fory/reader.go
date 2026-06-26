@@ -29,21 +29,60 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer           *ByteBuffer
-	refReader        *RefReader
-	trackRef         bool // Cached flag to avoid indirection
-	xlang            bool // Cross-language serialization mode
-	rootHeader       byte
-	compatible       bool          // Schema evolution compatibility mode
-	typeResolver     *TypeResolver // For complex type deserialization
-	refResolver      *RefResolver  // For reference tracking in native-mode paths
-	outOfBandBuffers []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex   int           // Current index into out-of-band buffers
-	depth            int           // Current nesting depth for cycle detection
-	maxDepth         int           // Maximum allowed nesting depth
-	err              Error         // Accumulated error state for deferred checking
-	lastTypePtr      uintptr
-	lastTypeInfo     *TypeInfo
+	buffer                        *ByteBuffer
+	refReader                     *RefReader
+	trackRef                      bool // Cached flag to avoid indirection
+	xlang                         bool // Cross-language serialization mode
+	rootHeader                    byte
+	compatible                    bool          // Schema evolution compatibility mode
+	typeResolver                  *TypeResolver // For complex type deserialization
+	refResolver                   *RefResolver  // For reference tracking in native-mode paths
+	outOfBandBuffers              []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex                int           // Current index into out-of-band buffers
+	depth                         int           // Current nesting depth for cycle detection
+	maxDepth                      int           // Maximum allowed nesting depth
+	err                           Error         // Accumulated error state for deferred checking
+	lastTypePtr                   uintptr
+	lastTypeInfo                  *TypeInfo
+	maxContainerMemoryBytes       int64
+	containerMemoryLimitBytes     int64
+	remainingContainerMemoryBytes int64
+}
+
+const (
+	knownRootBudgetMultiplier = int64(8)
+	knownRootBudgetSlackBytes = int64(64 * 1024)
+	streamRootBudgetBytes     = int64(128 * 1024 * 1024)
+	sliceObjectBytes          = int64(unsafe.Sizeof([]byte(nil)))
+	mapObjectBytes            = int64(48)
+	mapEntryOverheadBytes     = int64(16)
+)
+
+var referenceSlotBytes = int64(unsafe.Sizeof(uintptr(0)))
+var stringElementBytes = containerSizeOf[string]()
+var stringSliceMaxLength = maxSliceLength(stringElementBytes)
+
+func containerSizeOf[T any]() int64 {
+	var v T
+	return int64(unsafe.Sizeof(v))
+}
+
+func maxSliceLength(elemBytes int64) int64 {
+	if elemBytes == 0 {
+		return MaxInt64
+	}
+	return (MaxInt64 - sliceObjectBytes) / elemBytes
+}
+
+func mapElementMemory(keyBytes int64, valueBytes int64) int64 {
+	return keyBytes + valueBytes + mapEntryOverheadBytes + referenceSlotBytes + 2*referenceSlotBytes
+}
+
+func maxMapLength(elemBytes int64) int64 {
+	if elemBytes == 0 {
+		return MaxInt64
+	}
+	return (MaxInt64 - mapObjectBytes) / elemBytes
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -54,10 +93,11 @@ func (c *ReadContext) IsXlang() bool {
 // NewReadContext creates a new read context
 func NewReadContext(trackRef bool) *ReadContext {
 	return &ReadContext{
-		buffer:    NewByteBuffer(nil),
-		refReader: NewRefReader(trackRef),
-		trackRef:  trackRef,
-		maxDepth:  128, // Default maximum nesting depth
+		buffer:                  NewByteBuffer(nil),
+		refReader:               NewRefReader(trackRef),
+		trackRef:                trackRef,
+		maxDepth:                128, // Default maximum nesting depth
+		maxContainerMemoryBytes: -1,
 	}
 }
 
@@ -67,12 +107,165 @@ func (c *ReadContext) Reset() {
 	c.outOfBandBuffers = nil
 	c.outOfBandIndex = 0
 	c.err = Error{} // Clear error state
+	// Container budget state is overwritten by each root read before deserialization.
+	// Avoid extra reset stores on the successful root hot path.
 	if c.refResolver != nil {
 		c.refResolver.resetRead()
 	}
 	if c.typeResolver != nil {
 		c.typeResolver.resetRead()
 	}
+}
+
+func (c *ReadContext) initContainerMemoryBudget(rootInputBytes int, unknownLengthInput bool) {
+	limit := c.maxContainerMemoryBytes
+	if limit <= 0 {
+		if unknownLengthInput {
+			limit = streamRootBudgetBytes
+		} else {
+			if rootInputBytes < 0 {
+				c.setContainerMemoryError("root input size must be non-negative: %d", rootInputBytes)
+				return
+			}
+			if int64(rootInputBytes) > (MaxInt64-knownRootBudgetSlackBytes)/knownRootBudgetMultiplier {
+				c.setContainerMemoryError("root input size %d overflows automatic container memory budget", rootInputBytes)
+				return
+			}
+			limit = int64(rootInputBytes)*knownRootBudgetMultiplier + knownRootBudgetSlackBytes
+		}
+	}
+	c.containerMemoryLimitBytes = limit
+	c.remainingContainerMemoryBytes = limit
+}
+
+// ReserveSliceMemory reserves estimated memory for a Go slice backing array before allocation.
+func (c *ReadContext) ReserveSliceMemory(length int, elemBytes int64) bool {
+	if elemBytes < 0 {
+		c.setContainerMemoryError("negative container element size: %d", elemBytes)
+		return false
+	}
+	return c.reserveSliceMemory(length, elemBytes, maxSliceLength(elemBytes))
+}
+
+func (c *ReadContext) reserveSliceMemory(length int, elemBytes int64, maxLength int64) bool {
+	if length < 0 {
+		c.setContainerMemoryError("negative container length: %d", length)
+		return false
+	}
+	if int64(length) > maxLength {
+		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
+		return false
+	}
+	bytes := sliceObjectBytes + int64(length)*elemBytes
+	remaining := c.remainingContainerMemoryBytes
+	if bytes > remaining {
+		c.setContainerMemoryExceeded(bytes, remaining)
+		return false
+	}
+	c.remainingContainerMemoryBytes = remaining - bytes
+	return true
+}
+
+func (c *ReadContext) reserveSliceTypeMemory(length int, elemType reflect.Type) bool {
+	elemBytes := referenceSlotBytes
+	if elemType != nil {
+		elemBytes = int64(elemType.Size())
+	}
+	return c.ReserveSliceMemory(length, elemBytes)
+}
+
+// ReserveMapMemory reserves estimated memory for a Go map before allocation or size hinting.
+func (c *ReadContext) ReserveMapMemory(length int, keyBytes int64, valueBytes int64) bool {
+	if keyBytes < 0 || valueBytes < 0 {
+		c.setContainerMemoryError("negative map element size: key=%d value=%d", keyBytes, valueBytes)
+		return false
+	}
+	perEntry := keyBytes + valueBytes
+	if perEntry < keyBytes || perEntry > MaxInt64-mapEntryOverheadBytes-referenceSlotBytes {
+		c.setContainerMemoryError("map element size overflows: key=%d value=%d", keyBytes, valueBytes)
+		return false
+	}
+	perEntry += mapEntryOverheadBytes + referenceSlotBytes
+	if perEntry > MaxInt64-2*referenceSlotBytes {
+		c.setContainerMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		return false
+	}
+	elemBytes := perEntry + 2*referenceSlotBytes
+	return c.reserveMapMemory(length, elemBytes, maxMapLength(elemBytes))
+}
+
+func (c *ReadContext) reserveMapTypeMemory(length int, keyType reflect.Type, valueType reflect.Type) bool {
+	keyBytes := referenceSlotBytes
+	valueBytes := referenceSlotBytes
+	if keyType != nil {
+		keyBytes = int64(keyType.Size())
+	}
+	if valueType != nil {
+		valueBytes = int64(valueType.Size())
+	}
+	return c.ReserveMapMemory(length, keyBytes, valueBytes)
+}
+
+func (c *ReadContext) reserveMapMemory(length int, elemBytes int64, maxLength int64) bool {
+	if length < 0 {
+		c.setContainerMemoryError("negative container length: %d", length)
+		return false
+	}
+	if int64(length) > maxLength {
+		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
+		return false
+	}
+	bytes := mapObjectBytes + int64(length)*elemBytes
+	remaining := c.remainingContainerMemoryBytes
+	if bytes > remaining {
+		c.setContainerMemoryExceeded(bytes, remaining)
+		return false
+	}
+	c.remainingContainerMemoryBytes = remaining - bytes
+	return true
+}
+
+func (c *ReadContext) reserveCountedMemory(length int, fixedBytes int64, elemBytes int64) bool {
+	if length < 0 {
+		c.setContainerMemoryError("negative container length: %d", length)
+		return false
+	}
+	if fixedBytes < 0 || elemBytes < 0 {
+		c.setContainerMemoryError("negative container memory estimate: fixed=%d elem=%d", fixedBytes, elemBytes)
+		return false
+	}
+	if elemBytes != 0 && int64(length) > (MaxInt64-fixedBytes)/elemBytes {
+		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
+		return false
+	}
+	return c.ReserveContainerMemory(fixedBytes + int64(length)*elemBytes)
+}
+
+// ReserveContainerMemory reserves raw estimated container-owned bytes.
+func (c *ReadContext) ReserveContainerMemory(bytes int64) bool {
+	if bytes < 0 {
+		c.setContainerMemoryError("estimated container memory must be non-negative, got %d bytes", bytes)
+		return false
+	}
+	remaining := c.remainingContainerMemoryBytes
+	if bytes > remaining {
+		c.setContainerMemoryExceeded(bytes, remaining)
+		return false
+	}
+	c.remainingContainerMemoryBytes = remaining - bytes
+	return true
+}
+
+//go:noinline
+func (c *ReadContext) setContainerMemoryError(format string, args ...any) {
+	c.SetError(DeserializationErrorf(format, args...))
+}
+
+//go:noinline
+func (c *ReadContext) setContainerMemoryExceeded(bytes int64, remaining int64) {
+	c.SetError(DeserializationErrorf(
+		"estimated container memory request %d bytes exceeds maxContainerMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
+		bytes, remaining, c.containerMemoryLimitBytes))
 }
 
 // SetData sets new input data (for buffer reuse)
@@ -536,7 +729,42 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return ReadStringSlice(c.buffer, err)
+	return c.readStringSliceData()
+}
+
+func (c *ReadContext) readStringSliceData() []string {
+	buf := c.buffer
+	err := c.Err()
+	length := buf.ReadLength(err)
+	if c.HasError() {
+		return nil
+	}
+	if !c.reserveSliceMemory(length, containerSizeOf[string](), stringSliceMaxLength) {
+		return nil
+	}
+	if length == 0 {
+		return make([]string, 0)
+	}
+	collectFlag := buf.ReadInt8(err)
+	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
+		_ = buf.ReadUint8(err)
+	}
+	if c.HasError() || !buf.CheckReadable(length, err) {
+		return nil
+	}
+	result := make([]string, length)
+	trackRefs := (collectFlag & CollectionTrackingRef) != 0
+	hasNull := (collectFlag & CollectionHasNull) != 0
+	for i := 0; i < length; i++ {
+		if trackRefs || hasNull {
+			rf := buf.ReadInt8(err)
+			if rf == NullFlag {
+				continue
+			}
+		}
+		result[i] = readString(buf, err)
+	}
+	return result
 }
 
 // ReadStringStringMap reads map[string]string with optional ref/type info

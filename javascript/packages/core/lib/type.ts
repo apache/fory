@@ -291,6 +291,7 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  maxContainerMemoryBytes: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

@@ -45,6 +45,15 @@ import 'package:fory/src/types/uint64.dart';
 /// deserialization operation. Application code normally interacts with [Fory]
 /// instead of preparing contexts directly.
 final class ReadContext {
+  static const int _knownRootBudgetMultiplier = 8;
+  static const int _knownRootBudgetSlackBytes = 64 * 1024;
+  static const int _collectionObjectBytes = 24;
+  static const int _mapObjectBytes = 48;
+  static const int _arrayHeaderBytes = 16;
+  static const int _mapEntryBytes = 32;
+  static const int _referenceBytes = 4;
+  static const int _maxSafeBudgetBytes = 9007199254740991;
+
   /// Effective runtime configuration for the active operation.
   final Config config;
   final TypeResolver _typeResolver;
@@ -54,6 +63,8 @@ final class ReadContext {
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
+  int _effectiveContainerMemoryBytes = 0;
+  int _remainingContainerMemoryBytes = 0;
 
   @internal
   ReadContext(
@@ -64,8 +75,20 @@ final class ReadContext {
   );
 
   @internal
+  @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
+    final configured = config.maxContainerMemoryBytes;
+    final limit =
+        configured > 0
+            ? configured
+            : buffer.readableBytes * _knownRootBudgetMultiplier +
+                _knownRootBudgetSlackBytes;
+    if (limit > _maxSafeBudgetBytes) {
+      _throwContainerMemoryOverflow(limit);
+    }
+    _effectiveContainerMemoryBytes = limit;
+    _remainingContainerMemoryBytes = limit;
   }
 
   @internal
@@ -74,6 +97,8 @@ final class ReadContext {
     _refReader.reset();
     _metaStringReader.reset();
     _depth = 0;
+    _effectiveContainerMemoryBytes = 0;
+    _remainingContainerMemoryBytes = 0;
   }
 
   /// The active input buffer for the current operation.
@@ -84,6 +109,76 @@ final class ReadContext {
 
   @internal
   RefReader get refReader => _refReader;
+
+  @internal
+  int get effectiveContainerMemoryBytes => _effectiveContainerMemoryBytes;
+
+  @internal
+  int get remainingContainerMemoryBytes => _remainingContainerMemoryBytes;
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void reserveCollectionMemory(int numElements) {
+    final bytes = _collectionObjectBytes + numElements * _referenceBytes;
+    final remaining = _remainingContainerMemoryBytes - bytes;
+    if (remaining < 0) {
+      _throwContainerMemoryExceeded(bytes);
+    }
+    _remainingContainerMemoryBytes = remaining;
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void reserveMapMemory(int numElements) {
+    final bytes =
+        _mapObjectBytes +
+        numElements *
+            (_referenceBytes * 2 + _mapEntryBytes + _referenceBytes * 3);
+    final remaining = _remainingContainerMemoryBytes - bytes;
+    if (remaining < 0) {
+      _throwContainerMemoryExceeded(bytes);
+    }
+    _remainingContainerMemoryBytes = remaining;
+  }
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void reserveTypedArrayMemory(int numElements, int elementBytes) {
+    final bytes = _arrayHeaderBytes + numElements * elementBytes;
+    final remaining = _remainingContainerMemoryBytes - bytes;
+    if (remaining < 0) {
+      _throwContainerMemoryExceeded(bytes);
+    }
+    _remainingContainerMemoryBytes = remaining;
+  }
+
+  @internal
+  void reserveContainerMemory(int bytes) {
+    if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
+      _throwContainerMemoryOverflow(bytes);
+    }
+    final remaining = _remainingContainerMemoryBytes - bytes;
+    if (remaining < 0) {
+      _throwContainerMemoryExceeded(bytes);
+    }
+    _remainingContainerMemoryBytes = remaining;
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwContainerMemoryOverflow(int bytes) {
+    throw StateError(
+      'maxContainerMemoryBytes overflow: requested $bytes estimated container bytes.',
+    );
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwContainerMemoryExceeded(int bytes) {
+    throw StateError(
+      'maxContainerMemoryBytes exceeded: requested $bytes estimated container bytes, '
+      '$_remainingContainerMemoryBytes remaining, effective limit '
+      '$_effectiveContainerMemoryBytes.',
+    );
+  }
 
   @internal
   @pragma('vm:prefer-inline')

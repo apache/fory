@@ -20,8 +20,10 @@
 package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
+import org.apache.fory.exception.InsecureException
 import org.apache.fory.kotlin.ForyKotlin
 import org.testng.Assert.assertEquals
+import org.testng.Assert.fail
 import org.testng.annotations.Test
 
 class CollectionSerializerTest {
@@ -31,6 +33,22 @@ class CollectionSerializerTest {
 
     val arrayDeque = ArrayDeque(listOf(1, 2, 3, 4, 5))
     assertEquals(arrayDeque, fory.deserialize(fory.serialize(arrayDeque)))
+  }
+
+  @Test
+  fun testArrayDequeContainerMemoryBudget() {
+    val writer: Fory = ForyKotlin.builder().withXlang(false).requireClassRegistration(true).build()
+    val reader: Fory =
+      ForyKotlin.builder()
+        .withXlang(false)
+        .requireClassRegistration(true)
+        .withMaxContainerMemoryBytes(23)
+        .build()
+
+    try {
+      reader.deserialize(writer.serialize(ArrayDeque<Int>()))
+      fail("Expected container memory budget failure")
+    } catch (ignored: InsecureException) {}
   }
 
   @Test

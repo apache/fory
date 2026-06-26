@@ -97,6 +97,30 @@ function compatibleArrayCollectionExpr(elementTypeId: number, len: string): stri
   }
 }
 
+function compatibleArrayElementBytes(elementTypeId: number): number {
+  switch (elementTypeId) {
+    case TypeId.BOOL:
+    case TypeId.INT8:
+    case TypeId.UINT8:
+      return 1;
+    case TypeId.INT16:
+    case TypeId.UINT16:
+    case TypeId.FLOAT16:
+    case TypeId.BFLOAT16:
+      return 2;
+    case TypeId.INT32:
+    case TypeId.UINT32:
+    case TypeId.FLOAT32:
+      return 4;
+    case TypeId.INT64:
+    case TypeId.UINT64:
+    case TypeId.FLOAT64:
+      return 8;
+    default:
+      return 4;
+  }
+}
+
 function compatibleArrayPutAccessor(
   elementTypeId: number,
   result: string,
@@ -234,10 +258,12 @@ class CollectionAnySerializer {
   ): any {
     void fromRef;
     const len = this.readContext.reader.readVarUint32Small7();
+    this.readContext.reserveCollectionMemory(len);
     if (len === 0) {
       return createCollection(len);
     }
     const flags = this.readContext.reader.readUint8();
+    this.readContext.reader.checkReadableBytes(len);
     const result = createCollection(len);
     // IMPORTANT: collection readers must obey the ref/null bits written on the
     // wire, not local TypeScript metadata that may imply a different ref
@@ -418,6 +444,9 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const newCollection = compatibleListToArray
       ? compatibleArrayCollectionExpr(compatibleReadAction!.elementTypeId, len)
       : this.newCollection(len);
+    const reserveMemory = compatibleListToArray
+      ? `${readContextName}.reserveTypedArrayMemory(${len}, ${compatibleArrayElementBytes(compatibleReadAction!.elementTypeId)});`
+      : `${readContextName}.reserveCollectionMemory(${len});`;
     const putAccessor = (item: string, index: string) =>
       compatibleListToArray
         ? compatibleArrayPutAccessor(compatibleReadAction!.elementTypeId, result, item, index)
@@ -449,6 +478,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
       : `${elemSerializer} = ${anyHelper}.detectSerializer(${readContextName});`;
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
+            ${reserveMemory}
             let ${flags} = 0;
             if (${len} > 0) {
                 ${flags} = ${this.builder.reader.readUint8()};

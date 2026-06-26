@@ -103,6 +103,7 @@ public final class ForyBuilder {
   int maxTypeMetaBytes = 4096;
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
+  long maxContainerMemoryBytes = -1;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -568,6 +569,22 @@ public final class ForyBuilder {
         maxAverageSchemaVersionsPerType);
     this.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
     recordAction(b -> b.withMaxAverageSchemaVersionsPerType(maxAverageSchemaVersionsPerType));
+    return this;
+  }
+
+  /**
+   * Sets the maximum estimated container-owned memory accepted during one root deserialization.
+   *
+   * <p>The default is {@code -1}, which derives an automatic per-root budget from the input shape.
+   * Positive values are explicit byte limits. Other values are invalid.
+   */
+  public ForyBuilder withMaxContainerMemoryBytes(long maxContainerMemoryBytes) {
+    Preconditions.checkArgument(
+        maxContainerMemoryBytes == -1 || maxContainerMemoryBytes > 0,
+        "maxContainerMemoryBytes must be positive or -1 for auto but got %s",
+        maxContainerMemoryBytes);
+    this.maxContainerMemoryBytes = maxContainerMemoryBytes;
+    recordAction(b -> b.withMaxContainerMemoryBytes(maxContainerMemoryBytes));
     return this;
   }
 

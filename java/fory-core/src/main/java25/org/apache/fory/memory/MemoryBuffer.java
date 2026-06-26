@@ -81,6 +81,7 @@ public final class MemoryBuffer {
   private static final int LONG_ARRAY_OFFSET = 0;
   private static final int FLOAT_ARRAY_OFFSET = 0;
   private static final int DOUBLE_ARRAY_OFFSET = 0;
+  private static final int OBJECT_ARRAY_INDEX_SCALE = 4;
   private static final VarHandle BYTE_ARRAY_CHAR =
       MethodHandles.byteArrayViewVarHandle(char[].class, NATIVE_ORDER);
   private static final VarHandle BYTE_ARRAY_SHORT =
@@ -3922,6 +3923,10 @@ public final class MemoryBuffer {
       ByteBuffer buffer, int size, ForyStreamReader streamReader) {
     long offHeapAddress = buffer.position();
     return new MemoryBuffer(offHeapAddress, size, buffer, streamReader);
+  }
+
+  public static int objectArrayIndexScale() {
+    return OBJECT_ARRAY_INDEX_SCALE;
   }
 
   /**

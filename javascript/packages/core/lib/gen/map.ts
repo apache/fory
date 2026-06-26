@@ -272,6 +272,7 @@ class MapAnySerializer {
 
   read(fromRef: boolean): any {
     let count = this.readContext.reader.readVarUint32Small7();
+    this.readContext.reserveMapMemory(count);
     const result = new Map();
     if (fromRef) {
       this.readContext.reference(result);
@@ -491,6 +492,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
+      ${readContextName}.reserveMapMemory(${count});
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

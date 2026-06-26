@@ -214,9 +214,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
+            context.ReserveMapMemory<TKey, TValue>(totalLength);
             return CreateMap(0);
         }
 
+        context.ReserveNonEmptyMapMemory<TKey, TValue>(totalLength);
         context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;

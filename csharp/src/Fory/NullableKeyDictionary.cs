@@ -537,9 +537,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
+            context.ReserveMapMemory<TKey, TValue>(totalLength);
             return new NullableKeyDictionary<TKey, TValue>();
         }
 
+        context.ReserveNonEmptyMapMemory<TKey, TValue>(totalLength);
         context.Reader.CheckBound(totalLength);
         NullableKeyDictionary<TKey, TValue> map = new(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;

@@ -51,6 +51,15 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class ReadContext {
+  private static final long KNOWN_ROOT_BUDGET_MULTIPLIER = 8L;
+  private static final long KNOWN_ROOT_BUDGET_SLACK_BYTES = 64L * 1024;
+  private static final long STREAM_ROOT_BUDGET_BYTES = 128L * 1024 * 1024;
+  private static final long COLLECTION_OBJECT_BYTES = 24L;
+  private static final long MAP_OBJECT_BYTES = 48L;
+  private static final long ARRAY_HEADER_BYTES = 16L;
+  private static final long MAP_ENTRY_BYTES = 32L;
+  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+
   private final Config config;
   private final Generics generics;
   private final TypeResolver typeResolver;
@@ -63,6 +72,7 @@ public final class ReadContext {
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final int maxDepth;
+  private final long maxContainerMemoryBytes;
   private final boolean scopedMetaShareEnabled;
   private final boolean forVirtualThread;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
@@ -71,6 +81,8 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
+  private long containerMemoryLimitBytes;
+  private long remainingContainerMemoryBytes;
 
   /**
    * Creates read-side runtime state for one {@code Fory} instance.
@@ -96,6 +108,7 @@ public final class ReadContext {
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
+    maxContainerMemoryBytes = config.maxContainerMemoryBytes();
     forVirtualThread = config.forVirtualThread();
     scopedMetaShareEnabled = config.isScopedMetaShareEnabled();
     if (scopedMetaShareEnabled) {
@@ -108,10 +121,32 @@ public final class ReadContext {
    * flag for one operation.
    */
   public void prepare(
-      MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers, boolean peerOutOfBandEnabled) {
+      MemoryBuffer buffer,
+      Iterable<MemoryBuffer> outOfBandBuffers,
+      boolean peerOutOfBandEnabled,
+      int rootInputBytes,
+      boolean unknownLengthInput) {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
+    initContainerMemoryBudget(rootInputBytes, unknownLengthInput);
+  }
+
+  private void initContainerMemoryBudget(int rootInputBytes, boolean unknownLengthInput) {
+    long limit = maxContainerMemoryBytes;
+    if (limit <= 0) {
+      if (unknownLengthInput) {
+        limit = STREAM_ROOT_BUDGET_BYTES;
+      } else {
+        if (rootInputBytes < 0) {
+          throw new IllegalArgumentException(
+              "Root input size must be non-negative: " + rootInputBytes);
+        }
+        limit = rootInputBytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES;
+      }
+    }
+    containerMemoryLimitBytes = limit;
+    remainingContainerMemoryBytes = limit;
   }
 
   /**
@@ -307,11 +342,59 @@ public final class ReadContext {
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
     depth = 0;
+    containerMemoryLimitBytes = 0;
+    remainingContainerMemoryBytes = 0;
   }
 
   /** Returns the immutable runtime configuration for this context. */
   public Config getConfig() {
     return config;
+  }
+
+  public void reserveCollectionMemory(int numElements) {
+    reserveContainerMemory(COLLECTION_OBJECT_BYTES + (long) numElements * REFERENCE_BYTES);
+  }
+
+  public void reserveCollectionCapacity(int numElements, int capacity) {
+    reserveContainerMemory((long) (capacity - numElements) * REFERENCE_BYTES);
+  }
+
+  public void reserveMapMemory(int numElements) {
+    long entries = (long) numElements;
+    long tableBytes = entries * 2 * REFERENCE_BYTES;
+    long entryBytes = entries * (MAP_ENTRY_BYTES + 3L * REFERENCE_BYTES);
+    reserveContainerMemory(MAP_OBJECT_BYTES + tableBytes + entryBytes);
+  }
+
+  public void reserveObjectArrayMemory(int numElements) {
+    reserveContainerMemory(ARRAY_HEADER_BYTES + (long) numElements * REFERENCE_BYTES);
+  }
+
+  public void reserveContainerMemory(long bytes) {
+    if (bytes < 0) {
+      throwNegativeContainerMemory(bytes);
+    }
+    long remaining = remainingContainerMemoryBytes;
+    if (bytes > remaining) {
+      throwContainerMemoryExceeded(bytes, remaining);
+    }
+    remainingContainerMemoryBytes = remaining - bytes;
+  }
+
+  private void throwNegativeContainerMemory(long bytes) {
+    throw new InsecureException(
+        "Estimated container memory must be non-negative, but got " + bytes + " bytes.");
+  }
+
+  private void throwContainerMemoryExceeded(long bytes, long remaining) {
+    throw new InsecureException(
+        "Estimated container memory request "
+            + bytes
+            + " bytes exceeds maxContainerMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of effective limit "
+            + containerMemoryLimitBytes
+            + " bytes. If the data is trusted, increase ForyBuilder#withMaxContainerMemoryBytes.");
   }
 
   /** Returns the generics stack shared by the owning runtime. */

@@ -570,7 +570,11 @@ public func readListOfAny(
         refMode: refMode,
         readTypeInfo: readTypeInfo
     )
-    return wrapped?.map { $0.anyValueForCollection() }
+    guard let wrapped else {
+        return nil
+    }
+    try context.reserveReferenceArrayMemory(count: wrapped.count)
+    return wrapped.map { $0.anyValueForCollection() }
 }
 
 public func writeMapStringToAny(
@@ -604,6 +608,7 @@ public func readMapStringToAny(
     guard let wrapped else {
         return nil
     }
+    try context.reserveReferenceMapMemory(count: wrapped.count)
     var map: [String: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -643,6 +648,7 @@ public func readMapInt32ToAny(
     guard let wrapped else {
         return nil
     }
+    try context.reserveReferenceMapMemory(count: wrapped.count)
     var map: [Int32: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -682,6 +688,7 @@ public func readMapAnyHashableToAny(
     guard let wrapped else {
         return nil
     }
+    try context.reserveReferenceMapMemory(count: wrapped.count)
     var map: [AnyHashable: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -693,8 +700,10 @@ public func readMapAnyHashableToAny(
 func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
     let map = try readMapAnyHashableToAny(context: context, refMode: .none) ?? [:]
     if map.isEmpty {
+        try context.reserveReferenceMapMemory(count: 0)
         return [String: Any]()
     }
+    try context.reserveReferenceMapMemory(count: map.count)
     var stringMap: [String: Any] = [:]
     stringMap.reserveCapacity(map.count)
     for pair in map {
@@ -708,6 +717,7 @@ func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
         return stringMap
     }
 
+    try context.reserveReferenceMapMemory(count: map.count)
     var int32Map: [Int32: Any] = [:]
     int32Map.reserveCapacity(map.count)
     for pair in map {

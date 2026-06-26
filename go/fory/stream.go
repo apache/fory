@@ -96,6 +96,13 @@ func (is *InputStream) Shrink() {
 func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = is.buffer
+	f.readCtx.initContainerMemoryBudget(0, true)
+	if f.readCtx.HasError() {
+		err := f.readCtx.TakeError()
+		f.readCtx.buffer = origBuffer
+		f.resetReadState()
+		return err
+	}
 	defer func() {
 		f.readCtx.buffer = origBuffer
 		f.resetReadState()
@@ -123,6 +130,10 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	defer f.resetReadState()
 	// Always reset to enforce stateless semantics.
 	f.readCtx.buffer.ResetWithReader(r, 0)
+	f.readCtx.initContainerMemoryBudget(0, true)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {

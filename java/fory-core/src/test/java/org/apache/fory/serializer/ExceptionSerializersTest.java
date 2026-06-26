@@ -179,7 +179,7 @@ public class ExceptionSerializersTest extends ForyTestBase {
 
     payload.readerIndex(0);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(payload, null, false);
+    readContext.prepare(payload, null, false, payload.remaining(), false);
     readContext.preserveRefId();
     Serializer<RuntimeException> serializer =
         (Serializer<RuntimeException>) fory.getTypeResolver().getSerializer(RuntimeException.class);
@@ -251,7 +251,7 @@ public class ExceptionSerializersTest extends ForyTestBase {
 
     payload.readerIndex(0);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(payload, null, false);
+    readContext.prepare(payload, null, false, payload.remaining(), false);
     Serializer<CustomException> serializer =
         (Serializer<CustomException>) fory.getTypeResolver().getSerializer(CustomException.class);
 

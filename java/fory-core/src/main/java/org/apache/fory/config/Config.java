@@ -68,6 +68,7 @@ public class Config implements Serializable {
   private final int maxTypeMetaBytes;
   private final int maxSchemaVersionsPerType;
   private final int maxAverageSchemaVersionsPerType;
+  private final long maxContainerMemoryBytes;
   private final float mapRefLoadFactor;
   private final boolean forVirtualThread;
 
@@ -114,6 +115,7 @@ public class Config implements Serializable {
     maxTypeMetaBytes = builder.maxTypeMetaBytes;
     maxSchemaVersionsPerType = builder.maxSchemaVersionsPerType;
     maxAverageSchemaVersionsPerType = builder.maxAverageSchemaVersionsPerType;
+    maxContainerMemoryBytes = builder.maxContainerMemoryBytes;
     mapRefLoadFactor = builder.mapRefLoadFactor;
     forVirtualThread = builder.forVirtualThread;
   }
@@ -320,6 +322,11 @@ public class Config implements Serializable {
     return maxAverageSchemaVersionsPerType;
   }
 
+  /** Returns the root-operation estimated container memory limit in bytes, or -1 for auto. */
+  public long maxContainerMemoryBytes() {
+    return maxContainerMemoryBytes;
+  }
+
   /** Returns loadFactor of MacRef's writtenObjects. */
   public float mapRefLoadFactor() {
     return mapRefLoadFactor;
@@ -368,6 +375,7 @@ public class Config implements Serializable {
         && maxTypeMetaBytes == config.maxTypeMetaBytes
         && maxSchemaVersionsPerType == config.maxSchemaVersionsPerType
         && maxAverageSchemaVersionsPerType == config.maxAverageSchemaVersionsPerType
+        && maxContainerMemoryBytes == config.maxContainerMemoryBytes
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -403,6 +411,7 @@ public class Config implements Serializable {
         maxTypeMetaBytes,
         maxSchemaVersionsPerType,
         maxAverageSchemaVersionsPerType,
+        maxContainerMemoryBytes,
         metaShareEnabled,
         scopedMetaShareEnabled,
         metaCompressor,

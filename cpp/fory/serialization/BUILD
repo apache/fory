@@ -110,6 +110,16 @@ cc_test(
 )
 
 cc_test(
+    name = "container_memory_budget_test",
+    srcs = ["container_memory_budget_test.cc"],
+    deps = [
+        ":fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "variant_serializer_test",
     srcs = ["variant_serializer_test.cc"],
     deps = [

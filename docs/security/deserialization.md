@@ -149,11 +149,13 @@ For buffer-backed input:
   comparison.
 - Multi-byte element arrays should compute the required byte size with overflow
   checks before allocation.
-- Container readers that allocate, reserve, or size-hint from a declared
-  logical element count should first call the byte owner's readability check for
-  that count. This is not a full container-body validation; it is the allocation
-  proof that the sender has supplied at least proportional input bytes before
-  the reader preallocates from the count.
+- Container readers that allocate backing storage or size-hint from a declared
+  logical element count should call the byte owner's readability check for that
+  count before that backing allocation or capacity reservation. This is not a
+  full container-body validation; it is the allocation proof that the sender has
+  supplied at least proportional input bytes before the reader preallocates from
+  the count. Estimated memory-budget accounting may reserve budget before this
+  byte check because it does not allocate backing storage.
 
 For stream-backed input:
 
@@ -202,6 +204,42 @@ Map or collection chunk validation is security-relevant only when missing
 validation can cause a no-progress loop, unbounded resource growth, retained
 state, or success across a Fory policy boundary. Protocol-allowed chunk
 segmentation is normal input and is not a security issue by itself.
+
+## Container Memory Budget
+
+Runtimes should enforce a root-deserialization budget for estimated
+container-owned memory. This is cumulative accounting for containers created by
+one root read; it is not exact heap measurement and it is not a raw element-slot
+limit.
+
+The public configuration should be named around `maxContainerMemoryBytes`.
+`-1` means automatic input-shaped budgeting. Positive user configuration always
+wins. For known-length root input, the automatic budget is
+`inputBytes * 8 + 64 KiB`. For true stream or otherwise unknown-length root
+input, the automatic budget is fixed at `128 MiB`. Stream budgeting should not
+depend on dynamic bytes-read accounting.
+
+Container budget accounting should:
+
+- happen in root-operation read state, with cleanup owned by the root
+  deserialization `finally`;
+- reject arithmetic overflow before comparing budget or allocating;
+- charge fixed container object cost, backing capacity, map table and entry
+  overhead, reference arrays, and inline or value storage where a runtime stores
+  elements inline;
+- charge fixed cost even for zero-size containers;
+- preserve existing byte-availability checks before backing allocation or
+  capacity reservation;
+- skip dedicated string, binary, primitive array, and primitive dense-array
+  owner paths.
+
+Each runtime must inspect the concrete container path before choosing formulas.
+Reference-backed containers should charge reference storage, using a 4-byte
+reference slot when the actual reference slot size is not cheap or reliable to
+query. Inline/value containers such as a value-type vector or list must charge
+the inline element storage instead of treating those elements as references.
+General inline-value containers must not be skipped just because dedicated
+primitive dense arrays are skipped.
 
 ## Skip Semantics
 

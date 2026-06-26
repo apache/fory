@@ -1700,6 +1700,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
+        context.reserve_vec_memory::<T>(len)?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -1728,6 +1729,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
+        context.reserve_vec_memory::<T>(len)?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -2270,6 +2272,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
+        context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2289,6 +2292,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
+        let capacity = context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2299,7 +2303,8 @@ where
         {
             return read_map_dynamic::<K, V, KC, VC>(context, len, remote_field_type);
         }
-        let mut map = HashMap::with_capacity(check_map_len(context, len)?);
+        context.reader.check_bound(capacity)?;
+        let mut map = HashMap::with_capacity(capacity);
         let mut len_counter = 0;
         while len_counter < len {
             let header = context.reader.read_u8()?;
