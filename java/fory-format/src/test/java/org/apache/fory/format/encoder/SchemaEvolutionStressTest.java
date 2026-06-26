@@ -787,19 +787,10 @@ public class SchemaEvolutionStressTest {
   }
 
   // A top-level map whose value evolves while the key stays a struct bean. The value projects from
-  // an older version; the key (same shape on both sides) must round-trip unchanged.
-  //
-  // Disabled: known bug. The value-projection map codec applies the value's version suffix to the
-  // key bean too (BaseBinaryEncoderBuilder.nestedBeanSuffix is type-blind), and a same-class
-  // key/value share one bean codec because beanEncoderMap/rowWriterMap are keyed by typeRef, not
-  // position. So the key is decoded with the value's historical layout and its string field
-  // corrupts. The fix is position-scoped bean-codec registration in the map codegen (key always
-  // current/unsuffixed, value suffixed; distinct registration keys for a same-class key/value).
-  // Trap: the value bean codec is registered inside the lazy lambdas of serializeForArrayByWriter /
-  // deserializeForCollection, which run during Expression.genCode(), not construction, so a flag
-  // set around the construction calls does not reach it; the scope must toggle during the value
-  // subtree's genCode.
-  @Test(enabled = false)
+  // an older version; the key (same shape on both sides) must round-trip unchanged. The map codec
+  // only applies the value's projection suffix to the value position (MapEncoderBuilder scopes
+  // nestedBeanSuffix to inValuePosition), so the key bean is always decoded at its current schema.
+  @Test
   public void mapStructKeyValueEvolution() {
     MapEncoder<Map<DefaultsV2, DefaultsV1>> writer =
         Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV1>>() {})
