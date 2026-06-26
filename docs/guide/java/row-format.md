@@ -271,6 +271,13 @@ any peer that has not yet upgraded.
 
 Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
 
+A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
+field names and nullability and is checked for collisions across a bean's own versions when the
+codec is built, but it is still a 64-bit value: a payload whose hash coincides with one of the
+reader's historical layouts is decoded against that layout. This is the same hash-based dispatch
+the row format has always used, so feeding a codec bytes it was not built for has undefined results
+whether or not evolution is enabled. Only hand a codec payloads produced for the same bean.
+
 Map keys do not carry a per-payload hash; a versioned bean used as a map key is read with the
 current schema only, not dispatched to a projection codec.
 

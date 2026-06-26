@@ -59,7 +59,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
 
   public Supplier<MapEncoder<M>> build() {
     loadMapInnerCodecs();
-    if (!schemaEvolution || !isBeanValue()) {
+    if (!schemaEvolution || evolutionBean() == null) {
       final var mapEncoderFactory = generatedMapEncoder();
       return new Supplier<MapEncoder<M>>() {
         @Override
@@ -81,17 +81,18 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   }
 
   /**
-   * True if the value is a bean — the only case where schema evolution affects the wire format.
-   * Unversioned beans still take the evolution path so the strict-hash prefix is always present and
-   * an evolution-on consumer can detect a flag-mismatched producer cleanly.
+   * Bean this map evolves on, reachable through the value type. A directly-typed bean (versioned or
+   * not) takes the evolution path so the strict-hash prefix is always present and an evolution-on
+   * consumer can detect a flag-mismatched producer cleanly; a versioned bean nested inside a
+   * list/map/array value is found by descending the wrapper. Null when the value carries no bean.
    */
-  private boolean isBeanValue() {
-    return TypeUtils.isBean(
+  private Class<?> evolutionBean() {
+    return SchemaHistory.evolutionBean(
         valType, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
   }
 
   private Supplier<MapEncoder<M>> buildVersioned() {
-    Class<?> valClass = TypeUtils.getRawType(valType);
+    Class<?> valClass = evolutionBean();
     SchemaHistory history = buildSchemaHistory(valClass);
     SchemaHistory.VersionedSchema current = history.current();
 
@@ -111,12 +112,13 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
           Encoders.loadOrGenProjectionMapCodecClass(
               mapType, TypeRef.of(valClass), codecFormat, suffix);
       MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
-      // Build a MapType whose value is the historical element struct, keeping the same key.
-      Field individualKey = DataTypes.keyFieldForMap(field);
-      Field histIndividualVal =
-          DataTypes.field(
-              DataTypes.MAP_VALUE_NAME, new DataTypes.StructType(vs.schema().fields()), true);
-      Field histMapField = DataTypes.mapField(field.name(), individualKey, histIndividualVal);
+      // Rebuild the map field with the value projected onto this historical version. The key stays
+      // at the current schema; the bean sits directly at the value or inside a list/map value
+      // wrapper, which projectThroughWrapper preserves around the historical struct.
+      Field histVal =
+          SchemaHistory.projectThroughWrapper(DataTypes.itemFieldForMap(field), valType, vs);
+      Field histMapField =
+          DataTypes.mapField(field.name(), DataTypes.keyFieldForMap(field), histVal);
       projectionFactories.put(vs.strictHash(), new ProjectionMapFactory(histMapField, ctor));
     }
     final var currentFactory = generatedMapEncoder();

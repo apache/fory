@@ -36,6 +36,7 @@ import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
@@ -328,6 +329,41 @@ public final class SchemaHistory {
   }
 
   /**
+   * Bean a top-level array/map codec evolves on, reachable through {@code elementType} (the array
+   * element or map value). Descends list/map/array wrappers and returns the bean at the leaf,
+   * matching the way {@link #findVersionedBean} descends. The bean need not be versioned: an
+   * unversioned bean must still take the evolution path so the strict-hash prefix is always present
+   * and the producer and consumer stay wire-compatible. Returns null when no bean is reachable and
+   * the codec needs no projection. Map keys are not inspected; they are always read at the current
+   * schema.
+   */
+  public static Class<?> evolutionBean(TypeRef<?> elementType, TypeResolutionContext typeCtx) {
+    Class<?> raw = TypeUtils.getRawType(elementType);
+    if (raw == null) {
+      return null;
+    }
+    if (raw.isArray() || TypeUtils.isCollection(raw)) {
+      return evolutionBean(elementTypeRef(elementType, raw), typeCtx);
+    }
+    if (TypeUtils.isMap(raw)) {
+      return evolutionBean(TypeUtils.getMapKeyValueType(elementType).f1, typeCtx);
+    }
+    return TypeUtils.isBean(TypeRef.of(raw), typeCtx) ? raw : null;
+  }
+
+  /**
+   * Project {@code currentField} (an array element or map value field at the bean's current schema)
+   * onto {@code historical}, swapping the bean's struct while keeping any list/map/array wrapper.
+   * For a directly-typed bean this is just the historical struct; for {@code List<Bean>} or {@code
+   * Map<K, Bean>} the wrapper is preserved around the historical struct.
+   */
+  public static Field projectThroughWrapper(
+      Field currentField, TypeRef<?> elementType, VersionedSchema historical) {
+    return substituteNestedStruct(
+        currentField, elementType, new DataTypes.StructType(historical.schema().fields()));
+  }
+
+  /**
    * Find the versioned bean reachable from a field type: the field type itself, a list/array
    * element, or a map value. Returns null when no versioned bean is present. Map keys are not
    * inspected: they carry no per-payload hash on the wire and are always read with the current
@@ -472,18 +508,8 @@ public final class SchemaHistory {
                 + until
                 + "). Declare removed fields on the @ForySchema.removedFields history class instead.");
       }
-      if (since >= until) {
-        throw new IllegalStateException(
-            "Invalid @ForyVersion on "
-                + beanClass.getName()
-                + "."
-                + d.getName()
-                + ": since ("
-                + since
-                + ") must be strictly less than until ("
-                + until
-                + ")");
-      }
+      // No since/until ordering check here: a live field always has until == MAX_VALUE (enforced
+      // above), so the ordering check lives only on the removed-field path in collectRemovedFields.
       String wireName = StringUtils.lowerCamelToLowerUnderscore(d.getName());
       out.add(new FieldEntry(wireName, d.getName(), d.getTypeRef(), since, until, /*live*/ true));
     }

@@ -68,7 +68,7 @@ public class ArrayCodecBuilder<C extends Collection<?>>
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
     loadArrayInnerCodecs();
-    if (!schemaEvolution || !isBeanElement()) {
+    if (!schemaEvolution || evolutionBean() == null) {
       final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
           generatedEncoderFactory();
       return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
@@ -83,22 +83,24 @@ public class ArrayCodecBuilder<C extends Collection<?>>
   }
 
   /**
-   * True if the element is a bean — the only case where schema evolution affects the wire format.
-   * Unversioned beans still take the evolution path so the strict-hash prefix is always present and
-   * an evolution-on consumer can detect a flag-mismatched producer cleanly.
+   * Bean this array evolves on, reachable through the element type. A directly-typed bean
+   * (versioned or not) takes the evolution path so the strict-hash prefix is always present and an
+   * evolution-on consumer can detect a flag-mismatched producer cleanly; a versioned bean nested
+   * inside a list/map/array element is found by descending the wrapper. Null when the element
+   * carries no bean.
+   *
+   * <p>The resolution context matches the row-format type inference, which synthesizes
+   * interface-typed bean fields; without it a class with interface members would not be recognized
+   * as a bean even though the row codec can encode it.
    */
-  private boolean isBeanElement() {
-    Class<?> elementClass = getRawType(TypeUtils.getElementType(collectionType));
-    // Use the same resolution context as the row-format type inference, which synthesizes
-    // interface-typed bean fields. Without this, classes that contain interface members
-    // would not be recognized as beans even though the row codec can encode them.
-    return TypeUtils.isBean(
-        TypeRef.of(elementClass),
+  private Class<?> evolutionBean() {
+    return SchemaHistory.evolutionBean(
+        TypeUtils.getElementType(collectionType),
         new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
   }
 
   private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter() {
-    Class<?> elementClass = getRawType(TypeUtils.getElementType(collectionType));
+    Class<?> elementClass = evolutionBean();
     SchemaHistory history = buildSchemaHistory(elementClass);
     SchemaHistory.VersionedSchema current = history.current();
 
@@ -118,12 +120,15 @@ public class ArrayCodecBuilder<C extends Collection<?>>
           Encoders.loadOrGenProjectionArrayCodecClass(
               collectionType, TypeRef.of(elementClass), codecFormat, suffix);
       MethodHandle ctor = Encoders.constructorHandleFor(arrayClass, GeneratedArrayEncoder.class);
-      // The array's "elementField" is a ListType whose valueField is the element struct. Build
-      // a parallel ListType for this historical version so the projection codec can produce a
-      // BinaryArray with the right element width.
+      // The array's "elementField" is a ListType whose valueField is the element. Project that
+      // value onto this historical version so the projection codec produces a BinaryArray with the
+      // right element width. The bean sits directly at the value or inside a list/map/array element
+      // wrapper, which projectThroughWrapper preserves around the historical struct.
       Field histValueField =
-          DataTypes.field(
-              DataTypes.ARRAY_ITEM_NAME, new DataTypes.StructType(vs.schema().fields()), true);
+          SchemaHistory.projectThroughWrapper(
+              DataTypes.arrayElementField(elementField),
+              TypeUtils.getElementType(collectionType),
+              vs);
       Field histListField = DataTypes.arrayField(elementField.name(), histValueField);
       projectionFactories.put(vs.strictHash(), new ProjectionArrayFactory(histListField, ctor));
     }
