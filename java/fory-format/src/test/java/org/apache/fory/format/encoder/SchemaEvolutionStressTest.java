@@ -113,16 +113,11 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void longChainAllVersionsReadable() {
-    RowEncoder<ChainV1> w1 =
-        Encoders.buildBeanCodec(ChainV1.class).withSchemaEvolution().build().get();
-    RowEncoder<ChainV2> w2 =
-        Encoders.buildBeanCodec(ChainV2.class).withSchemaEvolution().build().get();
-    RowEncoder<ChainV3> w3 =
-        Encoders.buildBeanCodec(ChainV3.class).withSchemaEvolution().build().get();
-    RowEncoder<ChainV4> w4 =
-        Encoders.buildBeanCodec(ChainV4.class).withSchemaEvolution().build().get();
-    RowEncoder<ChainV5> reader =
-        Encoders.buildBeanCodec(ChainV5.class).withSchemaEvolution().build().get();
+    RowEncoder<ChainV1> w1 = evolvingCodec(ChainV1.class);
+    RowEncoder<ChainV2> w2 = evolvingCodec(ChainV2.class);
+    RowEncoder<ChainV3> w3 = evolvingCodec(ChainV3.class);
+    RowEncoder<ChainV4> w4 = evolvingCodec(ChainV4.class);
+    RowEncoder<ChainV5> reader = evolvingCodec(ChainV5.class);
 
     ChainV1 v1 = new ChainV1();
     v1.setA(11);
@@ -227,10 +222,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void primitiveAndBoxedDefaults() {
-    RowEncoder<DefaultsV1> writer =
-        Encoders.buildBeanCodec(DefaultsV1.class).withSchemaEvolution().build().get();
-    RowEncoder<DefaultsV2> reader =
-        Encoders.buildBeanCodec(DefaultsV2.class).withSchemaEvolution().build().get();
+    RowEncoder<DefaultsV1> writer = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV2> reader = evolvingCodec(DefaultsV2.class);
     DefaultsV1 in = new DefaultsV1();
     in.setName("n");
     DefaultsV2 out = reader.decode(writer.encode(in));
@@ -260,8 +253,7 @@ public class SchemaEvolutionStressTest {
   @Test
   public void disjointWindowDoesNotFalseCollide() {
     // Build alone is the assertion: the bug was an IllegalStateException at build time.
-    RowEncoder<GappedWindow> codec =
-        Encoders.buildBeanCodec(GappedWindow.class).withSchemaEvolution().build().get();
+    RowEncoder<GappedWindow> codec = evolvingCodec(GappedWindow.class);
     GappedWindow in = new GappedWindow();
     in.setName("hi");
     Assert.assertEquals(codec.decode(codec.encode(in)).getName(), "hi");
@@ -293,10 +285,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void removedNestedStructField() {
-    RowEncoder<StructRefV1> writer =
-        Encoders.buildBeanCodec(StructRefV1.class).withSchemaEvolution().build().get();
-    RowEncoder<StructRefV2> reader =
-        Encoders.buildBeanCodec(StructRefV2.class).withSchemaEvolution().build().get();
+    RowEncoder<StructRefV1> writer = evolvingCodec(StructRefV1.class);
+    RowEncoder<StructRefV2> reader = evolvingCodec(StructRefV2.class);
     StructRefV1 in = new StructRefV1();
     in.setId("x");
     DefaultsV1 d = new DefaultsV1();
@@ -341,10 +331,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void removedParameterizedCollectionFields() {
-    RowEncoder<CollectionsV1> writer =
-        Encoders.buildBeanCodec(CollectionsV1.class).withSchemaEvolution().build().get();
-    RowEncoder<CollectionsV2> reader =
-        Encoders.buildBeanCodec(CollectionsV2.class).withSchemaEvolution().build().get();
+    RowEncoder<CollectionsV1> writer = evolvingCodec(CollectionsV1.class);
+    RowEncoder<CollectionsV2> reader = evolvingCodec(CollectionsV2.class);
     CollectionsV1 in = new CollectionsV1();
     in.setId("c");
     in.setTags(Arrays.asList("alpha", "beta"));
@@ -383,10 +371,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void retypedSameNameAcrossVersions() {
-    RowEncoder<RetypeV1> writer =
-        Encoders.buildBeanCodec(RetypeV1.class).withSchemaEvolution().build().get();
-    RowEncoder<RetypeV3> reader =
-        Encoders.buildBeanCodec(RetypeV3.class).withSchemaEvolution().build().get();
+    RowEncoder<RetypeV1> writer = evolvingCodec(RetypeV1.class);
+    RowEncoder<RetypeV3> reader = evolvingCodec(RetypeV3.class);
     RetypeV1 in = new RetypeV1();
     in.setTag(7);
     RetypeV3 out = reader.decode(writer.encode(in));
@@ -426,10 +412,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void wideSchemaAcrossBitmapWord() {
-    RowEncoder<WideV1> writer =
-        Encoders.buildBeanCodec(WideV1.class).withSchemaEvolution().build().get();
-    RowEncoder<WideV2> reader =
-        Encoders.buildBeanCodec(WideV2.class).withSchemaEvolution().build().get();
+    RowEncoder<WideV1> writer = evolvingCodec(WideV1.class);
+    RowEncoder<WideV2> reader = evolvingCodec(WideV2.class);
     WideV1 in = new WideV1();
     in.setF00(100);
     in.setF63(163);
@@ -485,12 +469,9 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void twoIndependentReadersForSameClass() {
-    RowEncoder<DefaultsV1> writer =
-        Encoders.buildBeanCodec(DefaultsV1.class).withSchemaEvolution().build().get();
-    RowEncoder<DefaultsV2> r1 =
-        Encoders.buildBeanCodec(DefaultsV2.class).withSchemaEvolution().build().get();
-    RowEncoder<DefaultsV2> r2 =
-        Encoders.buildBeanCodec(DefaultsV2.class).withSchemaEvolution().build().get();
+    RowEncoder<DefaultsV1> writer = evolvingCodec(DefaultsV1.class);
+    RowEncoder<DefaultsV2> r1 = evolvingCodec(DefaultsV2.class);
+    RowEncoder<DefaultsV2> r2 = evolvingCodec(DefaultsV2.class);
     DefaultsV1 in1 = new DefaultsV1();
     in1.setName("first");
     DefaultsV1 in2 = new DefaultsV1();
@@ -522,7 +503,7 @@ public class SchemaEvolutionStressTest {
 
   @Test(expectedExceptions = IllegalStateException.class)
   public void overlappingWindowFailsAtBuild() {
-    Encoders.buildBeanCodec(OverlapMisconfig.class).withSchemaEvolution().build().get();
+    evolvingCodec(OverlapMisconfig.class);
   }
 
   // ---------------------------------------------------------------------------
@@ -580,19 +561,32 @@ public class SchemaEvolutionStressTest {
   @Test
   public void removedFieldWithoutUntilFailsAtBuild() {
     IllegalStateException e =
-        Assert.expectThrows(
-            IllegalStateException.class,
-            () -> Encoders.buildBeanCodec(MissingUntil.class).withSchemaEvolution().build().get());
+        Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(MissingUntil.class));
     Assert.assertTrue(e.getMessage().contains("must specify @ForyVersion.until"), e.getMessage());
   }
 
   @Test
   public void removedFieldEmptyWindowFailsAtBuild() {
     IllegalStateException e =
-        Assert.expectThrows(
-            IllegalStateException.class,
-            () -> Encoders.buildBeanCodec(EmptyWindow.class).withSchemaEvolution().build().get());
+        Assert.expectThrows(IllegalStateException.class, () -> evolvingCodec(EmptyWindow.class));
     Assert.assertTrue(e.getMessage().contains("must be strictly less than until"), e.getMessage());
+  }
+
+  /** A still-present field carrying a finite until; removals belong on the history class. */
+  @Data
+  public static class LiveFieldWithUntil {
+    private int x;
+
+    @ForyVersion(until = 3)
+    private String stillHere;
+  }
+
+  @Test
+  public void liveFieldWithUntilFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldWithUntil.class));
+    Assert.assertTrue(e.getMessage().contains("live field must not set until"), e.getMessage());
   }
 
   // ---------------------------------------------------------------------------
@@ -624,8 +618,7 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void versionedBeanWithShadowedCollectionFieldBuilds() {
-    RowEncoder<ShadowedCollectionV2> codec =
-        Encoders.buildBeanCodec(ShadowedCollectionV2.class).withSchemaEvolution().build().get();
+    RowEncoder<ShadowedCollectionV2> codec = evolvingCodec(ShadowedCollectionV2.class);
     ShadowedCollectionV2 in = new ShadowedCollectionV2();
     TaggedList<String> labels = new TaggedList<>();
     labels.add("a");
@@ -664,8 +657,7 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void evolutionFlagAsymmetryFailsLoud() {
-    RowEncoder<DefaultsV1> withFlag =
-        Encoders.buildBeanCodec(DefaultsV1.class).withSchemaEvolution().build().get();
+    RowEncoder<DefaultsV1> withFlag = evolvingCodec(DefaultsV1.class);
     RowEncoder<DefaultsV1> noFlag = Encoders.buildBeanCodec(DefaultsV1.class).build().get();
     DefaultsV1 in = new DefaultsV1();
     in.setName("hi");
@@ -794,6 +786,88 @@ public class SchemaEvolutionStressTest {
     Assert.assertEquals(outKey.getBoxedCount(), Integer.valueOf(2));
   }
 
+  // A top-level map whose value evolves while the key stays a struct bean. The value projects from
+  // an older version; the key (same shape on both sides) must round-trip unchanged.
+  //
+  // Disabled: known bug. The value-projection map codec applies the value's version suffix to the
+  // key bean too (BaseBinaryEncoderBuilder.nestedBeanSuffix is type-blind), and a same-class
+  // key/value share one bean codec because beanEncoderMap/rowWriterMap are keyed by typeRef, not
+  // position. So the key is decoded with the value's historical layout and its string field
+  // corrupts. The fix is position-scoped bean-codec registration in the map codegen (key always
+  // current/unsuffixed, value suffixed; distinct registration keys for a same-class key/value).
+  // Trap: the value bean codec is registered inside the lazy lambdas of serializeForArrayByWriter /
+  // deserializeForCollection, which run during Expression.genCode(), not construction, so a flag
+  // set around the construction calls does not reach it; the scope must toggle during the value
+  // subtree's genCode.
+  @Test(enabled = false)
+  public void mapStructKeyValueEvolution() {
+    MapEncoder<Map<DefaultsV2, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV2 key = new DefaultsV2();
+    key.setName("k");
+    key.setPrimitiveCount(7);
+    key.setBoxedCount(8);
+    DefaultsV1 val = new DefaultsV1();
+    val.setName("val");
+    Map<DefaultsV2, DefaultsV1> in = new HashMap<>();
+    in.put(key, val);
+    Map<DefaultsV2, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, DefaultsV2> entry = out.entrySet().iterator().next();
+    Assert.assertEquals(entry.getKey().getName(), "k");
+    Assert.assertEquals(entry.getKey().getPrimitiveCount(), 7);
+    Assert.assertEquals(entry.getKey().getBoxedCount(), Integer.valueOf(8));
+    Assert.assertEquals(entry.getValue().getName(), "val");
+    Assert.assertEquals(entry.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(entry.getValue().getBoxedCount());
+  }
+
+  // A row field typed as Map<VersionedKeyBean, String>. findVersionedBean must not treat the map
+  // key
+  // as a version dimension: keys carry no per-payload hash and are read with the current schema, so
+  // enumerating key versions would only generate projection codecs decode never dispatches to. The
+  // outer bean still evolves on its own fields; the keyed map round-trips with the key at current.
+  @Data
+  public static class KeyMapHolderV1 {
+    private Map<DefaultsV2, String> byKey;
+  }
+
+  @Data
+  public static class KeyMapHolderV2 {
+    private Map<DefaultsV2, String> byKey;
+
+    @ForyVersion(since = 2)
+    private String note;
+  }
+
+  @Test
+  public void versionedBeanAsMapKeyInRowField() {
+    RowEncoder<KeyMapHolderV1> writer = evolvingCodec(KeyMapHolderV1.class);
+    RowEncoder<KeyMapHolderV2> reader = evolvingCodec(KeyMapHolderV2.class);
+    DefaultsV2 key = new DefaultsV2();
+    key.setName("k");
+    key.setPrimitiveCount(7);
+    key.setBoxedCount(8);
+    KeyMapHolderV1 in = new KeyMapHolderV1();
+    in.setByKey(new HashMap<>());
+    in.getByKey().put(key, "v");
+    KeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getByKey().size(), 1);
+    DefaultsV2 outKey = out.getByKey().keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 7);
+    Assert.assertEquals(out.getByKey().get(outKey), "v");
+    Assert.assertNull(out.getNote()); // note added at v2; v1 payload defaults it
+  }
+
   // ---------------------------------------------------------------------------
   // Removed nullable struct that was null on the wire: the v1 writer leaves
   // the slot's null bit set; the v2 reader skips the slot during projection.
@@ -820,10 +894,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void removedNullableStructWasNullOnWire() {
-    RowEncoder<NullableStructV1> writer =
-        Encoders.buildBeanCodec(NullableStructV1.class).withSchemaEvolution().build().get();
-    RowEncoder<NullableStructV2> reader =
-        Encoders.buildBeanCodec(NullableStructV2.class).withSchemaEvolution().build().get();
+    RowEncoder<NullableStructV1> writer = evolvingCodec(NullableStructV1.class);
+    RowEncoder<NullableStructV2> reader = evolvingCodec(NullableStructV2.class);
     NullableStructV1 in = new NullableStructV1();
     in.setId("only-id");
     // detail intentionally left null
@@ -869,10 +941,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void nestedListSurvivesOuterProjection() {
-    RowEncoder<NestedListV1> writer =
-        Encoders.buildBeanCodec(NestedListV1.class).withSchemaEvolution().build().get();
-    RowEncoder<NestedListV2> reader =
-        Encoders.buildBeanCodec(NestedListV2.class).withSchemaEvolution().build().get();
+    RowEncoder<NestedListV1> writer = evolvingCodec(NestedListV1.class);
+    RowEncoder<NestedListV2> reader = evolvingCodec(NestedListV2.class);
     DefaultsV1 a = new DefaultsV1();
     a.setName("a");
     DefaultsV1 b = new DefaultsV1();
@@ -927,10 +997,8 @@ public class SchemaEvolutionStressTest {
   public void nestedInnerEvolution_readerInnerNewerThanWriter() {
     // Writer uses the "older shape" inner. Both writer and reader are evolution-on so they
     // agree on strict-hash framing.
-    RowEncoder<NestedOuterWriter> writer =
-        Encoders.buildBeanCodec(NestedOuterWriter.class).withSchemaEvolution().build().get();
-    RowEncoder<NestedOuterV2> reader =
-        Encoders.buildBeanCodec(NestedOuterV2.class).withSchemaEvolution().build().get();
+    RowEncoder<NestedOuterWriter> writer = evolvingCodec(NestedOuterWriter.class);
+    RowEncoder<NestedOuterV2> reader = evolvingCodec(NestedOuterV2.class);
 
     NestedOuterWriter in = new NestedOuterWriter();
     in.setId(42);
@@ -975,10 +1043,8 @@ public class SchemaEvolutionStressTest {
   @Test
   public void crossOuterAndInnerEvolution() {
     // Writer writes outer V1 + inner V1 (no label, no addedField).
-    RowEncoder<NestedOuterWriter> writer =
-        Encoders.buildBeanCodec(NestedOuterWriter.class).withSchemaEvolution().build().get();
-    RowEncoder<CrossOuterV2_InnerV2> reader =
-        Encoders.buildBeanCodec(CrossOuterV2_InnerV2.class).withSchemaEvolution().build().get();
+    RowEncoder<NestedOuterWriter> writer = evolvingCodec(NestedOuterWriter.class);
+    RowEncoder<CrossOuterV2_InnerV2> reader = evolvingCodec(CrossOuterV2_InnerV2.class);
 
     NestedOuterWriter in = new NestedOuterWriter();
     in.setId(100);
@@ -1175,10 +1241,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void threeLevelNestedEvolution() {
-    RowEncoder<L1Writer> writer =
-        Encoders.buildBeanCodec(L1Writer.class).withSchemaEvolution().build().get();
-    RowEncoder<L1V2> reader =
-        Encoders.buildBeanCodec(L1V2.class).withSchemaEvolution().build().get();
+    RowEncoder<L1Writer> writer = evolvingCodec(L1Writer.class);
+    RowEncoder<L1V2> reader = evolvingCodec(L1V2.class);
 
     L1Writer in = new L1Writer();
     in.setId(7);
@@ -1219,10 +1283,8 @@ public class SchemaEvolutionStressTest {
 
   @Test
   public void sameClassInTwoFields() {
-    RowEncoder<TwoLeafWriter> writer =
-        Encoders.buildBeanCodec(TwoLeafWriter.class).withSchemaEvolution().build().get();
-    RowEncoder<TwoLeafV2> reader =
-        Encoders.buildBeanCodec(TwoLeafV2.class).withSchemaEvolution().build().get();
+    RowEncoder<TwoLeafWriter> writer = evolvingCodec(TwoLeafWriter.class);
+    RowEncoder<TwoLeafV2> reader = evolvingCodec(TwoLeafV2.class);
 
     TwoLeafWriter in = new TwoLeafWriter();
     L3Writer a = new L3Writer();
@@ -1237,5 +1299,9 @@ public class SchemaEvolutionStressTest {
     Assert.assertNull(out.getFirst().getNote());
     Assert.assertEquals(out.getSecond().getName(), "beta");
     Assert.assertNull(out.getSecond().getNote());
+  }
+
+  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
+    return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
   }
 }

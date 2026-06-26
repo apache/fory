@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.UnaryOperator;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.annotation.ForySchema;
 import org.apache.fory.format.annotation.ForyVersion;
 import org.apache.fory.reflect.TypeRef;
@@ -163,14 +164,15 @@ public final class SchemaHistory {
       all.addAll(collectRemovedFields(removedFieldsClass));
     }
 
-    // Recursively expand any nested versioned bean field's own history. For each entry whose
-    // type is a versioned bean (has @ForyVersion-annotated descriptors or @ForySchema), we
-    // attach its SchemaHistory so the outer's enumeration can cross-product over inner
-    // versions. The inner schema substitutes into the outer at materialization time.
+    // Recursively expand any nested versioned bean field's own history. A versioned bean can be the
+    // field type directly, or the element of a list, or the value of a map; we locate it at any of
+    // those sites so the outer's enumeration can cross-product over the inner's versions. The inner
+    // schema substitutes back into the same site at materialization time.
     for (FieldEntry fe : all) {
-      Class<?> raw = TypeUtils.getRawType(fe.typeRef);
-      if (raw != null && isBeanWithVersioning(raw)) {
-        fe.innerHistory = build(raw, schemaTransform);
+      Class<?> nested = findVersionedBean(fe.typeRef);
+      if (nested != null) {
+        fe.nestedBeanClass = nested;
+        fe.innerHistory = build(nested, schemaTransform);
       }
     }
 
@@ -226,25 +228,23 @@ public final class SchemaHistory {
       LinkedHashMap<Class<?>, List<VersionedSchema>> innerChoices = new LinkedHashMap<>();
       for (FieldEntry fe : activeEntries) {
         if (fe.innerHistory != null) {
-          innerChoices.putIfAbsent(TypeUtils.getRawType(fe.typeRef), fe.innerHistory.versions());
+          innerChoices.putIfAbsent(fe.nestedBeanClass, fe.innerHistory.versions());
         }
       }
       for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
         List<Field> fields = new ArrayList<>(activeEntries.size());
         Set<String> liveNames = new HashSet<>();
         for (FieldEntry fe : activeEntries) {
-          Field field;
-          VersionedSchema innerVs = combination.get(TypeUtils.getRawType(fe.typeRef));
-          if (innerVs != null) {
-            // Substitute the chosen inner version's struct fields.
-            field =
-                DataTypes.field(
-                    fe.name,
-                    new DataTypes.StructType(innerVs.schema().fields()),
-                    fe.typeRef.getRawType() == null || !fe.typeRef.getRawType().isPrimitive());
-          } else {
-            field = TypeInference.inferNamedField(fe.name, fe.typeRef);
-          }
+          Field current = TypeInference.inferNamedField(fe.name, fe.typeRef);
+          VersionedSchema innerVs =
+              fe.nestedBeanClass == null ? null : combination.get(fe.nestedBeanClass);
+          // Substitute the chosen inner version's struct into the bean's site (direct field,
+          // list element, or map value), keeping the collection wrapper intact.
+          Field field =
+              innerVs == null
+                  ? current
+                  : substituteNestedStruct(
+                      current, fe.typeRef, new DataTypes.StructType(innerVs.schema().fields()));
           fields.add(field);
           if (fe.live) {
             liveNames.add(fe.name);
@@ -327,6 +327,60 @@ public final class SchemaHistory {
     return out;
   }
 
+  /**
+   * Find the versioned bean reachable from a field type: the field type itself, a list/array
+   * element, or a map value. Returns null when no versioned bean is present. Map keys are not
+   * inspected: they carry no per-payload hash on the wire and are always read with the current
+   * schema, so enumerating key versions would only generate projection codecs that decode never
+   * dispatches to.
+   */
+  private static Class<?> findVersionedBean(TypeRef<?> typeRef) {
+    Class<?> raw = TypeUtils.getRawType(typeRef);
+    if (raw == null) {
+      return null;
+    }
+    if (raw.isArray() || TypeUtils.isCollection(raw)) {
+      return findVersionedBean(elementTypeRef(typeRef, raw));
+    }
+    if (TypeUtils.isMap(raw)) {
+      Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
+      return findVersionedBean(kv.f1);
+    }
+    return isBeanWithVersioning(raw) ? raw : null;
+  }
+
+  /**
+   * Replace the nested bean's struct in {@code current} (the field at the bean's current schema)
+   * with {@code historical}, keeping any list/map wrapper. The bean sits at the field, the
+   * list/array element, or the map value, matching {@link #findVersionedBean}.
+   */
+  private static Field substituteNestedStruct(
+      Field current, TypeRef<?> typeRef, DataTypes.StructType historical) {
+    Class<?> raw = TypeUtils.getRawType(typeRef);
+    if (raw != null && (raw.isArray() || TypeUtils.isCollection(raw))) {
+      Field element =
+          substituteNestedStruct(
+              DataTypes.arrayElementField(current), elementTypeRef(typeRef, raw), historical);
+      return DataTypes.arrayField(current.name(), element);
+    }
+    if (raw != null && TypeUtils.isMap(raw)) {
+      Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
+      Field keyField = DataTypes.keyFieldForMap(current);
+      Field itemField =
+          substituteNestedStruct(DataTypes.itemFieldForMap(current), kv.f1, historical);
+      return DataTypes.mapField(current.name(), keyField, itemField);
+    }
+    return DataTypes.field(current.name(), historical, current.nullable());
+  }
+
+  /**
+   * Element type of a list/array field, derived the same way {@link TypeInference} does: arrays use
+   * the component type, iterables use the element type.
+   */
+  private static TypeRef<?> elementTypeRef(TypeRef<?> typeRef, Class<?> raw) {
+    return raw.isArray() ? typeRef.getComponentType() : TypeUtils.getElementType(typeRef);
+  }
+
   /** True if the class is a row-codec bean and carries any schema-evolution annotations. */
   private static boolean isBeanWithVersioning(Class<?> cls) {
     if (cls.isAnnotationPresent(ForySchema.class)) {
@@ -403,6 +457,21 @@ public final class SchemaHistory {
       ForyVersion ann = lookupForyVersion(d);
       int since = ann == null ? FIRST_VERSION : ann.since();
       int until = ann == null ? Integer.MAX_VALUE : ann.until();
+      // A live field still exists as a Java member, so it has no end-of-life version. A finite
+      // until would silently drop it from the current schema (until extends the version set, so
+      // latestVersion >= until excludes the field), and the writer would stop serializing a field
+      // the bean still has. Removals are declared on the history class via
+      // @ForySchema.removedFields.
+      if (until != Integer.MAX_VALUE) {
+        throw new IllegalStateException(
+            "Invalid @ForyVersion on "
+                + beanClass.getName()
+                + "."
+                + d.getName()
+                + ": a live field must not set until ("
+                + until
+                + "). Declare removed fields on the @ForySchema.removedFields history class instead.");
+      }
       if (since >= until) {
         throw new IllegalStateException(
             "Invalid @ForyVersion on "
@@ -538,7 +607,14 @@ public final class SchemaHistory {
     final int until;
     final boolean live;
 
-    /** SchemaHistory of this entry's bean type, when the type is itself versioned. */
+    /**
+     * The versioned bean reachable from this field (the field type, a list element, or a map
+     * value), or null when none. Keys the outer cross-product so every field backed by the same
+     * bean class shares one version dimension.
+     */
+    Class<?> nestedBeanClass;
+
+    /** SchemaHistory of {@link #nestedBeanClass}, when this field references a versioned bean. */
     SchemaHistory innerHistory;
 
     FieldEntry(

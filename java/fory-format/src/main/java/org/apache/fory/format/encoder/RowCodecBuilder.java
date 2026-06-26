@@ -24,11 +24,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
-import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
@@ -51,32 +49,35 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
    * virtual thread.
    */
   public Supplier<RowEncoder<T>> build() {
-    final Function<BaseBinaryRowWriter, RowEncoder<T>> rowEncoderFactory = buildForWriter();
-    // Snapshot schema at build time so a supplier remains pinned to the schema in effect when
-    // it was constructed, even if the builder is mutated afterwards.
-    final Schema currentSchema = schema;
+    final RowEncoderFactory<T> factory = buildEncoderFactory();
     return new Supplier<RowEncoder<T>>() {
       @Override
       public RowEncoder<T> get() {
-        final BaseBinaryRowWriter writer = codecFormat.newWriter(currentSchema);
-        return new BufferResettingRowEncoder<T>(
-            initialBufferSize, writer, rowEncoderFactory.apply(writer));
+        final BaseBinaryRowWriter writer = codecFormat.newWriter(factory.schema);
+        return new BufferResettingRowEncoder<T>(initialBufferSize, writer, factory.apply(writer));
       }
     };
   }
 
   Function<BaseBinaryRowWriter, RowEncoder<T>> buildForWriter() {
-    if (!schemaEvolution) {
-      return defaultBuildForWriter();
-    }
-    return evolvingBuildForWriter();
+    return buildEncoderFactory();
   }
 
-  private Function<BaseBinaryRowWriter, RowEncoder<T>> defaultBuildForWriter() {
+  /**
+   * Resolve the schema and the per-writer encoder factory together. The evolution path rotates the
+   * schema to the history-derived current version; returning it alongside the factory keeps that
+   * resolution out of the mutable builder state, so a reused builder or a direct {@link
+   * #buildForWriter()} caller is unaffected.
+   */
+  private RowEncoderFactory<T> buildEncoderFactory() {
+    return schemaEvolution ? evolvingBuildForWriter() : defaultBuildForWriter();
+  }
+
+  private RowEncoderFactory<T> defaultBuildForWriter() {
     final Schema currentSchema = schema;
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> rowEncoderFactory =
         rowEncoderFactory(currentSchema);
-    return new Function<BaseBinaryRowWriter, RowEncoder<T>>() {
+    return new RowEncoderFactory<T>(currentSchema) {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
         return new BinaryRowEncoder<T>(
@@ -85,19 +86,13 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     };
   }
 
-  private Function<BaseBinaryRowWriter, RowEncoder<T>> evolvingBuildForWriter() {
-    UnaryOperator<Schema> schemaTransform =
-        codecFormat == CompactCodecFormat.INSTANCE
-            ? CompactBinaryRowWriter::sortSchema
-            : UnaryOperator.identity();
-    SchemaHistory history = SchemaHistory.build(beanClass, schemaTransform);
+  private RowEncoderFactory<T> evolvingBuildForWriter() {
+    SchemaHistory history = buildSchemaHistory(beanClass);
     SchemaHistory.VersionedSchema currentVersion = history.current();
-    // The history-derived schema is the one writers, generated codec, and decode dispatch must
-    // agree on. Pin it on the builder so build() picks up the rotated schema; pass it into the
-    // current-version codec factory locally so a later mutation of the field cannot affect
-    // already-constructed encoders.
+    // The history-derived schema is what writers, generated codec, and decode dispatch must agree
+    // on. It travels back to build() through the returned factory rather than the mutable schema
+    // field, so building does not rotate builder state that a later build()/buildForWriter() reads.
     final Schema currentSchema = currentVersion.schema();
-    schema = currentSchema;
 
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> currentFactory =
         rowEncoderFactory(currentSchema);
@@ -116,17 +111,19 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
           Encoders.loadOrGenProjectionRowCodecClass(
               beanClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix, nestedSuffixes);
       MethodHandle ctor = Encoders.constructorHandleFor(projectionClass, GeneratedRowEncoder.class);
-      projectionFactories.put(vs.strictHash(), new ProjectionCodecFactory(vs.schema(), ctor));
+      RowFactory rowFactory = codecFormat.newRowFactory(vs.schema());
+      projectionFactories.put(
+          vs.strictHash(), new ProjectionCodecFactory(vs.schema(), ctor, rowFactory));
     }
 
     final long currentHash = currentVersion.strictHash();
-    return new Function<BaseBinaryRowWriter, RowEncoder<T>>() {
+    return new RowEncoderFactory<T>(currentSchema) {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
         LongMap<BinaryRowEncoder.ProjectionCodec> projections =
             new LongMap<>(projectionFactories.size());
         for (Map.Entry<Long, ProjectionCodecFactory> entry : projectionFactories.entrySet()) {
-          projections.put(entry.getKey(), entry.getValue().instantiate(codecFormat, writer, fory));
+          projections.put(entry.getKey(), entry.getValue().instantiate(writer, fory));
         }
         return new BinaryRowEncoder<T>(
             currentSchema,
@@ -139,21 +136,38 @@ public class RowCodecBuilder<T> extends BaseCodecBuilder<RowCodecBuilder<T>> {
     };
   }
 
+  /**
+   * A per-writer encoder factory that also carries the schema the writer must be created with. The
+   * schema travels with the factory instead of through the mutable builder, so {@link #build()} can
+   * create the writer without reading builder state that the evolution path would otherwise rotate.
+   */
+  abstract static class RowEncoderFactory<T>
+      implements Function<BaseBinaryRowWriter, RowEncoder<T>> {
+    final Schema schema;
+
+    RowEncoderFactory(final Schema schema) {
+      this.schema = schema;
+    }
+  }
+
   private static final class ProjectionCodecFactory {
     private final Schema historicalSchema;
     private final MethodHandle ctor;
+    // The RowFactory depends only on the historical schema and codec format, both fixed at build
+    // time, so build it once here rather than per encoder instance. Only the generated codec, which
+    // binds the per-instance writer, is rebuilt in instantiate().
+    private final RowFactory rowFactory;
 
-    ProjectionCodecFactory(Schema historicalSchema, MethodHandle ctor) {
+    ProjectionCodecFactory(Schema historicalSchema, MethodHandle ctor, RowFactory rowFactory) {
       this.historicalSchema = historicalSchema;
       this.ctor = ctor;
+      this.rowFactory = rowFactory;
     }
 
-    BinaryRowEncoder.ProjectionCodec instantiate(
-        Encoding codecFormat, BaseBinaryRowWriter writer, Fory fory) {
+    BinaryRowEncoder.ProjectionCodec instantiate(BaseBinaryRowWriter writer, Fory fory) {
       try {
         Object[] references = {historicalSchema, writer, fory};
         GeneratedRowEncoder codec = (GeneratedRowEncoder) ctor.invokeExact(references);
-        RowFactory rowFactory = codecFormat.newRowFactory(historicalSchema);
         return new BinaryRowEncoder.ProjectionCodec(rowFactory, codec);
       } catch (final ReflectiveOperationException e) {
         throw new EncoderException(
