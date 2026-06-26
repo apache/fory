@@ -24,12 +24,12 @@
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -471,61 +471,69 @@ struct ExampleMessageArrays {
 };
 
 struct ExampleMessageMaps {
-  std::map<bool, std::string> string_values_by_bool;
-  std::map<int8_t, std::string> string_values_by_int8;
-  std::map<int16_t, std::string> string_values_by_int16;
-  std::map<int32_t, std::string> string_values_by_fixed_i32;
-  std::map<int32_t, std::string> string_values_by_varint_i32;
-  std::map<int64_t, std::string> string_values_by_fixed_i64;
-  std::map<int64_t, std::string> string_values_by_varint_i64;
-  std::map<int64_t, std::string> string_values_by_tagged_i64;
-  std::map<uint8_t, std::string> string_values_by_uint8;
-  std::map<uint16_t, std::string> string_values_by_uint16;
-  std::map<uint32_t, std::string> string_values_by_fixed_u32;
-  std::map<uint32_t, std::string> string_values_by_varint_u32;
-  std::map<uint64_t, std::string> string_values_by_fixed_u64;
-  std::map<uint64_t, std::string> string_values_by_varint_u64;
-  std::map<uint64_t, std::string> string_values_by_tagged_u64;
-  std::map<std::string, std::string> string_values_by_string;
-  std::map<fory::serialization::Timestamp, std::string>
+  std::unordered_map<bool, std::string> string_values_by_bool;
+  std::unordered_map<int8_t, std::string> string_values_by_int8;
+  std::unordered_map<int16_t, std::string> string_values_by_int16;
+  std::unordered_map<int32_t, std::string> string_values_by_fixed_i32;
+  std::unordered_map<int32_t, std::string> string_values_by_varint_i32;
+  std::unordered_map<int64_t, std::string> string_values_by_fixed_i64;
+  std::unordered_map<int64_t, std::string> string_values_by_varint_i64;
+  std::unordered_map<int64_t, std::string> string_values_by_tagged_i64;
+  std::unordered_map<uint8_t, std::string> string_values_by_uint8;
+  std::unordered_map<uint16_t, std::string> string_values_by_uint16;
+  std::unordered_map<uint32_t, std::string> string_values_by_fixed_u32;
+  std::unordered_map<uint32_t, std::string> string_values_by_varint_u32;
+  std::unordered_map<uint64_t, std::string> string_values_by_fixed_u64;
+  std::unordered_map<uint64_t, std::string> string_values_by_varint_u64;
+  std::unordered_map<uint64_t, std::string> string_values_by_tagged_u64;
+  std::unordered_map<std::string, std::string> string_values_by_string;
+  std::unordered_map<fory::serialization::Timestamp, std::string>
       string_values_by_timestamp;
-  std::map<fory::serialization::Duration, std::string>
+  std::unordered_map<fory::serialization::Duration, std::string>
       string_values_by_duration;
-  std::map<ExampleState, std::string> string_values_by_enum;
-  std::map<std::string, fory::float16_t> float16_values_by_name;
-  std::map<std::string, fory::float16_t> maybe_float16_values_by_name;
-  std::map<std::string, fory::bfloat16_t> bfloat16_values_by_name;
-  std::map<std::string, fory::bfloat16_t> maybe_bfloat16_values_by_name;
-  std::map<std::string, std::vector<uint8_t>> bytes_values_by_name;
-  std::map<std::string, fory::serialization::Date> date_values_by_name;
-  std::map<std::string, fory::serialization::Decimal> decimal_values_by_name;
-  std::map<std::string, ExampleLeaf> message_values_by_name;
-  std::map<std::string, ExampleLeafUnion> union_values_by_name;
-  std::map<std::string, std::vector<uint8_t>> uint8_array_values_by_name;
-  std::map<std::string, std::vector<float>> float32_array_values_by_name;
-  std::map<std::string, std::vector<int32_t>> int32_array_values_by_name;
-  std::map<fory::serialization::Date, std::string> string_values_by_date;
-  std::map<std::string, bool> bool_values_by_name;
-  std::map<std::string, int8_t> int8_values_by_name;
-  std::map<std::string, int16_t> int16_values_by_name;
-  std::map<std::string, int32_t> fixed_i32_values_by_name;
-  std::map<std::string, int32_t> varint_i32_values_by_name;
-  std::map<std::string, int64_t> fixed_i64_values_by_name;
-  std::map<std::string, int64_t> varint_i64_values_by_name;
-  std::map<std::string, int64_t> tagged_i64_values_by_name;
-  std::map<std::string, uint8_t> uint8_values_by_name;
-  std::map<std::string, uint16_t> uint16_values_by_name;
-  std::map<std::string, uint32_t> fixed_u32_values_by_name;
-  std::map<std::string, uint32_t> varint_u32_values_by_name;
-  std::map<std::string, uint64_t> fixed_u64_values_by_name;
-  std::map<std::string, uint64_t> varint_u64_values_by_name;
-  std::map<std::string, uint64_t> tagged_u64_values_by_name;
-  std::map<std::string, float> float32_values_by_name;
-  std::map<std::string, double> float64_values_by_name;
-  std::map<std::string, fory::serialization::Timestamp>
+  std::unordered_map<ExampleState, std::string> string_values_by_enum;
+  std::unordered_map<std::string, fory::float16_t> float16_values_by_name;
+  std::unordered_map<std::string, fory::float16_t> maybe_float16_values_by_name;
+  std::unordered_map<std::string, fory::bfloat16_t> bfloat16_values_by_name;
+  std::unordered_map<std::string, fory::bfloat16_t>
+      maybe_bfloat16_values_by_name;
+  std::unordered_map<std::string, std::vector<uint8_t>> bytes_values_by_name;
+  std::unordered_map<std::string, fory::serialization::Date>
+      date_values_by_name;
+  std::unordered_map<std::string, fory::serialization::Decimal>
+      decimal_values_by_name;
+  std::unordered_map<std::string, ExampleLeaf> message_values_by_name;
+  std::unordered_map<std::string, ExampleLeafUnion> union_values_by_name;
+  std::unordered_map<std::string, std::vector<uint8_t>>
+      uint8_array_values_by_name;
+  std::unordered_map<std::string, std::vector<float>>
+      float32_array_values_by_name;
+  std::unordered_map<std::string, std::vector<int32_t>>
+      int32_array_values_by_name;
+  std::unordered_map<fory::serialization::Date, std::string>
+      string_values_by_date;
+  std::unordered_map<std::string, bool> bool_values_by_name;
+  std::unordered_map<std::string, int8_t> int8_values_by_name;
+  std::unordered_map<std::string, int16_t> int16_values_by_name;
+  std::unordered_map<std::string, int32_t> fixed_i32_values_by_name;
+  std::unordered_map<std::string, int32_t> varint_i32_values_by_name;
+  std::unordered_map<std::string, int64_t> fixed_i64_values_by_name;
+  std::unordered_map<std::string, int64_t> varint_i64_values_by_name;
+  std::unordered_map<std::string, int64_t> tagged_i64_values_by_name;
+  std::unordered_map<std::string, uint8_t> uint8_values_by_name;
+  std::unordered_map<std::string, uint16_t> uint16_values_by_name;
+  std::unordered_map<std::string, uint32_t> fixed_u32_values_by_name;
+  std::unordered_map<std::string, uint32_t> varint_u32_values_by_name;
+  std::unordered_map<std::string, uint64_t> fixed_u64_values_by_name;
+  std::unordered_map<std::string, uint64_t> varint_u64_values_by_name;
+  std::unordered_map<std::string, uint64_t> tagged_u64_values_by_name;
+  std::unordered_map<std::string, float> float32_values_by_name;
+  std::unordered_map<std::string, double> float64_values_by_name;
+  std::unordered_map<std::string, fory::serialization::Timestamp>
       timestamp_values_by_name;
-  std::map<std::string, fory::serialization::Duration> duration_values_by_name;
-  std::map<std::string, ExampleState> enum_values_by_name;
+  std::unordered_map<std::string, fory::serialization::Duration>
+      duration_values_by_name;
+  std::unordered_map<std::string, ExampleState> enum_values_by_name;
 
   FORY_STRUCT(
       ExampleMessageMaps,
@@ -831,7 +839,8 @@ example_peer::ExampleMessage BuildExampleMessage() {
                          static_cast<uint8_t>(3)};
   message.date_value = Date(19756);
   message.timestamp_value = ts(1706933106);
-  message.duration_value = std::chrono::seconds(42) + Duration(7000);
+  message.duration_value =
+      Duration(std::chrono::seconds(42) + std::chrono::nanoseconds(7000));
   message.decimal_value = Decimal::from_int64(12345, 2);
   message.enum_value = example_peer::ExampleState::READY;
   message.message_value = leaf;
@@ -864,8 +873,8 @@ example_peer::ExampleMessage BuildExampleMessage() {
                         {static_cast<uint8_t>(6), static_cast<uint8_t>(7)}};
   message.date_list = {Date(19723), Date(19724)};
   message.timestamp_list = {ts(1704067200), ts(1704153600)};
-  message.duration_list = {std::chrono::milliseconds(1),
-                           std::chrono::seconds(2)};
+  message.duration_list = {Duration(std::chrono::milliseconds(1)),
+                           Duration(std::chrono::seconds(2))};
   message.decimal_list = {Decimal::from_int64(125, 2),
                           Decimal::from_int64(250, 2)};
   message.enum_list = {example_peer::ExampleState::UNKNOWN,
@@ -909,7 +918,8 @@ example_peer::ExampleMessage BuildExampleMessage() {
   message.string_values_by_tagged_u64 = {{9876543212ULL, "tagged-u64"}};
   message.string_values_by_string = {{"name", "value"}};
   message.string_values_by_timestamp = {{ts(1709528767), "time"}};
-  message.string_values_by_duration = {{std::chrono::seconds(9), "duration"}};
+  message.string_values_by_duration = {
+      {Duration(std::chrono::seconds(9)), "duration"}};
   message.string_values_by_enum = {
       {example_peer::ExampleState::READY, "ready"}};
   message.float16_values_by_name = {{"f16", f16(1.25F)}};
@@ -946,7 +956,8 @@ example_peer::ExampleMessage BuildExampleMessage() {
   message.float32_values_by_name = {{"float32", 3.25F}};
   message.float64_values_by_name = {{"float64", 6.5}};
   message.timestamp_values_by_name = {{"timestamp", ts(1717747750)}};
-  message.duration_values_by_name = {{"duration", std::chrono::seconds(10)}};
+  message.duration_values_by_name = {
+      {"duration", Duration(std::chrono::seconds(10))}};
   message.enum_values_by_name = {{"enum", example_peer::ExampleState::FAILED}};
   return message;
 }
@@ -1063,7 +1074,7 @@ fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
   return fory::Result<void, fory::Error>();
 }
 
-using StringMap = std::map<std::string, std::string>;
+using StringMap = std::unordered_map<std::string, std::string>;
 
 fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   auto fory = fory::serialization::Fory::builder()

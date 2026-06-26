@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <any>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <deque>
 #include <list>
@@ -1631,27 +1632,39 @@ get_type_info_with_resolver(TypeResolver &resolver) {
 
 template <typename T> Result<void, Error> TypeResolver::register_any_type() {
   check_registration_thread();
-  constexpr uint32_t static_type_id =
-      static_cast<uint32_t>(Serializer<T>::type_id);
-  TypeInfo *type_info = nullptr;
-  if (is_internal_type(static_type_id)) {
-    type_info = type_info_by_id_.get_or_default(static_type_id, nullptr);
-    if (FORY_PREDICT_FALSE(type_info == nullptr)) {
-      return Unexpected(Error::type_error("TypeInfo not found for type_id: " +
-                                          std::to_string(static_type_id)));
-    }
+  using ChronoTimestamp = std::chrono::time_point<std::chrono::system_clock,
+                                                  std::chrono::nanoseconds>;
+  if constexpr (std::is_same_v<T, std::chrono::nanoseconds> ||
+                std::is_same_v<T, ChronoTimestamp>) {
+    // Chrono temporal serializers are explicit static adapters;
+    // Any reads for shared DURATION/TIMESTAMP TypeInfo stay on the Fory carrier
+    // types
+    return Unexpected(Error::type_error(
+        "Chrono temporal types are explicit static targets and cannot be "
+        "registered for std::any"));
   } else {
-    constexpr uint64_t ctid = type_index<T>();
-    type_info = type_info_by_ctid_.get_or_default(ctid, nullptr);
-    if (FORY_PREDICT_FALSE(type_info == nullptr)) {
-      return Unexpected(Error::type_error("Type not registered"));
+    constexpr uint32_t static_type_id =
+        static_cast<uint32_t>(Serializer<T>::type_id);
+    TypeInfo *type_info = nullptr;
+    if (is_internal_type(static_type_id)) {
+      type_info = type_info_by_id_.get_or_default(static_type_id, nullptr);
+      if (FORY_PREDICT_FALSE(type_info == nullptr)) {
+        return Unexpected(Error::type_error("TypeInfo not found for type_id: " +
+                                            std::to_string(static_type_id)));
+      }
+    } else {
+      constexpr uint64_t ctid = type_index<T>();
+      type_info = type_info_by_ctid_.get_or_default(ctid, nullptr);
+      if (FORY_PREDICT_FALSE(type_info == nullptr)) {
+        return Unexpected(Error::type_error("Type not registered"));
+      }
     }
-  }
 
-  type_info->harness.any_write_fn = &detail::any_write_adapter<T>;
-  type_info->harness.any_read_fn = &detail::any_read_adapter<T>;
-  register_type_internal_runtime(std::type_index(typeid(T)), type_info);
-  return Result<void, Error>();
+    type_info->harness.any_write_fn = &detail::any_write_adapter<T>;
+    type_info->harness.any_read_fn = &detail::any_read_adapter<T>;
+    register_type_internal_runtime(std::type_index(typeid(T)), type_info);
+    return Result<void, Error>();
+  }
 }
 
 template <typename T>

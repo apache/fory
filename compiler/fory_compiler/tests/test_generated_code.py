@@ -1169,6 +1169,32 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
     )
 
 
+def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message Holder {
+                map<duration, string> durations = 1;
+                map<timestamp, string> timestamps = 2;
+                map<date, string> dates = 3;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert (
+        "std::unordered_map<fory::serialization::Duration, std::string>" in cpp_output
+    )
+    assert (
+        "std::unordered_map<fory::serialization::Timestamp, std::string>" in cpp_output
+    )
+    assert "std::unordered_map<fory::serialization::Date, std::string>" in cpp_output
+    assert "std::map<" not in cpp_output
+
+
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
         dedent(
