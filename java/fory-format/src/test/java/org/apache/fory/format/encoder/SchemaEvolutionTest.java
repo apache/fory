@@ -74,8 +74,7 @@ public class SchemaEvolutionTest {
   /** Round-trip at the current version: writing PersonV2, reading PersonV2 with evolution on. */
   @Test
   public void currentVersionRoundTrip() {
-    RowEncoder<PersonV2> codec =
-        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV2> codec = evolvingCodec(PersonV2.class);
     PersonV2 in = new PersonV2();
     in.setName("alice");
     in.setAge(30);
@@ -96,10 +95,8 @@ public class SchemaEvolutionTest {
    */
   @Test
   public void olderPayloadReadByNewerCodec() {
-    RowEncoder<PersonV1> oldWriter =
-        Encoders.buildBeanCodec(PersonV1.class).withSchemaEvolution().build().get();
-    RowEncoder<PersonV2> newReader =
-        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
+    RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
 
     PersonV1 in = new PersonV1();
     in.setName("alice");
@@ -147,10 +144,8 @@ public class SchemaEvolutionTest {
    */
   @Test
   public void streamingOlderPayloadReadByNewerCodec() {
-    RowEncoder<PersonV1> oldWriter =
-        Encoders.buildBeanCodec(PersonV1.class).withSchemaEvolution().build().get();
-    RowEncoder<PersonV2> newReader =
-        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
+    RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
 
     PersonV1 alice = new PersonV1();
     alice.setName("alice");
@@ -305,10 +300,8 @@ public class SchemaEvolutionTest {
 
   @Test
   public void interfaceOlderPayloadReadByNewerCodec() {
-    RowEncoder<PersonIfaceV1> oldWriter =
-        Encoders.buildBeanCodec(PersonIfaceV1.class).withSchemaEvolution().build().get();
-    RowEncoder<PersonIfaceV2> newReader =
-        Encoders.buildBeanCodec(PersonIfaceV2.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonIfaceV1> oldWriter = evolvingCodec(PersonIfaceV1.class);
+    RowEncoder<PersonIfaceV2> newReader = evolvingCodec(PersonIfaceV2.class);
     PersonIfaceV1 in =
         new PersonIfaceV1() {
           public String getName() {
@@ -347,10 +340,8 @@ public class SchemaEvolutionTest {
 
   @Test
   public void interfaceRemovedFieldReadByNewerCodec() {
-    RowEncoder<PersonIfaceV2> v2Writer =
-        Encoders.buildBeanCodec(PersonIfaceV2.class).withSchemaEvolution().build().get();
-    RowEncoder<PersonIfaceV3> v3Reader =
-        Encoders.buildBeanCodec(PersonIfaceV3.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonIfaceV2> v2Writer = evolvingCodec(PersonIfaceV2.class);
+    RowEncoder<PersonIfaceV3> v3Reader = evolvingCodec(PersonIfaceV3.class);
     PersonIfaceV2 in =
         new PersonIfaceV2() {
           public String getName() {
@@ -374,10 +365,8 @@ public class SchemaEvolutionTest {
   /** Removed-field test: v3 codec reads v2 payload, dropping the no-longer-present 'age'. */
   @Test
   public void removedFieldReadByNewerCodec() {
-    RowEncoder<PersonV2> v2Writer =
-        Encoders.buildBeanCodec(PersonV2.class).withSchemaEvolution().build().get();
-    RowEncoder<PersonV3> v3Reader =
-        Encoders.buildBeanCodec(PersonV3.class).withSchemaEvolution().build().get();
+    RowEncoder<PersonV2> v2Writer = evolvingCodec(PersonV2.class);
+    RowEncoder<PersonV3> v3Reader = evolvingCodec(PersonV3.class);
 
     PersonV2 in = new PersonV2();
     in.setName("alice");
@@ -502,10 +491,8 @@ public class SchemaEvolutionTest {
 
   @Test
   public void compositionalRowEvolution() {
-    RowEncoder<OuterV1> writer =
-        Encoders.buildBeanCodec(OuterV1.class).withSchemaEvolution().build().get();
-    RowEncoder<OuterV2> reader =
-        Encoders.buildBeanCodec(OuterV2.class).withSchemaEvolution().build().get();
+    RowEncoder<OuterV1> writer = evolvingCodec(OuterV1.class);
+    RowEncoder<OuterV2> reader = evolvingCodec(OuterV2.class);
     byte[] bytes = writer.encode(sampleV1());
     assertProjectedToV2(reader.decode(bytes));
   }
@@ -527,5 +514,72 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(out.size(), 2);
     assertProjectedToV2(out.get(0));
     assertProjectedToV2(out.get(1));
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned bean nested inside a collection field of the outer bean. The
+  // outer's SchemaHistory must look through the list/map wrapper to discover the
+  // inner bean and enumerate its versions, so an older payload (inner at v1) is
+  // projected into the newer reader (inner at v2). Without that, the outer has no
+  // projection matching the older inner layout and decode throws.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class TagV1 {
+    private String key;
+  }
+
+  @Data
+  public static class TagV2 {
+    private String key;
+
+    @ForyVersion(since = 2)
+    private long weight;
+  }
+
+  @Data
+  public static class CatalogV1 {
+    private String id;
+    private List<TagV1> tags;
+    private Map<String, TagV1> labels;
+  }
+
+  @Data
+  public static class CatalogV2 {
+    private String id;
+    private List<TagV2> tags;
+    private Map<String, TagV2> labels;
+  }
+
+  private static CatalogV1 sampleCatalog() {
+    CatalogV1 in = new CatalogV1();
+    in.setId("c1");
+    TagV1 a = new TagV1();
+    a.setKey("alpha");
+    TagV1 b = new TagV1();
+    b.setKey("beta");
+    in.setTags(Arrays.asList(a, b));
+    Map<String, TagV1> labels = new HashMap<>();
+    labels.put("k1", a);
+    in.setLabels(labels);
+    return in;
+  }
+
+  @Test
+  public void evolvingBeanInCollectionField() {
+    RowEncoder<CatalogV1> writer = evolvingCodec(CatalogV1.class);
+    RowEncoder<CatalogV2> reader = evolvingCodec(CatalogV2.class);
+    CatalogV2 out = reader.decode(writer.encode(sampleCatalog()));
+    Assert.assertEquals(out.getId(), "c1");
+    Assert.assertEquals(out.getTags().size(), 2);
+    Assert.assertEquals(out.getTags().get(0).getKey(), "alpha");
+    Assert.assertEquals(out.getTags().get(1).getKey(), "beta");
+    // weight was added at v2; the v1 payload has no source for it.
+    Assert.assertEquals(out.getTags().get(0).getWeight(), 0L);
+    Assert.assertEquals(out.getLabels().get("k1").getKey(), "alpha");
+  }
+
+  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
+    return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
   }
 }

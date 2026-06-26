@@ -90,10 +90,12 @@ public class RecordRowTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Records with schema evolution. @ForyVersion targets RECORD_COMPONENT, so a
-  // newer reader record can pick up older payloads, defaulting components added
-  // later. The history interface still works because the bean is a record: live
-  // component names match the wire field names (record short-style naming).
+  // Records with schema evolution. @ForyVersion on a record component propagates
+  // to the backing field and the accessor (its FIELD/METHOD targets), where the
+  // codec reads it, so a newer reader record can pick up older payloads and
+  // default components added later. The history interface still works because the
+  // bean is a record: live component names match the wire field names (record
+  // short-style naming).
   // ---------------------------------------------------------------------------
 
   public record PersonV1(String name, int age) {}
@@ -139,6 +141,30 @@ public class RecordRowTest {
     CounterV2 out = reader.decode(writer.encode(new CounterV1("Luna")));
     Assert.assertEquals(out.name(), "Luna");
     Assert.assertEquals(out.count(), 0);
+  }
+
+  // A record component whose own type is a versioned record. The inner struct is
+  // inline in the outer's bytes with no per-inner hash, so the reader must pick an
+  // inner schema consistent with the outer's strict hash. This drives the nested
+  // cross-product enumeration with record-component field naming.
+  public record InnerV1(String name) {}
+
+  public record InnerV2(String name, @ForyVersion(since = 2) String tag) {}
+
+  public record OuterInnerV1(long id, InnerV1 inner) {}
+
+  public record OuterInnerV2(long id, InnerV2 inner) {}
+
+  @Test
+  public void recordSchemaEvolution_nestedRecordInnerNewerThanWriter() {
+    RowEncoder<OuterInnerV1> writer =
+        Encoders.buildBeanCodec(OuterInnerV1.class).withSchemaEvolution().build().get();
+    RowEncoder<OuterInnerV2> reader =
+        Encoders.buildBeanCodec(OuterInnerV2.class).withSchemaEvolution().build().get();
+    OuterInnerV2 out = reader.decode(writer.encode(new OuterInnerV1(42, new InnerV1("hello"))));
+    Assert.assertEquals(out.id(), 42);
+    Assert.assertEquals(out.inner().name(), "hello");
+    Assert.assertNull(out.inner().tag());
   }
 
   // A reference component added at v2 is absent from a v1 payload, so decode supplies null
