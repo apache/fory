@@ -85,6 +85,24 @@ func TestContainerMemoryBudgetKnownVsStreamRoot(t *testing.T) {
 	require.Len(t, fromStream, len(values))
 }
 
+func TestContainerMemoryBudgetBufferRoots(t *testing.T) {
+	writer := New(WithCompatible(false))
+	value := []string{"a", "b"}
+	data, err := writer.Serialize(value)
+	require.NoError(t, err)
+
+	reader := New(WithCompatible(false))
+	var fromCallback []string
+	err = reader.DeserializeWithCallbackBuffers(NewByteBuffer(data), &fromCallback, nil)
+	require.NoError(t, err)
+	require.Equal(t, value, fromCallback)
+
+	var fromBuffer []string
+	err = reader.DeserializeFrom(NewByteBuffer(data), &fromBuffer)
+	require.NoError(t, err)
+	require.Equal(t, value, fromBuffer)
+}
+
 func TestContainerMemoryBudgetExplicitOverride(t *testing.T) {
 	writer := New(WithCompatible(false))
 	values := make([]any, 12000)

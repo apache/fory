@@ -666,6 +666,11 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
+	f.readCtx.initContainerMemoryBudget(buf.readableBytes(), false)
+	if f.readCtx.HasError() {
+		f.readCtx.buffer = origBuffer
+		return f.readCtx.TakeError()
+	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -761,6 +766,10 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		f.readCtx.buffer = nil
 		f.readCtx.outOfBandBuffers = nil
 	}()
+	f.readCtx.initContainerMemoryBudget(buffer.readableBytes(), false)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
 	// Set up out-of-band buffers if provided
 	if buffers != nil {
 		f.readCtx.outOfBandBuffers = buffers

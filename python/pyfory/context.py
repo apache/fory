@@ -527,8 +527,7 @@ class ReadContext:
             raise ValueError(f"Readable byte count {length} is negative")
         if length == 0:
             return
-        reader_index = self.buffer.get_reader_index()
-        self.buffer.check_bound(reader_index, length)
+        self.buffer.ensure_readable(length)
 
     def prepare(
         self,
