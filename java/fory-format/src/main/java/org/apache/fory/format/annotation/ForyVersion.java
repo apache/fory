@@ -45,6 +45,10 @@ public @interface ForyVersion {
   /** First version (inclusive) that contains this field. Defaults to the class base version. */
   int since() default 1;
 
-  /** First version (exclusive) that no longer contains this field. */
+  /**
+   * First version (exclusive) that no longer contains this field. The default {@link
+   * Integer#MAX_VALUE} means the field has no upper bound and is present in every version from
+   * {@link #since()} onward.
+   */
   int until() default Integer.MAX_VALUE;
 }

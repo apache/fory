@@ -27,6 +27,8 @@ import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
+import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.TypeResolutionContext;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
   private static final Logger LOG = LoggerFactory.getLogger(BaseCodecBuilder.class);
@@ -80,10 +82,15 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * org.apache.fory.format.annotation.ForySchema} annotations to reconstruct historical schemas.
    * Writing always uses the current version.
    *
-   * <p>For array and map codecs, this changes the wire format by adding an 8-byte strict-hash
-   * prefix to the payload, so producers and consumers must agree on the flag. Row payloads already
-   * carry an 8-byte hash slot; under schema evolution that slot is computed with a stricter hash
-   * that also distinguishes field names and nullability.
+   * <p>This flag is part of the wire contract: producers and consumers must agree on it, and it
+   * cannot be flipped on an existing dataset without rewriting. For array and map codecs it adds an
+   * 8-byte strict-hash prefix to the payload. Because those codecs have no header otherwise, an
+   * evolution-off reader has no way to tell that prefix from valid body bytes, so reading
+   * evolution-on bytes with evolution off (or the reverse) mis-decodes silently rather than
+   * failing. Row payloads already carry an 8-byte hash slot, so a flag mismatch there is detected
+   * and rejected; but the slot is computed with a stricter hash under evolution (it also
+   * distinguishes field names and nullability), so flipping the flag rejects reads of previously
+   * written rows even when the field layout is byte-identical.
    */
   public B withSchemaEvolution() {
     this.schemaEvolution = true;
@@ -107,22 +114,61 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
    * unchanged.
    */
   protected SchemaHistory buildSchemaHistory(final Class<?> targetClass) {
-    UnaryOperator<Schema> schemaTransform =
-        codecFormat == CompactCodecFormat.INSTANCE
-            ? CompactBinaryRowWriter::sortSchema
-            : UnaryOperator.identity();
-    SchemaHistory history = SchemaHistory.build(targetClass, schemaTransform);
-    int projectionCount = history.versions().size();
+    SchemaHistory history = SchemaHistory.build(targetClass, schemaTransform());
+    warnIfManyProjections(targetClass.getName(), history);
+    return history;
+  }
+
+  /**
+   * History of a top-level array element or map entry field, enumerated over the cross-product of
+   * every versioned bean reachable through the field's list/map/array wrappers (a directly-typed
+   * bean, a list element, or a map key or value). Used by the array/map codecs so the element
+   * schema's strict hash identifies all nested layouts jointly, letting a wrapper that reaches more
+   * than one distinct versioned bean class evolve every one of them.
+   */
+  protected SchemaHistory buildElementSchemaHistory(
+      final String fieldName, final TypeRef<?> elementType) {
+    SchemaHistory history = elementSchemaHistory(fieldName, elementType);
+    warnIfManyProjections("element " + elementType, history);
+    return history;
+  }
+
+  /**
+   * Builds a position's history without the per-position projection-count warning. The map path
+   * uses this and warns once on the key/value cross-product, which is the count of classes it
+   * generates; the array path uses {@link #buildElementSchemaHistory}, whose per-position count is
+   * exact.
+   */
+  protected SchemaHistory elementSchemaHistory(
+      final String fieldName, final TypeRef<?> elementType) {
+    return SchemaHistory.forElement(fieldName, elementType, schemaTransform());
+  }
+
+  private UnaryOperator<Schema> schemaTransform() {
+    return codecFormat == CompactCodecFormat.INSTANCE
+        ? CompactBinaryRowWriter::sortSchema
+        : UnaryOperator.identity();
+  }
+
+  private static void warnIfManyProjections(final String label, final SchemaHistory history) {
+    warnIfManyProjections(label, history.versions().size());
+  }
+
+  /**
+   * Warn when {@code projectionCount} generated projection codec classes exceeds the threshold. The
+   * map path passes the key/value cross-product here, not a single position's count, because that
+   * product is the number of classes it actually generates.
+   */
+  protected static void warnIfManyProjections(final String label, final int projectionCount) {
     if (projectionCount > PROJECTION_COUNT_WARN_THRESHOLD) {
       LOG.warn(
           "Schema evolution for {} resolved {} historical schemas, each generating a projection "
               + "codec class. This count grows as the product of per-class version counts across "
               + "nested versioned beans; retire @ForyVersion history ranges you no longer read to "
               + "reduce it.",
-          targetClass.getName(),
+          label,
           projectionCount);
     }
-    return history;
   }
 
   @SuppressWarnings("unchecked")

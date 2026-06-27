@@ -114,8 +114,10 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
   M decode(final MemoryBuffer buffer, final int size) {
     if (projections == null) {
       // Evolution off: the whole payload is body, with no hash prefix. Reading evolution-on bytes
-      // here misreads the leading hash as data; that direction is documented as unsupported in the
-      // row-format guide (producer and consumer must agree on the flag).
+      // here cannot be caught: the map wire form has no hash slot when evolution is off, and an
+      // evolution-on payload's leading 8-byte FNV hash is indistinguishable from a valid map body,
+      // so it silently mis-decodes. The row-format guide documents this direction as unsupported;
+      // producer and consumer must agree on the flag.
       final BinaryMap map = format.newMap(mapField);
       final int readerIndex = buffer.readerIndex();
       map.pointTo(buffer, readerIndex, size);
@@ -164,7 +166,8 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
       return map.getBuf().getBytes(map.getBaseOffset(), map.getSizeInBytes());
     }
     // Build the result with a single allocation: the result byte[]. The hash header is poked
-    // in via LittleEndian (no buffer wrapper) and the body is copied in via System.arraycopy.
+    // in via LittleEndian (no buffer wrapper) and the body is bulk-copied out of the map's
+    // backing buffer into the result.
     final int n = map.getSizeInBytes();
     if (n > Integer.MAX_VALUE - 8) {
       throw new EncoderException("Map body too large to prepend schema hash header: " + n);

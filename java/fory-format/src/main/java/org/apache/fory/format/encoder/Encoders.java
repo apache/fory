@@ -385,15 +385,16 @@ public class Encoders {
       TypeRef<? extends Collection<?>> arrayCls,
       TypeRef<B> elementType,
       Encoding codecFactory,
-      String rowCodecSuffix) {
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes) {
     Class<?> cls = getRawType(elementType);
     String prefix = TypeInference.inferTypeName(arrayCls);
     ArrayEncoderBuilder codecBuilder =
-        codecFactory.newProjectionArrayEncoder(arrayCls, elementType, rowCodecSuffix);
+        codecFactory.newProjectionArrayEncoder(arrayCls, elementType, classSuffix, nestedSuffixes);
     CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(cls),
-            codecBuilder.codecClassName(cls, prefix) + rowCodecSuffix,
+            codecBuilder.codecClassName(cls, prefix) + classSuffix,
             codecBuilder::genCode);
     return loadCls(compileUnit);
   }
@@ -436,11 +437,19 @@ public class Encoders {
       TypeRef<?> beanToken,
       Encoding codecFactory,
       String valCodecSuffix,
-      String keyCodecSuffix) {
+      String keyCodecSuffix,
+      Map<Class<?>, String> valNestedSuffixes,
+      Map<Class<?>, String> keyNestedSuffixes) {
     Class<?> cls = getRawType(beanToken);
     String prefix = TypeInference.inferTypeName(mapCls);
     MapEncoderBuilder codecBuilder =
-        codecFactory.newProjectionMapEncoder(mapCls, beanToken, valCodecSuffix, keyCodecSuffix);
+        codecFactory.newProjectionMapEncoder(
+            mapCls,
+            beanToken,
+            valCodecSuffix,
+            keyCodecSuffix,
+            valNestedSuffixes,
+            keyNestedSuffixes);
     CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(cls),

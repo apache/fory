@@ -24,6 +24,7 @@ import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.lang.reflect.Array;
 import java.util.HashSet;
+import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
@@ -54,7 +55,22 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public ArrayEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
-    this(clsType, beanType, null);
+    this(clsType, beanType, (String) null);
+  }
+
+  /**
+   * Construct a projection array codec builder. {@code classSuffix} names this codec's own class
+   * (encoding the whole nested-bean version combination); {@code nestedSuffixes} routes each nested
+   * versioned bean class to its own projection row codec, so an element wrapping more than one bean
+   * (such as {@code Map<KBean, VBean>}) embeds the right historical codec for each.
+   */
+  ArrayEncoderBuilder(
+      TypeRef<?> clsType,
+      TypeRef<?> beanType,
+      String classSuffix,
+      Map<Class<?>, String> nestedSuffixes) {
+    this(clsType, beanType, classSuffix);
+    this.nestedClassSuffixes = nestedSuffixes;
   }
 
   /**
