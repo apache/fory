@@ -544,6 +544,15 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
    * know the field is missing in this version.
    */
   private boolean isAccessorOfAbsentField(String methodName, MethodType methodType) {
+    // An accessor takes no arguments; the live-member pass above only removes the no-arg signature.
+    // A parameterized method sharing a name and return type with a descriptor is not that field's
+    // accessor, so it must still throw rather than be silenced into a default value.
+    if (methodType.parameterCount() != 0) {
+      return false;
+    }
+    // Look up by the raw method name, not via getDescriptorByFieldName's wire-name conversion: this
+    // path runs only for interface beans (see buildImplClass), whose descriptor names are the method
+    // names themselves, so descriptorsMap is keyed by exactly the names we iterate here.
     Descriptor d = descriptorsMap.get(methodName);
     if (d == null) {
       return false;

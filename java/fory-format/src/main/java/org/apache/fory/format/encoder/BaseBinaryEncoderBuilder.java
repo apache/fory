@@ -753,9 +753,19 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    * </code>.
    */
   protected Expression deserializeForBean(Expression row, TypeRef<?> typeRef) {
+    // beanCodecKey(typeRef) must resolve to the same position (key vs value) here as it did when
+    // registerBeanCodec() ran. A miss means this decode is reached outside the position scope that
+    // registered the codec -- e.g. a nested key bean built outside MapEncoderBuilder.keyScoped /
+    // KeyPositionScope -- so the lookup falls back to the wrong key. Fail loud rather than
+    // mis-route.
     Reference beanEncoder = beanEncoderMap.get(beanCodecKey(typeRef));
     if (beanEncoder == null) {
-      throw new IllegalStateException("beanEncoder should have be added in serializeForBean()");
+      throw new IllegalStateException(
+          "No bean codec registered for "
+              + typeRef
+              + " under key "
+              + beanCodecKey(typeRef)
+              + "; registerBeanCodec() must run in the same key/value position as this decode");
     }
     Invoke beanObj = new Invoke(beanEncoder, "fromRow", TypeUtils.OBJECT_TYPE, false, row);
     return new Cast(beanObj, typeRef, "bean");

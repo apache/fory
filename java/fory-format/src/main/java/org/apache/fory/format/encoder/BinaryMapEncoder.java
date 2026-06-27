@@ -113,6 +113,9 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
   @SuppressWarnings("unchecked")
   M decode(final MemoryBuffer buffer, final int size) {
     if (projections == null) {
+      // Evolution off: the whole payload is body, with no hash prefix. Reading evolution-on bytes
+      // here misreads the leading hash as data; that direction is documented as unsupported in the
+      // row-format guide (producer and consumer must agree on the flag).
       final BinaryMap map = format.newMap(mapField);
       final int readerIndex = buffer.readerIndex();
       map.pointTo(buffer, readerIndex, size);
@@ -124,31 +127,33 @@ class BinaryMapEncoder<M> implements MapEncoder<M> {
           "Map payload too small for an 8-byte schema hash under schema evolution: size=" + size);
     }
     long peerHash = buffer.readInt64();
-    int payloadSize = size - 8;
+    int bodySize = size - 8;
     if (peerHash == currentHash) {
       final BinaryMap map = format.newMap(mapField);
       int readerIndex = buffer.readerIndex();
-      map.pointTo(buffer, readerIndex, payloadSize);
-      buffer.readerIndex(readerIndex + payloadSize);
+      map.pointTo(buffer, readerIndex, bodySize);
+      buffer.readerIndex(readerIndex + bodySize);
       return fromMap(map);
     }
     ProjectionMapCodec projection = projections.get(peerHash);
     if (projection == null) {
       throw new ClassNotCompatibleException(
           String.format(
-              "Map bean schema is not consistent. self/peer hash are %s/%s.",
+              "Map (key,value) schema is not consistent. self/peer hash are %x/%x.",
               currentHash, peerHash));
     }
     BinaryMap map = projection.format.newMap(projection.mapField);
     int readerIndex = buffer.readerIndex();
-    map.pointTo(buffer, readerIndex, payloadSize);
-    buffer.readerIndex(readerIndex + payloadSize);
+    map.pointTo(buffer, readerIndex, bodySize);
+    buffer.readerIndex(readerIndex + bodySize);
     return (M) projection.codec.fromMap(map);
   }
 
   @Override
   public M decode(final byte[] bytes) {
-    // byte[] overloads ignore sizeEmbedded: encode writes no size prefix, decode uses bytes.length.
+    // byte[] overloads ignore sizeEmbedded: encode writes no length prefix (under schema evolution
+    // an 8-byte hash leads the body, but that is data, not framing), so decode takes the size from
+    // bytes.length.
     return decode(MemoryUtils.wrap(bytes), bytes.length);
   }
 

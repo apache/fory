@@ -589,6 +589,42 @@ public class SchemaEvolutionStressTest {
     Assert.assertTrue(e.getMessage().contains("live field must not set until"), e.getMessage());
   }
 
+  /** A since below the first version adds a schema version no writer can emit. */
+  @Data
+  public static class LiveFieldSinceBelowFirst {
+    private int x;
+
+    @ForyVersion(since = 0)
+    private String added;
+  }
+
+  @Test
+  public void liveFieldSinceBelowFirstFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(LiveFieldSinceBelowFirst.class));
+    Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
+  }
+
+  @Data
+  @ForySchema(removedFields = RemovedFieldSinceBelowFirst.History.class)
+  public static class RemovedFieldSinceBelowFirst {
+    private int x;
+
+    interface History {
+      @ForyVersion(since = 0, until = 3)
+      String legacy();
+    }
+  }
+
+  @Test
+  public void removedFieldSinceBelowFirstFailsAtBuild() {
+    IllegalStateException e =
+        Assert.expectThrows(
+            IllegalStateException.class, () -> evolvingCodec(RemovedFieldSinceBelowFirst.class));
+    Assert.assertTrue(e.getMessage().contains("must be >= 1"), e.getMessage());
+  }
+
   // ---------------------------------------------------------------------------
   // A field whose type is a Collection subclass that shadows a field name across
   // its own hierarchy. The row format encodes it through the iterable branch and
