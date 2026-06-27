@@ -362,6 +362,49 @@ public class SchemaEvolutionTest {
     Assert.assertEquals(out.getEmail(), "alice@example.com");
   }
 
+  /**
+   * v1 writer interface: just a name. Used to produce a payload that the reader below projects to
+   * its v1 schema, where {@code score} is absent.
+   */
+  public interface ScoredV1 {
+    String getName();
+  }
+
+  /**
+   * Current reader interface. {@code getScore()} is a live {@code since=2} accessor, so when a v1
+   * payload is projected it is absent and gets a default-value body. {@code getScore(int)} is a
+   * parameterized overload sharing that name and return type. It is not an accessor — accessors
+   * take no arguments — so the projection proxy must throw for it rather than silence it into a
+   * default. Without the {@code parameterCount() != 0} guard in {@code isAccessorOfAbsentField}, it
+   * would match the absent {@code score} descriptor by name and return type and return {@code 0}.
+   */
+  public interface ScoredV2 {
+    String getName();
+
+    @ForyVersion(since = 2)
+    int getScore();
+
+    int getScore(int seed);
+  }
+
+  @Test
+  public void projectionNonAccessorOverloadStillThrows() {
+    RowEncoder<ScoredV1> v1Writer = evolvingCodec(ScoredV1.class);
+    RowEncoder<ScoredV2> reader = evolvingCodec(ScoredV2.class);
+    ScoredV1 in = () -> "alice";
+    ScoredV2 out = reader.decode(v1Writer.encode(in));
+    Assert.assertEquals(out.getName(), "alice");
+    // score was added in v2; the v1 payload has none, so the no-arg accessor defaults to 0.
+    Assert.assertEquals(out.getScore(), 0);
+    try {
+      out.getScore(7);
+      Assert.fail(
+          "parameterized getScore is not an accessor and must not be silenced to a default");
+    } catch (UnsupportedOperationException expected) {
+      // The projection proxy does not implement non-accessor methods.
+    }
+  }
+
   /** Removed-field test: v3 codec reads v2 payload, dropping the no-longer-present 'age'. */
   @Test
   public void removedFieldReadByNewerCodec() {
@@ -577,6 +620,77 @@ public class SchemaEvolutionTest {
     // weight was added at v2; the v1 payload has no source for it.
     Assert.assertEquals(out.getTags().get(0).getWeight(), 0L);
     Assert.assertEquals(out.getLabels().get("k1").getKey(), "alpha");
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned *interface* bean nested inside an evolving outer bean. Interface
+  // beans are valid versioned row beans at the top level (see PersonIfaceV1/V2),
+  // so they must also be discovered when nested as a field type, a list element,
+  // or a map value. SchemaHistory.findVersionedBean has to recognize an interface
+  // the same way the top-level container path does (synthesizing the interface as
+  // a bean); otherwise the outer's cross-product never enumerates the inner's
+  // older versions, an older inner payload has no matching projection, and decode
+  // fails with a schema-hash mismatch (ClassNotCompatibleException).
+  // ---------------------------------------------------------------------------
+
+  /** v1 interface bean: a single key accessor. */
+  public interface SlugV1 {
+    String getKey();
+  }
+
+  /** v2 interface bean: adds a weight at version 2. Same accessor naming as v1. */
+  public interface SlugV2 {
+    String getKey();
+
+    @ForyVersion(since = 2)
+    long getWeight();
+  }
+
+  @Data
+  public static class BoxV1 {
+    private String id;
+    private SlugV1 slug;
+    private List<SlugV1> slugs;
+    private Map<String, SlugV1> labels;
+  }
+
+  @Data
+  public static class BoxV2 {
+    private String id;
+    private SlugV2 slug;
+    private List<SlugV2> slugs;
+    private Map<String, SlugV2> labels;
+  }
+
+  private static SlugV1 slugV1(String key) {
+    return () -> key;
+  }
+
+  @Test
+  public void evolvingInterfaceBeanNestedInOuterBean() {
+    RowEncoder<BoxV1> writer = evolvingCodec(BoxV1.class);
+    RowEncoder<BoxV2> reader = evolvingCodec(BoxV2.class);
+
+    BoxV1 in = new BoxV1();
+    in.setId("b1");
+    in.setSlug(slugV1("direct"));
+    in.setSlugs(Arrays.asList(slugV1("alpha"), slugV1("beta")));
+    Map<String, SlugV1> labels = new HashMap<>();
+    labels.put("k1", slugV1("gamma"));
+    in.setLabels(labels);
+
+    BoxV2 out = reader.decode(writer.encode(in));
+
+    Assert.assertEquals(out.getId(), "b1");
+    Assert.assertEquals(out.getSlug().getKey(), "direct");
+    Assert.assertEquals(out.getSlugs().size(), 2);
+    Assert.assertEquals(out.getSlugs().get(0).getKey(), "alpha");
+    Assert.assertEquals(out.getSlugs().get(1).getKey(), "beta");
+    Assert.assertEquals(out.getLabels().get("k1").getKey(), "gamma");
+    // weight was added at v2; the v1 payload has no source, so it defaults.
+    Assert.assertEquals(out.getSlug().getWeight(), 0L);
+    Assert.assertEquals(out.getSlugs().get(0).getWeight(), 0L);
+    Assert.assertEquals(out.getLabels().get("k1").getWeight(), 0L);
   }
 
   // --- Versioned bean nested inside a top-level container's element/value ---

@@ -169,6 +169,11 @@ public final class SchemaHistory {
     // field type directly, or the element of a list, or the value of a map; we locate it at any of
     // those sites so the outer's enumeration can cross-product over the inner's versions. The inner
     // schema substitutes back into the same site at materialization time.
+    //
+    // This recursion needs no cycle guard. TypeInference.inferField calls ctx.checkNoCycle on every
+    // bean it descends into, and RowCodecBuilder runs inferSchema in its constructor before build()
+    // reaches here, so a self-referential bean is already rejected. Recursion depth is bounded by
+    // the acyclic nesting of distinct versioned bean types.
     for (FieldEntry fe : all) {
       Class<?> nested = findVersionedBean(fe.typeRef);
       if (nested != null) {
@@ -427,8 +432,14 @@ public final class SchemaHistory {
     // collection subclass that shadows a field name across its hierarchy round-trips fine even
     // though getDescriptors would reject it. Gating on isBean keeps this probe consistent with
     // inferField; getDescriptors then only throws for a class that genuinely cannot be a bean,
-    // which fails identically on the real encode/decode path.
-    if (!TypeUtils.isBean(cls)) {
+    // which fails identically on the real encode/decode path. Use the same synthesize-interfaces
+    // context as inferField and the top-level array/map entry point (evolutionBean), so an
+    // interface bean nested as a field type, list element, or map value is discovered as a bean
+    // rather than rejected; otherwise its older versions are never enumerated and an older payload
+    // decodes at the interface's current layout.
+    TypeResolutionContext typeCtx =
+        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
+    if (!TypeUtils.isBean(cls, typeCtx)) {
       return false;
     }
     for (Descriptor d : Descriptor.getDescriptors(cls)) {
@@ -460,6 +471,19 @@ public final class SchemaHistory {
                 + d.getName()
                 + " must specify @ForyVersion.until (no upper bound makes no sense for a field "
                 + "that has been removed)");
+      }
+      if (ann.since() < FIRST_VERSION) {
+        throw new IllegalStateException(
+            "Invalid @ForyVersion on "
+                + historyClass.getName()
+                + "."
+                + d.getName()
+                + ": since ("
+                + ann.since()
+                + ") must be >= "
+                + FIRST_VERSION
+                + " (the first schema version). A since below that adds a version no writer can "
+                + "emit.");
       }
       if (ann.since() >= ann.until()) {
         throw new IllegalStateException(
@@ -493,6 +517,19 @@ public final class SchemaHistory {
       ForyVersion ann = lookupForyVersion(d);
       int since = ann == null ? FIRST_VERSION : ann.since();
       int until = ann == null ? Integer.MAX_VALUE : ann.until();
+      if (since < FIRST_VERSION) {
+        throw new IllegalStateException(
+            "Invalid @ForyVersion on "
+                + beanClass.getName()
+                + "."
+                + d.getName()
+                + ": since ("
+                + since
+                + ") must be >= "
+                + FIRST_VERSION
+                + " (the first schema version). A since below that adds a version no writer can "
+                + "emit.");
+      }
       // A live field still exists as a Java member, so it has no end-of-life version. A finite
       // until would silently drop it from the current schema (until extends the version set, so
       // latestVersion >= until excludes the field), and the writer would stop serializing a field

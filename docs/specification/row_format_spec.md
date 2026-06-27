@@ -343,6 +343,16 @@ if (fixed_width % 8 == 0):
 
 ---
 
+## Schema Evolution (Java Only)
+
+Schema evolution lets a codec read payloads written by older versions of the same bean. It is implemented in Java only and does not change the cross-language wire contract above; producer and consumer must agree on whether it is enabled.
+
+When enabled, a row reuses its existing 8-byte hash slot but fills it with a stricter hash that also distinguishes field names and nullability. Array and map payloads, which carry no hash otherwise, gain an 8-byte strict-hash prefix.
+
+See the [Java row format guide](../guide/java/row-format.md#schema-evolution) for usage, annotations, and limitations.
+
+---
+
 ## Common Specifications
 
 The following specifications apply to both standard and compact formats.
