@@ -72,12 +72,16 @@ interface Encoding {
   MapEncoderBuilder newMapEncoder(TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken);
 
   /**
-   * Construct a map encoder builder whose generated code references the bean row codec class with
-   * the supplied suffix. Used by schema-evolution paths to generate one map codec per historical
-   * version of the bean.
+   * Construct a map encoder builder whose generated code references the value and key bean row
+   * codec classes with the supplied suffixes. Used by schema-evolution paths to generate one map
+   * codec per historical (key-version, value-version) combination. An empty suffix means that
+   * position is read at its current schema.
    */
   MapEncoderBuilder newProjectionMapEncoder(
-      TypeRef<? extends Map<?, ?>> mapType, TypeRef<?> beanToken, String rowCodecSuffix);
+      TypeRef<? extends Map<?, ?>> mapType,
+      TypeRef<?> beanToken,
+      String valCodecSuffix,
+      String keyCodecSuffix);
 
   /**
    * Build a {@link RowFactory} for {@code schema}, precomputing any schema-derived layout once.

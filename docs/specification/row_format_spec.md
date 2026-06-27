@@ -347,7 +347,7 @@ if (fixed_width % 8 == 0):
 
 Schema evolution lets a codec read payloads written by older versions of the same bean. It is implemented in Java only and does not change the cross-language wire contract above; producer and consumer must agree on whether it is enabled.
 
-When enabled, a row reuses its existing 8-byte hash slot but fills it with a stricter hash that also distinguishes field names and nullability. Array and map payloads, which carry no hash otherwise, gain an 8-byte strict-hash prefix.
+The Java encoder frames a row payload with a leading 8-byte schema-hash word. When evolution is enabled, that word holds a stricter hash that also distinguishes field names and nullability; otherwise it holds the format's default schema hash. Array and map payloads carry no hash word otherwise, so under evolution they gain an 8-byte strict-hash prefix. A map's prefix is a single hash that identifies the key and value layouts together, so a map key and value evolve independently while the payload still carries one hash.
 
 See the [Java row format guide](../guide/java/row-format.md#schema-evolution) for usage, annotations, and limitations.
 

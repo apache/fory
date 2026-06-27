@@ -144,8 +144,9 @@ public final class SchemaHistory {
   /**
    * All distinct historical schemas, in build order: outer version ascending, and within an outer
    * version, one entry per nested cross-product combination. This is not a strict sort by {@link
-   * VersionedSchema#version()} — collapsing field-set duplicates can place a later combination in an
-   * earlier slot. Dispatch keys on the strict hash, so callers must not rely on positional order.
+   * VersionedSchema#version()} — collapsing field-set duplicates can place a later combination in
+   * an earlier slot. Dispatch keys on the strict hash, so callers must not rely on positional
+   * order.
    */
   public List<VersionedSchema> versions() {
     return versions;

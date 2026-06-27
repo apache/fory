@@ -278,21 +278,21 @@ reader's historical layouts is decoded against that layout. This is the same has
 the row format has always used, so feeding a codec bytes it was not built for has undefined results
 whether or not evolution is enabled. Only hand a codec payloads produced for the same bean.
 
-Map keys do not carry a per-payload hash; a versioned bean used as a map key is read with the
-current schema only, not dispatched to a projection codec.
-
 Nested evolution works to arbitrary depth and places no restriction on shape: a versioned bean
 may contain versioned beans that themselves contain versioned beans, the same versioned bean
 class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
-unrestricted. Each nesting level is routed to the correct historical layout.
+unrestricted. Each nesting level is routed to the correct historical layout. A versioned bean may
+be used as a map key as well as a map value, and the key and value evolve independently; a map
+carries one hash that identifies both layouts together.
 
 When a versioned bean contains other versioned beans, the reader generates one projection codec
 class per combination of versions across the composition. The count grows as the product of the
 version counts of the distinct nested versioned bean classes, not the number of fields, so
-reusing a class across several fields adds no combinations. If the product across distinct classes
-becomes a concern, drop entries from each bean's `History` interface once you no longer need to
-read payloads from that range. Retiring a history entry is purely a read-side decision; the writer
-always uses the current schema.
+reusing a class across several fields adds no combinations. A map whose key and value both evolve
+multiplies their version counts the same way. If the product across distinct classes becomes a
+concern, drop entries from each bean's `History` interface once you no longer need to read payloads
+from that range. Retiring a history entry is purely a read-side decision; the writer always uses the
+current schema.
 
 ## Related Topics
 
