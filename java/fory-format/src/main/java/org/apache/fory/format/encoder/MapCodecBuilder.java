@@ -115,8 +115,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
   /**
    * Combine the key and value strict hashes into one 64-bit map-layout hash. The map header carries
    * a single hash, so it must identify the (key-version, value-version) combination jointly. FNV-1a
-   * mix over the two 64-bit hashes; collisions are handled exactly as the per-position hashes are,
-   * via {@code LongMap} dispatch with a loud {@link ClassNotCompatibleException} on miss.
+   * mix over the two 64-bit hashes. Two distinct combinations that collide here would map to one
+   * projection codec, so {@link #buildVersioned} proves the combined hashes are unique at build
+   * time rather than letting one combination silently overwrite another.
    */
   private static long combinedHash(long keyHash, long valHash) {
     long h = 0xcbf29ce484222325L;
@@ -162,12 +163,30 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
           continue;
         }
         long hash = combinedHash(positionHash(keyVs), positionHash(valVs));
-        projectionFactories.put(
-            hash, buildProjectionFactory(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
+        ProjectionMapFactory previous =
+            projectionFactories.put(
+                hash,
+                buildProjectionFactory(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
+        if (previous != null) {
+          throw new IllegalStateException(
+              "Combined (key, value) schema-hash collision for map "
+                  + mapType
+                  + ": two distinct version combinations produced the same map-layout hash. "
+                  + "Please file an issue with the key and value bean definitions.");
+        }
       }
     }
     final var currentFactory = generatedMapEncoder();
     long currentHash = combinedHash(positionHash(keyCurrent), positionHash(valCurrent));
+    // The decode hot path matches currentHash before consulting the projection map, so a projection
+    // colliding with it would be shadowed and never dispatched to. Prove that cannot happen.
+    if (projectionFactories.containsKey(currentHash)) {
+      throw new IllegalStateException(
+          "Combined (key, value) schema-hash collision for map "
+              + mapType
+              + ": a historical version combination produced the same map-layout hash as the "
+              + "current schema. Please file an issue with the key and value bean definitions.");
+    }
     return new Supplier<MapEncoder<M>>() {
       @Override
       public MapEncoder<M> get() {

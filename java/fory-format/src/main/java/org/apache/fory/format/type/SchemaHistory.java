@@ -167,20 +167,17 @@ public final class SchemaHistory {
     }
 
     // Recursively expand any nested versioned bean field's own history. A versioned bean can be the
-    // field type directly, or the element of a list, or the value of a map; we locate it at any of
-    // those sites so the outer's enumeration can cross-product over the inner's versions. The inner
-    // schema substitutes back into the same site at materialization time.
+    // field type directly, the element of a list, or the key or value of a map; we locate it at any
+    // of those sites so the outer's enumeration can cross-product over the inner's versions. A map
+    // contributes a key site and a value site independently. The inner schema substitutes back into
+    // the same site at materialization time.
     //
     // This recursion needs no cycle guard. TypeInference.inferField calls ctx.checkNoCycle on every
     // bean it descends into, and RowCodecBuilder runs inferSchema in its constructor before build()
     // reaches here, so a self-referential bean is already rejected. Recursion depth is bounded by
     // the acyclic nesting of distinct versioned bean types.
     for (FieldEntry fe : all) {
-      Class<?> nested = findVersionedBean(fe.typeRef);
-      if (nested != null) {
-        fe.nestedBeanClass = nested;
-        fe.innerHistory = build(nested, schemaTransform);
-      }
+      collectNestedSites(fe.typeRef, schemaTransform, fe.nestedSites);
     }
 
     // Materialize a schema at every version V where the field set changes — both "since" and
@@ -234,8 +231,8 @@ public final class SchemaHistory {
       // concern; the writer always uses the current schema.
       LinkedHashMap<Class<?>, List<VersionedSchema>> innerChoices = new LinkedHashMap<>();
       for (FieldEntry fe : activeEntries) {
-        if (fe.innerHistory != null) {
-          innerChoices.putIfAbsent(fe.nestedBeanClass, fe.innerHistory.versions());
+        for (NestedSite site : fe.nestedSites) {
+          innerChoices.putIfAbsent(site.beanClass, site.history.versions());
         }
       }
       for (Map<Class<?>, VersionedSchema> combination : cartesian(innerChoices)) {
@@ -243,15 +240,17 @@ public final class SchemaHistory {
         Set<String> liveNames = new HashSet<>();
         for (FieldEntry fe : activeEntries) {
           Field current = TypeInference.inferNamedField(fe.name, fe.typeRef);
-          VersionedSchema innerVs =
-              fe.nestedBeanClass == null ? null : combination.get(fe.nestedBeanClass);
-          // Substitute the chosen inner version's struct into the bean's site (direct field,
-          // list element, or map value), keeping the collection wrapper intact.
-          Field field =
-              innerVs == null
-                  ? current
-                  : substituteNestedStruct(
-                      current, fe.typeRef, new DataTypes.StructType(innerVs.schema().fields()));
+          // Substitute each nested versioned site (a direct field, list element, map value, or map
+          // key) with the version this combination chose for its bean class, keeping every
+          // collection/map wrapper intact. A map can have both a key site and a value site, which
+          // are substituted independently.
+          Field field = current;
+          for (NestedSite site : fe.nestedSites) {
+            VersionedSchema innerVs = combination.get(site.beanClass);
+            field =
+                site.substitute(
+                    field, fe.typeRef, new DataTypes.StructType(innerVs.schema().fields()));
+          }
           fields.add(field);
           if (fe.live) {
             liveNames.add(fe.name);
@@ -337,11 +336,11 @@ public final class SchemaHistory {
   /**
    * Bean a top-level array/map codec evolves on, reachable through {@code elementType} (the array
    * element or map value). Descends list/map/array wrappers and returns the bean at the leaf,
-   * matching the way {@link #findVersionedBean} descends. The bean need not be versioned: an
+   * matching the way {@link #collectNestedSites} descends. The bean need not be versioned: an
    * unversioned bean must still take the evolution path so the strict-hash prefix is always present
    * and the producer and consumer stay wire-compatible. Returns null when no bean is reachable and
-   * the codec needs no projection. Map keys are not inspected; they are always read at the current
-   * schema.
+   * the codec needs no projection. This top-level path follows only the value; a top-level map
+   * codec inspects its key separately via its own key-evolution entry point.
    */
   public static Class<?> evolutionBean(TypeRef<?> elementType, TypeResolutionContext typeCtx) {
     Class<?> raw = TypeUtils.getRawType(elementType);
@@ -365,54 +364,134 @@ public final class SchemaHistory {
    */
   public static Field projectThroughWrapper(
       Field currentField, TypeRef<?> elementType, VersionedSchema historical) {
-    return substituteNestedStruct(
+    // Callers pass an already-unwrapped key or value field and its element type. The top-level key
+    // is handled separately by the map codec, so any map encountered while descending the value's
+    // wrappers is followed on its value side; build a value-only site to do that to any depth.
+    NestedSite valueSite =
+        new NestedSite(null, null, Collections.nCopies(mapDepth(elementType), MapBranch.VALUE));
+    return valueSite.substitute(
         currentField, elementType, new DataTypes.StructType(historical.schema().fields()));
   }
 
   /**
-   * Find the versioned bean reachable from a field type: the field type itself, a list/array
-   * element, or a map value. Returns null when no versioned bean is present. Map keys are not
-   * inspected: they carry no per-payload hash on the wire and are always read with the current
-   * schema, so enumerating key versions would only generate projection codecs that decode never
-   * dispatches to.
+   * Number of map nodes on the value-side descent of {@code typeRef}, ignoring list/array wrappers.
    */
-  private static Class<?> findVersionedBean(TypeRef<?> typeRef) {
+  private static int mapDepth(TypeRef<?> typeRef) {
     Class<?> raw = TypeUtils.getRawType(typeRef);
     if (raw == null) {
-      return null;
+      return 0;
     }
     if (raw.isArray() || TypeUtils.isCollection(raw)) {
-      return findVersionedBean(elementTypeRef(typeRef, raw));
+      return mapDepth(elementTypeRef(typeRef, raw));
     }
     if (TypeUtils.isMap(raw)) {
-      Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
-      return findVersionedBean(kv.f1);
+      return 1 + mapDepth(TypeUtils.getMapKeyValueType(typeRef).f1);
     }
-    return isBeanWithVersioning(raw) ? raw : null;
+    return 0;
+  }
+
+  /** A branch taken at a map node while descending toward a nested bean: its key or its value. */
+  private enum MapBranch {
+    KEY,
+    VALUE
   }
 
   /**
-   * Replace the nested bean's struct in {@code current} (the field at the bean's current schema)
-   * with {@code historical}, keeping any list/map wrapper. The bean sits at the field, the
-   * list/array element, or the map value, matching {@link #findVersionedBean}.
+   * A versioned bean reachable from a field, together with the branch taken at each map on the way
+   * down so the historical struct substitutes back into exactly that leaf. The path lists one entry
+   * per map crossed, in order from the field root; list/array wrappers add no entry because they
+   * have a single element leaf. A map field contributes a key site and a value site independently,
+   * each with its own path; every other field shape has at most one site.
    */
-  private static Field substituteNestedStruct(
-      Field current, TypeRef<?> typeRef, DataTypes.StructType historical) {
+  private static final class NestedSite {
+    final Class<?> beanClass;
+    final SchemaHistory history;
+    final List<MapBranch> path;
+
+    NestedSite(Class<?> beanClass, SchemaHistory history, List<MapBranch> path) {
+      this.beanClass = beanClass;
+      this.history = history;
+      this.path = path;
+    }
+
+    /**
+     * Replace this site's bean struct in {@code current} with {@code historical}, descending
+     * list/array wrappers and taking {@code path[depth]} at each map, while leaving every other
+     * leaf intact so independent sites (a map's key and value, or beans under different map sides
+     * at any depth) substitute without disturbing one another.
+     */
+    Field substitute(Field current, TypeRef<?> typeRef, DataTypes.StructType historical) {
+      return substitute(current, typeRef, historical, 0);
+    }
+
+    private Field substitute(
+        Field current, TypeRef<?> typeRef, DataTypes.StructType historical, int depth) {
+      Class<?> raw = TypeUtils.getRawType(typeRef);
+      if (raw != null && (raw.isArray() || TypeUtils.isCollection(raw))) {
+        Field element =
+            substitute(
+                DataTypes.arrayElementField(current),
+                elementTypeRef(typeRef, raw),
+                historical,
+                depth);
+        return DataTypes.arrayField(current.name(), element);
+      }
+      if (raw != null && TypeUtils.isMap(raw)) {
+        Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
+        Field keyField = DataTypes.keyFieldForMap(current);
+        Field itemField = DataTypes.itemFieldForMap(current);
+        if (path.get(depth) == MapBranch.KEY) {
+          keyField = substitute(keyField, kv.f0, historical, depth + 1);
+        } else {
+          itemField = substitute(itemField, kv.f1, historical, depth + 1);
+        }
+        return DataTypes.mapField(current.name(), keyField, itemField);
+      }
+      return DataTypes.field(current.name(), historical, current.nullable());
+    }
+  }
+
+  /**
+   * Collect the versioned beans reachable from a field type into {@code out}: the field type
+   * itself, a list/array element, a map value, and a map key, to arbitrary nesting depth. Each site
+   * records the map-branch path needed to substitute its historical struct back. A map contributes
+   * a key site and a value site independently, so an evolving key and an evolving value each become
+   * their own cross-product dimension.
+   */
+  private static void collectNestedSites(
+      TypeRef<?> typeRef, UnaryOperator<Schema> schemaTransform, List<NestedSite> out) {
+    collectNestedSites(typeRef, new ArrayList<>(), schemaTransform, out);
+  }
+
+  private static void collectNestedSites(
+      TypeRef<?> typeRef,
+      List<MapBranch> path,
+      UnaryOperator<Schema> schemaTransform,
+      List<NestedSite> out) {
     Class<?> raw = TypeUtils.getRawType(typeRef);
-    if (raw != null && (raw.isArray() || TypeUtils.isCollection(raw))) {
-      Field element =
-          substituteNestedStruct(
-              DataTypes.arrayElementField(current), elementTypeRef(typeRef, raw), historical);
-      return DataTypes.arrayField(current.name(), element);
+    if (raw == null) {
+      return;
     }
-    if (raw != null && TypeUtils.isMap(raw)) {
+    if (raw.isArray() || TypeUtils.isCollection(raw)) {
+      collectNestedSites(elementTypeRef(typeRef, raw), path, schemaTransform, out);
+      return;
+    }
+    if (TypeUtils.isMap(raw)) {
       Tuple2<TypeRef<?>, TypeRef<?>> kv = TypeUtils.getMapKeyValueType(typeRef);
-      Field keyField = DataTypes.keyFieldForMap(current);
-      Field itemField =
-          substituteNestedStruct(DataTypes.itemFieldForMap(current), kv.f1, historical);
-      return DataTypes.mapField(current.name(), keyField, itemField);
+      collectNestedSites(kv.f0, append(path, MapBranch.KEY), schemaTransform, out);
+      collectNestedSites(kv.f1, append(path, MapBranch.VALUE), schemaTransform, out);
+      return;
     }
-    return DataTypes.field(current.name(), historical, current.nullable());
+    if (isBeanWithVersioning(raw)) {
+      out.add(new NestedSite(raw, build(raw, schemaTransform), path));
+    }
+  }
+
+  private static List<MapBranch> append(List<MapBranch> path, MapBranch branch) {
+    List<MapBranch> next = new ArrayList<>(path.size() + 1);
+    next.addAll(path);
+    next.add(branch);
+    return next;
   }
 
   /**
@@ -672,14 +751,12 @@ public final class SchemaHistory {
     final boolean live;
 
     /**
-     * The versioned bean reachable from this field (the field type, a list element, or a map
-     * value), or null when none. Keys the outer cross-product so every field backed by the same
-     * bean class shares one version dimension.
+     * The versioned beans reachable from this field (the field type, a list element, a map value,
+     * or a map key), empty when none. Each site keys the outer cross-product by its bean class, so
+     * every field backed by the same class shares one version dimension; a map field with an
+     * evolving key and value contributes two sites.
      */
-    Class<?> nestedBeanClass;
-
-    /** SchemaHistory of {@link #nestedBeanClass}, when this field references a versioned bean. */
-    SchemaHistory innerHistory;
+    final List<NestedSite> nestedSites = new ArrayList<>(2);
 
     FieldEntry(
         String name, String javaName, TypeRef<?> typeRef, int since, int until, boolean live) {
