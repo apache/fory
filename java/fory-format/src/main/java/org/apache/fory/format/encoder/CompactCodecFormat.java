@@ -85,8 +85,9 @@ enum CompactCodecFormat implements Encoding {
   public ArrayEncoderBuilder newProjectionArrayEncoder(
       final TypeRef<? extends Collection<?>> collectionType,
       final TypeRef<?> elementType,
-      final String rowCodecSuffix) {
-    return new CompactArrayEncoderBuilder(collectionType, elementType, rowCodecSuffix);
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    return new CompactArrayEncoderBuilder(collectionType, elementType, classSuffix, nestedSuffixes);
   }
 
   @Override
@@ -100,8 +101,11 @@ enum CompactCodecFormat implements Encoding {
       final TypeRef<? extends Map<?, ?>> mapType,
       final TypeRef<?> beanToken,
       final String valCodecSuffix,
-      final String keyCodecSuffix) {
-    return new CompactMapEncoderBuilder(mapType, beanToken, valCodecSuffix, keyCodecSuffix);
+      final String keyCodecSuffix,
+      final Map<Class<?>, String> valNestedSuffixes,
+      final Map<Class<?>, String> keyNestedSuffixes) {
+    return new CompactMapEncoderBuilder(
+        mapType, beanToken, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
   }
 
   @Override

@@ -69,7 +69,9 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
 
   public Supplier<MapEncoder<M>> build() {
     loadMapInnerCodecs();
-    if (!schemaEvolution || (evolutionBean() == null && keyEvolutionBean() == null)) {
+    final Class<?> valClass = schemaEvolution ? evolutionBean() : null;
+    final Class<?> keyClass = schemaEvolution ? keyEvolutionBean() : null;
+    if (valClass == null && keyClass == null) {
       final var mapEncoderFactory = generatedMapEncoder();
       return new Supplier<MapEncoder<M>>() {
         @Override
@@ -87,18 +89,26 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         }
       };
     }
-    return buildVersioned();
+    return buildVersioned(valClass, keyClass);
   }
 
   /**
-   * Bean this map evolves on, reachable through the value type. A directly-typed bean (versioned or
-   * not) takes the evolution path so the strict-hash prefix is always present and an evolution-on
-   * consumer can detect a flag-mismatched producer cleanly; a versioned bean nested inside a
-   * list/map/array value is found by descending the wrapper. Null when the value carries no bean.
+   * Whether the value position takes the evolution path, and a representative bean for naming. A
+   * directly-typed bean (versioned or not) takes the path so the strict-hash prefix is always
+   * present and an evolution-on consumer can detect a flag-mismatched producer cleanly; a bean
+   * nested inside a list/map/array value is found by descending the wrapper. Null when the value
+   * carries no bean. The per-version enumeration over every reachable bean in the value position is
+   * done by {@link #buildElementSchemaHistory}.
    */
   private Class<?> evolutionBean() {
-    return SchemaHistory.evolutionBean(
-        valType, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+    return SchemaHistory.evolutionBean(valType, typeCtx());
+  }
+
+  // Match the row-format type inference, which synthesizes interface-typed bean fields; without it
+  // a class with interface members would not be recognized as a bean even though the row codec can
+  // encode it.
+  private static TypeResolutionContext typeCtx() {
+    return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
   }
 
   /**
@@ -108,22 +118,18 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * no longer corrupts silently.
    */
   private Class<?> keyEvolutionBean() {
-    return SchemaHistory.evolutionBean(
-        keyType, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+    return SchemaHistory.evolutionBean(keyType, typeCtx());
   }
 
   /**
    * Combine the key and value strict hashes into one 64-bit map-layout hash. The map header carries
-   * a single hash, so it must identify the (key-version, value-version) combination jointly. FNV-1a
-   * mix over the two 64-bit hashes. Two distinct combinations that collide here would map to one
-   * projection codec, so {@link #buildVersioned} proves the combined hashes are unique at build
-   * time rather than letting one combination silently overwrite another.
+   * a single hash, so it must identify the (key-version, value-version) combination jointly. Two
+   * distinct combinations that collide here would map to one projection codec, so {@link
+   * #buildVersioned} proves the combined hashes are unique at build time rather than letting one
+   * combination silently overwrite another.
    */
   private static long combinedHash(long keyHash, long valHash) {
-    long h = 0xcbf29ce484222325L;
-    h = (h ^ keyHash) * 0x100000001b3L;
-    h = (h ^ valHash) * 0x100000001b3L;
-    return h;
+    return SchemaHistory.combineHashes(keyHash, valHash);
   }
 
   /**
@@ -138,15 +144,19 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     return vs == null ? NON_BEAN_POSITION_HASH : vs.strictHash();
   }
 
-  private Supplier<MapEncoder<M>> buildVersioned() {
-    // Either position may carry a versioned bean. A position with no bean contributes a single
-    // current-only layout, so the cross-product degenerates to the evolving position's versions (or
-    // to just the current layout when neither evolves, i.e. a non-versioned bean that still needs
-    // the hash prefix for flag-mismatch detection).
-    Class<?> valClass = evolutionBean();
-    Class<?> keyClass = keyEvolutionBean();
-    SchemaHistory valHistory = valClass == null ? null : buildSchemaHistory(valClass);
-    SchemaHistory keyHistory = keyClass == null ? null : buildSchemaHistory(keyClass);
+  private Supplier<MapEncoder<M>> buildVersioned(final Class<?> valClass, final Class<?> keyClass) {
+    // The map's own key and value are independent positions on the wire (each its own array), and
+    // the map header's combined hash identifies the (key-layout, value-layout) pair. Each position
+    // is enumerated over every versioned bean reachable through its wrappers, so a position that
+    // itself wraps more than one bean (such as a value typed Map<KBean, VBean>) evolves all of them.
+    // A position with no bean contributes a single current-only layout, so the cross-product
+    // degenerates to the evolving position's versions (or to just the current layout when neither
+    // evolves, i.e. a non-versioned bean that still needs the hash prefix for flag-mismatch
+    // detection).
+    SchemaHistory valHistory =
+        valClass == null ? null : elementSchemaHistory(field.name(), valType);
+    SchemaHistory keyHistory =
+        keyClass == null ? null : elementSchemaHistory(field.name(), keyType);
     SchemaHistory.VersionedSchema valCurrent = valHistory == null ? null : valHistory.current();
     SchemaHistory.VersionedSchema keyCurrent = keyHistory == null ? null : keyHistory.current();
 
@@ -154,8 +164,13 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // combined hash. The current/current combination is the hot path and is handled by the
     // unsuffixed current codec, so it is skipped here. A null history means that position does not
     // evolve and contributes only its current entry.
+    //
+    // The full cross-product is required even when key and value are the same bean family: a writer
+    // can pin them to different versions via distinct type arguments (Map<DefaultsV1, DefaultsV2>),
+    // so off-diagonal pairs are reachable. See evolveMapSameBeanKeyAndValueCrossCombos.
     List<SchemaHistory.VersionedSchema> valVersions = positionVersions(valHistory);
     List<SchemaHistory.VersionedSchema> keyVersions = positionVersions(keyHistory);
+    warnIfManyProjections("map " + mapType, valVersions.size() * keyVersions.size());
     Map<Long, ProjectionMapFactory> projectionFactories = new HashMap<>();
     for (SchemaHistory.VersionedSchema valVs : valVersions) {
       for (SchemaHistory.VersionedSchema keyVs : keyVersions) {
@@ -221,23 +236,28 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       SchemaHistory.VersionedSchema keyVs,
       SchemaHistory.VersionedSchema valCurrent,
       SchemaHistory.VersionedSchema keyCurrent) {
-    Field histVal = DataTypes.itemFieldForMap(field);
+    // Each position's history is forElement over the position type, so its schema's single field is
+    // the position field with every reachable bean projected onto this combination, and
+    // nestedSuffixesFor routes each bean class in the position to its own historical row codec. The
+    // projected field carries only the substituted type; the position's own nullability is taken
+    // from the current map field (map keys are non-nullable, values nullable).
+    Field currentVal = DataTypes.itemFieldForMap(field);
+    Field histVal = currentVal;
     String valSuffix = "";
-    if (valVs != valCurrent) {
+    Map<Class<?>, String> valNested = null;
+    if (valVs != null && valVs != valCurrent) {
       valSuffix = ProjectionRouting.projectionSuffix(valVs);
-      Map<Class<?>, String> nested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
-      Encoders.loadOrGenProjectionRowCodecClass(
-          valClass, codecFormat, valVs.schema(), valVs.liveFieldNames(), valSuffix, nested);
-      histVal = SchemaHistory.projectThroughWrapper(histVal, valType, valVs);
+      valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
+      histVal = projectedPositionField(currentVal, valVs);
     }
-    Field histKey = DataTypes.keyFieldForMap(field);
+    Field currentKey = DataTypes.keyFieldForMap(field);
+    Field histKey = currentKey;
     String keySuffix = "";
-    if (keyVs != keyCurrent) {
+    Map<Class<?>, String> keyNested = null;
+    if (keyVs != null && keyVs != keyCurrent) {
       keySuffix = ProjectionRouting.projectionSuffix(keyVs);
-      Map<Class<?>, String> nested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
-      Encoders.loadOrGenProjectionRowCodecClass(
-          keyClass, codecFormat, keyVs.schema(), keyVs.liveFieldNames(), keySuffix, nested);
-      histKey = SchemaHistory.projectThroughWrapper(histKey, keyType, keyVs);
+      keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
+      histKey = projectedPositionField(currentKey, keyVs);
     }
     Class<?> mapClass =
         Encoders.loadOrGenProjectionMapCodecClass(
@@ -245,10 +265,23 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
             TypeRef.of(valClass != null ? valClass : keyClass),
             codecFormat,
             valSuffix,
-            keySuffix);
+            keySuffix,
+            valNested,
+            keyNested);
     MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
     Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
     return new ProjectionMapFactory(histMapField, ctor);
+  }
+
+  /**
+   * The map position field projected onto {@code positionVs}: the substituted type from the
+   * position's historical schema, but the current position field's name and nullability (a map key
+   * is non-nullable, a value nullable), which forElement's inferred field does not carry.
+   */
+  private static Field projectedPositionField(
+      Field currentField, SchemaHistory.VersionedSchema positionVs) {
+    Field projected = DataTypes.fieldOfSchema(positionVs.schema(), 0);
+    return DataTypes.field(currentField.name(), projected.type(), currentField.nullable());
   }
 
   private final class ProjectionMapFactory {

@@ -68,7 +68,9 @@ public class ArrayCodecBuilder<C extends Collection<?>>
 
   Function<BinaryArrayWriter, ArrayEncoder<C>> buildWithWriter() {
     loadArrayInnerCodecs();
-    if (!schemaEvolution || evolutionBean() == null) {
+    final TypeRef<?> elementType = TypeUtils.getElementType(collectionType);
+    final Class<?> elementClass = schemaEvolution ? evolutionBean(elementType) : null;
+    if (elementClass == null) {
       final Function<BinaryArrayWriter, GeneratedArrayEncoder> generatedEncoderFactory =
           generatedEncoderFactory();
       return new Function<BinaryArrayWriter, ArrayEncoder<C>>() {
@@ -79,57 +81,55 @@ public class ArrayCodecBuilder<C extends Collection<?>>
         }
       };
     }
-    return buildVersionedWithWriter();
+    return buildVersionedWithWriter(elementType, elementClass);
   }
 
   /**
-   * Bean this array evolves on, reachable through the element type. A directly-typed bean
-   * (versioned or not) takes the evolution path so the strict-hash prefix is always present and an
-   * evolution-on consumer can detect a flag-mismatched producer cleanly; a versioned bean nested
-   * inside a list/map/array element is found by descending the wrapper. Null when the element
-   * carries no bean.
-   *
-   * <p>The resolution context matches the row-format type inference, which synthesizes
-   * interface-typed bean fields; without it a class with interface members would not be recognized
-   * as a bean even though the row codec can encode it.
+   * Whether this array takes the evolution path, and a representative bean for naming the generated
+   * codec. A directly-typed bean (versioned or not) takes the path so the strict-hash prefix is
+   * always present and an evolution-on consumer can detect a flag-mismatched producer cleanly; a
+   * bean nested inside a list/map/array element is found by descending the wrapper. Null when the
+   * element carries no bean. The per-version enumeration over every reachable bean is done by {@link
+   * #buildElementSchemaHistory}.
    */
-  private Class<?> evolutionBean() {
-    return SchemaHistory.evolutionBean(
-        TypeUtils.getElementType(collectionType),
-        new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+  private Class<?> evolutionBean(final TypeRef<?> elementType) {
+    return SchemaHistory.evolutionBean(elementType, typeCtx());
   }
 
-  private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter() {
-    Class<?> elementClass = evolutionBean();
-    SchemaHistory history = buildSchemaHistory(elementClass);
+  private Function<BinaryArrayWriter, ArrayEncoder<C>> buildVersionedWithWriter(
+      final TypeRef<?> elementType, final Class<?> elementClass) {
+    // Enumerate the element field over every versioned bean reachable through its wrappers, so an
+    // element like Map<KBean, VBean> evolves both the key bean and the value bean. The element
+    // schema's strict hash identifies the whole combination, and each combination's chosen versions
+    // are carried in vs.nestedBeanSchemas(), which ProjectionRouting uses to generate a projection
+    // row codec for every nested class (not just one).
+    SchemaHistory history = buildElementSchemaHistory(elementField.name(), elementType);
     SchemaHistory.VersionedSchema current = history.current();
 
     // Generate per-combination row codec classes and per-combination array codec classes. The
-    // suffix encodes the outer version plus each chosen inner-bean version so that distinct
-    // cross-product entries do not collide on a single generated class.
+    // suffix encodes each chosen inner-bean version so that distinct cross-product entries do not
+    // collide on a single generated class.
+    //
+    // Keyed by the raw strict hash straight from SchemaHistory, which already proves these hashes
+    // are unique across versions() and distinct from the current schema, so no builder-side
+    // collision check is needed here (unlike the map codec's combined (key, value) hash).
     Map<Long, ProjectionArrayFactory> projectionFactories = new HashMap<>();
     for (SchemaHistory.VersionedSchema vs : history.versions()) {
       if (vs == current) {
         continue;
       }
       String suffix = ProjectionRouting.projectionSuffix(vs);
+      // Generates the projection row codec for every nested versioned bean class in this
+      // combination, both map key and value, so the array codec's references all resolve.
       Map<Class<?>, String> nestedSuffixes = ProjectionRouting.nestedSuffixesFor(vs, codecFormat);
-      Encoders.loadOrGenProjectionRowCodecClass(
-          elementClass, codecFormat, vs.schema(), vs.liveFieldNames(), suffix, nestedSuffixes);
       Class<?> arrayClass =
           Encoders.loadOrGenProjectionArrayCodecClass(
-              collectionType, TypeRef.of(elementClass), codecFormat, suffix);
+              collectionType, TypeRef.of(elementClass), codecFormat, suffix, nestedSuffixes);
       MethodHandle ctor = Encoders.constructorHandleFor(arrayClass, GeneratedArrayEncoder.class);
-      // The array's "elementField" is a ListType whose valueField is the element. Project that
-      // value onto this historical version so the projection codec produces a BinaryArray with the
-      // right element width. The bean sits directly at the value or inside a list/map/array element
-      // wrapper, which projectThroughWrapper preserves around the historical struct.
-      Field histValueField =
-          SchemaHistory.projectThroughWrapper(
-              DataTypes.arrayElementField(elementField),
-              TypeUtils.getElementType(collectionType),
-              vs);
-      Field histListField = DataTypes.arrayField(elementField.name(), histValueField);
+      // forElement substitutes each chosen historical struct into its leaf, so the element field at
+      // this combination is simply the single field of vs.schema(); wrap it back in the list field.
+      Field histListField =
+          DataTypes.arrayField(elementField.name(), DataTypes.fieldOfSchema(vs.schema(), 0));
       projectionFactories.put(vs.strictHash(), new ProjectionArrayFactory(histListField, ctor));
     }
     final Function<BinaryArrayWriter, GeneratedArrayEncoder> currentFactory =

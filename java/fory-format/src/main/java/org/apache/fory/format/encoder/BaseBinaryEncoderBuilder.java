@@ -110,6 +110,17 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
    */
   protected String rowCodecSuffixForBeans;
 
+  /**
+   * Per-class projection suffix for nested bean codecs, used when one generated codec embeds more
+   * than one distinct versioned bean class at independent versions — for example an element typed
+   * {@code Map<KBean, VBean>}, whose key and value beans each project to their own historical row
+   * codec. Looked up by raw class in {@link #nestedBeanSuffix}; a class absent from the map (or a
+   * null map) falls back to {@link #rowCodecSuffixForBeans}. Routing by raw class is exact because
+   * a writer writes one definition of a class, so every occurrence of a class in one payload is at
+   * the same version.
+   */
+  protected Map<Class<?>, String> nestedClassSuffixes;
+
   // We need to call beanEncoder's rowWriter.reset() before write a corresponding nested bean every
   // time.
   // Outermost beanEncoder's rowWriter.reset() should be called outside generated code before
@@ -580,11 +591,21 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   }
 
   /**
-   * Suffix to append to a nested bean's codec class name when emitting a reference. Defaults to the
-   * single uniform suffix (or empty); subclasses with per-type version routing can override to
-   * return a per-typeRef suffix from a map.
+   * Suffix to append to a nested bean's codec class name when emitting a reference. When this
+   * builder embeds several distinct versioned bean classes at independent versions, {@link
+   * #nestedClassSuffixes} routes each class to its own projection codec; otherwise the single
+   * uniform {@link #rowCodecSuffixForBeans} (or empty) applies. Subclasses with positional routing
+   * (a map key versus its value) override this.
    */
   protected String nestedBeanSuffix(TypeRef<?> typeRef) {
+    if (nestedClassSuffixes != null) {
+      // The suffix map is keyed from the same field walk as this descent, and
+      // SchemaHistory.collectNestedSites sites every bean with more than one version. So an absent
+      // class is necessarily single-version: read it at its current schema (empty suffix), not this
+      // codec's own suffix. Keep this silent rather than fail-loud; a versioned bean cannot miss.
+      String suffix = nestedClassSuffixes.get(getRawType(typeRef));
+      return suffix == null ? "" : suffix;
+    }
     return rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans;
   }
 

@@ -82,8 +82,9 @@ enum DefaultCodecFormat implements Encoding {
   public ArrayEncoderBuilder newProjectionArrayEncoder(
       final TypeRef<? extends Collection<?>> collectionType,
       final TypeRef<?> elementType,
-      final String rowCodecSuffix) {
-    return new ArrayEncoderBuilder(collectionType, elementType, rowCodecSuffix);
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    return new ArrayEncoderBuilder(collectionType, elementType, classSuffix, nestedSuffixes);
   }
 
   @Override
@@ -97,8 +98,11 @@ enum DefaultCodecFormat implements Encoding {
       final TypeRef<? extends Map<?, ?>> mapType,
       final TypeRef<?> beanToken,
       final String valCodecSuffix,
-      final String keyCodecSuffix) {
-    return new MapEncoderBuilder(mapType, beanToken, valCodecSuffix, keyCodecSuffix);
+      final String keyCodecSuffix,
+      final Map<Class<?>, String> valNestedSuffixes,
+      final Map<Class<?>, String> keyNestedSuffixes) {
+    return new MapEncoderBuilder(
+        mapType, beanToken, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
   }
 
   @Override

@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.Map;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.Reference;
@@ -36,6 +37,14 @@ class CompactArrayEncoderBuilder extends ArrayEncoderBuilder {
   CompactArrayEncoderBuilder(
       final TypeRef<?> clsType, final TypeRef<?> beanType, final String rowCodecSuffix) {
     super(clsType, beanType, rowCodecSuffix);
+  }
+
+  CompactArrayEncoderBuilder(
+      final TypeRef<?> clsType,
+      final TypeRef<?> beanType,
+      final String classSuffix,
+      final Map<Class<?>, String> nestedSuffixes) {
+    super(clsType, beanType, classSuffix, nestedSuffixes);
   }
 
   @Override

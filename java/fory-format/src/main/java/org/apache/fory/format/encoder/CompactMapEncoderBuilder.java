@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.Map;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.Reference;
@@ -40,8 +41,10 @@ class CompactMapEncoderBuilder extends MapEncoderBuilder {
       final TypeRef<?> clsType,
       final TypeRef<?> beanType,
       final String valCodecSuffix,
-      final String keyCodecSuffix) {
-    super(clsType, beanType, valCodecSuffix, keyCodecSuffix);
+      final String keyCodecSuffix,
+      final Map<Class<?>, String> valNestedSuffixes,
+      final Map<Class<?>, String> keyNestedSuffixes) {
+    super(clsType, beanType, valCodecSuffix, keyCodecSuffix, valNestedSuffixes, keyNestedSuffixes);
   }
 
   @Override

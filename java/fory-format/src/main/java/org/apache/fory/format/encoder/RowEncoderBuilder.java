@@ -26,7 +26,6 @@ import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -88,14 +87,13 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   private final Set<String> projectionLiveNames;
 
   private final String projectionClassSuffix;
-  private final Map<Class<?>, String> nestedSuffixes;
 
   public RowEncoderBuilder(Class<?> beanClass) {
     this(TypeRef.of(beanClass));
   }
 
   public RowEncoderBuilder(TypeRef<?> beanType) {
-    this(beanType, null, null, null, Collections.emptyMap());
+    this(beanType, null, null, null, null);
   }
 
   /**
@@ -116,7 +114,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     Preconditions.checkArgument(beanClass.isInterface() || TypeUtils.isBean(beanType, typeCtx));
     this.projectionLiveNames = liveNames;
     this.projectionClassSuffix = classSuffix;
-    this.nestedSuffixes = nestedSuffixes == null ? Collections.emptyMap() : nestedSuffixes;
+    // Per-class nested-bean routing lives in the inherited nestedClassSuffixes; the base
+    // nestedBeanSuffix reads it and returns "" for a class absent from a non-null map, which is the
+    // routing this builder needs. A null arg means no projection (current schema for every bean).
+    this.nestedClassSuffixes = nestedSuffixes;
     className =
         projectionClassSuffix == null
             ? codecClassName(beanClass)
@@ -157,12 +158,6 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   protected Schema inferSchema(TypeRef<?> beanType) {
     return TypeInference.inferSchema(getRawType(beanType));
-  }
-
-  @Override
-  protected String nestedBeanSuffix(TypeRef<?> typeRef) {
-    String s = nestedSuffixes.get(getRawType(typeRef));
-    return s != null ? s : super.nestedBeanSuffix(typeRef);
   }
 
   @Override
@@ -255,9 +250,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     for (int i = 0; i < numFields; i++) {
       Field field = schema.field(i);
       if (projectionLiveNames != null && !projectionLiveNames.contains(field.name())) {
-        // Removed wire field — no Java accessor to read from, so we cannot emit encode
-        // code. The projection codec's encode body is unreachable anyway because
-        // BinaryRowEncoder never dispatches a projection codec on write.
+        // Removed wire field — no Java accessor to encode from, and a projection codec is
+        // never dispatched on write anyway.
         continue;
       }
       Descriptor d = getDescriptorByFieldName(field.name());
@@ -300,10 +294,9 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       bean = new Expression.Reference("new " + generatedBeanImplName + "(row)");
     } else {
       int numFields = schema.numFields();
-      // Build, in schema order, the per-slot bean-side info for live fields only. Discarded
-      // slots are part of the row layout but have no Java target; we skip emitting any code
-      // for them because BinaryRow's offset arithmetic is keyed on slot index, not on prior
-      // reads.
+      // Build, in schema order, the per-slot bean-side info for live fields only; removed slots
+      // stay in the row layout but have no Java target. Offsets are keyed on slot index, so
+      // skipping them is safe.
       List<Descriptor> liveDescriptors = new ArrayList<>();
       List<Expression> liveValues = new ArrayList<>();
       for (int i = 0; i < numFields; i++) {
@@ -452,9 +445,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       Literal ordinal = Literal.ofInt(i);
       String wireName = schema.field(i).name();
       if (projectionLiveNames != null && !projectionLiveNames.contains(wireName)) {
-        // Removed wire field — no Java member to back this slot. The other interface methods
-        // can still be served lazily from the row; the row's offset arithmetic does not need
-        // us to read this slot.
+        // Removed wire field — no Java member to back this slot.
         continue;
       }
       Descriptor d = getDescriptorByFieldName(wireName);
@@ -550,10 +541,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     if (methodType.parameterCount() != 0) {
       return false;
     }
-    // Look up by the raw method name, not via getDescriptorByFieldName's wire-name conversion: this
-    // path runs only for interface beans (see buildImplClass), whose descriptor names are the
-    // method
-    // names themselves, so descriptorsMap is keyed by exactly the names we iterate here.
+    // Look up by raw method name, not the wire-name conversion: this path runs only for interface
+    // beans (see buildImplClass), whose descriptors are keyed by the method names themselves.
     Descriptor d = descriptorsMap.get(methodName);
     if (d == null) {
       return false;
@@ -564,9 +553,8 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     if (d.getTypeRef().getRawType() != methodType.returnType()) {
       return false;
     }
-    // The main loop above emits getters for every wire field that is also a live Java member.
-    // Anything left in methodsNeedingImpl that matches a descriptor by name and type must
-    // correspond to a Java member whose wire field is not in this version.
+    // Name and return type match a descriptor, but the live-member loop did not emit it: the field
+    // is absent in this version.
     return true;
   }
 

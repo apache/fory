@@ -133,6 +133,11 @@ public class TypeInference {
    * When type is both iterable and bean, we take it as iterable in row-format. Note circular
    * references in bean class is not allowed.
    *
+   * <p>This is the source of truth for the wrapper-descent grammar (custom codec, Optional,
+   * array/Iterable, map key/value). {@code SchemaHistory.Wrapper.classify} mirrors that subset for
+   * evolution-site discovery; a new wrapper type must be added in both, or nested versioned beans
+   * reachable only through it go undiscovered.
+   *
    * @return DataType of a typeToken
    */
   private static Field inferField(String name, TypeRef<?> typeRef, TypeResolutionContext ctx) {

@@ -61,7 +61,8 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   // its current, unsuffixed codec rather than the value's historical projection. Nested bean codecs
   // register lazily inside genCode, so the flag toggles during the key subtree's genCode via
   // KeyPositionScope rather than at expression construction. The value path is left untouched.
-  // A single boolean suffices because genCode is depth-first: the key subtree fully generates within
+  // A single boolean suffices because genCode is depth-first: the key subtree fully generates
+  // within
   // its KeyPositionScope before the value subtree begins, so the two positions never interleave.
   private boolean inKeyPosition;
 
@@ -70,6 +71,14 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   // key bean to a historical projection row codec, letting a map key evolve across versions; the
   // map header's combined hash selects this key+value combination.
   private final String keyCodecSuffix;
+
+  // Per-class projection suffixes for the value and key positions. Used when a position itself
+  // wraps
+  // more than one distinct versioned bean class (such as a value typed Map<KBean, VBean>): each
+  // class in that position routes to its own historical row codec. Null falls back to the single
+  // position suffix (rowCodecSuffixForBeans for the value, keyCodecSuffix for the key).
+  private final Map<Class<?>, String> valNestedSuffixes;
+  private final Map<Class<?>, String> keyNestedSuffixes;
 
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
     this(TypeRef.of(mapCls), TypeRef.of(keyClass));
@@ -81,12 +90,24 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   MapEncoderBuilder(
       TypeRef<?> clsType, TypeRef<?> beanType, String valCodecSuffix, String keyCodecSuffix) {
+    this(clsType, beanType, valCodecSuffix, keyCodecSuffix, null, null);
+  }
+
+  MapEncoderBuilder(
+      TypeRef<?> clsType,
+      TypeRef<?> beanType,
+      String valCodecSuffix,
+      String keyCodecSuffix,
+      Map<Class<?>, String> valNestedSuffixes,
+      Map<Class<?>, String> keyNestedSuffixes) {
     // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
     // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
     // naming and schema generation.
     super(new CodegenContext(), beanType, Object.class);
     this.rowCodecSuffixForBeans = valCodecSuffix;
     this.keyCodecSuffix = keyCodecSuffix;
+    this.valNestedSuffixes = valNestedSuffixes;
+    this.keyNestedSuffixes = keyNestedSuffixes;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);
@@ -291,16 +312,18 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   /**
-   * Class-name suffix for the generated map codec. Combines the value and key suffixes so distinct
-   * (key-version, value-version) combinations generate distinct classes. The key suffix is
-   * namespaced with a {@code K} marker so that "value at v2, key current" and "value current, key
-   * at v2" do not collapse onto the same class name (both bean suffixes are otherwise {@code _V2}).
-   * The boundary between the value and key parts is the literal {@code _K_V} sequence: the {@code
-   * _K} marker followed by the key's own leading {@code _V} version token. A value-side nested-bean
-   * token is {@code _K<SimpleName>...} at most, never {@code _K_V}, because a Java simple name is
-   * non-empty and cannot begin with {@code _}, so the boundary is unambiguous even when a value bean
-   * name starts with {@code K}. Must match the name {@link Encoders#loadOrGenProjectionMapCodecClass}
-   * computes for the same builder.
+   * Class-name suffix for the generated map codec. The codec class is cached by name, so distinct
+   * (value-combination, key-combination) pairs must map to distinct suffixes or the second pair
+   * would reuse the first pair's codec class. {@link ProjectionRouting#projectionSuffix} is already
+   * injective over a single position's combinations, so each side's string determines its own
+   * combination. The key side is prefixed with a {@code _K} marker before its own {@code _V...}
+   * suffix, which keeps the two halves from interleaving: a {@code _K} only ever introduces the key
+   * suffix, never a value token, so "value v2, key current" ({@code _V2}) and "value current, key
+   * v2" ({@code _K_V2}) stay distinct rather than both reducing to {@code _V2}. The {@code _K} is a
+   * namespace prefix, not a parse boundary; the name is never split, only compared for equality, so
+   * a value-side nested-bean token that happens to contain {@code _K_V} (a bean named {@code K_V})
+   * does not cause a collision. Must match the name {@link
+   * Encoders#loadOrGenProjectionMapCodecClass} computes for the same builder.
    */
   String mapClassSuffix() {
     String val = rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans;
@@ -309,13 +332,23 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   /**
-   * Route a bean to its projection row codec by suffix. The key position uses {@link
-   * #keyCodecSuffix} and the value position the inherited value suffix, so a map whose key and
-   * value evolve independently embeds the right historical codec for each. An empty suffix means
-   * the bean is read at its current schema.
+   * Route a bean to its projection row codec by suffix, per position. When a position wraps several
+   * distinct versioned bean classes (such as a value typed {@code Map<KBean, VBean>}), its
+   * per-class suffix map routes each class to its own historical codec; otherwise the single
+   * position suffix applies to every bean in that position. The key position uses {@link
+   * #keyCodecSuffix} / {@link #keyNestedSuffixes} and the value position the value suffix / {@link
+   * #valNestedSuffixes}, so a map whose key and value evolve independently embeds the right
+   * historical codec for each. An empty suffix means the bean is read at its current schema.
    */
   @Override
   protected String nestedBeanSuffix(TypeRef<?> typeRef) {
+    Map<Class<?>, String> nested = inKeyPosition ? keyNestedSuffixes : valNestedSuffixes;
+    if (nested != null) {
+      // A class absent from the position's map is read at its current schema, not this position's
+      // own combination suffix.
+      String suffix = nested.get(getRawType(typeRef));
+      return suffix == null ? "" : suffix;
+    }
     if (inKeyPosition) {
       return keyCodecSuffix == null ? "" : keyCodecSuffix;
     }
