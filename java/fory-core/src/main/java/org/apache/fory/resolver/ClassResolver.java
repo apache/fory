@@ -114,10 +114,37 @@ import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.serializer.*;
+import org.apache.fory.serializer.ArraySerializers;
+import org.apache.fory.serializer.BufferSerializers;
+import org.apache.fory.serializer.CompatibleSerializer;
+import org.apache.fory.serializer.CopyOnlyObjectSerializer;
+import org.apache.fory.serializer.EnumSerializer;
+import org.apache.fory.serializer.ExceptionSerializers;
+import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.ForyCopyableSerializer;
+import org.apache.fory.serializer.JavaSerializer;
+import org.apache.fory.serializer.JdkProxySerializer;
+import org.apache.fory.serializer.LambdaSerializer;
+import org.apache.fory.serializer.LocaleSerializer;
+import org.apache.fory.serializer.NonSerializableSerializer;
 import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
+import org.apache.fory.serializer.NoneSerializer;
+import org.apache.fory.serializer.ObjectSerializer;
+import org.apache.fory.serializer.OptionalSerializers;
+import org.apache.fory.serializer.PrimitiveArraySerializers;
+import org.apache.fory.serializer.PrimitiveSerializers;
+import org.apache.fory.serializer.ReplaceResolveSerializer;
+import org.apache.fory.serializer.SerializedLambdaSerializer;
+import org.apache.fory.serializer.Serializer;
+import org.apache.fory.serializer.Serializers;
+import org.apache.fory.serializer.Shareable;
+import org.apache.fory.serializer.SqlTimeSerializers;
+import org.apache.fory.serializer.TimeSerializers;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
 import org.apache.fory.serializer.UnknownClass.UnknownStruct;
+import org.apache.fory.serializer.UnknownClassSerializers;
+import org.apache.fory.serializer.UnsignedSerializers;
 import org.apache.fory.serializer.collection.ChildContainerSerializers;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
@@ -1472,7 +1499,7 @@ public class ClassResolver extends TypeResolver {
         }
       }
       if (config.checkJdkClassSerializable()) {
-        if (cls.getName().startsWith("java") && !(Serializable.class.isAssignableFrom(cls))){
+        if (cls.getName().startsWith("java") && !Serializable.class.isAssignableFrom(cls)){
             // Issue #2941: previously threw UnsupportedOperationException here, which also broke
             // Fory.copy() for non-serializable JDK classes (e.g. java.lang.Package). Route to a
             // serializer that still refuses binary serialization (write/read throw) but
