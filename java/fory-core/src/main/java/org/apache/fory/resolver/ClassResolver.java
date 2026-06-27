@@ -181,7 +181,7 @@ import org.apache.fory.util.record.RecordUtils;
  */
 @NotThreadSafe
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class    ClassResolver extends TypeResolver {
+public class ClassResolver extends TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   public static final int NATIVE_START_ID = Types.BOUND;
@@ -1474,9 +1474,9 @@ public class    ClassResolver extends TypeResolver {
       if (config.checkJdkClassSerializable()) {
         if (cls.getName().startsWith("java") && !(Serializable.class.isAssignableFrom(cls))){
             // Issue #2941: previously threw UnsupportedOperationException here, which also broke
-            // Fory.copy() for non-serlializble JDK classes (e.g. java.lang.Package). Route to a
+            // Fory.copy() for non-serializable JDK classes (e.g. java.lang.Package). Route to a
             // serializer that still refuses binary serialization (write/read throw) but
-            // supports copy() via reflective field copy
+            // supports field copy via AbstractObjectSerializer
             return NonSerializableSerializer.class;
         }
       }

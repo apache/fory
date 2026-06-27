@@ -28,8 +28,8 @@ import org.apache.fory.resolver.TypeResolver;
  *
  * <p>Binary serialization remains unsupported — {@link #write} and {@link #read} throw
  * {@link UnsupportedOperationException}, preserving the prior behavior of {@code ClassResolver}'s
- * JDK-serializable guard. However {@code copy} is supported via the reflection-based field copy
- * inherited from {@link AbstractObjectSerializer}, so {@code Fory.copy()} can handle object graphs
+ * JDK-serializable guard. However {@code copy} is supported via the field copy via
+ * {@link AbstractObjectSerializer}, so {@code Fory.copy()} can handle object graphs
  * that transitively contain such classes (issue #2941).
  */
 public final class NonSerializableSerializer<T> extends AbstractObjectSerializer<T> {

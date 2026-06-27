@@ -39,6 +39,7 @@ import org.apache.fory.serializer.ExternalizableSerializer;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
+import org.apache.fory.serializer.NonSerializableSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.ObjectStreamSerializer;
 import org.apache.fory.serializer.PrimitiveArraySerializers;
@@ -140,6 +141,7 @@ public class GraalvmSupport {
     registerDefaultSerializerClass(ObjectStreamSerializer.class);
     registerDefaultSerializerClass(JavaSerializer.class);
     registerDefaultSerializerClass(ObjectSerializer.class);
+    registerDefaultSerializerClass(NonSerializableSerializer.class);
   }
 
   /** Returns true if current process is running in graalvm native image build stage. */

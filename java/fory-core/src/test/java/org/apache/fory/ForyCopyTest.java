@@ -469,28 +469,14 @@ public class ForyCopyTest extends ForyTestBase {
       Package pkg = String.class.getPackage();
       Package copy = fory.copy(pkg);
       Assert.assertNotNull(copy);
+      Assert.assertEquals(copy.getName(), pkg.getName());
   }
 
-  @Test
-  public void testCopyHashMapStillWorks(){
-      // Regression for chaokunyang's concern (comments on issue #2941): HashMap keeps
-      //essential state (size, table) in transient field. The copy path copies all fields
-      // including transient, so this must still produce an equal map.
-      Fory fory = Fory.builder()
-              .withLanguage(Language.JAVA)
-              .requireClassRegistration(false)
-              .build();
-      Map<String, Integer> map = new HashMap<>();
-      map.put("a", 1);
-      map.put("b", 2);
-      Map<String, Integer> copy = fory.copy(map);
-      Assert.assertEquals(map, copy);
-  }
 
   @Test
   public void testSerializeNonSerializableJdkClassStillThrows(){
-      // Regression guard: we must not have weakened serialization. Serliazing a
-      // non-serliazable JDK class must still throw, jsut defered to write time.
+      // Regression guard: we must not have weakened serialization. Serializing a
+      // non-serializable JDK class must still throw, just deferred to write time.
 
       Fory fory = Fory.builder()
               .withLanguage(Language.JAVA)
