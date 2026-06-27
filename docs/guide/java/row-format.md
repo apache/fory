@@ -282,8 +282,10 @@ Nested evolution works to arbitrary depth and places no restriction on shape: a 
 may contain versioned beans that themselves contain versioned beans, the same versioned bean
 class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
 unrestricted. Each nesting level is routed to the correct historical layout. A versioned bean may
-be used as a map key as well as a map value, and the key and value evolve independently; a map
-carries one hash that identifies both layouts together.
+be used as a map key as well as a map value, and the key and value evolve independently, whether
+the map is the codec's top-level type or nested inside a bean field. A top-level map carries its
+own hash identifying both layouts together; a nested map's layouts are part of the enclosing bean's
+hash.
 
 When a versioned bean contains other versioned beans, the reader generates one projection codec
 class per combination of versions across the composition. The count grows as the product of the

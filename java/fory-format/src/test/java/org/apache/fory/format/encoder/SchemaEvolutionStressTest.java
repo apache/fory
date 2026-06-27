@@ -896,6 +896,73 @@ public class SchemaEvolutionStressTest {
     Assert.assertNull(out.getNote()); // note added at v2; v1 payload defaults it
   }
 
+  // A row field whose map KEY is a versioned bean that actually skews across writer and reader:
+  // writer's key is DefaultsV1 (name only), reader's key is DefaultsV2 (adds two since=2 fields).
+  // Unlike versionedBeanAsMapKeyInRowField, the key version differs on the two sides, so this is
+  // the case that must not corrupt: the reader must materialize the since=2 fields at their
+  // defaults rather than reinterpreting the writer's bytes against the current key layout.
+  @Data
+  public static class SkewKeyMapHolderV1 {
+    private Map<DefaultsV1, String> byKey;
+  }
+
+  @Data
+  public static class SkewKeyMapHolderV2 {
+    private Map<DefaultsV2, String> byKey;
+  }
+
+  @Test
+  public void evolvingMapKeyInRowField() {
+    RowEncoder<SkewKeyMapHolderV1> writer = evolvingCodec(SkewKeyMapHolderV1.class);
+    RowEncoder<SkewKeyMapHolderV2> reader = evolvingCodec(SkewKeyMapHolderV2.class);
+    DefaultsV1 key = new DefaultsV1();
+    key.setName("k");
+    SkewKeyMapHolderV1 in = new SkewKeyMapHolderV1();
+    in.setByKey(new HashMap<>());
+    in.getByKey().put(key, "v");
+    SkewKeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getByKey().size(), 1);
+    DefaultsV2 outKey = out.getByKey().keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 0); // since=2 field absent in writer; defaults
+    Assert.assertNull(outKey.getBoxedCount());
+    Assert.assertEquals(out.getByKey().get(outKey), "v");
+  }
+
+  // A versioned bean as the KEY of a map nested inside another map's value: the substitution path
+  // must take value at the outer map and key at the inner map. A single key/value flag cannot
+  // express that two-step descent, so this exercises the multi-step branch path.
+  @Data
+  public static class NestedKeyMapHolderV1 {
+    private Map<String, Map<DefaultsV1, String>> outer;
+  }
+
+  @Data
+  public static class NestedKeyMapHolderV2 {
+    private Map<String, Map<DefaultsV2, String>> outer;
+  }
+
+  @Test
+  public void evolvingKeyOfNestedMap() {
+    RowEncoder<NestedKeyMapHolderV1> writer = evolvingCodec(NestedKeyMapHolderV1.class);
+    RowEncoder<NestedKeyMapHolderV2> reader = evolvingCodec(NestedKeyMapHolderV2.class);
+    DefaultsV1 key = new DefaultsV1();
+    key.setName("k");
+    Map<DefaultsV1, String> inner = new HashMap<>();
+    inner.put(key, "v");
+    NestedKeyMapHolderV1 in = new NestedKeyMapHolderV1();
+    in.setOuter(new HashMap<>());
+    in.getOuter().put("o", inner);
+    NestedKeyMapHolderV2 out = reader.decode(writer.encode(in));
+    Map<DefaultsV2, String> outInner = out.getOuter().get("o");
+    Assert.assertEquals(outInner.size(), 1);
+    DefaultsV2 outKey = outInner.keySet().iterator().next();
+    Assert.assertEquals(outKey.getName(), "k");
+    Assert.assertEquals(outKey.getPrimitiveCount(), 0); // since=2 field absent in writer; defaults
+    Assert.assertNull(outKey.getBoxedCount());
+    Assert.assertEquals(outInner.get(outKey), "v");
+  }
+
   // ---------------------------------------------------------------------------
   // Evolving map key: the map header's combined (key,value) hash selects the
   // historical key layout, so an older key decodes correctly instead of being
