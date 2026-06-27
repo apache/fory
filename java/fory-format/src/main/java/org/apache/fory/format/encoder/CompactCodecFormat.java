@@ -99,8 +99,9 @@ enum CompactCodecFormat implements Encoding {
   public MapEncoderBuilder newProjectionMapEncoder(
       final TypeRef<? extends Map<?, ?>> mapType,
       final TypeRef<?> beanToken,
-      final String rowCodecSuffix) {
-    return new CompactMapEncoderBuilder(mapType, beanToken, rowCodecSuffix);
+      final String valCodecSuffix,
+      final String keyCodecSuffix) {
+    return new CompactMapEncoderBuilder(mapType, beanToken, valCodecSuffix, keyCodecSuffix);
   }
 
   @Override

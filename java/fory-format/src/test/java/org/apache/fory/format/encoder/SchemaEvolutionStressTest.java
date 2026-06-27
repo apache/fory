@@ -796,9 +796,10 @@ public class SchemaEvolutionStressTest {
   }
 
   // ---------------------------------------------------------------------------
-  // Map with a versioned bean as the KEY (rare; documented as not dispatched).
-  // Verify the codec at least builds and the current-version round-trip works,
-  // confirming the documented behavior doesn't crash.
+  // Map with a versioned bean as the KEY: current-version round-trip.
+  // Cross-version key evolution is covered by evolveMapKey* below; this pins the
+  // same-schema baseline so a regression there is distinguishable from a build
+  // or encode/decode fault.
   // ---------------------------------------------------------------------------
 
   @Test
@@ -893,6 +894,188 @@ public class SchemaEvolutionStressTest {
     Assert.assertEquals(outKey.getPrimitiveCount(), 7);
     Assert.assertEquals(out.getByKey().get(outKey), "v");
     Assert.assertNull(out.getNote()); // note added at v2; v1 payload defaults it
+  }
+
+  // ---------------------------------------------------------------------------
+  // Evolving map key: the map header's combined (key,value) hash selects the
+  // historical key layout, so an older key decodes correctly instead of being
+  // read against the current layout and corrupting silently.
+  // ---------------------------------------------------------------------------
+
+  @Test
+  public void evolveMapKeyValuePrimitive() {
+    // Writer key is DefaultsV1 (name only); reader key is DefaultsV2 (adds two since=2 fields).
+    // Value is a plain String on both sides, so only the key dimension evolves.
+    MapEncoder<Map<DefaultsV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<DefaultsV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0); // absent since=2 field defaults
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue(), "v");
+  }
+
+  @Test
+  public void evolveBothMapKeyAndValue() {
+    // Both key and value evolve independently: V1 writer, V2 reader on each side.
+    MapEncoder<Map<DefaultsV1, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<DefaultsV1, DefaultsV1> in = new HashMap<>();
+    in.put(k, v);
+    Map<DefaultsV2, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, DefaultsV2> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getKey().getBoxedCount());
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0);
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void evolveMapKeyCurrentValueOlder() {
+    // Writer key is already current (V2) but value is older (V1). Exercises the (key-current,
+    // value-older) projection, which must not collide with the (key-older, value-current) class
+    // name -- both bean suffixes are otherwise _V1.
+    MapEncoder<Map<DefaultsV2, DefaultsV1>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV2 k = new DefaultsV2();
+    k.setName("k");
+    k.setPrimitiveCount(9);
+    k.setBoxedCount(3);
+    DefaultsV1 v = new DefaultsV1();
+    v.setName("val");
+    Map<DefaultsV2, DefaultsV1> in = new HashMap<>();
+    in.put(k, v);
+    Map<DefaultsV2, DefaultsV2> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, DefaultsV2> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 9); // key fully present
+    Assert.assertEquals(e.getKey().getBoxedCount(), Integer.valueOf(3));
+    Assert.assertEquals(e.getValue().getName(), "val");
+    Assert.assertEquals(e.getValue().getPrimitiveCount(), 0); // value's since=2 fields default
+    Assert.assertNull(e.getValue().getBoxedCount());
+  }
+
+  @Test
+  public void evolveMapSameBeanKeyAndValueCrossCombos() {
+    // Key and value are the SAME versioned bean class, so the (key-older, value-current) and
+    // (key-current, value-older) combinations share both bean suffixes (_V1). Without namespacing
+    // the key suffix in the map class name they would collapse onto one generated class, and one of
+    // the two payloads below would decode with the wrong codec. Reader at (V2,V2) must decode both.
+    MapEncoder<Map<DefaultsV1, DefaultsV2>> keyOlderWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV1>> valOlderWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, DefaultsV2>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, DefaultsV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+
+    DefaultsV1 oldKey = new DefaultsV1();
+    oldKey.setName("ok");
+    DefaultsV2 newVal = new DefaultsV2();
+    newVal.setName("nv");
+    newVal.setPrimitiveCount(5);
+    newVal.setBoxedCount(6);
+    Map<DefaultsV1, DefaultsV2> keyOlder = new HashMap<>();
+    keyOlder.put(oldKey, newVal);
+    Map<DefaultsV2, DefaultsV2> outA = reader.decode(keyOlderWriter.encode(keyOlder));
+    Map.Entry<DefaultsV2, DefaultsV2> a = outA.entrySet().iterator().next();
+    Assert.assertEquals(a.getKey().getName(), "ok");
+    Assert.assertEquals(a.getKey().getPrimitiveCount(), 0); // key was V1, since=2 fields default
+    Assert.assertEquals(a.getValue().getName(), "nv");
+    Assert.assertEquals(a.getValue().getPrimitiveCount(), 5); // value was V2, fully present
+    Assert.assertEquals(a.getValue().getBoxedCount(), Integer.valueOf(6));
+
+    DefaultsV2 newKey = new DefaultsV2();
+    newKey.setName("nk");
+    newKey.setPrimitiveCount(7);
+    newKey.setBoxedCount(8);
+    DefaultsV1 oldVal = new DefaultsV1();
+    oldVal.setName("ov");
+    Map<DefaultsV2, DefaultsV1> valOlder = new HashMap<>();
+    valOlder.put(newKey, oldVal);
+    Map<DefaultsV2, DefaultsV2> outB = reader.decode(valOlderWriter.encode(valOlder));
+    Map.Entry<DefaultsV2, DefaultsV2> b = outB.entrySet().iterator().next();
+    Assert.assertEquals(b.getKey().getName(), "nk");
+    Assert.assertEquals(b.getKey().getPrimitiveCount(), 7); // key was V2, fully present
+    Assert.assertEquals(b.getKey().getBoxedCount(), Integer.valueOf(8));
+    Assert.assertEquals(b.getValue().getName(), "ov");
+    Assert.assertEquals(
+        b.getValue().getPrimitiveCount(), 0); // value was V1, since=2 fields default
+  }
+
+  @Test
+  public void evolveMapKeyCompact() {
+    // The key dimension must also project under the compact format, which sorts schema fields by
+    // alignment; the historical key schema is sorted the same way as the writer's, so the layouts
+    // line up.
+    MapEncoder<Map<DefaultsV1, String>> writer =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV1, String>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<DefaultsV2, String>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<DefaultsV2, String>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    DefaultsV1 k = new DefaultsV1();
+    k.setName("k");
+    Map<DefaultsV1, String> in = new HashMap<>();
+    in.put(k, "v");
+    Map<DefaultsV2, String> out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.size(), 1);
+    Map.Entry<DefaultsV2, String> e = out.entrySet().iterator().next();
+    Assert.assertEquals(e.getKey().getName(), "k");
+    Assert.assertEquals(e.getKey().getPrimitiveCount(), 0);
+    Assert.assertEquals(e.getValue(), "v");
   }
 
   // ---------------------------------------------------------------------------

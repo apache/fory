@@ -65,20 +65,28 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   // its KeyPositionScope before the value subtree begins, so the two positions never interleave.
   private boolean inKeyPosition;
 
+  // Projection suffix for the key bean's row codec, parallel to rowCodecSuffixForBeans (the value
+  // suffix). Null/empty means the key is read at its current schema. A non-empty value routes the
+  // key bean to a historical projection row codec, letting a map key evolve across versions; the
+  // map header's combined hash selects this key+value combination.
+  private final String keyCodecSuffix;
+
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
     this(TypeRef.of(mapCls), TypeRef.of(keyClass));
   }
 
   public MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
-    this(clsType, beanType, null);
+    this(clsType, beanType, null, null);
   }
 
-  MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType, String rowCodecSuffix) {
+  MapEncoderBuilder(
+      TypeRef<?> clsType, TypeRef<?> beanType, String valCodecSuffix, String keyCodecSuffix) {
     // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
     // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
     // naming and schema generation.
     super(new CodegenContext(), beanType, Object.class);
-    this.rowCodecSuffixForBeans = rowCodecSuffix;
+    this.rowCodecSuffixForBeans = valCodecSuffix;
+    this.keyCodecSuffix = keyCodecSuffix;
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);
@@ -93,8 +101,7 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   public String genCode() {
     ctx.setPackage(CodeGenerator.getPackage(beanClass));
     String className =
-        codecClassName(beanClass, TypeInference.inferTypeName(mapToken))
-            + (rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans);
+        codecClassName(beanClass, TypeInference.inferTypeName(mapToken)) + mapClassSuffix();
     ctx.setClassName(className);
     // don't addImport(arrayClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
@@ -284,12 +291,35 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   /**
-   * In the key position the bean is always decoded with its current schema, so drop any projection
-   * suffix. The value position keeps the inherited behavior.
+   * Class-name suffix for the generated map codec. Combines the value and key suffixes so distinct
+   * (key-version, value-version) combinations generate distinct classes. The key suffix is
+   * namespaced with a {@code K} marker so that "value at v2, key current" and "value current, key
+   * at v2" do not collapse onto the same class name (both bean suffixes are otherwise {@code _V2}).
+   * The boundary between the value and key parts is the literal {@code _K_V} sequence: the {@code
+   * _K} marker followed by the key's own leading {@code _V} version token. A value-side nested-bean
+   * token is {@code _K<SimpleName>...} at most, never {@code _K_V}, because a Java simple name is
+   * non-empty and cannot begin with {@code _}, so the boundary is unambiguous even when a value bean
+   * name starts with {@code K}. Must match the name {@link Encoders#loadOrGenProjectionMapCodecClass}
+   * computes for the same builder.
+   */
+  String mapClassSuffix() {
+    String val = rowCodecSuffixForBeans == null ? "" : rowCodecSuffixForBeans;
+    String key = keyCodecSuffix == null || keyCodecSuffix.isEmpty() ? "" : "_K" + keyCodecSuffix;
+    return val + key;
+  }
+
+  /**
+   * Route a bean to its projection row codec by suffix. The key position uses {@link
+   * #keyCodecSuffix} and the value position the inherited value suffix, so a map whose key and
+   * value evolve independently embeds the right historical codec for each. An empty suffix means
+   * the bean is read at its current schema.
    */
   @Override
   protected String nestedBeanSuffix(TypeRef<?> typeRef) {
-    return inKeyPosition ? "" : super.nestedBeanSuffix(typeRef);
+    if (inKeyPosition) {
+      return keyCodecSuffix == null ? "" : keyCodecSuffix;
+    }
+    return super.nestedBeanSuffix(typeRef);
   }
 
   /**

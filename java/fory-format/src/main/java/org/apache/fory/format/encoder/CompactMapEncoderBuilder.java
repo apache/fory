@@ -37,8 +37,11 @@ class CompactMapEncoderBuilder extends MapEncoderBuilder {
   }
 
   CompactMapEncoderBuilder(
-      final TypeRef<?> clsType, final TypeRef<?> beanType, final String rowCodecSuffix) {
-    super(clsType, beanType, rowCodecSuffix);
+      final TypeRef<?> clsType,
+      final TypeRef<?> beanType,
+      final String valCodecSuffix,
+      final String keyCodecSuffix) {
+    super(clsType, beanType, valCodecSuffix, keyCodecSuffix);
   }
 
   @Override
