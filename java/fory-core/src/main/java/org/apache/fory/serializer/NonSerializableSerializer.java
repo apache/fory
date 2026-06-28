@@ -24,13 +24,14 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
 
 /**
- * Serializer for non-Serializable JDK classes (e.g. {@code java.lang.Package}).
+ * Serializer for non-Serializable JDK classes. Binary serialization is unsupported —
+ * {@link #write}/{@link #read} throw {@link UnsupportedOperationException} — while copy
+ * reuses {@link AbstractObjectSerializer}'s field-copy implementation.
  *
- * <p>Binary serialization remains unsupported — {@link #write} and {@link #read} throw
- * {@link UnsupportedOperationException}, preserving the prior behavior of {@code ClassResolver}'s
- * JDK-serializable guard. However {@code copy} is supported via the field copy via
- * {@link AbstractObjectSerializer}, so {@code Fory.copy()} can handle object graphs
- * that transitively contain such classes (issue #2941).
+ * <p>Distinct from {@link CopyOnlyObjectSerializer}, which blocks serialization for
+ * registration-security reasons (remediable by registering the class). Here serialization
+ * is intrinsically unsupported and not remediable by registration, so the failure semantics
+ * differ deliberately.
  */
 public final class NonSerializableSerializer<T> extends AbstractObjectSerializer<T> {
   public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) {

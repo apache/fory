@@ -459,8 +459,6 @@ public class ForyCopyTest extends ForyTestBase {
 
   @Test
   public void testCopyNonSerializableJdkClass(){
-    // Issue #2941: copying an object that is (or contains) a non-serializable JDK class
-    // like java.lang.Package used to throw. It should now succeed.
 
     Fory fory = Fory.builder()
             .withLanguage(Language.JAVA)
@@ -475,8 +473,7 @@ public class ForyCopyTest extends ForyTestBase {
 
   @Test
   public void testSerializeNonSerializableJdkClassStillThrows() {
-      // Regression guard: we must not have weakened serialization. Serializing a
-      // non-serializable JDK class must still throw, just deferred to write time.
+      // Serializing anon-serializable JDK class must still throw, just deferred to write time.
 
       Fory fory = Fory.builder()
               .withLanguage(Language.JAVA)
