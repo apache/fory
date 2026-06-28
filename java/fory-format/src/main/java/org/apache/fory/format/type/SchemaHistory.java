@@ -211,12 +211,13 @@ public final class SchemaHistory {
   }
 
   /**
-   * History of a top-level array element or map entry field, which has no version annotations of its
-   * own but may reach versioned beans through its list/map/array wrappers (a directly-typed bean, a
-   * list element, or a map key or value, to any depth). The single element field is enumerated over
-   * the cross-product of every reachable bean's versions, exactly as a bean field is on the row
-   * path, so the element schema's strict hash identifies all nested layouts jointly and an older
-   * payload restores every nested bean — on either map side — at its historical layout.
+   * History of a top-level array element or map entry field, which has no version annotations of
+   * its own but may reach versioned beans through its list/map/array wrappers (a directly-typed
+   * bean, a list element, or a map key or value, to any depth). The single element field is
+   * enumerated over the cross-product of every reachable bean's versions, exactly as a bean field
+   * is on the row path, so the element schema's strict hash identifies all nested layouts jointly
+   * and an older payload restores every nested bean — on either map side — at its historical
+   * layout.
    */
   public static SchemaHistory forElement(
       String fieldName, TypeRef<?> elementType, UnaryOperator<Schema> schemaTransform) {
@@ -832,7 +833,7 @@ public final class SchemaHistory {
    * Strict schema hash, used only by versioning code paths. Distinguishes schemas that differ in
    * field name or nullability, unlike {@link DataTypes#computeSchemaHash}.
    */
-  private static long computeStrictSchemaHash(Schema schema) {
+  static long computeStrictSchemaHash(Schema schema) {
     long hash = FNV_OFFSET_BASIS;
     Set<String> seen = new HashSet<>();
     for (Field field : schema.fields()) {
@@ -863,7 +864,14 @@ public final class SchemaHistory {
       hash = hashField(hash, DataTypes.keyFieldForMap(field));
       hash = hashField(hash, DataTypes.itemFieldForMap(field));
     } else if (type instanceof DataTypes.StructType) {
-      for (Field child : type.fields()) {
+      // Mix the child count before recursing. Unlike list and map, whose arity is fixed by the
+      // type kind, a struct has a variable number of children with no boundary marker between a
+      // nested struct's last child and the parent's next field. Without the count, {a:struct<x>,b}
+      // and {a:struct<x,b>} mix an identical byte sequence and collide. The count delimits the
+      // struct's extent so the hash stays injective over nesting structure.
+      List<Field> children = type.fields();
+      hash = mix(hash, children.size());
+      for (Field child : children) {
         hash = hashField(hash, child);
       }
     }

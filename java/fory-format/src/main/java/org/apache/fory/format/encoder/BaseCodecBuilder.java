@@ -23,6 +23,7 @@ import java.util.function.UnaryOperator;
 import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.logging.Logger;
@@ -142,6 +143,16 @@ public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
   protected SchemaHistory elementSchemaHistory(
       final String fieldName, final TypeRef<?> elementType) {
     return SchemaHistory.forElement(fieldName, elementType, schemaTransform());
+  }
+
+  /**
+   * Type-resolution context for discovering versioned beans reachable from array/map element types.
+   * Synthesizes interface-typed bean fields the same way the row-format type inference does;
+   * without it a class with interface members would not be recognized as a bean even though the row
+   * codec can encode it, and its older versions would never be enumerated.
+   */
+  protected static TypeResolutionContext typeCtx() {
+    return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
   }
 
   private UnaryOperator<Schema> schemaTransform() {
