@@ -852,7 +852,7 @@ cpdef object _float16_array_from_buffer(object buffer):
     cdef object bits
     cdef Float16Array values = Float16Array()
     if len(raw_bytes) & 1:
-        raise ValueError("float16 bits payload size mismatch")
+        raise ValueError("float16 bits byte size mismatch")
     raw.frombytes(raw_bytes)
     for bits in raw:
         values._values.push_back(<uint16_t>bits)
@@ -880,7 +880,7 @@ cpdef object _bfloat16_array_from_buffer(object buffer):
     cdef object bits
     cdef BFloat16Array values = BFloat16Array()
     if len(raw_bytes) & 1:
-        raise ValueError("bfloat16 bits payload size mismatch")
+        raise ValueError("bfloat16 bits byte size mismatch")
     raw.frombytes(raw_bytes)
     for bits in raw:
         values._values.push_back(<uint16_t>bits)
@@ -896,10 +896,16 @@ cdef class Float16Serializer(Serializer):
         return _float16_bits_to_float(read_context.read_uint16())
 
 
-cdef inline uint32_t _array_payload_count(uint32_t payload_size, uint32_t item_size, str name) except *:
-    if payload_size % item_size != 0:
-        raise ValueError(f"{name} payload size mismatch")
-    return payload_size // item_size
+cdef inline uint32_t _array_element_count(uint32_t byte_size, uint32_t item_size, str name) except *:
+    if byte_size % item_size != 0:
+        raise ValueError(f"{name} byte size mismatch")
+    return byte_size // item_size
+
+
+cdef inline void _ensure_array_bytes_readable(ReadContext read_context, uint32_t byte_size) except *:
+    if byte_size > 0 and not read_context.c_buffer.ensure_readable(byte_size, read_context.buffer._error):
+        if not read_context.buffer._error.ok():
+            read_context.buffer._raise_if_error()
 
 
 cdef inline void _write_uint8_vector(WriteContext write_context, vector[uint8_t]& values) except *:
@@ -910,10 +916,11 @@ cdef inline void _write_uint8_vector(WriteContext write_context, vector[uint8_t]
 
 
 cdef inline void _read_uint8_vector(ReadContext read_context, vector[uint8_t]& values, str name) except *:
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    values.resize(payload_size)
-    if payload_size > 0:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    _ensure_array_bytes_readable(read_context, byte_size)
+    values.resize(byte_size)
+    if byte_size > 0:
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
 
 
 cdef inline void _write_int8_vector(WriteContext write_context, vector[int8_t]& values) except *:
@@ -924,10 +931,11 @@ cdef inline void _write_int8_vector(WriteContext write_context, vector[int8_t]& 
 
 
 cdef inline void _read_int8_vector(ReadContext read_context, vector[int8_t]& values, str name) except *:
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    values.resize(payload_size)
-    if payload_size > 0:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    _ensure_array_bytes_readable(read_context, byte_size)
+    values.resize(byte_size)
+    if byte_size > 0:
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
 
 
 cdef inline void _write_int16_vector(WriteContext write_context, vector[int16_t]& values) except *:
@@ -946,13 +954,14 @@ cdef inline void _write_int16_vector(WriteContext write_context, vector[int16_t]
 
 cdef inline void _read_int16_vector(ReadContext read_context, vector[int16_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(int16_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(int16_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_int16(read_context.buffer._error)
@@ -974,13 +983,14 @@ cdef inline void _write_uint16_vector(WriteContext write_context, vector[uint16_
 
 cdef inline void _read_uint16_vector(ReadContext read_context, vector[uint16_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(uint16_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(uint16_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_uint16(read_context.buffer._error)
@@ -1002,13 +1012,14 @@ cdef inline void _write_int32_vector(WriteContext write_context, vector[int32_t]
 
 cdef inline void _read_int32_vector(ReadContext read_context, vector[int32_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(int32_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(int32_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_int32(read_context.buffer._error)
@@ -1030,13 +1041,14 @@ cdef inline void _write_uint32_vector(WriteContext write_context, vector[uint32_
 
 cdef inline void _read_uint32_vector(ReadContext read_context, vector[uint32_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(uint32_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(uint32_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_uint32(read_context.buffer._error)
@@ -1058,13 +1070,14 @@ cdef inline void _write_int64_vector(WriteContext write_context, vector[int64_t]
 
 cdef inline void _read_int64_vector(ReadContext read_context, vector[int64_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(int64_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(int64_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_int64(read_context.buffer._error)
@@ -1086,13 +1099,14 @@ cdef inline void _write_uint64_vector(WriteContext write_context, vector[uint64_
 
 cdef inline void _read_uint64_vector(ReadContext read_context, vector[uint64_t]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(uint64_t), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(uint64_t), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_uint64(read_context.buffer._error)
@@ -1114,13 +1128,14 @@ cdef inline void _write_float_vector(WriteContext write_context, vector[float]& 
 
 cdef inline void _read_float_vector(ReadContext read_context, vector[float]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(float), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(float), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_float(read_context.buffer._error)
@@ -1142,13 +1157,14 @@ cdef inline void _write_double_vector(WriteContext write_context, vector[double]
 
 cdef inline void _read_double_vector(ReadContext read_context, vector[double]& values, str name) except *:
     cdef uint32_t i
-    cdef uint32_t payload_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
-    cdef uint32_t count = _array_payload_count(payload_size, sizeof(double), name)
+    cdef uint32_t byte_size = read_context.c_buffer.read_var_uint32(read_context.buffer._error)
+    cdef uint32_t count = _array_element_count(byte_size, sizeof(double), name)
+    _ensure_array_bytes_readable(read_context, byte_size)
     values.resize(count)
-    if payload_size == 0:
+    if byte_size == 0:
         return
     if is_little_endian:
-        read_context.c_buffer.read_bytes(<void*>&values[0], payload_size, read_context.buffer._error)
+        read_context.c_buffer.read_bytes(<void*>&values[0], byte_size, read_context.buffer._error)
     else:
         for i in range(count):
             values[i] = read_context.c_buffer.read_double(read_context.buffer._error)

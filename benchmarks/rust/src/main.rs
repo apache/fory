@@ -18,10 +18,12 @@
 use clap::{Parser, ValueEnum};
 use fory_benchmarks::data::{
     BenchmarkCase, DataKind, MediaContent, MediaContentList, NumericStruct, NumericStructList,
-    Sample, SampleList,
+    Sample, SampleList, SchemaMismatchCase,
 };
 use fory_benchmarks::serializers::{
-    fory::ForySerializer, msgpack::MsgpackSerializer, protobuf::ProtobufSerializer,
+    fory::{schema_mismatch_enabled, ForySerializer},
+    msgpack::MsgpackSerializer,
+    protobuf::ProtobufSerializer,
     BenchmarkSerializer,
 };
 use std::hint::black_box;
@@ -99,20 +101,65 @@ where
 
 fn profile_case<T>(iterations: usize, serializer: SerializerKind, operation: Operation)
 where
-    T: BenchmarkCase,
+    T: SchemaMismatchCase,
     ForySerializer: BenchmarkSerializer<T>,
     ProtobufSerializer: BenchmarkSerializer<T>,
     MsgpackSerializer: BenchmarkSerializer<T>,
 {
     let value = T::create();
+    let mismatch = schema_mismatch_enabled();
+    if mismatch && serializer != SerializerKind::Fory {
+        panic!(
+            "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory"
+        );
+    }
 
     match serializer {
+        SerializerKind::Fory if mismatch => {
+            profile_fory_mismatch::<T>(iterations, &value, operation)
+        }
         SerializerKind::Fory => profile(iterations, &value, &ForySerializer::new(), operation),
         SerializerKind::Protobuf => {
             profile(iterations, &value, &ProtobufSerializer::new(), operation)
         }
         SerializerKind::Msgpack => {
             profile(iterations, &value, &MsgpackSerializer::new(), operation)
+        }
+    }
+}
+
+fn profile_fory_mismatch<T>(iterations: usize, value: &T, operation: Operation)
+where
+    T: SchemaMismatchCase,
+    ForySerializer: BenchmarkSerializer<T>,
+{
+    let serializer = ForySerializer::new();
+    match operation {
+        Operation::Serialize => {
+            for _ in 0..1000 {
+                let _ = black_box(serializer.serialize(black_box(value)).unwrap());
+            }
+
+            for _ in 0..iterations {
+                let _ = black_box(serializer.serialize(black_box(value)).unwrap());
+            }
+        }
+        Operation::Deserialize => {
+            let bytes = serializer.serialize(value).unwrap();
+            let decoded: T::Read = serializer.deserialize_as(&bytes).unwrap();
+            T::verify_mismatch(&decoded, value);
+
+            for _ in 0..1000 {
+                let value: T::Read =
+                    black_box(serializer.deserialize_as(black_box(&bytes)).unwrap());
+                black_box(value);
+            }
+
+            for _ in 0..iterations {
+                let value: T::Read =
+                    black_box(serializer.deserialize_as(black_box(&bytes)).unwrap());
+                black_box(value);
+            }
         }
     }
 }
@@ -126,6 +173,11 @@ where
 {
     let value = T::create();
     let fory = ForySerializer::new().serialize(&value).unwrap().len();
+    if schema_mismatch_enabled() {
+        println!("| {label} | {fory} | n/a | n/a |");
+        return;
+    }
+
     let protobuf = ProtobufSerializer::new().serialize(&value).unwrap().len();
     let msgpack = MsgpackSerializer::new().serialize(&value).unwrap().len();
 
@@ -145,6 +197,11 @@ fn print_all_serialized_sizes() {
 
 fn main() {
     let cli = Cli::parse();
+    if schema_mismatch_enabled() && cli.serializer != SerializerKind::Fory {
+        panic!(
+            "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory"
+        );
+    }
 
     if cli.print_all_serialized_sizes {
         print_all_serialized_sizes();

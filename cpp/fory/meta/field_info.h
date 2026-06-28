@@ -320,6 +320,31 @@ constexpr auto make_field_entry(const char *name, FieldMeta meta) {
 
 namespace meta {
 
+template <typename T, typename = void>
+struct IsPropertyDescriptor : std::false_type {};
+
+template <typename T>
+struct IsPropertyDescriptor<
+    T, std::void_t<decltype(T::is_fory_property_descriptor)>>
+    : std::bool_constant<T::is_fory_property_descriptor> {};
+
+template <typename T>
+inline constexpr bool IsPropertyDescriptorV =
+    IsPropertyDescriptor<RemoveCVRefT<T>>::value;
+
+template <typename StructT, typename Entry, bool = IsPropertyDescriptorV<Entry>>
+struct FieldRawType {
+  using Type = RemoveMemberPointerCVRefT<Entry>;
+};
+
+template <typename StructT, typename Entry>
+struct FieldRawType<StructT, Entry, true> {
+  using Type = typename RemoveCVRefT<Entry>::template ForyFieldType<StructT>;
+};
+
+template <typename StructT, typename Entry>
+using FieldRawTypeT = typename FieldRawType<StructT, RemoveCVRefT<Entry>>::Type;
+
 template <typename T> struct Identity {
   using Type = T;
 };
@@ -366,12 +391,16 @@ constexpr const T &unwrap_tuple(const TupleWrapper<T> &value) {
 // it must be able to be executed in compile-time
 template <typename FieldInfo, size_t... I>
 constexpr bool is_valid_field_info_impl(std::index_sequence<I...>) {
-  if constexpr (sizeof...(I) == 0) {
-    return true;
-  } else {
-    constexpr auto ptrs = FieldInfo::ptrs();
-    return IsUnique<std::get<I>(ptrs)...>::value;
+  (void)std::index_sequence<I...>{};
+  constexpr auto names = FieldInfo::Names;
+  for (size_t i = 0; i < FieldInfo::Size; ++i) {
+    for (size_t j = i + 1; j < FieldInfo::Size; ++j) {
+      if (names[i] == names[j]) {
+        return false;
+      }
+    }
   }
+  return true;
 }
 
 } // namespace details
@@ -390,7 +419,8 @@ struct HasForyStructInfo
 // it includes:
 // - number of fields: typed size_t
 // - field names: typed `std::string_view`
-// - field member points: typed `decltype(a) T::*` for any member `T::a`
+// - field access entries: direct fields use typed `decltype(a) T::*` member
+//   pointers; properties use empty compile-time descriptor objects.
 template <typename T>
 constexpr auto fory_field_info([[maybe_unused]] const T &value) noexcept {
   if constexpr (details::HasMemberStructInfo<T>::value) {
@@ -507,20 +537,51 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
 
 #define FORY_BASE_TYPE(arg) FORY_PP_TUPLE_SECOND(arg)
 
+#define FORY_PROPERTY(...)                                                     \
+  FORY_PP_CONCAT(FORY_PROPERTY_, FORY_PP_NARG(__VA_ARGS__))(__VA_ARGS__)
+
+#define FORY_PROPERTY_1(name) (FORY_PROPERTY_TAG, name, name, name, ::fory::F())
+#define FORY_PROPERTY_2(name, meta) (FORY_PROPERTY_TAG, name, name, name, meta)
+#define FORY_PROPERTY_3(name, getter, setter)                                  \
+  (FORY_PROPERTY_TAG, name, getter, setter, ::fory::F())
+#define FORY_PROPERTY_4(name, getter, setter, meta)                            \
+  (FORY_PROPERTY_TAG, name, getter, setter, meta)
+
+#define FORY_PP_IS_PROPERTY_TAG(x)                                             \
+  FORY_PP_CHECK(FORY_PP_CONCAT(FORY_PP_IS_PROPERTY_TAG_PROBE_, x))
+#define FORY_PP_IS_PROPERTY_TAG_PROBE_FORY_PROPERTY_TAG FORY_PP_PROBE()
+
+#define FORY_PP_IS_PROPERTY(arg)                                               \
+  FORY_PP_IS_PROPERTY_IMPL(FORY_PP_IS_PAREN(arg), arg)
+#define FORY_PP_IS_PROPERTY_IMPL(is_paren, arg)                                \
+  FORY_PP_CONCAT(FORY_PP_IS_PROPERTY_IMPL_, is_paren)(arg)
+#define FORY_PP_IS_PROPERTY_IMPL_0(arg) 0
+#define FORY_PP_IS_PROPERTY_IMPL_1(arg)                                        \
+  FORY_PP_IS_PROPERTY_TAG(FORY_PP_TUPLE_FIRST(arg))
+
+#define FORY_PROPERTY_ARG_NAME(arg) FORY_PP_TUPLE_SECOND(arg)
+#define FORY_PROPERTY_ARG_GETTER(arg) FORY_PP_TUPLE_THIRD(arg)
+#define FORY_PROPERTY_ARG_SETTER(arg) FORY_PP_TUPLE_FOURTH(arg)
+#define FORY_PROPERTY_ARG_META(arg) FORY_PP_TUPLE_FIFTH(arg)
+
 #define FORY_PP_IS_CONFIG(arg)                                                 \
   FORY_PP_IS_CONFIG_IMPL(FORY_PP_IS_PAREN(arg), arg)
 #define FORY_PP_IS_CONFIG_IMPL(is_paren, arg)                                  \
   FORY_PP_CONCAT(FORY_PP_IS_CONFIG_IMPL_, is_paren)(arg)
 #define FORY_PP_IS_CONFIG_IMPL_0(arg) 0
-#define FORY_PP_IS_CONFIG_IMPL_1(arg) FORY_PP_NOT(FORY_PP_IS_BASE(arg))
+#define FORY_PP_IS_CONFIG_IMPL_1(arg)                                          \
+  FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
+  (0, FORY_PP_IF(FORY_PP_IS_PROPERTY(arg))(0, 1))
 
 #define FORY_FIELD_ARG_NAME(arg)                                               \
-  FORY_PP_IF(FORY_PP_IS_CONFIG(arg))                                           \
-  (FORY_PP_TUPLE_FIRST(arg), arg)
+  FORY_PP_IF(FORY_PP_IS_PROPERTY(arg))                                         \
+  (FORY_PROPERTY_ARG_NAME(arg),                                                \
+   FORY_PP_IF(FORY_PP_IS_CONFIG(arg))(FORY_PP_TUPLE_FIRST(arg), arg))
 
 #define FORY_FIELD_ARG_META(arg)                                               \
-  FORY_PP_IF(FORY_PP_IS_CONFIG(arg))                                           \
-  (FORY_PP_TUPLE_SECOND(arg), ::fory::F())
+  FORY_PP_IF(FORY_PP_IS_PROPERTY(arg))                                         \
+  (FORY_PROPERTY_ARG_META(arg),                                                \
+   FORY_PP_IF(FORY_PP_IS_CONFIG(arg))(FORY_PP_TUPLE_SECOND(arg), ::fory::F()))
 
 #define FORY_FIELD_INFO_NAMES_FIELD(field) #field,
 #define FORY_FIELD_INFO_NAMES_ARG(arg) FORY_FIELD_INFO_NAMES_FIELD(arg)
@@ -529,11 +590,35 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
   (FORY_PP_EMPTY(), FORY_FIELD_INFO_NAMES_ARG(FORY_FIELD_ARG_NAME(arg)))
 
 #define FORY_FIELD_INFO_PTRS_FIELD(type, field) &type::field,
-#define FORY_FIELD_INFO_PTRS_ARG(type, field)                                  \
-  FORY_FIELD_INFO_PTRS_FIELD(type, field)
+#define FORY_PROPERTY_DESCRIPTOR_NAME(arg)                                     \
+  FORY_PP_CONCAT(ForyPropertyDescriptor_, FORY_PROPERTY_ARG_NAME(arg))
+#define FORY_FIELD_INFO_PROPERTY_DECL(type, arg)                               \
+  struct FORY_PROPERTY_DESCRIPTOR_NAME(arg) {                                  \
+    static constexpr bool is_fory_property_descriptor = true;                  \
+    using ForyStructType = type;                                               \
+    template <typename T>                                                      \
+    using ForyFieldType = ::fory::meta::RemoveCVRefT<                          \
+        decltype(std::declval<const T &>().FORY_PROPERTY_ARG_GETTER(arg)())>;  \
+    template <typename Obj> static decltype(auto) get(Obj &&obj) {             \
+      return std::forward<Obj>(obj).FORY_PROPERTY_ARG_GETTER(arg)();           \
+    }                                                                          \
+    template <typename Obj, typename Value>                                    \
+    static void set(Obj &&obj, Value &&value) {                                \
+      (void)std::forward<Obj>(obj).FORY_PROPERTY_ARG_SETTER(arg)(              \
+          std::forward<Value>(value));                                         \
+    }                                                                          \
+  };
+#define FORY_FIELD_INFO_PROPERTY_DECL_FUNC(type, arg)                          \
+  FORY_PP_IF(FORY_PP_IS_PROPERTY(arg))                                         \
+  (FORY_FIELD_INFO_PROPERTY_DECL(type, arg), FORY_PP_EMPTY())
+#define FORY_FIELD_INFO_PTRS_PROPERTY(arg) FORY_PROPERTY_DESCRIPTOR_NAME(arg){},
+#define FORY_FIELD_INFO_PTRS_ARG(type, arg)                                    \
+  FORY_PP_IF(FORY_PP_IS_PROPERTY(arg))                                         \
+  (FORY_FIELD_INFO_PTRS_PROPERTY(arg),                                         \
+   FORY_FIELD_INFO_PTRS_FIELD(type, FORY_FIELD_ARG_NAME(arg)))
 #define FORY_FIELD_INFO_PTRS_FUNC(type, arg)                                   \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
-  (FORY_PP_EMPTY(), FORY_FIELD_INFO_PTRS_ARG(type, FORY_FIELD_ARG_NAME(arg)))
+  (FORY_PP_EMPTY(), FORY_FIELD_INFO_PTRS_ARG(type, arg))
 
 #define FORY_FIELD_INFO_CONFIG_ENTRY(arg)                                      \
   ::fory::detail::make_field_entry(                                            \
@@ -612,6 +697,7 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
       return fory::meta::concat_tuples_from_tuple(                             \
           std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)});       \
     }                                                                          \
+    FORY_PP_FOREACH_1(FORY_FIELD_INFO_PROPERTY_DECL_FUNC, type, __VA_ARGS__)   \
     using FieldPtrsType = decltype(std::tuple{                                 \
         FORY_PP_FOREACH_1(FORY_FIELD_INFO_PTRS_FUNC, type, __VA_ARGS__)});     \
     static constexpr FieldPtrsType FieldPtrs() {                               \

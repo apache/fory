@@ -81,6 +81,20 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+template <typename MapType>
+inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
+  // Lazy error propagation may continue into later readers; do not let that
+  // path retain attacker-controlled capacity after an earlier read failure.
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+    return false;
+  }
+  MapReserver<MapType>::reserve(map, length);
+  return true;
+}
+
 /// write chunk size at header offset
 inline void write_chunk_size(WriteContext &ctx, size_t header_offset,
                              uint8_t size) {
@@ -551,17 +565,11 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
   static_assert(!is_shared_ref_v<K> && !is_shared_ref_v<V>,
                 "Fast path is for non-shared-ref types only");
 
-  // Guardrail: Enforce max_collection_size for map reads (entry count)
-  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-    ctx.set_error(
-        Error::invalid_data("Map entry count exceeds max_collection_size"));
-    return MapType{};
-  }
-
   MapType result;
-  MapReserver<MapType>::reserve(result, length);
-
   if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
     return result;
   }
 
@@ -689,17 +697,11 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 /// Read map data for polymorphic or shared-ref maps
 template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
-  // Guardrail: Enforce max_collection_size for map reads (entry count)
-  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-    ctx.set_error(
-        Error::invalid_data("Map entry count exceeds max_collection_size"));
-    return MapType{};
-  }
-
   MapType result;
-  MapReserver<MapType>::reserve(result, length);
-
   if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
     return result;
   }
 

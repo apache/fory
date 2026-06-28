@@ -31,7 +31,10 @@ import org.apache.fory.annotation.ForyField;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.resolver.XtypeResolver;
+import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.Types;
+import org.apache.fory.type.union.Union;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -231,6 +234,32 @@ public class TypeDefEncoderTest {
 
     @ForyField(id = 32767) // Max short value
     private int field2;
+  }
+
+  public static class NestedUnionMapField {
+    private Map<String, Union> values;
+  }
+
+  @Test
+  public void testNestedUnionSchemaCompare() {
+    Fory fory = Fory.builder().withXlang(true).build();
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(16);
+    buffer.writeVarUInt32Small7(Types.MAP << 2);
+    buffer.writeVarUInt32Small7(Types.STRING << 2);
+    buffer.writeVarUInt32Small7(Types.TYPED_UNION << 2);
+    buffer.readerIndex(0);
+
+    FieldTypes.MapFieldType fieldType =
+        (FieldTypes.MapFieldType)
+            FieldTypes.FieldType.readCrossLanguage(buffer, (XtypeResolver) fory.getTypeResolver());
+
+    Assert.assertTrue(fieldType.getValueType() instanceof FieldTypes.ObjectFieldType);
+    Assert.assertEquals(fieldType.getValueType().getTypeId(), Types.TYPED_UNION);
+
+    Descriptor localDescriptor =
+        Descriptor.getDescriptorsMap(NestedUnionMapField.class).get("values");
+    new FieldInfo(NestedUnionMapField.class.getName(), "values", fieldType)
+        .toDescriptor(fory.getTypeResolver(), localDescriptor);
   }
 
   @Test
@@ -550,6 +579,50 @@ public class TypeDefEncoderTest {
         TypeDef.readTypeDef(
             fory.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded()));
     Assert.assertEquals(decoded.getFieldsInfo().size(), 32);
+  }
+
+  @Test
+  public void testDecodeRejectsTooManyFields() {
+    Fory writer = Fory.builder().withXlang(true).withCompatible(false).withMetaShare(true).build();
+    writer.register(ManyFields.class, 6002);
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), ManyFields.class);
+    Fory reader =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxTypeFields(31)
+            .build();
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () ->
+                TypeDef.readTypeDef(
+                    reader.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded())));
+    Assert.assertTrue(exception.getMessage().contains("maxTypeFields"));
+  }
+
+  @Test
+  public void testDecodeRejectsTypeMetaBodySize() {
+    Fory writer = Fory.builder().withXlang(true).withCompatible(false).withMetaShare(true).build();
+    writer.register(ClassWithNoAnnotations.class, 6003);
+    TypeDef typeDef = TypeDef.buildTypeDef(writer.getTypeResolver(), ClassWithNoAnnotations.class);
+    Fory reader =
+        Fory.builder()
+            .withXlang(true)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withMaxTypeMetaBytes(1)
+            .build();
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () ->
+                TypeDef.readTypeDef(
+                    reader.getTypeResolver(), MemoryBuffer.fromByteArray(typeDef.getEncoded())));
+    Assert.assertTrue(exception.getMessage().contains("maxTypeMetaBytes"));
   }
 
   @Test

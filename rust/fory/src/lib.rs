@@ -50,7 +50,6 @@
 //! ```toml
 //! [dependencies]
 //! fory = "0.13"
-//! fory-derive = "0.13"
 //! ```
 //!
 //! ### Basic Example
@@ -379,7 +378,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //! fory.register::<Cat>(101)?;
 //! fory.register::<Zoo>(102)?;
@@ -519,7 +518,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //! fory.register::<Cat>(101)?;
 //! fory.register::<AnimalShelter>(102)?;
@@ -574,7 +573,7 @@
 //! register_trait_type!(Animal, Dog);
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory = Fory::builder().xlang(false).build();
 //! fory.register::<Dog>(100)?;
 //!
 //! // For Rc<dyn Trait>
@@ -649,10 +648,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory1 = Fory::builder().xlang(true).compatible(true).build();
+//! let mut fory1 = Fory::builder().xlang(true).build();
 //! fory1.register_by_name::<PersonV1>("example.Person")?;
 //!
-//! let mut fory2 = Fory::builder().xlang(true).compatible(true).build();
+//! let mut fory2 = Fory::builder().xlang(true).build();
 //! fory2.register_by_name::<PersonV2>("example.Person")?;
 //!
 //! let person_v1 = PersonV1 {
@@ -748,10 +747,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory_old = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory_old = Fory::builder().xlang(false).build();
 //! fory_old.register::<OldEvent>(5)?;
 //!
-//! let mut fory_new = Fory::builder().xlang(false).compatible(true).build();
+//! let mut fory_new = Fory::builder().xlang(false).build();
 //! fory_new.register::<NewEvent>(5)?;
 //!
 //! // Serialize with old schema (2 fields)
@@ -786,8 +785,9 @@
 //! useful for temporary groupings, function return values, and ad-hoc data structures.
 //!
 //! **Technical approach:** Each tuple size (1-22) has a specialized `Serializer` implementation.
-//! In schema-consistent mode, elements are serialized sequentially without overhead. In compatible
-//! mode, the tuple is serialized as a heterogeneous collection with type metadata for each element.
+//! With the same-schema optimization, elements are serialized sequentially without overhead. In
+//! compatible mode, the tuple is serialized as a heterogeneous collection with type metadata for
+//! each element.
 //!
 //! **Features:**
 //!
@@ -931,8 +931,7 @@
 //! | Suitable for         | Small objects, full access    | Large objects, selective access |
 //!
 //! ```rust
-//! use fory::{to_row, from_row};
-//! use fory_derive::ForyRow;
+//! use fory::{from_row, to_row, ForyRow};
 //! use std::collections::BTreeMap;
 //!
 //! #[derive(ForyRow)]
@@ -1034,8 +1033,8 @@
 //!   xlang mode uses compatible schema evolution so independently deployed
 //!   peers can add, remove, or reorder fields.
 //! - **Native mode** is selected with `.xlang(false)`. Use it for Rust-only
-//!   payloads. When `compatible` is omitted, native mode uses
-//!   schema-consistent payloads for the smaller same-schema format.
+//!   payloads. When `compatible` is omitted, native mode also uses compatible
+//!   schema evolution.
 //!
 //! ```rust
 //! use fory::Fory;
@@ -1043,11 +1042,11 @@
 //! // Xlang mode with compatible schema evolution.
 //! let xlang = Fory::builder().xlang(true).build();
 //!
-//! // Native mode with schema-consistent payloads.
+//! // Native mode with compatible schema evolution.
 //! let native = Fory::builder().xlang(false).build();
 //!
-//! // Native mode with compatible schema evolution.
-//! let native_compatible = Fory::builder().xlang(false).compatible(true).build();
+//! // Same-schema optimization for Rust-only payloads.
+//! let native_same_schema = Fory::builder().xlang(false).compatible(false).build();
 //! ```
 //!
 //! ## Cross-Language Serialization
@@ -1184,7 +1183,7 @@
 //!   struct, enum, or trait implementation calls `register::<T>(type_id)` before use, and reuse
 //!   the same IDs when deserializing.
 //! - **Quick error lookup**: Always prefer the static constructors on
-//!   [`fory_core::error::Error`]—for example `Error::type_mismatch`, `Error::invalid_data`, or
+//!   [`Error`]—for example `Error::type_mismatch`, `Error::invalid_data`, or
 //!   `Error::unknown`. They keep diagnostics consistent and allow optional panic-on-error
 //!   debugging.
 //! - **Panic on error for backtraces**: Set `FORY_PANIC_ON_ERROR=1` (or `true`) together with
@@ -1211,6 +1210,10 @@
 //! - **[API Documentation](https://docs.rs/fory)** - Complete API reference
 //! - **[GitHub Repository](https://github.com/apache/fory)** - Source code and issue tracking
 
+// Derive macros resolve the facade through `::fory::__private`, including doctests where
+// `crate` is the doctest crate instead of this facade crate.
+extern crate self as fory;
+
 pub use fory_core::{
     error::Error, fory::Fory, fory::ForyBuilder, register_trait_type, row::from_row, row::to_row,
     ArcWeak, BFloat16, Date, Decimal, Duration, Float16, ForyDefault, RcWeak, ReadContext, Reader,
@@ -1218,3 +1221,8 @@ pub use fory_core::{
     Writer,
 };
 pub use fory_derive::{ForyEnum, ForyRow, ForyStruct, ForyUnion};
+
+#[doc(hidden)]
+pub mod __private {
+    pub use fory_core::*;
+}

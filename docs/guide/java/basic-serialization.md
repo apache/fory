@@ -22,9 +22,9 @@ license: |
 This page covers the Java xlang quickstart. Xlang mode is the default Java wire format and is the
 right first choice for cross-language payloads.
 
-## Create a Fory Runtime
+## Create a Fory Instance
 
-For a single-threaded xlang runtime, set the mode explicitly:
+For a single-threaded xlang Fory instance, set the mode explicitly:
 
 ```java
 import org.apache.fory.Fory;
@@ -35,7 +35,7 @@ Fory fory = Fory.builder()
     .build();
 ```
 
-For a thread-safe runtime, build `ThreadSafeFory` from the same builder:
+For a thread-safe Fory instance, build `ThreadSafeFory` from the same builder:
 
 ```java
 import org.apache.fory.ThreadSafeFory;
@@ -48,8 +48,8 @@ ThreadSafeFory fory = Fory.builder()
 
 Default Java xlang mode also defaults to compatible schema mode, so independently deployed services
 can add and remove fields when their schema metadata remains compatible. Use
-`withCompatible(false)` only when every peer updates schema together and you want schema-consistent
-xlang payloads.
+`withCompatible(false)` only when every reader and writer always uses the same schema and you want
+faster serialization and smaller size. Use the `compatible=false` opt-out only after verifying that every language uses the same xlang schema, or when native types are generated from Fory schema IDL.
 
 ## Register Custom Types
 
@@ -90,7 +90,7 @@ byte[] bytes = fory.serialize(user);
 User decoded = fory.deserialize(bytes, User.class);
 ```
 
-When xlang bytes cross runtimes, every runtime must register the same type identity and compatible
+When xlang bytes cross languages, every peer must register the same type identity and compatible
 field metadata. The shared rules live in [Xlang](../xlang/index.md), while Java-specific API calls
 are in [Xlang Serialization](xlang-serialization.md).
 
@@ -111,8 +111,9 @@ object copy, and native-mode zero-copy buffers. See [Native Serialization](nativ
 
 - `withRefTracking(true)` preserves shared references and circular references.
 - `requireClassRegistration(true)` keeps the default registered-type policy.
-- `withCompatible(true)` enables compatible mode explicitly for native-mode
-  schema evolution. Xlang mode already uses compatible mode by default.
+- Compatible mode is enabled by default for native-mode and xlang payloads. Use
+  `withCompatible(false)` only when every reader and writer uses the same schema and you want faster
+  serialization and smaller size. For xlang payloads, use the `compatible=false` opt-out only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
 - `withAsyncCompilation(true)` enables asynchronous serializer compilation where supported.
 
 ## Best Practices

@@ -50,43 +50,76 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
   @Override
   public int fillBuffer(int minFillSize) {
     MemoryBuffer buffer = this.buffer;
-    byte[] heapMemory = buffer.getHeapMemory();
-    int offset = buffer.size();
-    if (offset + minFillSize > heapMemory.length) {
-      heapMemory = growBuffer(minFillSize, buffer);
+    if (minFillSize < 0) {
+      throw new IndexOutOfBoundsException("Negative minimum fill size " + minFillSize);
     }
+    if (minFillSize == 0) {
+      return 0;
+    }
+    int totalRead = 0;
+    boolean checkedAvailable = false;
     try {
-      int read;
-      int len = heapMemory.length - offset;
-      read = stream.read(heapMemory, offset, len);
-      while (read < minFillSize) {
-        int newRead = stream.read(heapMemory, offset + read, len - read);
-        if (newRead < 0) {
+      while (totalRead < minFillSize) {
+        byte[] heapMemory = buffer.getHeapMemory();
+        int offset = buffer.size();
+        int remainingNeeded = minFillSize - totalRead;
+        long targetSize = (long) offset + remainingNeeded;
+        if (targetSize > Integer.MAX_VALUE - 8L) {
+          throw new IndexOutOfBoundsException("Stream buffer size exceeds supported range");
+        }
+        if (targetSize > heapMemory.length) {
+          int newSize = 0;
+          if (!checkedAvailable) {
+            checkedAvailable = true;
+            // Use available() only as a one-shot growth hint. It may be expensive or
+            // conservative, so failed hints fall back to bounded doubling. Final value
+            // allocation still waits for fillBuffer to complete successfully.
+            if (stream.available() >= remainingNeeded) {
+              newSize = (int) targetSize;
+            }
+          }
+          if (newSize == 0 && offset == heapMemory.length) {
+            newSize = nextBufferSize(heapMemory.length, (int) targetSize);
+          }
+          if (newSize != 0) {
+            heapMemory = growBuffer(buffer, newSize);
+          }
+        }
+        int read = stream.read(heapMemory, offset, heapMemory.length - offset);
+        if (read <= 0) {
           throw new IndexOutOfBoundsException("No enough data in the stream " + stream);
         }
-        read += newRead;
+        if (read > 0) {
+          buffer.increaseSize(read);
+          totalRead += read;
+        }
       }
-      buffer.increaseSize(read);
-      return read;
+      return totalRead;
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
-  private static byte[] growBuffer(int minFillSize, MemoryBuffer buffer) {
-    int newSize;
+  private byte[] growBuffer(MemoryBuffer buffer, int newSize) {
     int size = buffer.size();
-    int targetSize = size + minFillSize;
-    newSize =
-        targetSize < MemoryBuffer.BUFFER_GROW_STEP_THRESHOLD
-            ? targetSize << 2
-            : (int) Math.min(targetSize * 1.5d, Integer.MAX_VALUE - 8);
+    if (newSize <= size) {
+      throw new IndexOutOfBoundsException("Stream buffer size exceeds supported range");
+    }
     byte[] newBuffer = new byte[newSize];
     byte[] heapMemory = buffer.getHeapMemory();
     System.arraycopy(heapMemory, 0, newBuffer, 0, size);
     buffer.initHeapBuffer(newBuffer, 0, size);
     heapMemory = newBuffer;
     return heapMemory;
+  }
+
+  private static int nextBufferSize(int size, int targetSize) {
+    long grown = size == 0 ? 1L : (long) size << 1;
+    int maxSize = Integer.MAX_VALUE - 8;
+    if (grown > maxSize) {
+      grown = maxSize;
+    }
+    return (int) Math.min(grown, targetSize);
   }
 
   @Override

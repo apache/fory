@@ -34,20 +34,20 @@ private let noUserTypeID: UInt32 = UInt32.max
 public let namespaceMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
-  .lowerUpperDigitSpecial,
+  .lowerUpperDigitSpecial
 ]
 
 public let typeNameMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
   .lowerUpperDigitSpecial,
-  .firstToLowerSpecial,
+  .firstToLowerSpecial
 ]
 
 public let fieldNameMetaStringEncodings: [MetaStringEncoding] = [
   .utf8,
   .allToLowerSpecial,
-  .lowerUpperDigitSpecial,
+  .lowerUpperDigitSpecial
 ]
 
 public final class TypeMeta: Equatable, @unchecked Sendable {
@@ -325,27 +325,45 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     return Array(buffer.storage.prefix(buffer.count))
   }
 
-  public static func decode(_ bytes: [UInt8]) throws -> TypeMeta {
-    try decode(ByteBuffer(bytes: bytes))
+  public static func decode(
+    _ bytes: [UInt8],
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096
+  ) throws -> TypeMeta {
+    try decode(
+      ByteBuffer(bytes: bytes),
+      maxTypeFields: maxTypeFields,
+      maxTypeMetaBytes: maxTypeMetaBytes)
   }
 
-  public static func decode(_ buffer: ByteBuffer) throws -> TypeMeta {
+  public static func decode(
+    _ buffer: ByteBuffer,
+    maxTypeFields: Int = 512,
+    maxTypeMetaBytes: Int = 4096
+  ) throws -> TypeMeta {
     let header = try buffer.readUInt64()
     if (header & typeMetaReservedFlags) != 0 {
       throw ForyError.invalidData("invalid TypeMeta global header")
     }
     let compressed = (header & typeMetaCompressedFlag) != 0
+    if compressed {
+      throw ForyError.encodingError("compressed TypeMeta is not supported yet")
+    }
 
     var metaSize = Int(header & typeMetaSizeMask)
     if metaSize == Int(typeMetaSizeMask) {
       metaSize += Int(try buffer.readVarUInt32())
     }
-
-    let encodedBody = try buffer.readBytes(count: metaSize)
-    if compressed {
-      throw ForyError.encodingError("compressed TypeMeta is not supported yet")
+    if metaSize > maxTypeMetaBytes {
+      throw ForyError.invalidData(
+        "Type metadata body size \(metaSize) exceeds maxTypeMetaBytes \(maxTypeMetaBytes). "
+          + "The data may be malicious. If the data is not malicious, please increase maxTypeMetaBytes."
+      )
     }
 
+    // maxTypeMetaBytes is only a size cap. readBytes performs the buffer
+    // bound check before allocating/copying the declared body bytes.
+    let encodedBody = try buffer.readBytes(count: metaSize)
     let bodyReader = ByteBuffer(bytes: encodedBody)
     let metaHeader = try bodyReader.readUInt8()
 
@@ -363,6 +381,12 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       numFields = Int(metaHeader & UInt8(smallNumFieldsThreshold))
       if numFields == smallNumFieldsThreshold {
         numFields += Int(try bodyReader.readVarUInt32())
+      }
+      if numFields > maxTypeFields {
+        throw ForyError.invalidData(
+          "Type metadata field count \(numFields) exceeds maxTypeFields \(maxTypeFields). "
+            + "The data may be malicious. If the data is not malicious, please increase maxTypeFields."
+        )
       }
       if registerByName {
         typeID = compatible ? TypeId.namedCompatibleStruct.rawValue : TypeId.namedStruct.rawValue
@@ -408,8 +432,7 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
       throw ForyError.invalidData("unexpected trailing bytes in TypeMeta body")
     }
     if (header & Self.hashMask())
-      != Self.typeMetaHeaderHash(encodedBody, headerLowBits: header & ~Self.hashMask())
-    {
+      != Self.typeMetaHeaderHash(encodedBody, headerLowBits: header & ~Self.hashMask()) {
       throw ForyError.invalidData("invalid TypeMeta metadata hash")
     }
 
@@ -599,7 +622,25 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
 
     let localFields = localTypeMeta.fields
     guard !localFields.isEmpty else {
-      return self
+      var resolvedFields = fields
+      var changed = false
+      for index in resolvedFields.indices where resolvedFields[index].fieldID != -1 {
+        resolvedFields[index].fieldID = -1
+        changed = true
+      }
+      guard changed else {
+        return self
+      }
+      return try TypeMeta(
+        typeID: typeID,
+        userTypeID: userTypeID,
+        namespace: namespace,
+        typeName: typeName,
+        registerByName: registerByName,
+        fields: resolvedFields,
+        compressed: compressed,
+        headerHash: headerHash
+      )
     }
 
     var fieldIndexByName: [String: (Int, FieldInfo)] = [:]
@@ -608,9 +649,10 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     fieldIndexByID.reserveCapacity(localFields.count)
 
     for (index, localField) in localFields.enumerated() {
-      fieldIndexByName[toSnakeCase(localField.fieldName)] = (index, localField)
       if let fieldID = localField.fieldID, fieldID >= 0 {
         fieldIndexByID[fieldID] = (index, localField)
+      } else {
+        fieldIndexByName[toSnakeCase(localField.fieldName)] = (index, localField)
       }
     }
 
@@ -623,26 +665,35 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
 
       var localMatch: (Int, FieldInfo)?
       if let fieldID = field.fieldID, fieldID >= 0 {
-        if let candidate = fieldIndexByID[fieldID],
-          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType)
-        {
+        if let candidate = fieldIndexByID[fieldID] {
+          guard Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType) else {
+            throw ForyError.invalidData(
+              "compatible field \(field.fieldName) cannot be read as local field \(candidate.1.fieldName)"
+            )
+          }
           localMatch = candidate
         }
       }
 
-      if localMatch == nil {
-        if let candidate = fieldIndexByName[toSnakeCase(field.fieldName)],
-          Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType)
-        {
+      if localMatch == nil && field.fieldID == nil {
+        if let candidate = fieldIndexByName[toSnakeCase(field.fieldName)] {
+          guard Self.isCompatibleFieldType(field.fieldType, candidate.1.fieldType) else {
+            throw ForyError.invalidData(
+              "compatible field \(field.fieldName) cannot be read as local field \(candidate.1.fieldName)"
+            )
+          }
           localMatch = candidate
         }
       }
 
-      if localMatch == nil {
+      // Only anonymous legacy fields may fall back by exact type. Named or
+      // tagged remote-only fields must stay unmatched so the reader skips them.
+      if localMatch == nil && field.fieldID == nil && field.fieldName.isEmpty {
         for localIndex in localFields.indices where !usedLocalFields[localIndex] {
           if Self.isCompatibleFieldType(
             field.fieldType,
             localFields[localIndex].fieldType,
+            topLevel: false,
             allowScalarConversion: false
           ) {
             localMatch = (localIndex, localFields[localIndex])
@@ -651,17 +702,27 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
         }
       }
 
-      guard let (sortedIndex, _) = localMatch,
-        sortedIndex <= Int(Int16.max)
-      else {
+      guard let (sortedIndex, _) = localMatch else {
         if field.fieldID != -1 {
           resolvedFields[index].fieldID = -1
           changed = true
         }
         continue
       }
+      guard sortedIndex <= Int(Int16.max) / 2 else {
+        throw ForyError.invalidData(
+          "compatible field \(field.fieldName) matched local field index \(sortedIndex) beyond Int16 dispatch range"
+        )
+      }
+      if usedLocalFields[sortedIndex] {
+        throw ForyError.invalidData(
+          "compatible field \(field.fieldName) duplicates local field \(localFields[sortedIndex].fieldName)"
+        )
+      }
 
-      let resolvedFieldID = Int16(sortedIndex)
+      let localField = localFields[sortedIndex]
+      let exactField = field.fieldType == localField.fieldType
+      let resolvedFieldID = Int16(sortedIndex * 2 + (exactField ? 0 : 1))
       if field.fieldID != resolvedFieldID {
         resolvedFields[index].fieldID = resolvedFieldID
         changed = true
@@ -694,28 +755,39 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     if topLevel, isCompatibleTopLevelListArrayFieldType(remoteType, localType) {
       return true
     }
+    if topLevel, isCompatibleByteSequenceFieldType(remoteType, localType) {
+      return true
+    }
     if topLevel,
       remoteType.trackRef != localType.trackRef,
       compatibleScalarKind(remoteType.typeID) != nil,
-      compatibleScalarKind(localType.typeID) != nil
-    {
+      compatibleScalarKind(localType.typeID) != nil {
       return false
     }
     if topLevel,
       remoteType.trackRef || localType.trackRef,
       compatibleScalarKind(remoteType.typeID) != nil,
       compatibleScalarKind(localType.typeID) != nil,
-      remoteType.typeID != localType.typeID || remoteType.nullable != localType.nullable
-    {
+      remoteType.typeID != localType.typeID || remoteType.nullable != localType.nullable {
       return false
     }
     if topLevel, allowScalarConversion, isCompatibleScalarFieldType(remoteType, localType) {
       return true
     }
-    if normalizeCompatibleTypeIDForComparison(remoteType.typeID)
-      != normalizeCompatibleTypeIDForComparison(localType.typeID)
-    {
+    if normalizeUserTypeIDForComparison(remoteType.typeID)
+      != normalizeUserTypeIDForComparison(localType.typeID) {
       return false
+    }
+    if !topLevel,
+      compatibleScalarKind(remoteType.typeID) != nil
+        || compatibleScalarKind(localType.typeID) != nil {
+      // Untracked nested scalar payloads carry null markers at read time. A nullable schema can
+      // match a non-null local container element; the container reader owns actual-null semantics.
+      return remoteType.typeID == localType.typeID
+        && remoteType.trackRef == localType.trackRef
+        && (!remoteType.trackRef || remoteType.nullable == localType.nullable)
+        && remoteType.generics.isEmpty
+        && localType.generics.isEmpty
     }
     if remoteType.generics.count != localType.generics.count {
       return false
@@ -736,25 +808,61 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     _ remoteType: FieldType,
     _ localType: FieldType
   ) -> Bool {
+    guard !remoteType.nullable, !localType.nullable, !remoteType.trackRef, !localType.trackRef
+    else {
+      return false
+    }
     if remoteType.typeID == TypeId.list.rawValue {
-      return listElementMatchesDenseArrayTypeID(remoteType, arrayTypeID: localType.typeID)
+      return listElementMatchesDenseArrayTypeID(
+        remoteType,
+        arrayTypeID: localType.typeID,
+        requireUnframedElement: true
+      )
     }
     if localType.typeID == TypeId.list.rawValue {
-      return listElementMatchesDenseArrayTypeID(localType, arrayTypeID: remoteType.typeID)
+      return listElementMatchesDenseArrayTypeID(
+        localType,
+        arrayTypeID: remoteType.typeID,
+        requireUnframedElement: false
+      )
     }
     return false
   }
 
   private static func listElementMatchesDenseArrayTypeID(
     _ listType: FieldType,
-    arrayTypeID: UInt32
+    arrayTypeID: UInt32,
+    requireUnframedElement: Bool
   ) -> Bool {
     guard listType.typeID == TypeId.list.rawValue,
       let elementType = listType.generics.first
     else {
       return false
     }
+    // Nullable element schema is allowed for list<T?> -> array<T>; actual
+    // null payload elements fail in the dense-array reader. Ref-tracked
+    // element framing is rejected here because this path stays primitive-only.
+    if requireUnframedElement, elementType.trackRef {
+      return false
+    }
     return TypeId.listElementTypeID(elementType.typeID, matchesDenseArrayTypeID: arrayTypeID)
+  }
+
+  private static func isCompatibleByteSequenceFieldType(
+    _ remoteType: FieldType,
+    _ localType: FieldType
+  ) -> Bool {
+    guard !remoteType.trackRef,
+      !localType.trackRef,
+      remoteType.nullable == localType.nullable
+    else {
+      return false
+    }
+    return
+      (remoteType.typeID == TypeId.binary.rawValue
+      && localType.typeID == TypeId.uint8Array.rawValue)
+      || (remoteType.typeID == TypeId.uint8Array.rawValue
+        && localType.typeID == TypeId.binary.rawValue)
   }
 
   private static func isCompatibleScalarFieldType(
@@ -838,7 +946,7 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     }
   }
 
-  private static func normalizeCompatibleTypeIDForComparison(_ typeID: UInt32) -> UInt32 {
+  private static func normalizeUserTypeIDForComparison(_ typeID: UInt32) -> UInt32 {
     switch typeID {
     case TypeId.structType.rawValue,
       TypeId.compatibleStruct.rawValue,
@@ -852,10 +960,6 @@ public final class TypeMeta: Equatable, @unchecked Sendable {
     case TypeId.ext.rawValue,
       TypeId.namedExt.rawValue:
       return TypeId.ext.rawValue
-    case TypeId.binary.rawValue,
-      TypeId.int8Array.rawValue,
-      TypeId.uint8Array.rawValue:
-      return TypeId.binary.rawValue
     case TypeId.union.rawValue,
       TypeId.typedUnion.rawValue,
       TypeId.namedUnion.rawValue:

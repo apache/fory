@@ -38,6 +38,12 @@ bazel-*/
 bazel-fory/
 bazel-fory/**
 **/generated
+!integration_tests/grpc_tests/rust/generated/
+integration_tests/grpc_tests/rust/generated/*
+!integration_tests/grpc_tests/rust/generated/Cargo.toml
+!integration_tests/grpc_tests/rust/generated/src/
+integration_tests/grpc_tests/rust/generated/src/*
+!integration_tests/grpc_tests/rust/generated/src/lib.rs
 java/**/generated
 
 javascript/**/dist/
@@ -78,6 +84,7 @@ bazel-genfiles//
 
 # Go
 go/**/build/
+integration_tests/grpc_tests/go/grpc-interop
 
 # Rust
 rust/target/
@@ -131,6 +138,7 @@ benchmarks/python/proto/
 benchmarks/java/dependency-reduced-pom.xml
 benchmarks/go/go.test
 benchmarks/rust/Cargo.lock
+integration_tests/grpc_tests/rust/Cargo.lock
 docs/superpowers
 test.md
 

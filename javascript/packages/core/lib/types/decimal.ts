@@ -37,9 +37,11 @@ export class Decimal {
   }
 
   equals(other: unknown): boolean {
-    return other instanceof Decimal
+    return (
+      other instanceof Decimal
       && other.scale === this.scale
-      && other.unscaledValue === this.unscaledValue;
+      && other.unscaledValue === this.unscaledValue
+    );
   }
 
   toString(): string {
@@ -73,10 +75,10 @@ export class DecimalCodec {
     return Uint8Array.from(bytes);
   }
 
-  static fromCanonicalLittleEndianMagnitude(payload: Uint8Array): bigint {
+  static fromCanonicalLittleEndianMagnitude(bytes: Uint8Array): bigint {
     let magnitude = 0n;
-    for (let i = payload.length - 1; i >= 0; i--) {
-      magnitude = (magnitude << 8n) | BigInt(payload[i]);
+    for (let i = bytes.length - 1; i >= 0; i--) {
+      magnitude = (magnitude << 8n) | BigInt(bytes[i]);
     }
     return magnitude;
   }

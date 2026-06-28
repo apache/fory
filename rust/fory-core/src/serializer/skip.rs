@@ -21,13 +21,13 @@ use crate::error::Error;
 use crate::meta::FieldType;
 use crate::serializer::collection::{DECL_ELEMENT_TYPE, HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::util;
-use crate::serializer::Serializer;
 use crate::type_id as types;
-use crate::types::{Date, Duration, Timestamp};
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
 use crate::RefFlag;
 use std::rc::Rc;
 
+#[cold]
+#[inline(never)]
 #[allow(unreachable_code)]
 pub fn skip_field_value(
     context: &mut ReadContext,
@@ -42,6 +42,80 @@ fn unknown_field_type() -> FieldType {
     FieldType::new(types::UNKNOWN, true, Vec::new())
 }
 
+#[inline(always)]
+fn skip_bytes(context: &mut ReadContext, len: usize) -> Result<(), Error> {
+    context.reader.check_bound(len)?;
+    context.reader.move_next(len);
+    Ok(())
+}
+
+#[cold]
+#[inline(never)]
+fn skip_sized_bytes(context: &mut ReadContext, element_size: Option<usize>) -> Result<(), Error> {
+    let size_bytes = context.reader.read_var_u32()? as usize;
+    if let Some(element_size) = element_size {
+        if size_bytes % element_size != 0 {
+            return Err(Error::invalid_data("Invalid data length"));
+        }
+    }
+    skip_bytes(context, size_bytes)
+}
+
+#[cold]
+#[inline(never)]
+fn skip_string(context: &mut ReadContext) -> Result<(), Error> {
+    let header = context.reader.read_var_u36_small()?;
+    let len = (header >> 2) as usize;
+    let encoding = header & 0b11;
+    match encoding {
+        // Latin1 and UTF-16 have no validation beyond readable bytes in the current reader.
+        0 | 1 => skip_bytes(context, len),
+        2 => {
+            if context.is_check_string_read() {
+                let start = context.reader.get_cursor();
+                context.reader.check_bound(len)?;
+                let bytes = context.reader.sub_slice(start, start + len)?;
+                std::str::from_utf8(bytes)
+                    .map_err(|_| Error::encoding_error("invalid UTF-8 string"))?;
+            }
+            skip_bytes(context, len)
+        }
+        _ => Err(Error::encoding_error(format!(
+            "wrong encoding value: {}",
+            encoding
+        ))),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn skip_decimal(context: &mut ReadContext) -> Result<(), Error> {
+    let _scale = context.reader.read_var_i32()?;
+    let header = context.reader.read_var_u64()?;
+    if (header & 1) == 0 {
+        return Ok(());
+    }
+
+    let meta = header >> 1;
+    let len = (meta >> 1) as usize;
+    if len == 0 {
+        return Err(Error::invalid_data(
+            "invalid decimal magnitude length 0".to_string(),
+        ));
+    }
+    let start = context.reader.get_cursor();
+    context.reader.check_bound(len)?;
+    let payload = context.reader.sub_slice(start, start + len)?;
+    if payload[len - 1] == 0 {
+        return Err(Error::invalid_data(
+            "non-canonical decimal payload: trailing zero byte".to_string(),
+        ));
+    }
+    skip_bytes(context, len)
+}
+
+#[cold]
+#[inline(never)]
 pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<(), Error> {
     // Handle ref flag first if needed
     if read_ref_flag {
@@ -59,6 +133,11 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
 
     // Read type_id first
     let type_id = context.reader.read_u8()? as u32;
+    if type_id == types::UNKNOWN {
+        return Err(Error::type_error(
+            "UNKNOWN type id cannot appear as a concrete value",
+        ));
+    }
     let internal_id = type_id;
     let _user_type_id = if types::needs_user_type_id(type_id) && type_id != types::COMPATIBLE_STRUCT
     {
@@ -133,6 +212,8 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     skip_value(context, &field_type, false, false, &type_info_opt)
 }
 
+#[cold]
+#[inline(never)]
 fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
     let length = context.reader.read_var_u32()? as usize;
     if length == 0 {
@@ -171,6 +252,8 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     Ok(())
 }
 
+#[cold]
+#[inline(never)]
 fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Error> {
     let length = context.reader.read_var_u32()?;
     if length == 0 {
@@ -295,6 +378,8 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
     Ok(())
 }
 
+#[cold]
+#[inline(never)]
 fn skip_struct(
     context: &mut ReadContext,
     type_id_num: u32,
@@ -342,6 +427,8 @@ fn skip_struct(
     Ok(())
 }
 
+#[cold]
+#[inline(never)]
 fn skip_ext(
     context: &mut ReadContext,
     type_id_num: u32,
@@ -365,6 +452,8 @@ fn skip_ext(
 }
 
 // call when is_field && is_compatible_mode
+#[cold]
+#[inline(never)]
 #[allow(unreachable_code)]
 fn skip_value(
     context: &mut ReadContext,
@@ -421,316 +510,322 @@ fn skip_value(
 
     // Match on built-in types (ordered by TypeId enum values)
     match type_id_num {
-        // ============ UNKNOWN (TypeId = 0) ============
+        // ============ UNKNOWN ============
         types::UNKNOWN => {
             // UNKNOWN is used for polymorphic types in cross-language serialization
             return skip_any_value(context, false);
         }
 
-        // ============ BOOL (TypeId = 1) ============
+        // ============ BOOL ============
         types::BOOL => {
-            <bool as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_u8()?;
         }
 
-        // ============ INT8 (TypeId = 2) ============
+        // ============ INT8 ============
         types::INT8 => {
-            <i8 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_i8()?;
         }
 
-        // ============ INT16 (TypeId = 3) ============
+        // ============ INT16 ============
         types::INT16 => {
-            <i16 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_i16()?;
         }
 
-        // ============ INT32 (TypeId = 4) ============
+        // ============ INT32 ============
         types::INT32 => {
             context.reader.read_i32()?;
         }
 
-        // ============ VARINT32 (TypeId = 5) ============
+        // ============ VARINT32 ============
         types::VARINT32 => {
-            <i32 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_var_i32()?;
         }
 
-        // ============ INT64 (TypeId = 6) ============
+        // ============ INT64 ============
         types::INT64 => {
             context.reader.read_i64()?;
         }
 
-        // ============ VARINT64 (TypeId = 7) ============
+        // ============ VARINT64 ============
         types::VARINT64 => {
-            <i64 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_var_i64()?;
         }
 
-        // ============ TAGGED_INT64 (TypeId = 8) ============
+        // ============ TAGGED_INT64 ============
         types::TAGGED_INT64 => {
             context.reader.read_tagged_i64()?;
         }
 
-        // ============ UINT8 (TypeId = 9) ============
+        // ============ UINT8 ============
         types::UINT8 => {
-            <u8 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_u8()?;
         }
 
-        // ============ UINT16 (TypeId = 10) ============
+        // ============ UINT16 ============
         types::UINT16 => {
-            <u16 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_u16()?;
         }
 
-        // ============ UINT32 (TypeId = 11) ============
+        // ============ UINT32 ============
         types::UINT32 => {
             context.reader.read_u32()?;
         }
 
-        // ============ VAR_UINT32 (TypeId = 12) ============
+        // ============ VAR_UINT32 ============
         types::VAR_UINT32 => {
-            <u32 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_var_u32()?;
         }
 
-        // ============ UINT64 (TypeId = 13) ============
+        // ============ UINT64 ============
         types::UINT64 => {
             context.reader.read_u64()?;
         }
 
-        // ============ VAR_UINT64 (TypeId = 14) ============
+        // ============ VAR_UINT64 ============
         types::VAR_UINT64 => {
-            <u64 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_var_u64()?;
         }
 
-        // ============ TAGGED_UINT64 (TypeId = 15) ============
+        // ============ TAGGED_UINT64 ============
         types::TAGGED_UINT64 => {
             context.reader.read_tagged_u64()?;
         }
 
-        // ============ FLOAT16 (TypeId = 17) ============
+        // ============ FLOAT16 ============
         types::FLOAT16 => {
-            <crate::types::float16::float16 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_f16()?;
         }
 
-        // ============ BFLOAT16 (TypeId = 18) ============
+        // ============ BFLOAT16 ============
         types::BFLOAT16 => {
-            <crate::types::bfloat16::bfloat16 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_bf16()?;
         }
 
-        // ============ FLOAT32 (TypeId = 17) ============
+        // ============ FLOAT32 ============
         types::FLOAT32 => {
-            <f32 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_f32()?;
         }
 
-        // ============ FLOAT64 (TypeId = 18) ============
+        // ============ FLOAT64 ============
         types::FLOAT64 => {
-            <f64 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_f64()?;
         }
 
-        // ============ STRING (TypeId = 19) ============
+        // ============ STRING ============
         types::STRING => {
-            <String as Serializer>::fory_read_data(context)?;
+            skip_string(context)?;
         }
 
-        // ============ LIST (TypeId = 20) ============
-        // ============ SET (TypeId = 21) ============
+        // ============ LIST ============
+        // ============ SET ============
         types::LIST | types::SET => {
             return skip_collection(context, field_type);
         }
 
-        // ============ MAP (TypeId = 22) ============
+        // ============ MAP ============
         types::MAP => {
             return skip_map(context, field_type);
         }
 
-        // ============ ENUM (TypeId = 23) ============
+        // ============ ENUM ============
         types::ENUM => {
             let _ordinal = context.reader.read_var_u32()?;
         }
 
-        // ============ NAMED_ENUM (TypeId = 24) ============
+        // ============ NAMED_ENUM ============
         types::NAMED_ENUM => {
             let _ordinal = context.reader.read_var_u32()?;
         }
 
-        // ============ STRUCT (TypeId = 25) ============
+        // ============ STRUCT ============
         types::STRUCT => {
             return skip_struct(context, type_id_num, type_info);
         }
 
-        // ============ COMPATIBLE_STRUCT (TypeId = 26) ============
+        // ============ COMPATIBLE_STRUCT ============
         types::COMPATIBLE_STRUCT => {
             return skip_struct(context, type_id_num, type_info);
         }
 
-        // ============ NAMED_STRUCT (TypeId = 27) ============
+        // ============ NAMED_STRUCT ============
         types::NAMED_STRUCT => {
             return skip_struct(context, type_id_num, type_info);
         }
 
-        // ============ NAMED_COMPATIBLE_STRUCT (TypeId = 28) ============
+        // ============ NAMED_COMPATIBLE_STRUCT ============
         types::NAMED_COMPATIBLE_STRUCT => {
             return skip_struct(context, type_id_num, type_info);
         }
 
-        // ============ EXT (TypeId = 29) ============
+        // ============ EXT ============
         types::EXT => {
             return skip_ext(context, type_id_num, type_info);
         }
 
-        // ============ NAMED_EXT (TypeId = 30) ============
+        // ============ NAMED_EXT ============
         types::NAMED_EXT => {
             return skip_ext(context, type_id_num, type_info);
         }
 
-        // ============ UNION (TypeId = 31) ============
+        // ============ UNION ============
         types::UNION => {
             let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 
-        // ============ TYPED_UNION (TypeId = 32) ============
+        // ============ TYPED_UNION ============
         types::TYPED_UNION => {
             let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 
-        // ============ NAMED_UNION (TypeId = 33) ============
+        // ============ NAMED_UNION ============
         types::NAMED_UNION => {
             let _ = context.reader.read_var_u32()?;
             return skip_any_value(context, true);
         }
 
-        // ============ NONE (TypeId = 34) ============
+        // ============ NONE ============
         types::NONE => {
             return Ok(());
         }
 
-        // ============ DURATION (TypeId = 35) ============
+        // ============ DURATION ============
         types::DURATION => {
-            <Duration as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_var_i64()?;
+            let _ = context.reader.read_i32()?;
         }
 
-        // ============ TIMESTAMP (TypeId = 36) ============
+        // ============ TIMESTAMP ============
         types::TIMESTAMP => {
-            <Timestamp as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_i64()?;
+            let _ = context.reader.read_u32()?;
         }
 
-        // ============ DATE (TypeId = 37) ============
+        // ============ DATE ============
         types::DATE => {
-            <Date as Serializer>::fory_read_data(context)?;
+            if context.is_xlang() {
+                let _ = context.reader.read_var_i64()?;
+            } else {
+                let _ = context.reader.read_i32()?;
+            }
         }
 
-        // ============ DECIMAL (TypeId = 38) ============
+        // ============ DECIMAL ============
         types::DECIMAL => {
-            <crate::Decimal as Serializer>::fory_read_data(context)?;
+            skip_decimal(context)?;
         }
 
-        // ============ BINARY (TypeId = 39) ============
+        // ============ BINARY ============
         types::BINARY => {
-            <Vec<u8> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, None)?;
         }
 
-        // ============ BOOL_ARRAY (TypeId = 41) ============
+        // ============ BOOL_ARRAY ============
         types::BOOL_ARRAY => {
-            <Vec<bool> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(1))?;
         }
 
-        // ============ INT8_ARRAY (TypeId = 42) ============
+        // ============ INT8_ARRAY ============
         types::INT8_ARRAY => {
-            <Vec<i8> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(1))?;
         }
 
-        // ============ INT16_ARRAY (TypeId = 43) ============
+        // ============ INT16_ARRAY ============
         types::INT16_ARRAY => {
-            <Vec<i16> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(2))?;
         }
 
-        // ============ INT32_ARRAY (TypeId = 44) ============
+        // ============ INT32_ARRAY ============
         types::INT32_ARRAY => {
-            <Vec<i32> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(4))?;
         }
 
-        // ============ INT64_ARRAY (TypeId = 45) ============
+        // ============ INT64_ARRAY ============
         types::INT64_ARRAY => {
-            <Vec<i64> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(8))?;
         }
 
-        // ============ UINT8_ARRAY (TypeId = 46) ============
+        // ============ UINT8_ARRAY ============
         types::UINT8_ARRAY => {
-            <Vec<u8> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(1))?;
         }
 
-        // ============ UINT16_ARRAY (TypeId = 47) ============
+        // ============ UINT16_ARRAY ============
         types::UINT16_ARRAY => {
-            <Vec<u16> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(2))?;
         }
 
-        // ============ UINT32_ARRAY (TypeId = 48) ============
+        // ============ UINT32_ARRAY ============
         types::UINT32_ARRAY => {
-            <Vec<u32> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(4))?;
         }
 
-        // ============ UINT64_ARRAY (TypeId = 49) ============
+        // ============ UINT64_ARRAY ============
         types::UINT64_ARRAY => {
-            <Vec<u64> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(8))?;
         }
 
-        // ============ FLOAT16_ARRAY (TypeId = 53) ============
+        // ============ FLOAT16_ARRAY ============
         types::FLOAT16_ARRAY => {
-            <Vec<crate::types::float16::float16> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(2))?;
         }
 
-        // ============ BFLOAT16_ARRAY (TypeId = 54) ============
+        // ============ BFLOAT16_ARRAY ============
         types::BFLOAT16_ARRAY => {
-            <Vec<crate::types::bfloat16::bfloat16> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(2))?;
         }
 
-        // ============ FLOAT32_ARRAY (TypeId = 51) ============
+        // ============ FLOAT32_ARRAY ============
         types::FLOAT32_ARRAY => {
-            <Vec<f32> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(4))?;
         }
 
-        // ============ FLOAT64_ARRAY (TypeId = 52) ============
+        // ============ FLOAT64_ARRAY ============
         types::FLOAT64_ARRAY => {
-            <Vec<f64> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(8))?;
         }
 
         // ============ Rust-specific types ============
 
-        // ============ U128 (TypeId = 64) ============
+        // ============ U128 ============
         types::U128 => {
-            <u128 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_u128()?;
         }
 
-        // ============ INT128 (TypeId = 65) ============
+        // ============ INT128 ============
         types::INT128 => {
-            <i128 as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_i128()?;
         }
 
-        // ============ USIZE (TypeId = 66) ============
+        // ============ USIZE ============
         types::USIZE => {
-            <usize as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_usize()?;
         }
 
-        // ============ ISIZE (TypeId = 67) ============
+        // ============ ISIZE ============
         types::ISIZE => {
-            <isize as Serializer>::fory_read_data(context)?;
+            let _ = context.reader.read_isize()?;
         }
 
-        // ============ U128_ARRAY (TypeId = 68) ============
+        // ============ U128_ARRAY ============
         types::U128_ARRAY => {
-            <Vec<u128> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(16))?;
         }
 
-        // ============ INT128_ARRAY (TypeId = 69) ============
+        // ============ INT128_ARRAY ============
         types::INT128_ARRAY => {
-            <Vec<i128> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(16))?;
         }
 
-        // ============ USIZE_ARRAY (TypeId = 70) ============
+        // ============ USIZE_ARRAY ============
         types::USIZE_ARRAY => {
-            <Vec<usize> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(std::mem::size_of::<usize>()))?;
         }
 
-        // ============ ISIZE_ARRAY (TypeId = 71) ============
+        // ============ ISIZE_ARRAY ============
         types::ISIZE_ARRAY => {
-            <Vec<isize> as Serializer>::fory_read_data(context)?;
+            skip_sized_bytes(context, Some(std::mem::size_of::<isize>()))?;
         }
 
         _ => {

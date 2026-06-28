@@ -23,7 +23,11 @@ This document explains generated code for each target language.
 
 Fory IDL generated types are idiomatic in host languages and can be used directly as domain objects. Generated types also include `to/from bytes` helpers and schema modules or registration helpers, depending on the target language.
 
-Generated schema modules are schema-file owners, not package or namespace owners. In targets that expose the owner directly in a language package or namespace, the owner name includes a source-file-derived prefix such as `AddressbookForyModule` or `ComplexPbForyModule` so multiple IDL files can target the same package or namespace without producing colliding `ForyModule` types.
+Generated schema modules are named from the schema source file, not from the
+package or namespace. In targets that expose the module directly in a language
+package or namespace, names such as `AddressbookForyModule` or
+`ComplexPbForyModule` let multiple IDL files target the same package or
+namespace without producing colliding `ForyModule` types.
 
 ## Reference Schemas
 
@@ -186,7 +190,7 @@ public final class Animal extends Union {
 ### Schema Module
 
 Each JVM schema generates a `ForyModule`. Imported schema modules are installed
-through `fory.register(...)`, so shared imports are deduplicated by the runtime.
+through `fory.register(...)`, so shared imports are deduplicated by the Fory instance.
 
 ```java
 public final class AddressbookForyModule implements org.apache.fory.ForyModule {
@@ -264,7 +268,7 @@ public final class AddressBookServiceGrpc {
 The generated marshaller serializes each request or response with the schema
 module's `ThreadSafeFory`. It uses grpc-java's `MethodDescriptor.Marshaller`
 API, so applications compiling these files must provide grpc-java dependencies.
-Those dependencies are not added to Fory Java runtime artifacts.
+Those dependencies are not added to Fory Java artifacts.
 
 ## Python
 
@@ -369,9 +373,14 @@ restored = Person.from_bytes(data)
 When a schema contains services and the compiler is run with `--grpc`, Python
 generation emits a companion module named `<module>_grpc.py`. The module name is
 derived from the Fory package by replacing dots with underscores, or `generated`
-when the schema has no package.
+when the schema has no package. Python gRPC output defaults to `grpc.aio`
+AsyncIO APIs.
 
 ```python
+import grpc
+import grpc.aio
+
+
 class AddressBookServiceStub:
     def __init__(self, channel):
         self.lookup = channel.unary_unary(
@@ -382,8 +391,8 @@ class AddressBookServiceStub:
 
 
 class AddressBookServiceServicer:
-    def lookup(self, request, context):
-        raise NotImplementedError("Method not implemented!")
+    async def lookup(self, request, context):
+        await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")
 
 
 def add_servicer(servicer, server): ...
@@ -396,6 +405,11 @@ companion module must install `grpcio`; `pyfory` does not add a hard gRPC
 dependency. The Python API uses snake_case method names while preserving the
 original IDL method names in the gRPC wire paths.
 
+Generate synchronous Python `grpcio` companions with
+`--grpc --grpc-python-mode=sync`. Sync mode keeps the same generated filename
+and public names, but servicer methods use regular `def` methods and sync
+`grpc.Channel` and `grpc.Server` instances.
+
 ## Rust
 
 ### Output Layout
@@ -404,10 +418,15 @@ Rust output is one module file per schema, for example:
 
 - `<rust_out>/addressbook.rs`
 
+When `--grpc` is used and the schema contains services, Rust also emits:
+
+- `<rust_out>/addressbook_service.rs`
+- `<rust_out>/addressbook_service_grpc.rs`
+
 ### Type Generation
 
 Unions map to Rust enums with `#[fory(id = ...)]` schema case attributes.
-`#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the runtime
+`#[fory(unknown)] Unknown(::fory::UnknownCase)` marks the Fory-provided
 forward-compatibility carrier. The marker only selects the carrier and does not
 add an entry to the schema case table; schema cases still use the full `0..N`
 ID range. A generated typed union must have at least one non-`Unknown` case. The
@@ -515,6 +534,51 @@ let person = Person {
 let bytes = person.to_bytes()?;
 let restored = Person::from_bytes(&bytes)?;
 ```
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Rust
+generation emits a service API module and a tonic binding module. For a schema
+module named `addressbook`, those files are `addressbook_service.rs` and
+`addressbook_service_grpc.rs`.
+
+The service API module contains the async trait and gRPC path constants:
+
+```rust
+#[::tonic::async_trait]
+pub trait AddressBookService: ::std::marker::Send + ::std::marker::Sync + 'static {
+    async fn lookup(
+        &self,
+        request: ::tonic::Request<crate::addressbook::Person>,
+    ) -> ::std::result::Result<
+        ::tonic::Response<crate::addressbook::AddressBook>,
+        ::tonic::Status,
+    >;
+}
+
+pub const ADDRESS_BOOK_SERVICE_SERVICE_NAME: &str = "addressbook.AddressBookService";
+pub const ADDRESS_BOOK_SERVICE_LOOKUP_PATH: &str = "/addressbook.AddressBookService/Lookup";
+```
+
+The tonic binding module contains Fory-backed codecs, payload implementations,
+and client/server wrappers. It serializes each request or response with the
+generated model type's `to_bytes` and `from_bytes` helpers:
+
+```rust
+impl codec::ForyGrpcPayload for crate::addressbook::Person {
+    fn encode_fory_payload(&self) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {
+        self.to_bytes()
+    }
+
+    fn decode_fory_payload(payload: &[u8]) -> ::std::result::Result<Self, ::fory::Error> {
+        Self::from_bytes(payload)
+    }
+}
+```
+
+Applications compiling the generated Rust service files must provide `tonic` and
+`bytes` dependencies; Fory's Rust crate does not add those gRPC dependencies as
+hard dependencies.
 
 ## C++
 
@@ -776,13 +840,53 @@ if err := restored.FromBytes(data); err != nil {
 }
 ```
 
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Go
+generation emits one `<module>_grpc.go` file next to the model file. The
+companion contains grpc-go client and server interfaces plus a Fory-backed
+`CodecV2`.
+
+```go
+type AddressBookServiceClient interface {
+    Lookup(ctx context.Context, in *Person, opts ...grpc.CallOption) (*AddressBook, error)
+}
+
+func NewAddressBookServiceClient(cc grpc.ClientConnInterface) AddressBookServiceClient { ... }
+
+type CodecV2 struct{}
+```
+
+The generated codec uses the same package-level thread-safe Fory runtime as the
+generated `ToBytes` and `FromBytes` helpers. Applications should pass
+`CodecV2{}` to grpc-go server options, and generated clients force the same
+codec on each call:
+
+```go
+server := grpc.NewServer(grpc.ForceServerCodecV2(addressbook.CodecV2{}))
+addressbook.RegisterAddressBookServiceServer(server, service)
+
+client := addressbook.NewAddressBookServiceClient(conn)
+```
+
+Go method names are exported as PascalCase identifiers, while the gRPC method
+path keeps the exact service and method names from the schema. Regenerate both
+peers after changing service or method names.
+
+Applications compiling these files must provide grpc-go dependencies; Fory Go
+packages do not add gRPC as a hard dependency.
+
 ## C\#
 
 ### Output Layout
 
 C# output is one `.cs` file per schema, for example:
 
-- `<csharp_out>/addressbook/addressbook.cs`
+- `<csharp_out>/addressbook/Addressbook.cs`
+
+The C# model file name uses the normalized PascalCase source file stem. For
+example, `service.fdl` generates `Service.cs`, `order-events.fdl` generates
+`OrderEvents.cs`, and `123-schema.fdl` generates `Schema123Schema.cs`.
 
 ### Type Generation
 
@@ -803,7 +907,7 @@ public sealed partial class Person
 ```
 
 Unions generate `[ForyUnion]` ADTs. `Unknown(UnknownCase)` is the
-runtime-owned forward-compatibility carrier marked with `[ForyUnknownCase]`.
+Fory-provided forward-compatibility carrier marked with `[ForyUnknownCase]`.
 The marker only selects the carrier and does not add an entry to the schema case
 table. Schema-defined cases use non-negative `[ForyCase]` IDs. If a case needs
 non-default schema encoding, the generated `[ForyCase]` carries `Type`. Known
@@ -830,7 +934,7 @@ public abstract partial record Animal
 
 ### Module Installation
 
-Each schema generates a module owner that installs imported modules first and
+Each schema generates a module class that installs imported modules first and
 then registers the local schema types:
 
 ```csharp
@@ -845,11 +949,73 @@ public static class AddressbookForyModule
 }
 ```
 
-The C# module owner keeps the schema-file prefix even when several schemas share
-the same C# namespace.
+The C# model file basename and module class both use the normalized source file
+stem. They do not use `csharp_namespace` and they do not use gRPC service names.
+For example, `service.fdl` generates `Service.cs` and `ServiceForyModule`,
+while `order-events.fdl` generates `OrderEvents.cs` and
+`OrderEventsForyModule`. A gRPC service named `Greeter` generates the service
+companion `GreeterGrpc.cs`; it does not change the schema module name. To get
+`GreeterForyModule`, name the schema file `greeter.fdl` or `Greeter.fdl`.
+
+This source-file rule lets several schemas target the same C# namespace without
+colliding. No namespace-derived or service-derived module alias is generated.
 
 When explicit type IDs are not provided, generated installation uses computed
 numeric IDs (same behavior as other targets).
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, C#
+generation emits one `<ServiceName>Grpc.cs` file per service next to the schema
+model file.
+
+```csharp
+public static partial class AddressBookService
+{
+    public abstract partial class AddressBookServiceBase
+    {
+        public virtual Task<AddressBook> Lookup(
+            Person request,
+            grpc::ServerCallContext context) { ... }
+    }
+
+    public partial class AddressBookServiceClient
+        : grpc::ClientBase<AddressBookServiceClient>
+    {
+        public virtual AddressBook Lookup(Person request, grpc::CallOptions options) { ... }
+        public virtual grpc::AsyncUnaryCall<AddressBook> LookupAsync(
+            Person request,
+            grpc::CallOptions options) { ... }
+    }
+
+    public static grpc::ServerServiceDefinition BindService(
+        AddressBookServiceBase serviceImpl) { ... }
+
+    public static void BindService(
+        grpc::ServiceBinderBase serviceBinder,
+        AddressBookServiceBase? serviceImpl) { ... }
+}
+```
+
+Each generated method descriptor uses a static Fory-backed
+`Grpc.Core.Marshaller<T>` that reuses the schema module's `ThreadSafeFory`.
+Deserialization reads the gRPC body through `PayloadAsReadOnlySequence()` and
+rejects trailing bytes after the single Fory frame. Generated service companions
+do not use protobuf parsers and do not create Fory instances per RPC call.
+
+Streaming RPCs map to standard gRPC C# APIs:
+
+| IDL shape                                 | Server method                                                                 | Client method                               |
+| ----------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------- |
+| `rpc A (Req) returns (Res)`               | `Task<Res> A(Req request, ServerCallContext context)`                         | `A(...)` and `AAsync(...)`                  |
+| `rpc A (Req) returns (stream Res)`        | `Task A(Req request, IServerStreamWriter<Res> responseStream, ...)`           | `AsyncServerStreamingCall<Res> A(...)`      |
+| `rpc A (stream Req) returns (Res)`        | `Task<Res> A(IAsyncStreamReader<Req> requestStream, ...)`                     | `AsyncClientStreamingCall<Req, Res> A(...)` |
+| `rpc A (stream Req) returns (stream Res)` | `Task A(IAsyncStreamReader<Req> requestStream, IServerStreamWriter<Res> ...)` | `AsyncDuplexStreamingCall<Req, Res> A(...)` |
+
+Applications compiling generated C# service files must provide `Grpc.Core.Api`
+and their chosen .NET gRPC hosting or client package, such as `Grpc.AspNetCore`
+or `Grpc.Net.Client`. The `Apache.Fory` package does not add gRPC dependencies
+as hard dependencies.
 
 ## JavaScript/TypeScript
 
@@ -858,6 +1024,11 @@ numeric IDs (same behavior as other targets).
 JavaScript/TypeScript output is one `.ts` file per schema, for example:
 
 - `<javascript_out>/addressbook.ts`
+
+When the schema contains services, JavaScript can also emit service companions:
+
+- `<javascript_out>/addressbook_grpc.ts` with `--grpc`
+- `<javascript_out>/addressbook_grpc_web.ts` with `--grpc-web`
 
 ### Type Generation
 
@@ -895,6 +1066,64 @@ export type Animal =
   | { case: AnimalCase.CAT; value: Cat };
 ```
 
+### Schema Helpers
+
+Each generated model file exports a registration helper for custom `Fory`
+instances and root serialization helpers. The public API looks like:
+
+```typescript
+import type Fory, { Serializer } from "@apache-fory/core";
+
+export function registerAddressbookTypes(fory: Fory): {
+  person: {
+    serialize: (value: Person | null) => Uint8Array;
+    deserialize: (bytes: Uint8Array) => Person;
+    serializer: Serializer;
+  };
+};
+export const serializePerson: (value: Person | null) => Uint8Array;
+export const deserializePerson: (bytes: Uint8Array) => Person;
+```
+
+Imported schema modules are registered automatically by `registerXxxTypes(fory)`.
+Use `serializeX` and `deserializeX` for the generated default serialization
+path. Call `registerXxxTypes(fory)` when the application manages its own `Fory`
+instance. Generated gRPC companions import the generated helpers automatically.
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`,
+JavaScript generation emits a Node.js companion named `<module>_grpc.ts`.
+The file contains service descriptors, handler interfaces, a client class, and a
+server registration helper for `@grpc/grpc-js`.
+
+```typescript
+export interface GreeterHandlers extends grpc.UntypedServiceImplementation {
+  sayHello: grpc.handleUnaryCall<HelloRequest, HelloReply>;
+}
+
+export function addGreeterService(
+  server: grpc.Server,
+  handlers: GreeterHandlers,
+): void { ... }
+
+export class GreeterClient extends grpc.Client { ... }
+```
+
+When the compiler is run with `--grpc-web`, JavaScript generation emits a
+browser companion named `<module>_grpc_web.ts`. It contains callback clients for
+`grpc-web`; services with unary RPCs also get promise clients:
+
+```typescript
+export class GreeterWebClient { ... }
+
+export class GreeterWebPromiseClient { ... }
+```
+
+Node.js service companions import `@grpc/grpc-js`; browser companions import
+`grpc-web`. Add those packages to the application that compiles or runs the
+generated files.
+
 ## Swift
 
 ### Output Layout
@@ -908,7 +1137,7 @@ Swift output is one `.swift` file per schema, for example:
 The generator creates Swift models with split model macros and stable field/case IDs.
 A typed union must include `@ForyUnknownCase case unknown(UnknownCase)` and at
 least one non-`unknown` case; `unknown(UnknownCase)` is only the
-runtime-owned forward-compatibility carrier. The marker only selects the carrier
+Fory-provided forward-compatibility carrier. The marker only selects the carrier
 and does not add an entry to the schema case table.
 
 When package/namespace is non-empty, namespace shaping is controlled by `swift_namespace_style`:
@@ -1151,6 +1380,47 @@ void main() {
 }
 ```
 
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Dart
+generation emits one `<module>_grpc.dart` file per schema next to the model
+types. It targets `package:grpc`. Request and response serialization uses a Fory
+runtime the companion obtains automatically and that registers the schema's
+types on first use, so no manual registration is required; an application may
+optionally inject a custom `Fory` via the schema module's `install(...)` before
+the first call.
+
+All four RPC modes are generated: unary, server-streaming, client-streaming, and
+bidirectional. The client class extends `Client`; the service base class extends
+`Service` and self-registers each method with `$addMethod`.
+
+```dart
+class GreeterClient extends Client {
+  // Single response: ResponseFuture. Streaming response: ResponseStream.
+  ResponseFuture<HelloReply> sayHello(HelloRequest request, {CallOptions? options}) { ... }
+  ResponseStream<HelloReply> sayHellos(HelloRequest request, {CallOptions? options}) { ... }
+  ResponseFuture<HelloReply> collectHellos(Stream<HelloRequest> request, {CallOptions? options}) { ... }
+  ResponseStream<HelloReply> chatHellos(Stream<HelloRequest> request, {CallOptions? options}) { ... }
+}
+
+abstract class GreeterServiceBase extends Service {
+  Future<HelloReply> sayHello(ServiceCall call, HelloRequest request);
+  Stream<HelloReply> sayHellos(ServiceCall call, HelloRequest request);
+  Future<HelloReply> collectHellos(ServiceCall call, Stream<HelloRequest> request);
+  Stream<HelloReply> chatHellos(ServiceCall call, Stream<HelloRequest> request);
+}
+```
+
+A single-response client method returns `ResponseFuture<R>` (client-streaming
+adapts the streaming call with `.single`); a streaming-response method returns
+`ResponseStream<R>`. On the server, implementations override the abstract methods,
+which receive a single request as `Q` and a client-streaming request as
+`Stream<Q>`, and return a `Future` for single responses or a `Stream` for
+streaming responses.
+Applications compiling these files must provide a `grpc` dependency; the Fory Dart
+runtime does not add one. The original IDL method names are used in the gRPC wire
+paths.
+
 ## Kotlin
 
 The Kotlin target emits Kotlin source only. The compiler does not generate Java
@@ -1221,7 +1491,7 @@ Generated Kotlin IDL sources express nullability with Kotlin `?`, not Fory
 construction cycles.
 
 Enums generate Kotlin enum classes with stable Fory enum IDs. Unions generate
-sealed classes with `@ForyUnion`; the runtime-owned `Unknown(UnknownCase)`
+sealed classes with `@ForyUnion`; the Fory-provided `Unknown(UnknownCase)`
 carrier is marked with `@ForyUnknownCase`. The marker only selects the carrier
 and does not add an entry to the schema case table. Schema-defined cases may use
 case IDs `0..N` and hold a single `value` property. A typed union must have at
@@ -1262,9 +1532,9 @@ including nested positions.
 ### Schema Module
 
 Generated schema modules register schema types and resolve KSP-generated
-serializers from the target class name. The package-owned helper runtime uses
+serializers from the target class name. The package-owned helper Fory instance uses
 `ForyKotlin.builder().withXlang(true)` with the schema module installed, so message
-`toBytes`/`fromBytes` helpers work without caller-managed runtime setup. For
+`toBytes`/`fromBytes` helpers work without caller-managed Fory setup. For
 `addressbook.fdl`:
 
 ```kotlin
@@ -1290,11 +1560,82 @@ public object AddressbookForyModule : ForyModule {
 `registerUnion` discovers the generated `<Target>_ForySerializer`; callers do
 not pass a serializer instance.
 
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Kotlin
+generation emits one `<ServiceName>GrpcKt.kt` file per service next to the model
+types. The file contains a grpc-kotlin coroutine companion object, not Java
+`*Grpc.java` source.
+
+```kotlin
+public object AddressBookServiceGrpcKt {
+  public const val SERVICE_NAME: String = "addressbook.AddressBookService"
+
+  @JvmStatic
+  public val serviceDescriptor: io.grpc.ServiceDescriptor
+    get() = serviceDescriptorValue
+
+  @JvmStatic
+  public val lookupMethod: io.grpc.MethodDescriptor<Person, AddressBook>
+    get() = lookupMethodValue
+
+  public abstract class AddressBookServiceCoroutineImplBase(
+    coroutineContext: kotlin.coroutines.CoroutineContext =
+      kotlin.coroutines.EmptyCoroutineContext,
+  ) : io.grpc.kotlin.AbstractCoroutineServerImpl(coroutineContext) {
+    public open suspend fun lookup(request: Person): AddressBook =
+      throw io.grpc.StatusException(
+        io.grpc.Status.UNIMPLEMENTED.withDescription(
+          "Method addressbook.AddressBookService/Lookup is unimplemented",
+        ),
+      )
+  }
+
+  public class AddressBookServiceCoroutineStub @JvmOverloads constructor(
+    channel: io.grpc.Channel,
+    callOptions: io.grpc.CallOptions = io.grpc.CallOptions.DEFAULT,
+  ) : io.grpc.kotlin.AbstractCoroutineStub<AddressBookServiceCoroutineStub>(
+    channel,
+    callOptions,
+  ) {
+    public suspend fun lookup(
+      request: Person,
+      headers: io.grpc.Metadata = io.grpc.Metadata(),
+    ): AddressBook =
+      io.grpc.kotlin.ClientCalls.unaryRpc(
+        channel,
+        lookupMethod,
+        request,
+        callOptions,
+        headers,
+      )
+  }
+}
+```
+
+Streaming RPCs use `kotlinx.coroutines.flow.Flow`:
+
+| IDL shape                                 | Server method                             | Client method                             |
+| ----------------------------------------- | ----------------------------------------- | ----------------------------------------- |
+| `rpc A (Req) returns (Res)`               | `suspend fun a(request: Req): Res`        | `suspend fun a(request: Req): Res`        |
+| `rpc A (Req) returns (stream Res)`        | `fun a(request: Req): Flow<Res>`          | `fun a(request: Req): Flow<Res>`          |
+| `rpc A (stream Req) returns (Res)`        | `suspend fun a(requests: Flow<Req>): Res` | `suspend fun a(requests: Flow<Req>): Res` |
+| `rpc A (stream Req) returns (stream Res)` | `fun a(requests: Flow<Req>): Flow<Res>`   | `fun a(requests: Flow<Req>): Flow<Res>`   |
+
+Each method descriptor uses a Fory-backed `io.grpc.MethodDescriptor.Marshaller`
+that reuses the generated schema module's `ThreadSafeFory`. Generated service
+companions do not call protobuf parsers, do not expose KSP serializer class
+names, and do not create Fory instances per call.
+
+Applications compiling the generated Kotlin service files must provide
+grpc-java, grpc-kotlin, and `kotlinx-coroutines-core` dependencies. Fory Kotlin
+artifacts do not add those gRPC dependencies as hard dependencies.
+
 ## Scala
 
-The Scala target emits Scala 3 source only. The `fory-scala` runtime artifact
-still supports Scala 2.13 and Scala 3, but generated IDL source and macro
-derivation require Scala 3.
+The Scala target emits Scala 3 source only. The `fory-scala` artifact still
+supports Scala 2.13 and Scala 3, but generated IDL source and macro derivation
+require Scala 3.
 
 ### Output Layout
 
@@ -1369,7 +1710,7 @@ enum PhoneType {
 }
 ```
 
-Unions generate Scala 3 ADT enums. `Unknown(UnknownCase)` is the runtime-owned
+Unions generate Scala 3 ADT enums. `Unknown(UnknownCase)` is the Fory-provided
 forward-compatibility carrier marked with `@ForyUnknownCase`. It is omitted
 from the schema case table because the marker only selects the carrier and does
 not add a schema entry. Schema-defined cases use non-negative `@ForyCase` IDs.
@@ -1408,9 +1749,9 @@ use type-use annotations such as `List[Node @Ref]`.
 ### Schema Module
 
 Generated schema modules register schema serializers, enums, structs, and
-unions. The package-owned helper runtime uses
+unions. The package-owned helper Fory instance uses
 `ForyScala.builder().withXlang(true)` with the schema module installed, so
-message `toBytes`/`fromBytes` helpers work without caller-managed runtime setup:
+message `toBytes`/`fromBytes` helpers work without caller-managed Fory setup:
 
 ```scala
 object AddressbookForyModule extends org.apache.fory.ForyModule {
@@ -1431,6 +1772,92 @@ object AddressbookForyModule extends org.apache.fory.ForyModule {
   }
 }
 ```
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, Scala
+generation emits one `<ServiceName>Grpc.scala` companion per local service
+definition. The companion lives in the same Scala package as the generated
+models and schema module.
+
+For a service such as:
+
+```protobuf
+service AddressBookService {
+  rpc Lookup (Person) returns (AddressBook);
+  rpc Watch (Person) returns (stream AddressBook);
+  rpc Upload (stream Person) returns (AddressBook);
+  rpc Chat (stream Person) returns (stream AddressBook);
+}
+```
+
+the generated companion contains:
+
+- `SERVICE_NAME` and grpc-java method descriptors
+- `AddressBookServiceImplBase` for server implementations
+- `AddressBookServiceClient` for client calls
+- Fory-backed grpc-java marshallers for request and response payloads
+
+The generated Scala client keeps grpc-java available per method while adding
+Scala-friendly convenience methods for the shapes where a direct Scala handle
+can preserve the needed lifecycle controls:
+
+| RPC shape                                               | Scala convenience method            | grpc-java-style method                           |
+| ------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `rpc Lookup (Person) returns (AddressBook)`             | `lookup(request): RpcFuture[Resp]`  | async observer, blocking, and `ListenableFuture` |
+| `rpc Watch (Person) returns (stream AddressBook)`       | `watch(request): RpcIterator[Resp]` | async observer and blocking iterator             |
+| `rpc Upload (stream Person) returns (AddressBook)`      | None                                | request `StreamObserver`                         |
+| `rpc Chat (stream Person) returns (stream AddressBook)` | None                                | request and response `StreamObserver`            |
+
+Unary client convenience methods return `org.apache.fory.scala.rpc.RpcFuture`:
+
+```scala
+val client = AddressBookServiceGrpc.newClient(channel)
+val call = client.lookup(person)
+call.asFuture.foreach(handleAddressBook)(scala.concurrent.ExecutionContext.global)
+```
+
+Server-streaming client convenience methods return
+`org.apache.fory.scala.rpc.RpcIterator`:
+
+```scala
+val stream = client.watch(person)
+try {
+  while (stream.hasNext) {
+    handleAddressBook(stream.next())
+  }
+} finally {
+  stream.close()
+}
+```
+
+Close or cancel the `RpcIterator` when the client stops before consuming the
+whole stream. The generated adapter cancels the underlying gRPC call so the
+server is not left writing a response stream the client no longer reads.
+
+Client-streaming and bidirectional methods use grpc-java `StreamObserver` APIs:
+
+```scala
+val requestStream = client.upload(
+  new io.grpc.stub.StreamObserver[AddressBook] {
+    override def onNext(value: AddressBook): Unit = handleAddressBook(value)
+    override def onError(t: Throwable): Unit = handleError(t)
+    override def onCompleted(): Unit = ()
+  }
+)
+requestStream.onNext(person)
+requestStream.onCompleted()
+```
+
+Server implementations mirror grpc-java. Unary methods can override the direct
+request-to-response method generated by Scala, but streaming methods override
+observer-based methods and must call `onNext`, `onError`, and `onCompleted`
+according to grpc-java lifecycle rules.
+
+Applications compiling generated Scala gRPC companions must provide grpc-java
+dependencies such as `grpc-api`, `grpc-stub`, and a transport like
+`grpc-netty-shaded`. The `fory-scala` artifact does not add grpc-java as a hard
+dependency.
 
 ## Cross-Language Notes
 

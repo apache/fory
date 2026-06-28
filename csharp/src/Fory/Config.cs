@@ -27,12 +27,41 @@ public sealed class Config
         bool trackRef,
         bool compatible,
         bool checkStructVersion,
-        int maxDepth)
+        int maxDepth,
+        int maxTypeFields,
+        int maxTypeMetaBytes,
+        int maxSchemaVersionsPerType,
+        int maxAverageSchemaVersionsPerType)
     {
+        if (maxDepth <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxDepth), "MaxDepth must be greater than 0.");
+        }
+        if (maxTypeFields <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxTypeFields), "MaxTypeFields must be greater than 0.");
+        }
+        if (maxTypeMetaBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxTypeMetaBytes), "MaxTypeMetaBytes must be greater than 0.");
+        }
+        if (maxSchemaVersionsPerType <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxSchemaVersionsPerType), "MaxSchemaVersionsPerType must be greater than 0.");
+        }
+        if (maxAverageSchemaVersionsPerType <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxAverageSchemaVersionsPerType), "MaxAverageSchemaVersionsPerType must be greater than 0.");
+        }
+
         TrackRef = trackRef;
         Compatible = compatible;
         CheckStructVersion = checkStructVersion;
         MaxDepth = maxDepth;
+        MaxTypeFields = maxTypeFields;
+        MaxTypeMetaBytes = maxTypeMetaBytes;
+        MaxSchemaVersionsPerType = maxSchemaVersionsPerType;
+        MaxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
     }
 
     /// <summary>
@@ -54,6 +83,26 @@ public sealed class Config
     /// Gets the maximum allowed nesting depth for dynamic object payload reads.
     /// </summary>
     public int MaxDepth { get; }
+
+    /// <summary>
+    /// Gets the maximum accepted field count in one received struct TypeMeta.
+    /// </summary>
+    public int MaxTypeFields { get; }
+
+    /// <summary>
+    /// Gets the maximum accepted body size in one received TypeMeta.
+    /// </summary>
+    public int MaxTypeMetaBytes { get; }
+
+    /// <summary>
+    /// Gets the maximum accepted remote metadata versions for one logical type.
+    /// </summary>
+    public int MaxSchemaVersionsPerType { get; }
+
+    /// <summary>
+    /// Gets the average remote metadata version limit across accepted remote types.
+    /// </summary>
+    public int MaxAverageSchemaVersionsPerType { get; }
 }
 
 /// <summary>
@@ -65,6 +114,10 @@ public sealed class ForyBuilder
     private bool? _compatible;
     private bool _checkStructVersion;
     private int _maxDepth = 20;
+    private int _maxTypeFields = 512;
+    private int _maxTypeMetaBytes = 4096;
+    private int _maxSchemaVersionsPerType = 10;
+    private int _maxAverageSchemaVersionsPerType = 3;
 
     /// <summary>
     /// Enables or disables reference tracking for shared and circular object graphs.
@@ -116,6 +169,62 @@ public sealed class ForyBuilder
         return this;
     }
 
+    /// <summary>
+    /// Sets the maximum accepted field count in one received struct TypeMeta.
+    /// </summary>
+    public ForyBuilder MaxTypeFields(int value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxTypeFields must be greater than 0.");
+        }
+
+        _maxTypeFields = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the maximum accepted body size in one received TypeMeta.
+    /// </summary>
+    public ForyBuilder MaxTypeMetaBytes(int value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxTypeMetaBytes must be greater than 0.");
+        }
+
+        _maxTypeMetaBytes = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the maximum accepted remote metadata versions for one logical type.
+    /// </summary>
+    public ForyBuilder MaxSchemaVersionsPerType(int value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxSchemaVersionsPerType must be greater than 0.");
+        }
+
+        _maxSchemaVersionsPerType = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the average remote metadata version limit across accepted remote types.
+    /// </summary>
+    public ForyBuilder MaxAverageSchemaVersionsPerType(int value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxAverageSchemaVersionsPerType must be greater than 0.");
+        }
+
+        _maxAverageSchemaVersionsPerType = value;
+        return this;
+    }
+
     private Config BuildConfig()
     {
         bool compatible = _compatible ?? true;
@@ -125,7 +234,11 @@ public sealed class ForyBuilder
             trackRef: _trackRef,
             compatible: compatible,
             checkStructVersion: compatible ? false : _checkStructVersion,
-            maxDepth: _maxDepth);
+            maxDepth: _maxDepth,
+            maxTypeFields: _maxTypeFields,
+            maxTypeMetaBytes: _maxTypeMetaBytes,
+            maxSchemaVersionsPerType: _maxSchemaVersionsPerType,
+            maxAverageSchemaVersionsPerType: _maxAverageSchemaVersionsPerType);
     }
 
     /// <summary>

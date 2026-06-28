@@ -189,4 +189,4 @@ The following types work with the default Fory Java implementation:
 - **Collections**: `ArrayList`, `HashMap`, `HashSet`, `LinkedHashSet`, `LinkedHashMap`
 - **Arrays**: `Array`, `BooleanArray`, `ByteArray`, `CharArray`, `DoubleArray`, `FloatArray`, `IntArray`, `LongArray`, `ShortArray`
 
-Use `ForyKotlin.builder()` for Kotlin-specific runtime types such as unsigned values, ranges, and `Duration`.
+Use `ForyKotlin.builder()` for Kotlin-specific types such as unsigned values, ranges, and `Duration`.

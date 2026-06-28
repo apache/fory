@@ -75,14 +75,19 @@ func (s byteSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := ctx.ReadBinaryLength()
+	if ctx.HasError() {
+		return
+	}
 	ptr := (*[]byte)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]byte, 0)
 		return
 	}
+	if !buf.CheckReadable(length, ctxErr) {
+		return
+	}
 	result := make([]byte, length)
-	raw := buf.ReadBinary(length, ctxErr)
-	copy(result, raw)
+	buf.Read(result)
 	*ptr = result
 }
 
@@ -643,6 +648,9 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := ctx.ReadCollectionLength()
+	if ctx.HasError() {
+		return
+	}
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]string, 0)
@@ -651,10 +659,19 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 
 	// Read collection flags
 	collectFlag := buf.ReadInt8(ctxErr)
+	if ctx.HasError() {
+		return
+	}
 
 	// Read element type info if present (when CollectionIsSameType but not CollectionIsDeclElementType)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
 		_ = buf.ReadUint8(ctxErr) // Read and discard type ID (we know it's STRING)
+	}
+	if ctx.HasError() {
+		return
+	}
+	if !buf.CheckReadable(length, ctxErr) {
+		return
 	}
 
 	result := make([]string, length)
@@ -702,12 +719,11 @@ func ReadByteSlice(buf *ByteBuffer, err *Error) []byte {
 	if size == 0 {
 		return make([]byte, 0)
 	}
-	raw := buf.ReadBinary(size, err)
-	if err.HasError() {
+	if !buf.CheckReadable(size, err) {
 		return nil
 	}
 	result := make([]byte, size)
-	copy(result, raw)
+	buf.Read(result)
 	return result
 }
 
@@ -726,12 +742,11 @@ func ReadBoolSlice(buf *ByteBuffer, err *Error) []bool {
 	if size == 0 {
 		return make([]bool, 0)
 	}
-	raw := buf.ReadBinary(size, err)
-	if err.HasError() {
+	if !buf.CheckReadable(size, err) {
 		return nil
 	}
 	result := make([]bool, size)
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+	buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 	return result
 }
 
@@ -750,12 +765,11 @@ func ReadInt8Slice(buf *ByteBuffer, err *Error) []int8 {
 	if size == 0 {
 		return make([]int8, 0)
 	}
-	raw := buf.ReadBinary(size, err)
-	if err.HasError() {
+	if !buf.CheckReadable(size, err) {
 		return nil
 	}
 	result := make([]int8, size)
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+	buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 	return result
 }
 
@@ -776,18 +790,24 @@ func WriteInt16Slice(buf *ByteBuffer, value []int16) {
 
 // ReadInt16Slice reads []int16 from buffer using ARRAY protocol
 func ReadInt16Slice(buf *ByteBuffer, err *Error) []int16 {
-	size := buf.ReadLength(err)
-	length := size / 2
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%2 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 2)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]int16, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 2
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]int16, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]int16, length)
@@ -815,18 +835,24 @@ func WriteInt32Slice(buf *ByteBuffer, value []int32) {
 
 // ReadInt32Slice reads []int32 from buffer using ARRAY protocol
 func ReadInt32Slice(buf *ByteBuffer, err *Error) []int32 {
-	size := buf.ReadLength(err)
-	length := size / 4
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%4 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 4)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]int32, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 4
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]int32, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]int32, length)
@@ -854,18 +880,24 @@ func WriteInt64Slice(buf *ByteBuffer, value []int64) {
 
 // ReadInt64Slice reads []int64 from buffer using ARRAY protocol
 func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
-	size := buf.ReadLength(err)
-	length := size / 8
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%8 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 8)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]int64, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 8
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]int64, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]int64, length)
@@ -893,18 +925,24 @@ func WriteUint16Slice(buf *ByteBuffer, value []uint16) {
 
 // ReadUint16Slice reads []uint16 from buffer using ARRAY protocol
 func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
-	size := buf.ReadLength(err)
-	length := size / 2
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%2 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 2)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]uint16, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 2
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]uint16, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]uint16, length)
@@ -932,18 +970,24 @@ func WriteUint32Slice(buf *ByteBuffer, value []uint32) {
 
 // ReadUint32Slice reads []uint32 from buffer using ARRAY protocol
 func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
-	size := buf.ReadLength(err)
-	length := size / 4
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%4 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 4)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]uint32, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 4
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]uint32, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]uint32, length)
@@ -971,18 +1015,24 @@ func WriteUint64Slice(buf *ByteBuffer, value []uint64) {
 
 // ReadUint64Slice reads []uint64 from buffer using ARRAY protocol
 func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
-	size := buf.ReadLength(err)
-	length := size / 8
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%8 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 8)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]uint64, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 8
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]uint64, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]uint64, length)
@@ -1010,18 +1060,24 @@ func WriteFloat32Slice(buf *ByteBuffer, value []float32) {
 
 // ReadFloat32Slice reads []float32 from buffer using ARRAY protocol
 func ReadFloat32Slice(buf *ByteBuffer, err *Error) []float32 {
-	size := buf.ReadLength(err)
-	length := size / 4
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%4 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 4)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]float32, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 4
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]float32, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]float32, length)
@@ -1049,18 +1105,24 @@ func WriteFloat64Slice(buf *ByteBuffer, value []float64) {
 
 // ReadFloat64Slice reads []float64 from buffer using ARRAY protocol
 func ReadFloat64Slice(buf *ByteBuffer, err *Error) []float64 {
-	size := buf.ReadLength(err)
-	length := size / 8
-	if length == 0 {
+	byteSize := buf.ReadLength(err)
+	if err.HasError() {
+		return nil
+	}
+	if byteSize%8 != 0 {
+		*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 8)
+		return nil
+	}
+	if byteSize == 0 {
 		return make([]float64, 0)
 	}
+	if !buf.CheckReadable(byteSize, err) {
+		return nil
+	}
+	length := byteSize / 8
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, err)
-		if err.HasError() {
-			return nil
-		}
 		result := make([]float64, length)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 		return result
 	} else {
 		result := make([]float64, length)
@@ -1128,10 +1190,14 @@ func (s float16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
 	if ctx.HasError() {
 		return
 	}
+	if size%2 != 0 {
+		ctx.SetError(DeserializationErrorf("float16 array byte length %d is not aligned to element size 2", size))
+		return
+	}
+	length := size / 2
 
 	// Ensure capacity
 	ptr := (*[]float16.Float16)(value.Addr().UnsafePointer())
@@ -1140,13 +1206,15 @@ func (s float16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) 
 		return
 	}
 
+	if !buf.CheckReadable(size, ctxErr) {
+		return
+	}
 	result := make([]float16.Float16, length)
 
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, ctxErr)
 		// unsafe copy
 		targetPtr := unsafe.Pointer(&result[0])
-		copy(unsafe.Slice((*byte)(targetPtr), size), raw)
+		buf.Read(unsafe.Slice((*byte)(targetPtr), size))
 	} else {
 		for i := 0; i < length; i++ {
 			// ReadUint16 handles endianness
@@ -1187,19 +1255,25 @@ func WriteIntSlice(buf *ByteBuffer, value []int) {
 
 // ReadIntSlice reads []int from buffer using ARRAY protocol
 func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
-	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
-		length := size / 8
-		if length == 0 {
+		byteSize := buf.ReadLength(err)
+		if err.HasError() {
+			return nil
+		}
+		if byteSize%8 != 0 {
+			*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 8)
+			return nil
+		}
+		if byteSize == 0 {
 			return make([]int, 0)
 		}
+		if !buf.CheckReadable(byteSize, err) {
+			return nil
+		}
+		length := byteSize / 8
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			if err.HasError() {
-				return nil
-			}
 			result := make([]int, length)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 			return result
 		} else {
 			result := make([]int, length)
@@ -1209,17 +1283,24 @@ func ReadIntSlice(buf *ByteBuffer, err *Error) []int {
 			return result
 		}
 	} else {
-		length := size / 4
-		if length == 0 {
+		byteSize := buf.ReadLength(err)
+		if err.HasError() {
+			return nil
+		}
+		if byteSize%4 != 0 {
+			*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 4)
+			return nil
+		}
+		if byteSize == 0 {
 			return make([]int, 0)
 		}
+		if !buf.CheckReadable(byteSize, err) {
+			return nil
+		}
+		length := byteSize / 4
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			if err.HasError() {
-				return nil
-			}
 			result := make([]int, length)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 			return result
 		} else {
 			result := make([]int, length)
@@ -1262,19 +1343,25 @@ func WriteUintSlice(buf *ByteBuffer, value []uint) {
 
 // ReadUintSlice reads []uint from buffer using ARRAY protocol
 func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
-	size := buf.ReadLength(err)
 	if strconv.IntSize == 64 {
-		length := size / 8
-		if length == 0 {
+		byteSize := buf.ReadLength(err)
+		if err.HasError() {
+			return nil
+		}
+		if byteSize%8 != 0 {
+			*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 8)
+			return nil
+		}
+		if byteSize == 0 {
 			return make([]uint, 0)
 		}
+		if !buf.CheckReadable(byteSize, err) {
+			return nil
+		}
+		length := byteSize / 8
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			if err.HasError() {
-				return nil
-			}
 			result := make([]uint, length)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 			return result
 		} else {
 			result := make([]uint, length)
@@ -1284,17 +1371,24 @@ func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 			return result
 		}
 	} else {
-		length := size / 4
-		if length == 0 {
+		byteSize := buf.ReadLength(err)
+		if err.HasError() {
+			return nil
+		}
+		if byteSize%4 != 0 {
+			*err = DeserializationErrorf("array byte size %d is not aligned to element size %d", byteSize, 4)
+			return nil
+		}
+		if byteSize == 0 {
 			return make([]uint, 0)
 		}
+		if !buf.CheckReadable(byteSize, err) {
+			return nil
+		}
+		length := byteSize / 4
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			if err.HasError() {
-				return nil
-			}
 			result := make([]uint, length)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), byteSize))
 			return result
 		} else {
 			result := make([]uint, length)
@@ -1336,6 +1430,9 @@ func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	collectFlag := buf.ReadInt8(err)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
 		_ = buf.ReadUint8(err) // Read and discard element type ID
+	}
+	if err.HasError() || !buf.CheckReadable(length, err) {
+		return nil
 	}
 	result := make([]string, length)
 	trackRefs := (collectFlag & CollectionTrackingRef) != 0
@@ -1405,10 +1502,14 @@ func (s bfloat16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	size := ctx.ReadBinaryLength()
-	length := size / 2
 	if ctx.HasError() {
 		return
 	}
+	if size%2 != 0 {
+		ctx.SetError(DeserializationErrorf("bfloat16 array byte length %d is not aligned to element size 2", size))
+		return
+	}
+	length := size / 2
 
 	ptr := (*[]bfloat16.BFloat16)(value.Addr().UnsafePointer())
 	if length == 0 {
@@ -1416,12 +1517,14 @@ func (s bfloat16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		return
 	}
 
+	if !buf.CheckReadable(size, ctxErr) {
+		return
+	}
 	result := make([]bfloat16.BFloat16, length)
 
 	if isLittleEndian {
-		raw := buf.ReadBinary(size, ctxErr)
 		targetPtr := unsafe.Pointer(&result[0])
-		copy(unsafe.Slice((*byte)(targetPtr), size), raw)
+		buf.Read(unsafe.Slice((*byte)(targetPtr), size))
 	} else {
 		for i := 0; i < length; i++ {
 			result[i] = bfloat16.BFloat16FromBits(buf.ReadUint16(ctxErr))

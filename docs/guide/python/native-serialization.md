@@ -25,7 +25,7 @@ the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Python mode, when bytes must be read
 by Java, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
-or another non-Python Fory runtime.
+or another non-Python Fory implementation.
 
 ## When To Use Native Serialization
 
@@ -41,7 +41,7 @@ Native mode can serialize Python-specific values such as global functions, local
 local classes, methods, and objects customized with `__getstate__`, `__setstate__`, `__reduce__`,
 or `__reduce_ex__`. Those values are not valid xlang payloads.
 
-## Create a Native Runtime
+## Create a Native-Mode Fory Instance
 
 Create `Fory` with `xlang=False`:
 
@@ -118,7 +118,7 @@ Native mode is the Python mode to choose when the existing boundary uses `pickle
 functions, local classes, closures, and reduction hooks.
 
 Use xlang mode instead when the payload crosses language boundaries or the data model should be a
-portable schema shared with other Fory runtimes.
+portable schema shared with other Fory implementations.
 
 ## Serialize Global Functions
 
@@ -297,7 +297,7 @@ Use this when the payload stays in Python and large buffers should avoid extra c
 | Functions, lambdas, local classes          | Yes                      | No                      |
 | `__reduce__` / `__getstate__` object hooks | Yes                      | No                      |
 | Pickle/cloudpickle replacement             | Yes                      | No                      |
-| Portable type mapping across runtimes      | No                       | Yes                     |
+| Portable type mapping across languages     | No                       | Yes                     |
 
 ## Performance Comparison
 
@@ -318,7 +318,7 @@ print(f"Pickle: {timeit.timeit(lambda: pickle.dumps(obj), number=1000):.3f}s")
 ### Another language cannot read the payload
 
 The writer is using native serialization. Rebuild it with `xlang=True`, register portable schemas
-on every peer runtime, and avoid Python-only values such as lambdas or local classes.
+on every peer, and avoid Python-only values such as lambdas or local classes.
 
 ### A dynamic class or function fails to deserialize
 
@@ -327,7 +327,7 @@ dynamic types should be accepted.
 
 ### A cycle does not round-trip
 
-Create the runtime with `ref=True`.
+Create the `Fory` instance with `ref=True`.
 
 ### A value depends on pickle hooks
 
@@ -336,7 +336,7 @@ Keep the payload in native mode. Xlang mode does not execute Python `__reduce__`
 
 ## Related Topics
 
-- [Xlang Serialization](xlang-serialization.md) - Cross-runtime Python payloads
-- [Configuration](configuration.md) - Python runtime options
+- [Xlang Serialization](xlang-serialization.md) - Cross-language Python payloads
+- [Configuration](configuration.md) - Python `Fory` options
 - [Out-of-Band Serialization](out-of-band.md) - Zero-copy buffer support
 - [Configuration](configuration.md#security) - Deserialization policies

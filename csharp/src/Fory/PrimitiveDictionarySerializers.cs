@@ -670,12 +670,13 @@ internal static class PrimitiveDictionaryCodecReader
         where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
     {
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
-        TMap map = TMapOps.Create(totalLength);
         if (totalLength == 0)
         {
-            return map;
+            return TMapOps.Create(0);
         }
 
+        context.Reader.CheckBound(totalLength);
+        TMap map = TMapOps.Create(totalLength);
         TypeId keyTypeId = TKeyCodec.WireTypeId;
         TypeId valueTypeId = TValueCodec.WireTypeId;
         bool keyNullable = TKeyCodec.IsNullable;

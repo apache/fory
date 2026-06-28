@@ -115,11 +115,11 @@ internal static class DecimalCodec
             throw new InvalidDataException("zero must use the small decimal encoding");
         }
 
-        byte[] payload = magnitude.ToByteArray(isUnsigned: true, isBigEndian: false);
-        ulong meta = ((ulong)payload.Length << 1) | (unscaled.Sign < 0 ? 1UL : 0UL);
+        byte[] magnitudeBytes = magnitude.ToByteArray(isUnsigned: true, isBigEndian: false);
+        ulong meta = ((ulong)magnitudeBytes.Length << 1) | (unscaled.Sign < 0 ? 1UL : 0UL);
         ulong header = (meta << 1) | 1UL;
         buffer.WriteVarUInt64(header);
-        buffer.WriteBytes(payload);
+        buffer.WriteBytes(magnitudeBytes);
     }
 
     public static (int Scale, BigInteger Unscaled) Read(ByteReader buffer)
@@ -139,13 +139,13 @@ internal static class DecimalCodec
         }
 
         int length = checked((int)lenLong);
-        byte[] payload = buffer.ReadBytes(length);
-        if (payload[^1] == 0)
+        byte[] magnitudeBytes = buffer.ReadBytes(length);
+        if (magnitudeBytes[^1] == 0)
         {
-            throw new InvalidDataException("non-canonical decimal payload: trailing zero byte");
+            throw new InvalidDataException("non-canonical decimal magnitude bytes: trailing zero byte");
         }
 
-        BigInteger magnitude = new(payload, isUnsigned: true, isBigEndian: false);
+        BigInteger magnitude = new(magnitudeBytes, isUnsigned: true, isBigEndian: false);
         if (magnitude.IsZero)
         {
             throw new InvalidDataException("big decimal encoding must not represent zero");

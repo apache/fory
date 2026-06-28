@@ -82,6 +82,7 @@ public class DisallowedListTest extends ForyTestBase {
           Fory.builder()
               .withXlang(false)
               .requireClassRegistration(requireClassRegistration)
+              .withCompatible(false)
               .build();
       if (requireClassRegistration) {
         // Registered or unregistered Classes should be subject to disallowed list restrictions.

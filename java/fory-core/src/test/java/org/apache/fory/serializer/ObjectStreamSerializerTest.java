@@ -549,6 +549,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(enableCodegen)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(
         ConcurrentHashMap.class,
@@ -1237,14 +1238,24 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test
   public void testObjectStreamExpectedParentLayer() {
     Fory writerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     writerFory.register(HierarchyChildDefault.class);
     writerFory.registerSerializer(
         HierarchyChildDefault.class,
         new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyChildDefault.class));
 
     Fory readerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     readerFory.register(HierarchyChildDefault.class);
     readerFory.registerSerializer(
         HierarchyChildDefault.class,
@@ -1266,13 +1277,19 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withCodegen(false)
+            .withCompatible(false)
             .build();
     writerFory.registerSerializer(
         HierarchyParentPutFields.class,
         new ObjectStreamSerializer(writerFory.getTypeResolver(), HierarchyParentPutFields.class));
 
     Fory readerFory =
-        Fory.builder().withXlang(false).withRefTracking(true).withCodegen(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(false)
+            .withCompatible(false)
+            .build();
     readerFory.register(HierarchyChildDefault.class);
     readerFory.registerSerializer(
         HierarchyChildDefault.class,
@@ -1359,6 +1376,39 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result1.value, 7);
     assertEquals(result2.name, "shared");
     assertEquals(result2.value, 7);
+  }
+
+  @Test(dataProvider = "compatibleModeProvider")
+  public void testObjectStreamExactLocalTypeDefChecksTypeChecker(boolean compatible) {
+    ForyBuilder builder =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCompatible(compatible)
+            .withMetaShare(true);
+    finishBuilder(builder);
+    SharedRegistry sharedRegistry = new SharedRegistry();
+    Fory writerFory =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    Fory readerFory =
+        new Fory(builder, ObjectStreamSerializerTest.class.getClassLoader(), sharedRegistry);
+    writerFory.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(writerFory.getTypeResolver(), MixedSerializationClass.class));
+    readerFory.registerSerializer(
+        MixedSerializationClass.class,
+        new ObjectStreamSerializer(readerFory.getTypeResolver(), MixedSerializationClass.class));
+
+    writerFory.setMetaWriteContext(new MetaWriteContext());
+    byte[] bytes = writerFory.serialize(new MixedSerializationClass("blocked", 11));
+    readerFory
+        .getTypeResolver()
+        .setTypeChecker(
+            (resolver, className) -> !className.equals(MixedSerializationClass.class.getName()));
+    readerFory.setMetaReadContext(new MetaReadContext());
+
+    Assert.assertThrows(InsecureException.class, () -> readerFory.deserialize(bytes));
   }
 
   // ==================== Default Value Tests ====================

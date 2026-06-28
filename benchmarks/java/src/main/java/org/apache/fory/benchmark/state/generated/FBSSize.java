@@ -2,6 +2,7 @@
 
 package org.apache.fory.benchmark.state.generated;
 
+@SuppressWarnings("unused")
 public final class FBSSize {
   private FBSSize() { }
   public static final byte SMALL = 0;
@@ -11,4 +12,3 @@ public final class FBSSize {
 
   public static String name(int e) { return names[e]; }
 }
-

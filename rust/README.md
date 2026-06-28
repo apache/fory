@@ -1,6 +1,6 @@
 # Apache Fory™ Rust
 
-[![Crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.3.0-blue?logo=rust)](https://crates.io/crates/fory)
 [![Documentation](https://docs.rs/fory/badge.svg)](https://docs.rs/fory)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
 
@@ -21,11 +21,16 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 ## Crates
 
-| Crate                                                                       | Description                       | Version                                       |
-| --------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [1.1.0](https://crates.io/crates/fory)        |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [1.1.0](https://crates.io/crates/fory-core)   |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [1.1.0](https://crates.io/crates/fory-derive) |
+| Crate                                                                       | Description                                               | Version                                       |
+| --------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.3.0](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.3.0](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.3.0](https://crates.io/crates/fory-derive) |
+
+Most applications should depend on `fory` only. It re-exports the derive
+macros and the public runtime types needed by generated code. Use `fory-core`
+or `fory-derive` directly only when intentionally building on the lower-level
+runtime crates.
 
 ## Quick Start
 
@@ -33,7 +38,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "1.1.0"
+fory = "1.3.0"
 ```
 
 ### Basic Example
@@ -299,7 +304,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<Zoo>(102)?;
@@ -320,7 +325,7 @@ assert_eq!(decoded.star_animal.speak(), "Woof!");
 
 ### 4. Schema Evolution
 
-Apache Fory™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. Xlang mode uses compatible schema evolution by default. In native mode, add `.compatible(true)` when Rust-only payloads need independent schema evolution.
+Apache Fory™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. Compatible mode is the default for both xlang and native mode. Set `.compatible(false)` only when every reader and writer always uses the same schema and you want faster serialization and smaller size. For xlang payloads, use `.compatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
 
 **Features:**
 
@@ -358,10 +363,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::builder().xlang(true).compatible(true).build();
+let mut fory1 = Fory::builder().xlang(true).build();
 fory1.register_by_name::<PersonV1>("example.Person").unwrap();
 
-let mut fory2 = Fory::builder().xlang(true).compatible(true).build();
+let mut fory2 = Fory::builder().xlang(true).build();
 fory2.register_by_name::<PersonV2>("example.Person").unwrap();
 
 let person_v1 = PersonV1 {
@@ -434,7 +439,7 @@ assert_eq!(value, decoded);
 
 ### 6. Native-Mode Tuple Support
 
-Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible and schema-consistent modes.
+Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible mode and same-schema mode.
 
 **Features:**
 
@@ -444,7 +449,7 @@ Apache Fory™ supports tuples up to 22 elements out of the box with efficient s
 
 **Schema modes:**
 
-1. **Schema-consistent mode**: Serializes elements sequentially without collection headers for minimal overhead
+1. **Same-schema mode**: Serializes elements sequentially without collection headers for minimal overhead
 2. **Compatible mode**: Uses collection protocol with type metadata for schema evolution
 
 ```rust

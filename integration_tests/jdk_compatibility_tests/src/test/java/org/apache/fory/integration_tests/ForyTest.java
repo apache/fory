@@ -35,7 +35,12 @@ public class ForyTest {
     ClasspathBean object =
         new ClasspathBean(
             "graph", Arrays.asList(new ClasspathItem("left", 1), new ClasspathItem("right", 2)));
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     byte[] data = fory.serialize(object);
     Assert.assertEquals(fory.deserialize(data), object);
   }
@@ -51,7 +56,12 @@ public class ForyTest {
 
   @Test
   public void testFinalFieldBean() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     FinalFieldBean value = new FinalFieldBean("amy", 42);
     Object deserialized = fory.deserialize(fory.serialize(value));
     Assert.assertEquals(deserialized, value);

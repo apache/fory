@@ -26,11 +26,11 @@ fn test_meta_hash() {
         MetaString::get_empty().clone(),
         MetaString::get_empty().clone(),
         false,
-        vec![FieldInfo {
-            field_id: 43,
-            field_name: "f1".to_string(),
-            field_type: FieldType::new(TypeId::BOOL as u32, true, vec![]),
-        }],
+        vec![FieldInfo::new_with_id(
+            43,
+            "f1",
+            FieldType::new(TypeId::BOOL as u32, true, vec![]),
+        )],
     )
     .unwrap();
     assert_ne!(meta.get_hash(), 0);

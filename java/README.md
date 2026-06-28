@@ -60,21 +60,21 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 <!-- Optional: Row format support -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 <!-- Optional: Serializers for Protobuf data -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-extensions</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 ```
@@ -83,10 +83,10 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ```gradle
 dependencies {
-    implementation 'org.apache.fory:fory-core:1.1.0'
+    implementation 'org.apache.fory:fory-core:1.3.0'
     // Optional modules
-    implementation 'org.apache.fory:fory-format:1.1.0'
-    implementation 'org.apache.fory:fory-extensions:1.1.0'
+    implementation 'org.apache.fory:fory-format:1.3.0'
+    implementation 'org.apache.fory:fory-extensions:1.3.0'
 }
 ```
 
@@ -168,12 +168,11 @@ Fory fory = Fory.builder()
 
 ### Schema Evolution
 
-Xlang mode enables compatible schema evolution by default. In native mode, enable compatible mode
-when your class definitions change over time:
+Compatible mode is the default for both xlang and native mode. Keep that default when your class
+definitions change over time:
 
 ```java
 Fory fory = Fory.builder().withXlang(false)
-  .withCompatible(true)
   .build();
 
 // Serialization and deserialization can use different class versions
@@ -227,8 +226,7 @@ Fory fory = Fory.builder()
   .withXlang(false)
   // Reference tracking for circular/shared references
   .withRefTracking(true)
-  // Schema evolution mode. Xlang already enables compatible mode by default.
-  .withCompatible(true)
+  // Compatible schema evolution is enabled by default.
   // Compression options
   .withIntCompressed(true)
   .withLongCompressed(true)

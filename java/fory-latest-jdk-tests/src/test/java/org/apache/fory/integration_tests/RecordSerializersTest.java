@@ -87,6 +87,7 @@ public class RecordSerializersTest {
             .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(codegen)
+            .withCompatible(false)
             .build();
     Foo foo = new Foo(10, "abc", new ArrayList<>(Arrays.asList("a", "b")), 'x');
     Assert.assertEquals(fory.deserialize(fory.serialize(foo)), foo);
@@ -150,6 +151,7 @@ public class RecordSerializersTest {
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withMetaShare(true)
+            .withCompatible(false)
             .build();
     Foo foo = new Foo(10, "abc", new ArrayList<>(Arrays.asList("a", "b")), 'x');
     MetaWriteContext metaWriteContext = new MetaWriteContext();
@@ -163,8 +165,8 @@ public class RecordSerializersTest {
   @Test(dataProvider = "codegen")
   public void testRecordCompatible(boolean codegen) throws Throwable {
     String code1 =
-        "import java.util.*;"
-            + "public record TestRecord(int f1, String f2, List<String> f3, char f4, Map<String, Integer> f5) {}";
+        "import java.util.*;public record TestRecord(int f1, String f2, List<String> f3, char f4,"
+            + " Map<String, Integer> f5) {}";
     Class<?> cls1 =
         Struct.createStructClass(
             "TestRecord", code1, RecordSerializersTest.class + "testRecordCompatible_1");
@@ -208,8 +210,8 @@ public class RecordSerializersTest {
   @Test(dataProvider = "codegen")
   public void testRecordMetaShare(boolean codegen) throws Throwable {
     String code1 =
-        "import java.util.*;"
-            + "public record TestRecord(int f1, String f2, List<String> f3, char f4, Map<String, Integer> f5) {}";
+        "import java.util.*;public record TestRecord(int f1, String f2, List<String> f3, char f4,"
+            + " Map<String, Integer> f5) {}";
     Class<?> cls1 =
         Struct.createStructClass(
             "TestRecord", code1, RecordSerializersTest.class + "testRecordMetaShare_1");
@@ -266,6 +268,7 @@ public class RecordSerializersTest {
               .withXlang(false)
               .requireClassRegistration(false)
               .withCodegen(codegen)
+              .withCompatible(false)
               .build();
       Object o1 = Records.createPrivateRecord(11);
       Assert.assertEquals(fory.deserialize(fory.serialize(o1)), o1);
@@ -292,6 +295,7 @@ public class RecordSerializersTest {
               .requireClassRegistration(false)
               .withCodegen(codegen)
               .withMetaShare(true)
+              .withCompatible(false)
               .build();
       Object o1 = Records.createPrivateRecord(11);
       Object o2 = Records.createPublicRecord(11, o1);
@@ -306,7 +310,7 @@ public class RecordSerializersTest {
 
   @Test(dataProvider = "codegen")
   public void testPrivateRecord(boolean codegen) {
-    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).withCompatible(false).build();
     fory.register(PrivateRecord.class);
     byte[] serialized = fory.serialize(new PrivateRecord("foo")); // fails
     Object deserialized = fory.deserialize(serialized);
@@ -317,7 +321,7 @@ public class RecordSerializersTest {
 
   @Test(dataProvider = "codegen")
   public void testCopy(boolean codegen) {
-    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).withCompatible(false).build();
     fory.register(Foo.class);
     fory.register(PrivateRecord.class);
     Assert.assertEquals(fory.copy(new PrivateRecord("foo")), new PrivateRecord("foo"));

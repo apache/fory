@@ -83,6 +83,7 @@ public class GuavaOptionalDependencyTest {
             .registerGuavaTypes(registerGuavaTypes)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build();
     ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
     resolver.registerInternal(InternalSample.class);
@@ -168,6 +169,7 @@ public class GuavaOptionalDependencyTest {
               .registerGuavaTypes(true)
               .requireClassRegistration(false)
               .suppressClassRegistrationWarnings(true)
+              .withCompatible(false)
               .build();
       byte[] bytes = fory.serialize(new SampleValue("fory"));
       SampleValue value = (SampleValue) fory.deserialize(bytes);
@@ -188,6 +190,7 @@ public class GuavaOptionalDependencyTest {
               .registerGuavaTypes(true)
               .requireClassRegistration(false)
               .suppressClassRegistrationWarnings(true)
+              .withCompatible(false)
               .build();
       byte[] bytes = fory.serialize(com.google.common.collect.ImmutableList.of("fory"));
       Object value = fory.deserialize(bytes);

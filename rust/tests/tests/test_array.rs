@@ -23,7 +23,7 @@ use std::rc::Rc;
 
 #[test]
 fn test_array_i32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1, 2, 3, 4, 5];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i32; 5] = fory.deserialize(&bin).expect("deserialize");
@@ -32,7 +32,7 @@ fn test_array_i32() {
 
 #[test]
 fn test_array_i64() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [100i64, 200, 300];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i64; 3] = fory.deserialize(&bin).expect("deserialize");
@@ -41,7 +41,7 @@ fn test_array_i64() {
 
 #[test]
 fn test_array_f64() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1.5, 2.5, 3.5, 4.5];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [f64; 4] = fory.deserialize(&bin).expect("deserialize");
@@ -50,7 +50,7 @@ fn test_array_f64() {
 
 #[test]
 fn test_array_f32() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1.1f32, 2.2, 3.3];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [f32; 3] = fory.deserialize(&bin).expect("deserialize");
@@ -59,7 +59,7 @@ fn test_array_f32() {
 
 #[test]
 fn test_array_bool() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [true, false, true, false];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [bool; 4] = fory.deserialize(&bin).expect("deserialize");
@@ -68,7 +68,7 @@ fn test_array_bool() {
 
 #[test]
 fn test_array_i8() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1i8, 2, 3, 4, 5, 6, 7, 8];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i8; 8] = fory.deserialize(&bin).expect("deserialize");
@@ -77,7 +77,7 @@ fn test_array_i8() {
 
 #[test]
 fn test_array_i16() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [100i16, 200, 300, 400];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i16; 4] = fory.deserialize(&bin).expect("deserialize");
@@ -86,7 +86,7 @@ fn test_array_i16() {
 
 #[test]
 fn test_array_string() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = ["hello".to_string(), "world".to_string(), "fory".to_string()];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [String; 3] = fory.deserialize(&bin).expect("deserialize");
@@ -95,7 +95,7 @@ fn test_array_string() {
 
 #[test]
 fn test_array_empty() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr: [i32; 0] = [];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i32; 0] = fory.deserialize(&bin).expect("deserialize");
@@ -104,7 +104,7 @@ fn test_array_empty() {
 
 #[test]
 fn test_array_single_element() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [42];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i32; 1] = fory.deserialize(&bin).expect("deserialize");
@@ -113,7 +113,7 @@ fn test_array_single_element() {
 
 #[test]
 fn test_array_large() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1; 100];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [i32; 100] = fory.deserialize(&bin).expect("deserialize");
@@ -128,7 +128,7 @@ struct Point {
 
 #[test]
 fn test_array_struct() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Point>("Point").unwrap();
 
     let arr = [
@@ -150,7 +150,7 @@ struct ArrayStruct {
 
 #[test]
 fn test_struct_with_arrays() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<ArrayStruct>("ArrayStruct").unwrap();
 
     let data = ArrayStruct {
@@ -166,7 +166,7 @@ fn test_struct_with_arrays() {
 
 #[test]
 fn test_array_nested() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [[1, 2], [3, 4], [5, 6]];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [[i32; 2]; 3] = fory.deserialize(&bin).expect("deserialize");
@@ -175,7 +175,7 @@ fn test_array_nested() {
 
 #[test]
 fn test_array_option() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [Some(1), None, Some(3)];
     let bin = fory.serialize(&arr).unwrap();
     let obj: [Option<i32>; 3] = fory.deserialize(&bin).expect("deserialize");
@@ -185,7 +185,7 @@ fn test_array_option() {
 #[test]
 fn test_array_vec_compatibility() {
     // Test that an array can be serialized and deserialized as a Vec
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1, 2, 3, 4, 5];
     let bin = fory.serialize(&arr).unwrap();
     // Deserialize as Vec should work since they use the same type ID
@@ -196,7 +196,7 @@ fn test_array_vec_compatibility() {
 #[test]
 fn test_vec_array_compatibility() {
     // Test that a Vec can be serialized and deserialized as an array
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let vec = vec![1, 2, 3];
     let bin = fory.serialize(&vec).unwrap();
     // Deserialize as array should work if the size matches
@@ -207,7 +207,7 @@ fn test_vec_array_compatibility() {
 #[test]
 fn test_array_size_mismatch() {
     // Test that deserializing with wrong size fails gracefully
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let arr = [1, 2, 3, 4, 5];
     let bin = fory.serialize(&arr).unwrap();
     // Try to deserialize as array with wrong size
@@ -287,7 +287,7 @@ fn test_array_box_trait_objects() {
 #[test]
 fn test_vec_of_arrays() {
     // Test from GitHub issue: Vec<[f32;4]> should work with ForyStruct
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     // Test Vec of primitive arrays
     let points: Vec<[f32; 4]> = vec![
@@ -314,7 +314,7 @@ fn test_struct_with_vec_of_arrays() {
         points: Vec<[f32; 4]>,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<PointCloud>("PointCloud").unwrap();
 
     let data = PointCloud {
@@ -373,7 +373,10 @@ fn test_array_rc_trait_objects() {
 #[test]
 fn test_array_float16() {
     use fory_core::types::float16::float16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let arr = [
         float16::from_f32(1.0),
         float16::from_f32(2.5),
@@ -390,7 +393,10 @@ fn test_array_float16() {
 #[test]
 fn test_array_float16_special_values() {
     use fory_core::types::float16::float16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let arr = [
         float16::INFINITY,
         float16::NEG_INFINITY,
@@ -411,7 +417,10 @@ fn test_array_float16_special_values() {
 #[test]
 fn test_array_bfloat16() {
     use fory_core::types::bfloat16::bfloat16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let arr = [
         bfloat16::from_f32(1.0),
         bfloat16::from_f32(2.5),
@@ -428,7 +437,10 @@ fn test_array_bfloat16() {
 #[test]
 fn test_array_bfloat16_special_values() {
     use fory_core::types::bfloat16::bfloat16;
-    let fory = fory_core::fory::Fory::builder().xlang(false).build();
+    let fory = fory_core::fory::Fory::builder()
+        .xlang(false)
+        .compatible(false)
+        .build();
     let arr = [
         bfloat16::INFINITY,
         bfloat16::NEG_INFINITY,

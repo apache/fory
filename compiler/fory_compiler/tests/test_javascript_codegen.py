@@ -20,6 +20,7 @@
 from pathlib import Path
 from textwrap import dedent
 
+from fory_compiler.cli import resolve_imports
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import GeneratorOptions
@@ -160,8 +161,8 @@ def test_javascript_nested_enum_registration_uses_simple_name():
     # Enums are skipped during registration in JavaScript (they are numeric
     # values at runtime and don't need separate Fory registration).
     assert "fory.register('PhoneType'" not in output
-    # Messages are registered via fory.register(Type.struct(...)).
-    assert "fory.register(Type.struct(100" in output
+    # Messages are registered via fory.register(__foryRuntime$Type.struct(...)).
+    assert "fory.register(__foryRuntime$Type.struct(100" in output
     # Ensure qualified names are NOT used
     assert "Person.PhoneType" not in output
 
@@ -219,6 +220,29 @@ def test_javascript_collection_types():
     assert "config: Map<string, number>;" in output
 
 
+def test_javascript_collection_ref_registration():
+    source = dedent(
+        """
+        package example;
+
+        message Node [id=100] {
+            list<ref Node> children = 1;
+            map<string, ref Node> refs = 2;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert (
+        "children: __foryRuntime$Type.list(__foryRuntime$Type.struct(100).setNullable(true).setTrackingRef(true)).setId(1)"
+        in output
+    )
+    assert (
+        "refs: __foryRuntime$Type.map(__foryRuntime$Type.string(), __foryRuntime$Type.struct(100).setNullable(true).setTrackingRef(true)).setId(2)"
+        in output
+    )
+
+
 def test_javascript_decimal_generation_uses_runtime_decimal_type():
     source = dedent(
         """
@@ -236,10 +260,13 @@ def test_javascript_decimal_generation_uses_runtime_decimal_type():
     )
     output = generate_javascript(source)
 
-    assert "import { Decimal } from '@apache-fory/core';" in output
-    assert "amount: Decimal;" in output
-    assert "{ case: ValueCase.AMOUNT; value: Decimal }" in output
-    assert "amount: Type.decimal()" in output
+    assert (
+        "import __foryRuntime$Fory, { Type as __foryRuntime$Type, "
+        "Decimal as __foryRuntime$Decimal } from '@apache-fory/core';"
+    ) in output
+    assert "amount: __foryRuntime$Decimal;" in output
+    assert "{ case: ValueCase.AMOUNT; value: __foryRuntime$Decimal }" in output
+    assert "amount: __foryRuntime$Type.decimal()" in output
 
 
 def test_javascript_map_key_fallback_to_map():
@@ -334,8 +361,162 @@ def test_javascript_file_structure():
     assert "// Unions" in output
     assert "// Registration helper" in output
 
-    # Check registration function (uses full package path to avoid collisions)
-    assert "export function registerExampleV1Types" in output
+    # Check module-owned registration and default root helpers.
+    assert (
+        "import type { Serializer as __foryRuntime$Serializer } "
+        "from '@apache-fory/core';" in output
+    )
+    assert "type __foryGenerated$RootRegistration<T> = {" in output
+    assert "export function registerExampleV1Types(fory: __foryRuntime$Fory)" in output
+    assert (
+        "const request = fory.register(__foryRuntime$Type.struct" in output
+        and "as unknown as __foryGenerated$RootRegistration<Request>;" in output
+    )
+    assert (
+        "const response = fory.register(__foryRuntime$Type.union" in output
+        and "as unknown as __foryGenerated$RootRegistration<Response>;" in output
+    )
+    assert "return {\n    request,\n    response,\n  };" in output
+    assert "const DEFAULT_FORY = new __foryRuntime$Fory" in output
+    assert "const DEFAULT_TYPES = registerExampleV1Types(DEFAULT_FORY);" in output
+    assert "export const serializeRequest = DEFAULT_TYPES.request.serialize;" in output
+    assert (
+        "export const deserializeResponse = DEFAULT_TYPES.response.deserialize;"
+        in output
+    )
+    assert "ForySerializerMap" not in output
+    assert "ForyState" not in output
+    assert "getForyState" not in output
+
+
+def test_js_import_install_uses_module_owner(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.shared;
+
+            message Shared {
+                string value = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Request {
+                demo.shared.Shared shared = 1;
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    output = (
+        JavaScriptGenerator(schema, GeneratorOptions(output_dir=tmp_path))
+        .generate()[0]
+        .content
+    )
+
+    assert "import * as _commonModule0 from './common';" in output
+    assert "import { Shared } from './common';" in output
+    assert "_commonModule0.registerCommonTypes(fory);" in output
+    assert "export function registerServiceTypes(fory: __foryRuntime$Fory)" in output
+    assert "ForySerializerMap" not in output
+    assert "getForyState" not in output
+
+
+def test_js_imported_evolving_default(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            option enable_auto_type_id = false;
+            option evolving = false;
+            package demo.shared;
+
+            message Shared {
+                string name = 1;
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+
+            import "common.fdl";
+
+            message Request {
+                demo.shared.Shared shared = 1;
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    output = (
+        JavaScriptGenerator(schema, GeneratorOptions(output_dir=tmp_path))
+        .generate()[0]
+        .content
+    )
+
+    assert (
+        'shared: __foryRuntime$Type.struct({ namespace: "demo.shared", '
+        'typeName: "Shared", evolving: false }).setId(1)' in output
+    )
+
+
+def test_js_nested_union_is_installed():
+    source = dedent(
+        """
+        option enable_auto_type_id = false;
+        package demo.nested;
+
+        message Envelope {
+            union Result {
+                string ok = 1;
+            }
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert (
+        '__foryRuntime$Type.union({ namespace: "demo.nested", typeName: "Envelope.Result" }'
+        in output
+    )
+
+
+def test_js_runtime_imports_are_aliased():
+    source = dedent(
+        """
+        package demo.aliases;
+
+        message Fory {}
+        message Type {}
+        message Decimal {
+            decimal value = 1;
+        }
+        """
+    )
+    output = generate_javascript(source)
+
+    assert (
+        "import __foryRuntime$Fory, { Type as __foryRuntime$Type, "
+        "Decimal as __foryRuntime$Decimal } from '@apache-fory/core';"
+    ) in output
+    assert "export interface Fory" in output
+    assert "export interface Type" in output
+    assert "value: __foryRuntime$Decimal;" in output
+    assert "new __foryRuntime$Fory" in output
+    assert "__foryRuntime$Type.struct" in output
 
 
 def test_javascript_field_naming():
@@ -458,7 +639,7 @@ def test_javascript_qualified_nested_type_resolved():
 
 
 def test_javascript_union_registration():
-    """Test that unions are registered with Type.union() including case mappings."""
+    """Test unions are registered with runtime union case mappings."""
     source = dedent(
         """
         package example;
@@ -481,11 +662,11 @@ def test_javascript_union_registration():
     )
     output = generate_javascript(source)
 
-    # Union registration should use Type.union() with type ID and case mappings
-    assert "Type.union(103" in output
+    # Union registration should use runtime union builders with case mappings.
+    assert "__foryRuntime$Type.union(103" in output
     # Case 1 -> Dog (struct 101), Case 2 -> Cat (struct 102)
-    assert "1: Type.struct(101" in output
-    assert "2: Type.struct(102" in output
+    assert "1: __foryRuntime$Type.struct(101" in output
+    assert "2: __foryRuntime$Type.struct(102" in output
     # Struct registrations for the variant types must also be present
-    assert "Type.struct(101" in output
-    assert "Type.struct(102" in output
+    assert "__foryRuntime$Type.struct(101" in output
+    assert "__foryRuntime$Type.struct(102" in output

@@ -25,6 +25,7 @@ import 'package:args/args.dart';
 import 'package:fory_dart_benchmark/src/workloads.dart';
 
 const int _batchSize = 64;
+const String _schemaMismatchEnv = 'FORY_BENCH_SCHEMA_MISMATCH';
 
 final class BenchmarkRecord {
   final String serializer;
@@ -85,6 +86,17 @@ void main(List<String> arguments) {
   final selectedData = _parseFilter(args['data'] as String?);
   final selectedSerializers = _parseFilter(args['serializer'] as String?);
   final selectedOperations = _parseFilter(args['operation'] as String?);
+  final schemaMismatch = Platform.environment[_schemaMismatchEnv] == '1';
+  if (schemaMismatch &&
+      (selectedSerializers == null ||
+          selectedSerializers.length != 1 ||
+          !selectedSerializers.contains('fory'))) {
+    stderr.writeln(
+      '$_schemaMismatchEnv=1 supports only Fory benchmarks; rerun with --serializer fory.',
+    );
+    exitCode = 1;
+    return;
+  }
   final samples = int.parse(args['samples'] as String);
   final duration = Duration(
     microseconds: (double.parse(args['duration'] as String) * 1000000).round(),
@@ -94,6 +106,8 @@ void main(List<String> arguments) {
   );
 
   final definitions = buildBenchmarkDefinitions();
+  final writerFory = newBenchmarkWriterFory();
+  final readerFory = newBenchmarkReaderFory(schemaMismatch: schemaMismatch);
   final records = <BenchmarkRecord>[];
   final sizes = <String, Map<String, int>>{};
 
@@ -101,12 +115,18 @@ void main(List<String> arguments) {
     if (!_matches(selectedData, definition.dataType)) {
       continue;
     }
-    final benchmark = definition.instantiate(newBenchmarkFory());
-    sizes[benchmark.dataType] = <String, int>{
-      'fory': benchmark.forySize,
-      'protobuf': benchmark.protobufSize,
-      'json': benchmark.jsonSize,
-    };
+    final benchmark = definition.instantiate(
+      writerFory: writerFory,
+      readerFory: readerFory,
+      schemaMismatch: schemaMismatch,
+    );
+    sizes[benchmark.dataType] = schemaMismatch
+        ? <String, int>{'fory': benchmark.forySize}
+        : <String, int>{
+            'fory': benchmark.forySize,
+            'protobuf': benchmark.protobufSize!,
+            'json': benchmark.jsonSize!,
+          };
 
     if (_matches(selectedSerializers, 'fory') &&
         _matches(selectedOperations, 'serialize')) {
@@ -320,11 +340,13 @@ void _printSizes(Map<String, Map<String, int>> sizes) {
   stdout.writeln('Serialized sizes (bytes)');
   stdout.writeln('------------------------');
   for (final entry in sizes.entries) {
+    final protobuf = entry.value['protobuf'];
+    final json = entry.value['json'];
     stdout.writeln(
       '${entry.key.padRight(16)} '
       'fory=${entry.value['fory']} '
-      'protobuf=${entry.value['protobuf']} '
-      'json=${entry.value['json']}',
+      'protobuf=${protobuf ?? 'n/a'} '
+      'json=${json ?? 'n/a'}',
     );
   }
 }
@@ -334,11 +356,13 @@ String _sizeTableText(Map<String, Map<String, int>> sizes) {
     ..writeln('Serialized sizes (bytes)')
     ..writeln('========================');
   for (final entry in sizes.entries) {
+    final protobuf = entry.value['protobuf'];
+    final json = entry.value['json'];
     buffer.writeln(
       '${entry.key}: '
       'fory=${entry.value['fory']} '
-      'protobuf=${entry.value['protobuf']} '
-      'json=${entry.value['json']}',
+      'protobuf=${protobuf ?? 'n/a'} '
+      'json=${json ?? 'n/a'}',
     );
   }
   return buffer.toString();

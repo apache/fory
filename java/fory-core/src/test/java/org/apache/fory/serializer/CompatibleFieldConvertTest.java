@@ -22,13 +22,19 @@ package org.apache.fory.serializer;
 import com.google.common.collect.ImmutableSet;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.BFloat16Type;
+import org.apache.fory.annotation.Float16Type;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.Int8Type;
 import org.apache.fory.annotation.Nullable;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.annotation.UInt64Type;
+import org.apache.fory.annotation.UInt8Type;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -206,6 +212,13 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
     public String value = "true";
   }
 
+  public static final class NullableRefStringWriter {
+    @Nullable
+    @Ref
+    @ForyField(id = 0)
+    public String value = "true";
+  }
+
   public static final class RefBooleanWriter {
     @Ref
     @ForyField(id = 0)
@@ -283,6 +296,19 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
   }
 
   public static final class StringReader {
+    @ForyField(id = 0)
+    public String value;
+  }
+
+  public static final class RefStringReader {
+    @Ref
+    @ForyField(id = 0)
+    public String value;
+  }
+
+  public static final class NullableRefStringReader {
+    @Nullable
+    @Ref
     @ForyField(id = 0)
     public String value;
   }
@@ -382,6 +408,82 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
   public static final class NumberReader {
     @ForyField(id = 0)
     public Number value;
+  }
+
+  public static final class StringListWriter {
+    @ForyField(id = 0)
+    public List<String> value = Collections.singletonList("1");
+  }
+
+  public static final class RefStringListWriter {
+    @ForyField(id = 0)
+    public List<@Ref String> value = Collections.singletonList("1");
+  }
+
+  public static final class PlainStringListReader {
+    @ForyField(id = 0)
+    public List<String> value;
+  }
+
+  public static final class IntListReader {
+    @ForyField(id = 0)
+    public List<Integer> value;
+  }
+
+  public static final class ByteArrayListWriter {
+    @ForyField(id = 0)
+    public List<byte[]> value = Collections.singletonList(new byte[] {1});
+  }
+
+  public static final class UInt8ByteArrayListReader {
+    @ForyField(id = 0)
+    public List<@UInt8Type byte[]> value;
+  }
+
+  public static final class BinaryWriter {
+    @ForyField(id = 0)
+    public byte[] value = new byte[] {1, 2};
+  }
+
+  public static final class BinaryReader {
+    @ForyField(id = 0)
+    public byte[] value;
+  }
+
+  public static final class Int8ArrayWriter {
+    @Int8Type
+    @ForyField(id = 0)
+    public byte[] value = new byte[] {1, 2};
+  }
+
+  public static final class Int8ArrayReader {
+    @Int8Type
+    @ForyField(id = 0)
+    public byte[] value;
+  }
+
+  public static final class UInt8ArrayWriter {
+    @UInt8Type
+    @ForyField(id = 0)
+    public byte[] value = new byte[] {(byte) 200, (byte) 250};
+  }
+
+  public static final class UInt8ArrayReader {
+    @UInt8Type
+    @ForyField(id = 0)
+    public byte[] value;
+  }
+
+  public static final class Float16ArrayWriter {
+    @Float16Type
+    @ForyField(id = 0)
+    public short[] value = new short[] {0, 1};
+  }
+
+  public static final class BFloat16ArrayReader {
+    @BFloat16Type
+    @ForyField(id = 0)
+    public short[] value;
   }
 
   @DataProvider
@@ -499,7 +601,7 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "codegenModes")
-  public void testScalarTrackingRefConversionRejected(boolean codegen) {
+  public void testScalarTrackingRefRejected(boolean codegen) {
     Fory writer =
         Fory.builder()
             .withXlang(true)
@@ -518,8 +620,7 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
             .withRefTracking(true)
             .build();
     reader.register(BoolReader.class, 28000);
-    BoolReader value = (BoolReader) reader.deserialize(bytes);
-    Assert.assertFalse(value.value);
+    Assert.assertThrows(RuntimeException.class, () -> reader.deserialize(bytes));
   }
 
   @Test
@@ -556,50 +657,53 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "xlang")
-  public void testScalarTrackingRefMismatchSkipped(boolean xlang) {
-    Fory refWriter = compatibleRefFory(xlang, false);
-    refWriter.register(RefBooleanWriter.class, 28000);
-    byte[] refBytes = refWriter.serialize(new RefBooleanWriter());
-
-    Fory nonRefReader = compatibleRefFory(xlang, false);
-    nonRefReader.register(BoolReader.class, 28000);
-    BoolReader boolReader = (BoolReader) nonRefReader.deserialize(refBytes);
-    Assert.assertFalse(boolReader.value);
-
-    Fory nonRefWriter = compatibleRefFory(xlang, false);
-    nonRefWriter.register(BoolStringWriter.class, 28000);
-    byte[] nonRefBytes = nonRefWriter.serialize(new BoolStringWriter());
-
-    Fory refReaderFory = compatibleRefFory(xlang, false);
-    refReaderFory.register(RefBooleanReader.class, 28000);
-    RefBooleanReader refReader = (RefBooleanReader) refReaderFory.deserialize(nonRefBytes);
-    Assert.assertNull(refReader.value);
+  public void testScalarTrackingRefMismatchRejected(boolean xlang) {
+    assertRefSchemaFails(new RefStringBoolWriter(), StringReader.class, xlang, false);
+    assertRefSchemaFails(new StringBoolWriter(), RefStringReader.class, xlang, false);
+    assertRefSchemaFails(new NullableRefStringWriter(), RefStringReader.class, xlang, false);
+    assertRefSchemaFails(new RefStringBoolWriter(), NullableRefStringReader.class, xlang, false);
 
     Fory nullableRefWriter = compatibleRefFory(xlang, false);
-    nullableRefWriter.register(NullableRefBooleanWriter.class, 28000);
-    byte[] nullableRefBytes = nullableRefWriter.serialize(new NullableRefBooleanWriter());
-
-    Fory requiredRefReaderFory = compatibleRefFory(xlang, false);
-    requiredRefReaderFory.register(RefBooleanReader.class, 28000);
-    RefBooleanReader requiredRefReader =
-        (RefBooleanReader) requiredRefReaderFory.deserialize(nullableRefBytes);
-    Assert.assertNull(requiredRefReader.value);
-
-    Fory requiredRefWriter = compatibleRefFory(xlang, false);
-    requiredRefWriter.register(RefBooleanWriter.class, 28000);
-    byte[] requiredRefBytes = requiredRefWriter.serialize(new RefBooleanWriter());
-
-    Fory nullableRefReaderFory = compatibleRefFory(xlang, false);
-    nullableRefReaderFory.register(NullableRefBooleanReader.class, 28000);
-    NullableRefBooleanReader nullableRefReader =
-        (NullableRefBooleanReader) nullableRefReaderFory.deserialize(requiredRefBytes);
-    Assert.assertNull(nullableRefReader.value);
+    nullableRefWriter.register(NullableRefStringWriter.class, 28000);
+    byte[] nullableRefBytes = nullableRefWriter.serialize(new NullableRefStringWriter());
 
     Fory exactNullableRefReaderFory = compatibleRefFory(xlang, false);
-    exactNullableRefReaderFory.register(NullableRefBooleanReader.class, 28000);
-    NullableRefBooleanReader exactNullableRefReader =
-        (NullableRefBooleanReader) exactNullableRefReaderFory.deserialize(nullableRefBytes);
-    Assert.assertEquals(Boolean.TRUE, exactNullableRefReader.value);
+    exactNullableRefReaderFory.register(NullableRefStringReader.class, 28000);
+    NullableRefStringReader exactNullableRefReader =
+        (NullableRefStringReader) exactNullableRefReaderFory.deserialize(nullableRefBytes);
+    Assert.assertEquals("true", exactNullableRefReader.value);
+  }
+
+  @Test
+  public void testNestedScalarMismatchRejected() {
+    assertSchemaFails(new StringListWriter(), IntListReader.class, true, false);
+  }
+
+  @Test(dataProvider = "codegenModes")
+  public void testNestedRefTrackingRejected(boolean codegen) {
+    assertRefSchemaFails(new RefStringListWriter(), PlainStringListReader.class, true, codegen);
+  }
+
+  @Test(dataProvider = "codegenModes")
+  public void testNestedArrayTypeRejected(boolean codegen) {
+    assertSchemaFails(new ByteArrayListWriter(), UInt8ByteArrayListReader.class, true, codegen);
+  }
+
+  @Test(dataProvider = "codegenModes")
+  public void testBinaryUint8ArrayBridge(boolean codegen) {
+    UInt8ArrayReader uint8Reader =
+        readAs(new BinaryWriter(), UInt8ArrayReader.class, true, codegen);
+    Assert.assertTrue(Arrays.equals(uint8Reader.value, new byte[] {1, 2}));
+
+    BinaryReader binaryReader = readAs(new UInt8ArrayWriter(), BinaryReader.class, true, codegen);
+    Assert.assertTrue(Arrays.equals(binaryReader.value, new byte[] {(byte) 200, (byte) 250}));
+  }
+
+  @Test(dataProvider = "codegenModes")
+  public void testRootPrimitiveArrayMismatchRejected(boolean codegen) {
+    assertSchemaFails(new BinaryWriter(), Int8ArrayReader.class, true, codegen);
+    assertSchemaFails(new Int8ArrayWriter(), UInt8ArrayReader.class, true, codegen);
+    assertSchemaFails(new Float16ArrayWriter(), BFloat16ArrayReader.class, true, codegen);
   }
 
   @Test(dataProvider = "xlangAndCodegen")
@@ -675,10 +779,32 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
     return readerClass.cast(reader.deserialize(bytes));
   }
 
+  private static <T> T readAsRef(
+      Object writerObject, Class<T> readerClass, boolean xlang, boolean codegen) {
+    Fory writer = compatibleRefFory(xlang, codegen);
+    writer.register(writerObject.getClass(), 28000);
+    byte[] bytes = writer.serialize(writerObject);
+    Fory reader = compatibleRefFory(xlang, codegen);
+    reader.register(readerClass, 28000);
+    return readerClass.cast(reader.deserialize(bytes));
+  }
+
   private static void assertConversionFails(
       Object writerObject, Class<?> readerClass, boolean xlang, boolean codegen) {
     Assert.assertThrows(
         DeserializationException.class, () -> readAs(writerObject, readerClass, xlang, codegen));
+  }
+
+  private static void assertSchemaFails(
+      Object writerObject, Class<?> readerClass, boolean xlang, boolean codegen) {
+    Assert.assertThrows(
+        RuntimeException.class, () -> readAs(writerObject, readerClass, xlang, codegen));
+  }
+
+  private static void assertRefSchemaFails(
+      Object writerObject, Class<?> readerClass, boolean xlang, boolean codegen) {
+    Assert.assertThrows(
+        RuntimeException.class, () -> readAsRef(writerObject, readerClass, xlang, codegen));
   }
 
   private static Fory compatibleFory(boolean xlang, boolean codegen) {

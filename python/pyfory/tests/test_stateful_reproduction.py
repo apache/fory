@@ -101,7 +101,7 @@ class ImmutableOldStyle:
 def test_current_behavior():
     print("Testing current behavior with stateful objects...")
 
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     # Test basic stateful object
     obj1 = StatefulObject(42, "original_secret")

@@ -254,7 +254,7 @@ cdef class DateSerializer(Serializer):
 cdef class TimestampSerializer(Serializer):
     cdef bint win_platform
 
-    def __init__(self, type_resolver, type_: Union[type, TypeVar]):
+    def __init__(self, type_resolver, type_):
         super().__init__(type_resolver, type_)
         self.win_platform = platform.system() == "Windows"
 

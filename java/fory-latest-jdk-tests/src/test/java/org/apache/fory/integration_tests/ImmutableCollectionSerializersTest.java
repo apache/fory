@@ -45,7 +45,7 @@ public class ImmutableCollectionSerializersTest {
 
   @Test(dataProvider = "codegen")
   public void testImmutableCollections(boolean codegen) {
-    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).withCompatible(false).build();
     serDeCheck(fory, List.of());
     serDeCheck(fory, List.of("A"));
     serDeCheck(fory, List.of("A", "B"));
@@ -65,7 +65,7 @@ public class ImmutableCollectionSerializersTest {
 
   @Test(dataProvider = "codegen")
   public void testImmutableCollectionStruct(boolean codegen) {
-    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(codegen).withCompatible(false).build();
     fory.register(MapFields.class);
     MapFields mapFields = new MapFields();
     mapFields.map = Map.of();
@@ -79,7 +79,7 @@ public class ImmutableCollectionSerializersTest {
 
   @Test
   public void testImmutableMapStruct() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     fory.register(CollectionFields.class);
     CollectionFields collectionFields = new CollectionFields();
     collectionFields.collection = List.of();
@@ -100,7 +100,12 @@ public class ImmutableCollectionSerializersTest {
     if (JdkVersion.MAJOR_VERSION < 25) {
       return;
     }
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Set<String> set = Collections.newSetFromMap(new IdentityHashMap<>());
     set.add(new String("a"));
     set.add(new String("a"));
@@ -152,6 +157,7 @@ public class ImmutableCollectionSerializersTest {
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withRefTracking(trackingRef)
+            .withCompatible(false)
             .buildThreadSafeFory();
 
     byte[] bytes = fory.serialize(pojo);

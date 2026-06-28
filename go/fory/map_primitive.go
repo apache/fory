@@ -68,15 +68,27 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 	}
 }
 
+func readTypedMapSize(ctx *ReadContext) (int, bool) {
+	size := ctx.ReadCollectionLength()
+	if size == 0 || ctx.HasError() {
+		return size, false
+	}
+	if !ctx.Buffer().CheckReadable(size, ctx.Err()) {
+		return 0, false
+	}
+	return size, true
+}
+
 // readMapStringString reads map[string]string using chunk protocol
 func readMapStringString(ctx *ReadContext) map[string]string {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]string, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]string)
+	if !ok {
 		return result
 	}
+	result = make(map[string]string, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -159,11 +171,12 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 func readMapStringInt64(ctx *ReadContext) map[string]int64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]int64, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]int64)
+	if !ok {
 		return result
 	}
+	result = make(map[string]int64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -243,11 +256,12 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 func readMapStringInt32(ctx *ReadContext) map[string]int32 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]int32, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]int32)
+	if !ok {
 		return result
 	}
+	result = make(map[string]int32, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -327,11 +341,12 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 func readMapStringInt(ctx *ReadContext) map[string]int {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]int, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]int)
+	if !ok {
 		return result
 	}
+	result = make(map[string]int, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -411,11 +426,12 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 func readMapStringFloat64(ctx *ReadContext) map[string]float64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]float64, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]float64)
+	if !ok {
 		return result
 	}
+	result = make(map[string]float64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -495,11 +511,12 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 func readMapStringBool(ctx *ReadContext) map[string]bool {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[string]bool, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[string]bool)
+	if !ok {
 		return result
 	}
+	result = make(map[string]bool, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -583,11 +600,12 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 func readMapInt32Int32(ctx *ReadContext) map[int32]int32 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[int32]int32, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[int32]int32)
+	if !ok {
 		return result
 	}
+	result = make(map[int32]int32, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -667,11 +685,12 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 func readMapInt64Int64(ctx *ReadContext) map[int64]int64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[int64]int64, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[int64]int64)
+	if !ok {
 		return result
 	}
+	result = make(map[int64]int64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -751,11 +770,12 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 func readMapIntInt(ctx *ReadContext) map[int]int {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size := ctx.ReadCollectionLength()
-	result := make(map[int]int, size)
-	if size == 0 {
+	size, ok := readTypedMapSize(ctx)
+	result := make(map[int]int)
+	if !ok {
 		return result
 	}
+	result = make(map[int]int, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)

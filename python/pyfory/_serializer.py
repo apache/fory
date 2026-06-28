@@ -44,6 +44,7 @@ from pyfory.serialization import (
     _float16_to_bits,
 )
 from pyfory.types import is_primitive_type
+from pyfory.type_util import normalize_fory_type
 from pyfory.utils import is_little_endian
 
 try:
@@ -64,9 +65,10 @@ class Serializer(ABC):
 
     __slots__ = "type_resolver", "type_", "need_to_write_ref"
 
-    def __init__(self, type_resolver, type_: type):
+    def __init__(self, type_resolver, type_):
         self.type_resolver = type_resolver
-        self.type_: type = type_
+        type_ = normalize_fory_type(type_)
+        self.type_ = type_
         self.need_to_write_ref = type_resolver.track_ref and not is_primitive_type(type_)
 
     def write(self, write_context, value):
@@ -300,13 +302,13 @@ class _DenseArraySerializer(Serializer):
             write_context.write_buffer(swapped)
 
     def read(self, read_context):
-        payload_size = read_context.read_var_uint32()
-        data = read_context.read_bytes(payload_size)
+        byte_size = read_context.read_var_uint32()
+        data = read_context.read_bytes(byte_size)
         if self.wrapper_type is BoolArray:
             return BoolArray(bool(value) for value in data)
         if self.reduced_precision:
-            if payload_size & 1:
-                raise ValueError(f"{self.wrapper_type.__name__} payload size mismatch")
+            if byte_size & 1:
+                raise ValueError(f"{self.wrapper_type.__name__} byte size mismatch")
             raw = array.array("H")
             raw.frombytes(data)
             if not is_little_endian:

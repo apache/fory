@@ -23,6 +23,7 @@ import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
 import { TypeId, MaxUInt32 } from "../type";
 import { Scope } from "./scope";
+import { TypeMeta } from "../meta/TypeMeta";
 
 class EnumSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
@@ -99,17 +100,27 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         readUserTypeIdStmt = `${this.builder.reader.readVarUint32Small7()};`;
         break;
       case TypeId.NAMED_ENUM:
-        namesStmt = `
-          ${
-            // skip the namespace
-            this.builder.metaStringResolver.readNamespace()
-          }
+        if (this.builder.resolver.isCompatible()) {
+          namesStmt = `
+            ${this.builder.typeMetaResolver.readNamedTypeMeta(
+              TypeId.NAMED_ENUM,
+              this.typeInfo.namespace,
+              this.typeInfo.typeName,
+            )};
+          `;
+        } else {
+          namesStmt = `
+            ${
+              // skip the namespace
+              this.builder.metaStringResolver.readNamespace()
+            }
 
-          ${
-          // skip the namespace
-          this.builder.metaStringResolver.readTypeName()
-          }
-        `;
+            ${
+            // skip the type name
+            this.builder.metaStringResolver.readTypeName()
+            }
+          `;
+        }
         break;
       default:
         break;
@@ -133,7 +144,10 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_ENUM:
-        {
+        if (this.builder.resolver.isCompatible()) {
+          const bytes = this.scope.declare("enumTypeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
+        } else {
           const typeInfo = this.typeInfo;
           const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
           const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));

@@ -155,6 +155,7 @@ public class JITContextTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(true)
             .withAsyncCompilation(true)
+            .withCompatible(false)
             .build();
 
     TestAccessLevel o = new TestAccessLevel(new PkgAccessLevel(1), new PrivateAccessLevel(2));

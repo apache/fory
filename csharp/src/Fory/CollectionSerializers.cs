@@ -213,6 +213,7 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
+        context.Reader.CheckBound(length);
         List<T> values = new(length);
         if (!sameType)
         {

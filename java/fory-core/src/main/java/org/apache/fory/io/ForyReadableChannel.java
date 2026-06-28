@@ -22,6 +22,7 @@ package org.apache.fory.io;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.SeekableByteChannel;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
@@ -31,19 +32,38 @@ import org.apache.fory.util.Preconditions;
 @NotThreadSafe
 public class ForyReadableChannel implements ForyStreamReader, ReadableByteChannel {
   private final ReadableByteChannel channel;
+  private final SeekableByteChannel seekableChannel;
   private final MemoryBuffer memoryBuffer;
   private ByteBuffer byteBuffer;
 
   public ForyReadableChannel(ReadableByteChannel channel) {
     this(
         channel,
-        AndroidSupport.IS_ANDROID ? ByteBuffer.allocate(4096) : ByteBuffer.allocateDirect(4096));
+        AndroidSupport.IS_ANDROID ? ByteBuffer.allocate(4096) : ByteBuffer.allocateDirect(4096),
+        null);
+  }
+
+  public ForyReadableChannel(SeekableByteChannel channel) {
+    this(
+        channel,
+        AndroidSupport.IS_ANDROID ? ByteBuffer.allocate(4096) : ByteBuffer.allocateDirect(4096),
+        channel);
   }
 
   public ForyReadableChannel(ReadableByteChannel channel, ByteBuffer buffer) {
+    this(channel, buffer, null);
+  }
+
+  public ForyReadableChannel(SeekableByteChannel channel, ByteBuffer buffer) {
+    this(channel, buffer, channel);
+  }
+
+  private ForyReadableChannel(
+      ReadableByteChannel channel, ByteBuffer buffer, SeekableByteChannel seekableChannel) {
     Preconditions.checkArgument(
         !buffer.isReadOnly(), "ForyReadableChannel requires writable ByteBuffer.");
     this.channel = channel;
+    this.seekableChannel = seekableChannel;
     if (AndroidSupport.IS_ANDROID && buffer.isDirect()) {
       buffer = ByteBuffer.allocate(buffer.capacity());
     }
@@ -62,30 +82,81 @@ public class ForyReadableChannel implements ForyStreamReader, ReadableByteChanne
 
   @Override
   public int fillBuffer(int minFillSize) {
+    if (minFillSize < 0) {
+      throw new DeserializationException("Negative minimum fill size " + minFillSize);
+    }
+    if (minFillSize == 0) {
+      return 0;
+    }
     try {
-      ByteBuffer byteBuf = byteBuffer;
-      MemoryBuffer memoryBuf = memoryBuffer;
-      int position = byteBuf.position();
-      int newLimit = position + minFillSize;
-      if (newLimit > byteBuf.capacity()) {
-        int newSize =
-            newLimit < MemoryBuffer.BUFFER_GROW_STEP_THRESHOLD
-                ? newLimit << 2
-                : (int) Math.min(newLimit * 1.5d, Integer.MAX_VALUE);
-        ByteBuffer newByteBuf =
-            byteBuf.isDirect() ? ByteBuffer.allocateDirect(newSize) : ByteBuffer.allocate(newSize);
-        byteBuf.position(0);
-        newByteBuf.put(byteBuf);
-        byteBuf = byteBuffer = newByteBuf;
-        memoryBuf.initByteBuffer(byteBuf, position);
+      int totalRead = 0;
+      SeekableByteChannel seekableChannel = this.seekableChannel;
+      boolean checkedSeekableRemaining = seekableChannel == null;
+      while (totalRead < minFillSize) {
+        ByteBuffer byteBuf = byteBuffer;
+        MemoryBuffer memoryBuf = memoryBuffer;
+        int position = byteBuf.position();
+        int remainingNeeded = minFillSize - totalRead;
+        long targetSize = (long) position + remainingNeeded;
+        if (targetSize > Integer.MAX_VALUE) {
+          throw new DeserializationException("Stream buffer size exceeds supported range");
+        }
+        if (targetSize > byteBuf.capacity()) {
+          int newCapacity = 0;
+          if (!checkedSeekableRemaining) {
+            checkedSeekableRemaining = true;
+            // Query exact channel remaining bytes only as a one-shot fast path. Otherwise grow
+            // from bytes already buffered so truncated channels fail before reserving the body.
+            if (seekableChannel.size() - seekableChannel.position() >= remainingNeeded) {
+              newCapacity = (int) targetSize;
+            }
+          }
+          if (newCapacity == 0 && position == byteBuf.capacity()) {
+            newCapacity = nextBufferSize(byteBuf.capacity(), (int) targetSize);
+          }
+          if (newCapacity != 0) {
+            byteBuf = growBuffer(byteBuf, memoryBuf, position, newCapacity);
+          }
+        }
+        byteBuf.limit(byteBuf.capacity());
+        int read = channel.read(byteBuf);
+        if (read <= 0) {
+          throw new DeserializationException("Unexpected end of byte channel");
+        }
+        totalRead += read;
+        memoryBuf.increaseSize(read);
+        byteBuf.limit(byteBuf.position());
       }
-      byteBuf.limit(newLimit);
-      readFully(byteBuf, minFillSize);
-      memoryBuf.increaseSize(minFillSize);
-      return minFillSize;
+      return totalRead;
     } catch (IOException e) {
       throw new DeserializationException("Failed to read the provided byte channel", e);
     }
+  }
+
+  private ByteBuffer growBuffer(
+      ByteBuffer byteBuf, MemoryBuffer memoryBuf, int position, int newCapacity) {
+    int oldCapacity = byteBuf.capacity();
+    if (newCapacity <= oldCapacity) {
+      throw new DeserializationException("Stream buffer size exceeds supported range");
+    }
+    ByteBuffer newByteBuf =
+        byteBuf.isDirect()
+            ? ByteBuffer.allocateDirect(newCapacity)
+            : ByteBuffer.allocate(newCapacity);
+    byteBuf.position(0);
+    byteBuf.limit(position);
+    newByteBuf.put(byteBuf);
+    byteBuffer = newByteBuf;
+    memoryBuf.initByteBuffer(newByteBuf, position);
+    return newByteBuf;
+  }
+
+  private static int nextBufferSize(int oldCapacity, int targetSize) {
+    long grown = oldCapacity == 0 ? 1L : (long) oldCapacity << 1;
+    if (grown > Integer.MAX_VALUE) {
+      grown = Integer.MAX_VALUE;
+    }
+    return (int) Math.min(grown, targetSize);
   }
 
   @Override

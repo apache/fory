@@ -1,4 +1,4 @@
-namespace org.apache.fory.integration_tests.state.generated;
+namespace org.apache.fory.benchmark.state.generated;
 
 table FBSFoo {
   string:string;

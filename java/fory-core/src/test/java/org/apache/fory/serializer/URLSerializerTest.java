@@ -42,7 +42,7 @@ public class URLSerializerTest extends ForyTestBase {
 
   @Test
   public void testURLSerializer() throws MalformedURLException {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     fory.registerSerializer(URL.class, URLSerializer.class);
     Assert.assertEquals(
         serDeCheckSerializer(fory, new URL("http://test"), "URLSerializer"),

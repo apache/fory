@@ -47,7 +47,7 @@ class UnionSerializer(Serializer):
     """
     Serializer for generated union classes and typing.Union.
 
-    For generated unions, the payload is:
+    For generated unions, the case body is:
     | case_id (varuint32) | case_value (Any-style value) |
     """
 
@@ -110,17 +110,17 @@ class UnionSerializer(Serializer):
                 value = read_context.get_read_ref()
                 return self._build_union(case_id, value)
             self.type_resolver.read_type_info(read_context)
-            value = self._read_case_payload(read_context, serializer)
+            value = self._read_case_value(read_context, serializer)
             read_context.set_read_ref(ref_id, value)
         else:
             if read_context.read_int8() == NULL_FLAG:
                 value = None
             else:
                 self.type_resolver.read_type_info(read_context)
-                value = self._read_case_payload(read_context, serializer)
+                value = self._read_case_value(read_context, serializer)
         return self._build_union(case_id, value)
 
-    def _read_case_payload(self, read_context, serializer):
+    def _read_case_value(self, read_context, serializer):
         read_context.increase_depth()
         try:
             return serializer.read(read_context)

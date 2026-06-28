@@ -47,7 +47,7 @@ struct NewStruct {
 
 // Helper to create a Fory instance
 Fory create_fory() {
-  return Fory::builder().xlang(false).track_ref(true).build();
+  return Fory::builder().xlang(false).track_ref(true).compatible(false).build();
 }
 
 Fory create_xlang_fory() {

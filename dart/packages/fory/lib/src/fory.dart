@@ -57,15 +57,20 @@ final class Fory {
     bool compatible = true,
     bool checkStructVersion = true,
     int maxDepth = Config.defaultMaxDepth,
-    int maxCollectionSize = Config.defaultMaxCollectionSize,
-    int maxBinarySize = Config.defaultMaxBinarySize,
+    int maxTypeFields = Config.defaultMaxTypeFields,
+    int maxTypeMetaBytes = Config.defaultMaxTypeMetaBytes,
+    int maxSchemaVersionsPerType = Config.defaultMaxSchemaVersionsPerType,
+    int maxAverageSchemaVersionsPerType =
+        Config.defaultMaxAverageSchemaVersionsPerType,
   }) {
     final config = Config(
       compatible: compatible,
       checkStructVersion: checkStructVersion,
       maxDepth: maxDepth,
-      maxCollectionSize: maxCollectionSize,
-      maxBinarySize: maxBinarySize,
+      maxTypeFields: maxTypeFields,
+      maxTypeMetaBytes: maxTypeMetaBytes,
+      maxSchemaVersionsPerType: maxSchemaVersionsPerType,
+      maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType,
     );
     _readBuffer = Buffer();
     _writeBuffer = Buffer();
@@ -95,24 +100,18 @@ final class Fory {
     return Uint8List.fromList(_writeBuffer.toBytes());
   }
 
-  /// Serializes a non-null builtin [value] using the explicit xlang
-  /// [wireTypeId].
+  /// Serializes a non-null builtin [value] using the explicit xlang [typeId].
   ///
-  /// This is the advanced escape hatch for root values whose wire type must
+  /// This is the advanced escape hatch for root values whose xlang type must
   /// stay narrower than their Dart carrier type, such as writing a Dart `int`
-  /// as xlang `VAR_INT32`. [wireTypeId] must identify a builtin xlang type.
+  /// as xlang `VAR_INT32`. [typeId] must identify a builtin xlang type.
   Uint8List serializeBuiltin(
     Object value, {
-    required int wireTypeId,
+    required int typeId,
     bool trackRef = false,
   }) {
     _writeBuffer.clear();
-    serializeBuiltinTo(
-      value,
-      _writeBuffer,
-      wireTypeId: wireTypeId,
-      trackRef: trackRef,
-    );
+    serializeBuiltinTo(value, _writeBuffer, typeId: typeId, trackRef: trackRef);
     return Uint8List.fromList(_writeBuffer.toBytes());
   }
 
@@ -136,14 +135,14 @@ final class Fory {
   }
 
   /// Serializes a non-null builtin [value] into [buffer] using the explicit
-  /// xlang [wireTypeId].
+  /// xlang [typeId].
   ///
-  /// The target [buffer] is cleared before bytes are written. [wireTypeId]
-  /// must identify a builtin xlang type.
+  /// The target [buffer] is cleared before bytes are written. [typeId] must
+  /// identify a builtin xlang type.
   void serializeBuiltinTo(
     Object value,
     Buffer buffer, {
-    required int wireTypeId,
+    required int typeId,
     bool trackRef = false,
   }) {
     buffer.clear();
@@ -152,7 +151,7 @@ final class Fory {
       buffer.writeUint8(_xlangHeaderFlag);
       _writeContext.writeRootBuiltinValue(
         value,
-        wireTypeId: wireTypeId,
+        typeId: typeId,
         trackRef: trackRef,
       );
     } finally {

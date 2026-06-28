@@ -25,6 +25,8 @@ and Fory's internal schema representation for the row format.
 import pyarrow as pa
 from pyarrow import types as pa_types
 
+from pyfory.type_id import TypeId
+
 
 def arrow_type_to_fory_type_id(arrow_type):
     """
@@ -41,51 +43,51 @@ def arrow_type_to_fory_type_id(arrow_type):
     """
     # Boolean
     if pa_types.is_boolean(arrow_type):
-        return 1  # BOOL
+        return TypeId.BOOL
 
     # Integer types
     if pa_types.is_int8(arrow_type):
-        return 2  # INT8
+        return TypeId.INT8
     if pa_types.is_int16(arrow_type):
-        return 3  # INT16
+        return TypeId.INT16
     if pa_types.is_int32(arrow_type):
-        return 4  # INT32
+        return TypeId.INT32
     if pa_types.is_int64(arrow_type):
-        return 6  # INT64
+        return TypeId.INT64
 
     # Floating point types
     if pa_types.is_float16(arrow_type):
-        return 17  # FLOAT16
+        return TypeId.FLOAT16
     if pa_types.is_float32(arrow_type):
-        return 19  # FLOAT32
+        return TypeId.FLOAT32
     if pa_types.is_float64(arrow_type):
-        return 20  # FLOAT64
+        return TypeId.FLOAT64
 
     # String and binary
     if pa_types.is_string(arrow_type) or pa_types.is_large_string(arrow_type):
-        return 21  # STRING
+        return TypeId.STRING
     if pa_types.is_binary(arrow_type) or pa_types.is_large_binary(arrow_type):
-        return 41  # BINARY
+        return TypeId.BINARY
 
     # Date/time types
     if pa_types.is_date32(arrow_type):
-        return 39  # DATE
+        return TypeId.DATE
     if pa_types.is_timestamp(arrow_type):
-        return 38  # TIMESTAMP
+        return TypeId.TIMESTAMP
     if pa_types.is_duration(arrow_type):
-        return 37  # DURATION
+        return TypeId.DURATION
 
     # Decimal
     if pa_types.is_decimal(arrow_type):
-        return 40  # DECIMAL
+        return TypeId.DECIMAL
 
     # Complex types
     if pa_types.is_list(arrow_type) or pa_types.is_large_list(arrow_type):
-        return 22  # LIST
+        return TypeId.LIST
     if pa_types.is_map(arrow_type):
-        return 24  # MAP
+        return TypeId.MAP
     if pa_types.is_struct(arrow_type):
-        return 27  # STRUCT
+        return TypeId.STRUCT
 
     raise NotImplementedError(f"Unsupported Arrow type: {arrow_type}")
 
@@ -110,42 +112,42 @@ def fory_type_id_to_arrow_type(type_id, precision=None, scale=None, list_type=No
         NotImplementedError: If the Fory type is not supported.
     """
     type_map = {
-        1: pa.bool_(),  # BOOL
-        2: pa.int8(),  # INT8
-        3: pa.int16(),  # INT16
-        4: pa.int32(),  # INT32
-        6: pa.int64(),  # INT64
-        17: pa.float16(),  # FLOAT16
-        19: pa.float32(),  # FLOAT32
-        20: pa.float64(),  # FLOAT64
-        21: pa.utf8(),  # STRING
-        37: pa.duration("ns"),  # DURATION
-        38: pa.timestamp("us"),  # TIMESTAMP
-        39: pa.date32(),  # DATE
-        41: pa.binary(),  # BINARY
+        TypeId.BOOL: pa.bool_(),
+        TypeId.INT8: pa.int8(),
+        TypeId.INT16: pa.int16(),
+        TypeId.INT32: pa.int32(),
+        TypeId.INT64: pa.int64(),
+        TypeId.FLOAT16: pa.float16(),
+        TypeId.FLOAT32: pa.float32(),
+        TypeId.FLOAT64: pa.float64(),
+        TypeId.STRING: pa.utf8(),
+        TypeId.DURATION: pa.duration("ns"),
+        TypeId.TIMESTAMP: pa.timestamp("us"),
+        TypeId.DATE: pa.date32(),
+        TypeId.BINARY: pa.binary(),
     }
 
     if type_id in type_map:
         return type_map[type_id]
 
     # Decimal
-    if type_id == 40:  # DECIMAL
+    if type_id == TypeId.DECIMAL:
         return pa.decimal128(precision or 38, scale or 18)
 
     # List
-    if type_id == 22:  # LIST
+    if type_id == TypeId.LIST:
         if list_type is None:
             raise ValueError("list_type must be provided for LIST type")
         return pa.list_(list_type)
 
     # Map
-    if type_id == 24:  # MAP
+    if type_id == TypeId.MAP:
         if map_key_type is None or map_value_type is None:
             raise ValueError("map_key_type and map_value_type must be provided for MAP type")
         return pa.map_(map_key_type, map_value_type)
 
     # Struct
-    if type_id == 27:  # STRUCT
+    if type_id == TypeId.STRUCT:
         if struct_fields is None:
             raise ValueError("struct_fields must be provided for STRUCT type")
         return pa.struct(struct_fields)

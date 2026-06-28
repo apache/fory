@@ -155,7 +155,7 @@ install_jdk25_fory_artifacts() {
   use_jdk "zulu25.30.17-ca-jdk25.0.1-linux_x64"
   export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
   cd "$ROOT"/java
-  mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'
+  mvn -T10 -B --no-transfer-progress clean install -DskipTests
   echo "Verify JDK25 benchmark multi-release jar"
   cd "$ROOT"/benchmarks/java
   mvn -T10 -B --no-transfer-progress -Pjmh -DskipTests install
@@ -311,7 +311,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress clean test
+      mvn -T16 --batch-mode --no-transfer-progress clean install
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode

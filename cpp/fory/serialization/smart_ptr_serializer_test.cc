@@ -51,7 +51,11 @@ struct UniqueHolder {
 namespace {
 
 Fory create_serializer(bool track_ref) {
-  return Fory::builder().xlang(true).track_ref(track_ref).build();
+  return Fory::builder()
+      .xlang(true)
+      .track_ref(track_ref)
+      .compatible(true)
+      .build();
 }
 
 // Helper to register all test struct types
@@ -464,7 +468,8 @@ TEST(SmartPtrSerializerTest, NonDynamicFieldConfig) {
   original.ptr->value = 42;
   original.ptr->data = "test data";
 
-  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  auto fory =
+      Fory::builder().xlang(true).track_ref(false).compatible(true).build();
   fory.register_struct<NonDynamicFieldHolder>(400);
   fory.register_struct<PolymorphicBaseForMono>(401);
 
@@ -487,7 +492,8 @@ TEST(SmartPtrSerializerTest, NonDynamicFieldNullValue) {
   NonDynamicFieldHolder original;
   original.ptr = nullptr;
 
-  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  auto fory =
+      Fory::builder().xlang(true).track_ref(false).compatible(true).build();
   fory.register_struct<NonDynamicFieldHolder>(404);
   fory.register_struct<PolymorphicBaseForMono>(405);
 

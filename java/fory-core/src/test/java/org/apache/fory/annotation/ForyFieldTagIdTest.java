@@ -62,6 +62,7 @@ public class ForyFieldTagIdTest extends ForyTestBase {
             .withXlang(xlang)
             .requireClassRegistration(registered)
             .withCodegen(codegen)
+            .withCompatible(xlang)
             .build();
 
     if (xlang) {

@@ -49,7 +49,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private MethodHandle constructor;
   private int numElements;
   protected final Config config;
-  protected final int maxCollectionSize;
   protected final boolean supportCodegenHook;
   protected final TypeInfoHolder elementTypeInfoHolder;
   protected final TypeResolver typeResolver;
@@ -71,7 +70,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook) {
     super(typeResolver.getConfig(), cls);
     this.config = typeResolver.getConfig();
-    maxCollectionSize = config.maxCollectionSize();
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
@@ -81,7 +79,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
-    maxCollectionSize = config.maxCollectionSize();
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
@@ -566,24 +563,20 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   protected final int readCollectionSize(MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
+    buffer.checkReadableBytes(numElements);
     return numElements;
   }
 
   protected final void checkCollectionSize(int numElements) {
     // Keep this as direct primitive branches. Collection reads are hot enough that
     // Preconditions.checkArgument would add helper/varargs overhead on the valid path.
-    if (numElements < 0 || numElements > maxCollectionSize) {
+    if (numElements < 0) {
       throwInvalidCollectionSize(numElements);
     }
   }
 
   private void throwInvalidCollectionSize(int numElements) {
-    if (numElements < 0) {
-      throw new DeserializationException("Collection size must be non-negative: " + numElements);
-    } else {
-      throw new DeserializationException(
-          "Collection size " + numElements + " exceeds max collection size " + maxCollectionSize);
-    }
+    throw new DeserializationException("Collection size must be non-negative: " + numElements);
   }
 
   public abstract T onCollectionRead(Collection collection);

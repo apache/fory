@@ -19,7 +19,9 @@
 
 #include <benchmark/benchmark.h>
 #include <cstdint>
+#include <cstdlib>
 #include <msgpack.hpp>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -215,6 +217,113 @@ struct MediaContentList {
   MSGPACK_DEFINE_MAP(media_content_list);
 };
 FORY_STRUCT(MediaContentList, (media_content_list, fory::F(1)));
+
+struct NumericStructV2 {
+  int64_t f1;
+  int32_t f2;
+  int32_t f3;
+  int32_t f4;
+  int32_t f5;
+  int32_t f6;
+  int32_t f7;
+  int32_t f8;
+  int32_t f9;
+  int32_t f10;
+  int32_t f11;
+  int32_t f12;
+};
+FORY_STRUCT(NumericStructV2, (f1, fory::F(1)), (f2, fory::F(2)),
+            (f3, fory::F(3)), (f4, fory::F(4)), (f5, fory::F(5)),
+            (f6, fory::F(6)), (f7, fory::F(7)), (f8, fory::F(8)),
+            (f9, fory::F(9)), (f10, fory::F(10)), (f11, fory::F(11)),
+            (f12, fory::F(12)));
+
+struct SampleV2 {
+  int64_t int_value;
+  int64_t long_value;
+  float float_value;
+  double double_value;
+  int32_t short_value;
+  int32_t char_value;
+  bool boolean_value;
+  int32_t int_value_boxed;
+  int64_t long_value_boxed;
+  float float_value_boxed;
+  double double_value_boxed;
+  int32_t short_value_boxed;
+  int32_t char_value_boxed;
+  bool boolean_value_boxed;
+  std::vector<int32_t> int_array;
+  std::vector<int64_t> long_array;
+  std::vector<float> float_array;
+  std::vector<double> double_array;
+  std::vector<int32_t> short_array;
+  std::vector<int32_t> char_array;
+  std::vector<bool> boolean_array;
+  std::string string;
+};
+FORY_STRUCT(SampleV2, (int_value, fory::F(1)), (long_value, fory::F(2)),
+            (float_value, fory::F(3)), (double_value, fory::F(4)),
+            (short_value, fory::F(5)), (char_value, fory::F(6)),
+            (boolean_value, fory::F(7)), (int_value_boxed, fory::F(8)),
+            (long_value_boxed, fory::F(9)), (float_value_boxed, fory::F(10)),
+            (double_value_boxed, fory::F(11)), (short_value_boxed, fory::F(12)),
+            (char_value_boxed, fory::F(13)), (boolean_value_boxed, fory::F(14)),
+            (int_array, fory::F(15)), (long_array, fory::F(16)),
+            (float_array, fory::F(17)), (double_array, fory::F(18)),
+            (short_array, fory::F(19)), (char_array, fory::F(20)),
+            (boolean_array, fory::F(21)), (string, fory::F(22)));
+
+struct MediaV2 {
+  std::string uri;
+  std::string title;
+  int64_t width;
+  int32_t height;
+  std::string format;
+  int64_t duration;
+  int64_t size;
+  int32_t bitrate;
+  bool has_bitrate;
+  std::vector<std::string> persons;
+  Player player;
+  std::string copyright;
+};
+FORY_STRUCT(MediaV2, (uri, fory::F(1)), (title, fory::F(2)),
+            (width, fory::F(3)), (height, fory::F(4)), (format, fory::F(5)),
+            (duration, fory::F(6)), (size, fory::F(7)), (bitrate, fory::F(8)),
+            (has_bitrate, fory::F(9)), (persons, fory::F(10)),
+            (player, fory::F(11)), (copyright, fory::F(12)));
+
+struct ImageV2 {
+  std::string uri;
+  std::string title;
+  int64_t width;
+  int32_t height;
+  Size size;
+};
+FORY_STRUCT(ImageV2, (uri, fory::F(1)), (title, fory::F(2)),
+            (width, fory::F(3)), (height, fory::F(4)), (size, fory::F(5)));
+
+struct MediaContentV2 {
+  MediaV2 media;
+  std::vector<ImageV2> images;
+};
+FORY_STRUCT(MediaContentV2, (media, fory::F(1)), (images, fory::F(2)));
+
+struct NumericStructListV2 {
+  std::vector<NumericStructV2> struct_list;
+};
+FORY_STRUCT(NumericStructListV2, (struct_list, fory::F(1)));
+
+struct SampleListV2 {
+  std::vector<SampleV2> sample_list;
+};
+FORY_STRUCT(SampleListV2, (sample_list, fory::F(1)));
+
+struct MediaContentListV2 {
+  std::vector<MediaContentV2> media_content_list;
+};
+FORY_STRUCT(MediaContentListV2, (media_content_list, fory::F(1)));
 
 // ============================================================================
 // Test data creation
@@ -626,8 +735,153 @@ void register_fory_types(fory::serialization::Fory &fory) {
   fory.register_struct<MediaContentList>(8);
 }
 
+void register_fory_types_v2(fory::serialization::Fory &fory) {
+  fory.register_struct<NumericStructV2>(1);
+  fory.register_struct<SampleV2>(2);
+  fory.register_struct<MediaV2>(3);
+  fory.register_struct<ImageV2>(4);
+  fory.register_struct<MediaContentV2>(5);
+  fory.register_struct<NumericStructListV2>(6);
+  fory.register_struct<SampleListV2>(7);
+  fory.register_struct<MediaContentListV2>(8);
+}
+
+bool schema_mismatch_enabled() {
+  const char *value = std::getenv("FORY_BENCH_SCHEMA_MISMATCH");
+  return value != nullptr && std::string(value) == "1";
+}
+
+bool reject_non_fory_schema_mismatch(benchmark::State &state) {
+  if (!schema_mismatch_enabled()) {
+    return false;
+  }
+  state.SkipWithError(
+      "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun "
+      "with --serializer fory");
+  return true;
+}
+
+fory::serialization::Fory new_benchmark_fory() {
+  return fory::serialization::Fory::builder()
+      .xlang(true)
+      .compatible(true)
+      .track_ref(false)
+      .build();
+}
+
+template <typename ReadT, typename WriteT>
+void verify_schema_mismatch_read(const ReadT &, const WriteT &) {}
+
+template <>
+void verify_schema_mismatch_read(const NumericStructV2 &decoded,
+                                 const NumericStruct &expected) {
+  if (decoded.f1 != expected.f1) {
+    throw std::runtime_error("NumericStructV2 schema mismatch read failed");
+  }
+}
+
+template <>
+void verify_schema_mismatch_read(const SampleV2 &decoded,
+                                 const Sample &expected) {
+  if (decoded.int_value != expected.int_value) {
+    throw std::runtime_error("SampleV2 schema mismatch read failed");
+  }
+}
+
+template <>
+void verify_schema_mismatch_read(const MediaContentV2 &decoded,
+                                 const MediaContent &expected) {
+  if (decoded.media.width != expected.media.width || decoded.images.empty() ||
+      decoded.images[0].width != expected.images[0].width) {
+    throw std::runtime_error("MediaContentV2 schema mismatch read failed");
+  }
+}
+
+template <>
+void verify_schema_mismatch_read(const NumericStructListV2 &decoded,
+                                 const NumericStructList &expected) {
+  if (decoded.struct_list.empty() ||
+      decoded.struct_list[0].f1 != expected.struct_list[0].f1) {
+    throw std::runtime_error("NumericStructListV2 schema mismatch read failed");
+  }
+}
+
+template <>
+void verify_schema_mismatch_read(const SampleListV2 &decoded,
+                                 const SampleList &expected) {
+  if (decoded.sample_list.empty() ||
+      decoded.sample_list[0].int_value != expected.sample_list[0].int_value) {
+    throw std::runtime_error("SampleListV2 schema mismatch read failed");
+  }
+}
+
+template <>
+void verify_schema_mismatch_read(const MediaContentListV2 &decoded,
+                                 const MediaContentList &expected) {
+  if (decoded.media_content_list.empty() ||
+      decoded.media_content_list[0].media.width !=
+          expected.media_content_list[0].media.width ||
+      decoded.media_content_list[0].images.empty() ||
+      decoded.media_content_list[0].images[0].width !=
+          expected.media_content_list[0].images[0].width) {
+    throw std::runtime_error("MediaContentListV2 schema mismatch read failed");
+  }
+}
+
+template <typename WriteT, typename ReadT, typename Factory>
+void run_fory_deserialize_benchmark(benchmark::State &state, Factory factory) {
+  auto writer = new_benchmark_fory();
+  register_fory_types(writer);
+  auto reader = new_benchmark_fory();
+  const bool mismatch = schema_mismatch_enabled();
+  if (mismatch) {
+    register_fory_types_v2(reader);
+  } else {
+    register_fory_types(reader);
+  }
+  WriteT obj = factory();
+  auto serialized = writer.serialize(obj);
+  if (!serialized.ok()) {
+    state.SkipWithError("Serialization failed");
+    return;
+  }
+  auto &bytes = serialized.value();
+
+  if (mismatch) {
+    auto test_result = reader.deserialize<ReadT>(bytes.data(), bytes.size());
+    if (!test_result.ok()) {
+      state.SkipWithError("Schema-mismatch deserialization test failed");
+      return;
+    }
+    try {
+      verify_schema_mismatch_read(test_result.value(), obj);
+    } catch (const std::exception &e) {
+      state.SkipWithError(e.what());
+      return;
+    }
+    for (auto _ : state) {
+      auto result = reader.deserialize<ReadT>(bytes.data(), bytes.size());
+      benchmark::DoNotOptimize(result);
+    }
+    return;
+  }
+
+  auto test_result = reader.deserialize<WriteT>(bytes.data(), bytes.size());
+  if (!test_result.ok()) {
+    state.SkipWithError("Deserialization test failed");
+    return;
+  }
+  for (auto _ : state) {
+    auto result = reader.deserialize<WriteT>(bytes.data(), bytes.size());
+    benchmark::DoNotOptimize(result);
+  }
+}
+
 template <typename T, typename Factory>
 void run_msgpack_serialize_benchmark(benchmark::State &state, Factory factory) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   T obj = factory();
   msgpack::sbuffer output;
 
@@ -642,6 +896,9 @@ void run_msgpack_serialize_benchmark(benchmark::State &state, Factory factory) {
 template <typename T, typename Factory>
 void run_msgpack_deserialize_benchmark(benchmark::State &state,
                                        Factory factory) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   T obj = factory();
   msgpack::sbuffer output;
   msgpack::pack(output, obj);
@@ -704,6 +961,9 @@ BENCHMARK(BM_Fory_NumericStruct_Serialize);
 // Fair comparison: convert plain C++ struct to protobuf, then serialize
 // (Same pattern as Java benchmark's buildPBStruct().toByteArray())
 static void BM_Protobuf_NumericStruct_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   NumericStruct obj = create_numeric_struct();
   protobuf::NumericStruct pb = to_pb_struct(obj);
   std::vector<uint8_t> output;
@@ -718,38 +978,17 @@ static void BM_Protobuf_NumericStruct_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_NumericStruct_Serialize);
 
 static void BM_Fory_NumericStruct_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  NumericStruct obj = create_numeric_struct();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  // Verify deserialization works first
-  auto test_result =
-      fory.deserialize<NumericStruct>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result = fory.deserialize<NumericStruct>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<NumericStruct, NumericStructV2>(
+      state, create_numeric_struct);
 }
 BENCHMARK(BM_Fory_NumericStruct_Deserialize);
 
 // Fair comparison: deserialize and convert protobuf to plain C++ struct
 // (Same pattern as Java benchmark's fromPBObject())
 static void BM_Protobuf_NumericStruct_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::NumericStruct obj = create_proto_struct();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -790,6 +1029,9 @@ static void BM_Fory_Sample_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_Sample_Serialize);
 
 static void BM_Protobuf_Sample_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::Sample obj = create_proto_sample();
   std::vector<uint8_t> output;
   output.resize(obj.ByteSizeLong());
@@ -802,35 +1044,14 @@ static void BM_Protobuf_Sample_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_Sample_Serialize);
 
 static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  Sample obj = create_sample();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  // Verify deserialization works first
-  auto test_result = fory.deserialize<Sample>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result = fory.deserialize<Sample>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<Sample, SampleV2>(state, create_sample);
 }
 BENCHMARK(BM_Fory_Sample_Deserialize);
 
 static void BM_Protobuf_Sample_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::Sample obj = create_proto_sample();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -870,6 +1091,9 @@ static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_MediaContent_Serialize);
 
 static void BM_Protobuf_MediaContent_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   MediaContent obj = create_media_content();
   protobuf::MediaContent pb = to_pb_mediaContent(obj);
   std::vector<uint8_t> output;
@@ -884,35 +1108,15 @@ static void BM_Protobuf_MediaContent_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_MediaContent_Serialize);
 
 static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  MediaContent obj = create_media_content();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  // Verify deserialization works first
-  auto test_result = fory.deserialize<MediaContent>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result = fory.deserialize<MediaContent>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<MediaContent, MediaContentV2>(
+      state, create_media_content);
 }
 BENCHMARK(BM_Fory_MediaContent_Deserialize);
 
 static void BM_Protobuf_MediaContent_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::MediaContent obj = create_proto_media_content();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -952,6 +1156,9 @@ static void BM_Fory_NumericStructList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_NumericStructList_Serialize);
 
 static void BM_Protobuf_NumericStructList_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   NumericStructList obj = create_numeric_struct_list();
   protobuf::NumericStructList pb = to_pb_numeric_struct_list(obj);
   std::vector<uint8_t> output;
@@ -966,36 +1173,15 @@ static void BM_Protobuf_NumericStructList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_NumericStructList_Serialize);
 
 static void BM_Fory_NumericStructList_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  NumericStructList obj = create_numeric_struct_list();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  auto test_result =
-      fory.deserialize<NumericStructList>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result =
-        fory.deserialize<NumericStructList>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<NumericStructList, NumericStructListV2>(
+      state, create_numeric_struct_list);
 }
 BENCHMARK(BM_Fory_NumericStructList_Deserialize);
 
 static void BM_Protobuf_NumericStructList_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::NumericStructList obj = create_proto_numeric_struct_list();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -1031,6 +1217,9 @@ static void BM_Fory_SampleList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_SampleList_Serialize);
 
 static void BM_Protobuf_SampleList_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   SampleList obj = create_sample_list();
   protobuf::SampleList pb = to_pb_sample_list(obj);
   std::vector<uint8_t> output;
@@ -1045,34 +1234,15 @@ static void BM_Protobuf_SampleList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_SampleList_Serialize);
 
 static void BM_Fory_SampleList_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  SampleList obj = create_sample_list();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  auto test_result = fory.deserialize<SampleList>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result = fory.deserialize<SampleList>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<SampleList, SampleListV2>(state,
+                                                           create_sample_list);
 }
 BENCHMARK(BM_Fory_SampleList_Deserialize);
 
 static void BM_Protobuf_SampleList_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::SampleList obj = create_proto_sample_list();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -1108,6 +1278,9 @@ static void BM_Fory_MediaContentList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_MediaContentList_Serialize);
 
 static void BM_Protobuf_MediaContentList_Serialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   MediaContentList obj = create_media_content_list();
   protobuf::MediaContentList pb = to_pb_media_content_list(obj);
   std::vector<uint8_t> output;
@@ -1122,36 +1295,15 @@ static void BM_Protobuf_MediaContentList_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Protobuf_MediaContentList_Serialize);
 
 static void BM_Fory_MediaContentList_Deserialize(benchmark::State &state) {
-  auto fory = fory::serialization::Fory::builder()
-                  .xlang(true)
-                  .compatible(true)
-                  .track_ref(false)
-                  .build();
-  register_fory_types(fory);
-  MediaContentList obj = create_media_content_list();
-  auto serialized = fory.serialize(obj);
-  if (!serialized.ok()) {
-    state.SkipWithError("Serialization failed");
-    return;
-  }
-  auto &bytes = serialized.value();
-
-  auto test_result =
-      fory.deserialize<MediaContentList>(bytes.data(), bytes.size());
-  if (!test_result.ok()) {
-    state.SkipWithError("Deserialization test failed");
-    return;
-  }
-
-  for (auto _ : state) {
-    auto result =
-        fory.deserialize<MediaContentList>(bytes.data(), bytes.size());
-    benchmark::DoNotOptimize(result);
-  }
+  run_fory_deserialize_benchmark<MediaContentList, MediaContentListV2>(
+      state, create_media_content_list);
 }
 BENCHMARK(BM_Fory_MediaContentList_Deserialize);
 
 static void BM_Protobuf_MediaContentList_Deserialize(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   protobuf::MediaContentList obj = create_proto_media_content_list();
   std::string serialized;
   obj.SerializeToString(&serialized);
@@ -1170,6 +1322,9 @@ BENCHMARK(BM_Protobuf_MediaContentList_Deserialize);
 // ============================================================================
 
 static void BM_PrintSerializedSizes(benchmark::State &state) {
+  if (reject_non_fory_schema_mismatch(state)) {
+    return;
+  }
   // Fory
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)

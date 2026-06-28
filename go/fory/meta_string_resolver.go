@@ -163,6 +163,9 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 			return nil, encErr
 		}
 
+		if !buf.CheckReadable(length, ctxErr) {
+			return nil, *ctxErr
+		}
 		data = make([]byte, length)
 		_, err := buf.Read(data)
 		if err != nil {
@@ -186,6 +189,9 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 		encoding, encErr = meta.EncodingFromByte(byte(hashcode & 0xFF))
 		if encErr != nil {
 			return nil, encErr
+		}
+		if !buf.CheckReadable(length, ctxErr) {
+			return nil, *ctxErr
 		}
 		data = make([]byte, length)
 		_, err = buf.Read(data)

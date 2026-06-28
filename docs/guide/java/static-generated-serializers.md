@@ -114,7 +114,7 @@ Fory uses static generated serializers when they are available on:
 
 On an ordinary JVM with `codegen=true`, Fory continues to prefer runtime-generated serializers.
 
-The runtime resolves generated serializers from the registered target class name. Application code
+Fory resolves generated serializers from the registered target class name. Application code
 should not reference generated serializer classes directly.
 
 ## Field Access Rules

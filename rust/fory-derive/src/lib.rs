@@ -19,6 +19,10 @@
 //!
 //! This crate provides procedural macros for the Fory serialization framework.
 //! It generates serialization and deserialization code for Rust types.
+//! Most applications should import these macros from the `fory` facade crate,
+//! which also provides the runtime API used by generated code. Direct
+//! `fory-derive` usage is for crates that intentionally depend on the
+//! lower-level `fory-core` runtime crate.
 //!
 //! ## Available Macros
 //!
@@ -193,6 +197,7 @@ use syn::{parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fie
 
 mod fory_row;
 mod object;
+mod runtime_root;
 mod util;
 
 /// Derive macro for struct serialization.
@@ -249,8 +254,12 @@ fn derive_serializer(input: DeriveInput) -> TokenStream {
         Ok(attrs) => attrs,
         Err(err) => return err.into_compile_error().into(),
     };
+    let runtime_root = match runtime_root::resolve_runtime_root() {
+        Ok(root) => root,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
-    object::derive_serializer(&input, attrs)
+    object::derive_serializer(&input, attrs, runtime_root)
 }
 
 /// Derive macro for row-based serialization.
@@ -275,7 +284,11 @@ fn derive_serializer(input: DeriveInput) -> TokenStream {
 #[proc_macro_derive(ForyRow)]
 pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    derive_row(&input)
+    let runtime_root = match runtime_root::resolve_runtime_root() {
+        Ok(root) => root,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    derive_row(&input, runtime_root)
 }
 
 /// Parsed fory attributes

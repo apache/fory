@@ -49,17 +49,13 @@ public final class CompressedArraySerializers {
     // Utility class
   }
 
-  private static void validateBinarySize(int size, int maxBinarySize, int elemSize) {
+  private static void validateBinarySize(int size, int elemSize) {
     if (size < 0) {
-      throw new DeserializationException("Binary payload size must be non-negative: " + size);
-    }
-    if (size > maxBinarySize) {
-      throw new DeserializationException(
-          "Binary payload size " + size + " exceeds max binary size " + maxBinarySize);
+      throw new DeserializationException("Binary body size must be non-negative: " + size);
     }
     if ((size & (elemSize - 1)) != 0) {
       throw new DeserializationException(
-          "Binary payload size " + size + " is not aligned to element size " + elemSize);
+          "Binary body size " + size + " is not aligned to element size " + elemSize);
     }
   }
 
@@ -222,33 +218,37 @@ public final class CompressedArraySerializers {
     private int[] readFromBufferObject(ReadContext readContext) {
       MemoryBuffer buf = readContext.readBufferObject();
       int size = buf.remaining();
-      validateBinarySize(size, maxBinarySize, 4);
+      validateBinarySize(size, 4);
+      buf.checkReadableBytes(size);
       int[] values = new int[size >>> 2];
-      buf.readInt32ArrayPayload(values, size);
+      buf.readInt32ArrayBytes(values, size);
       return values;
     }
 
     private int[] readCompressedFromBytes(MemoryBuffer buffer) {
       int size = buffer.readVarUInt32Small7();
-      validateBinarySize(size, maxBinarySize, 1);
+      validateBinarySize(size, 1);
+      buffer.checkReadableBytes(size);
       byte[] values = new byte[size];
-      buffer.readByteArrayPayload(values, size);
+      buffer.readByteArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromBytes(values);
     }
 
     private int[] readCompressedFromShorts(MemoryBuffer buffer) {
       int size = buffer.readVarUInt32Small7();
-      validateBinarySize(size, maxBinarySize, 2);
+      validateBinarySize(size, 2);
+      buffer.checkReadableBytes(size);
       short[] values = new short[size >>> 1];
-      buffer.readInt16ArrayPayload(values, size);
+      buffer.readInt16ArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromShorts(values);
     }
 
     private int[] readUncompressed(MemoryBuffer buffer) {
       int size = buffer.readVarUInt32Small7();
-      validateBinarySize(size, maxBinarySize, 4);
+      validateBinarySize(size, 4);
+      buffer.checkReadableBytes(size);
       int[] values = new int[size >>> 2];
-      buffer.readInt32ArrayPayload(values, size);
+      buffer.readInt32ArrayBytes(values, size);
       return values;
     }
   }
@@ -326,25 +326,28 @@ public final class CompressedArraySerializers {
     private long[] readFromBufferObject(ReadContext readContext) {
       MemoryBuffer buf = readContext.readBufferObject();
       int size = buf.remaining();
-      validateBinarySize(size, maxBinarySize, 8);
+      validateBinarySize(size, 8);
+      buf.checkReadableBytes(size);
       long[] values = new long[size >>> 3];
-      buf.readInt64ArrayPayload(values, size);
+      buf.readInt64ArrayBytes(values, size);
       return values;
     }
 
     private long[] readCompressedFromInts(MemoryBuffer buffer) {
       int size = buffer.readVarUInt32Small7();
-      validateBinarySize(size, maxBinarySize, 4);
+      validateBinarySize(size, 4);
+      buffer.checkReadableBytes(size);
       int[] values = new int[size >>> 2];
-      buffer.readInt32ArrayPayload(values, size);
+      buffer.readInt32ArrayBytes(values, size);
       return ArrayCompressionUtils.decompressFromInts(values);
     }
 
     private long[] readUncompressed(MemoryBuffer buffer) {
       int size = buffer.readVarUInt32Small7();
-      validateBinarySize(size, maxBinarySize, 8);
+      validateBinarySize(size, 8);
+      buffer.checkReadableBytes(size);
       long[] values = new long[size >>> 3];
-      buffer.readInt64ArrayPayload(values, size);
+      buffer.readInt64ArrayBytes(values, size);
       return values;
     }
   }

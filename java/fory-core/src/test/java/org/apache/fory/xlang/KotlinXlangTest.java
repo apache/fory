@@ -217,6 +217,7 @@ public class KotlinXlangTest extends XlangTestBase {
         .withLanguage(Language.XLANG)
         .requireClassRegistration(true)
         .withRefTracking(false)
+        .withCompatible(true)
         .build();
   }
 

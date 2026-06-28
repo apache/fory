@@ -217,6 +217,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
             return CreateMap(0);
         }
 
+        context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;

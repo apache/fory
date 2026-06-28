@@ -113,7 +113,7 @@ class GenericDataClassTest {
     assertEquals(typeInfo.decodeTypeName(), "Change")
     assertThrows(IllegalArgumentException::class.java) {
       KotlinSerializers.registerType(
-        Fory.builder().withXlang(false).requireClassRegistration(true).build(),
+        Fory.builder().withXlang(false).requireClassRegistration(true).withCompatible(false).build(),
         Change::class.java,
         "kotlin",
         "Bad.Name",

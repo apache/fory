@@ -132,7 +132,11 @@ public class PrimitiveSerializersTest extends ForyTestBase {
             Double.MIN_VALUE);
     if (compressNumber) {
       ForyBuilder builder =
-          Fory.builder().withXlang(false).withCodegen(codegen).requireClassRegistration(false);
+          Fory.builder()
+              .withXlang(false)
+              .withCodegen(codegen)
+              .requireClassRegistration(false)
+              .withCompatible(false);
       serDeCheck(
           builder.withNumberCompressed(true).withLongCompressed(Int64Encoding.VARINT).build(),
           struct);
@@ -145,6 +149,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
               .withXlang(false)
               .withCodegen(codegen)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       serDeCheck(fory, struct);
     }
@@ -248,7 +253,12 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   @Test
   public void testPrimitiveListAsCollectionFieldWithCodegen() {
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(true).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     PrimitiveCollectionFieldStruct struct = new PrimitiveCollectionFieldStruct();
     struct.int8Values = new Int8List(new byte[] {1, -2, 3});
     PrimitiveCollectionFieldStruct roundTrip =
@@ -259,46 +269,41 @@ public class PrimitiveSerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testPrimitiveListReadRejectsMalformedBinaryPayloadSize() {
+  public void testPrimitiveListReadRejectsMalformedBinaryBodySize() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
-            .withMaxBinarySize(4)
             .withIntArrayCompressed(true)
             .withLongArrayCompressed(true)
+            .withCompatible(false)
             .build();
     assertThrows(
-        DeserializationException.class, () -> readPrimitiveListPayload(fory, Int8List.class, 5));
-    assertThrows(
-        DeserializationException.class, () -> readPrimitiveListPayload(fory, Int16List.class, 3));
-    assertThrows(
-        DeserializationException.class, () -> readPrimitiveListPayload(fory, Int32List.class, 2));
-    assertThrows(
-        DeserializationException.class, () -> readPrimitiveListPayload(fory, Int64List.class, 1));
+        DeserializationException.class, () -> readPrimitiveListBody(fory, Int16List.class, 3));
   }
 
   @Test
-  public void testPrimitiveListReadRejectsNegativeDecodedBinaryPayload() {
-    Fory fixedWidthFory = Fory.builder().withXlang(false).build();
+  public void testPrimitiveListReadRejectsNegativeDecodedBinaryBody() {
+    Fory fixedWidthFory = Fory.builder().withXlang(false).withCompatible(false).build();
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveListRawPayload(fixedWidthFory, Int16List.class));
+        () -> readPrimitiveListRawBody(fixedWidthFory, Int16List.class));
 
     Fory compressedFory =
         Fory.builder()
             .withXlang(false)
             .withIntArrayCompressed(true)
             .withLongArrayCompressed(true)
+            .withCompatible(false)
             .build();
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveListRawPayload(compressedFory, Int32List.class));
+        () -> readPrimitiveListRawBody(compressedFory, Int32List.class));
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveListRawPayload(compressedFory, Int64List.class));
+        () -> readPrimitiveListRawBody(compressedFory, Int64List.class));
   }
 
-  private static Object readPrimitiveListPayload(Fory fory, Class<?> listType, int headerSize) {
+  private static Object readPrimitiveListBody(Fory fory, Class<?> listType, int headerSize) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     buffer.writeVarUInt32Small7(headerSize);
     ReadContext readContext = fory.getReadContext();
@@ -306,7 +311,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
     return fory.getSerializer(listType).read(readContext);
   }
 
-  private static Object readPrimitiveListRawPayload(Fory fory, Class<?> listType) {
+  private static Object readPrimitiveListRawBody(Fory fory, Class<?> listType) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
     ReadContext readContext = fory.getReadContext();
@@ -330,6 +335,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
             .withRefTracking(true)
             .withRefCopy(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     PrimitiveListCopyStruct struct = new PrimitiveListCopyStruct();
     Int8List values = new Int8List(new byte[] {1, -2, 3});

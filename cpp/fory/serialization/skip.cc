@@ -40,6 +40,12 @@ constexpr uint8_t MAP_TRACKING_VALUE_REF = 0b001000;
 constexpr uint8_t MAP_VALUE_NULL = 0b010000;
 constexpr uint8_t MAP_DECL_VALUE_TYPE = 0b100000;
 
+void destroy_harness_value(const TypeInfo &type_info, void *ptr) {
+  if (ptr != nullptr) {
+    type_info.harness.destroy_fn(ptr);
+  }
+}
+
 bool consume_ref_flag(ReadContext &ctx, bool tracking_ref, bool null_only) {
   if (!tracking_ref && !null_only) {
     return true;
@@ -98,9 +104,10 @@ void skip_ext_data(ReadContext &ctx, const TypeInfo &type_info) {
   DynDepthGuard dyn_depth_guard(ctx);
   void *ptr = type_info.harness.read_data_fn(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    destroy_harness_value(type_info, ptr);
     return;
   }
-  ::operator delete(ptr);
+  destroy_harness_value(type_info, ptr);
 }
 
 void skip_data_with_type_info(ReadContext &ctx, const TypeInfo *type_info) {
@@ -533,20 +540,14 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
   }
   DynDepthGuard dyn_depth_guard(ctx);
 
-  // Call the harness read_data_fn to skip the data
-  // The result is a pointer we need to delete
+  // The harness allocates with the registered concrete type, so skipped values
+  // must be destroyed through the paired harness hook.
   void *ptr = type_info->harness.read_data_fn(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    destroy_harness_value(*type_info, ptr);
     return;
   }
-  if (ptr) {
-    // We just wanted to skip, but harness allocates memory - need to clean up
-    // This is not ideal but works for now. A better approach would be to
-    // have a dedicated skip_data function in harness.
-    // For now, we use operator delete which works for POD types.
-    // TODO: Consider adding a harness.skip_data_fn or harness.delete_fn
-    ::operator delete(ptr);
-  }
+  destroy_harness_value(*type_info, ptr);
 }
 
 void skip_unknown(ReadContext &ctx) {
@@ -776,10 +777,6 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
       ctx.set_error(Error::invalid_data("Invalid decimal magnitude length 0"));
       return;
     }
-    if (length64 > ctx.config().max_binary_size) {
-      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
-      return;
-    }
     if (length64 > std::numeric_limits<uint32_t>::max()) {
       ctx.set_error(Error::invalid_data("Invalid decimal magnitude length " +
                                         std::to_string(length64)));
@@ -818,7 +815,7 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
         return;
       }
     }
-    // Typed primitive arrays encode payload size in bytes, not element count.
+    // Typed primitive arrays encode byte size, not element count.
     uint32_t payload_size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;

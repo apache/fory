@@ -273,8 +273,11 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
       return Unexpected(std::move(error));
     }
     (void)hash_code; // hash_code is only used for Java-side caching.
-    bytes.resize(len);
     if (len > 0) {
+      if (FORY_PREDICT_FALSE(!buffer.ensure_readable(len, error))) {
+        return Unexpected(std::move(error));
+      }
+      bytes.resize(len);
       buffer.read_bytes(bytes.data(), len, error);
       if (FORY_PREDICT_FALSE(!error.ok())) {
         return Unexpected(std::move(error));
@@ -294,6 +297,9 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
       uint8_t enc_byte = static_cast<uint8_t>(enc_byte_res);
       FORY_TRY(enc, to_meta_encoding(enc_byte));
       encoding = enc;
+      if (FORY_PREDICT_FALSE(!buffer.ensure_readable(len, error))) {
+        return Unexpected(std::move(error));
+      }
       bytes.resize(len);
       buffer.read_bytes(bytes.data(), len, error);
       if (FORY_PREDICT_FALSE(!error.ok())) {

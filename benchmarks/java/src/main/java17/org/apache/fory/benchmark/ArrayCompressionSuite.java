@@ -118,9 +118,13 @@ public class ArrayCompressionSuite {
 
     @Setup(Level.Trial)
     public void setup() {
-      foryNormal = new ForyBuilder().build();
+      foryNormal = new ForyBuilder().withCompatible(true).build();
       foryWithCompression =
-          new ForyBuilder().withIntArrayCompressed(true).withLongArrayCompressed(true).build();
+          new ForyBuilder()
+              .withIntArrayCompressed(true)
+              .withLongArrayCompressed(true)
+              .withCompatible(true)
+              .build();
 
       // Create different data types for comprehensive comparison
       byteRangeIntArray = createByteRangeArray(arraySize);

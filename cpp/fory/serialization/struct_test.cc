@@ -35,7 +35,9 @@
 #include <algorithm>
 #include <cfloat>
 #include <climits>
+#include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -133,6 +135,18 @@ struct MixedFieldIdentityStruct {
               alpha_value, (count, fory::F(2).varint()));
 };
 
+struct SignedToUnsignedWriter {
+  int32_t value;
+
+  FORY_STRUCT(SignedToUnsignedWriter, (value, fory::F(1)));
+};
+
+struct UnsignedTargetReader {
+  uint32_t value = 0;
+
+  FORY_STRUCT(UnsignedTargetReader, (value, fory::F(1)));
+};
+
 class PrivateFieldsStruct {
 public:
   PrivateFieldsStruct() = default;
@@ -150,6 +164,74 @@ private:
 
 public:
   FORY_STRUCT(PrivateFieldsStruct, id_, name_, scores_);
+};
+
+struct PimplPropertyImpl {
+  int32_t a = 0;
+};
+
+class PimplPropertyStruct {
+public:
+  PimplPropertyStruct() : impl_(std::make_unique<PimplPropertyImpl>()) {}
+  explicit PimplPropertyStruct(int32_t a) : PimplPropertyStruct() {
+    impl_->a = a;
+  }
+  PimplPropertyStruct(const PimplPropertyStruct &other)
+      : PimplPropertyStruct(other.a()) {}
+  PimplPropertyStruct &operator=(const PimplPropertyStruct &other) {
+    a(other.a());
+    return *this;
+  }
+  PimplPropertyStruct(PimplPropertyStruct &&) noexcept = default;
+  PimplPropertyStruct &operator=(PimplPropertyStruct &&) noexcept = default;
+
+  const int32_t &a() const { return impl_->a; }
+  int32_t &a() { return impl_->a; }
+  PimplPropertyStruct &a(int32_t value) {
+    impl_->a = value;
+    return *this;
+  }
+
+  bool operator==(const PimplPropertyStruct &other) const {
+    return a() == other.a();
+  }
+
+private:
+  std::unique_ptr<PimplPropertyImpl> impl_;
+
+public:
+  FORY_STRUCT(PimplPropertyStruct, FORY_PROPERTY(a));
+};
+
+struct PimplConfiguredPropertyImpl {
+  int32_t value = 0;
+};
+
+class PimplConfiguredPropertyStruct {
+public:
+  PimplConfiguredPropertyStruct()
+      : impl_(std::make_unique<PimplConfiguredPropertyImpl>()) {}
+  explicit PimplConfiguredPropertyStruct(int32_t value)
+      : PimplConfiguredPropertyStruct() {
+    impl_->value = value;
+  }
+
+  const int32_t &get_value() const { return impl_->value; }
+  PimplConfiguredPropertyStruct &set_value(int32_t value) {
+    impl_->value = value;
+    return *this;
+  }
+
+  bool operator==(const PimplConfiguredPropertyStruct &other) const {
+    return get_value() == other.get_value();
+  }
+
+private:
+  std::unique_ptr<PimplConfiguredPropertyImpl> impl_;
+
+public:
+  FORY_STRUCT(PimplConfiguredPropertyStruct,
+              FORY_PROPERTY(value, get_value, set_value, fory::F(1).varint()));
 };
 
 // All primitives
@@ -177,6 +259,52 @@ struct AllPrimitivesStruct {
   FORY_STRUCT(AllPrimitivesStruct, bool_val, int8_val, int16_val, int32_val,
               int64_val, uint8_val, uint16_val, uint32_val, uint64_val,
               float_val, double_val);
+};
+
+struct UnsignedDefaultEncodingWriter {
+  uint32_t u32;
+  uint64_t u64;
+
+  bool operator==(const UnsignedDefaultEncodingWriter &other) const {
+    return u32 == other.u32 && u64 == other.u64;
+  }
+
+  FORY_STRUCT(UnsignedDefaultEncodingWriter, u32, u64);
+};
+
+struct UnsignedExplicitVarintReader {
+  uint32_t u32 = 0;
+  uint64_t u64 = 0;
+
+  FORY_STRUCT(UnsignedExplicitVarintReader, (u32, fory::F().varint()),
+              (u64, fory::F().varint()));
+};
+
+struct UnsignedEncodingStruct {
+  uint32_t default_u32;
+  uint64_t default_u64;
+  uint32_t id_default_u32;
+  uint64_t id_default_u64;
+  uint32_t var_u32;
+  uint32_t fixed_u32;
+  uint64_t var_u64;
+  uint64_t fixed_u64;
+  uint64_t tagged_u64;
+
+  bool operator==(const UnsignedEncodingStruct &other) const {
+    return default_u32 == other.default_u32 &&
+           default_u64 == other.default_u64 &&
+           id_default_u32 == other.id_default_u32 &&
+           id_default_u64 == other.id_default_u64 && var_u32 == other.var_u32 &&
+           fixed_u32 == other.fixed_u32 && var_u64 == other.var_u64 &&
+           fixed_u64 == other.fixed_u64 && tagged_u64 == other.tagged_u64;
+  }
+
+  FORY_STRUCT(UnsignedEncodingStruct, default_u32, default_u64,
+              (id_default_u32, fory::F(1)), (id_default_u64, fory::F(2)),
+              (var_u32, fory::F().varint()), (fixed_u32, fory::F().fixed()),
+              (var_u64, fory::F().varint()), (fixed_u64, fory::F().fixed()),
+              (tagged_u64, fory::F().tagged()));
 };
 
 // String handling
@@ -523,7 +651,12 @@ inline void register_all_test_types(Fory &fory) {
   fory.register_struct<NumericTaggedOrderStruct>(type_id++);
   fory.register_struct<TaggedGroupedOrderStruct>(type_id++);
   fory.register_struct<PrivateFieldsStruct>(type_id++);
+  fory.register_struct<PimplPropertyStruct>(type_id++);
+  fory.register_struct<PimplConfiguredPropertyStruct>(type_id++);
   fory.register_struct<AllPrimitivesStruct>(type_id++);
+  fory.register_struct<UnsignedDefaultEncodingWriter>(type_id++);
+  fory.register_struct<UnsignedExplicitVarintReader>(type_id++);
+  fory.register_struct<UnsignedEncodingStruct>(type_id++);
   fory.register_struct<StringTestStruct>(type_id++);
   fory.register_struct<Point2D>(type_id++);
   fory.register_struct<Point3D>(type_id++);
@@ -616,6 +749,14 @@ TEST(StructComprehensiveTest, PrivateFieldsStruct) {
   test_roundtrip(PrivateFieldsStruct{42, "secret", {1, 2, 3}});
 }
 
+TEST(StructComprehensiveTest, PimplPropertyStruct) {
+  test_roundtrip(PimplPropertyStruct{12345});
+}
+
+TEST(StructComprehensiveTest, PimplConfiguredPropertyStruct) {
+  test_roundtrip(PimplConfiguredPropertyStruct{-12345});
+}
+
 TEST(StructComprehensiveTest, AllPrimitivesZero) {
   test_roundtrip(AllPrimitivesStruct{false, 0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0});
 }
@@ -630,6 +771,131 @@ TEST(StructComprehensiveTest, AllPrimitivesMin) {
   test_roundtrip(AllPrimitivesStruct{false, INT8_MIN, INT16_MIN, INT32_MIN,
                                      INT64_MIN, 0, 0, 0, 0, -FLT_MAX,
                                      -DBL_MAX});
+}
+
+TEST(StructComprehensiveTest, UnsignedDefaultEncodingRoundTrip) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<UnsignedDefaultEncodingWriter>(610).ok());
+  ASSERT_TRUE(reader.register_struct<UnsignedExplicitVarintReader>(610).ok());
+
+  UnsignedDefaultEncodingWriter original{66051u, 0x01020304050607ULL};
+  auto bytes_result = writer.serialize(original);
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  std::vector<uint8_t> bytes = std::move(bytes_result).value();
+  auto result = reader.deserialize<UnsignedExplicitVarintReader>(bytes.data(),
+                                                                 bytes.size());
+  ASSERT_TRUE(result.ok()) << "Deserialization failed: "
+                           << result.error().to_string();
+  EXPECT_EQ(result.value().u32, original.u32);
+  EXPECT_EQ(result.value().u64, original.u64);
+
+  auto explicit_bytes = reader.serialize(
+      UnsignedExplicitVarintReader{original.u32, original.u64});
+  ASSERT_TRUE(explicit_bytes.ok())
+      << "Serialization failed: " << explicit_bytes.error().to_string();
+  auto default_result = writer.deserialize<UnsignedDefaultEncodingWriter>(
+      explicit_bytes.value().data(), explicit_bytes.value().size());
+  ASSERT_TRUE(default_result.ok())
+      << "Deserialization failed: " << default_result.error().to_string();
+  EXPECT_EQ(default_result.value(), original);
+}
+
+TEST(StructComprehensiveTest, UnsignedEncodingsRoundTrip) {
+  test_roundtrip(UnsignedEncodingStruct{
+      66051u,
+      0x01020304050607ULL,
+      131071u,
+      0x02030405060708ULL,
+      262143u,
+      0x03020100u,
+      0x03040506070809ULL,
+      0x0405060708090aULL,
+      0x05060708090a0bULL,
+  });
+}
+
+TEST(StructComprehensiveTest, UnsignedEncodingFieldMeta) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<UnsignedEncodingStruct>(611).ok());
+  ASSERT_TRUE(fory.serialize(UnsignedEncodingStruct{
+                                 1u,
+                                 2u,
+                                 3u,
+                                 4u,
+                                 5u,
+                                 6u,
+                                 7u,
+                                 8u,
+                                 9u,
+                             })
+                  .ok());
+
+  TypeMeta meta =
+      fory.type_resolver().clone_struct_meta<UnsignedEncodingStruct>();
+  const auto &fields = meta.get_field_infos();
+  ASSERT_EQ(fields.size(), 9);
+
+  auto find_field = [&](const std::string &name) -> const FieldInfo * {
+    auto it =
+        std::find_if(fields.begin(), fields.end(), [&](const FieldInfo &field) {
+          return field.field_name == name;
+        });
+    return it == fields.end() ? nullptr : &*it;
+  };
+  auto find_field_id = [&](int16_t id) -> const FieldInfo * {
+    auto it =
+        std::find_if(fields.begin(), fields.end(), [&](const FieldInfo &field) {
+          return field.field_id == id;
+        });
+    return it == fields.end() ? nullptr : &*it;
+  };
+
+  const FieldInfo *default_u32 = find_field("default_u32");
+  const FieldInfo *default_u64 = find_field("default_u64");
+  const FieldInfo *id_default_u32 = find_field_id(1);
+  const FieldInfo *id_default_u64 = find_field_id(2);
+  const FieldInfo *var_u32 = find_field("var_u32");
+  const FieldInfo *fixed_u32 = find_field("fixed_u32");
+  const FieldInfo *var_u64 = find_field("var_u64");
+  const FieldInfo *fixed_u64 = find_field("fixed_u64");
+  const FieldInfo *tagged_u64 = find_field("tagged_u64");
+
+  ASSERT_NE(default_u32, nullptr);
+  ASSERT_NE(default_u64, nullptr);
+  ASSERT_NE(id_default_u32, nullptr);
+  ASSERT_NE(id_default_u64, nullptr);
+  ASSERT_NE(var_u32, nullptr);
+  ASSERT_NE(fixed_u32, nullptr);
+  ASSERT_NE(var_u64, nullptr);
+  ASSERT_NE(fixed_u64, nullptr);
+  ASSERT_NE(tagged_u64, nullptr);
+
+  EXPECT_EQ(default_u32->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT32));
+  EXPECT_EQ(default_u64->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT64));
+  EXPECT_EQ(id_default_u32->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT32));
+  EXPECT_EQ(id_default_u32->field_id, 1);
+  EXPECT_EQ(id_default_u64->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT64));
+  EXPECT_EQ(id_default_u64->field_id, 2);
+  EXPECT_EQ(var_u32->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT32));
+  EXPECT_EQ(fixed_u32->field_type.type_id,
+            static_cast<uint32_t>(TypeId::UINT32));
+  EXPECT_EQ(var_u64->field_type.type_id,
+            static_cast<uint32_t>(TypeId::VAR_UINT64));
+  EXPECT_EQ(fixed_u64->field_type.type_id,
+            static_cast<uint32_t>(TypeId::UINT64));
+  EXPECT_EQ(tagged_u64->field_type.type_id,
+            static_cast<uint32_t>(TypeId::TAGGED_UINT64));
 }
 
 TEST(StructComprehensiveTest, StringVariations) {
@@ -969,26 +1235,46 @@ TEST(StructComprehensiveTest, NonPrimitiveFieldsSortByFieldIdentifier) {
   EXPECT_EQ(fields[3].field_name, "custom_value");
 }
 
-TEST(StructComprehensiveTest,
-     FieldTypeCompatibleFingerprintNormalizesEncoding) {
+TEST(StructComprehensiveTest, FieldTypeCompatibilitySeparatesAdapters) {
   FieldType fixed_i32 = make_test_field_type(TypeId::INT32);
   FieldType var_i32 = make_test_field_type(TypeId::VARINT32);
-  EXPECT_TRUE(field_types_compatible(fixed_i32, var_i32));
+  EXPECT_FALSE(field_types_compatible(fixed_i32, var_i32));
+  EXPECT_TRUE(field_types_compatible_top_level(fixed_i32, var_i32));
   EXPECT_EQ(fixed_i32.compatible_fingerprint, var_i32.compatible_fingerprint);
 
   FieldType fixed_list =
       make_test_field_type(TypeId::LIST, {make_test_field_type(TypeId::INT32)});
   FieldType var_list = make_test_field_type(
       TypeId::LIST, {make_test_field_type(TypeId::VARINT32)});
-  EXPECT_TRUE(field_types_compatible(fixed_list, var_list));
+  EXPECT_FALSE(field_types_compatible(fixed_list, var_list));
 
   FieldType int64_list = make_test_field_type(
       TypeId::LIST, {make_test_field_type(TypeId::VARINT64)});
   EXPECT_FALSE(field_types_compatible(fixed_list, int64_list));
 
-  EXPECT_TRUE(
+  FieldType nullable_i32(static_cast<uint32_t>(TypeId::INT32), true);
+  FieldType nullable_list = make_test_field_type(TypeId::LIST, {nullable_i32});
+  EXPECT_FALSE(field_types_compatible(fixed_list, nullable_list));
+
+  EXPECT_FALSE(
       field_types_compatible(make_test_field_type(TypeId::BINARY),
                              make_test_field_type(TypeId::UINT8_ARRAY)));
+  EXPECT_TRUE(field_types_compatible_top_level(
+      make_test_field_type(TypeId::BINARY),
+      make_test_field_type(TypeId::UINT8_ARRAY)));
+
+  FieldType int32_array = make_test_field_type(TypeId::INT32_ARRAY);
+  EXPECT_TRUE(field_types_compatible_top_level(fixed_list, int32_array));
+  EXPECT_TRUE(field_types_compatible_top_level(nullable_list, int32_array));
+  EXPECT_TRUE(field_types_compatible_top_level(int32_array, nullable_list));
+  FieldType tracked_i32(static_cast<uint32_t>(TypeId::INT32), false, true);
+  FieldType tracked_list = make_test_field_type(TypeId::LIST, {tracked_i32});
+  EXPECT_TRUE(field_types_compatible_top_level(tracked_list, int32_array));
+  EXPECT_FALSE(field_types_compatible_top_level(int32_array, tracked_list));
+  FieldType nullable_int32_array(static_cast<uint32_t>(TypeId::INT32_ARRAY),
+                                 true);
+  EXPECT_FALSE(
+      field_types_compatible_top_level(fixed_list, nullable_int32_array));
 }
 
 TEST(StructComprehensiveTest,
@@ -1004,15 +1290,26 @@ TEST(StructComprehensiveTest,
       make_test_field_type(TypeId::MAP,
                            {make_test_field_type(TypeId::VAR_UINT32),
                             make_test_field_type(TypeId::VAR_UINT32)}))};
-  TypeMeta::assign_field_ids(&local_type, incompatible_remote);
-  EXPECT_EQ(incompatible_remote[0].field_id, -1);
+  auto incompatible_result =
+      TypeMeta::assign_field_ids(&local_type, incompatible_remote);
+  EXPECT_FALSE(incompatible_result.ok());
 
-  std::vector<FieldInfo> compatible_remote = {make_test_field_info(
+  std::vector<FieldInfo> nested_scalar_remote = {make_test_field_info(
       "items", 7,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
-  TypeMeta::assign_field_ids(&local_type, compatible_remote);
-  EXPECT_EQ(compatible_remote[0].field_id, 0);
+  auto nested_scalar_result =
+      TypeMeta::assign_field_ids(&local_type, nested_scalar_remote);
+  EXPECT_FALSE(nested_scalar_result.ok());
+
+  TypeMeta scalar_local;
+  scalar_local.field_infos = {make_test_field_info(
+      "count", 8, make_test_field_type(TypeId::VAR_UINT32))};
+  std::vector<FieldInfo> scalar_remote = {
+      make_test_field_info("count", 8, make_test_field_type(TypeId::UINT32))};
+  auto scalar_result = TypeMeta::assign_field_ids(&scalar_local, scalar_remote);
+  ASSERT_TRUE(scalar_result.ok());
+  EXPECT_EQ(scalar_remote[0].field_id, 1);
 
   TypeMeta name_mode_local;
   name_mode_local.field_infos = {make_test_field_info(
@@ -1023,14 +1320,15 @@ TEST(StructComprehensiveTest,
       "items", 7,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
-  TypeMeta::assign_field_ids(&name_mode_local, mixed_mode_remote);
+  ASSERT_TRUE(
+      TypeMeta::assign_field_ids(&name_mode_local, mixed_mode_remote).ok());
   EXPECT_EQ(mixed_mode_remote[0].field_id, -1);
 
   std::vector<FieldInfo> name_remote = {make_test_field_info(
       "items", -1,
       make_test_field_type(TypeId::LIST,
                            {make_test_field_type(TypeId::UINT32)}))};
-  TypeMeta::assign_field_ids(&local_type, name_remote);
+  ASSERT_TRUE(TypeMeta::assign_field_ids(&local_type, name_remote).ok());
   EXPECT_EQ(name_remote[0].field_id, -1);
 
   TypeMeta mixed_local;
@@ -1042,15 +1340,77 @@ TEST(StructComprehensiveTest,
       make_test_field_info("alpha", -1, make_test_field_type(TypeId::BINARY)),
       make_test_field_info("tagged", 3, make_test_field_type(TypeId::STRING)),
       make_test_field_info("beta", -1, make_test_field_type(TypeId::VARINT32))};
-  TypeMeta::assign_field_ids(&mixed_local, mixed_remote);
-  EXPECT_EQ(mixed_remote[0].field_id, 1);
+  ASSERT_TRUE(TypeMeta::assign_field_ids(&mixed_local, mixed_remote).ok());
+  EXPECT_EQ(mixed_remote[0].field_id, 2);
   EXPECT_EQ(mixed_remote[1].field_id, 0);
-  EXPECT_EQ(mixed_remote[2].field_id, 2);
+  EXPECT_EQ(mixed_remote[2].field_id, 4);
 
   std::vector<FieldInfo> untagged_remote_for_tagged_local = {
       make_test_field_info("tagged", -1, make_test_field_type(TypeId::STRING))};
-  TypeMeta::assign_field_ids(&mixed_local, untagged_remote_for_tagged_local);
+  ASSERT_TRUE(
+      TypeMeta::assign_field_ids(&mixed_local, untagged_remote_for_tagged_local)
+          .ok());
   EXPECT_EQ(untagged_remote_for_tagged_local[0].field_id, -1);
+}
+
+TEST(StructComprehensiveTest, CompatibleSignedToUnsignedStructRead) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<SignedToUnsignedWriter>(608).ok());
+  ASSERT_TRUE(reader.register_struct<UnsignedTargetReader>(608).ok());
+
+  auto bytes_result = writer.serialize(SignedToUnsignedWriter{123});
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  std::vector<uint8_t> bytes = std::move(bytes_result).value();
+  auto result =
+      reader.deserialize<UnsignedTargetReader>(bytes.data(), bytes.size());
+  ASSERT_TRUE(result.ok()) << "Deserialization failed: "
+                           << result.error().to_string();
+  EXPECT_EQ(result.value().value, 123u);
+}
+
+TEST(StructComprehensiveTest, CompatibleNegativeSignedToUnsignedFails) {
+  auto writer =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  auto reader =
+      Fory::builder().xlang(true).compatible(true).track_ref(false).build();
+  ASSERT_TRUE(writer.register_struct<SignedToUnsignedWriter>(609).ok());
+  ASSERT_TRUE(reader.register_struct<UnsignedTargetReader>(609).ok());
+
+  auto bytes_result = writer.serialize(SignedToUnsignedWriter{-1});
+  ASSERT_TRUE(bytes_result.ok())
+      << "Serialization failed: " << bytes_result.error().to_string();
+
+  std::vector<uint8_t> bytes = std::move(bytes_result).value();
+  auto result =
+      reader.deserialize<UnsignedTargetReader>(bytes.data(), bytes.size());
+  EXPECT_FALSE(result.ok());
+}
+
+TEST(StructComprehensiveTest, AssignFieldIdsRejectsMatchedIdOverflow) {
+  constexpr size_t max_compatible_matched_field_index =
+      (static_cast<size_t>(std::numeric_limits<int16_t>::max()) - 1) / 2;
+  const FieldType field_type = make_test_field_type(TypeId::INT32);
+
+  TypeMeta local_type;
+  local_type.field_infos.reserve(max_compatible_matched_field_index + 2);
+  for (size_t index = 0; index <= max_compatible_matched_field_index + 1;
+       ++index) {
+    local_type.field_infos.push_back(
+        make_test_field_info("field_" + std::to_string(index), -1, field_type));
+  }
+
+  std::vector<FieldInfo> remote_fields = {make_test_field_info(
+      "field_" + std::to_string(max_compatible_matched_field_index + 1), -1,
+      field_type)};
+  auto result = TypeMeta::assign_field_ids(&local_type, remote_fields);
+
+  ASSERT_FALSE(result.ok());
+  EXPECT_NE(result.error().message().find("exceeds max"), std::string::npos);
 }
 
 TEST(StructComprehensiveTest, OptionalFieldsAllEmpty) {

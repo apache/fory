@@ -21,6 +21,27 @@ using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
+internal readonly struct CompatibleScalarRead(
+    TypeId rawRemoteTypeId,
+    TypeId remoteTypeId,
+    TypeId localTypeId,
+    bool remoteNullable,
+    bool int64FastSource,
+    string fieldName)
+{
+    public TypeId RawRemoteTypeId { get; } = rawRemoteTypeId;
+
+    public TypeId RemoteTypeId { get; } = remoteTypeId;
+
+    public TypeId LocalTypeId { get; } = localTypeId;
+
+    public bool RemoteNullable { get; } = remoteNullable;
+
+    public bool Int64FastSource { get; } = int64FastSource;
+
+    public string FieldName { get; } = fieldName;
+}
+
 /// <summary>
 /// Provides compatible scalar field conversion for generated serializers.
 /// </summary>
@@ -96,103 +117,419 @@ public static class CompatibleScalarConverter
         return IsNumeric(remote) && IsNumeric(local);
     }
 
-    /// <summary>
-    /// Returns whether the generated compatible reader should read the field through this scalar reader.
-    /// </summary>
-    public static bool RequiresScalarRead(uint remoteTypeId, uint localTypeId)
+    internal static CompatibleScalarRead? TryBuildRead(
+        TypeMetaFieldInfo remoteField,
+        TypeMetaFieldInfo localField)
     {
-        TypeId remote = NormalizeScalarTypeId(remoteTypeId);
-        TypeId local = NormalizeScalarTypeId(localTypeId);
-        return IsScalar(remote) && IsScalar(local) && remoteTypeId != localTypeId &&
-            (remote == local || CanConvert(remoteTypeId, localTypeId));
-    }
-
-    /// <summary>
-    /// Reads a remote scalar payload and converts it to the local field type.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T ReadField<T>(
-        ReadContext context,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        string fieldName)
-    {
-        return ReadPayloadAs<T>(context, remoteTypeId, localTypeId, fieldName);
-    }
-
-    /// <summary>
-    /// Reads remote scalar null framing and converts the remote scalar payload to the local field type.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static T ReadField<T>(
-        ReadContext context,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        string fieldName,
-        RefMode refMode)
-    {
-        switch (refMode)
+        TypeMetaFieldType remoteFieldType = remoteField.FieldType;
+        TypeMetaFieldType localFieldType = localField.FieldType;
+        if (remoteFieldType.TrackRef || localFieldType.TrackRef)
         {
-            case RefMode.None:
-                return ReadPayloadAs<T>(context, remoteTypeId, localTypeId, fieldName);
-            case RefMode.NullOnly:
-                {
-                    RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
-                    return flag switch
-                    {
-                        RefFlag.Null => default!,
-                        RefFlag.NotNullValue => ReadPayloadAs<T>(context, remoteTypeId, localTypeId, fieldName),
-                        _ => throw Fail(
-                            remoteTypeId,
-                            localTypeId,
-                            fieldName,
-                            $"invalid compatible nullOnly ref flag {(sbyte)flag}"),
-                    };
-                }
+            return null;
+        }
+
+        TypeId rawRemoteTypeId = (TypeId)remoteFieldType.TypeId;
+        TypeId remoteTypeId = NormalizeScalarTypeId(remoteFieldType.TypeId);
+        TypeId localTypeId = NormalizeScalarTypeId(localFieldType.TypeId);
+        if (!IsScalar(remoteTypeId) || !IsScalar(localTypeId))
+        {
+            return null;
+        }
+
+        bool sameWireType = remoteFieldType.TypeId == localFieldType.TypeId;
+        bool sameNullable = remoteFieldType.Nullable == localFieldType.Nullable;
+        if (sameWireType && sameNullable)
+        {
+            return null;
+        }
+
+        if (!sameWireType && !CanConvert(remoteFieldType.TypeId, localFieldType.TypeId))
+        {
+            return null;
+        }
+
+        return new CompatibleScalarRead(
+            rawRemoteTypeId,
+            remoteTypeId,
+            localTypeId,
+            remoteFieldType.Nullable,
+            IsInt64FastSource(rawRemoteTypeId),
+            localField.FieldName);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool ReadBoolField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToBool(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : false;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static bool? ReadNullableBoolField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToBool(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static sbyte ReadSByteField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSByte(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static sbyte? ReadNullableSByteField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSByte(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static short ReadInt16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt16(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static short? ReadNullableInt16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt16(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int ReadInt32Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt32(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static int? ReadNullableInt32Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt32(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static long ReadInt64Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        if (TryReadIntegralToInt64Field(context, remoteField, out long fastValue, out bool present))
+        {
+            return present ? fastValue : default;
+        }
+
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt64(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static long? ReadNullableInt64Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        if (TryReadIntegralToInt64Field(context, remoteField, out long fastValue, out bool present))
+        {
+            return present ? fastValue : null;
+        }
+
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToInt64(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static byte ReadByteField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToByte(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static byte? ReadNullableByteField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToByte(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ushort ReadUInt16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt16(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ushort? ReadNullableUInt16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt16(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static uint ReadUInt32Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt32(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static uint? ReadNullableUInt32Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt32(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ulong ReadUInt64Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt64(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ulong? ReadNullableUInt64Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToUInt64(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static Half ReadHalfField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToHalfTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static Half? ReadNullableHalfField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToHalfTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static BFloat16 ReadBFloat16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToBFloat16Target(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static BFloat16? ReadNullableBFloat16Field(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToBFloat16Target(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static float ReadFloatField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSingleTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static float? ReadNullableFloatField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSingleTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static double ReadDoubleField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToDoubleTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static double? ReadNullableDoubleField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToDoubleTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static string ReadStringField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToStringValue(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default!;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static string? ReadNullableStringField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToStringValue(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ForyDecimal ReadForyDecimalField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToForyDecimalTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static ForyDecimal? ReadNullableForyDecimalField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToForyDecimalTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static decimal ReadDecimalField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSystemDecimalTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : default;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static decimal? ReadNullableDecimalField(ReadContext context, TypeMetaFieldInfo remoteField)
+    {
+        return TryReadScalarValue(context, remoteField, out CompatibleScalarRead read, out ScalarValue value)
+            ? ToSystemDecimalTarget(value, read.RemoteTypeId, read.LocalTypeId, read.FieldName)
+            : null;
+    }
+
+    private static bool TryReadScalarValue(
+        ReadContext context,
+        TypeMetaFieldInfo remoteField,
+        out CompatibleScalarRead scalarRead,
+        out ScalarValue value)
+    {
+        scalarRead = RequireRead(remoteField);
+        value = default;
+
+        if (!scalarRead.RemoteNullable)
+        {
+            value = ReadScalarPayload(
+                context,
+                scalarRead.RawRemoteTypeId,
+                scalarRead.LocalTypeId,
+                scalarRead.FieldName);
+            return true;
+        }
+
+        RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+        switch (flag)
+        {
+            case RefFlag.Null:
+                return false;
+            case RefFlag.NotNullValue:
+                value = ReadScalarPayload(
+                    context,
+                    scalarRead.RawRemoteTypeId,
+                    scalarRead.LocalTypeId,
+                    scalarRead.FieldName);
+                return true;
             default:
-                throw Fail(remoteTypeId, localTypeId, fieldName, $"unsupported compatible ref mode {refMode}");
+                throw Fail(
+                    scalarRead.RemoteTypeId,
+                    scalarRead.LocalTypeId,
+                    scalarRead.FieldName,
+                    $"invalid compatible nullOnly ref flag {(sbyte)flag}");
         }
     }
 
-    private static T ReadPayloadAs<T>(
+    private static bool TryReadIntegralToInt64Field(
         ReadContext context,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        string fieldName)
+        TypeMetaFieldInfo remoteField,
+        out long value,
+        out bool present)
     {
-        object value = ReadPayload(context, remoteTypeId, localTypeId, fieldName);
-        return ConvertReadValue<T>(value, remoteTypeId, localTypeId, fieldName);
-    }
-
-    private static T ConvertReadValue<T>(
-        object? value,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        string fieldName)
-    {
-        if (value is null)
+        CompatibleScalarRead scalarRead = RequireRead(remoteField);
+        value = default;
+        present = false;
+        if (!scalarRead.Int64FastSource)
         {
-            return default!;
+            return false;
         }
 
-        if (value is T typedValue)
+        if (!scalarRead.RemoteNullable)
         {
-            return typedValue;
+            value = ReadInt64FastPayload(
+                context,
+                scalarRead.RawRemoteTypeId,
+                scalarRead.LocalTypeId,
+                scalarRead.FieldName);
+            present = true;
+            return true;
         }
 
-        object converted = ConvertValue(value, remoteTypeId, localTypeId, typeof(T), fieldName);
-        return (T)converted;
+        RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+        switch (flag)
+        {
+            case RefFlag.Null:
+                return true;
+            case RefFlag.NotNullValue:
+                value = ReadInt64FastPayload(
+                    context,
+                    scalarRead.RawRemoteTypeId,
+                    scalarRead.LocalTypeId,
+                    scalarRead.FieldName);
+                present = true;
+                return true;
+            default:
+                throw Fail(
+                    scalarRead.RemoteTypeId,
+                    scalarRead.LocalTypeId,
+                    scalarRead.FieldName,
+                    $"invalid compatible nullOnly ref flag {(sbyte)flag}");
+        }
     }
 
-    private static object ReadPayload(
-        ReadContext context,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        string fieldName)
+    private static CompatibleScalarRead RequireRead(TypeMetaFieldInfo remoteField)
+    {
+        return remoteField.CompatibleScalarRead
+            ?? throw new InvalidDataException(
+                $"compatible scalar field {remoteField.FieldName} was not classified for scalar conversion");
+    }
+
+    private static bool IsInt64FastSource(TypeId remoteTypeId)
+    {
+        return remoteTypeId is TypeId.Bool or TypeId.Int8 or TypeId.Int16 or TypeId.Int32 or
+            TypeId.VarInt32 or TypeId.Int64 or TypeId.VarInt64 or TypeId.TaggedInt64 or
+            TypeId.UInt8 or TypeId.UInt16 or TypeId.UInt32 or TypeId.VarUInt32 or
+            TypeId.UInt64 or TypeId.VarUInt64 or TypeId.TaggedUInt64;
+    }
+
+    private static long ReadInt64FastPayload(ReadContext context, TypeId remoteTypeId, TypeId localTypeId, string fieldName)
     {
         return remoteTypeId switch
         {
-            TypeId.Bool => ReadBool(context, localTypeId, fieldName),
+            TypeId.Bool => ReadBool(context, localTypeId, fieldName) ? 1 : 0,
             TypeId.Int8 => context.Reader.ReadInt8(),
             TypeId.Int16 => context.Reader.ReadInt16(),
             TypeId.Int32 => context.Reader.ReadInt32(),
@@ -204,15 +541,52 @@ public static class CompatibleScalarConverter
             TypeId.UInt16 => context.Reader.ReadUInt16(),
             TypeId.UInt32 => context.Reader.ReadUInt32(),
             TypeId.VarUInt32 => context.Reader.ReadVarUInt32(),
-            TypeId.UInt64 => context.Reader.ReadUInt64(),
-            TypeId.VarUInt64 => context.Reader.ReadVarUInt64(),
-            TypeId.TaggedUInt64 => context.Reader.ReadTaggedUInt64(),
-            TypeId.Float16 => BitConverter.UInt16BitsToHalf(context.Reader.ReadUInt16()),
-            TypeId.BFloat16 => BFloat16.FromBits(context.Reader.ReadUInt16()),
-            TypeId.Float32 => context.Reader.ReadFloat32(),
-            TypeId.Float64 => context.Reader.ReadFloat64(),
-            TypeId.Decimal => ReadDecimal(context),
-            TypeId.String => StringSerializer.ReadString(context),
+            TypeId.UInt64 => ToInt64(context.Reader.ReadUInt64(), remoteTypeId, localTypeId, fieldName),
+            TypeId.VarUInt64 => ToInt64(context.Reader.ReadVarUInt64(), remoteTypeId, localTypeId, fieldName),
+            TypeId.TaggedUInt64 => ToInt64(context.Reader.ReadTaggedUInt64(), remoteTypeId, localTypeId, fieldName),
+            _ => throw Fail(remoteTypeId, localTypeId, fieldName, $"unsupported compatible scalar type id {remoteTypeId}"),
+        };
+    }
+
+    private static long ToInt64(ulong value, TypeId remote, TypeId local, string fieldName)
+    {
+        if (value <= long.MaxValue)
+        {
+            return (long)value;
+        }
+
+        throw Fail(remote, local, fieldName, $"integer value {value} is outside {local} range");
+    }
+
+    private static ScalarValue ReadScalarPayload(
+        ReadContext context,
+        TypeId remoteTypeId,
+        TypeId localTypeId,
+        string fieldName)
+    {
+        return remoteTypeId switch
+        {
+            TypeId.Bool => ScalarValue.ForBool(ReadBool(context, localTypeId, fieldName)),
+            TypeId.Int8 => ScalarValue.ForSigned(context.Reader.ReadInt8()),
+            TypeId.Int16 => ScalarValue.ForSigned(context.Reader.ReadInt16()),
+            TypeId.Int32 => ScalarValue.ForSigned(context.Reader.ReadInt32()),
+            TypeId.VarInt32 => ScalarValue.ForSigned(context.Reader.ReadVarInt32()),
+            TypeId.Int64 => ScalarValue.ForSigned(context.Reader.ReadInt64()),
+            TypeId.VarInt64 => ScalarValue.ForSigned(context.Reader.ReadVarInt64()),
+            TypeId.TaggedInt64 => ScalarValue.ForSigned(context.Reader.ReadTaggedInt64()),
+            TypeId.UInt8 => ScalarValue.ForUnsigned(context.Reader.ReadUInt8()),
+            TypeId.UInt16 => ScalarValue.ForUnsigned(context.Reader.ReadUInt16()),
+            TypeId.UInt32 => ScalarValue.ForUnsigned(context.Reader.ReadUInt32()),
+            TypeId.VarUInt32 => ScalarValue.ForUnsigned(context.Reader.ReadVarUInt32()),
+            TypeId.UInt64 => ScalarValue.ForUnsigned(context.Reader.ReadUInt64()),
+            TypeId.VarUInt64 => ScalarValue.ForUnsigned(context.Reader.ReadVarUInt64()),
+            TypeId.TaggedUInt64 => ScalarValue.ForUnsigned(context.Reader.ReadTaggedUInt64()),
+            TypeId.Float16 => ScalarValue.ForHalf(BitConverter.UInt16BitsToHalf(context.Reader.ReadUInt16())),
+            TypeId.BFloat16 => ScalarValue.ForBFloat16(BFloat16.FromBits(context.Reader.ReadUInt16())),
+            TypeId.Float32 => ScalarValue.ForSingle(context.Reader.ReadFloat32()),
+            TypeId.Float64 => ScalarValue.ForDouble(context.Reader.ReadFloat64()),
+            TypeId.Decimal => ScalarValue.ForDecimal(ReadDecimal(context)),
+            TypeId.String => ScalarValue.ForString(StringSerializer.ReadString(context)),
             _ => throw Fail(
                 remoteTypeId,
                 localTypeId,
@@ -223,12 +597,12 @@ public static class CompatibleScalarConverter
 
     private static bool ReadBool(ReadContext context, TypeId localTypeId, string fieldName)
     {
-        byte value = context.Reader.ReadUInt8();
-        return value switch
+        byte raw = context.Reader.ReadUInt8();
+        return raw switch
         {
             0 => false,
             1 => true,
-            _ => throw Fail(TypeId.Bool, localTypeId, fieldName, $"invalid bool payload {value}"),
+            _ => throw Fail(TypeId.Bool, localTypeId, fieldName, $"invalid bool payload {raw}"),
         };
     }
 
@@ -238,204 +612,173 @@ public static class CompatibleScalarConverter
         return new ForyDecimal(unscaled, scale);
     }
 
-    private static object ConvertValue(
-        object value,
-        TypeId remoteTypeId,
-        TypeId localTypeId,
-        Type targetType,
-        string fieldName)
+    private static bool ToBool(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        TypeId remote = NormalizeScalarTypeId((uint)remoteTypeId);
-        TypeId local = NormalizeScalarTypeId((uint)localTypeId);
-        Type unwrappedTarget = Nullable.GetUnderlyingType(targetType) ?? targetType;
-        if (local == TypeId.Bool)
+        switch (value.Kind)
         {
-            return ToBool(value, remote, local, fieldName);
-        }
+            case ScalarValueKind.Bool:
+                return value.BoolValue;
+            case ScalarValueKind.String:
+                return value.StringValue switch
+                {
+                    "0" or "false" => false,
+                    "1" or "true" => true,
+                    string s => throw Fail(remote, local, fieldName, $"cannot convert string '{s}' to bool"),
+                    _ => throw Fail(remote, local, fieldName, "remote value is not a string"),
+                };
+            default:
+                DecimalValue numeric = Normalize(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
+                if (numeric.Unscaled.IsZero)
+                {
+                    return false;
+                }
 
-        if (local == TypeId.String)
-        {
-            return ToStringValue(value, remote, local, fieldName);
-        }
+                if (numeric.Scale == 0 && numeric.Unscaled.IsOne)
+                {
+                    return true;
+                }
 
-        if (IsNumeric(local))
-        {
-            return ToNumeric(value, remote, local, unwrappedTarget, fieldName);
+                throw Fail(remote, local, fieldName, "numeric value is not exactly 0 or 1");
         }
-
-        throw Fail(remote, local, fieldName, "unsupported compatible scalar target");
     }
 
-    private static bool ToBool(object value, TypeId remote, TypeId local, string fieldName)
+    private static string ToStringValue(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        if (remote == TypeId.String)
+        switch (value.Kind)
         {
-            return value switch
+            case ScalarValueKind.Bool:
+                return value.BoolValue ? "true" : "false";
+            case ScalarValueKind.String:
+                return value.StringValue!;
+            case ScalarValueKind.Float16:
+            case ScalarValueKind.BFloat16:
+            case ScalarValueKind.Float32:
+            case ScalarValueKind.Float64:
+                {
+                    DecimalValue numeric = ToDecimalValue(value, remote, local, fieldName);
+                    if (numeric.Unscaled.IsZero)
+                    {
+                        return numeric.NegativeZero ? "-0.0" : "0.0";
+                    }
+
+                    return FormatFloating(Normalize(numeric, remote, local, fieldName));
+                }
+            case ScalarValueKind.Decimal:
+                return FormatDecimal(Normalize(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName));
+            default:
+                return FormatInteger(ToInteger(value, remote, local, fieldName));
+        }
+    }
+
+    private static sbyte ToSByte(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (sbyte)CheckedInteger(ToSignedInteger(value, remote, local, fieldName), SByteMin, SByteMax, remote, local, fieldName);
+    }
+
+    private static short ToInt16(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (short)CheckedInteger(ToSignedInteger(value, remote, local, fieldName), Int16Min, Int16Max, remote, local, fieldName);
+    }
+
+    private static int ToInt32(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (int)CheckedInteger(ToSignedInteger(value, remote, local, fieldName), Int32Min, Int32Max, remote, local, fieldName);
+    }
+
+    private static long ToInt64(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (long)CheckedInteger(ToSignedInteger(value, remote, local, fieldName), Int64Min, Int64Max, remote, local, fieldName);
+    }
+
+    private static byte ToByte(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (byte)CheckedInteger(ToUnsignedInteger(value, remote, local, fieldName), BigInteger.Zero, ByteMax, remote, local, fieldName);
+    }
+
+    private static ushort ToUInt16(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (ushort)CheckedInteger(ToUnsignedInteger(value, remote, local, fieldName), BigInteger.Zero, UInt16Max, remote, local, fieldName);
+    }
+
+    private static uint ToUInt32(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (uint)CheckedInteger(ToUnsignedInteger(value, remote, local, fieldName), BigInteger.Zero, UInt32Max, remote, local, fieldName);
+    }
+
+    private static ulong ToUInt64(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return (ulong)CheckedInteger(ToUnsignedInteger(value, remote, local, fieldName), BigInteger.Zero, UInt64Max, remote, local, fieldName);
+    }
+
+    private static Half ToHalfTarget(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        if (TryNonFinite(value, out int sign))
+        {
+            return sign switch
             {
-                "0" or "false" => false,
-                "1" or "true" => true,
-                string s => throw Fail(remote, local, fieldName, $"cannot convert string '{s}' to bool"),
-                _ => throw Fail(remote, local, fieldName, "remote value is not a string"),
+                < 0 => Half.NegativeInfinity,
+                > 0 => Half.PositiveInfinity,
+                _ => throw Fail(remote, local, fieldName, "NaN cannot convert across floating scalar types"),
             };
         }
 
-        DecimalValue numeric = ToDecimalValue(value, remote, local, fieldName);
-        numeric = Normalize(numeric, remote, local, fieldName);
-        if (numeric.Unscaled.IsZero)
-        {
-            return false;
-        }
-
-        if (numeric.Scale == 0 && numeric.Unscaled.IsOne)
-        {
-            return true;
-        }
-
-        throw Fail(remote, local, fieldName, "numeric value is not exactly 0 or 1");
+        return ToHalf(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
     }
 
-    private static string ToStringValue(object value, TypeId remote, TypeId local, string fieldName)
+    private static BFloat16 ToBFloat16Target(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        if (remote == TypeId.Bool)
+        if (TryNonFinite(value, out int sign))
         {
-            return (bool)value ? "true" : "false";
-        }
-
-        if (!IsNumeric(remote))
-        {
-            throw Fail(remote, local, fieldName, "remote value is not numeric");
-        }
-
-        if (IsFloating(remote))
-        {
-            DecimalValue numeric = ToDecimalValue(value, remote, local, fieldName);
-            if (numeric.Unscaled.IsZero)
+            return sign switch
             {
-                return numeric.NegativeZero ? "-0.0" : "0.0";
-            }
-
-            return FormatFloating(Normalize(numeric, remote, local, fieldName));
+                < 0 => BFloat16.NegativeInfinity,
+                > 0 => BFloat16.PositiveInfinity,
+                _ => throw Fail(remote, local, fieldName, "NaN cannot convert across floating scalar types"),
+            };
         }
 
-        if (remote == TypeId.Decimal)
-        {
-            return FormatDecimal(Normalize(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName));
-        }
-
-        return FormatInteger(ToInteger(value, remote, local, fieldName));
+        return ToBFloat16(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
     }
 
-    private static object ToNumeric(
-        object value,
-        TypeId remote,
-        TypeId local,
-        Type targetType,
-        string fieldName)
+    private static float ToSingleTarget(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        if (remote == TypeId.Bool)
+        if (TryNonFinite(value, out int sign))
         {
-            return FromInteger((bool)value ? BigInteger.One : BigInteger.Zero, remote, local, targetType, fieldName);
-        }
-
-        if (remote == TypeId.String)
-        {
-            if (!TryParseNumber((string)value, out DecimalValue parsed))
+            return sign switch
             {
-                throw Fail(remote, local, fieldName, "string is not a compatible numeric literal");
-            }
-
-            return FromDecimal(parsed, local, targetType, remote, fieldName);
+                < 0 => float.NegativeInfinity,
+                > 0 => float.PositiveInfinity,
+                _ => throw Fail(remote, local, fieldName, "NaN cannot convert across floating scalar types"),
+            };
         }
 
-        if (IsInteger(remote))
-        {
-            return FromInteger(ToInteger(value, remote, local, fieldName), remote, local, targetType, fieldName);
-        }
+        return ToSingle(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
+    }
 
-        if (IsFloating(remote) && IsFloating(local) && TryNonFinite(value, out int sign))
+    private static double ToDoubleTarget(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        if (TryNonFinite(value, out int sign))
         {
-            if (sign == 0)
+            return sign switch
             {
-                throw Fail(remote, local, fieldName, "NaN cannot convert across floating scalar types");
-            }
-
-            return NonFiniteFloat(sign, local, fieldName);
+                < 0 => double.NegativeInfinity,
+                > 0 => double.PositiveInfinity,
+                _ => throw Fail(remote, local, fieldName, "NaN cannot convert across floating scalar types"),
+            };
         }
 
-        DecimalValue numeric = ToDecimalValue(value, remote, local, fieldName);
-        return FromDecimal(numeric, local, targetType, remote, fieldName);
+        return ToDouble(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
     }
 
-    private static object FromInteger(
-        BigInteger value,
-        TypeId remote,
-        TypeId local,
-        Type targetType,
-        string fieldName)
+    private static ForyDecimal ToForyDecimalTarget(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        return local switch
-        {
-            TypeId.Int8 => CheckedSigned<sbyte>(value, SByteMin, SByteMax, remote, local, fieldName),
-            TypeId.Int16 => CheckedSigned<short>(value, Int16Min, Int16Max, remote, local, fieldName),
-            TypeId.Int32 => CheckedSigned<int>(value, Int32Min, Int32Max, remote, local, fieldName),
-            TypeId.Int64 => CheckedSigned<long>(value, Int64Min, Int64Max, remote, local, fieldName),
-            TypeId.UInt8 => CheckedUnsigned<byte>(value, ByteMax, remote, local, fieldName),
-            TypeId.UInt16 => CheckedUnsigned<ushort>(value, UInt16Max, remote, local, fieldName),
-            TypeId.UInt32 => CheckedUnsigned<uint>(value, UInt32Max, remote, local, fieldName),
-            TypeId.UInt64 => CheckedUnsigned<ulong>(value, UInt64Max, remote, local, fieldName),
-            TypeId.Float16 or TypeId.BFloat16 or TypeId.Float32 or TypeId.Float64 =>
-                FromDecimal(new DecimalValue(value, 0, false), local, targetType, remote, fieldName),
-            TypeId.Decimal => FromDecimal(new DecimalValue(value, 0, false), local, targetType, remote, fieldName),
-            _ => throw Fail(remote, local, fieldName, "unsupported numeric target"),
-        };
+        DecimalValue decimalValue = Normalize(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
+        return new ForyDecimal(decimalValue.Unscaled, decimalValue.Scale);
     }
 
-    private static object FromDecimal(
-        DecimalValue value,
-        TypeId local,
-        Type targetType,
-        TypeId remote,
-        string fieldName)
+    private static decimal ToSystemDecimalTarget(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        value = Normalize(value, remote, local, fieldName);
-        return local switch
-        {
-            TypeId.Int8 => CheckedSigned<sbyte>(Integral(value, remote, local, fieldName), SByteMin, SByteMax, remote, local, fieldName),
-            TypeId.Int16 => CheckedSigned<short>(Integral(value, remote, local, fieldName), Int16Min, Int16Max, remote, local, fieldName),
-            TypeId.Int32 => CheckedSigned<int>(Integral(value, remote, local, fieldName), Int32Min, Int32Max, remote, local, fieldName),
-            TypeId.Int64 => CheckedSigned<long>(Integral(value, remote, local, fieldName), Int64Min, Int64Max, remote, local, fieldName),
-            TypeId.UInt8 => CheckedUnsigned<byte>(UnsignedIntegral(value, remote, local, fieldName), ByteMax, remote, local, fieldName),
-            TypeId.UInt16 => CheckedUnsigned<ushort>(UnsignedIntegral(value, remote, local, fieldName), UInt16Max, remote, local, fieldName),
-            TypeId.UInt32 => CheckedUnsigned<uint>(UnsignedIntegral(value, remote, local, fieldName), UInt32Max, remote, local, fieldName),
-            TypeId.UInt64 => CheckedUnsigned<ulong>(UnsignedIntegral(value, remote, local, fieldName), UInt64Max, remote, local, fieldName),
-            TypeId.Float16 => ToHalf(value, remote, local, fieldName),
-            TypeId.BFloat16 => ToBFloat16(value, remote, local, fieldName),
-            TypeId.Float32 => ToSingle(value, remote, local, fieldName),
-            TypeId.Float64 => ToDouble(value, remote, local, fieldName),
-            TypeId.Decimal => ToDecimalCarrier(value, targetType, remote, local, fieldName),
-            _ => throw Fail(remote, local, fieldName, "unsupported numeric target"),
-        };
-    }
-
-    private static object ToDecimalCarrier(
-        DecimalValue value,
-        Type targetType,
-        TypeId remote,
-        TypeId local,
-        string fieldName)
-    {
-        value = Normalize(value, remote, local, fieldName);
-        if (targetType == typeof(ForyDecimal))
-        {
-            return new ForyDecimal(value.Unscaled, value.Scale);
-        }
-
-        if (targetType == typeof(decimal))
-        {
-            return ToSystemDecimal(value, remote, local, fieldName);
-        }
-
-        throw Fail(remote, local, fieldName, $"unsupported decimal carrier {targetType}");
+        return ToSystemDecimal(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
     }
 
     private static decimal ToSystemDecimal(DecimalValue value, TypeId remote, TypeId local, string fieldName)
@@ -572,7 +915,7 @@ public static class CompatibleScalarConverter
         throw Fail(remote, local, fieldName, "negative value cannot convert to unsigned target");
     }
 
-    private static object CheckedSigned<T>(
+    private static BigInteger CheckedInteger(
         BigInteger value,
         BigInteger min,
         BigInteger max,
@@ -585,133 +928,102 @@ public static class CompatibleScalarConverter
             throw Fail(remote, local, fieldName, $"integer value {value} is outside {local} range");
         }
 
-        if (typeof(T) == typeof(sbyte))
-        {
-            return (sbyte)value;
-        }
-
-        if (typeof(T) == typeof(short))
-        {
-            return (short)value;
-        }
-
-        if (typeof(T) == typeof(int))
-        {
-            return (int)value;
-        }
-
-        return (long)value;
+        return value;
     }
 
-    private static object CheckedUnsigned<T>(
-        BigInteger value,
-        BigInteger max,
-        TypeId remote,
-        TypeId local,
-        string fieldName)
+    private static BigInteger ToSignedInteger(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        if (value.Sign < 0 || value > max)
+        if (value.Kind == ScalarValueKind.Bool)
         {
-            throw Fail(remote, local, fieldName, $"integer value {value} is outside {local} range");
+            return value.BoolValue ? BigInteger.One : BigInteger.Zero;
         }
 
-        if (typeof(T) == typeof(byte))
+        if (value.Kind is ScalarValueKind.Signed or ScalarValueKind.Unsigned)
         {
-            return (byte)value;
+            return ToInteger(value, remote, local, fieldName);
         }
 
-        if (typeof(T) == typeof(ushort))
-        {
-            return (ushort)value;
-        }
-
-        if (typeof(T) == typeof(uint))
-        {
-            return (uint)value;
-        }
-
-        return (ulong)value;
+        return Integral(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
     }
 
-    private static BigInteger ToInteger(object value, TypeId remote, TypeId local, string fieldName)
+    private static BigInteger ToUnsignedInteger(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        return value switch
+        if (value.Kind == ScalarValueKind.Bool)
         {
-            sbyte v => v,
-            short v => v,
-            int v => v,
-            long v => v,
-            byte v => v,
-            ushort v => v,
-            uint v => v,
-            ulong v => v,
-            _ => throw Fail(remote, local, fieldName, $"remote value type {value.GetType()} is not an integer"),
+            return value.BoolValue ? BigInteger.One : BigInteger.Zero;
+        }
+
+        if (value.Kind is ScalarValueKind.Signed or ScalarValueKind.Unsigned)
+        {
+            BigInteger integer = ToInteger(value, remote, local, fieldName);
+            if (integer.Sign >= 0)
+            {
+                return integer;
+            }
+
+            throw Fail(remote, local, fieldName, "negative value cannot convert to unsigned target");
+        }
+
+        return UnsignedIntegral(ToDecimalValue(value, remote, local, fieldName), remote, local, fieldName);
+    }
+
+    private static BigInteger ToInteger(ScalarValue value, TypeId remote, TypeId local, string fieldName)
+    {
+        return value.Kind switch
+        {
+            ScalarValueKind.Signed => value.SignedValue,
+            ScalarValueKind.Unsigned => value.UnsignedValue,
+            _ => throw Fail(remote, local, fieldName, $"remote value kind {value.Kind} is not an integer"),
         };
     }
 
-    private static DecimalValue ToDecimalValue(object value, TypeId remote, TypeId local, string fieldName)
+    private static DecimalValue ToDecimalValue(ScalarValue value, TypeId remote, TypeId local, string fieldName)
     {
-        return value switch
+        return value.Kind switch
         {
-            sbyte v => new DecimalValue(v, 0, false),
-            short v => new DecimalValue(v, 0, false),
-            int v => new DecimalValue(v, 0, false),
-            long v => new DecimalValue(v, 0, false),
-            byte v => new DecimalValue(v, 0, false),
-            ushort v => new DecimalValue(v, 0, false),
-            uint v => new DecimalValue(v, 0, false),
-            ulong v => new DecimalValue(v, 0, false),
-            Half v => FromHalfChecked(v, remote, local, fieldName),
-            BFloat16 v => FromBFloat16Checked(v, remote, local, fieldName),
-            float v => FromSingleChecked(v, remote, local, fieldName),
-            double v => FromDoubleChecked(v, remote, local, fieldName),
-            ForyDecimal v => new DecimalValue(v.UnscaledValue, v.Scale, false),
-            decimal v => FromSystemDecimal(v),
-            _ => throw Fail(remote, local, fieldName, $"remote value type {value.GetType()} is not numeric"),
+            ScalarValueKind.Bool => new DecimalValue(value.BoolValue ? BigInteger.One : BigInteger.Zero, 0, false),
+            ScalarValueKind.Signed => new DecimalValue(value.SignedValue, 0, false),
+            ScalarValueKind.Unsigned => new DecimalValue(value.UnsignedValue, 0, false),
+            ScalarValueKind.Float16 => FromHalfChecked(value.HalfValue, remote, local, fieldName),
+            ScalarValueKind.BFloat16 => FromBFloat16Checked(value.BFloat16Value, remote, local, fieldName),
+            ScalarValueKind.Float32 => FromSingleChecked(value.SingleValue, remote, local, fieldName),
+            ScalarValueKind.Float64 => FromDoubleChecked(value.DoubleValue, remote, local, fieldName),
+            ScalarValueKind.Decimal => new DecimalValue(value.DecimalValue.UnscaledValue, value.DecimalValue.Scale, false),
+            ScalarValueKind.String => TryParseNumber(value.StringValue!, out DecimalValue parsed)
+                ? parsed
+                : throw Fail(remote, local, fieldName, "string is not a compatible numeric literal"),
+            _ => throw Fail(remote, local, fieldName, $"remote value kind {value.Kind} is not numeric"),
         };
     }
 
-    private static bool TryNonFinite(object value, out int sign)
+    private static bool TryNonFinite(ScalarValue value, out int sign)
     {
         sign = 0;
-        switch (value)
+        switch (value.Kind)
         {
-            case Half v when Half.IsNaN(v):
+            case ScalarValueKind.Float16 when Half.IsNaN(value.HalfValue):
                 return true;
-            case Half v when Half.IsInfinity(v):
-                sign = Half.IsNegative(v) ? -1 : 1;
+            case ScalarValueKind.Float16 when Half.IsInfinity(value.HalfValue):
+                sign = Half.IsNegative(value.HalfValue) ? -1 : 1;
                 return true;
-            case BFloat16 v when v.IsNaN:
+            case ScalarValueKind.BFloat16 when value.BFloat16Value.IsNaN:
                 return true;
-            case BFloat16 v when v.IsInfinity:
-                sign = v.SignBit ? -1 : 1;
+            case ScalarValueKind.BFloat16 when value.BFloat16Value.IsInfinity:
+                sign = value.BFloat16Value.SignBit ? -1 : 1;
                 return true;
-            case float v when float.IsNaN(v):
+            case ScalarValueKind.Float32 when float.IsNaN(value.SingleValue):
                 return true;
-            case float v when float.IsInfinity(v):
-                sign = float.IsNegative(v) ? -1 : 1;
+            case ScalarValueKind.Float32 when float.IsInfinity(value.SingleValue):
+                sign = float.IsNegative(value.SingleValue) ? -1 : 1;
                 return true;
-            case double v when double.IsNaN(v):
+            case ScalarValueKind.Float64 when double.IsNaN(value.DoubleValue):
                 return true;
-            case double v when double.IsInfinity(v):
-                sign = double.IsNegative(v) ? -1 : 1;
+            case ScalarValueKind.Float64 when double.IsInfinity(value.DoubleValue):
+                sign = double.IsNegative(value.DoubleValue) ? -1 : 1;
                 return true;
             default:
                 return false;
         }
-    }
-
-    private static object NonFiniteFloat(int sign, TypeId local, string fieldName)
-    {
-        bool negative = sign < 0;
-        return local switch
-        {
-            TypeId.Float16 => negative ? Half.NegativeInfinity : Half.PositiveInfinity,
-            TypeId.BFloat16 => negative ? BFloat16.NegativeInfinity : BFloat16.PositiveInfinity,
-            TypeId.Float32 => negative ? float.NegativeInfinity : float.PositiveInfinity,
-            TypeId.Float64 => negative ? double.NegativeInfinity : double.PositiveInfinity,
-            _ => throw Fail(local, local, fieldName, "non-finite value requires a floating target"),
-        };
     }
 
     private static DecimalValue FromHalfChecked(Half value, TypeId remote, TypeId local, string fieldName)
@@ -1148,6 +1460,111 @@ public static class CompatibleScalarConverter
     {
         return new InvalidDataException(
             $"compatible scalar conversion failed for field '{fieldName}' from {remote} to {local}: {reason}");
+    }
+
+    private enum ScalarValueKind
+    {
+        Bool,
+        String,
+        Signed,
+        Unsigned,
+        Float16,
+        BFloat16,
+        Float32,
+        Float64,
+        Decimal,
+    }
+
+    private readonly struct ScalarValue
+    {
+        private ScalarValue(
+            ScalarValueKind kind,
+            bool boolValue = false,
+            string? stringValue = null,
+            long signedValue = 0,
+            ulong unsignedValue = 0,
+            Half halfValue = default,
+            BFloat16 bfloat16Value = default,
+            float singleValue = default,
+            double doubleValue = default,
+            ForyDecimal decimalValue = default)
+        {
+            Kind = kind;
+            BoolValue = boolValue;
+            StringValue = stringValue;
+            SignedValue = signedValue;
+            UnsignedValue = unsignedValue;
+            HalfValue = halfValue;
+            BFloat16Value = bfloat16Value;
+            SingleValue = singleValue;
+            DoubleValue = doubleValue;
+            DecimalValue = decimalValue;
+        }
+
+        public ScalarValueKind Kind { get; }
+
+        public bool BoolValue { get; }
+
+        public string? StringValue { get; }
+
+        public long SignedValue { get; }
+
+        public ulong UnsignedValue { get; }
+
+        public Half HalfValue { get; }
+
+        public BFloat16 BFloat16Value { get; }
+
+        public float SingleValue { get; }
+
+        public double DoubleValue { get; }
+
+        public ForyDecimal DecimalValue { get; }
+
+        public static ScalarValue ForBool(bool value)
+        {
+            return new ScalarValue(ScalarValueKind.Bool, boolValue: value);
+        }
+
+        public static ScalarValue ForString(string value)
+        {
+            return new ScalarValue(ScalarValueKind.String, stringValue: value);
+        }
+
+        public static ScalarValue ForSigned(long value)
+        {
+            return new ScalarValue(ScalarValueKind.Signed, signedValue: value);
+        }
+
+        public static ScalarValue ForUnsigned(ulong value)
+        {
+            return new ScalarValue(ScalarValueKind.Unsigned, unsignedValue: value);
+        }
+
+        public static ScalarValue ForHalf(Half value)
+        {
+            return new ScalarValue(ScalarValueKind.Float16, halfValue: value);
+        }
+
+        public static ScalarValue ForBFloat16(BFloat16 value)
+        {
+            return new ScalarValue(ScalarValueKind.BFloat16, bfloat16Value: value);
+        }
+
+        public static ScalarValue ForSingle(float value)
+        {
+            return new ScalarValue(ScalarValueKind.Float32, singleValue: value);
+        }
+
+        public static ScalarValue ForDouble(double value)
+        {
+            return new ScalarValue(ScalarValueKind.Float64, doubleValue: value);
+        }
+
+        public static ScalarValue ForDecimal(ForyDecimal value)
+        {
+            return new ScalarValue(ScalarValueKind.Decimal, decimalValue: value);
+        }
     }
 
     private readonly record struct DecimalValue(BigInteger Unscaled, int Scale, bool NegativeZero);

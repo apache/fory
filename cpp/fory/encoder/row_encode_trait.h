@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "fory/meta/field.h"
 #include "fory/meta/field_info.h"
 #include "fory/meta/type_traits.h"
 #include "fory/row/writer.h"
@@ -191,8 +192,8 @@ private:
   using FieldInfo = decltype(fory_field_info(std::declval<T>()));
 
   template <size_t I> static FieldPtr get_field() {
-    using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::ptrs())>>;
+    using FieldEntry = std::tuple_element_t<I, decltype(FieldInfo::ptrs())>;
+    using FieldType = field_value_type_t<T, FieldEntry>;
     return field(details::string_view_to_string(FieldInfo::Names[I]),
                  RowEncodeTrait<FieldType>::Type());
   }
@@ -204,10 +205,10 @@ private:
 
   template <size_t I, typename V>
   static void write_field(V &&visitor, const T &value, RowWriter &writer) {
-    using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::ptrs())>>;
-    RowEncodeTrait<FieldType>::write(std::forward<V>(visitor),
-                                     value.*std::get<I>(FieldInfo::ptrs_ref()),
+    const auto field_entry = std::get<I>(FieldInfo::ptrs_ref());
+    using FieldType = field_value_type_t<T, decltype(field_entry)>;
+    auto &&field_value = field_value_get(value, field_entry);
+    RowEncodeTrait<FieldType>::write(std::forward<V>(visitor), field_value,
                                      writer, I);
   }
 

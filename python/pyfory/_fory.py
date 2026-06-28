@@ -17,7 +17,7 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Iterable, Optional, TypeVar, Union
+from typing import Iterable, Optional, Union
 
 _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
     "1",
@@ -126,8 +126,6 @@ class Fory:
         "max_depth",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
     )
 
     def __init__(
@@ -137,11 +135,13 @@ class Fory:
         strict: bool = True,
         compatible: Optional[bool] = None,
         max_depth: int = 50,
+        max_type_fields: int = 512,
+        max_type_meta_bytes: int = 4096,
+        max_schema_versions_per_type: int = 10,
+        max_average_schema_versions_per_type: int = 3,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
-        max_collection_size: int = 1_000_000,
-        max_binary_size: int = 64 * 1024 * 1024,
     ):
         """
         Initialize a Fory serialization instance.
@@ -166,13 +166,22 @@ class Fory:
                 are allowed. We are not responsible for security risks when this option
                 is disabled without proper policy controls.
 
-            compatible: Enable schema evolution. When omitted, xlang mode defaults to
-                compatible mode and Python native mode defaults to schema-consistent mode.
+            compatible: Enable schema evolution. When omitted, compatible mode is enabled.
                 When enabled, supports forward/backward compatibility for dataclass field
                 additions and removals.
 
             max_depth: Maximum nesting depth for deserialization (default: 50). Raises
                 an exception if exceeded to prevent malicious deeply-nested data attacks.
+
+            max_type_fields: Maximum accepted field count in one received struct TypeDef.
+
+            max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
+
+            max_schema_versions_per_type: Maximum accepted remote metadata versions for one
+                logical type.
+
+            max_average_schema_versions_per_type: Average remote metadata versions allowed
+                across accepted remote types.
 
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
@@ -181,17 +190,6 @@ class Fory:
             field_nullable: Treat all dataclass fields as nullable regardless of
                 Optional annotation.
 
-            max_collection_size: Maximum allowed size for collections (lists, sets, tuples)
-                and maps (dicts) during deserialization. This limit is used to prevent
-                out-of-memory attacks from malicious payloads that claim extremely large
-                collection sizes, as collections preallocate memory based on the declared
-                size. Raises an exception if exceeded. Default is 1,000,000.
-
-            max_binary_size: Maximum allowed size in bytes for binary data reads during
-                deserialization (default: 64 MB). Raises an exception if a single binary
-                read exceeds this limit, preventing out-of-memory attacks from malicious
-                payloads that claim extremely large binary sizes.
-
         Example:
             >>> # Python native mode with reference tracking
             >>> fory = Fory(xlang=False, ref=True)
@@ -199,7 +197,7 @@ class Fory:
             >>> # Xlang mode with compatible schema evolution
             >>> fory = Fory(xlang=True)
         """
-        compatible = xlang if compatible is None else compatible
+        compatible = True if compatible is None else compatible
         self.xlang = xlang
         self.track_ref = ref
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
@@ -207,8 +205,14 @@ class Fory:
         self.compatible = compatible
         self.field_nullable = field_nullable
         self.max_depth = max_depth
-        self.max_collection_size = max_collection_size
-        self.max_binary_size = max_binary_size
+        if not isinstance(max_type_fields, int) or max_type_fields <= 0:
+            raise ValueError("max_type_fields must be a positive integer")
+        if not isinstance(max_type_meta_bytes, int) or max_type_meta_bytes <= 0:
+            raise ValueError("max_type_meta_bytes must be a positive integer")
+        if not isinstance(max_schema_versions_per_type, int) or max_schema_versions_per_type <= 0:
+            raise ValueError("max_schema_versions_per_type must be a positive integer")
+        if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
+            raise ValueError("max_average_schema_versions_per_type must be a positive integer")
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -217,11 +221,13 @@ class Fory:
             meta_share=compatible,
             scoped_meta_share_enabled=compatible,
             max_depth=max_depth,
+            max_type_fields=max_type_fields,
+            max_type_meta_bytes=max_type_meta_bytes,
+            max_schema_versions_per_type=max_schema_versions_per_type,
+            max_average_schema_versions_per_type=max_average_schema_versions_per_type,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
-            max_collection_size=max_collection_size,
-            max_binary_size=max_binary_size,
         )
         from pyfory.registry import SharedRegistry, TypeResolver
 
@@ -233,11 +239,11 @@ class Fory:
         self.type_resolver.initialize()
         self.write_context = WriteContext(self.config, self.type_resolver)
         self.read_context = ReadContext(self.config, self.type_resolver)
-        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
+        self.buffer = Buffer.allocate(32)
 
     def register(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -282,10 +288,9 @@ class Fory:
             serializer=serializer,
         )
 
-    # `Union[type, TypeVar]` is not supported in py3.6
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -331,7 +336,7 @@ class Fory:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -535,7 +540,7 @@ class Fory:
         unsupported_objects: Iterable = None,
     ):
         if isinstance(buffer, bytes):
-            buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
+            buffer = Buffer(buffer)
         read_context = self.read_context
         reader_index = buffer.get_reader_index()
         buffer.set_reader_index(reader_index + 1)
@@ -604,13 +609,9 @@ class ThreadSafeFory:
         ref (bool): Whether to enable reference tracking. Defaults to False.
         strict (bool): Whether to require type registration. Defaults to True.
         compatible (bool): Whether to enable compatible mode. Defaults to compatible mode
-            in xlang and schema-consistent mode in Python native mode.
+            in both xlang and Python native mode. Set False only when every reader and
+            writer always uses the same Python class schema and smaller payloads matter.
         max_depth (int): Maximum depth for deserialization. Defaults to 50.
-        max_collection_size (int): Maximum allowed size for collections and maps during
-            deserialization. Defaults to 1,000,000.
-        max_binary_size (int): Maximum allowed size in bytes for binary data reads during
-            deserialization. Defaults to 64 MB.
-
     Example:
         >>> import pyfory
         >>> import threading
@@ -688,7 +689,7 @@ class ThreadSafeFory:
 
     def register(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -698,7 +699,7 @@ class ThreadSafeFory:
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -708,7 +709,7 @@ class ThreadSafeFory:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,

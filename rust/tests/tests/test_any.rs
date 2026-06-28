@@ -125,7 +125,7 @@ fn assert_arc_any_map_unsupported(
 
 #[test]
 fn test_box_dyn_any() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let value: Box<dyn Any> = Box::new("hello".to_string());
     let bytes = fory.serialize(&value).unwrap();
@@ -153,7 +153,7 @@ fn test_box_dyn_any() {
 
 #[test]
 fn test_rc_dyn_any() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
     let value: Rc<dyn Any> = Rc::new("world".to_string());
     let bytes = fory.serialize(&value).unwrap();
     let deserialized: Rc<dyn Any> = fory.deserialize(&bytes).unwrap();
@@ -175,7 +175,7 @@ fn test_rc_dyn_any() {
 
 #[test]
 fn test_arc_dyn_any() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let value: Arc<dyn Any + Send + Sync> = Arc::new("arc test".to_string());
     let bytes = fory.serialize(&value).unwrap();
@@ -198,7 +198,7 @@ fn test_arc_dyn_any() {
 
 #[test]
 fn test_rc_dyn_any_shared_reference() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared_str: Rc<dyn Any> = Rc::new("shared".to_string());
 
@@ -217,7 +217,7 @@ fn test_rc_dyn_any_shared_reference() {
 
 #[test]
 fn test_arc_dyn_any_shared_reference() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     let shared_vec: Arc<dyn Any + Send + Sync> = Arc::new("shared".to_string());
 
@@ -243,7 +243,7 @@ fn test_any_registered_by_name() {
         age: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Person>("test.Person").unwrap();
 
     let person = Person {
@@ -270,7 +270,7 @@ fn test_mixed_any_types() {
         value: String,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Item>("Item").unwrap();
 
     let item = Item {
@@ -318,7 +318,7 @@ struct ArcRefPayload {
 
 #[test]
 fn wrapped_container_box_any() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Container>("Container").unwrap();
 
     let value: Box<dyn Any> = Box::new(Container {
@@ -335,7 +335,7 @@ fn wrapped_container_box_any() {
 
 #[test]
 fn rc_any_refvalue_keeps_outer_ref() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<RcRefPayload>("RcRefPayload")
         .unwrap();
 
@@ -356,7 +356,7 @@ fn rc_any_refvalue_keeps_outer_ref() {
 
 #[test]
 fn arc_any_refvalue_keeps_outer_ref() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<ArcRefPayload>("ArcRefPayload")
         .unwrap();
 
@@ -377,7 +377,7 @@ fn arc_any_refvalue_keeps_outer_ref() {
 
 #[test]
 fn generic_containers_rejected_in_any() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     assert_box_any_unsupported(&fory, vec![1_i32, 2, 3]);
     assert_rc_any_unsupported(&fory, vec![1_i32, 2, 3]);
@@ -393,7 +393,7 @@ fn generic_containers_rejected_in_any() {
 
 #[test]
 fn any_collection_rejects_containers() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     assert_box_any_values_unsupported(&fory, vec![Box::new(vec![1_i32, 2, 3]) as Box<dyn Any>]);
     assert_box_any_values_unsupported(
@@ -428,7 +428,7 @@ fn any_collection_rejects_containers() {
 
 #[test]
 fn any_map_values_reject_containers() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     assert_box_any_map_unsupported(
         &fory,
@@ -482,7 +482,12 @@ fn compatible_union_rc_any_read() {
         Value(String),
     }
 
-    let mut fory = Fory::builder().xlang(false).compatible(true).build();
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_type_meta_bytes(1)
+        .max_schema_versions_per_type(1)
+        .build();
     fory.register_union::<Event>(711).unwrap();
 
     let value: Rc<dyn Any> = Rc::new(Event::Value("compatible".to_string()));
@@ -542,7 +547,7 @@ fn test_hashmap_fixed_key_rc_any_field_compatible() {
 
 #[test]
 fn test_arc_by_name() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Container>("Container").unwrap();
 
     let container = Container {
@@ -573,7 +578,7 @@ fn test_arc_by_name() {
 
 #[test]
 fn test_arc_any_field_by_name() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Container>("Container").unwrap();
     fory.register_by_name::<ArcAnyHolder>("ArcAnyHolder")
         .unwrap();
@@ -595,7 +600,7 @@ fn test_arc_any_field_by_name() {
 
 #[test]
 fn test_rc_by_name() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Container>("Container").unwrap();
 
     let container = Container {
@@ -644,7 +649,7 @@ struct StructB {
 /// Previously this caused non-deterministic failures. Now it returns a clear error message.
 #[test]
 fn generic_vecs_rejected_in_box_any() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<StructA>("StructA").unwrap();
     fory.register_by_name::<StructB>("StructB").unwrap();
 

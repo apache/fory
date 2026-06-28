@@ -199,6 +199,28 @@ void main() {
       expect(envelopeRoundTrip.color, equals(SimpleColor.green));
     });
 
+    test('id registered enums do not use TypeDef metadata limits', () {
+      final fory = Fory(maxTypeMetaBytes: 1, maxSchemaVersionsPerType: 1);
+      EnumUnionSerializerTestForyModule.register(fory, SimpleColor, id: 101);
+
+      final decoded = fory.deserialize<SimpleColor>(
+        fory.serialize(SimpleColor.green),
+      );
+
+      expect(decoded, equals(SimpleColor.green));
+    });
+
+    test('id registered unions do not use TypeDef metadata limits', () {
+      final fory = Fory(maxTypeMetaBytes: 1, maxSchemaVersionsPerType: 1);
+      fory.registerSerializer(TestUnion, const TestUnionSerializer(), id: 102);
+
+      final decoded = fory.deserialize<TestUnion>(
+        fory.serialize(TestUnion.ofString('alpha')),
+      );
+
+      expect(decoded, equals(TestUnion.ofString('alpha')));
+    });
+
     test('uses raw enum values across reorder and rename', () {
       final writer = Fory();
       final reader = Fory();

@@ -56,6 +56,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), Foo.class);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -100,6 +101,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory.getTypeResolver(), foo.getClass());
     MemoryBuffer buffer = MemoryUtils.buffer(32);
@@ -137,6 +139,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
 
@@ -243,6 +246,7 @@ public class ObjectSerializerTest extends ForyTestBase {
               .withRefTracking(true)
               .withCodegen(codegen)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       FinalNoArgBean newValue = (FinalNoArgBean) fory.deserialize(fory.serialize(value));
       assertEquals(newValue.id, value.id);
@@ -260,6 +264,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .withCodegen(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Serializer<FinalNoArgBean> serializer =
         Serializers.newSerializer(
@@ -282,6 +287,7 @@ public class ObjectSerializerTest extends ForyTestBase {
               .withRefTracking(true)
               .withCodegen(codegen)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       FinalPostCtorBean newValue = (FinalPostCtorBean) fory.deserialize(fory.serialize(value));
       assertEquals(newValue.id, value.id);
@@ -298,6 +304,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .withCodegen(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Serializer<FinalPostCtorBean> serializer =
         Serializers.newSerializer(
@@ -320,6 +327,7 @@ public class ObjectSerializerTest extends ForyTestBase {
               .withRefTracking(true)
               .withCodegen(codegen)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       Serializer<?> serializer =
           fory.getTypeResolver().getTypeInfo(SerializablePrivateParentBean.class).getSerializer();
@@ -374,6 +382,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     ObjectSerializer<A> serializer = new ObjectSerializer<>(fory.getTypeResolver(), A.class);
@@ -416,6 +425,7 @@ public class ObjectSerializerTest extends ForyTestBase {
               .withCodegen(true)
               .withRefTracking(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       check(!fory.getConfig().isCodeGenEnabled(), "Android must force codegen off");
 

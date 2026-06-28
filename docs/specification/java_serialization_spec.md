@@ -50,7 +50,7 @@ root:
 | reference flag | [type metadata] | [value payload] |
 ```
 
-All multi-byte fixed-width values are little endian. A big-endian Java runtime
+All multi-byte fixed-width values are little endian. A big-endian Java implementation
 must still write and read little-endian payloads.
 
 The stream is stateful. Type metadata, class definitions, and object references
@@ -113,7 +113,7 @@ name metadata. Schema-evolution classes may carry a ClassDef.
 | `22..63` | Reserved in Java native mode for the xlang internal ID range.      |
 | `64..68` | Reserved for future Java native internal IDs.                      |
 | `69..98` | Java native built-ins listed below.                                |
-| `99+`    | User and runtime class IDs assigned by the Java `ClassResolver`.   |
+| `99+`    | User and Fory class IDs assigned by the Java `ClassResolver`.      |
 
 The shared scalar IDs are:
 
@@ -207,9 +207,9 @@ Indexes are assigned in first-use order.
 
 Java native mode has two object schema modes.
 
-### Schema-Consistent Mode
+### Same-Schema Mode
 
-Schema-consistent mode is used when compatible mode is disabled. The writer and
+Same-schema mode is used when compatible mode is disabled. The writer and
 reader must have matching fields and field order. No per-object ClassDef is
 required for ordinary registered classes. Field values are written directly in
 protocol order.
@@ -225,7 +225,7 @@ In compatible mode, a matched field may read between direct top-level scalar
 ClassDef schemas when the remote value can be represented by the local scalar
 schema without changing the logical value. This is a read adaptation only:
 writers keep emitting their local canonical field schema and payload, and
-ClassDef metadata, schema-consistent mode, dynamic value serialization, and
+ClassDef metadata, same-schema mode, dynamic value serialization, and
 unknown-field skipping continue to treat the original field schemas as distinct.
 
 The rule applies only to the immediate schema of a matched field. It does not
@@ -409,6 +409,12 @@ Root kind codes:
 
 Class layers are encoded from parent to leaf. Field lists inside each layer use
 the field order defined above.
+
+Readers may reject a received TypeDef that exceeds runtime resource limits such
+as maximum metadata body bytes or maximum fields in one TypeDef. These limits
+are receive-side resource controls and do not change the TypeDef wire encoding,
+type identity, dynamic class loading, unknown-class handling, registration
+policy, or schema-evolution semantics.
 
 ### Field Info
 

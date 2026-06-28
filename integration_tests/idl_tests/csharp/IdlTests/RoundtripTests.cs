@@ -172,7 +172,7 @@ public sealed class RoundtripTests
     public void AnyProtoRoundTrip(bool compatible)
     {
         ForyRuntime fory = BuildFory(compatible, false);
-        any_example_pb.AnyExamplePbForyModule.Install(fory);
+        any_example_pb.AnyExampleForyModule.Install(fory);
 
         any_example_pb.AnyHolder holder = BuildAnyProtoHolder();
         any_example_pb.AnyHolder decoded = fory.Deserialize<any_example_pb.AnyHolder>(fory.Serialize(holder));

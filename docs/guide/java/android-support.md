@@ -96,7 +96,7 @@ See [Static Generated Serializers](static-generated-serializers.md) for setup in
 
 ## Object Model Requirements
 
-Android serializers use public Android runtime capabilities. For application classes, prefer:
+Android serializers use public Android APIs. For application classes, prefer:
 
 - accessible no-argument constructors, or records with supported constructors.
 - public, protected, or package-private serialized fields.

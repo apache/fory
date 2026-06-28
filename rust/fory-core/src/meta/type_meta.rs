@@ -24,7 +24,7 @@ use crate::meta::{
 use crate::resolver::{TypeInfo, TypeResolver};
 use crate::type_id::{
     TypeId, BINARY, COMPATIBLE_STRUCT, ENUM, EXT, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM, NAMED_EXT,
-    NAMED_STRUCT, NAMED_UNION, STRUCT, TYPED_UNION, UINT8_ARRAY, UNKNOWN,
+    NAMED_STRUCT, NAMED_UNION, STRUCT, TYPED_UNION, UINT8_ARRAY, UNION, UNKNOWN,
 };
 use crate::util::{murmurhash3_x64_128, to_snake_case};
 
@@ -32,9 +32,9 @@ use crate::util::{murmurhash3_x64_128, to_snake_case};
 /// This treats all struct variants (STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
 /// NAMED_COMPATIBLE_STRUCT) and UNKNOWN as equivalent to STRUCT.
 /// UNKNOWN (0) is used for polymorphic types (interfaces) in cross-language serialization.
-/// Similarly for ENUM and EXT variants. Dense byte arrays stay distinct here because schema
+/// Similarly for ENUM, EXT, and UNION variants. Dense byte arrays stay distinct here because schema
 /// equality and schema hashes must not turn compatibility-only byte-sequence assignment into
-/// schema-consistent equality.
+/// same-schema equality.
 fn normalize_type_id_for_eq(type_id: u32) -> u32 {
     match type_id {
         // All struct variants and UNKNOWN normalize to STRUCT
@@ -50,9 +50,38 @@ fn normalize_type_id_for_eq(type_id: u32) -> u32 {
         _ if type_id == ENUM || type_id == NAMED_ENUM => ENUM,
         // All ext variants normalize to EXT
         _ if type_id == EXT || type_id == NAMED_EXT => EXT,
+        // All union variants normalize to UNION
+        _ if type_id == UNION || type_id == TYPED_UNION || type_id == NAMED_UNION => UNION,
         // Everything else stays the same
         _ => type_id,
     }
+}
+
+fn compatible_scalar_type_id(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        crate::type_id::BOOL
+            | crate::type_id::INT8
+            | crate::type_id::INT16
+            | crate::type_id::INT32
+            | crate::type_id::VARINT32
+            | crate::type_id::INT64
+            | crate::type_id::VARINT64
+            | crate::type_id::TAGGED_INT64
+            | crate::type_id::UINT8
+            | crate::type_id::UINT16
+            | crate::type_id::UINT32
+            | crate::type_id::VAR_UINT32
+            | crate::type_id::UINT64
+            | crate::type_id::VAR_UINT64
+            | crate::type_id::TAGGED_UINT64
+            | crate::type_id::FLOAT16
+            | crate::type_id::BFLOAT16
+            | crate::type_id::FLOAT32
+            | crate::type_id::FLOAT64
+            | crate::type_id::STRING
+            | crate::type_id::DECIMAL
+    )
 }
 use std::clone::Clone;
 use std::cmp::min;
@@ -60,7 +89,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
-const MAX_TYPE_META_FIELDS: usize = i16::MAX as usize;
+const DEFAULT_MAX_TYPE_FIELDS: usize = 512;
+const DEFAULT_MAX_TYPE_META_BYTES: usize = 4096;
+const MAX_COMPATIBLE_MATCHED_FIELD_INDEX: usize = (i16::MAX as usize - 1) / 2;
 const REGISTER_BY_NAME_FLAG: u8 = 0b0010_0000;
 const COMPATIBLE_TYPEDEF_FLAG: u8 = 0b0100_0000;
 const STRUCT_TYPEDEF_FLAG: u8 = 0b1000_0000;
@@ -166,6 +197,24 @@ fn read_type_meta_body_size(reader: &mut Reader, header: i64) -> Result<usize, E
     Ok(meta_size)
 }
 
+fn check_type_meta_body_size(meta_size: usize, max_type_meta_bytes: usize) -> Result<(), Error> {
+    if meta_size > max_type_meta_bytes {
+        return Err(Error::invalid_data(format!(
+            "Type metadata body size {meta_size} exceeds max_type_meta_bytes {max_type_meta_bytes}. The data may be malicious. If the data is not malicious, please increase max_type_meta_bytes."
+        )));
+    }
+    Ok(())
+}
+
+fn check_type_meta_fields(num_fields: usize, max_type_fields: usize) -> Result<(), Error> {
+    if num_fields > max_type_fields {
+        return Err(Error::invalid_data(format!(
+            "Type metadata field count {num_fields} exceeds max_type_fields {max_type_fields}. The data may be malicious. If the data is not malicious, please increase max_type_fields."
+        )));
+    }
+    Ok(())
+}
+
 #[inline(always)]
 fn type_meta_hash_bits(body: &[u8], header_low_bits: u64) -> u64 {
     let mut hash_input = Vec::with_capacity(body.len() + 2);
@@ -231,6 +280,45 @@ impl FieldType {
     #[inline(always)]
     pub(crate) fn compatible_fingerprint(&self) -> u64 {
         self.compatible_fingerprint
+    }
+
+    #[inline(always)]
+    pub(crate) fn exact_shape_match(&self, other: &Self) -> bool {
+        if normalize_type_id_for_eq(self.type_id) != normalize_type_id_for_eq(other.type_id)
+            || self.nullable != other.nullable
+            || self.track_ref != other.track_ref
+            || self.generics.len() != other.generics.len()
+        {
+            return false;
+        }
+        self.generics
+            .iter()
+            .zip(other.generics.iter())
+            .all(|(left, right)| left.exact_shape_match(right))
+    }
+
+    #[inline(always)]
+    pub(crate) fn compatible_shape_match(&self, other: &Self) -> bool {
+        if compatible_scalar_type_id(self.type_id) || compatible_scalar_type_id(other.type_id) {
+            return !self.track_ref && !other.track_ref && self.type_id == other.type_id;
+        }
+        if normalize_type_id_for_eq(self.type_id) != normalize_type_id_for_eq(other.type_id) {
+            return false;
+        }
+        if self.generics.len() != other.generics.len() {
+            return collection_missing_generics_match(self, other);
+        }
+        if self.type_id == TypeId::MAP as u32 {
+            return self
+                .generics
+                .iter()
+                .zip(other.generics.iter())
+                .all(|(left, right)| map_entry_shape_match(left, right));
+        }
+        self.generics
+            .iter()
+            .zip(other.generics.iter())
+            .all(|(left, right)| left.compatible_shape_match(right))
     }
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
@@ -542,6 +630,40 @@ fn compatible_fingerprint_type_id(type_id: u32) -> u32 {
 }
 
 #[inline(always)]
+fn same_numeric_wire_shape(left: u32, right: u32) -> bool {
+    let left = compatible_fingerprint_type_id(left);
+    left == compatible_fingerprint_type_id(right)
+        && (left == TypeId::VARINT32 as u32
+            || left == TypeId::VARINT64 as u32
+            || left == TypeId::VAR_UINT32 as u32
+            || left == TypeId::VAR_UINT64 as u32)
+}
+
+#[inline(always)]
+fn collection_missing_generics_match(local: &FieldType, remote: &FieldType) -> bool {
+    matches!(
+        normalize_type_id_for_eq(local.type_id),
+        x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 || x == TypeId::MAP as u32
+    ) && (local.generics.is_empty() || remote.generics.is_empty())
+}
+
+#[inline(always)]
+fn map_entry_shape_match(local: &FieldType, remote: &FieldType) -> bool {
+    if local.exact_shape_match(remote) || local.compatible_shape_match(remote) {
+        return true;
+    }
+    // Map readers consume key/value payloads through the remote entry FieldType.
+    // Fixed and variable integer encodings are therefore payload-shape variants
+    // for the same Rust key/value carrier, not top-level scalar conversions.
+    !local.track_ref
+        && !remote.track_ref
+        && local.nullable == remote.nullable
+        && local.generics.is_empty()
+        && remote.generics.is_empty()
+        && same_numeric_wire_shape(local.type_id, remote.type_id)
+}
+
+#[inline(always)]
 fn compute_field_type_fingerprint(type_id: u32, generics: &[FieldType]) -> u64 {
     let mut hash = fnv1a_hash_u32(FNV_OFFSET_BASIS, compatible_fingerprint_type_id(type_id));
     hash = fnv1a_hash_u32(hash, generics.len() as u32);
@@ -601,6 +723,61 @@ pub fn compute_struct_hash(field_ids: impl IntoIterator<Item = i16>) -> u32 {
     field_ids.into_iter().fold(17u32, compute_field_hash)
 }
 
+#[inline(always)]
+fn scalar_numeric_type(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        x if x == TypeId::INT8 as u32
+            || x == TypeId::INT16 as u32
+            || x == TypeId::INT32 as u32
+            || x == TypeId::VARINT32 as u32
+            || x == TypeId::INT64 as u32
+            || x == TypeId::VARINT64 as u32
+            || x == TypeId::TAGGED_INT64 as u32
+            || x == TypeId::UINT8 as u32
+            || x == TypeId::UINT16 as u32
+            || x == TypeId::UINT32 as u32
+            || x == TypeId::VAR_UINT32 as u32
+            || x == TypeId::UINT64 as u32
+            || x == TypeId::VAR_UINT64 as u32
+            || x == TypeId::TAGGED_UINT64 as u32
+            || x == TypeId::FLOAT16 as u32
+            || x == TypeId::BFLOAT16 as u32
+            || x == TypeId::FLOAT32 as u32
+            || x == TypeId::FLOAT64 as u32
+            || x == TypeId::DECIMAL as u32
+    )
+}
+
+#[inline(always)]
+fn scalar_conversion_type(type_id: u32) -> bool {
+    type_id == TypeId::BOOL as u32
+        || type_id == TypeId::STRING as u32
+        || scalar_numeric_type(type_id)
+}
+
+#[inline(always)]
+fn scalar_types_compatible(local: u32, remote: u32) -> bool {
+    if local == remote {
+        return scalar_conversion_type(local);
+    }
+    let local_numeric = scalar_numeric_type(local);
+    let remote_numeric = scalar_numeric_type(remote);
+    (local == TypeId::BOOL as u32 && (remote == TypeId::STRING as u32 || remote_numeric))
+        || (remote == TypeId::BOOL as u32 && (local == TypeId::STRING as u32 || local_numeric))
+        || (local == TypeId::STRING as u32 && remote_numeric)
+        || (remote == TypeId::STRING as u32 && local_numeric)
+        || (local_numeric && remote_numeric)
+}
+
+#[inline(always)]
+pub(crate) fn compatible_scalar_field_pair(local: &FieldType, remote: &FieldType) -> bool {
+    !local.track_ref
+        && !remote.track_ref
+        && (local.type_id != remote.type_id || local.nullable != remote.nullable)
+        && scalar_types_compatible(local.type_id, remote.type_id)
+}
+
 /// Sorts field infos according to the provided sorted field names and assigns field IDs.
 ///
 /// This function takes a vector of field infos and a slice of sorted field names,
@@ -648,16 +825,102 @@ pub fn sort_fields(
 
 impl PartialEq for FieldType {
     fn eq(&self, other: &Self) -> bool {
-        // Normalize type IDs for comparison to handle cross-language schema evolution.
-        // This allows UNKNOWN (0) polymorphic types to match STRUCT (15) in Rust.
-        if normalize_type_id_for_eq(self.type_id) != normalize_type_id_for_eq(other.type_id) {
-            return false;
-        }
-        if self.generics != other.generics {
-            return false;
-        }
-        true
+        self.exact_shape_match(other)
     }
+}
+
+#[doc(hidden)]
+pub fn assign_remote_field_ids(
+    local_field_infos: &[FieldInfo],
+    field_infos: &mut [FieldInfo],
+) -> Result<(), Error> {
+    // Build maps for both name-based and ID-based lookup.
+    // The value is the sorted local index, not the field's ID attribute.
+    let field_index_by_name: HashMap<String, (usize, &FieldInfo)> = local_field_infos
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.field_id < 0 && !f.field_name.is_empty())
+        .map(|(i, f)| (f.field_name.clone(), (i, f)))
+        .collect();
+
+    let field_index_by_id: HashMap<i16, (usize, &FieldInfo)> = local_field_infos
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| f.field_id >= 0)
+        .map(|(i, f)| (f.field_id, (i, f)))
+        .collect();
+
+    let mut used_local_fields = vec![false; local_field_infos.len()];
+    for field in field_infos.iter_mut() {
+        let local_match = if field.field_id >= 0 {
+            field_index_by_id.get(&field.field_id).copied()
+        } else {
+            let snake_case_name = to_snake_case(&field.field_name);
+            field_index_by_name.get(&snake_case_name).copied()
+        };
+
+        match local_match {
+            Some((sorted_index, local_info)) => {
+                if used_local_fields[sorted_index] {
+                    return Err(Error::type_error(format!(
+                        "Remote field {} duplicates local field {} in compatible metadata",
+                        field.field_name, local_info.field_name
+                    )));
+                }
+                let exact_field = local_info.field_type.exact_shape_match(&field.field_type);
+                if !exact_field
+                    && !crate::serializer::codec::compatible_field_pair(
+                        &local_info.field_type,
+                        &field.field_type,
+                    )
+                {
+                    if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
+                        eprintln!(
+                            "[fory-debug] schema-incompatible field: name={}, remote_type={:?}, local_type={:?}",
+                            field.field_name, field.field_type, local_info.field_type
+                        );
+                    }
+                    return Err(Error::type_error(format!(
+                        "Cannot read remote field {} as local field {}: remote and local field schemas are not compatible",
+                        field.field_name, local_info.field_name
+                    )));
+                }
+                // ID-encoded remote fields have no name. Copying the local name keeps later
+                // metadata reserialization and diagnostics tied to the matched local field.
+                if field.field_name.is_empty() {
+                    field.field_name = local_info.field_name.clone();
+                }
+                if sorted_index > MAX_COMPATIBLE_MATCHED_FIELD_INDEX {
+                    return Err(Error::type_error(format!(
+                        "Cannot assign compatible matched id for local field {}: local field index {} exceeds max {}",
+                        local_info.field_name, sorted_index, MAX_COMPATIBLE_MATCHED_FIELD_INDEX
+                    )));
+                }
+                field.field_id = if exact_field {
+                    (sorted_index * 2) as i16
+                } else {
+                    (sorted_index * 2 + 1) as i16
+                };
+                used_local_fields[sorted_index] = true;
+                if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
+                    eprintln!(
+                        "[fory-debug]   matched field: name={}, assigned_field_id={}, remote_type={:?}, local_type={:?}",
+                        field.field_name, field.field_id, field.field_type, local_info.field_type
+                    );
+                }
+            }
+            None => {
+                if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
+                    eprintln!(
+                        "[fory-debug] no local match for field: name={}",
+                        field.field_name
+                    );
+                }
+                field.field_id = -1;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -886,6 +1149,7 @@ impl TypeMeta {
     fn from_meta_bytes(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
+        max_type_fields: usize,
     ) -> Result<TypeMeta, Error> {
         let meta_header = reader.read_u8()?;
         let is_struct = (meta_header & STRUCT_TYPEDEF_FLAG) != 0;
@@ -913,12 +1177,7 @@ impl TypeMeta {
             if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
                 num_fields += reader.read_var_u32()? as usize;
             }
-            if num_fields > MAX_TYPE_META_FIELDS {
-                return Err(Error::invalid_data(format!(
-                    "too many fields in type meta: {}, max: {}",
-                    num_fields, MAX_TYPE_META_FIELDS
-                )));
-            }
+            check_type_meta_fields(num_fields, max_type_fields)?;
         } else {
             if (meta_header & 0b0111_0000) != 0 {
                 return Err(Error::invalid_data("invalid TypeMeta kind header"));
@@ -936,6 +1195,7 @@ impl TypeMeta {
             type_name = empty_name;
         }
 
+        reader.check_bound(num_fields)?;
         let mut field_infos = Vec::with_capacity(num_fields);
         for _ in 0..num_fields {
             field_infos.push(FieldInfo::from_bytes(reader)?);
@@ -958,7 +1218,7 @@ impl TypeMeta {
                         "TypeMeta kind does not match registered type metadata",
                     ));
                 }
-                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
+                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos)?;
             }
         } else if user_type_id != NO_USER_TYPE_ID {
             if let Some(type_info_current) = type_resolver.get_user_type_info_by_id(user_type_id) {
@@ -967,10 +1227,10 @@ impl TypeMeta {
                         "TypeMeta kind does not match registered type metadata",
                     ));
                 }
-                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
+                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos)?;
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {
-            Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
+            Self::assign_field_ids(&type_info_current, &mut sorted_field_infos)?;
         }
         // if no type found, keep all fields id as -1 to be skipped.
         TypeMeta::new(
@@ -983,7 +1243,10 @@ impl TypeMeta {
         )
     }
 
-    fn assign_field_ids(type_info_current: &TypeInfo, field_infos: &mut [FieldInfo]) {
+    fn assign_field_ids(
+        type_info_current: &TypeInfo,
+        field_infos: &mut [FieldInfo],
+    ) -> Result<(), Error> {
         if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
             eprintln!(
                 "[fory-debug] assign_field_ids called for type: {:?}",
@@ -1007,77 +1270,7 @@ impl TypeMeta {
             }
         }
 
-        // Build maps for both name-based and ID-based lookup.
-        // The value is the SORTED INDEX (position in local_field_infos), not the field's ID attribute.
-        // This index is used for matching in generated code.
-        let field_index_by_name: HashMap<String, (usize, &FieldInfo)> = local_field_infos
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| !f.field_name.is_empty())
-            .map(|(i, f)| (f.field_name.clone(), (i, f)))
-            .collect();
-
-        let field_index_by_id: HashMap<i16, (usize, &FieldInfo)> = local_field_infos
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| f.field_id >= 0)
-            .map(|(i, f)| (f.field_id, (i, f)))
-            .collect();
-
-        for field in field_infos.iter_mut() {
-            // Try to match by field ID first (if the incoming field was encoded with ID)
-            let local_match = if field.field_id >= 0 && field.field_name.is_empty() {
-                // Field was encoded with ID, match by ID
-                field_index_by_id.get(&field.field_id).copied()
-            } else {
-                // Field was encoded with name, match by name
-                // Convert incoming field name to snake_case for cross-language compatibility
-                // (Java uses camelCase, Rust uses snake_case)
-                let snake_case_name = to_snake_case(&field.field_name);
-                field_index_by_name.get(&snake_case_name).copied()
-            };
-
-            match local_match {
-                Some((sorted_index, local_info)) => {
-                    if !crate::serializer::codec::compatible_field_pair(
-                        &local_info.field_type,
-                        &field.field_type,
-                    ) {
-                        if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
-                            eprintln!(
-                                "[fory-debug] schema-incompatible field: name={}, remote_type={:?}, local_type={:?}",
-                                field.field_name, field.field_type, local_info.field_type
-                            );
-                        }
-                        field.field_id = -1;
-                        continue;
-                    }
-                    // Always copy field name if it was ID-encoded
-                    // This is needed because TypeMeta may need to re-serialize the field info
-                    if field.field_name.is_empty() {
-                        field.field_name = local_info.field_name.clone();
-                    }
-                    // Assign SORTED INDEX for generated code only after the pair is
-                    // accepted as an exact read or a supported compatible read action.
-                    field.field_id = sorted_index as i16;
-                    if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
-                        eprintln!(
-                            "[fory-debug]   matched field: name={}, assigned_field_id={}, remote_type={:?}, local_type={:?}",
-                            field.field_name, field.field_id, field.field_type, local_info.field_type
-                        );
-                    }
-                }
-                None => {
-                    if crate::util::ENABLE_FORY_DEBUG_OUTPUT {
-                        eprintln!(
-                            "[fory-debug] no local match for field: name={}",
-                            field.field_name
-                        );
-                    }
-                    field.field_id = -1; // No match, skip
-                }
-            }
-        }
+        assign_remote_field_ids(local_field_infos, field_infos)
     }
 
     #[allow(dead_code)]
@@ -1086,19 +1279,31 @@ impl TypeMeta {
         type_resolver: &TypeResolver,
     ) -> Result<TypeMeta, Error> {
         let header = reader.read_i64()?;
-        Self::from_bytes_with_header(reader, type_resolver, header)
+        Self::from_bytes_with_header(
+            reader,
+            type_resolver,
+            header,
+            DEFAULT_MAX_TYPE_FIELDS,
+            DEFAULT_MAX_TYPE_META_BYTES,
+        )
     }
 
     pub(crate) fn from_bytes_with_header(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
         header: i64,
+        max_type_fields: usize,
+        max_type_meta_bytes: usize,
     ) -> Result<TypeMeta, Error> {
         validate_type_meta_header(header)?;
         let meta_size = read_type_meta_body_size(reader, header)?;
+        check_type_meta_body_size(meta_size, max_type_meta_bytes)?;
+        // The size limit is not byte-availability proof. read_bytes checks
+        // the reader bound before exposing the body slice; do not allocate or
+        // copy from meta_size before this point.
         let body = reader.read_bytes(meta_size)?;
         let mut body_reader = Reader::new(body);
-        let mut meta = Self::from_meta_bytes(&mut body_reader, type_resolver)?;
+        let mut meta = Self::from_meta_bytes(&mut body_reader, type_resolver, max_type_fields)?;
         if !body_reader.slice_after_cursor().is_empty() {
             return Err(Error::invalid_data("invalid TypeMeta metadata size"));
         }
@@ -1115,7 +1320,8 @@ impl TypeMeta {
     ) -> Result<(), Error> {
         // Header-cache hits intentionally treat the current body as opaque bytes and skip by the
         // current header size. Parsed TypeMeta entries are cached only after body parse and hash
-        // validation; cache hits must not reparse or rehash that body.
+        // validation; cache hits must not reparse, rehash, allocate, or
+        // otherwise materialize that body.
         let mut meta_size = (header & META_SIZE_MASK) as usize;
         if meta_size == META_SIZE_MASK as usize {
             meta_size += reader.read_var_u32()? as usize;
@@ -1133,7 +1339,7 @@ impl TypeMeta {
         if read_version != local_version {
             return Err(Error::struct_version_mismatch(format!(
                 "Read class {} version {} is not consistent with {}, please align struct field types and names, 
-                or use compatible mode of Fory by Fory#compatible(true)",
+                or keep compatible mode enabled on every Fory peer",
                 type_name, read_version, local_version
             )));
         }
@@ -1169,6 +1375,183 @@ impl TypeMeta {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_field_type_requires_wire_metadata() {
+        let base = FieldType::new(crate::type_id::INT32, false, vec![]);
+        let nullable = FieldType::new(crate::type_id::INT32, true, vec![]);
+        let tracked = FieldType::new_with_ref(crate::type_id::INT32, false, true, vec![]);
+
+        assert_eq!(base, base);
+        assert_ne!(base, nullable);
+        assert_ne!(base, tracked);
+        assert!(base.exact_shape_match(&base));
+        assert!(!base.exact_shape_match(&nullable));
+        assert!(!base.exact_shape_match(&tracked));
+
+        let list = FieldType::new(crate::type_id::LIST, false, vec![base.clone()]);
+        let nullable_list = FieldType::new(crate::type_id::LIST, false, vec![nullable]);
+        assert!(!list.exact_shape_match(&nullable_list));
+
+        let struct_field =
+            FieldType::new_with_user_type_id(crate::type_id::STRUCT, 1, false, false, vec![]);
+        let unknown_field =
+            FieldType::new_with_user_type_id(crate::type_id::UNKNOWN, 2, false, false, vec![]);
+        assert!(struct_field.exact_shape_match(&unknown_field));
+
+        let union_field = FieldType::new(crate::type_id::UNION, false, vec![]);
+        let typed_union_field = FieldType::new(crate::type_id::TYPED_UNION, false, vec![]);
+        assert!(union_field.exact_shape_match(&typed_union_field));
+    }
+
+    #[test]
+    fn rejects_unrepresentable_matched_field_id() {
+        let field_type = FieldType::new(crate::type_id::INT32, false, vec![]);
+        let mut local_fields = Vec::with_capacity(MAX_COMPATIBLE_MATCHED_FIELD_INDEX + 2);
+        for index in 0..=MAX_COMPATIBLE_MATCHED_FIELD_INDEX + 1 {
+            local_fields.push(FieldInfo::new(
+                &format!("field_{}", index),
+                field_type.clone(),
+            ));
+        }
+        let mut remote_fields = [FieldInfo::new(
+            &format!("field_{}", MAX_COMPATIBLE_MATCHED_FIELD_INDEX + 1),
+            field_type,
+        )];
+
+        let message = assign_remote_field_ids(&local_fields, &mut remote_fields)
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+
+        assert!(message.contains("exceeds max"));
+    }
+
+    #[test]
+    fn classifies_compatible_scalar_field() {
+        let local_type = FieldType::new(crate::type_id::INT32, false, vec![]);
+        let remote_type = FieldType::new(crate::type_id::INT16, false, vec![]);
+        let local_fields = [FieldInfo::new("value", local_type)];
+        let mut remote_fields = [FieldInfo::new("value", remote_type)];
+
+        assign_remote_field_ids(&local_fields, &mut remote_fields).unwrap();
+
+        assert_eq!(remote_fields[0].field_id, 1);
+    }
+
+    #[test]
+    fn classifies_list_array_bridge() {
+        let array_type = FieldType::new(crate::type_id::INT32_ARRAY, false, vec![]);
+        let int_type = FieldType::new(crate::type_id::INT32, false, vec![]);
+        let local_fields = [FieldInfo::new("values", array_type.clone())];
+        let mut remote_fields = [FieldInfo::new(
+            "values",
+            FieldType::new(crate::type_id::LIST, false, vec![int_type]),
+        )];
+
+        assign_remote_field_ids(&local_fields, &mut remote_fields).unwrap();
+        assert_eq!(remote_fields[0].field_id, 1);
+
+        let nullable_int = FieldType::new(crate::type_id::INT32, true, vec![]);
+        let mut nullable_remote = [FieldInfo::new(
+            "values",
+            FieldType::new(crate::type_id::LIST, false, vec![nullable_int]),
+        )];
+        assign_remote_field_ids(&local_fields, &mut nullable_remote).unwrap();
+        assert_eq!(nullable_remote[0].field_id, 1);
+
+        let tracked_int = FieldType::new_with_ref(crate::type_id::INT32, false, true, vec![]);
+        let mut tracked_remote = [FieldInfo::new(
+            "values",
+            FieldType::new(crate::type_id::LIST, false, vec![tracked_int]),
+        )];
+        assert!(assign_remote_field_ids(&local_fields, &mut tracked_remote).is_err());
+
+        let nullable_array_local = [FieldInfo::new(
+            "values",
+            FieldType::new(crate::type_id::INT32_ARRAY, true, vec![]),
+        )];
+        let mut remote_list = [FieldInfo::new(
+            "values",
+            FieldType::new(
+                crate::type_id::LIST,
+                false,
+                vec![FieldType::new(crate::type_id::INT32, false, vec![])],
+            ),
+        )];
+        assert!(assign_remote_field_ids(&nullable_array_local, &mut remote_list).is_err());
+    }
+
+    #[test]
+    fn classifies_map_entry_encoding_shape() {
+        let any_type = FieldType::new_with_ref(crate::type_id::UNKNOWN, false, true, vec![]);
+        let local_map = FieldType::new(
+            crate::type_id::MAP,
+            false,
+            vec![
+                FieldType::new(crate::type_id::VAR_UINT32, false, vec![]),
+                any_type.clone(),
+            ],
+        );
+        let remote_map = FieldType::new(
+            crate::type_id::MAP,
+            false,
+            vec![
+                FieldType::new(crate::type_id::UINT32, false, vec![]),
+                any_type,
+            ],
+        );
+        let local_fields = [FieldInfo::new_with_id(0, "values", local_map)];
+        let mut remote_fields = [FieldInfo::new_with_id(0, "", remote_map)];
+
+        assign_remote_field_ids(&local_fields, &mut remote_fields).unwrap();
+
+        assert_eq!(remote_fields[0].field_id, 1);
+    }
+
+    #[test]
+    fn classifies_missing_collection_generics() {
+        let local_list = FieldType::new(crate::type_id::LIST, false, vec![]);
+        let remote_list = FieldType::new(
+            crate::type_id::LIST,
+            false,
+            vec![FieldType::new(crate::type_id::UNKNOWN, true, vec![])],
+        );
+        let local_fields = [FieldInfo::new("values", local_list)];
+        let mut remote_fields = [FieldInfo::new("values", remote_list)];
+
+        assign_remote_field_ids(&local_fields, &mut remote_fields).unwrap();
+
+        assert_eq!(remote_fields[0].field_id, 1);
+    }
+
+    #[test]
+    fn name_remote_does_not_match_tagged_local() {
+        let field_type = FieldType::new(crate::type_id::STRING, false, vec![]);
+        let local_fields = [FieldInfo::new_with_id(1, "value", field_type.clone())];
+        let mut remote_fields = [FieldInfo::new("value", field_type)];
+
+        assign_remote_field_ids(&local_fields, &mut remote_fields).unwrap();
+
+        assert_eq!(remote_fields[0].field_id, -1);
+    }
+
+    #[test]
+    fn duplicate_remote_name_binding_fails() {
+        let field_type = FieldType::new(crate::type_id::STRING, false, vec![]);
+        let local_fields = [FieldInfo::new("value", field_type.clone())];
+        let mut remote_fields = [
+            FieldInfo::new("value", field_type.clone()),
+            FieldInfo::new("value", field_type),
+        ];
+
+        let message = assign_remote_field_ids(&local_fields, &mut remote_fields)
+            .err()
+            .map(|error| error.to_string())
+            .unwrap_or_default();
+
+        assert!(message.contains("duplicates local field"));
+    }
 
     #[test]
     fn rejects_body_hash_mismatch_after_successful_parse() {

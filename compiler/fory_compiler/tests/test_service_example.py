@@ -31,6 +31,7 @@ def test_service_example_compiles_for_java_and_python(tmp_path: Path):
             "java": java_out,
             "python": python_out,
         },
+        generated_outputs={},
     )
 
     assert ok is True

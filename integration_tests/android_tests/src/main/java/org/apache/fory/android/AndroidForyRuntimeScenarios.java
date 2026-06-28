@@ -86,7 +86,8 @@ public final class AndroidForyRuntimeScenarios {
   }
 
   public static void xlangUnionRoundTrip() {
-    Fory fory = Fory.builder().withXlang(true).registerGuavaTypes(false).build();
+    Fory fory =
+        Fory.builder().withXlang(true).registerGuavaTypes(false).withCompatible(true).build();
 
     Union2<String, Integer> value = Union2.ofT2(26);
     Object copy = roundTrip(fory, value);
@@ -103,7 +104,8 @@ public final class AndroidForyRuntimeScenarios {
               false,
               AndroidGeneratedStruct.class.getClassLoader());
     } catch (ClassNotFoundException e) {
-      throw new AssertionError("static generated serializer was removed by release minification", e);
+      throw new AssertionError(
+          "static generated serializer was removed by release minification", e);
     }
 
     Fory fory =
@@ -111,6 +113,7 @@ public final class AndroidForyRuntimeScenarios {
             .withXlang(true)
             .requireClassRegistration(true)
             .registerGuavaTypes(false)
+            .withCompatible(true)
             .build();
     fory.register(AndroidGeneratedStruct.class, "android", "GeneratedStruct");
 
@@ -177,7 +180,8 @@ public final class AndroidForyRuntimeScenarios {
     EnumMap<AndroidEnum, String> enumMap = new EnumMap<>(AndroidEnum.class);
     enumMap.put(AndroidEnum.BLUE, "blue");
     checkEquals(enumMap, roundTrip(fory, enumMap));
-    checkEquals(new EnumMap<>(AndroidEnum.class), roundTrip(fory, new EnumMap<>(AndroidEnum.class)));
+    checkEquals(
+        new EnumMap<>(AndroidEnum.class), roundTrip(fory, new EnumMap<>(AndroidEnum.class)));
   }
 
   public static void byteBufferStreamChannelAndOutOfBandRoundTrip() throws Exception {
@@ -226,6 +230,7 @@ public final class AndroidForyRuntimeScenarios {
         .withXlang(false)
         .withRefTracking(true)
         .requireClassRegistration(false)
+        .withCompatible(false)
         .registerGuavaTypes(false);
   }
 

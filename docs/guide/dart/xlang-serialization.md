@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ Dart serializes to the same binary format as the Java, Go, C#, Python, Rust, and Swift Fory runtimes. You can write a message in Dart and read it in Java — or any other direction — without any conversion layer.
+Apache Fory™ Dart serializes to the same binary format as the Java, Go, C#, Python, Rust, and Swift Fory implementations. You can write a message in Dart and read it in Java — or any other direction — without any conversion layer.
 
 ## Setup
 
@@ -57,7 +57,7 @@ ModelsForyModule.register(
 );
 ```
 
-Do not mix the two strategies for the same type across runtimes.
+Do not mix the two strategies for the same type across implementations.
 
 ## Dart to Java Example
 
@@ -119,7 +119,6 @@ public sealed class Person
 }
 
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 
 fory.Register<Person>(100);
@@ -203,7 +202,7 @@ See [Supported Types](supported-types.md) and [xlang type mapping](../../specifi
 
 ## Validation
 
-Before relying on a cross-language contract in production, test a payload end-to-end through every runtime you support.
+Before relying on a cross-language contract in production, test a payload end-to-end through every implementation you support.
 
 Run the Dart side:
 

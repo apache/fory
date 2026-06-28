@@ -834,7 +834,7 @@ pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     quote! {
         {
             const VERSION_HASH: i32 = #version_hash;
-            if ::fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
+            if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
                 println!(
                     "[rust][fory-debug] struct {} version fingerprint=\"{}\" hash={}",
                     ::std::any::type_name::<Self>(),

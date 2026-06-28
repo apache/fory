@@ -25,6 +25,7 @@
 #include "fory/util/error.h"
 #include "fory/util/string_util.h"
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -101,9 +102,6 @@ inline void write_u16string_data(const char16_t *data, size_t size,
 inline std::string read_string_data(ReadContext &ctx) {
   // Read size with encoding using varuint36small
   uint64_t size_with_encoding = ctx.read_var_uint36_small(ctx.error());
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return std::string();
-  }
 
   // Extract size and encoding from lower 2 bits
   uint64_t length = size_with_encoding >> 2;
@@ -120,36 +118,34 @@ inline std::string read_string_data(ReadContext &ctx) {
   }
   const uint32_t length_u32 = static_cast<uint32_t>(length);
 
+  if (FORY_PREDICT_FALSE(
+          !ctx.buffer().ensure_readable(length_u32, ctx.error()))) {
+    return std::string();
+  }
+
+  Buffer &buffer = ctx.buffer();
+  const uint8_t *data = buffer.data() + buffer.reader_index();
+
   // Handle different encodings
   switch (encoding) {
   case StringEncoding::LATIN1: {
-    std::vector<uint8_t> bytes(length_u32);
-    ctx.read_bytes(bytes.data(), length_u32, ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::string();
-    }
-    return latin1_to_utf8(bytes.data(), length_u32);
+    std::string result = latin1_to_utf8(data, length_u32);
+    buffer.unsafe_increase_reader_index(length_u32);
+    return result;
   }
   case StringEncoding::UTF16: {
-    if ((length_u32 & 1) != 0) {
+    if (FORY_PREDICT_FALSE((length_u32 & 1) != 0)) {
       ctx.set_error(Error::invalid_data("UTF-16 length must be even"));
       return std::string();
     }
     std::vector<uint16_t> utf16_chars(length_u32 / 2);
-    ctx.read_bytes(reinterpret_cast<uint8_t *>(utf16_chars.data()), length_u32,
-                   ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::string();
-    }
+    std::memcpy(utf16_chars.data(), data, length_u32);
+    buffer.unsafe_increase_reader_index(length_u32);
     return utf16_to_utf8(utf16_chars.data(), utf16_chars.size());
   }
   case StringEncoding::UTF8: {
-    // UTF-8: read bytes directly
-    std::string result(length_u32, '\0');
-    ctx.read_bytes(&result[0], length_u32, ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::string();
-    }
+    std::string result(reinterpret_cast<const char *>(data), length_u32);
+    buffer.unsafe_increase_reader_index(length_u32);
     return result;
   }
   default:
@@ -164,9 +160,6 @@ inline std::string read_string_data(ReadContext &ctx) {
 inline std::u16string read_u16string_data(ReadContext &ctx) {
   // Read size with encoding using varuint36small
   uint64_t size_with_encoding = ctx.read_var_uint36_small(ctx.error());
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return std::u16string();
-  }
 
   // Extract size and encoding from lower 2 bits
   uint64_t length = size_with_encoding >> 2;
@@ -183,39 +176,40 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
   }
   const uint32_t length_u32 = static_cast<uint32_t>(length);
 
+  if (FORY_PREDICT_FALSE(
+          !ctx.buffer().ensure_readable(length_u32, ctx.error()))) {
+    return std::u16string();
+  }
+
+  Buffer &buffer = ctx.buffer();
+  const uint8_t *data = buffer.data() + buffer.reader_index();
+
   // Handle different encodings
   switch (encoding) {
   case StringEncoding::LATIN1: {
     // Latin1 bytes map directly to char16_t (codepoints 0-255)
     std::u16string result(length_u32, u'\0');
     for (size_t i = 0; i < length_u32; ++i) {
-      result[i] = static_cast<char16_t>(ctx.read_uint8(ctx.error()));
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return std::u16string();
-      }
+      result[i] = static_cast<char16_t>(data[i]);
     }
+    buffer.unsafe_increase_reader_index(length_u32);
     return result;
   }
   case StringEncoding::UTF16: {
-    if ((length_u32 & 1) != 0) {
+    if (FORY_PREDICT_FALSE((length_u32 & 1) != 0)) {
       ctx.set_error(Error::invalid_data("UTF-16 length must be even"));
       return std::u16string();
     }
     std::u16string result(length_u32 / 2, u'\0');
-    ctx.read_bytes(reinterpret_cast<uint8_t *>(&result[0]), length_u32,
-                   ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::u16string();
-    }
+    std::memcpy(&result[0], data, length_u32);
+    buffer.unsafe_increase_reader_index(length_u32);
     return result;
   }
   case StringEncoding::UTF8: {
     // Read UTF-8 bytes and convert to UTF-16
     std::string utf8(length_u32, '\0');
-    ctx.read_bytes(&utf8[0], length_u32, ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::u16string();
-    }
+    std::memcpy(&utf8[0], data, length_u32);
+    buffer.unsafe_increase_reader_index(length_u32);
     return utf8_to_utf16(utf8, true /* little endian */);
   }
   default:

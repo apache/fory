@@ -19,7 +19,7 @@
 
 package org.apache.fory.serializer;
 
-import java.lang.reflect.Constructor;
+import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -35,8 +35,10 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
@@ -44,6 +46,7 @@ import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
+import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.StringUtils;
 
 /** Base class used by javac-generated {@code @ForyStruct} serializers. */
@@ -123,20 +126,17 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   public StaticGeneratedStructSerializer<T> copySerializer(
       TypeResolver typeResolver, Class<?> type, TypeDef typeDef) {
     try {
-      Constructor<? extends StaticGeneratedStructSerializer> constructor =
-          getClass()
-              .asSubclass(StaticGeneratedStructSerializer.class)
-              .getDeclaredConstructor(TypeResolver.class, Class.class, TypeDef.class);
-      constructor.setAccessible(true);
-      return (StaticGeneratedStructSerializer<T>)
-          constructor.newInstance(typeResolver, type, typeDef);
-    } catch (ReflectiveOperationException e) {
-      throw new ForyException(
-          "Failed to copy static generated serializer "
-              + getClass().getName()
-              + " for "
-              + type.getName(),
-          e);
+      // The generated serializer class may be in a named application module that is not open to
+      // Fory. Reuse the trusted constructor owner instead of reflective setAccessible.
+      MethodHandle constructor =
+          ReflectionUtils.getCtrHandle(
+              getClass().asSubclass(StaticGeneratedStructSerializer.class),
+              TypeResolver.class,
+              Class.class,
+              TypeDef.class);
+      return (StaticGeneratedStructSerializer<T>) constructor.invoke(typeResolver, type, typeDef);
+    } catch (Throwable e) {
+      throw ExceptionUtils.throwException(e);
     }
   }
 
@@ -477,43 +477,8 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     }
   }
 
-  protected final SerializationFieldInfo localFieldInfo(int matchedId) {
-    return localFieldsById[matchedId];
-  }
-
-  public final boolean canReadRemoteField(RemoteFieldInfo remoteField) {
-    if (remoteField.incompatibleCollectionArrayMatch) {
-      throw new DeserializationException(
-          "Cannot read remote field "
-              + remoteField.descriptor.getName()
-              + " as local field "
-              + localFieldsById[remoteField.matchedId].descriptor.getName()
-              + ": compatible list/array adaptation requires a matching non-null primitive element"
-              + " schema and does not apply recursively");
-    }
-    if (remoteField.nestedCollectionArrayMatch) {
-      return false;
-    }
-    return remoteField.canRead;
-  }
-
-  public final boolean canReadGeneratedField(
-      RemoteFieldInfo remoteField, SerializationFieldInfo localFieldInfo) {
-    if (remoteField.incompatibleCollectionArrayMatch) {
-      throw new DeserializationException(
-          "Cannot read remote field "
-              + remoteField.descriptor.getName()
-              + " as local field "
-              + localFieldInfo.descriptor.getName()
-              + ": compatible list/array adaptation requires a matching non-null primitive element"
-              + " schema and does not apply recursively");
-    }
-    if (remoteField.nestedCollectionArrayMatch) {
-      return false;
-    }
-    return remoteField.canRead
-        || FieldConverters.canReadGeneratedField(
-            remoteField.serializationFieldInfo, localFieldInfo);
+  protected final SerializationFieldInfo localFieldInfo(int localFieldId) {
+    return localFieldsById[localFieldId];
   }
 
   public final Object readCompatibleFieldValue(
@@ -718,8 +683,12 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
           matchedId == UNKNOWN_FIELD ? null : localDescriptors.get(matchedId);
       SerializationFieldInfo localFieldInfo =
           matchedId == UNKNOWN_FIELD ? null : localFieldsById[matchedId];
+      boolean exactFieldSchema = false;
       if (localDescriptor != null) {
         Descriptor readDescriptor = fieldInfo.toDescriptor(typeResolver, localDescriptor);
+        exactFieldSchema =
+            readDescriptor == localDescriptor
+                || registeredFieldSchemaEquals(fieldInfo, localDescriptor);
         serializationFieldInfo =
             new SerializationFieldInfo(
                 typeResolver, readDescriptor, serializationFieldInfo.codecCategory);
@@ -732,8 +701,17 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
               descriptor,
               serializationFieldInfo,
               localDescriptor,
-              localFieldInfo));
+              localFieldInfo,
+              exactFieldSchema));
     }
+  }
+
+  private boolean registeredFieldSchemaEquals(FieldInfo fieldInfo, Descriptor localDescriptor) {
+    FieldTypes.FieldType remoteFieldType = fieldInfo.getFieldType();
+    FieldTypes.FieldType localFieldType = FieldTypes.buildFieldType(typeResolver, localDescriptor);
+    return remoteFieldType instanceof FieldTypes.RegisteredFieldType
+        && localFieldType instanceof FieldTypes.RegisteredFieldType
+        && remoteFieldType.equals(localFieldType);
   }
 
   private SerializationFieldInfo[] buildLocalFieldsById(List<Descriptor> descriptors) {
@@ -795,7 +773,11 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   /** Remote field metadata consumed by generated compatible read methods. */
   @Internal
   public static final class RemoteFieldInfo {
+    /**
+     * Doubled compatible-read dispatch id: local id * 2 for exact, local id * 2 + 1 for conversion.
+     */
     public final int matchedId;
+
     public final FieldInfo fieldInfo;
     public final Descriptor descriptor;
     public final SerializationFieldInfo serializationFieldInfo;
@@ -812,8 +794,8 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
         Descriptor descriptor,
         SerializationFieldInfo serializationFieldInfo,
         Descriptor localDescriptor,
-        SerializationFieldInfo localFieldInfo) {
-      this.matchedId = matchedId;
+        SerializationFieldInfo localFieldInfo,
+        boolean exactFieldSchema) {
       this.fieldInfo = fieldInfo;
       this.descriptor = descriptor;
       this.serializationFieldInfo = serializationFieldInfo;
@@ -825,20 +807,63 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
       this.nestedCollectionArrayMatch =
           CompatibleCollectionArrayReader.nestedCollectionArrayMatch(
               typeResolver, fieldInfo, localDescriptor);
-      if (localFieldInfo == null
-          || incompatibleCollectionArrayMatch
-          || nestedCollectionArrayMatch) {
+      if (localFieldInfo == null) {
+        this.matchedId = UNKNOWN_FIELD;
         this.canRead = false;
         this.compatibleScalarRead = false;
       } else if (compatibleCollectionArrayReadAction != null) {
+        this.matchedId = matchedId * 2 + 1;
         this.canRead = true;
         this.compatibleScalarRead = false;
       } else {
-        this.canRead = FieldConverters.canConvert(serializationFieldInfo, localFieldInfo);
-        this.compatibleScalarRead =
-            canRead
-                && FieldConverters.requiresSourceScalarRead(serializationFieldInfo, localFieldInfo);
+        boolean canGeneratedRead =
+            !incompatibleCollectionArrayMatch
+                && !nestedCollectionArrayMatch
+                && FieldConverters.canReadCompatibleField(
+                    typeResolver, serializationFieldInfo, localFieldInfo);
+        if (exactFieldSchema) {
+          this.matchedId = matchedId * 2;
+          this.canRead = true;
+          this.compatibleScalarRead = false;
+        } else if (canGeneratedRead) {
+          this.matchedId = matchedId * 2 + 1;
+          this.canRead = true;
+          this.compatibleScalarRead =
+              FieldConverters.requiresSourceScalarRead(serializationFieldInfo, localFieldInfo);
+        } else {
+          throw incompatibleFieldError(
+              fieldInfo,
+              localFieldInfo,
+              incompatibleCollectionArrayMatch,
+              nestedCollectionArrayMatch);
+        }
       }
+    }
+
+    private static DeserializationException incompatibleFieldError(
+        FieldInfo fieldInfo,
+        SerializationFieldInfo localFieldInfo,
+        boolean incompatibleCollectionArrayMatch,
+        boolean nestedCollectionArrayMatch) {
+      String reason;
+      if (incompatibleCollectionArrayMatch || nestedCollectionArrayMatch) {
+        reason =
+            "compatible list/array adaptation requires a matching non-null primitive element"
+                + " schema and does not apply recursively";
+      } else {
+        reason = "remote and local field schemas are not compatible";
+      }
+      return new DeserializationException(
+          "Cannot read remote field "
+              + fieldInfo.getDefinedClass()
+              + "."
+              + fieldInfo.getFieldName()
+              + " as local field "
+              + localFieldInfo.descriptor.getDeclaringClass()
+              + "."
+              + localFieldInfo.descriptor.getName()
+              + ": "
+              + reason);
     }
   }
 }

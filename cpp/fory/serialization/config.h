@@ -52,11 +52,18 @@ struct Config {
   /// When enabled, avoids duplicating shared objects and handles cycles.
   bool track_ref = true;
 
-  /// Maximum allowed size for binary data in bytes.
-  uint32_t max_binary_size = 64 * 1024 * 1024; // 64MB default
+  /// Maximum accepted field count in one received struct TypeMeta.
+  uint32_t max_type_fields = 512;
 
-  /// Maximum allowed number of elements in a collection or entries in a map.
-  uint32_t max_collection_size = 1024 * 1024; // 1M elements default
+  /// Maximum accepted body size in one received TypeMeta.
+  uint32_t max_type_meta_bytes = 4096;
+
+  /// Maximum accepted remote metadata versions for one logical type.
+  uint32_t max_schema_versions_per_type = 10;
+
+  /// Maximum accepted average remote metadata versions across logical
+  /// types. The effective global minimum remains 8192 schemas.
+  uint32_t max_average_schema_versions_per_type = 3;
 
   /// Default constructor with sensible defaults
   Config() = default;

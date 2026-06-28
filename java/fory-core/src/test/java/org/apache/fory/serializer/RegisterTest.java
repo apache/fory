@@ -132,6 +132,7 @@ public class RegisterTest extends ForyTestBase {
             .withCodegen(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .withName("testRegisterExtSerializerWithSharedGeneratedCodec");
 
     Fory fory1 = builder.build();
@@ -169,7 +170,12 @@ public class RegisterTest extends ForyTestBase {
   @Test
   public void testFrozenFacadeRegistration() {
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     fory.serialize(new MyExt());
 
     AtomicBoolean moduleInstalled = new AtomicBoolean();

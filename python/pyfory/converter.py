@@ -362,14 +362,14 @@ def compatible_scalar_convert(value, remote_type_id: int, local_type_id: int):
     raise ValueError(f"type id {local_type_id} is not a compatible scalar target")
 
 
-def _read_compatible_scalar_payload(read_context, remote_serializer, remote_type_id: int):
+def _read_compatible_scalar_value(read_context, remote_serializer, remote_type_id: int):
     if remote_type_id == TypeId.BOOL:
         raw = read_context.read_uint8()
         if raw == 0:
             return False
         if raw == 1:
             return True
-        raise ValueError("bool payload must be encoded as 0 or 1")
+        raise ValueError("bool byte must be encoded as 0 or 1")
     return remote_serializer.read(read_context)
 
 
@@ -396,7 +396,7 @@ class CompatibleScalarFieldSerializer(Serializer):
     def read(self, read_context):
         value = None
         try:
-            value = _read_compatible_scalar_payload(read_context, self.remote_serializer, self.remote_type_id)
+            value = _read_compatible_scalar_value(read_context, self.remote_serializer, self.remote_type_id)
             return compatible_scalar_convert(value, self.remote_type_id, self.local_type_id)
         except (ValueError, OverflowError, decimal.InvalidOperation) as exc:
             _scalar_conversion_error(self.field_name, self.remote_type_id, self.local_type_id, value, exc)
@@ -455,8 +455,6 @@ class CompatibleListToArrayFieldSerializer(Serializer):
         from pyfory.error import TypeNotCompatibleError
 
         length = read_context.read_var_uint32()
-        if length > read_context.max_collection_size:
-            raise ValueError(f"Collection size {length} exceeds the configured limit of {read_context.max_collection_size}")
         if length == 0:
             return self._empty_target()
         collect_flag = read_context.read_int8()
@@ -469,6 +467,7 @@ class CompatibleListToArrayFieldSerializer(Serializer):
                 f"Field {self.field_name!r} requires declared same-type list elements for array<T> compatible read",
             )
 
+        read_context.check_readable_bytes(length)
         target = self._new_target(length)
         append = None if np is not None and _is_numpy_1d_array_serializer(self.target_serializer) else target.append
         for index in range(length):

@@ -171,6 +171,7 @@ public class ForyAnnotationTest extends ForyTestBase {
             .withRefTracking(referenceTracking)
             .requireClassRegistration(false)
             .withCodegen(false)
+            .withCompatible(false)
             .build();
     BeanM1 o1 = new BeanM1();
     assertEquals(serDe(fory, o1), o1);

@@ -29,7 +29,7 @@ Apache Fory™ Scala provides optimized serializers for Scala types, built on to
 - `Option` types
 - Scala 2 and 3 enumerations
 
-The runtime artifact supports Scala 2.13 and Scala 3. Schema IDL generated
+The library artifact supports Scala 2.13 and Scala 3. Schema IDL generated
 Scala source and macro-derived xlang serializers require Scala 3.
 
 ## Features
@@ -49,12 +49,12 @@ See [Java Features](../java/index.md#features) for complete feature list.
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.1.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
 ```
 
 ### JDK25+
 
-Scala uses the Fory Java core at runtime. On JDK25+, open `java.lang.invoke` to
+Scala uses the Fory Java core when running. On JDK25+, open `java.lang.invoke` to
 Fory. Use `ALL-UNNAMED` when Fory is on the classpath:
 
 ```bash
@@ -94,9 +94,9 @@ object ScalaExample {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with other Fory runtimes. Xlang mode is the default Scala wire mode through the JVM builder, and Scala examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default Scala wire mode through the JVM builder, and Scala examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Scala/JVM-only traffic. Native mode is selected with `.withXlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and inherits the JVM native-mode object serialization path from Fory Java while adding Scala-specific serializers for case classes, collections, tuples, options, and enumerations. It is optimized for JVM and Scala type systems and is the right path for same-language Scala/JVM framework replacement payloads.
+Use native mode for Scala/JVM-only traffic. Native mode is selected with `.withXlang(false)` and inherits the JVM native-mode object serialization path from Fory Java while adding Scala-specific serializers for case classes, collections, tuples, options, and enumerations. It is optimized for JVM and Scala type systems and is the right path for same-language Scala/JVM framework replacement payloads. Compatible mode is enabled by default. Set `.withCompatible(false)` only when every reader and writer uses the same Scala/JVM schema and you want faster serialization and smaller size.
 
 See [Configuration](configuration.md) for Scala builder setup and [Java Native Serialization](../java/native-serialization.md) for the full JVM native-mode behavior.
 
@@ -119,3 +119,4 @@ Fory Scala is built on top of Fory Java. Most configuration options, features, a
 - [Schema Metadata](schema-metadata.md) - Scala annotations, references, enum IDs, and union metadata
 - [Default Values](default-values.md) - Scala class default values support
 - [Schema IDL And Xlang](schema-idl.md) - Scala 3 generated models and macro-derived xlang serializers
+- [gRPC Support](grpc-support.md) - Scala 3 generated gRPC service companions

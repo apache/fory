@@ -454,14 +454,14 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
     int16Buffer.writeBytes([0x01, 0x02, 0x03])
     let int16Context = ReadContext(
         buffer: int16Buffer,
-        typeResolver: TypeResolver(trackRef: false),
-        trackRef: false
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
+        config: Config(trackRef: false)
     )
     do {
         let _: [Int16] = try ArrayFieldCodec<Int16Codec>.readPayload(int16Context)
         #expect(Bool(false))
     } catch {
-        #expect("\(error)".contains("payload size mismatch"))
+        #expect("\(error)".contains("byte size mismatch"))
     }
 
     let float64Buffer = ByteBuffer()
@@ -469,13 +469,13 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
     float64Buffer.writeBytes([0x01, 0x02, 0x03, 0x04])
     let float64Context = ReadContext(
         buffer: float64Buffer,
-        typeResolver: TypeResolver(trackRef: false),
-        trackRef: false
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
+        config: Config(trackRef: false)
     )
     do {
         let _: [Double] = try ArrayFieldCodec<DoubleCodec>.readPayload(float64Context)
         #expect(Bool(false))
     } catch {
-        #expect("\(error)".contains("payload size mismatch"))
+        #expect("\(error)".contains("byte size mismatch"))
     }
 }

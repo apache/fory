@@ -52,7 +52,7 @@ ModelsForyModule.register(
 );
 ```
 
-Every runtime that reads or writes this type must use the same name. Use `.` inside `name`
+Every peer that reads or writes this type must use the same name. Use `.` inside `name`
 to add a namespace prefix.
 
 > **Do not mix strategies for the same type.** If one side uses a numeric ID and the other uses a name, deserialization will fail.
@@ -88,7 +88,7 @@ See [Custom Serializers](custom-serializers.md) for how to implement a serialize
 
 ## Xlang Requirements
 
-The same numeric ID or name must be used in every runtime that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
+The same numeric ID or name must be used in every peer that reads or writes the type. See [Xlang Serialization](xlang-serialization.md) for examples.
 
 ## Related Topics
 

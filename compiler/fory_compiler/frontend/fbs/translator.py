@@ -230,19 +230,20 @@ class FbsTranslator:
 
     def _translate_union(self, fbs_union: FbsUnion) -> Union:
         fields: List[Field] = []
-        for index, type_name in enumerate(fbs_union.types, start=1):
+        for index, type_ref in enumerate(fbs_union.types, start=1):
+            type_name = type_ref.name
             field_name = self._lower_name(type_name)
             fields.append(
                 Field(
                     name=field_name,
                     field_type=NamedType(
                         type_name,
-                        location=self._location(fbs_union.line, fbs_union.column),
+                        location=self._location(type_ref.line, type_ref.column),
                     ),
                     number=index,
-                    line=fbs_union.line,
-                    column=fbs_union.column,
-                    location=self._location(fbs_union.line, fbs_union.column),
+                    line=type_ref.line,
+                    column=type_ref.column,
+                    location=self._location(type_ref.line, type_ref.column),
                 )
             )
         return Union(

@@ -20,6 +20,7 @@
 package org.apache.fory.integration_tests;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,8 +38,7 @@ import org.testng.annotations.Test;
 
 public class JpmsFieldAccessorTest {
   private static final int JDK_MAJOR_VERSION = Runtime.version().feature();
-  private static final String INSTANCE_ACCESSOR =
-      "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor";
+  private static final String VAR_HANDLE = "java.lang.invoke.VarHandle";
 
   @Test
   public void testPrivateFieldAccess() throws Exception {
@@ -53,7 +53,12 @@ public class JpmsFieldAccessorTest {
   @Test
   public void testPrivateFinalFieldSerialization() {
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     PrivateFieldBean result =
         (PrivateFieldBean) fory.deserialize(fory.serialize(new PrivateFieldBean(13)));
     Assert.assertEquals(result.value(), 13);
@@ -65,7 +70,12 @@ public class JpmsFieldAccessorTest {
       return;
     }
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     byte[] bytes = fory.serialize(new NonSerializableNoNoArgBean(5, 13));
     NonSerializableNoNoArgBean.resetParentConstructorCalls();
     NonSerializableNoNoArgBean result = (NonSerializableNoNoArgBean) fory.deserialize(bytes);
@@ -80,7 +90,12 @@ public class JpmsFieldAccessorTest {
       return;
     }
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(false).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Map<String, Boolean> backingMap = Collections.synchronizedMap(new HashMap<>());
     Set<String> set = Collections.newSetFromMap(backingMap);
     set.add("alpha");
@@ -104,7 +119,12 @@ public class JpmsFieldAccessorTest {
       return;
     }
     Fory fory =
-        Fory.builder().withXlang(false).withCodegen(true).requireClassRegistration(false).build();
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     PrivateFieldBean result =
         (PrivateFieldBean) fory.deserialize(fory.serialize(new PrivateFieldBean(17)));
     Assert.assertEquals(result.value(), 17);
@@ -113,7 +133,7 @@ public class JpmsFieldAccessorTest {
     Assert.assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
     Assert.assertSame(
         Class.class.getMethod("getNestHost").invoke(serializerClass), PrivateFieldBean.class);
-    assertAccessorField(serializerClass, "value");
+    assertVarHandleField(serializerClass, "value");
   }
 
   @Test
@@ -134,7 +154,12 @@ public class JpmsFieldAccessorTest {
 
   @Test
   public void testPublicSerializerInExportedPackage() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     fory.registerSerializer(PublicSerializerValue.class, PublicSerializerValueSerializer.class);
     PublicSerializerValue result =
         (PublicSerializerValue) fory.deserialize(fory.serialize(new PublicSerializerValue(11)));
@@ -149,13 +174,16 @@ public class JpmsFieldAccessorTest {
     return serializer.getClass();
   }
 
-  private static void assertAccessorField(Class<?> serializerClass, String fieldName) {
+  private static void assertVarHandleField(Class<?> serializerClass, String fieldName) {
     for (Field field : serializerClass.getDeclaredFields()) {
-      if (field.getName().contains(fieldName + "_accessor_")) {
-        Assert.assertEquals(field.getType().getName(), INSTANCE_ACCESSOR);
+      if (field.getName().contains(fieldName + "_varHandle_")) {
+        Assert.assertEquals(field.getType().getName(), VAR_HANDLE);
+        int modifiers = field.getModifiers();
+        Assert.assertTrue(Modifier.isStatic(modifiers));
+        Assert.assertTrue(Modifier.isFinal(modifiers));
         return;
       }
     }
-    Assert.fail("Missing generated accessor field for " + fieldName + " in " + serializerClass);
+    Assert.fail("Missing generated VarHandle field for " + fieldName + " in " + serializerClass);
   }
 }

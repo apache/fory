@@ -109,6 +109,22 @@ class CompatibleEnvelopeV2 {
   Object? payload;
 }
 
+@ForyStruct()
+class DynamicPayloadEnvelopeV1 {
+  DynamicPayloadEnvelopeV1();
+
+  @ForyField(id: 1, dynamic: true)
+  Object? payload;
+}
+
+@ForyStruct()
+class StaticPayloadEnvelopeV2 {
+  StaticPayloadEnvelopeV2();
+
+  @ForyField(id: 1)
+  SharedLeaf? payload;
+}
+
 void _registerCommonTypes(Fory fory) {
   ObjectAndCompatibleSerializerTestForyModule.register(
     fory,
@@ -279,6 +295,39 @@ void main() {
       expect(
         reader.serialize(migrated),
         orderedEquals(reader.serialize(local)),
+      );
+    });
+
+    test('rejects compatible dynamic field framing drift', () {
+      final writer = Fory(compatible: true);
+      final reader = Fory(compatible: true);
+      _registerCommonTypes(writer);
+      _registerCommonTypes(reader);
+      ObjectAndCompatibleSerializerTestForyModule.register(
+        writer,
+        DynamicPayloadEnvelopeV1,
+        name: 'compat.DynamicPayloadEnvelope',
+      );
+      ObjectAndCompatibleSerializerTestForyModule.register(
+        reader,
+        StaticPayloadEnvelopeV2,
+        name: 'compat.DynamicPayloadEnvelope',
+      );
+
+      final leaf = SharedLeaf()..label = 'leaf';
+      final bytes = writer.serialize(
+        DynamicPayloadEnvelopeV1()..payload = leaf,
+      );
+
+      expect(
+        () => reader.deserialize<StaticPayloadEnvelopeV2>(bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('incompatible local and remote schemas'),
+          ),
+        ),
       );
     });
   });

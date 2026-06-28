@@ -89,7 +89,9 @@ public class DefineClass {
       throw hiddenClassUnsupported(null);
     }
     try {
-      Lookup lookup = _Lookup.privateLookupIn(neighbor, MethodHandles.lookup());
+      // Lookup#defineHiddenClass with NESTMATE requires full-privilege access. A private lookup
+      // can resolve members but is not sufficient on JDK25+ for classes from user loaders.
+      Lookup lookup = _JDKAccess._trustedLookup(neighbor);
       return hiddenClassDefiner().define(lookup, bytecodes);
     } catch (Throwable e) {
       throw hiddenClassFailure(neighbor, e);

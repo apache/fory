@@ -32,7 +32,7 @@ import (
 //
 // After the fix the error is propagated and no nil serializer is cached.
 func TestGetTypeInfo_LazyInitPropagatesError(t *testing.T) {
-	f := New()
+	f := New(WithCompatible(true))
 	resolver := f.typeResolver
 
 	// **int is explicitly rejected by createSerializer ("pointer to pointer is not

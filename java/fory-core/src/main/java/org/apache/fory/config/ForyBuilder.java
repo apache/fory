@@ -99,8 +99,10 @@ public final class ForyBuilder {
   Integer bufferSizeLimitBytes = -1;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
   int maxDepth = 50;
-  int maxBinarySize = 64 * 1024 * 1024;
-  int maxCollectionSize = 1_000_000;
+  int maxTypeFields = 512;
+  int maxTypeMetaBytes = 4096;
+  int maxSchemaVersionsPerType = 10;
+  int maxAverageSchemaVersionsPerType = 3;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -320,17 +322,16 @@ public final class ForyBuilder {
   }
 
   boolean isCompatible() {
-    return compatible != null ? compatible : xlang;
+    return compatible != null ? compatible : true;
   }
 
   /**
-   * Whether check class schema consistency. This is disabled automatically when compatible mode is
-   * enabled. Do not disable this option unless you can ensure the class won't evolve.
+   * Whether to check class-version hashes for same-schema payloads. This is disabled automatically
+   * when compatible mode is enabled.
    */
   public ForyBuilder withClassVersionCheck(boolean checkClassVersion) {
     if (xlang && !isCompatible() && !checkClassVersion) {
-      throw new IllegalArgumentException(
-          "XLANG Schema consistent mode must enable class version check");
+      throw new IllegalArgumentException("Xlang same-schema mode must enable class version check");
     }
     this.checkClassVersion = checkClassVersion;
     recordAction(b -> b.withClassVersionCheck(checkClassVersion));
@@ -375,9 +376,9 @@ public final class ForyBuilder {
   }
 
   /**
-   * Configure a {@link TypeChecker} during build time so it is installed on every created runtime.
-   * This checker is only consulted for unknown class names when class registration checks are
-   * disabled.
+   * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
+   * created by this builder. This checker is only consulted for unknown class names when class
+   * registration checks are disabled.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;
@@ -515,26 +516,58 @@ public final class ForyBuilder {
   }
 
   /**
-   * Set max binary payload size for deserialization. Binary and primitive-array byte lengths above
-   * this limit are rejected before allocation. Default max binary size is 64 MiB.
+   * Sets the maximum number of fields accepted in one received struct TypeDef.
+   *
+   * <p>This limit applies only to cold remote metadata parse paths.
    */
-  public ForyBuilder withMaxBinarySize(int maxBinarySize) {
+  public ForyBuilder withMaxTypeFields(int maxTypeFields) {
     Preconditions.checkArgument(
-        maxBinarySize >= 0, "maxBinarySize must >= 0 but got %s", maxBinarySize);
-    this.maxBinarySize = maxBinarySize;
-    recordAction(b -> b.withMaxBinarySize(maxBinarySize));
+        maxTypeFields > 0, "maxTypeFields must be positive but got %s", maxTypeFields);
+    this.maxTypeFields = maxTypeFields;
+    recordAction(b -> b.withMaxTypeFields(maxTypeFields));
     return this;
   }
 
   /**
-   * Set max collection size for deserialization. Collection lengths and collection capacity fields
-   * above this limit are rejected before allocation. Default max collection size is 1,000,000.
+   * Sets the maximum body size accepted for one received TypeDef.
+   *
+   * <p>This limit excludes the 8-byte metadata header and any extended-size varint bytes.
    */
-  public ForyBuilder withMaxCollectionSize(int maxCollectionSize) {
+  public ForyBuilder withMaxTypeMetaBytes(int maxTypeMetaBytes) {
     Preconditions.checkArgument(
-        maxCollectionSize >= 0, "maxCollectionSize must >= 0 but got %s", maxCollectionSize);
-    this.maxCollectionSize = maxCollectionSize;
-    recordAction(b -> b.withMaxCollectionSize(maxCollectionSize));
+        maxTypeMetaBytes > 0, "maxTypeMetaBytes must be positive but got %s", maxTypeMetaBytes);
+    this.maxTypeMetaBytes = maxTypeMetaBytes;
+    recordAction(b -> b.withMaxTypeMetaBytes(maxTypeMetaBytes));
+    return this;
+  }
+
+  /**
+   * Sets the maximum number of accepted remote metadata versions for one logical type.
+   *
+   * <p>This limit applies only to cold remote metadata miss paths.
+   */
+  public ForyBuilder withMaxSchemaVersionsPerType(int maxSchemaVersionsPerType) {
+    Preconditions.checkArgument(
+        maxSchemaVersionsPerType > 0,
+        "maxSchemaVersionsPerType must be positive but got %s",
+        maxSchemaVersionsPerType);
+    this.maxSchemaVersionsPerType = maxSchemaVersionsPerType;
+    recordAction(b -> b.withMaxSchemaVersionsPerType(maxSchemaVersionsPerType));
+    return this;
+  }
+
+  /**
+   * Sets the maximum average number of accepted remote metadata versions across logical types.
+   *
+   * <p>The global limit has an internal floor so small type universes can still evolve normally.
+   */
+  public ForyBuilder withMaxAverageSchemaVersionsPerType(int maxAverageSchemaVersionsPerType) {
+    Preconditions.checkArgument(
+        maxAverageSchemaVersionsPerType > 0,
+        "maxAverageSchemaVersionsPerType must be positive but got %s",
+        maxAverageSchemaVersionsPerType);
+    this.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
+    recordAction(b -> b.withMaxAverageSchemaVersionsPerType(maxAverageSchemaVersionsPerType));
     return this;
   }
 
@@ -609,12 +642,12 @@ public final class ForyBuilder {
     }
     if (ENABLE_CLASS_REGISTRATION_FORCIBLY) {
       if (!requireClassRegistration) {
-        LOG.warn("Class registration is enabled forcibly.");
+        LOG.info("Class registration is enabled forcibly.");
         requireClassRegistration = true;
       }
     }
     if (defaultJDKStreamSerializerType == JavaSerializer.class) {
-      LOG.warn(
+      LOG.info(
           "JDK serialization is used for types which customized java serialization by "
               + "implementing methods such as writeObject/readObject. This is not secure, try to "
               + "use {} instead, or implement a custom {}.",
@@ -648,7 +681,7 @@ public final class ForyBuilder {
         deserializeUnknownClass = false;
       }
       if (scopedMetaShareEnabled != null && scopedMetaShareEnabled) {
-        LOG.warn("Scoped meta share is for compatible mode only, disabling it");
+        LOG.info("Scoped meta share is for compatible mode only, disabling it");
       }
       scopedMetaShareEnabled = false;
       if (metaShareEnabled == null) {
@@ -660,7 +693,7 @@ public final class ForyBuilder {
     }
     if (!requireClassRegistration) {
       if (typeChecker == null) {
-        LOG.warn(
+        LOG.info(
             "Class registration isn't forced, unknown classes can be deserialized. "
                 + "If the environment isn't secure, please enable class registration by "
                 + "`ForyBuilder#requireClassRegistration(true)` or configure TypeChecker by "
@@ -677,7 +710,7 @@ public final class ForyBuilder {
         codeGenEnabled != null ? codeGenEnabled.booleanValue() : !runtimeCodegenUnsupported;
     if (runtimeCodegenUnsupported && resolvedCodegen) {
       if (Boolean.TRUE.equals(codeGenEnabled)) {
-        LOG.warn(
+        LOG.info(
             "The current platform does not support Fory runtime code generation; "
                 + "interpreter serializers will be used instead.");
       }
@@ -725,7 +758,7 @@ public final class ForyBuilder {
   }
 
   /**
-   * Builds a thread-safe {@link Fory} using the default runtime for the current JDK.
+   * Builds a thread-safe {@link Fory} backed by {@link ThreadPoolFory}.
    *
    * <p>This variant uses {@link ThreadPoolFory} with a shared {@link SharedRegistry} and a fixed
    * pool sized to 4x the current JVM's available processors.

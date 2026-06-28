@@ -293,20 +293,21 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	typeResolver := ctx.TypeResolver()
 	type_ := value.Type()
 
-	// Initialize map
-	if value.IsNil() {
-		mapType := type_
-		// For any maps without declared types, use map[any]any
-		if !s.hasGenerics && type_.Key().Kind() == reflect.Interface && type_.Elem().Kind() == reflect.Interface {
-			iface := reflect.TypeOf((*any)(nil)).Elem()
-			mapType = reflect.MapOf(iface, iface)
-		}
-		value.Set(reflect.MakeMap(mapType))
-	}
-	refResolver.Reference(value)
-
 	size := ctx.ReadCollectionLength()
-	if size == 0 || ctx.HasError() {
+	if ctx.HasError() {
+		return
+	}
+	mapType := type_
+	// For any maps without declared types, use map[any]any.
+	if !s.hasGenerics && type_.Key().Kind() == reflect.Interface && type_.Elem().Kind() == reflect.Interface {
+		iface := reflect.TypeOf((*any)(nil)).Elem()
+		mapType = reflect.MapOf(iface, iface)
+	}
+	if size == 0 {
+		if value.IsNil() {
+			value.Set(reflect.MakeMap(mapType))
+		}
+		refResolver.Reference(value)
 		return
 	}
 
@@ -314,6 +315,13 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	if ctx.HasError() {
 		return
 	}
+	if !buf.CheckReadable(size, ctxErr) {
+		return
+	}
+	if value.IsNil() {
+		value.Set(reflect.MakeMapWithSize(mapType, size))
+	}
+	refResolver.Reference(value)
 
 	keyType := type_.Key()
 	valueType := type_.Elem()

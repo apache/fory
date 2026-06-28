@@ -41,7 +41,7 @@ fory.register(SomeClass1.class, 1);
 
 Note that class registration order is important. Serialization and deserialization peers should have the same registration order.
 Register classes and custom serializers before the first top-level `serialize`, `deserialize`, or
-`copy` call on a `Fory` instance. Fory freezes registration at that point so runtime lookups can use
+`copy` call on a `Fory` instance. Fory freezes registration at that point so serializer lookups can use
 the finalized registration state.
 
 Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
@@ -91,7 +91,7 @@ ThreadSafeFory fory = Fory.builder().withXlang(false)
   .buildThreadSafeFory();
 ```
 
-`withTypeChecker` installs the checker on every created runtime immediately, which also avoids the
+`withTypeChecker` installs the checker on every created Fory instance immediately, which also avoids the
 generic startup warning emitted when class registration is disabled without any checker. You can
 still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later if you need to
 replace the checker after build time.

@@ -31,7 +31,7 @@ public class BufferSerializersTest extends ForyTestBase {
 
   @Test
   public void testByteBuffer() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     ByteBuffer buffer1 = ByteBuffer.allocate(32);
     buffer1.putLong(1000L);
     ByteBufferUtil.rewind(buffer1);
@@ -56,7 +56,7 @@ public class BufferSerializersTest extends ForyTestBase {
 
   @Test
   public void testByteBufferRejectsMalformedPayload() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Serializer<ByteBuffer> serializer =
         new BufferSerializers.ByteBufferSerializer(fory.getTypeResolver(), ByteBuffer.class);
 
@@ -72,6 +72,17 @@ public class BufferSerializersTest extends ForyTestBase {
     invalidOrder.writeByte(2);
     org.testng.Assert.assertThrows(
         DeserializationException.class, () -> readSerializer(fory, serializer, invalidOrder));
+  }
+
+  @Test
+  public void testByteBufferRejectsTruncatedSize() {
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
+    Serializer<ByteBuffer> serializer =
+        new BufferSerializers.ByteBufferSerializer(fory.getTypeResolver(), ByteBuffer.class);
+
+    MemoryBuffer truncatedSize = MemoryBuffer.fromByteArray(new byte[] {1, (byte) 0xff});
+    org.testng.Assert.assertThrows(
+        IndexOutOfBoundsException.class, () -> readSerializer(fory, serializer, truncatedSize));
   }
 
   @Test

@@ -23,6 +23,7 @@
 #include "fory/serialization/serializer.h"
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <forward_list>
 #include <limits>
@@ -379,6 +380,23 @@ struct has_reserve<Container,
 template <typename Container>
 inline constexpr bool has_reserve_v = has_reserve<Container>::value;
 
+template <typename Container>
+inline bool reserve_collection(Container &result, ReadContext &ctx,
+                               uint32_t length) {
+  // Lazy error propagation may continue into later readers; do not let that
+  // path retain attacker-controlled capacity after an earlier read failure.
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+    return false;
+  }
+  if constexpr (has_reserve_v<Container>) {
+    result.reserve(length);
+  }
+  return true;
+}
+
 // Helper to insert element into container (vector or set)
 template <typename Container, typename T>
 inline void collection_insert(Container &result, T &&elem) {
@@ -392,19 +410,11 @@ inline void collection_insert(Container &result, T &&elem) {
 /// Read collection data for polymorphic or shared-ref elements.
 template <typename T, typename Container>
 inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
-  // Guardrail: Enforce max_collection_size for collection reads
-  if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-    ctx.set_error(
-        Error::invalid_data("Collection length exceeds max_collection_size"));
-    return Container{};
-  }
-
   Container result;
-  if constexpr (has_reserve_v<Container>) {
-    result.reserve(length);
-  }
-
   if (length == 0) {
+    return result;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
     return result;
   }
 
@@ -620,11 +630,6 @@ struct Serializer<
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<T, Alloc>();
     }
-    // Guardrail: Enforce max_binary_size for binary byte-length reads
-    if (FORY_PREDICT_FALSE(total_bytes_u32 > ctx.config().max_binary_size)) {
-      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
-      return std::vector<T, Alloc>();
-    }
     if (sizeof(T) == 0) {
       return std::vector<T, Alloc>();
     }
@@ -637,10 +642,16 @@ struct Serializer<
           " not aligned with element size " + std::to_string(sizeof(T))));
       return std::vector<T, Alloc>();
     }
+    if (FORY_PREDICT_FALSE(
+            !ctx.buffer().ensure_readable(total_bytes_u32, ctx.error()))) {
+      return std::vector<T, Alloc>();
+    }
     std::vector<T, Alloc> result(elem_count);
     if (total_bytes_u32 > 0) {
-      ctx.read_bytes(result.data(), static_cast<uint32_t>(total_bytes_u32),
-                     ctx.error());
+      Buffer &buffer = ctx.buffer();
+      std::memcpy(result.data(), buffer.data() + buffer.reader_index(),
+                  total_bytes_u32);
+      buffer.unsafe_increase_reader_index(total_bytes_u32);
     }
     return result;
   }
@@ -734,20 +745,22 @@ template <typename Alloc> struct Serializer<std::vector<float16_t, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<float16_t, Alloc>();
     }
-    if (FORY_PREDICT_FALSE(total_bytes_u32 > ctx.config().max_binary_size)) {
-      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
-      return std::vector<float16_t, Alloc>();
-    }
     size_t elem_count = total_bytes_u32 / sizeof(float16_t);
     if (total_bytes_u32 % sizeof(float16_t) != 0) {
       ctx.set_error(Error::invalid_data(
           "Vector byte size not aligned with float16_t element size"));
       return std::vector<float16_t, Alloc>();
     }
+    if (FORY_PREDICT_FALSE(
+            !ctx.buffer().ensure_readable(total_bytes_u32, ctx.error()))) {
+      return std::vector<float16_t, Alloc>();
+    }
     std::vector<float16_t, Alloc> result(elem_count);
     if (total_bytes_u32 > 0) {
-      ctx.read_bytes(result.data(), static_cast<uint32_t>(total_bytes_u32),
-                     ctx.error());
+      Buffer &buffer = ctx.buffer();
+      std::memcpy(result.data(), buffer.data() + buffer.reader_index(),
+                  total_bytes_u32);
+      buffer.unsafe_increase_reader_index(total_bytes_u32);
     }
     return result;
   }
@@ -839,20 +852,22 @@ template <typename Alloc> struct Serializer<std::vector<bfloat16_t, Alloc>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<bfloat16_t, Alloc>();
     }
-    if (FORY_PREDICT_FALSE(total_bytes_u32 > ctx.config().max_binary_size)) {
-      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
-      return std::vector<bfloat16_t, Alloc>();
-    }
     size_t elem_count = total_bytes_u32 / sizeof(bfloat16_t);
     if (total_bytes_u32 % sizeof(bfloat16_t) != 0) {
       ctx.set_error(Error::invalid_data(
           "Vector byte size not aligned with bfloat16_t element size"));
       return std::vector<bfloat16_t, Alloc>();
     }
+    if (FORY_PREDICT_FALSE(
+            !ctx.buffer().ensure_readable(total_bytes_u32, ctx.error()))) {
+      return std::vector<bfloat16_t, Alloc>();
+    }
     std::vector<bfloat16_t, Alloc> result(elem_count);
     if (total_bytes_u32 > 0) {
-      ctx.read_bytes(result.data(), static_cast<uint32_t>(total_bytes_u32),
-                     ctx.error());
+      Buffer &buffer = ctx.buffer();
+      std::memcpy(result.data(), buffer.data() + buffer.reader_index(),
+                  total_bytes_u32);
+      buffer.unsafe_increase_reader_index(total_bytes_u32);
     }
     return result;
   }
@@ -907,12 +922,6 @@ struct Serializer<
       return std::vector<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::vector<T, Alloc>();
-    }
-
     // Per xlang spec: header and type_info are omitted when length is 0
     if (length == 0) {
       return std::vector<T, Alloc>();
@@ -953,7 +962,9 @@ struct Serializer<
       }
 
       std::vector<T, Alloc> result;
-      result.reserve(length);
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+        return result;
+      }
 
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
@@ -1045,14 +1056,13 @@ struct Serializer<
       return std::vector<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::vector<T, Alloc>();
-    }
-
     std::vector<T, Alloc> result;
-    result.reserve(size);
+    if (size == 0) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return result;
@@ -1141,32 +1151,18 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
       return std::vector<bool, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_binary_size)) {
-      ctx.set_error(Error::invalid_data("Binary size exceeds max_binary_size"));
+    if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(size, ctx.error()))) {
       return std::vector<bool, Alloc>();
     }
 
     std::vector<bool, Alloc> result(size);
-    // Fast path: bulk read all bytes at once if we have enough buffer
     Buffer &buffer = ctx.buffer();
-    if (size > 0 && buffer.reader_index() + size <= buffer.size()) {
+    if (size > 0) {
       const uint8_t *src = buffer.data() + buffer.reader_index();
       for (uint32_t i = 0; i < size; ++i) {
         result[i] = (src[i] != 0);
       }
-      buffer.increase_reader_index(size, ctx.error());
-      if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return std::vector<bool, Alloc>();
-      }
-    } else {
-      // Fallback: read byte-by-byte with bounds checking
-      for (uint32_t i = 0; i < size; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        uint8_t byte = ctx.read_uint8(ctx.error());
-        result[i] = (byte != 0);
-      }
+      buffer.unsafe_increase_reader_index(size);
     }
     return result;
   }
@@ -1218,12 +1214,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     // Length written via write_var_uint32_small7
     uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::list<T, Alloc>();
-    }
-
-    if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::list<T, Alloc>();
     }
 
@@ -1358,12 +1348,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       return std::list<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::list<T, Alloc>();
-    }
-
     std::list<T, Alloc> result;
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1422,12 +1406,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     // Length written via write_var_uint32_small7
     uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::deque<T, Alloc>();
-    }
-
-    if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::deque<T, Alloc>();
     }
 
@@ -1562,12 +1540,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       return std::deque<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::deque<T, Alloc>();
-    }
-
     std::deque<T, Alloc> result;
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1630,23 +1602,15 @@ struct Serializer<std::forward_list<T, Alloc>> {
       return std::forward_list<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(length > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::forward_list<T, Alloc>();
-    }
-
     // Per xlang spec: header and type_info are omitted when length is 0
     if (length == 0) {
       return std::forward_list<T, Alloc>();
     }
 
+    // Dispatch to slow path for polymorphic/shared-ref elements
     // Read elements into a temporary vector then build forward_list
     // (forward_list doesn't have push_back, only push_front)
     std::vector<T> temp;
-    temp.reserve(length);
-
-    // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       temp = read_collection_data_slow<T, std::vector<T>>(ctx, length);
@@ -1680,6 +1644,9 @@ struct Serializer<std::forward_list<T, Alloc>> {
         }
       }
 
+      if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, length))) {
+        return std::forward_list<T, Alloc>();
+      }
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < length; ++i) {
@@ -2001,14 +1968,10 @@ struct Serializer<std::forward_list<T, Alloc>> {
       return std::forward_list<T, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
+    std::vector<T> temp;
+    if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, size))) {
       return std::forward_list<T, Alloc>();
     }
-
-    std::vector<T> temp;
-    temp.reserve(size);
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         break;
@@ -2106,12 +2069,6 @@ struct Serializer<std::set<T, Args...>> {
       return std::set<T, Args...>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::set<T, Args...>();
-    }
-
     // Per xlang spec: header and type_info are omitted when length is 0
     if (size == 0) {
       return std::set<T, Args...>();
@@ -2190,12 +2147,6 @@ struct Serializer<std::set<T, Args...>> {
   static inline std::set<T, Args...> read_data(ReadContext &ctx) {
     uint32_t size = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return std::set<T, Args...>();
-    }
-
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
       return std::set<T, Args...>();
     }
 
@@ -2293,12 +2244,6 @@ struct Serializer<std::unordered_set<T, Args...>> {
       return std::unordered_set<T, Args...>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::unordered_set<T, Args...>();
-    }
-
     // Per xlang spec: header and type_info are omitted when length is 0
     if (size == 0) {
       return std::unordered_set<T, Args...>();
@@ -2336,7 +2281,9 @@ struct Serializer<std::unordered_set<T, Args...>> {
       }
 
       std::unordered_set<T, Args...> result;
-      result.reserve(size);
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+        return result;
+      }
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < size; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -2382,14 +2329,10 @@ struct Serializer<std::unordered_set<T, Args...>> {
       return std::unordered_set<T, Args...>();
     }
 
-    if (FORY_PREDICT_FALSE(size > ctx.config().max_collection_size)) {
-      ctx.set_error(
-          Error::invalid_data("Collection length exceeds max_collection_size"));
-      return std::unordered_set<T, Args...>();
-    }
-
     std::unordered_set<T, Args...> result;
-    result.reserve(size);
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return result;

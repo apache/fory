@@ -143,7 +143,7 @@ public final class WriteContext {
         }
     }
 
-    func writeTypeMeta(_ typeInfo: TypeInfo) {
+    func writeTypeMeta(_ typeInfo: TypeInfo) throws {
         if !typeDefStateUsed {
             typeDefStateUsed = true
         }
@@ -156,11 +156,6 @@ public final class WriteContext {
         )
         let buffer = self.buffer
         if assignment.inserted {
-            if assignment.value == 0, let firstTypeDefBytes = typeInfo.firstTypeDefBytes {
-                buffer.writeBytes(firstTypeDefBytes)
-                return
-            }
-
             let marker = assignment.value << 1
             if marker < 0x80 {
                 buffer.writeUInt8(UInt8(truncatingIfNeeded: marker))

@@ -674,7 +674,7 @@ func TestVarintFastPathTightBuffer(t *testing.T) {
 		Value uint32 `fory:"encoding=varint"`
 	}
 
-	f := New(WithXlang(false))
+	f := New(WithXlang(false), WithCompatible(false))
 	require.NoError(t, f.RegisterStruct(SingleVarintStruct{}, 7001))
 
 	// 1<<28 requires 5 varint bytes, forcing the 8-byte bulk write path.

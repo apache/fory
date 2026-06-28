@@ -165,6 +165,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     ContainerWithFinalReplaceField container = new ContainerWithFinalReplaceField(o1);
@@ -189,6 +190,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     for (Object inner :
         new Object[] {
@@ -219,6 +221,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     {
       CustomReplaceClass3 o1 = new CustomReplaceClass3();
@@ -268,6 +271,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     ImmutableIntArray list1 = ImmutableIntArray.of(1, 2, 3, 4);
     ContainerWithFinalImmutableIntArray container = new ContainerWithFinalImmutableIntArray(list1);
@@ -290,6 +294,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
     ContainerWithFinalImmutableMap container = new ContainerWithFinalImmutableMap(map1);
@@ -312,6 +317,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     ComplexContainerWithMultipleFinalFields container =
         new ComplexContainerWithMultipleFinalFields(
@@ -348,6 +354,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(false)
+            .withCompatible(false)
             .build();
 
     // Get the serializer for a final field with writeReplace
@@ -368,7 +375,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     // For FieldReplaceResolveSerializer, writeTypeInfo should be null
     assertNull(
         writeTypeInfo,
-        "FieldReplaceResolveSerializer should have writeTypeInfo=null to avoid writing class names");
+        "FieldReplaceResolveSerializer should have writeTypeInfo=null to avoid writing class"
+            + " names");
 
     // Compare with ReplaceResolveSerializer (non-final)
     ReplaceResolveSerializer nonFinalFieldSerializer =
@@ -389,6 +397,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withCodegen(codegen)
             .withRefTracking(false)
+            .withCompatible(false)
             .build();
 
     // Create a container with a final ImmutableList field
@@ -428,6 +437,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(false)
+            .withCompatible(false)
             .build();
 
     // Serialize using a final field container

@@ -74,6 +74,6 @@ void main() {
       'rawValue',
       nullExpression: 'fallback()',
     );
-    expect(expression, 'rawValue == null ? fallback() : rawValue');
+    expect(expression, 'rawValue ?? fallback()');
   });
 }

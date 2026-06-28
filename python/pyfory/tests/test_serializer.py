@@ -51,18 +51,26 @@ from pyfory.utils import lazy_import
 pa = lazy_import("pyarrow")
 
 
-def test_xlang_defaults_to_compatible_unless_explicitly_set():
+def test_compatible_mode_overrides():
     default_xlang = Fory(xlang=True)
+    default_native = Fory(xlang=False)
+    compatible_xlang = Fory(xlang=True, compatible=True)
     explicit_schema_consistent = Fory(compatible=False, xlang=True)
     explicit_schema_consistent_reverse_order = Fory(xlang=True, compatible=False)
 
     assert default_xlang.compatible is True
+    assert default_xlang.write_context.meta_share_context is not None
+    assert default_xlang.read_context.meta_share_context is not None
+    assert default_native.compatible is True
+    assert default_native.write_context.meta_share_context is not None
+    assert default_native.read_context.meta_share_context is not None
+    assert compatible_xlang.compatible is True
     assert explicit_schema_consistent.compatible is False
     assert explicit_schema_consistent_reverse_order.compatible is False
 
 
 def test_float():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     assert ser_de(fory, -1.0) == -1.0
     assert ser_de(fory, 1 / 3) == 1 / 3
     serializer = fory.type_resolver.get_serializer(float)
@@ -70,13 +78,13 @@ def test_float():
 
 
 def test_tuple():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     print(len(fory.serialize((-1.0, 2))))
     assert ser_de(fory, (-1.0, 2)) == (-1.0, 2)
 
 
 def test_string():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     assert ser_de(fory, "hello") == "hello"
     assert ser_de(fory, "hello，世界") == "hello，世界"
     assert ser_de(fory, "hello，世界" * 10) == "hello，世界" * 10
@@ -86,7 +94,7 @@ def test_string():
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_dict(track_ref):
-    fory = Fory(xlang=False, ref=track_ref)
+    fory = Fory(xlang=False, ref=track_ref, compatible=False)
     assert ser_de(fory, {1: 2}) == {1: 2}
     assert ser_de(fory, {1 / 3: 2.0}) == {1 / 3: 2.0}
     assert ser_de(fory, {1 / 3: 2}) == {1 / 3: 2}
@@ -108,7 +116,7 @@ def test_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_multi_chunk_simple_dict(track_ref):
-    fory = Fory(xlang=False, ref=track_ref)
+    fory = Fory(xlang=False, ref=track_ref, compatible=False)
     dict0 = {
         1: 2.0,
         2: 3,
@@ -119,7 +127,7 @@ def test_multi_chunk_simple_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_multi_chunk_complex_dict(track_ref):
-    fory = Fory(xlang=False, ref=track_ref)
+    fory = Fory(xlang=False, ref=track_ref, compatible=False)
     now = datetime.datetime.now(datetime.timezone.utc)
     day = datetime.date(2021, 11, 23)
     dict0 = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}  # noqa: F601
@@ -128,7 +136,7 @@ def test_multi_chunk_complex_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_big_chunk_dict(track_ref):
-    fory = Fory(xlang=False, ref=track_ref)
+    fory = Fory(xlang=False, ref=track_ref, compatible=False)
     now = datetime.datetime.now(datetime.timezone.utc)
     day = datetime.date(2021, 11, 23)
     dict0 = {}
@@ -142,7 +150,7 @@ def test_big_chunk_dict(track_ref):
 
 @pytest.mark.parametrize("xlang", [True, False])
 def test_basic_serializer(xlang):
-    fory = Fory(xlang=xlang, ref=True)
+    fory = Fory(xlang=xlang, ref=True, compatible=xlang)
     typeinfo = fory.type_resolver.get_type_info(datetime.datetime)
     assert isinstance(typeinfo.serializer, TimestampSerializer)
     if xlang:
@@ -339,7 +347,7 @@ def test_bfloat16_array_is_list_compatible():
 
 @pytest.mark.parametrize("xlang", [True, False])
 def test_date_serializer_uses_xlang_varint64_and_native_int32(xlang):
-    fory = Fory(xlang=xlang, ref=False)
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
     day = datetime.date(1969, 12, 31)
     payload = fory.serialize(day)
     buffer = Buffer(payload)
@@ -355,7 +363,7 @@ def test_date_serializer_uses_xlang_varint64_and_native_int32(xlang):
 
 @pytest.mark.parametrize("xlang", [False, True])
 def test_decimal_round_trip(xlang):
-    fory = Fory(xlang=xlang, ref=False)
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
     values = [
         decimal.Decimal("0"),
         decimal.Decimal("0.000"),
@@ -433,7 +441,7 @@ def test_decimal_rejects_non_finite_values():
 @pytest.mark.parametrize("xlang", [True, False])
 def test_timestamp_serializer(xlang):
     """Test timestamp serialization. TimestampSerializer always returns UTC-aware datetimes."""
-    fory = Fory(xlang=xlang, ref=False)
+    fory = Fory(xlang=xlang, ref=False, compatible=xlang)
 
     # Naive datetime (no timezone) — interpreted as local time on write, always returned as UTC-aware on read.
     naive = datetime.datetime(2026, 3, 1, 12, 30, 45, 123456)
@@ -453,7 +461,7 @@ def test_timestamp_serializer(xlang):
 
 @pytest.mark.parametrize("xlang", [True, False])
 def test_ref_tracking(xlang):
-    fory = Fory(xlang=xlang, ref=True)
+    fory = Fory(xlang=xlang, ref=True, compatible=xlang)
 
     # Circular reference test - only works for Python native mode.
     # Xlang mode doesn't support true circular references during deserialization
@@ -497,7 +505,7 @@ def test_ref_tracking(xlang):
 def test_tmp_ref(xlang):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(xlang=xlang, ref=True)
+    fory = Fory(xlang=xlang, ref=True, compatible=xlang)
     buffer = Buffer.allocate(128)
     writer_index = buffer.get_writer_index()
     x = 1
@@ -521,7 +529,7 @@ def test_tmp_ref(xlang):
 def test_multiple_ref(xlang):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(xlang=xlang, ref=True)
+    fory = Fory(xlang=xlang, ref=True, compatible=xlang)
     buffer = Buffer.allocate(128)
     for i in range(1000):
         fory.serialize([], buffer)
@@ -544,7 +552,7 @@ class RefTestClass2:
 def test_ref_cleanup():
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     o1 = RefTestClass1()
     o2 = RefTestClass2(f1=o1)
     pickle.loads(pickle.dumps(o2))
@@ -560,7 +568,7 @@ def test_ref_cleanup():
 
 @pytest.mark.parametrize("xlang", [True, False])
 def test_array_serializer(xlang):
-    fory = Fory(xlang=xlang, ref=True, strict=False)
+    fory = Fory(xlang=xlang, ref=True, strict=False, compatible=xlang)
     for typecode in PyArraySerializer.typecode_dict.keys():
         arr = array.array(typecode, list(range(10)))
         new_arr = ser_de(fory, arr)
@@ -655,7 +663,7 @@ class RegisterClass:
 
 
 def test_register_py_serializer():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     class Serializer(pyfory.Serializer):
         def write(self, write_context, value):
@@ -677,7 +685,7 @@ class A:
 
 
 def test_register_type():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
 
     class Serializer(pyfory.Serializer):
         def write(self, write_context, value):
@@ -704,7 +712,7 @@ def test_register_type_name():
     class AliasNameType:
         pass
 
-    fory = Fory(xlang=True)
+    fory = Fory(xlang=True, compatible=True)
     namespaced_info = fory.register_type(NamedType, name="example.NamedType")
     local_info = fory.register_type(LocalNameType, name="LocalNameType")
     alias_info = fory.register(AliasNameType, name="example.AliasNameType")
@@ -719,19 +727,19 @@ def test_register_type_name():
 
 def test_register_type_name_invalid():
     for name in ("", "example."):
-        fory = Fory(xlang=True)
+        fory = Fory(xlang=True, compatible=True)
         with pytest.raises(ValueError, match="name must not be empty"):
             fory.register_type(A, name=name)
 
 
 def test_register_type_name_exclusive():
-    fory = Fory(xlang=True)
+    fory = Fory(xlang=True, compatible=True)
     with pytest.raises(TypeError, match="type name"):
         fory.register_type(A, type_id=100, name="example.A")
 
 
 def test_np_types():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     o1 = [1, True, np.dtype(np.int32)]
     data1 = fory.serialize(o1)
     new_o1 = fory.deserialize(data1)
@@ -739,14 +747,14 @@ def test_np_types():
 
 
 def test_pandas_dataframe():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     df = pd.DataFrame({"a": list(range(10))})
     df2 = fory.deserialize(fory.serialize(df))
     assert df2.equals(df)
 
 
 def test_unsupported_callback():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
 
     # Test with functions that now have proper serialization support
     # Functions should no longer be treated as unsupported
@@ -774,7 +782,7 @@ def test_unsupported_callback():
 
 
 def test_slice():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     assert fory.deserialize(fory.serialize(slice(1, None, "10"))) == slice(1, None, "10")
     assert fory.deserialize(fory.serialize(slice(1, 100, 10))) == slice(1, 100, 10)
     assert fory.deserialize(fory.serialize(slice(1, None, 10))) == slice(1, None, 10)
@@ -811,7 +819,7 @@ class SparseIntEnum(IntEnum):
 
 
 def test_enum():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     assert ser_de(fory, EnumClass.E1) == EnumClass.E1
     assert ser_de(fory, EnumClass.E2) == EnumClass.E2
     assert ser_de(fory, EnumClass.E3) == EnumClass.E3
@@ -827,7 +835,7 @@ def test_xlang_enum_uses_sparse_integer_values():
 
 
 def test_duplicate_serialize():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     assert ser_de(fory, EnumClass.E1) == EnumClass.E1
     assert ser_de(fory, EnumClass.E2) == EnumClass.E2
     assert ser_de(fory, EnumClass.E4) == EnumClass.E4
@@ -837,7 +845,7 @@ def test_duplicate_serialize():
 
 
 def test_pandas_range_index():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     fory.register_type(pd.RangeIndex, serializer=pyfory.serializer.PandasRangeIndexSerializer(fory.type_resolver))
     index = pd.RangeIndex(1, 100, 2, name="a")
     new_index = ser_de(fory, index)
@@ -861,6 +869,7 @@ def test_py_serialize_dataclass(track_ref):
         xlang=False,
         ref=track_ref,
         strict=False,
+        compatible=False,
     )
     obj1 = PyDataClass1(f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"})
     assert ser_de(fory, obj1) == obj1
@@ -920,6 +929,7 @@ def test_function(track_ref):
         xlang=False,
         ref=track_ref,
         strict=False,
+        compatible=False,
     )
     c = fory.deserialize(fory.serialize(lambda x: x * 2))
     assert c(2) == 4
@@ -953,6 +963,7 @@ def test_map_fields_chunk_serializer(track_ref):
         xlang=False,
         ref=track_ref,
         strict=False,
+        compatible=False,
     )
 
     # Test case
@@ -1027,6 +1038,7 @@ def test_py_serialize_object(track_ref):
         xlang=False,
         ref=track_ref,
         strict=False,
+        compatible=False,
     )
     fory.register_type(SomeTestObject)
     fory.register_type(SomeTestSlotsObject)
@@ -1038,7 +1050,7 @@ def test_py_serialize_object(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_py_serialize_empty_object(track_ref):
-    fory = Fory(xlang=False, ref=track_ref, strict=False)
+    fory = Fory(xlang=False, ref=track_ref, strict=False, compatible=False)
     obj = object()
     result = ser_de(fory, obj)
     assert type(result) is object
@@ -1054,7 +1066,7 @@ def test_py_serialize_empty_object(track_ref):
 
 
 def test_dumps_loads():
-    fory = Fory(xlang=False, ref=True)
+    fory = Fory(xlang=False, ref=True, compatible=False)
     obj = {"a": 1, "b": 2}
     data = fory.dumps(obj)
     new_obj = fory.loads(data)
@@ -1062,7 +1074,7 @@ def test_dumps_loads():
 
 
 def test_module_serialize():
-    fory = Fory(xlang=False, ref=True, strict=False)
+    fory = Fory(xlang=False, ref=True, strict=False, compatible=False)
     assert fory.loads(fory.dumps(pyfory)) is pyfory
     from pyfory import serializer
     from pyfory import serialization

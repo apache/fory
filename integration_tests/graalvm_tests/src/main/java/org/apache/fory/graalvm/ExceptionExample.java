@@ -34,6 +34,7 @@ public class ExceptionExample {
           .withXlang(false)
           .requireClassRegistration(true)
           .withRefTracking(false)
+          .withCompatible(false)
           .build();
 
   static {

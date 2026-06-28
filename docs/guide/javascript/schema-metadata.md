@@ -26,7 +26,7 @@ schema evolution behavior.
 ## Type Identity
 
 Structs and enums can use a numeric ID or a name. Pick one identity strategy for a type and use it
-consistently in every runtime that reads or writes the payload.
+consistently in every implementation that reads or writes the payload.
 
 ```ts
 import { Type } from "@apache-fory/core";
@@ -128,7 +128,7 @@ Field-level reference metadata has no effect unless `new Fory({ ref: true })` is
 
 ## Dynamic Fields
 
-Use `Type.any()` when a field can hold different Fory values at runtime:
+Use `Type.any()` when a field can hold values with different concrete Fory types:
 
 ```ts
 const eventType = Type.struct("example.event", {
@@ -138,12 +138,12 @@ const eventType = Type.struct("example.event", {
 ```
 
 For a struct field with a declared type, `.setDynamic(Dynamic.FALSE)` always treats values as the
-declared type and `.setDynamic(Dynamic.TRUE)` always writes the runtime type. The default
+declared type and `.setDynamic(Dynamic.TRUE)` always writes the concrete type. The default
 `Dynamic.AUTO` is appropriate for most fields.
 
 ## Per-Struct Schema Evolution
 
-JavaScript uses compatible schema evolution by default. For a stable struct that should omit
+JavaScript uses compatible schema evolution by default. For a same-schema struct that should omit
 evolution metadata, set `evolving: false`:
 
 ```ts
@@ -155,7 +155,7 @@ const fixedType = Type.struct(
 );
 ```
 
-Both writer and reader must agree on `evolving: false`.
+Use `evolving: false` only when every reader and writer always uses the same struct schema.
 
 ## Related Topics
 

@@ -22,17 +22,18 @@ package org.apache.fory.resolver;
 import java.lang.reflect.Member;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.collection.BiMap;
 import org.apache.fory.collection.ConcurrentIdentityMap;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
@@ -57,12 +58,14 @@ import org.apache.fory.type.DescriptorGrouper;
 public final class SharedRegistry {
   private static final int MAX_CACHED_ENCODED_META_STRINGS = 32768;
   private static final int MAX_CACHED_ENCODED_META_STRING_LENGTH = 2048;
-  private static final int MAX_CACHED_TYPE_DEFS = 8192;
+  private static final int MAX_CACHED_TYPE_CHECKER_CLASSES = 8192;
+  private static final int MIN_REMOTE_TYPE_DEF_LIMIT = 8192;
 
   final ConcurrentIdentityMap<Class<?>, TypeDef> typeDefMap = new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, TypeDef> currentLayerTypeDef =
       new ConcurrentIdentityMap<>();
   final ConcurrentHashMap<Long, TypeDef> typeDefById = new ConcurrentHashMap<>();
+  final ConcurrentHashMap<Long, TypeDef> remoteTypeDefById = new ConcurrentHashMap<>();
   final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
       descriptorsCache = new ConcurrentHashMap<>();
   final ConcurrentHashMap<FieldDescriptorsKey, List<Descriptor>> fieldDescriptorsCache =
@@ -83,6 +86,14 @@ public final class SharedRegistry {
       new ConcurrentIdentityMap<>();
   final ConcurrentIdentityMap<Class<?>, Serializer<?>> registeredSerializerCache =
       new ConcurrentIdentityMap<>();
+  // Positive TypeChecker decisions are shared by class name across this registry's equivalent Fory
+  // instances. Do not include TypeResolver or TypeChecker identity in the key; SharedRegistry is
+  // already the sharing boundary for equivalent type-checking policy. Mutable checker owners must
+  // clear these entries when a policy change can make a previously accepted class forbidden. This
+  // cache is intentionally bounded; after it fills, duplicate TypeChecker calls are safer than
+  // retaining attacker-controlled class names without limit.
+  private final ConcurrentHashMap<String, Boolean> acceptedTypeCheckerClasses =
+      new ConcurrentHashMap<>();
   private final ConcurrentHashMap<Class<?>, ObjectInstantiator<?>> objectInstantiatorCache =
       new ConcurrentHashMap<>();
   private final ConcurrentHashMap<Class<?>, ObjectInstantiator<?>> objectStreamInstantiatorCache =
@@ -90,9 +101,38 @@ public final class SharedRegistry {
   final StaticGeneratedSerializerRegistry staticGeneratedSerializerRegistry =
       new StaticGeneratedSerializerRegistry();
   private final Object metaStringCacheLock = new Object();
-  private final AtomicInteger cachedTypeDefCount = new AtomicInteger();
+  private volatile int maxSchemaVersionsPerType = -1;
+  private volatile int maxAverageSchemaVersionsPerType = -1;
+  private final HashMap<Object, Integer> remoteTypeDefVersionsByType = new HashMap<>();
+  private int totalAcceptedSchemaVersions;
   volatile IdentityHashMap<Class<?>, Integer> registeredClassIdMap;
   volatile BiMap<String, Class<?>> registeredClasses;
+
+  public SharedRegistry() {}
+
+  public synchronized void setRemoteSchemaLimits(
+      int maxSchemaVersionsPerType, int maxAverageSchemaVersionsPerType) {
+    if (maxSchemaVersionsPerType <= 0) {
+      throw new IllegalArgumentException(
+          "maxSchemaVersionsPerType must be positive but got " + maxSchemaVersionsPerType);
+    }
+    if (maxAverageSchemaVersionsPerType <= 0) {
+      throw new IllegalArgumentException(
+          "maxAverageSchemaVersionsPerType must be positive but got "
+              + maxAverageSchemaVersionsPerType);
+    }
+    int currentMaxSchemaVersionsPerType = this.maxSchemaVersionsPerType;
+    if (currentMaxSchemaVersionsPerType < 0) {
+      this.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
+      this.maxSchemaVersionsPerType = maxSchemaVersionsPerType;
+      return;
+    }
+    if (currentMaxSchemaVersionsPerType != maxSchemaVersionsPerType
+        || this.maxAverageSchemaVersionsPerType != maxAverageSchemaVersionsPerType) {
+      throw new IllegalArgumentException(
+          "SharedRegistry cannot be reused with different remote schema limits");
+    }
+  }
 
   synchronized void setRegistrationIfAbsent(
       IdentityHashMap<Class<?>, Integer> candidateRegisteredClassIdMap,
@@ -151,41 +191,117 @@ public final class SharedRegistry {
     return existing == null ? typeInfo : existing;
   }
 
+  boolean isTypeAccepted(String className) {
+    return acceptedTypeCheckerClasses.containsKey(className);
+  }
+
+  void markTypeAccepted(String className) {
+    if (acceptedTypeCheckerClasses.size() >= MAX_CACHED_TYPE_CHECKER_CLASSES) {
+      return;
+    }
+    acceptedTypeCheckerClasses.putIfAbsent(className, true);
+  }
+
+  void clearCheckerCache() {
+    acceptedTypeCheckerClasses.clear();
+  }
+
+  void clearCheckerCacheForClass(String className) {
+    acceptedTypeCheckerClasses.remove(className);
+  }
+
+  void clearCheckerCacheForPrefix(String prefix) {
+    acceptedTypeCheckerClasses.keySet().removeIf(className -> className.startsWith(prefix));
+  }
+
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
     long id = typeDef.getId();
     TypeDef existing = typeDefById.get(id);
     if (existing != null) {
       return existing;
     }
-    if (!reserveTypeDefCacheSlot()) {
-      return typeDef;
-    }
     existing = typeDefById.putIfAbsent(id, typeDef);
-    if (existing != null) {
-      cachedTypeDefCount.decrementAndGet();
-      return existing;
-    }
-    return typeDef;
+    return existing == null ? typeDef : existing;
   }
 
-  private boolean reserveTypeDefCacheSlot() {
-    while (true) {
-      int count = cachedTypeDefCount.get();
-      int mapSize = typeDefById.size();
-      if (mapSize > count) {
-        if (cachedTypeDefCount.compareAndSet(count, mapSize)) {
-          count = mapSize;
-        } else {
-          continue;
-        }
-      }
-      if (count >= MAX_CACHED_TYPE_DEFS) {
-        return false;
-      }
-      if (cachedTypeDefCount.compareAndSet(count, count + 1)) {
-        return true;
-      }
+  synchronized TypeDef getOrCreateRemoteTypeDef(TypeDef typeDef, Object remoteTypeKey) {
+    long id = typeDef.getId();
+    TypeDef existing = remoteTypeDefById.get(id);
+    if (existing != null) {
+      return existing;
     }
+    int versionsForType = checkRemoteTypeLimit(remoteTypeKey);
+    TypeDef canonicalTypeDef = typeDefById.putIfAbsent(id, typeDef);
+    if (canonicalTypeDef == null) {
+      canonicalTypeDef = typeDef;
+    }
+    existing = remoteTypeDefById.putIfAbsent(id, canonicalTypeDef);
+    if (existing != null) {
+      return existing;
+    }
+    remoteTypeDefVersionsByType.put(remoteTypeKey, versionsForType + 1);
+    totalAcceptedSchemaVersions++;
+    return canonicalTypeDef;
+  }
+
+  synchronized void checkRemoteTypeDefLimit(TypeDef typeDef, Object remoteTypeKey) {
+    if (remoteTypeDefById.containsKey(typeDef.getId())) {
+      return;
+    }
+    checkRemoteTypeLimit(remoteTypeKey);
+  }
+
+  private int checkRemoteTypeLimit(Object remoteTypeKey) {
+    int versionsForType = remoteTypeDefVersionsByType.getOrDefault(remoteTypeKey, 0);
+    int maxSchemaVersionsPerType = maxSchemaVersionsPerType();
+    if (versionsForType >= maxSchemaVersionsPerType) {
+      throw new ForyException(
+          "Remote schema version limit exceeded for type "
+              + remoteTypeKey
+              + ": "
+              + versionsForType
+              + " >= "
+              + maxSchemaVersionsPerType
+              + ". The data may be malicious. If the data is not malicious, please increase "
+              + "maxSchemaVersionsPerType.");
+    }
+    int acceptedRemoteTypeCount =
+        versionsForType == 0
+            ? remoteTypeDefVersionsByType.size() + 1
+            : remoteTypeDefVersionsByType.size();
+    int maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType();
+    long globalLimit =
+        Math.max(
+            (long) MIN_REMOTE_TYPE_DEF_LIMIT,
+            (long) acceptedRemoteTypeCount * maxAverageSchemaVersionsPerType);
+    if (totalAcceptedSchemaVersions >= globalLimit) {
+      throw new ForyException(
+          "Remote schema version limit exceeded: "
+              + totalAcceptedSchemaVersions
+              + " metadata versions for "
+              + acceptedRemoteTypeCount
+              + " accepted remote types exceeds the average limit "
+              + maxAverageSchemaVersionsPerType
+              + ". The data may be malicious. If the data is not malicious, please increase "
+              + "maxAverageSchemaVersionsPerType.");
+    }
+    return versionsForType;
+  }
+
+  private int maxSchemaVersionsPerType() {
+    int maxSchemaVersionsPerType = this.maxSchemaVersionsPerType;
+    if (maxSchemaVersionsPerType < 0) {
+      throw new IllegalStateException("SharedRegistry remote schema limits are not initialized");
+    }
+    return maxSchemaVersionsPerType;
+  }
+
+  private int maxAverageSchemaVersionsPerType() {
+    int maxSchemaVersionsPerType = this.maxSchemaVersionsPerType;
+    if (maxSchemaVersionsPerType < 0) {
+      throw new IllegalStateException("SharedRegistry remote schema limits are not initialized");
+    }
+    return maxAverageSchemaVersionsPerType;
   }
 
   EncodedMetaString getPackageEncodedMetaString(String string) {

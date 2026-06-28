@@ -19,13 +19,12 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ C# supports schema evolution in `Compatible(true)` mode.
+Apache Fory™ C# supports schema evolution in compatible mode. Compatible mode is enabled by default.
 
 ## Compatible Mode
 
 ```csharp
 Fory fory = Fory.Builder()
-    .Compatible(true)
     .Build();
 ```
 
@@ -58,10 +57,10 @@ public sealed class TwoStringField
     public string F2 { get; set; } = string.Empty;
 }
 
-Fory fory1 = Fory.Builder().Compatible(true).Build();
+Fory fory1 = Fory.Builder().Build();
 fory1.Register<OneStringField>(200);
 
-Fory fory2 = Fory.Builder().Compatible(true).Build();
+Fory fory2 = Fory.Builder().Build();
 fory2.Register<TwoStringField>(200);
 
 byte[] payload = fory1.Serialize(new OneStringField { F1 = "hello" });
@@ -72,25 +71,26 @@ System.Diagnostics.Debug.Assert(evolved.F1 == "hello");
 System.Diagnostics.Debug.Assert(evolved.F2 == string.Empty);
 ```
 
-## Schema-Consistent Mode with Version Check
+## Same-Schema Optimization
 
-If you want strict schema identity checks instead of evolution behavior:
+Use this only when every reader and writer always uses the same schema and you
+want faster serialization and smaller size:
 
 ```csharp
-Fory strict = Fory.Builder()
+Fory sameSchema = Fory.Builder()
     .Compatible(false)
     .CheckStructVersion(true)
     .Build();
 ```
 
-This mode throws on schema hash mismatches.
+Because C# uses the xlang wire format only, use `Compatible(false)` only after verifying that every peer uses the same schema, or when native types are generated from Fory schema IDL. This mode throws on schema hash mismatches.
 
 ## Best Practices
 
-1. Use `Compatible(true)` for independently deployed services.
+1. Keep compatible mode enabled for independently deployed services.
 2. Keep stable type IDs across versions.
 3. Add new fields with safe defaults.
-4. Use `CheckStructVersion(true)` when strict matching is required.
+4. Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 
 ## Related Topics
 

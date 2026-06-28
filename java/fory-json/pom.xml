@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <groupId>org.apache.fory</groupId>
+    <artifactId>fory-parent</artifactId>
+    <version>1.4.0-SNAPSHOT</version>
+  </parent>
+  <modelVersion>4.0.0</modelVersion>
+
+  <artifactId>fory-json</artifactId>
+
+  <description>
+    Apache Fory JSON serialization.
+  </description>
+
+  <properties>
+    <maven.compiler.source>8</maven.compiler.source>
+    <maven.compiler.target>8</maven.compiler.target>
+    <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-test-core</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Automatic-Module-Name>org.apache.fory.json</Automatic-Module-Name>
+              <Multi-Release>true</Multi-Release>
+            </manifestEntries>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>jpms-java9</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java9-module-info</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <mkdir dir="${project.build.directory}/jpms-classes/java9"/>
+                    <condition
+                        property="fory.core.module.jar"
+                        value="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"
+                        else="${settings.localRepository}/org/apache/fory/fory-core/${project.version}/fory-core-${project.version}.jar">
+                      <available
+                          file="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"/>
+                    </condition>
+                    <path id="fory.core.compile.path">
+                      <pathelement location="${project.basedir}/../fory-core/target/classes"/>
+                      <pathelement
+                          location="${settings.localRepository}/org/apache/fory/fory-core/${project.version}/fory-core-${project.version}.jar"/>
+                    </path>
+                    <path id="compile.module.path.elements">
+                      <pathelement location="${fory.core.module.jar}"/>
+                      <difference>
+                        <path refid="maven.compile.classpath"/>
+                        <path refid="fory.core.compile.path"/>
+                      </difference>
+                    </path>
+                    <pathconvert property="compile.module.path" refid="compile.module.path.elements"
+                                 pathsep="${path.separator}"/>
+                    <javac srcdir="${project.basedir}/src/main/java9"
+                           destdir="${project.build.directory}/jpms-classes/java9"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="module-info.java"/>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="9"/>
+                      <compilerarg value="--module-path"/>
+                      <compilerarg path="${compile.module.path}"/>
+                      <compilerarg value="--patch-module"/>
+                      <compilerarg value="org.apache.fory.json=${project.build.outputDirectory}"/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java9-module-info</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
+                      <zipfileset dir="${project.build.directory}/jpms-classes/java9"
+                                  prefix="META-INF/versions/9"
+                                  includes="module-info.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+</project>

@@ -63,6 +63,7 @@ public class GraalvmRuntimeArrayTest {
               .withCodegen(false)
               .requireClassRegistration(true)
               .suppressClassRegistrationWarnings(true)
+              .withCompatible(false)
               .build();
       Class<?> serializerClass = fory.getTypeResolver().getSerializerClass(Throwable[].class);
       if (serializerClass != ArraySerializers.ObjectArraySerializer.class) {

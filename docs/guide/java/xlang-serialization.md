@@ -20,13 +20,13 @@ license: |
 ---
 
 Apache Fory™ xlang serialization is the Java wire mode for payloads that must be read by Python,
-Rust, Go, JavaScript/TypeScript, C++, C#, Swift, Dart, Scala, Kotlin, or another non-Java Fory runtime. Java defaults to
+Rust, Go, JavaScript/TypeScript, C++, C#, Swift, Dart, Scala, Kotlin, or another non-Java Fory implementation. Java defaults to
 xlang mode with compatible schema evolution, but examples set the mode explicitly so the payload
 contract is visible in code.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
-Use one long-lived `Fory` or `ThreadSafeFory` instance per configuration. Creating a runtime is
+Use one long-lived `Fory` or `ThreadSafeFory` instance per configuration. Creating a Fory instance is
 expensive because Fory caches type metadata and generated serializers.
 
 ```java
@@ -86,7 +86,7 @@ services.
 Trade-off: the payload includes string identity, so it is larger than ID-based registration.
 
 The Java API also supports a single string type name, such as
-`fory.register(Person.class, "example.Person")`. Use the same logical identity on every runtime.
+`fory.register(Person.class, "example.Person")`. Use the same logical identity on every peer.
 
 ## Java To Python Example
 
@@ -174,7 +174,7 @@ Not all Java types have equivalents in other languages. When using xlang mode:
   16-bit float payloads.
 - Treat `Float16[]`, `BFloat16[]`, `Float16List`, and `BFloat16List` as `list<T>` carriers by
   default; use `@ArrayType` when the schema must be `array<float16>` or `array<bfloat16>`.
-- Avoid Java-specific types like `Optional`, `BigDecimal`, and `EnumSet` unless every target runtime
+- Avoid Java-specific types like `Optional`, `BigDecimal`, and `EnumSet` unless every target language
   has an agreed mapping.
 - See [Type Mapping Guide](../../specification/xlang_type_mapping.md) for the complete
   compatibility matrix.
@@ -248,7 +248,7 @@ Xlang mode has additional overhead compared to Java native mode:
 
 1. Use explicit type IDs or namespace/type names for every user type.
 2. Keep compatible mode for independently deployed services.
-3. Test payloads through every runtime before relying on a schema in production.
+3. Test payloads through every peer before relying on a schema in production.
 4. Use native serialization for Java-only traffic that needs Java-specific object behavior.
 
 ## Troubleshooting

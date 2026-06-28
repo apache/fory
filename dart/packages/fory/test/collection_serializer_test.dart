@@ -339,23 +339,6 @@ void main() {
         _expectNumericContainerEqual(roundTrip, value);
       }
     });
-
-    test('enforces maxCollectionSize for list set and map', () {
-      final fory = Fory(maxCollectionSize: 2);
-
-      expect(
-        () => fory.serialize(<Object?>[1, 2, 3]),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        () => fory.serialize(<Object?>{1, 2, 3}),
-        throwsA(isA<StateError>()),
-      );
-      expect(
-        () => fory.serialize(<Object?, Object?>{'a': 1, 'b': 2, 'c': 3}),
-        throwsA(isA<StateError>()),
-      );
-    });
   });
 }
 

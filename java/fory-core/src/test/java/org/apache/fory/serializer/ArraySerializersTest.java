@@ -98,7 +98,12 @@ public class ArraySerializersTest extends ForyTestBase {
 
   @Test
   public void testDedicatedObjectArraySerializersAreRetained() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     assertTrue(
         (Object) fory.getSerializer(Object[].class)
             instanceof ArraySerializers.ObjectArraySerializer);
@@ -143,7 +148,8 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(xlang)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     if (fory1.getConfig().isMetaShareEnabled()) {
@@ -203,18 +209,18 @@ public class ArraySerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testObjectArrayReadRejectsOversizedElementCount() {
+  public void testObjectArrayReadRequiresBodyByte() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
-            .withMaxCollectionSize(1)
+            .withCompatible(false)
             .build();
     assertThrows(
-        DeserializationException.class, () -> readObjectArrayPayload(fory, Object[].class, 2));
+        IndexOutOfBoundsException.class, () -> readObjectArrayBody(fory, Object[].class, 2));
     assertThrows(
-        DeserializationException.class, () -> readObjectArrayPayload(fory, String[].class, 2));
+        IndexOutOfBoundsException.class, () -> readObjectArrayBody(fory, String[].class, 2));
   }
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
@@ -226,7 +232,8 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(xlang)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     if (fory1.getConfig().isMetaShareEnabled()) {
@@ -266,7 +273,8 @@ public class ArraySerializersTest extends ForyTestBase {
             Fory.builder()
                 .withXlang(xlang)
                 .withRefTracking(referenceTracking)
-                .requireClassRegistration(false);
+                .requireClassRegistration(false)
+                .withCompatible(xlang);
     Fory fory1 = builder.get().build();
     Fory fory2 = builder.get().build();
     testPrimitiveArray(fory1, fory2);
@@ -301,50 +309,20 @@ public class ArraySerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testPrimitiveArrayReadRejectsOversizedBinaryPayload() {
-    Fory fory =
-        Fory.builder()
-            .withXlang(false)
-            .withMaxBinarySize(4)
-            .withIntArrayCompressed(true)
-            .withLongArrayCompressed(true)
-            .build();
-    for (Class<?> arrayType :
-        new Class<?>[] {
-          boolean[].class,
-          byte[].class,
-          char[].class,
-          short[].class,
-          int[].class,
-          long[].class,
-          float[].class,
-          double[].class
-        }) {
-      assertThrows(
-          DeserializationException.class,
-          () -> readPrimitiveArrayPayload(fory, arrayType, 8, false));
-    }
-    assertThrows(
-        DeserializationException.class,
-        () -> readPrimitiveArrayPayload(fory, byte[].class, 5, true));
-  }
-
-  @Test
-  public void testPrimitiveArrayReadRejectsUnalignedBinaryPayload() {
-    Fory fory = Fory.builder().withXlang(false).withMaxBinarySize(64).build();
+  public void testPrimitiveArrayReadRejectsUnalignedBinaryBody() {
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     for (Class<?> arrayType :
         new Class<?>[] {
           char[].class, short[].class, int[].class, long[].class, float[].class, double[].class
         }) {
       assertThrows(
-          DeserializationException.class,
-          () -> readPrimitiveArrayPayload(fory, arrayType, 3, false));
+          DeserializationException.class, () -> readPrimitiveArrayBody(fory, arrayType, 3, false));
     }
   }
 
   @Test
-  public void testPrimitiveArrayReadRejectsTruncatedPayload() {
-    Fory fory = Fory.builder().withXlang(false).withMaxBinarySize(64).build();
+  public void testPrimitiveArrayReadRejectsTruncatedBody() {
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Class<?>[] arrayTypes =
         new Class<?>[] {
           boolean[].class,
@@ -362,32 +340,33 @@ public class ArraySerializersTest extends ForyTestBase {
       int byteSize = byteSizes[i];
       assertThrows(
           IndexOutOfBoundsException.class,
-          () -> readTruncatedPrimitiveArrayPayload(fory, arrayType, byteSize));
+          () -> readTruncatedPrimitiveArrayBody(fory, arrayType, byteSize));
     }
   }
 
   @Test
-  public void testPrimitiveArrayReadRejectsNegativeDecodedBinaryPayload() {
-    Fory fixedWidthFory = Fory.builder().withXlang(false).build();
+  public void testPrimitiveArrayReadRejectsNegativeDecodedBinaryBody() {
+    Fory fixedWidthFory = Fory.builder().withXlang(false).withCompatible(false).build();
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveArrayRawPayload(fixedWidthFory, char[].class));
+        () -> readPrimitiveArrayRawBody(fixedWidthFory, char[].class));
 
     Fory compressedFory =
         Fory.builder()
             .withXlang(false)
             .withIntArrayCompressed(true)
             .withLongArrayCompressed(true)
+            .withCompatible(false)
             .build();
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveArrayRawPayload(compressedFory, int[].class));
+        () -> readPrimitiveArrayRawBody(compressedFory, int[].class));
     assertThrows(
         DeserializationException.class,
-        () -> readPrimitiveArrayRawPayload(compressedFory, long[].class));
+        () -> readPrimitiveArrayRawBody(compressedFory, long[].class));
   }
 
-  private static Object readPrimitiveArrayPayload(
+  private static Object readPrimitiveArrayBody(
       Fory fory, Class<?> arrayType, int byteSize, boolean outOfBand) {
     ReadContext readContext = fory.getReadContext();
     if (outOfBand) {
@@ -403,7 +382,7 @@ public class ArraySerializersTest extends ForyTestBase {
     return fory.getSerializer(arrayType).read(readContext);
   }
 
-  private static Object readTruncatedPrimitiveArrayPayload(
+  private static Object readTruncatedPrimitiveArrayBody(
       Fory fory, Class<?> arrayType, int byteSize) {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
@@ -413,7 +392,7 @@ public class ArraySerializersTest extends ForyTestBase {
     return fory.getSerializer(arrayType).read(readContext);
   }
 
-  private static Object readPrimitiveArrayRawPayload(Fory fory, Class<?> arrayType) {
+  private static Object readPrimitiveArrayRawBody(Fory fory, Class<?> arrayType) {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
@@ -421,7 +400,7 @@ public class ArraySerializersTest extends ForyTestBase {
     return fory.getSerializer(arrayType).read(readContext);
   }
 
-  private static Object readObjectArrayPayload(Fory fory, Class<?> arrayType, int numElements) {
+  private static Object readObjectArrayBody(Fory fory, Class<?> arrayType, int numElements) {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     buffer.writeVarUInt32Small7(numElements);
@@ -443,7 +422,8 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(false)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     AtomicInteger counter = new AtomicInteger(0);
@@ -463,7 +443,8 @@ public class ArraySerializersTest extends ForyTestBase {
         Fory.builder()
             .withXlang(false)
             .withRefTracking(referenceTracking)
-            .requireClassRegistration(false);
+            .requireClassRegistration(false)
+            .withCompatible(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
     AtomicInteger counter = new AtomicInteger(0);
@@ -531,6 +512,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withCodegen(enableCodegen)
+            .withCompatible(false)
             .build();
     Object[] arr = new String[] {"a", "b"};
     serDeCheck(fory, arr);
@@ -590,6 +572,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withLongArrayCompressed(true)
             .withLongCompressed(Int64Encoding.VARINT)
+            .withCompatible(false)
             .build();
 
     // Test empty array
@@ -639,6 +622,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withLongArrayCompressed(false)
+            .withCompatible(false)
             .build();
 
     // Create a Fory instance with variable-length encoding (compressLongArray enabled)
@@ -648,6 +632,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withLongArrayCompressed(true)
             .withLongCompressed(Int64Encoding.VARINT)
+            .withCompatible(false)
             .build();
 
     // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)
@@ -694,8 +679,8 @@ public class ArraySerializersTest extends ForyTestBase {
     assertTrue(
         variableSize < fixedSize,
         String.format(
-            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
-                + "for array with many small values",
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d"
+                + " bytes) for array with many small values",
             variableSize, fixedSize));
 
     // Verify significant space savings (at least 50% reduction for small values)
@@ -743,8 +728,8 @@ public class ArraySerializersTest extends ForyTestBase {
     assertTrue(
         variableSizeMedium < fixedSizeMedium,
         String.format(
-            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
-                + "for array with medium values",
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d"
+                + " bytes) for array with medium values",
             variableSizeMedium, fixedSizeMedium));
   }
 
@@ -760,6 +745,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withIntArrayCompressed(true)
+            .withCompatible(false)
             .build();
 
     // Test empty array
@@ -857,6 +843,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withIntArrayCompressed(false)
+            .withCompatible(false)
             .build();
 
     // Create a Fory instance with variable-length encoding (compressIntArray enabled)
@@ -865,6 +852,7 @@ public class ArraySerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withIntArrayCompressed(true)
+            .withCompatible(false)
             .build();
 
     // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)
@@ -911,8 +899,8 @@ public class ArraySerializersTest extends ForyTestBase {
     assertTrue(
         variableSize < fixedSize,
         String.format(
-            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
-                + "for array with many small values",
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d"
+                + " bytes) for array with many small values",
             variableSize, fixedSize));
 
     // Verify significant space savings (at least 50% reduction for small values)
@@ -960,8 +948,8 @@ public class ArraySerializersTest extends ForyTestBase {
     assertTrue(
         variableSizeMedium < fixedSizeMedium,
         String.format(
-            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
-                + "for array with medium values",
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d"
+                + " bytes) for array with medium values",
             variableSizeMedium, fixedSizeMedium));
   }
 }

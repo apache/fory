@@ -41,7 +41,8 @@ class ArraySerializerGenerator extends CollectionSerializerGenerator {
   }
 
   newCollection(lenAccessor: string): string {
-    return `new Array(${lenAccessor})`;
+    void lenAccessor;
+    return `[]`;
   }
 
   putAccessor(result: string, item: string, index: string): string {

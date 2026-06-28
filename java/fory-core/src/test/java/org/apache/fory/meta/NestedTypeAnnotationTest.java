@@ -440,17 +440,16 @@ public class NestedTypeAnnotationTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void compatibleDifferentFieldMetadataUsesRemoteNestedMetadata(boolean enableCodegen) {
+  public void compatibleNestedScalarMismatchFails(boolean enableCodegen) {
     Fory writer = xlangFory(true, enableCodegen);
     writer.register(RemoteNestedField.class, 716);
     Fory reader = xlangFory(true, enableCodegen);
     reader.register(LocalDifferentNestedField.class, 716);
 
     RemoteNestedField value = remoteNestedField();
-    LocalDifferentNestedField copy = (LocalDifferentNestedField) serDeObject(writer, reader, value);
-    Assert.assertEquals(copy.id, value.id);
-    Assert.assertEquals(copy.dropped, value.dropped);
-    Assert.assertEquals(copy.tail, value.tail);
+    Assert.expectThrows(
+        org.apache.fory.exception.DeserializationException.class,
+        () -> serDeObject(writer, reader, value));
   }
 
   private static Fory xlangFory(boolean compatible, boolean enableCodegen) {

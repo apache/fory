@@ -229,22 +229,20 @@ public Set<Status> statuses;
 **Symptom:** Deserialization fails with an error such as `class version hash mismatch`,
 `schema version mismatch`, `struct version mismatch`, or `hash mismatch`.
 
-**Cause:** The writer and reader are using schema-consistent mode while their struct/class
-schemas differ. In xlang mode this can happen even when each language made a reasonable local
-change, because field names, type annotations, field IDs, nullability, and generated schema
-metadata must still align exactly.
+**Cause:** The writer and reader have disabled compatible mode while their struct/class schemas
+differ. In xlang mode this can happen even when each language made a reasonable local change,
+because field names, type annotations, field IDs, nullability, and generated schema metadata must
+still align exactly.
 
 **Solution:**
 
-1. Align the schemas carefully on every service and language: field names or field IDs,
-   field order where schema-consistent mode requires it, type annotations, nullability,
-   and type registration IDs/names.
-2. Xlang mode defaults to compatible mode in current runtimes. If a peer has explicitly selected
-   schema-consistent mode, remove that override or enable compatible mode on every peer.
+1. Align the schemas carefully on every service and language: field names or field IDs, field order,
+   type annotations, nullability, and type registration IDs/names.
+2. Xlang mode defaults to compatible mode in current implementations. If a peer has explicitly selected
+   `compatible=false`, remove that override or enable compatible mode on every peer.
    Compatible mode writes extra schema metadata, so payloads are larger, but it is recommended
    for xlang services that may evolve independently.
-3. Use schema-consistent mode only when schemas do not change, or when all services deploy the
-   schema change at the same time.
+3. Set `compatible=false` only when every reader and writer always uses the same schema. For xlang payloads, do this only after verifying that every language uses that schema, or when native types are generated from Fory schema IDL.
 
 ### Serialization Format Changed
 

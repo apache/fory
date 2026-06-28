@@ -46,6 +46,12 @@ public protocol Serializer {
     static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo?
     static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> Self
     static func foryFieldsInfo(trackRef: Bool) -> [TypeMeta.FieldInfo]
+    /// Builds field metadata after all type registrations are visible to the resolver.
+    /// Serialization and deserialization hot paths must use finalized TypeInfo metadata instead.
+    static func foryFieldsInfo(
+        trackRef: Bool,
+        resolveFieldTypeID: (Any.Type) throws -> TypeId
+    ) throws -> [TypeMeta.FieldInfo]
     func foryWriteTypeInfo(_ context: WriteContext) throws
 }
 
@@ -71,6 +77,14 @@ public extension Serializer {
     @inlinable
     static func foryFieldsInfo(trackRef _: Bool) -> [TypeMeta.FieldInfo] {
         []
+    }
+
+    @inlinable
+    static func foryFieldsInfo(
+        trackRef: Bool,
+        resolveFieldTypeID _: (Any.Type) throws -> TypeId
+    ) throws -> [TypeMeta.FieldInfo] {
+        foryFieldsInfo(trackRef: trackRef)
     }
 
     @inlinable
@@ -209,13 +223,13 @@ public extension Serializer {
             guard typeInfo.typeDefBytes != nil else {
                 throw ForyError.invalidData("missing compatible type definition for \(typeInfo.typeID)")
             }
-            context.writeTypeMeta(typeInfo)
+            try context.writeTypeMeta(typeInfo)
         case .namedEnum, .namedStruct, .namedExt, .namedUnion:
             if context.compatible {
                 guard typeInfo.typeDefBytes != nil else {
                     throw ForyError.invalidData("missing compatible type definition for \(typeInfo.typeID)")
                 }
-                context.writeTypeMeta(typeInfo)
+                try context.writeTypeMeta(typeInfo)
             } else {
                 try writeMetaString(
                     context: context,

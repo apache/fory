@@ -96,14 +96,18 @@ def format_tick(value: float, _position) -> str:
     return format_throughput_tick(value, _position)
 
 
-def format_int(value: float) -> str:
-    return f"{int(round(value)):,}"
+def format_int(value) -> str:
+    return f"{int(round(value)):,}" if value is not None and value > 0 else "N/A"
 
 
-def fastest_entry(values: dict[str, float]) -> str:
-    positive = {serializer: value for serializer, value in values.items() if value > 0}
+def fastest_entry(values: dict) -> str:
+    positive = {
+        serializer: value
+        for serializer, value in values.items()
+        if value is not None and value > 0
+    }
     if not positive:
-        return "n/a"
+        return "N/A"
     ranked = sorted(positive.items(), key=lambda entry: entry[1], reverse=True)
     best_serializer, best_value = ranked[0]
     if len(ranked) == 1:
@@ -236,7 +240,7 @@ def write_report(payload: dict, results: dict, output_dir: str):
                 continue
             for operation in ["serialize", "deserialize"]:
                 values = {
-                    serializer: operations.get(operation, {}).get(serializer, 0.0)
+                    serializer: operations.get(operation, {}).get(serializer)
                     for serializer in SERIALIZERS
                 }
                 handle.write(
@@ -254,8 +258,11 @@ def write_report(payload: dict, results: dict, output_dir: str):
             sizes = payload["sizes"].get(data_type)
             if sizes is None:
                 continue
+            fory_size = sizes.get("fory", "N/A")
+            protobuf_size = sizes.get("protobuf", "N/A")
+            json_size = sizes.get("json", "N/A")
             handle.write(
-                f"| {DISPLAY_NAMES[data_type]} | {sizes['fory']} | {sizes['protobuf']} | {sizes['json']} |\n"
+                f"| {DISPLAY_NAMES[data_type]} | {fory_size} | {protobuf_size} | {json_size} |\n"
             )
 
     format_markdown_with_prettier(report_path)

@@ -1879,22 +1879,29 @@ public abstract class XlangTestBase extends ForyTestBase {
     buffer = MemoryBuffer.newHeapBuffer(256);
     nullableListFory.serialize(buffer, nullableListWithoutNulls);
     byte[] nullableListWithoutNullsPayload = buffer.getBytes(0, buffer.writerIndex());
-    XlangCompatibleInt32ArrayField nullableListWithoutNullsArray =
+    XlangCompatibleInt32ArrayField nullableArrayResult =
         (XlangCompatibleInt32ArrayField)
             arrayFory.deserialize(MemoryUtils.wrap(nullableListWithoutNullsPayload));
-    Assert.assertEquals(nullableListWithoutNullsArray.values, new int[] {1, 2, 3});
-
-    XlangCompatibleNullableInt32ListField nullableListValue =
-        newCompatibleNullableInt32ListField(1, null, 3);
-    buffer = MemoryBuffer.newHeapBuffer(256);
-    nullableListFory.serialize(buffer, nullableListValue);
-    byte[] nullablePayload = buffer.getBytes(0, buffer.writerIndex());
-    Assert.expectThrows(
-        DeserializationException.class,
-        () -> arrayFory.deserialize(MemoryUtils.wrap(nullablePayload)));
+    assertIntArrayEquals(nullableArrayResult.values, 1, 2, 3);
     ctx =
         prepareExecution(
-            "test_list_array_compatible_nullable_list_to_array_error", nullablePayload);
+            "test_list_array_compatible_list_to_array", nullableListWithoutNullsPayload);
+    runPeer(ctx);
+    XlangCompatibleInt32ArrayField peerNullableArrayResult =
+        (XlangCompatibleInt32ArrayField) arrayFory.deserialize(readBuffer(ctx.dataFile()));
+    assertIntArrayEquals(peerNullableArrayResult.values, 1, 2, 3);
+
+    XlangCompatibleNullableInt32ListField nullableListWithNull =
+        newCompatibleNullableInt32ListField(1, null, 3);
+    buffer = MemoryBuffer.newHeapBuffer(256);
+    nullableListFory.serialize(buffer, nullableListWithNull);
+    byte[] nullableListWithNullPayload = buffer.getBytes(0, buffer.writerIndex());
+    Assert.expectThrows(
+        DeserializationException.class,
+        () -> arrayFory.deserialize(MemoryUtils.wrap(nullableListWithNullPayload)));
+    ctx =
+        prepareExecution(
+            "test_list_array_compatible_nullable_list_to_array_error", nullableListWithNullPayload);
     runPeer(ctx);
     Path nullableDataFile = ctx.dataFile();
     Assert.expectThrows(

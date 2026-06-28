@@ -64,7 +64,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<Zoo>(102)?;
@@ -86,7 +86,7 @@ assert_eq!(decoded.star_animal.speak(), "Woof!");
 ## Serializing dyn Any Trait Objects
 
 Apache Fory™ supports serializing `Box<dyn Any>`, `Rc<dyn Any>`, and
-`Arc<dyn Any + Send + Sync>` for runtime type dispatch:
+`Arc<dyn Any + Send + Sync>` for dynamic type dispatch:
 
 **Key points:**
 
@@ -188,7 +188,7 @@ struct AnimalShelter {
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fory = Fory::builder().xlang(false).compatible(true).build();
+let mut fory = Fory::builder().xlang(false).build();
 fory.register::<Dog>(100)?;
 fory.register::<Cat>(101)?;
 fory.register::<AnimalShelter>(102)?;
@@ -256,7 +256,7 @@ assert_eq!(unwrapped.name(), "Buddy");
 ## Best Practices
 
 1. **Use `register_trait_type!`** to register all trait implementations
-2. **Enable compatible mode** for trait objects: `.compatible(true)`
+2. **Keep compatible mode enabled** for trait objects
 3. **Register all concrete types** before serialization
 4. **Prefer dyn Any** for simpler standalone serialization
 

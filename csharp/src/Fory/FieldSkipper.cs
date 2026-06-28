@@ -319,8 +319,8 @@ public static class FieldSkipper
 
     private static void SkipPackedArray(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        context.Reader.Skip(payloadSize);
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.Skip(byteSize);
     }
 
     private static void SkipListOrSet(ReadContext context, TypeMetaFieldType fieldType)

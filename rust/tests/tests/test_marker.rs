@@ -39,7 +39,7 @@ struct StructWithPhantom {
 
 #[test]
 fn test_struct_with_phantom_data() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithPhantom>(100).unwrap();
 
     let value = StructWithPhantom {
@@ -63,7 +63,7 @@ struct StructWithMultiplePhantom {
 
 #[test]
 fn test_struct_with_multiple_phantom_data() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithMultiplePhantom>(101).unwrap();
 
     let value = StructWithMultiplePhantom {
@@ -93,7 +93,7 @@ struct OuterWithPhantom {
 
 #[test]
 fn test_nested_struct_with_phantom_data() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<InnerWithPhantom>(102).unwrap();
     fory.register::<OuterWithPhantom>(103).unwrap();
 

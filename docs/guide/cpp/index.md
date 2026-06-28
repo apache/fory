@@ -63,7 +63,7 @@ include(FetchContent)
 FetchContent_Declare(
     fory
     GIT_REPOSITORY https://github.com/apache/fory.git
-    GIT_TAG        v1.1.0
+    GIT_TAG        v1.3.0
     SOURCE_SUBDIR  cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -93,11 +93,11 @@ module(
 
 bazel_dep(name = "rules_cc", version = "0.1.1")
 
-bazel_dep(name = "fory", version = "1.1.0")
+bazel_dep(name = "fory", version = "1.3.0")
 git_override(
     module_name = "fory",
     remote = "https://github.com/apache/fory.git",
-    commit = "v1.1.0",  # Or use a specific commit hash for reproducibility
+    commit = "v1.3.0",  # Or use a specific commit hash for reproducibility
 )
 ```
 
@@ -129,7 +129,7 @@ bazel run //:my_app
 For local development, you can use `local_path_override` instead:
 
 ```bazel
-bazel_dep(name = "fory", version = "1.1.0")
+bazel_dep(name = "fory", version = "1.3.0")
 local_path_override(
     module_name = "fory",
     path = "/path/to/fory",
@@ -220,9 +220,9 @@ struct Derived : Base {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with other Fory runtimes. Xlang mode is the default C++ wire mode, and C++ examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default C++ wire mode, and C++ examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for C++-only traffic. Native mode is selected with `.xlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and keeps C++ object serialization on the C++ runtime path. It is optimized for C++ types and avoids portable xlang type-mapping constraints when the payload never leaves C++.
+Use native mode for C++-only traffic. Native mode is selected with `.xlang(false)` and keeps C++ object serialization in C++-native form. It is optimized for C++ types and avoids portable xlang type-mapping constraints when the payload never leaves C++. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same C++ schema and you want faster serialization and smaller size.
 
 See [Xlang Serialization](xlang-serialization.md) for C++ xlang registration and interoperability rules, and [Native Serialization](native-serialization.md) for C++-only payloads.
 

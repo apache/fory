@@ -41,7 +41,7 @@ impl Default for NodeWithCustomDefault {
 
 #[test]
 fn test_no_default_conflict() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<NodeWithCustomDefault>(1).unwrap();
 
     let node = NodeWithCustomDefault {
@@ -80,7 +80,7 @@ impl Default for StatusWithCustomDefault {
 
 #[test]
 fn test_enum_no_default_conflict() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StatusWithCustomDefault>(2).unwrap();
 
     let status = StatusWithCustomDefault::Active;
@@ -105,7 +105,7 @@ struct StructWithGeneratedDefault {
 
 #[test]
 fn test_generate_default_struct() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithGeneratedDefault>(3).unwrap();
 
     let data = StructWithGeneratedDefault { value: 42 };
@@ -129,7 +129,7 @@ enum EnumWithGeneratedDefault {
 
 #[test]
 fn test_generate_default_enum() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<EnumWithGeneratedDefault>(4).unwrap();
 
     let data = EnumWithGeneratedDefault::Second;
@@ -157,7 +157,7 @@ impl Default for StructWithoutGeneratedDefault {
 
 #[test]
 fn test_generate_default_false() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<StructWithoutGeneratedDefault>(5).unwrap();
 
     let data = StructWithoutGeneratedDefault { value: 42 };

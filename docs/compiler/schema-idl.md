@@ -888,8 +888,8 @@ message Person [id=100] {
 ### Rules
 
 - Case IDs must be non-negative and unique within the union
-- Runtime unknown-case markers only select the carrier and do not add entries to
-  the schema case table
+- Language-specific unknown-case markers only select the carrier and do not add
+  entries to the schema case table
 - Cases cannot be `optional` or `ref`
 - Union cases support field options for payload metadata, such as scalar encoding
   and collection element metadata
@@ -907,7 +907,9 @@ union_field := ['repeated'] field_type IDENTIFIER '=' INTEGER [field_options] ';
 
 Services define RPC method contracts in Fory IDL. They are optional: schemas
 with services still generate the normal data model types, and gRPC service code
-is generated only when the compiler is run with `--grpc` for Java or Python.
+is generated only when the compiler is run with `--grpc` for supported language
+outputs such as Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript.
+JavaScript browser gRPC-Web clients are generated with `--grpc-web`.
 
 ```protobuf
 message GetPetRequest [id=200] {
@@ -947,9 +949,13 @@ service PetDirectory {
 - Enum, primitive, collection, map, and array types are not valid direct RPC
   request or response types. Wrap those values in a message when they are part
   of a service contract.
-- The generated Java and Python gRPC companions use Fory serialization for each
-  RPC payload. Applications that compile or run those companions provide their
-  own grpc-java or `grpcio` dependency.
+- The generated gRPC companions use Fory serialization for each RPC payload.
+  Applications that compile or run those companions provide their own gRPC
+  dependency, such as grpc-java, grpc-kotlin, `grpcio`, grpc-go, Rust `tonic`
+  and `bytes`, Scala grpc-java APIs, `@grpc/grpc-js`, `grpc-web`, C#
+  `Grpc.Core.Api` plus a server or client package, or Dart `package:grpc`. Python
+  companions use `grpc.aio` by default and can be generated in sync mode with
+  `--grpc-python-mode=sync`.
 
 **Grammar:**
 
@@ -1054,9 +1060,9 @@ message Node {
 | Go                    | `Parent Node`  | `Parent *Node` with `fory:"ref"`           |
 | Rust                  | `parent: Node` | `parent: Arc<Node>`                        |
 | C++                   | `Node parent`  | `std::shared_ptr<Node> parent`             |
-| C#                    | `Node parent`  | `Node? parent` with runtime ref tracking   |
+| C#                    | `Node parent`  | `Node? parent` with reference tracking     |
 | JavaScript/TypeScript | `parent: Node` | `parent: Node` (no ref distinction)        |
-| Swift                 | `Node parent`  | class reference with runtime ref tracking  |
+| Swift                 | `Node parent`  | class reference with reference tracking    |
 | Dart                  | `Node parent`  | `Node parent` with `@ForyField(ref: true)` |
 | Scala                 | `parent: Node` | `@Ref parent: Node`                        |
 | Kotlin                | `parent: Node` | `@Ref parent: Node?`                       |
@@ -1161,7 +1167,7 @@ reference tracking, while `list<T>` and `array<T>` choose collection schema kind
 (see [Field Modifiers](#field-modifiers)).
 
 The compact tables in this section show common generated carriers. For the
-complete 1.0 runtime surface, including C#, Swift, Dart, Scala, and Kotlin, see
+complete 1.0 language support surface, including C#, Swift, Dart, Scala, and Kotlin, see
 the [xlang type-mapping specification](../specification/xlang_type_mapping.md).
 
 ### Primitive Types
@@ -1187,7 +1193,7 @@ the [xlang type-mapping specification](../specification/xlang_type_mapping.md).
 | `timestamp` | Date and time with timezone                    | Variable |
 | `duration`  | Duration                                       | Variable |
 | `decimal`   | Decimal value                                  | Variable |
-| `any`       | Dynamic value (runtime type)                   | Variable |
+| `any`       | Dynamic value (concrete type)                  | Variable |
 
 #### Boolean
 
@@ -1340,15 +1346,15 @@ Underscore spellings for integer encoding are not FDL type names.
 
 #### Any
 
-| Language              | Type                         | Notes                |
-| --------------------- | ---------------------------- | -------------------- |
-| Java                  | `Object`                     | Runtime type written |
-| Python                | `Any`                        | Runtime type written |
-| Go                    | `any`                        | Runtime type written |
-| Rust                  | `Arc<dyn Any + Send + Sync>` | Runtime type written |
-| C++                   | `std::any`                   | Runtime type written |
-| JavaScript/TypeScript | `any`                        | Runtime type written |
-| Dart                  | `Object?`                    | Runtime type written |
+| Language              | Type                         | Notes                                |
+| --------------------- | ---------------------------- | ------------------------------------ |
+| Java                  | `Object`                     | Concrete value type metadata written |
+| Python                | `Any`                        | Concrete value type metadata written |
+| Go                    | `any`                        | Concrete value type metadata written |
+| Rust                  | `Arc<dyn Any + Send + Sync>` | Concrete value type metadata written |
+| C++                   | `std::any`                   | Concrete value type metadata written |
+| JavaScript/TypeScript | `any`                        | Concrete value type metadata written |
+| Dart                  | `Object?`                    | Concrete value type metadata written |
 
 **Example:**
 
@@ -1383,12 +1389,12 @@ message Envelope [id=122] {
 **Notes:**
 
 - `any` always writes a null flag (same as `nullable`) because values may be empty.
-- Allowed runtime values are limited to `bool`, `string`, `enum`, `message`, and `union`.
+- Allowed dynamic values are limited to `bool`, `string`, `enum`, `message`, and `union`.
   Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
   message or use explicit fields instead.
 - `ref` is not allowed on `any` fields (including list/map values). Wrap `any` in a message
   if you need reference tracking.
-- The runtime type must be registered in the target language schema/IDL registration; unknown
+- The concrete type must be registered in the target language schema/IDL registration; unknown
   types fail to deserialize.
 
 ### Named Types
@@ -1478,10 +1484,10 @@ message Config {
 
 **Language Mapping:**
 
-| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                              | JavaScript/TypeScript | Dart                |
-| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | -------------------------------- | --------------------- | ------------------- |
-| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::map<std::string, int32_t>` | `Map<string, number>` | `Map<String, int>`  |
-| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::map<std::string, User>`    | `Map<string, User>`   | `Map<String, User>` |
+| Fory IDL             | Java                   | Python            | Go                 | Rust                    | C++                                        | JavaScript/TypeScript | Dart                |
+| -------------------- | ---------------------- | ----------------- | ------------------ | ----------------------- | ------------------------------------------ | --------------------- | ------------------- |
+| `map<string, int32>` | `Map<String, Integer>` | `Dict[str, int]`  | `map[string]int32` | `HashMap<String, i32>`  | `std::unordered_map<std::string, int32_t>` | `Map<string, number>` | `Map<String, int>`  |
+| `map<string, User>`  | `Map<String, User>`    | `Dict[str, User]` | `map[string]User`  | `HashMap<String, User>` | `std::unordered_map<std::string, User>`    | `Map<string, User>`   | `Map<String, User>` |
 
 **Key Type Restrictions:**
 

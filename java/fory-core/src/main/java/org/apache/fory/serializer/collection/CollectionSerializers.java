@@ -49,7 +49,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.collection.CollectionSnapshot;
-import org.apache.fory.config.Config;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
@@ -87,21 +86,16 @@ public class CollectionSerializers {
     }
   }
 
-  private static void throwBinarySizeLimitExceeded(long size, int maxBinarySize) {
-    throw new DeserializationException(
-        "Binary payload size " + size + " exceeds max binary size " + maxBinarySize);
-  }
-
   private static void throwNegativeBinarySize(int size) {
-    throw new DeserializationException("Binary payload size must be non-negative: " + size);
+    throw new DeserializationException("Binary body size must be non-negative: " + size);
   }
 
   private static void throwUnalignedBinarySize(int size, int elemSize) {
     throw new DeserializationException(
-        "Binary payload size " + size + " is not aligned to element size " + elemSize);
+        "Binary body size " + size + " is not aligned to element size " + elemSize);
   }
 
-  private static void checkBoundedQueueCapacity(Config config, int numElements, int capacity) {
+  private static void checkBoundedQueueCapacity(int numElements, int capacity) {
     // Keep these as direct primitive branches. This collection read path is JIT-sensitive; using
     // Preconditions.checkArgument here adds helper/varargs overhead and hurts inlining.
     if (numElements < 0) {
@@ -114,11 +108,6 @@ public class CollectionSerializers {
       throw new DeserializationException(
           "Queue capacity " + capacity + " is smaller than serialized size " + numElements);
     }
-    int maxCollectionSize = config.maxCollectionSize();
-    if (capacity > maxCollectionSize) {
-      throw new DeserializationException(
-          "Queue capacity " + capacity + " exceeds max collection size " + maxCollectionSize);
-    }
   }
 
   private static UnsupportedOperationException unsupportedBoundedQueueWrite(Class<?> type) {
@@ -126,7 +115,7 @@ public class CollectionSerializers {
         "Serializing or copying "
             + type.getName()
             + " requires access to its exact capacity field. This runtime can deserialize existing "
-            + "payloads for this type, but cannot serialize or copy it without JDK concurrent "
+            + "wire bodies for this type, but cannot serialize or copy it without JDK concurrent "
             + "field access.");
   }
 
@@ -349,7 +338,7 @@ public class CollectionSerializers {
         int numElements = readCollectionSize(readContext.getBuffer());
         if (numElements != 0) {
           throw new DeserializationException(
-              "Empty list payload must have zero elements but got " + numElements);
+              "Empty list body must have zero elements but got " + numElements);
         }
       }
       return Collections.EMPTY_LIST;
@@ -622,7 +611,7 @@ public class CollectionSerializers {
       } else {
         if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
           throw new UnsupportedOperationException(
-              "This runtime cannot read SetFromMap backing-map payloads that require hidden JDK field "
+              "This runtime cannot read SetFromMap backing-map bodies that require hidden JDK field "
                   + "restoration");
         }
         Map<?, Boolean> map = (Map<?, Boolean>) mapSerializer.read(readContext);
@@ -631,7 +620,7 @@ public class CollectionSerializers {
           SetFromMapAccess.restore(set, map);
         } catch (Throwable e) {
           throw new UnsupportedOperationException(
-              "This runtime cannot restore SetFromMap backing-map payloads through final JDK fields",
+              "This runtime cannot restore SetFromMap backing-map bodies through final JDK fields",
               e);
         }
         setNumElements(0);
@@ -813,11 +802,9 @@ public class CollectionSerializers {
   }
 
   public static class BitSetSerializer extends Serializer<BitSet> {
-    private final int maxBinarySize;
 
     public BitSetSerializer(TypeResolver typeResolver, Class<BitSet> type) {
       super(typeResolver.getConfig(), type);
-      maxBinarySize = typeResolver.getConfig().maxBinarySize();
     }
 
     @Override
@@ -842,11 +829,9 @@ public class CollectionSerializers {
       if ((size & 7) != 0) {
         throwUnalignedBinarySize(size, 8);
       }
-      if (size > maxBinarySize) {
-        throwBinarySizeLimitExceeded(size, maxBinarySize);
-      }
+      buffer.checkReadableBytes(size);
       long[] values = new long[size >>> 3];
-      buffer.readInt64ArrayPayload(values, size);
+      buffer.readInt64ArrayBytes(values, size);
       return BitSet.valueOf(values);
     }
   }
@@ -941,7 +926,8 @@ public class CollectionSerializers {
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
-      checkBoundedQueueCapacity(config, numElements, capacity);
+      checkBoundedQueueCapacity(numElements, capacity);
+      buffer.checkReadableBytes(capacity);
       ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;
@@ -1007,7 +993,7 @@ public class CollectionSerializers {
       int numElements = readCollectionSize(buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
-      checkBoundedQueueCapacity(config, numElements, capacity);
+      checkBoundedQueueCapacity(numElements, capacity);
       LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;

@@ -58,14 +58,14 @@ Apache Fory™ provides blazingly fast Java object serialization with JIT compil
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-core:1.1.0")
+implementation("org.apache.fory:fory-core:1.3.0")
 ```
 
 ### JDK25+
@@ -159,20 +159,20 @@ public class Example {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with non-Java runtimes. It is the default Java wire mode, and Java examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with non-Java implementations. It is the default Java wire mode, and Java examples that use it set `.withXlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Java-only traffic. Native mode is selected with `.withXlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and owns Java-specific object behavior such as JDK serialization hooks, `Externalizable`, dynamic object graphs, object copy, and Java native-mode zero-copy buffers. It is optimized for the JVM type system and supports a broader Java object surface than xlang mode. If you are replacing JDK serialization, Kryo, FST, Hessian, or Java-only Protocol Buffers payloads, start with native mode.
+Use native mode for Java-only traffic. Native mode is selected with `.withXlang(false)` and owns Java-specific object behavior such as JDK serialization hooks, `Externalizable`, dynamic object graphs, object copy, and Java native-mode zero-copy buffers. It is optimized for the JVM type system and supports a broader Java object surface than xlang mode. Compatible mode is enabled by default. Set `.withCompatible(false)` only when every reader and writer uses the same class schema and you want faster serialization and smaller size. If you are replacing JDK serialization, Kryo, FST, Hessian, or Java-only Protocol Buffers payloads, start with native mode.
 
 See [Native Serialization](native-serialization.md) for Java-only serialization details and [Xlang Serialization](xlang-serialization.md) for Java xlang registration and interoperability rules.
 
 ## Thread Safety
 
-Fory provides two thread-safe runtime styles:
+Fory provides two thread-safe Fory instance styles:
 
 ### `buildThreadSafeFory`
 
 This is the default choice. It uses a fixed-size shared `ThreadPoolFory` sized to
-`4 * availableProcessors()` and is the preferred runtime for virtual-thread workloads:
+`4 * availableProcessors()` and is the preferred instance form for virtual-thread workloads:
 
 ```java
 ThreadSafeFory fory = Fory.builder()
@@ -203,7 +203,7 @@ System.out.println(fory.deserialize(bytes));
 Use `buildThreadSafeForyPool(poolSize)` when you want to set that fixed shared pool size
 explicitly. It eagerly creates `poolSize` `Fory` instances, keeps them in shared fixed slots, and
 then lets any caller borrow one through a thread-agnostic fast path. Calls only block when every
-pooled instance is already in use; the runtime does not key cached instances by thread identity:
+pooled instance is already in use; the pool does not key cached instances by thread identity:
 
 ```java
 ThreadSafeFory fory = Fory.builder()
@@ -230,7 +230,7 @@ ThreadSafeFory fory = Fory.builder()
   .withAsyncCompilation(true)
   .buildThreadSafeFory();
 
-// Explicit thread-local runtime
+// Explicit thread-local Fory instance
 ThreadSafeFory threadLocalFory = Fory.builder()
   .withXlang(true)
   .buildThreadLocalFory();
@@ -244,6 +244,7 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 - [Object Copy](object-copy.md) - Deep-copy Java object graphs in memory
 - [Compression](compression.md) - Integer, long, and array compression options
 - [Virtual Threads](virtual-threads.md) - Virtual-thread usage and pool sizing guidance
+- [gRPC Support](grpc-support.md) - Fory payloads over grpc-java
 - [Type Registration](type-registration.md) - Class registration and security
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers
 - [Xlang Serialization](xlang-serialization.md) - Serialize data for other languages

@@ -33,12 +33,16 @@ f := fory.New(fory.WithXlang(true))
 
 Default settings:
 
-| Option     | Default | Description                                  |
-| ---------- | ------- | -------------------------------------------- |
-| TrackRef   | false   | Reference tracking disabled                  |
-| MaxDepth   | 20      | Maximum nesting depth                        |
-| IsXlang    | true    | Xlang mode enabled                           |
-| Compatible | true    | Compatible schema-evolution metadata enabled |
+| Option                          | Default | Description                                       |
+| ------------------------------- | ------- | ------------------------------------------------- |
+| TrackRef                        | false   | Reference tracking disabled                       |
+| MaxDepth                        | 20      | Maximum nesting depth                             |
+| IsXlang                         | true    | Xlang mode enabled                                |
+| Compatible                      | true    | Compatible schema-evolution metadata enabled      |
+| MaxTypeFields                   | 512     | Max fields in one received struct metadata body   |
+| MaxTypeMetaBytes                | 4096    | Max encoded bytes in one received metadata body   |
+| MaxSchemaVersionsPerType        | 10      | Max remote metadata versions for one logical type |
+| MaxAverageSchemaVersionsPerType | 3       | Average remote metadata versions across types     |
 
 ### With Options
 
@@ -47,6 +51,10 @@ f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(10),
+    fory.WithMaxTypeFields(512),
+    fory.WithMaxTypeMetaBytes(4096),
+    fory.WithMaxSchemaVersionsPerType(10),
+    fory.WithMaxAverageSchemaVersionsPerType(3),
 )
 ```
 
@@ -57,7 +65,7 @@ f := fory.New(
 Enable reference tracking to handle circular references and shared objects:
 
 ```go
-f := fory.New(fory.WithXlang(true), fory.WithTrackRef(true))
+f := fory.New(fory.WithTrackRef(true))
 ```
 
 **When enabled:**
@@ -84,11 +92,12 @@ See [References](references.md) for details.
 
 ### WithCompatible
 
-Enable compatible mode explicitly. Xlang mode enables it by default; use this option when
-native-mode Go-only payloads need schema evolution:
+Compatible mode is enabled by default in both xlang and native mode. Set
+`WithCompatible(false)` only when every reader and writer always uses the same schema and you want
+faster serialization and smaller size:
 
 ```go
-f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f := fory.New(fory.WithCompatible(false))
 ```
 
 **When enabled:**
@@ -100,24 +109,57 @@ f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
 
 **When disabled:**
 
-- Compact serialization without field metadata
-- Faster serialization and smaller output
+- Faster serialization and smaller size
 - Fields matched by sorted order
 - Requires consistent struct definitions across all services
 
-See [Schema Evolution](schema-evolution.md) for details.
+For xlang payloads, use `WithCompatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md) for details.
 
 ### WithMaxDepth
 
 Set the maximum nesting depth to prevent stack overflow:
 
 ```go
-f := fory.New(fory.WithXlang(true), fory.WithMaxDepth(30))
+f := fory.New(fory.WithMaxDepth(30))
 ```
 
 - Default: 20
 - Protects against deeply nested, recursive structures or malicious data
 - Serialization fails with error when exceeded
+
+### WithMaxTypeFields
+
+Set the maximum fields accepted in one received remote struct metadata body:
+
+```go
+f := fory.New(fory.WithMaxTypeFields(512))
+```
+
+### WithMaxTypeMetaBytes
+
+Set the maximum encoded body bytes accepted for one received TypeDef body,
+excluding the 8-byte header and any extended-size varint:
+
+```go
+f := fory.New(fory.WithMaxTypeMetaBytes(4096))
+```
+
+### WithMaxSchemaVersionsPerType
+
+Set the maximum accepted remote metadata versions for one logical type:
+
+```go
+f := fory.New(fory.WithMaxSchemaVersionsPerType(10))
+```
+
+### WithMaxAverageSchemaVersionsPerType
+
+Set the average accepted remote metadata versions across accepted remote types.
+The effective global floor is `8192` schemas:
+
+```go
+f := fory.New(fory.WithMaxAverageSchemaVersionsPerType(3))
+```
 
 ### WithXlang
 
@@ -140,7 +182,6 @@ xlang := fory.New(fory.WithXlang(true))
 - Go-native serialization mode
 - Supports more Go-native type behavior
 - Not compatible with other language implementations
-- Defaults to schema-consistent mode unless `WithCompatible(true)` is set
 
 ## Thread Safety
 
@@ -290,13 +331,13 @@ type UserV2 struct {
     Email string  // New field
 }
 
-// Serialize with V1 in native mode plus compatible schema evolution.
-f1 := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+// Serialize with V1 in native mode. Compatible mode is the default.
+f1 := fory.New(fory.WithXlang(false))
 f1.RegisterStruct(UserV1{}, 1)
 data, _ := f1.Serialize(&UserV1{ID: 1, Name: "Alice"})
 
 // Deserialize into V2 - Email will have zero value
-f2 := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f2 := fory.New(fory.WithXlang(false))
 f2.RegisterStruct(UserV2{}, 1)
 var user UserV2
 f2.Deserialize(data, &user)
@@ -339,7 +380,7 @@ for req := range requests {
 
 5. **Set appropriate max depth**: Increase for deeply nested structures, but be aware of memory usage.
 
-6. **Use compatible mode for evolving schemas**: Enable when struct definitions may change between service versions.
+6. **Keep compatible mode for evolving schemas**: Use the default when struct definitions may change between service versions.
 
 ## Security
 
@@ -347,6 +388,8 @@ Security-related configuration:
 
 - Register only the expected structs before deserializing untrusted data.
 - Use `WithMaxDepth(...)` to reject unexpectedly deep payloads.
+- Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
+  trusted peer sends larger metadata or many schema versions.
 - Prefer concrete struct fields over broad `any` or interface-typed fields for untrusted input.
 
 ## Related Topics

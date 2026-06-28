@@ -23,7 +23,7 @@ use std::thread;
 
 #[test]
 fn test_simple_multi_thread() {
-    let fory = Arc::new(Fory::builder().xlang(false).build());
+    let fory = Arc::new(Fory::builder().xlang(false).compatible(false).build());
     let src: HashSet<_> = [41, 42, 43, 45, 46, 47].into_iter().collect();
     // serialize
     let mut handles = vec![];
@@ -60,7 +60,7 @@ fn test_struct_multi_thread() {
     struct Item1 {
         f1: i32,
     }
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Item1>(101).unwrap();
     let fory = Arc::new(fory);
     let src: HashSet<_> = [
@@ -129,7 +129,7 @@ fn test_multiple_threads_shared_fory() {
         updated_at: u64,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<UserSessionMetrics>(2)
         .expect("register UserSessionMetrics");
     let shared_fory = Arc::new(fory);

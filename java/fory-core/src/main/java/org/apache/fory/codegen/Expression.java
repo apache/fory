@@ -396,6 +396,10 @@ public interface Expression {
       return new Literal(v, PRIMITIVE_LONG_TYPE);
     }
 
+    public static Literal ofChar(char v) {
+      return new Literal(v, TypeRef.of(char.class));
+    }
+
     public static Literal ofClass(Class<?> v) {
       return new Literal(v, CLASS_TYPE);
     }
@@ -461,6 +465,9 @@ public interface Expression {
           return new ExprCode(
               FalseLiteral,
               new LiteralValue(javaType, String.format("%dL", ((Number) (value)).longValue())));
+        } else if (javaType == Character.class) {
+          return new ExprCode(
+              FalseLiteral, new LiteralValue(javaType, charLiteral(((Character) value))));
         } else if (isPrimitive(javaType)) {
           return new ExprCode(FalseLiteral, new LiteralValue(javaType, String.valueOf(value)));
         } else if (javaType == Class.class) {
@@ -475,6 +482,32 @@ public interface Expression {
         } else {
           throw new UnsupportedOperationException("Unsupported type " + javaType);
         }
+      }
+    }
+
+    private static String charLiteral(char value) {
+      switch (value) {
+        case '\b':
+          return "'\\b'";
+        case '\t':
+          return "'\\t'";
+        case '\n':
+          return "'\\n'";
+        case '\f':
+          return "'\\f'";
+        case '\r':
+          return "'\\r'";
+        case '\"':
+          return "'\\\"'";
+        case '\'':
+          return "'\\\''";
+        case '\\':
+          return "'\\\\'";
+        default:
+          if (value < 0x20 || value > 0x7e) {
+            return String.format("'\\u%04x'", (int) value);
+          }
+          return "'" + value + "'";
       }
     }
 
@@ -1764,6 +1797,64 @@ public interface Expression {
     }
   }
 
+  class ArrayValue extends Inlineable {
+    private final Expression targetArray;
+    private final Expression[] indexes;
+    private final TypeRef<?> type;
+
+    public ArrayValue(Expression targetArray, Expression... indexes) {
+      this(targetArray.type().getComponentType(), targetArray, indexes);
+    }
+
+    public ArrayValue(TypeRef<?> type, Expression targetArray, Expression... indexes) {
+      super(ofArrayList(targetArray, indexes));
+      this.targetArray = targetArray;
+      this.indexes = indexes;
+      this.type = type;
+      this.inlineCall = true;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return type;
+    }
+
+    @Override
+    public ExprCode doGenCode(CodegenContext ctx) {
+      StringBuilder codeBuilder = new StringBuilder();
+      ExprCode targetExprCode = targetArray.genCode(ctx);
+      if (StringUtils.isNotBlank(targetExprCode.code())) {
+        codeBuilder.append(targetExprCode.code()).append('\n');
+      }
+      ExprCode[] indexExprCodes = new ExprCode[indexes.length];
+      for (int i = 0; i < indexes.length; i++) {
+        ExprCode indexExprCode = indexes[i].genCode(ctx);
+        indexExprCodes[i] = indexExprCode;
+        if (StringUtils.isNotBlank(indexExprCode.code())) {
+          codeBuilder.append(indexExprCode.code()).append('\n');
+        }
+      }
+      StringBuilder value = new StringBuilder(targetExprCode.value().code());
+      for (ExprCode indexExprCode : indexExprCodes) {
+        value.append('[').append(indexExprCode.value()).append(']');
+      }
+      if (inlineCall) {
+        String code = StringUtils.isBlank(codeBuilder) ? null : codeBuilder.toString();
+        return new ExprCode(code, FalseLiteral, Code.variable(getRawType(type), value.toString()));
+      }
+      Class<?> rawType = getRawType(type);
+      String name = ctx.newName(ctx.namePrefix(rawType));
+      codeBuilder
+          .append(ctx.type(type))
+          .append(' ')
+          .append(name)
+          .append(" = ")
+          .append(value)
+          .append(';');
+      return new ExprCode(codeBuilder.toString(), FalseLiteral, Code.variable(rawType, name));
+    }
+  }
+
   class If extends AbstractExpression {
     private Expression predicate;
     private Expression trueExpr;
@@ -2042,7 +2133,7 @@ public interface Expression {
       super(target);
       this.target = target;
       Preconditions.checkArgument(
-          target.type() == PRIMITIVE_BOOLEAN_TYPE || target.type() == BOOLEAN_TYPE);
+          PRIMITIVE_BOOLEAN_TYPE.equals(target.type()) || BOOLEAN_TYPE.equals(target.type()));
     }
 
     @Override
@@ -2261,6 +2352,76 @@ public interface Expression {
 
     public LogicalOr(boolean inline, Expression left, Expression right) {
       super(inline, "||", left, right);
+    }
+  }
+
+  class Ternary extends ValueExpression {
+    private final Expression predicate;
+    private final Expression trueValue;
+    private final Expression falseValue;
+    private final TypeRef<?> type;
+
+    public Ternary(Expression predicate, Expression trueValue, Expression falseValue) {
+      this(predicate, trueValue, falseValue, true, trueValue.type());
+    }
+
+    public Ternary(
+        Expression predicate,
+        Expression trueValue,
+        Expression falseValue,
+        boolean inline,
+        TypeRef<?> type) {
+      super(new Expression[] {predicate, trueValue, falseValue});
+      this.predicate = predicate;
+      this.trueValue = trueValue;
+      this.falseValue = falseValue;
+      this.inlineCall = inline;
+      this.type = type;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return type;
+    }
+
+    @Override
+    public ExprCode doGenCode(CodegenContext ctx) {
+      StringBuilder codeBuilder = new StringBuilder();
+      ExprCode predicateCode = predicate.genCode(ctx);
+      ExprCode trueCode = trueValue.genCode(ctx);
+      ExprCode falseCode = falseValue.genCode(ctx);
+      Stream.of(predicateCode, trueCode, falseCode)
+          .forEach(
+              exprCode -> {
+                if (StringUtils.isNotBlank(exprCode.code())) {
+                  appendNewlineIfNeeded(codeBuilder);
+                  codeBuilder.append(exprCode.code());
+                }
+              });
+      String value =
+          StringUtils.format(
+              "((${predicate}) ? (${trueValue}) : (${falseValue}))",
+              "predicate",
+              predicateCode.value(),
+              "trueValue",
+              trueCode.value(),
+              "falseValue",
+              falseCode.value());
+      if (inlineCall) {
+        String code = StringUtils.isBlank(codeBuilder) ? null : codeBuilder.toString();
+        return new ExprCode(code, FalseLiteral, Code.variable(getRawType(type), value));
+      }
+      Class<?> rawType = getRawType(type);
+      String name = ctx.newName(valuePrefix);
+      appendNewlineIfNeeded(codeBuilder);
+      codeBuilder
+          .append(ctx.type(type))
+          .append(' ')
+          .append(name)
+          .append(" = ")
+          .append(value)
+          .append(';');
+      return new ExprCode(codeBuilder.toString(), FalseLiteral, Code.variable(rawType, name));
     }
   }
 
@@ -2804,6 +2965,105 @@ public interface Expression {
     @Override
     public String toString() {
       return expression != null ? String.format("return %s", expression) : "return;";
+    }
+  }
+
+  class Switch extends AbstractExpression {
+    private final Expression selector;
+    private final Case[] cases;
+    private final Expression defaultAction;
+
+    public Switch(Expression selector, Case[] cases, Expression defaultAction) {
+      super(switchInputs(selector, cases, defaultAction));
+      this.selector = selector;
+      this.cases = cases;
+      this.defaultAction = defaultAction;
+    }
+
+    private static List<Expression> switchInputs(
+        Expression selector, Case[] cases, Expression defaultAction) {
+      List<Expression> inputs = new ArrayList<>(1 + cases.length + (defaultAction == null ? 0 : 1));
+      inputs.add(selector);
+      if (defaultAction != null) {
+        inputs.add(defaultAction);
+      }
+      for (Case switchCase : cases) {
+        inputs.add(switchCase.action);
+      }
+      return inputs;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return PRIMITIVE_VOID_TYPE;
+    }
+
+    @Override
+    public ExprCode doGenCode(CodegenContext ctx) {
+      StringBuilder codeBuilder = new StringBuilder();
+      ExprCode selectorCode = selector.genCode(ctx);
+      if (StringUtils.isNotBlank(selectorCode.code())) {
+        codeBuilder.append(selectorCode.code()).append('\n');
+      }
+      codeBuilder.append("switch (").append(selectorCode.value()).append(") {\n");
+      for (Case switchCase : cases) {
+        ExprCode actionCode = switchCase.action.genCode(ctx);
+        codeBuilder.append("  case ").append(switchCase.value).append(":\n");
+        if (StringUtils.isNotBlank(actionCode.code())) {
+          codeBuilder.append(indent(actionCode.code(), 4)).append('\n');
+        }
+      }
+      if (defaultAction != null) {
+        ExprCode defaultCode = defaultAction.genCode(ctx);
+        codeBuilder.append("  default:\n");
+        if (StringUtils.isNotBlank(defaultCode.code())) {
+          codeBuilder.append(indent(defaultCode.code(), 4)).append('\n');
+        }
+      }
+      codeBuilder.append('}');
+      return new ExprCode(codeBuilder.toString(), null, null);
+    }
+
+    public static final class Case {
+      private final int value;
+      private final Expression action;
+
+      public Case(int value, Expression action) {
+        this.value = value;
+        this.action = action;
+      }
+    }
+  }
+
+  class SuperCall extends AbstractExpression {
+    private final Expression[] arguments;
+
+    public SuperCall(Expression... arguments) {
+      super(arguments);
+      this.arguments = arguments;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return PRIMITIVE_VOID_TYPE;
+    }
+
+    @Override
+    public ExprCode doGenCode(CodegenContext ctx) {
+      StringBuilder codeBuilder = new StringBuilder();
+      StringBuilder argsBuilder = new StringBuilder();
+      for (int i = 0; i < arguments.length; i++) {
+        ExprCode argCode = arguments[i].genCode(ctx);
+        if (StringUtils.isNotBlank(argCode.code())) {
+          codeBuilder.append(argCode.code()).append('\n');
+        }
+        if (i != 0) {
+          argsBuilder.append(", ");
+        }
+        argsBuilder.append(argCode.value());
+      }
+      codeBuilder.append("super(").append(argsBuilder).append(");");
+      return new ExprCode(codeBuilder.toString(), null, null);
     }
   }
 

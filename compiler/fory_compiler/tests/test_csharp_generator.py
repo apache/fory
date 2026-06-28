@@ -20,11 +20,12 @@
 import warnings
 from pathlib import Path
 
-from fory_compiler.cli import resolve_imports
+from fory_compiler.cli import main as foryc_main, resolve_imports
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import GeneratorOptions
 from fory_compiler.generators.csharp import CSharpGenerator
+from fory_compiler.ir.validator import SchemaValidator
 
 
 def parse_schema(source: str):
@@ -49,12 +50,12 @@ def test_csharp_namespace_option_used():
         """
     )
 
-    assert file.path == "MyCorp/Payment/V1/payment.cs"
+    assert file.path == "MyCorp/Payment/V1/Payment.cs"
     assert "namespace MyCorp.Payment.V1;" in file.content
     assert "public sealed partial class Payment" in file.content
 
 
-def test_csharp_namespace_fallback_to_package():
+def test_csharp_namespace_uses_package():
     file = generate(
         """
         package com.example.models;
@@ -65,7 +66,7 @@ def test_csharp_namespace_fallback_to_package():
         """
     )
 
-    assert file.path == "com/example/models/com_example_models.cs"
+    assert file.path == "com/example/models/ComExampleModels.cs"
     assert "namespace com.example.models;" in file.content
 
 
@@ -123,7 +124,7 @@ def test_csharp_semantic_model_attributes():
     assert "[ForyObject]" not in file.content
 
 
-def test_csharp_registration_uses_fdl_package_for_name_registration():
+def test_csharp_registers_fdl_name():
     file = generate(
         """
         package myapp.models;
@@ -161,7 +162,7 @@ def test_csharp_field_encoding_attributes():
     assert "public int Plain { get; set; }" in file.content
 
 
-def test_csharp_nested_schema_type_attributes():
+def test_csharp_nested_type_attrs():
     file = generate(
         """
         package example;
@@ -207,7 +208,7 @@ def test_csharp_reduced_precision_carriers():
     assert "public List<BFloat16> Bf16Values { get; set; } = new();" in file.content
 
 
-def test_csharp_imported_registration_calls_generated():
+def test_csharp_imported_modules():
     repo_root = Path(__file__).resolve().parents[3]
     idl_dir = repo_root / "integration_tests" / "idl_tests" / "idl"
     schema = resolve_imports(idl_dir / "root.idl", [idl_dir])
@@ -217,6 +218,304 @@ def test_csharp_imported_registration_calls_generated():
 
     assert "global::addressbook.AddressbookForyModule.Install(fory);" in file.content
     assert "global::tree.TreeForyModule.Install(fory);" in file.content
+
+
+def test_csharp_model_file_uses_owner_name(tmp_path: Path):
+    schema_file = tmp_path / "order-events.fdl"
+    schema_file.write_text(
+        """
+        package app.events;
+        option csharp_namespace = "App.Events";
+
+        message Event {
+            string name = 1;
+        }
+        """
+    )
+
+    schema = resolve_imports(schema_file)
+    validator = SchemaValidator(schema)
+    assert validator.validate(), validator.errors
+    file = CSharpGenerator(schema, GeneratorOptions(output_dir=tmp_path)).generate()[0]
+
+    assert file.path == "App/Events/OrderEvents.cs"
+    assert "public static class OrderEventsForyModule" in file.content
+    assert "public static class EventsForyModule" not in file.content
+
+
+def test_csharp_owner_name_prefixes_digits(tmp_path: Path):
+    schema_file = tmp_path / "123-schema.fdl"
+    schema_file.write_text(
+        """
+        package app.events;
+        option csharp_namespace = "App.Events";
+
+        message Event {
+            string name = 1;
+        }
+        """
+    )
+
+    schema = resolve_imports(schema_file)
+    validator = SchemaValidator(schema)
+    assert validator.validate(), validator.errors
+    file = CSharpGenerator(schema, GeneratorOptions(output_dir=tmp_path)).generate()[0]
+
+    assert file.path == "App/Events/Schema123Schema.cs"
+    assert "public static class Schema123SchemaForyModule" in file.content
+
+
+def test_csharp_import_modules_distinct(tmp_path: Path):
+    first = tmp_path / "first.fdl"
+    first.write_text(
+        """
+        package shared;
+        option csharp_namespace = "Demo.Shared";
+
+        message First {
+            string name = 1;
+        }
+        """
+    )
+    second = tmp_path / "second.fdl"
+    second.write_text(
+        """
+        package shared;
+        option csharp_namespace = "Demo.Shared";
+
+        message Second {
+            string name = 1;
+        }
+        """
+    )
+    main = tmp_path / "main.fdl"
+    main.write_text(
+        """
+        package app;
+        option csharp_namespace = "Demo.App";
+
+        import "first.fdl";
+        import "second.fdl";
+
+        message Holder {
+            First first = 1;
+            Second second = 2;
+        }
+        """
+    )
+
+    schema = resolve_imports(main, [tmp_path])
+    validator = SchemaValidator(schema)
+    assert validator.validate(), validator.errors
+    file = CSharpGenerator(schema, GeneratorOptions(output_dir=tmp_path)).generate()[0]
+
+    assert "global::Demo.Shared.FirstForyModule.Install(fory);" in file.content
+    assert "global::Demo.Shared.SecondForyModule.Install(fory);" in file.content
+
+
+def test_csharp_grpc_path_collision(tmp_path: Path, capsys):
+    schema_file = tmp_path / "GreeterGrpc.fdl"
+    schema_file.write_text(
+        """
+        package demo.collision;
+
+        message Req {}
+        message Res {}
+
+        service Greeter {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            "--grpc",
+            str(schema_file),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# generated file path collision" in captured.err
+    assert not out.exists()
+
+
+def test_csharp_module_collision(tmp_path: Path, capsys):
+    first = tmp_path / "foo-bar.fdl"
+    first.write_text(
+        """
+        package demo.same;
+
+        message First {
+            string name = 1;
+        }
+        """
+    )
+    second = tmp_path / "foo_bar.fdl"
+    second.write_text(
+        """
+        package demo.same;
+
+        message Second {
+            string name = 1;
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            str(first),
+            str(second),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# generated file path collision" in captured.err
+    assert not out.exists()
+
+
+def test_csharp_output_collision(tmp_path: Path, capsys):
+    first_dir = tmp_path / "first"
+    second_dir = tmp_path / "second"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first = first_dir / "common.fdl"
+    first.write_text(
+        """
+        package demo.same;
+
+        message First {
+            string name = 1;
+        }
+        """
+    )
+    second = second_dir / "common.fdl"
+    second.write_text(
+        """
+        package demo.same;
+
+        message Second {
+            string name = 1;
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            str(first),
+            str(second),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# generated file path collision" in captured.err
+    assert not out.exists()
+
+
+def test_csharp_service_type_collision(tmp_path: Path, capsys):
+    model = tmp_path / "model.fdl"
+    model.write_text(
+        """
+        package demo.same;
+
+        message Greeter {
+            string name = 1;
+        }
+        """
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        """
+        package demo.same;
+
+        message Req {}
+        message Res {}
+
+        service Greeter {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            "--grpc",
+            str(model),
+            str(service),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# top-level symbol collision" in captured.err
+    assert not out.exists()
+
+
+def test_csharp_service_module_collision(tmp_path: Path, capsys):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        """
+        package demo.same;
+
+        message Holder {
+            string name = 1;
+        }
+        """
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        """
+        package demo.same;
+
+        message Req {}
+        message Res {}
+
+        service CommonForyModule {
+            rpc Call (Req) returns (Res);
+        }
+        """
+    )
+    out = tmp_path / "out"
+
+    result = foryc_main(
+        [
+            "--lang",
+            "csharp",
+            "--csharp_out",
+            str(out),
+            "--grpc",
+            str(common),
+            str(service),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert "C# top-level symbol collision" in captured.err
+    assert not out.exists()
 
 
 def test_csharp_namespace_option_is_known():

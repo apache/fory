@@ -26,7 +26,7 @@ import (
 
 // TestFory tests the thread-safe Fory wrapper
 func TestFory(t *testing.T) {
-	f := New(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := New(fory.WithXlang(false), fory.WithRefTracking(true), fory.WithCompatible(false))
 
 	t.Run("BasicSerialization", func(t *testing.T) {
 		data, err := f.Serialize(int32(42))
@@ -90,7 +90,7 @@ func TestFory(t *testing.T) {
 
 // TestSerializeAny tests the Serialize/Deserialize methods
 func TestSerializeAny(t *testing.T) {
-	f := New(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := New(fory.WithXlang(false), fory.WithRefTracking(true), fory.WithCompatible(false))
 
 	t.Run("Primitives", func(t *testing.T) {
 		data, err := f.Serialize(int32(42))
@@ -115,7 +115,7 @@ func TestSerializeAny(t *testing.T) {
 
 // TestDeserialize tests the Deserialize generic function
 func TestDeserialize(t *testing.T) {
-	f := New(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := New(fory.WithXlang(false), fory.WithRefTracking(true), fory.WithCompatible(false))
 
 	t.Run("Int32", func(t *testing.T) {
 		val := int32(42)

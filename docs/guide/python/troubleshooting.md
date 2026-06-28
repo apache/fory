@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 13
+sidebar_position: 14
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -86,8 +86,8 @@ assert result.next.next is result  # Circular reference preserved
 ### Schema Evolution Not Working
 
 ```python
-# Keep your existing wire mode and enable compatible schema evolution.
-f = pyfory.Fory(compatible=True)
+# Keep compatible mode enabled. This is the default.
+f = pyfory.Fory()
 
 # Version 1: Original class
 @dataclass

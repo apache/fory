@@ -16,12 +16,18 @@
  * limitations under the License.
  */
 
-val foryVersion = "1.2.0-SNAPSHOT"
+val foryVersion = "1.4.0-SNAPSHOT"
 val scala213Version = "2.13.15"
 ThisBuild / apacheSonatypeProjectProfile := "fory"
 version := foryVersion
 scalaVersion := scala213Version
 crossScalaVersions := Seq(scala213Version, "3.3.1")
+
+val localForyResolver =
+  sys.props
+    .get("fory.maven.repo")
+    .map(repo => "Local Fory Maven Repository" at repo)
+    .getOrElse(Resolver.mavenLocal)
 
 lazy val root = Project(id = "fory-scala", base = file("."))
   .settings(
@@ -38,8 +44,11 @@ lazy val root = Project(id = "fory-scala", base = file("."))
         "dev@fory.apache.org",
         url("https://github.com/apache/fory/graphs/contributors"))))
 
-resolvers += Resolver.mavenLocal
-resolvers += Resolver.ApacheMavenSnapshotsRepo
+ThisBuild / externalResolvers := Seq(
+  Resolver.mavenCentral,
+  Resolver.ApacheMavenSnapshotsRepo,
+  localForyResolver,
+)
 
 libraryDependencies ++= Seq(
   "org.apache.fory" % "fory-core" % foryVersion,

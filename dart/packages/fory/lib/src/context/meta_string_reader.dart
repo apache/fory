@@ -24,13 +24,8 @@ import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/types/int64.dart';
 
-typedef _MetaStringWords = ({
-  int length,
-  int word0,
-  int word1,
-  int word2,
-  int word3
-});
+typedef _MetaStringWords =
+    ({int length, int word0, int word1, int word2, int word3});
 
 /// Read-side state for meta-string references in one deserialization stream.
 final class MetaStringReader {
@@ -61,9 +56,10 @@ final class MetaStringReader {
     if ((header & 1) == 1) {
       return _dynamicReadMetaStrings[length - 1];
     }
-    final encoded = length > metaStringSmallThreshold
-        ? _readBigMetaString(buffer, length, expected)
-        : _readSmallMetaString(buffer, length, expected);
+    final encoded =
+        length > metaStringSmallThreshold
+            ? _readBigMetaString(buffer, length, expected)
+            : _readSmallMetaString(buffer, length, expected);
     _dynamicReadMetaStrings.add(encoded);
     return encoded;
   }
@@ -74,6 +70,7 @@ final class MetaStringReader {
     EncodedMetaString? expected,
   ) {
     final hash = buffer.readInt64();
+    buffer.checkReadableBytes(length);
     if (expected != null && expected.hash == hash) {
       buffer.skip(length);
       return expected;
@@ -100,20 +97,14 @@ final class MetaStringReader {
       return EncodedMetaString.empty;
     }
     final encoding = buffer.readByte() & 0xff;
+    buffer.checkReadableBytes(length);
     final words = _readMetaStringWords(buffer, length);
     final word0 = words.word0;
     final word1 = words.word1;
     final word2 = words.word2;
     final word3 = words.word3;
     if (expected != null &&
-        expected.matchesPacked(
-          encoding,
-          length,
-          word0,
-          word1,
-          word2,
-          word3,
-        )) {
+        expected.matchesPacked(encoding, length, word0, word1, word2, word3)) {
       return expected;
     }
     final hash = _smallMetaStringHash(
@@ -128,7 +119,13 @@ final class MetaStringReader {
     if (bucket != null) {
       for (final cached in bucket) {
         if (cached.matchesPacked(
-            encoding, length, word0, word1, word2, word3)) {
+          encoding,
+          length,
+          word0,
+          word1,
+          word2,
+          word3,
+        )) {
           return cached;
         }
       }
@@ -137,9 +134,7 @@ final class MetaStringReader {
       _materializeMetaStringWords(words),
       encoding: encoding,
     );
-    (bucket ?? (_smallMetaStrings[hash] = <EncodedMetaString>[])).add(
-      encoded,
-    );
+    (bucket ?? (_smallMetaStrings[hash] = <EncodedMetaString>[])).add(encoded);
     return encoded;
   }
 }

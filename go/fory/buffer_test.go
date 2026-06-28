@@ -125,6 +125,48 @@ func TestReadVarUint32RejectsOverflowFifthByte(t *testing.T) {
 	}
 }
 
+func TestStreamSkipDoesNotGrowToSkippedLength(t *testing.T) {
+	err := &Error{}
+	data := make([]byte, 1<<20)
+	reader := bytes.NewReader(data)
+	buf := NewByteBufferFromReader(reader, 16)
+
+	buf.Skip(len(data), err)
+
+	require.True(t, err.Ok())
+	require.Zero(t, reader.Len())
+	require.Equal(t, len(buf.data), buf.readerIndex)
+	require.LessOrEqual(t, cap(buf.data), 16)
+}
+
+func TestStreamFillDoubleGrowsFromBufferedBytes(t *testing.T) {
+	var err Error
+	data := make([]byte, 100)
+	buf := NewByteBufferFromReader(bytes.NewReader(data), 4)
+	require.True(t, buf.fill(len(data), &err))
+	require.True(t, err.Ok())
+	require.Equal(t, len(data), cap(buf.data))
+
+	err = Error{}
+	truncated := make([]byte, 17)
+	buf = NewByteBufferFromReader(bytes.NewReader(truncated), 4)
+	require.False(t, buf.fill(100, &err))
+	require.True(t, err.HasError())
+	require.Less(t, cap(buf.data), 100)
+	require.LessOrEqual(t, cap(buf.data), 32)
+}
+
+func TestReadCollectionLengthDoesNotTreatElementsAsBytes(t *testing.T) {
+	writer := NewByteBuffer(nil)
+	writer.WriteLength(1024)
+
+	ctx := NewReadContext(false)
+	ctx.SetData(writer.Bytes())
+
+	require.Equal(t, 1024, ctx.ReadCollectionLength())
+	require.False(t, ctx.HasError())
+}
+
 func TestReadVarUint32Small7RejectsOverflowFifthByte(t *testing.T) {
 	buf := NewByteBuffer([]byte{0x80, 0x80, 0x80, 0x80, 0x10})
 	var err Error

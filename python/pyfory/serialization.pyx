@@ -19,7 +19,6 @@ import datetime
 import os
 import platform
 import time
-from typing import TypeVar, Union
 
 import cython
 from libc.stdint cimport int32_t, int64_t, uint8_t, uint64_t
@@ -46,6 +45,7 @@ from pyfory.meta.typedef_decoder import decode_typedef
 from pyfory.meta.metastring import MetaStringDecoder
 from pyfory.policy import DEFAULT_POLICY
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
+from pyfory.type_util import normalize_fory_type
 from pyfory.includes.libserialization cimport (
     TypeId,
     TypeRegistrationKind,
@@ -81,37 +81,13 @@ ENABLE_FORY_CYTHON_SERIALIZATION = os.environ.get(
 cdef int32_t NOT_NULL_BOOL_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.BOOL << 8)
 cdef int32_t NOT_NULL_STRING_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.STRING << 8)
 cdef int32_t NOT_NULL_FLOAT64_FLAG = (NOT_NULL_VALUE_FLAG & 0xFF) | (<int32_t>TypeId.FLOAT64 << 8)
-cdef int32_t MAX_CACHED_TYPE_DEFS = 8192
-
-_PRIMITIVE_TYPEVAR_NAMES = frozenset(
-    {
-        "Int8",
-        "UInt8",
-        "Int16",
-        "UInt16",
-        "Int32",
-        "UInt32",
-        "FixedInt32",
-        "FixedUInt32",
-        "Int64",
-        "UInt64",
-        "FixedInt64",
-        "TaggedInt64",
-        "FixedUInt64",
-        "TaggedUInt64",
-        "Float16",
-        "BFloat16",
-        "Float32",
-        "Float64",
-    }
-)
 _PRIMITIVE_TYPE_IDS = frozenset(range(1, 21)) - {16}
 
 
 def _is_primitive_type(type_):
     if type(type_) is int:
         return type_ in _PRIMITIVE_TYPE_IDS
-    return type_ in (bool, int, float) or getattr(type_, "__name__", None) in _PRIMITIVE_TYPEVAR_NAMES
+    return type_ in (bool, int, float)
 
 
 @cython.final
@@ -121,7 +97,7 @@ cdef class Config:
     directional read/write contexts.
 
     The Cython runtime treats this object as the single source of truth for
-    execution-mode flags and guardrail limits. Higher-level facades may expose
+    execution-mode and maximum-depth flags. Higher-level facades may expose
     convenience accessors, but runtime code should read these values from the
     config instance instead of mirroring them onto other owners.
 
@@ -133,11 +109,13 @@ cdef class Config:
         meta_share: Enables shared type metadata on the resolver/type-info path.
         scoped_meta_share_enabled: Enables per-operation meta-share state.
         max_depth: Maximum allowed nesting depth during deserialization.
+        max_type_fields: Maximum accepted field count in one received struct TypeDef.
+        max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
+        max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
+        max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
         field_nullable: Treats struct/dataclass fields as nullable by default.
         policy: Deserialization policy used for security-sensitive checks.
         meta_compressor: Optional typedef/meta compressor implementation.
-        max_collection_size: Upper bound for declared collection/map sizes.
-        max_binary_size: Upper bound for a single binary payload read.
     """
 
     cdef public bint xlang
@@ -147,11 +125,13 @@ cdef class Config:
     cdef public bint meta_share
     cdef public bint scoped_meta_share_enabled
     cdef public int32_t max_depth
+    cdef public int32_t max_type_fields
+    cdef public int32_t max_type_meta_bytes
+    cdef public int32_t max_schema_versions_per_type
+    cdef public int32_t max_average_schema_versions_per_type
     cdef public bint field_nullable
     cdef public object policy
     cdef public object meta_compressor
-    cdef public int32_t max_collection_size
-    cdef public int32_t max_binary_size
 
     def __init__(
         self,
@@ -163,11 +143,13 @@ cdef class Config:
         meta_share,
         scoped_meta_share_enabled,
         max_depth,
+        max_type_fields,
+        max_type_meta_bytes,
+        max_schema_versions_per_type,
+        max_average_schema_versions_per_type,
         field_nullable,
         policy,
         meta_compressor,
-        max_collection_size,
-        max_binary_size,
     ):
         """
         Build a runtime config object for one Python or Cython Fory instance.
@@ -180,11 +162,13 @@ cdef class Config:
             meta_share: Enable shared type metadata on resolver/type-info paths.
             scoped_meta_share_enabled: Enable per-operation meta-share state.
             max_depth: Maximum allowed read depth before failing deserialization.
+            max_type_fields: Maximum accepted field count in one received struct TypeDef.
+            max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
+            max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
+            max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
             field_nullable: Treat all struct fields as nullable by default.
             policy: Deserialization policy implementation.
             meta_compressor: Optional typedef/meta compressor.
-            max_collection_size: Maximum declared collection/map size.
-            max_binary_size: Maximum binary payload size for one read.
         """
         self.xlang = xlang
         self.track_ref = track_ref
@@ -193,11 +177,21 @@ cdef class Config:
         self.meta_share = meta_share
         self.scoped_meta_share_enabled = scoped_meta_share_enabled
         self.max_depth = max_depth
+        if max_type_fields <= 0:
+            raise ValueError("max_type_fields must be a positive integer")
+        if max_type_meta_bytes <= 0:
+            raise ValueError("max_type_meta_bytes must be a positive integer")
+        if max_schema_versions_per_type <= 0:
+            raise ValueError("max_schema_versions_per_type must be a positive integer")
+        if max_average_schema_versions_per_type <= 0:
+            raise ValueError("max_average_schema_versions_per_type must be a positive integer")
+        self.max_type_fields = max_type_fields
+        self.max_type_meta_bytes = max_type_meta_bytes
+        self.max_schema_versions_per_type = max_schema_versions_per_type
+        self.max_average_schema_versions_per_type = max_average_schema_versions_per_type
         self.field_nullable = field_nullable
         self.policy = policy
         self.meta_compressor = meta_compressor
-        self.max_collection_size = max_collection_size
-        self.max_binary_size = max_binary_size
 
 
 cdef inline bint _is_struct_type_id(uint8_t type_id):
@@ -225,6 +219,7 @@ cdef class TypeResolver:
     """
 
     cdef object resolver
+    cdef readonly Config config
     cdef readonly object shared_registry
     cdef readonly bint xlang
     cdef readonly bint track_ref
@@ -232,8 +227,6 @@ cdef class TypeResolver:
     cdef readonly bint compatible
     cdef readonly bint field_nullable
     cdef readonly object policy
-    cdef readonly int32_t max_collection_size
-    cdef readonly int32_t max_binary_size
     cdef readonly bint meta_share
     cdef readonly dict _types_info
     cdef readonly dict _type_id_to_type_info
@@ -260,6 +253,7 @@ cdef class TypeResolver:
             shared_registry=shared_registry,
         )
         self.resolver = resolver
+        self.config = config
         self.shared_registry = resolver.shared_registry
         self.xlang = resolver.xlang
         self.track_ref = resolver.track_ref
@@ -267,8 +261,6 @@ cdef class TypeResolver:
         self.compatible = resolver.compatible
         self.field_nullable = resolver.field_nullable
         self.policy = resolver.policy
-        self.max_collection_size = resolver.max_collection_size
-        self.max_binary_size = resolver.max_binary_size
         self.meta_share = resolver.meta_share
         self._types_info = resolver._types_info
         self._type_id_to_type_info = resolver._type_id_to_type_info
@@ -287,7 +279,7 @@ cdef class TypeResolver:
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -304,7 +296,7 @@ cdef class TypeResolver:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -554,16 +546,33 @@ cdef class TypeResolver:
     cdef inline TypeInfo _read_and_build_type_info(self, Buffer buffer):
         cdef int64_t header = buffer.read_int64()
         cdef TypeInfo typeinfo = self._meta_shared_type_info.get(header)
-        cdef object type_def
         if typeinfo is not None:
             # Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-            # after a successful TypeDef parse and 52-bit metadata-hash validation.
+            # after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
+            # body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
             _skip_typedef_fast(buffer, header)
             return typeinfo
+        return self._read_uncached_type_info(buffer, header)
+
+    cdef TypeInfo _read_uncached_type_info(self, Buffer buffer, int64_t header):
+        cdef TypeInfo typeinfo
+        cdef object type_def
+        cdef object type_key
         type_def = decode_typedef(buffer, self.resolver, header=header)
+        typeinfo = self.resolver._local_type_info_for_typedef(type_def)
+        if typeinfo is not None:
+            if typeinfo.type_def is None:
+                self.resolver._set_type_info(typeinfo)
+            if (
+                typeinfo.type_def is not None
+                and typeinfo.type_def.encoded == type_def.encoded
+            ):
+                self._meta_shared_type_info[header] = typeinfo
+                return typeinfo
+        type_key = self.resolver._check_remote_type_def_limit(type_def)
         typeinfo = self.resolver._build_type_info_from_typedef(type_def)
-        if len(self._meta_shared_type_info) < MAX_CACHED_TYPE_DEFS:
-            self._meta_shared_type_info[header] = typeinfo
+        self._meta_shared_type_info[header] = typeinfo
+        self.resolver._record_remote_type_def(type_key)
         return typeinfo
 
     cdef inline TypeInfo _load_bytes_to_type_info(
@@ -580,22 +589,22 @@ cdef class TypeResolver:
         if entry != NULL and deref(entry).second != NULL:
             return <TypeInfo>deref(entry).second
         typeinfo = self.resolver._load_metabytes_to_type_info(ns_metabytes, type_metabytes)
-        if self._c_meta_hash_to_type_info.size() < MAX_CACHED_TYPE_DEFS:
-            self._c_meta_hash_to_type_info[hash_key] = <PyObject *>typeinfo
+        self._c_meta_hash_to_type_info[hash_key] = <PyObject *>typeinfo
         return typeinfo
 
 
 cdef inline void _skip_typedef_fast(Buffer buffer, int64_t header):
-    cdef int32_t meta_size = <int32_t>(header & 0xFF)
-    cdef int32_t reader_index
+    cdef uint32_t meta_size = <uint32_t>(header & 0xFF)
+    cdef uint32_t extended_size
     if meta_size == 0xFF:
-        meta_size += buffer.read_var_uint32()
-    if buffer.has_input_stream():
-        buffer.read_bytes(meta_size)
-        return
-    reader_index = buffer.get_reader_index()
-    buffer.check_bound(reader_index, meta_size)
-    buffer.set_reader_index(reader_index + meta_size)
+        extended_size = buffer.read_var_uint32()
+        if extended_size > <uint32_t>(UINT32_MAX - meta_size):
+            raise ValueError("Invalid TypeDef metadata size")
+        meta_size += extended_size
+    # Cache-hit skip must not materialize the opaque body. In stream mode,
+    # read_bytes would allocate after filling, while skip proves/consumes bytes
+    # without retaining attacker-controlled metadata.
+    buffer.skip(meta_size)
 
 
 
@@ -623,7 +632,7 @@ cdef class Serializer:
     cdef readonly object type_
     cdef public bint need_to_write_ref
 
-    def __init__(self, TypeResolver type_resolver, type_: Union[type, TypeVar]):
+    def __init__(self, TypeResolver type_resolver, type_):
         """
         Initialize a serializer for one declared Python type.
 
@@ -632,6 +641,7 @@ cdef class Serializer:
             type_: Declared Python type handled by this serializer.
         """
         self.type_resolver = type_resolver
+        type_ = normalize_fory_type(type_)
         self.type_ = type_
         self.need_to_write_ref = self.type_resolver.track_ref and not _is_primitive_type(type_)
 
@@ -765,7 +775,7 @@ cdef class TypeInfo:
 
     def __init__(
         self,
-        cls: Union[type, TypeVar] = None,
+        cls=None,
         type_id: int = 0,
         user_type_id: int = 0xFFFFFFFF,
         serializer=None,
@@ -820,8 +830,6 @@ cdef class Fory:
     cdef public bint field_nullable
     cdef public int32_t max_depth
     cdef public object policy
-    cdef public int32_t max_collection_size
-    cdef public int32_t max_binary_size
     cdef public Config config
     cdef public TypeResolver type_resolver
     cdef public WriteContext write_context
@@ -835,11 +843,13 @@ cdef class Fory:
         strict=True,
         compatible=None,
         max_depth=50,
+        max_type_fields=512,
+        max_type_meta_bytes=4096,
+        max_schema_versions_per_type=10,
+        max_average_schema_versions_per_type=3,
         policy=None,
         field_nullable=False,
         meta_compressor=None,
-        max_collection_size=1_000_000,
-        max_binary_size=64 * 1024 * 1024,
     ):
         """
         Initialize a Cython-backed Fory runtime instance.
@@ -849,15 +859,17 @@ cdef class Fory:
             ref: Enable reference tracking for shared and circular references.
             strict: Require registered types on dynamic resolution paths.
             compatible: Enable compatible mode and meta-share type exchange. Defaults to
-                compatible mode in xlang and schema-consistent mode in Python native mode.
+            compatible mode.
             max_depth: Maximum allowed read depth before rejecting payloads.
+            max_type_fields: Maximum accepted field count in one received struct TypeDef.
+            max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
+            max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
+            max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
             policy: Optional deserialization policy implementation.
             field_nullable: Treat struct fields as nullable by default.
             meta_compressor: Optional typedef/meta compressor implementation.
-            max_collection_size: Maximum allowed declared collection/map size.
-            max_binary_size: Maximum allowed binary payload size for one read.
         """
-        compatible = xlang if compatible is None else compatible
+        compatible = True if compatible is None else compatible
         self.xlang = xlang
         self.track_ref = ref
         self.strict = strict
@@ -870,8 +882,6 @@ cdef class Fory:
         self.compatible = compatible
         self.field_nullable = field_nullable
         self.max_depth = max_depth
-        self.max_collection_size = max_collection_size
-        self.max_binary_size = max_binary_size
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -880,11 +890,13 @@ cdef class Fory:
             meta_share=compatible,
             scoped_meta_share_enabled=compatible,
             max_depth=max_depth,
+            max_type_fields=max_type_fields,
+            max_type_meta_bytes=max_type_meta_bytes,
+            max_schema_versions_per_type=max_schema_versions_per_type,
+            max_average_schema_versions_per_type=max_average_schema_versions_per_type,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
-            max_collection_size=max_collection_size,
-            max_binary_size=max_binary_size,
         )
         from pyfory.registry import SharedRegistry
 
@@ -896,7 +908,7 @@ cdef class Fory:
         self.type_resolver.initialize()
         self.write_context = WriteContext(self.config, self.type_resolver)
         self.read_context = ReadContext(self.config, self.type_resolver)
-        self.buffer = Buffer.allocate(32, max_binary_size=max_binary_size)
+        self.buffer = Buffer.allocate(32)
 
     def register(
         self,
@@ -915,7 +927,7 @@ cdef class Fory:
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -930,7 +942,7 @@ cdef class Fory:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -1040,7 +1052,7 @@ cdef class Fory:
         cdef uint8_t bitmap
         cdef bint peer_out_of_band_enabled
         if isinstance(buffer, bytes):
-            buffer = Buffer(buffer, max_binary_size=self.max_binary_size)
+            buffer = Buffer(buffer)
         read_buffer = buffer
         reader_index = read_buffer.get_reader_index()
         read_buffer.set_reader_index(reader_index + 1)

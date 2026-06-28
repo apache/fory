@@ -155,7 +155,11 @@ jlink \
   --add-modules jpms.smoke \
   --output "$WORK_DIR/image"
 
-"$WORK_DIR/image/bin/java" -m jpms.smoke/org.apache.fory.jpms.Smoke | grep -qx "ok"
+# JDK25+ zero-Unsafe mode uses Fory as a named module in this image.
+"$WORK_DIR/image/bin/java" \
+  --add-opens=java.base/java.lang.invoke=org.apache.fory.core \
+  -m jpms.smoke/org.apache.fory.jpms.Smoke \
+  | grep -qx "ok"
 
 IMAGE_MODULES="$("$WORK_DIR/image/bin/java" --list-modules)"
 echo "$IMAGE_MODULES" | grep -q "^org.apache.fory.core"

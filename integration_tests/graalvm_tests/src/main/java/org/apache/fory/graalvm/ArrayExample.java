@@ -26,7 +26,7 @@ import org.apache.fory.util.Preconditions;
 
 public class ArrayExample {
   private static final Fory FORY =
-      Fory.builder().withXlang(false).registerGuavaTypes(false).build();
+      Fory.builder().withXlang(false).registerGuavaTypes(false).withCompatible(false).build();
 
   static {
     FORY.register(ArrayExample.class);

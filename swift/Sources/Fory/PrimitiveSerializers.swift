@@ -462,7 +462,6 @@ extension Data: Serializer {
     public static func foryReadData(_ context: ReadContext) throws -> Data {
         let length = try context.buffer.readVarUInt32()
         let byteLength = Int(length)
-        try context.ensureBinaryLength(byteLength, label: "binary")
         try context.ensureRemainingBytes(byteLength, label: "binary")
         let bytes = try context.buffer.readBytes(count: byteLength)
         return Data(bytes)

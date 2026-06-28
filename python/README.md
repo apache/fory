@@ -742,7 +742,7 @@ for t in threads: t.join()
 - **`xlang`** (`bool`, default=`True`): Use xlang mode. Set `False` for Python native mode supporting Python-specific objects.
 - **`ref`** (`bool`, default=`False`): Enable reference tracking for shared/circular references. Disable for better performance if your data has no shared references.
 - **`strict`** (`bool`, default=`True`): Require type registration for security. **Highly recommended** for production. Only disable in trusted environments.
-- **`compatible`** (`bool`, default follows `xlang`): Enable schema evolution. Xlang mode defaults to compatible mode; native mode defaults to schema-consistent mode.
+- **`compatible`** (`bool | None`, default `None`): Enable schema evolution. `None` enables compatible mode in both xlang and native mode. Set `False` only when every reader and writer always uses the same Python class schema and you want faster serialization and smaller size.
 - **`max_depth`** (`int`, default=`50`): Maximum deserialization depth for security, preventing stack overflow attacks.
 
 **Key Methods:**
@@ -775,7 +775,7 @@ fory.register(MyClass, name="my.package.MyClass", serializer=custom_serializer)
 | Functions/lambdas   | Supported with trusted dynamic deserialization | Not allowed                           |
 | Local classes       | Supported with trusted dynamic deserialization | Not allowed                           |
 | Dynamic classes     | Supported with trusted dynamic deserialization | Not allowed                           |
-| Schema mode default | Schema-consistent                              | Compatible                            |
+| Schema mode default | Compatible                                     | Compatible                            |
 
 #### Native Mode (`xlang=False`)
 
@@ -961,7 +961,6 @@ fory = pyfory.Fory(
     xlang=False,        # Native mode for Python-only traffic
     ref=False,           # Enable if you have shared/circular references
     strict=True,        # CRITICAL: Always True in production
-    compatible=False,   # Native mode defaults to schema-consistent payloads
     max_depth=20       # Adjust based on your data structure depth
 )
 
@@ -978,8 +977,9 @@ Optimize serialization speed and memory usage with these guidelines:
 1. **Disable `ref=True` if not needed**: Reference tracking has overhead
 2. **Use type_id instead of name**: Integer IDs are faster than string names
 3. **Reuse Fory instances**: Create once, use many times
-4. **Enable Cython**: Make sure `ENABLE_FORY_CYTHON_SERIALIZATION=1`, should be enabled by default
-5. **Use row format for large arrays**: Zero-copy access for analytics
+4. **Use `compatible=False` only for same-schema data**: Disable compatible mode only when every reader and writer always uses the same Python class schema and you want faster serialization and smaller size
+5. **Enable Cython**: Make sure `ENABLE_FORY_CYTHON_SERIALIZATION=1`, should be enabled by default
+6. **Use row format for large arrays**: Zero-copy access for analytics
 
 ```python
 # Good: Reuse instance

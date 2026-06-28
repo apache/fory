@@ -97,6 +97,7 @@ public class JavaSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     serDe(fory, new CustomClass());
   }
@@ -112,7 +113,7 @@ public class JavaSerializerTest extends ForyTestBase {
     Assert.assertEquals(BigEndian.getShortB(bytes, 0), ObjectStreamConstants.STREAM_MAGIC);
     Assert.assertTrue(JavaSerializer.serializedByJDK(bytes));
     Assert.assertTrue(JavaSerializer.serializedByJDK(ByteBuffer.wrap(bytes), 0));
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     bytes = fory.serialize(1.1);
     Assert.assertFalse(JavaSerializer.serializedByJDK(bytes));
   }
@@ -132,6 +133,7 @@ public class JavaSerializerTest extends ForyTestBase {
             .withRefCopy(true)
             .requireClassRegistration(false)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(JavaCopyState.class, JavaSerializer.class);
     JavaCopyState state = new JavaCopyState("fory");
@@ -145,7 +147,7 @@ public class JavaSerializerTest extends ForyTestBase {
 
   @Test
   public void testJdkStreamChecksNestedClass() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Serializer serializer = new JavaSerializer(fory.getTypeResolver(), JavaBox.class);
     fory.registerSerializer(JavaBox.class, serializer);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
@@ -157,7 +159,7 @@ public class JavaSerializerTest extends ForyTestBase {
 
   @Test
   public void testCopyChecksNestedClass() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     fory.register(JavaBox.class);
     fory.registerSerializer(JavaBox.class, JavaSerializer.class);
 

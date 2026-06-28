@@ -136,7 +136,7 @@ PersonForyModule.register(
 );
 ```
 
-If you skip registration, you will get a `Type ... is not registered` error at runtime. See [Type Registration](type-registration.md) and [Code Generation](code-generation.md).
+If you skip registration, deserialization fails with `Type ... is not registered`. See [Type Registration](type-registration.md) and [Code Generation](code-generation.md).
 
 ## Related Topics
 

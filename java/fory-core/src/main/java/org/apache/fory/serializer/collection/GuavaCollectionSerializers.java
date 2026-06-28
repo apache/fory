@@ -403,6 +403,9 @@ public class GuavaCollectionSerializers {
     public Object read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
+      if (size != 0) {
+        buffer.checkReadableBytes(size);
+      }
       ImmutableMap.Builder builder =
           biMap ? newImmutableBiMapBuilder(size) : newImmutableMapBuilder(size);
       for (int i = 0; i < size; i++) {
@@ -488,6 +491,9 @@ public class GuavaCollectionSerializers {
     public ImmutableIntArray read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       int length = buffer.readVarUInt32Small7();
+      if (length != 0) {
+        buffer.checkReadableBytes(length);
+      }
       int[] values = new int[length];
       for (int i = 0; i < length; i++) {
         values[i] = buffer.readVarInt32();

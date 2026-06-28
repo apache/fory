@@ -48,7 +48,12 @@ import org.testng.annotations.Test;
 public class SynchronizedSerializersTest extends ForyTestBase {
   @Test
   public void testWrite() throws Exception {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     Object[] values =
         new Object[] {

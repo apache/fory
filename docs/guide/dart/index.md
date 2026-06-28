@@ -28,7 +28,7 @@ languages.
 
 - **Xlang**: serialize in Dart, deserialize in Java, Go, C#, and more without writing any glue code
 - **Platform support**: use the same generated-serializer API on Dart VM/AOT, Flutter, and web
-- **Fast**: generated serializer code replaces reflection at runtime
+- **Fast**: generated serializer code replaces reflection during serialization
 - **Schema evolution**: add or remove fields without breaking existing messages
 - **Circular references**: optional reference tracking handles shared or recursive object graphs
 - **Escape hatch**: write a manual serializer for any type that cannot be annotated
@@ -46,7 +46,7 @@ Add the dependency to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  fory: ^1.1.0
+  fory: ^1.3.0
 
 dev_dependencies:
   build_runner: ^2.4.0
@@ -128,7 +128,7 @@ dart run build_runner build --delete-conflicting-outputs
 
 | Topic                                           | Description                                                     |
 | ----------------------------------------------- | --------------------------------------------------------------- |
-| [Configuration](configuration.md)               | Runtime options, compatible mode, and safety limits             |
+| [Configuration](configuration.md)               | Fory options, compatible mode, and safety limits                |
 | [Basic Serialization](basic-serialization.md)   | `serialize`, `deserialize`, generated registration, root graphs |
 | [Code Generation](code-generation.md)           | `@ForyStruct`, build runner, and generated modules              |
 | [Xlang Serialization](xlang-serialization.md)   | Interoperability rules and field alignment                      |
@@ -138,6 +138,7 @@ dart run build_runner build --delete-conflicting-outputs
 | [Supported Types](supported-types.md)           | Built-in xlang values, wrappers, collections, and structs       |
 | [Schema Evolution](schema-evolution.md)         | Compatible structs and evolving schemas                         |
 | [Web Platform Support](web-platform-support.md) | Dart VM/AOT, Flutter, and web support, limits, and validation   |
+| [gRPC Support](grpc-support.md)                 | Generated Fory-backed gRPC service companions                   |
 | [Troubleshooting](troubleshooting.md)           | Common errors, diagnostics, and validation steps                |
 
 ## Related Resources
@@ -145,4 +146,4 @@ dart run build_runner build --delete-conflicting-outputs
 - [Xlang serialization specification](../../specification/xlang_serialization_spec.md)
 - [Xlang implementation guide](../../specification/xlang_implementation_guide.md)
 - [Xlang guide](../xlang/index.md)
-- [Dart runtime source directory](https://github.com/apache/fory/tree/main/dart)
+- [Dart implementation source directory](https://github.com/apache/fory/tree/main/dart)

@@ -37,6 +37,8 @@ private struct CLI {
 
     static func parse(arguments: [String]) throws -> (BenchmarkConfig, String) {
         var config = BenchmarkConfig()
+        config.schemaMismatch =
+            ProcessInfo.processInfo.environment["FORY_BENCH_SCHEMA_MISMATCH"] == "1"
         var outputPath = "results/benchmark_results.json"
 
         var i = 1
@@ -84,6 +86,12 @@ private struct CLI {
             }
         }
 
+        if config.schemaMismatch && config.serializerFilter != .fory {
+            throw CLIError.invalidArgument(
+                "FORY_BENCH_SCHEMA_MISMATCH=1 supports only Fory benchmarks; rerun with --serializer fory"
+            )
+        }
+
         return (config, outputPath)
     }
 }
@@ -110,6 +118,7 @@ private func runMain() throws {
     if let filter = config.serializerFilter {
         print("Serializer filter: \(filter.rawValue)")
     }
+    print("Schema mismatch: \(config.schemaMismatch)")
 
     let suite = BenchmarkSuite(config: config)
     let output = try suite.run()
@@ -119,8 +128,17 @@ private func runMain() throws {
 
     print("\nSerialized sizes (bytes):")
     for entry in output.serializedSizes {
-        print("  \(entry.dataType): fory=\(entry.fory), protobuf=\(entry.protobuf), json=\(entry.json)")
+        let protobufSize = formatSize(entry.protobuf)
+        let jsonSize = formatSize(entry.json)
+        print("  \(entry.dataType): fory=\(entry.fory), protobuf=\(protobufSize), json=\(jsonSize)")
     }
+}
+
+private func formatSize(_ value: Int?) -> String {
+    guard let value = value else {
+        return "N/A"
+    }
+    return String(value)
 }
 
 private func writeOutput(_ output: BenchmarkOutput, to path: String) throws {

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers Kotlin-specific runtime configuration and Fory instance creation.
+This page covers Kotlin-specific Fory instance configuration and creation.
 
 ## Xlang Setup
 
@@ -105,8 +105,9 @@ import org.apache.fory.kotlin.ForyKotlin
 val fory = ForyKotlin.builder().withXlang(false)
     // Enable reference tracking for circular references
     .withRefTracking(true)
-    // Enable schema evolution support for native-mode payloads
-    .withCompatible(true)
+    // Same-schema optimization. Use only when every reader and writer
+    // always uses the same Kotlin/JVM schema.
+    .withCompatible(false)
     // Enable async compilation for better startup performance
     .withAsyncCompilation(true)
     // Compression options
@@ -115,15 +116,27 @@ val fory = ForyKotlin.builder().withXlang(false)
     .build()
 ```
 
+## Compatible Mode
+
+Compatible mode is enabled by default through the Java builder in both xlang and native mode. Keep
+this default when models may evolve independently, when services deploy separately, or when xlang
+schemas are written by hand in different languages.
+
+Use `withCompatible(false)` only when the class schema used to deserialize every payload is always
+the same as the class schema used to serialize it and you want faster serialization and smaller size.
+For xlang payloads, call `withCompatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
 ## Security
 
-Kotlin uses the Java runtime configuration surface. Keep class registration enabled for production
+Kotlin uses the Java configuration surface. Keep class registration enabled for production
 and any untrusted payload source:
 
 ```kotlin
 val fory = ForyKotlin.builder()
     .requireClassRegistration(true)
     .withMaxDepth(50)
+    .withMaxTypeFields(512)
+    .withMaxTypeMetaBytes(4096)
     .build()
 ```
 
@@ -131,5 +144,8 @@ Security-related configuration:
 
 - Keep `requireClassRegistration(true)` and register application classes or generated modules.
 - Use `withMaxDepth(...)` to reject unexpectedly deep object graphs.
+- Keep `withMaxTypeFields(...)`, `withMaxTypeMetaBytes(...)`, and the remote schema-version limits
+  at their defaults unless the data is not malicious and a trusted peer sends larger metadata or
+  many schema versions.
 - Follow [Java Configuration](../java/configuration.md#security) for allow-listing and unknown-class
   controls.

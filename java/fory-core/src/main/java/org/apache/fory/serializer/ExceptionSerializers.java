@@ -500,14 +500,13 @@ public final class ExceptionSerializers {
   private static List<Throwable> readSuppressedExceptions(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
     int numSuppressedExceptions = buffer.readVarUInt32();
-    int maxCollectionSize = readContext.getConfig().maxCollectionSize();
-    if (numSuppressedExceptions < 0 || numSuppressedExceptions > maxCollectionSize) {
+    if (numSuppressedExceptions < 0) {
       throw new ForyException(
           "Throwable suppressed exception count "
               + numSuppressedExceptions
-              + " exceeds max collection size "
-              + maxCollectionSize);
+              + " must be non-negative");
     }
+    buffer.checkReadableBytes(numSuppressedExceptions);
     List<Throwable> suppressedExceptions = new ArrayList<>(numSuppressedExceptions);
     for (int i = 0; i < numSuppressedExceptions; i++) {
       suppressedExceptions.add((Throwable) readContext.readRef());

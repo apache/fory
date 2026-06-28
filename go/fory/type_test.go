@@ -70,7 +70,7 @@ func TestTypeResolver(t *testing.T) {
 }
 
 func TestCreateSerializerSliceTypes(t *testing.T) {
-	fory := NewFory(WithXlang(false))
+	fory := NewFory(WithXlang(false), WithCompatible(false))
 	r := newTypeResolver(fory)
 
 	tests := []struct {
@@ -107,7 +107,7 @@ func TestCreateSerializerSliceTypes(t *testing.T) {
 }
 
 func TestCreateSerializerArrayTypes(t *testing.T) {
-	fory := NewFory(WithXlang(false))
+	fory := NewFory(WithXlang(false), WithCompatible(false))
 	r := newTypeResolver(fory)
 
 	var expectedIntArraySerializerType reflect.Type
@@ -158,7 +158,7 @@ func TestCreateSerializerArrayTypes(t *testing.T) {
 }
 
 func TestGetSliceSerializerReducedPrecisionTypes(t *testing.T) {
-	fory := NewFory(WithXlang(false))
+	fory := NewFory(WithXlang(false), WithCompatible(false))
 	r := newTypeResolver(fory)
 
 	serializer, err := r.GetSliceSerializer(reflect.TypeOf([]float16.Float16{}))
@@ -171,7 +171,7 @@ func TestGetSliceSerializerReducedPrecisionTypes(t *testing.T) {
 }
 
 func TestGetArraySerializerReducedPrecisionTypes(t *testing.T) {
-	fory := NewFory(WithXlang(false))
+	fory := NewFory(WithXlang(false), WithCompatible(false))
 	r := newTypeResolver(fory)
 
 	serializer, err := r.GetArraySerializer(reflect.TypeOf([4]float16.Float16{}))

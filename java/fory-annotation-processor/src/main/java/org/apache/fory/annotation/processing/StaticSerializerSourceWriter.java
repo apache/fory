@@ -60,10 +60,15 @@ final class StaticSerializerSourceWriter {
     builder.append("import org.apache.fory.memory.MemoryBuffer;\n");
     builder.append("import org.apache.fory.meta.TypeDef;\n");
     builder.append("import org.apache.fory.meta.TypeExtMeta;\n");
+    builder.append("import org.apache.fory.reflect.FieldAccessor;\n");
+    if (!struct.record) {
+      builder.append("import org.apache.fory.reflect.ObjectInstantiator;\n");
+    }
     builder.append("import org.apache.fory.resolver.TypeResolver;\n");
     builder.append("import org.apache.fory.serializer.FieldGroups;\n");
     builder.append("import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;\n");
     builder.append("import org.apache.fory.serializer.StaticGeneratedStructSerializer;\n");
+    builder.append("import org.apache.fory.serializer.converter.FieldConverters;\n");
     builder.append("import org.apache.fory.type.Descriptor;\n");
     builder.append("import org.apache.fory.type.DispatchId;\n");
     builder.append("import org.apache.fory.type.Types;\n\n");
@@ -88,6 +93,17 @@ final class StaticSerializerSourceWriter {
     builder.append("  private final SerializationFieldInfo[] allFields;\n");
     builder.append("  private final int[] allFieldIds;\n");
     builder.append("  private final SerializationFieldInfo[] fieldsById;\n");
+    if (!struct.record) {
+      builder.append("  private final ObjectInstantiator generatedObjectInstantiator;\n");
+    }
+    for (SourceField field : struct.fields) {
+      if (field.usesFieldAccessor()) {
+        builder
+            .append("  private final FieldAccessor ")
+            .append(field.fieldAccessorName())
+            .append(";\n");
+      }
+    }
     builder.append("  private final int classVersionHash;\n");
     builder.append("  private final boolean sameSchemaCompatible;\n\n");
   }
@@ -140,6 +156,14 @@ final class StaticSerializerSourceWriter {
     builder.append("    this.allFields = null;\n");
     builder.append("    this.allFieldIds = null;\n");
     builder.append("    this.fieldsById = null;\n");
+    if (!struct.record) {
+      builder.append("    this.generatedObjectInstantiator = null;\n");
+    }
+    for (SourceField field : struct.fields) {
+      if (field.usesFieldAccessor()) {
+        builder.append("    this.").append(field.fieldAccessorName()).append(" = null;\n");
+      }
+    }
     builder.append("    this.classVersionHash = 0;\n");
     builder.append("    this.sameSchemaCompatible = false;\n");
     builder.append("  }\n\n");
@@ -166,11 +190,27 @@ final class StaticSerializerSourceWriter {
     builder.append("    this.allFields = fieldGroups.allFields;\n");
     builder.append("    this.allFieldIds = localFieldIds(allFields, DESCRIPTORS);\n");
     builder.append("    this.fieldsById = new SerializationFieldInfo[DESCRIPTORS.size()];\n");
+    if (!struct.record) {
+      builder.append(
+          "    this.generatedObjectInstantiator = typeResolver.getObjectInstantiator(type);\n");
+    }
     builder.append("    SerializationFieldInfo[] allFields = fieldGroups.allFields;\n");
     builder.append("    int[] allFieldIds = localFieldIds(allFields, DESCRIPTORS);\n");
     builder.append("    for (int i = 0; i < allFields.length; i++) {\n");
     builder.append("      this.fieldsById[allFieldIds[i]] = allFields[i];\n");
     builder.append("    }\n");
+    for (SourceField field : struct.fields) {
+      if (field.usesFieldAccessor()) {
+        builder
+            .append("    this.")
+            .append(field.fieldAccessorName())
+            .append(" = FieldAccessor.createAccessor(declaredField(type, \"")
+            .append(escape(field.declaringClass))
+            .append("\", \"")
+            .append(escape(field.name))
+            .append("\"));\n");
+      }
+    }
     builder.append(
         "    this.classVersionHash = typeResolver.checkClassVersion() ? computeClassVersionHash(DESCRIPTORS) : 0;\n");
     builder.append("    this.sameSchemaCompatible = ").append(sameSchemaExpression).append(";\n");
@@ -221,21 +261,16 @@ final class StaticSerializerSourceWriter {
             .append(field.defaultValue())
             .append(";\n");
       }
-      builder.append("    Object[] values = new Object[DESCRIPTORS.size()];\n");
-      builder.append("    readRecordFields(readContext, values);\n");
-      for (SourceField field : struct.fields) {
-        builder
-            .append("    field")
-            .append(field.id)
-            .append(" = ")
-            .append(field.castExpression("values[" + field.id + "]"))
-            .append(";\n");
-      }
-      builder.append("    return new ").append(struct.typeName).append("(");
-      appendRecordConstructorArguments("field");
-      builder.append(");\n");
+      appendSchemaConsistentRecordLoop();
+      appendRecordConstruction("record", "field", 4);
+      builder.append("    return record;\n");
     } else {
-      builder.append("    ").append(struct.typeName).append(" value = newBean();\n");
+      builder
+          .append("    ")
+          .append(struct.typeName)
+          .append(" value = ")
+          .append(newGeneratedBeanExpression())
+          .append(";\n");
       builder.append("    readContext.reference(value);\n");
       builder.append("    readFields(readContext, value);\n");
       builder.append("    return value;\n");
@@ -245,6 +280,37 @@ final class StaticSerializerSourceWriter {
 
   private void writeWriteGroups() {
     writeWriteGroup("", "allFields", "allFieldIds", "writeFieldValue");
+  }
+
+  private void appendSchemaConsistentRecordLoop() {
+    builder.append("    for (int i = 0; i < allFields.length; i++) {\n");
+    builder.append("      SerializationFieldInfo fieldInfo = allFields[i];\n");
+    builder.append("      switch (allFieldIds[i]) {\n");
+    for (SourceField field : struct.fields) {
+      builder.append("        case ").append(field.id).append(":\n");
+      appendDebugRead("before", "fieldInfo", 10);
+      if (canEmitDirectReadField(field)) {
+        appendDirectReadLocal(field, "field" + field.id, "fieldInfo", 10);
+      } else {
+        builder
+            .append("          Object fieldValue")
+            .append(field.id)
+            .append(" = readFieldValue(readContext, fieldInfo);\n");
+        builder
+            .append("          field")
+            .append(field.id)
+            .append(" = ")
+            .append(field.castExpression("fieldValue" + field.id))
+            .append(";\n");
+      }
+      appendDebugRead("after", "fieldInfo", 10);
+      builder.append("          break;\n");
+    }
+    builder.append("        default:\n");
+    builder.append(
+        "          throw new IllegalStateException(\"Unknown generated field id \" + allFieldIds[i]);\n");
+    builder.append("      }\n");
+    builder.append("    }\n");
   }
 
   private void writeWriteGroup(
@@ -288,9 +354,7 @@ final class StaticSerializerSourceWriter {
   }
 
   private void writeReadGroups() {
-    if (struct.record) {
-      writeReadRecordGroup("", "allFields", "allFieldIds", "readFieldValue");
-    } else {
+    if (!struct.record) {
       writeReadBeanGroup("", "allFields", "allFieldIds", "readFieldValue");
     }
   }
@@ -369,6 +433,9 @@ final class StaticSerializerSourceWriter {
   }
 
   private boolean canEmitDirectWriteField(SourceField field) {
+    if (field.readAccessKind == SourceField.AccessKind.ACCESSOR) {
+      return false;
+    }
     if (canEmitDirectStringField(field)) {
       return true;
     }
@@ -443,52 +510,77 @@ final class StaticSerializerSourceWriter {
   }
 
   private void appendDirectRead(SourceField field) {
+    appendDirectReadTarget(field, "value", "fieldInfo", 10, false);
+  }
+
+  private void appendDirectReadLocal(
+      SourceField field, String localName, String fieldInfoName, int indent) {
+    appendDirectReadTarget(field, localName, fieldInfoName, indent, true);
+  }
+
+  private void appendDirectReadTarget(
+      SourceField field, String target, String fieldInfoName, int indent, boolean localTarget) {
     if (canEmitDirectStringField(field)) {
-      builder
-          .append("          ")
-          .append(field.writeStatement("value", "readContext.readString()"))
-          .append("\n");
+      appendIndented(indent, assignment(field, target, "readContext.readString()", localTarget));
       return;
     }
     if (canEmitDirectArrayField(field)) {
-      builder.append("          readContext.preserveRefId(-1);\n");
-      builder
-          .append("          ")
-          .append(
-              field.writeStatement(
-                  "value", "(" + field.erasedType + ") readContext.readNonRef(fieldInfo.typeInfo)"))
-          .append("\n");
+      appendIndented(indent, "readContext.preserveRefId(-1);");
+      appendIndented(
+          indent,
+          assignment(
+              field,
+              target,
+              "(" + field.erasedType + ") readContext.readNonRef(" + fieldInfoName + ".typeInfo)",
+              localTarget));
       return;
     }
     String exactRead = exactPrimitiveReadExpression(field);
     if (exactRead == null) {
-      appendPrimitiveReadSwitch(field);
+      appendPrimitiveReadSwitch(field, target, fieldInfoName, indent, localTarget);
       return;
     }
-    builder.append("          ").append(field.writeStatement("value", exactRead)).append("\n");
+    appendIndented(indent, assignment(field, target, exactRead, localTarget));
   }
 
   private void appendPrimitiveReadSwitch(SourceField field) {
-    builder.append("          switch (fieldInfo.dispatchId) {\n");
+    appendPrimitiveReadSwitch(field, "value", "fieldInfo", 10, false);
+  }
+
+  private void appendPrimitiveReadSwitch(
+      SourceField field, String target, String fieldInfoName, int indent, boolean localTarget) {
+    appendIndented(indent, "switch (" + fieldInfoName + ".dispatchId) {");
     String[][] cases = primitiveReadCases(field);
     for (String[] readCase : cases) {
-      builder.append("            case DispatchId.").append(readCase[0]).append(":\n");
-      builder
-          .append("              ")
-          .append(field.writeStatement("value", readCase[1]))
-          .append("\n");
-      builder.append("              break;\n");
+      appendIndented(indent + 2, "case DispatchId." + readCase[0] + ":");
+      appendIndented(indent + 4, assignment(field, target, readCase[1], localTarget));
+      appendIndented(indent + 4, "break;");
     }
-    builder.append("            default:\n");
-    builder
-        .append("              Object fieldValue")
-        .append(field.id)
-        .append(" = readBuildInFieldValue(readContext, fieldInfo);\n");
-    builder
-        .append("              ")
-        .append(field.writeStatement("value", field.castExpression("fieldValue" + field.id)))
-        .append("\n");
-    builder.append("          }\n");
+    appendIndented(indent + 2, "default:");
+    appendIndented(
+        indent + 4,
+        "Object fieldValue"
+            + field.id
+            + " = readBuildInFieldValue(readContext, "
+            + fieldInfoName
+            + ");");
+    appendIndented(
+        indent + 4,
+        assignment(field, target, field.castExpression("fieldValue" + field.id), localTarget));
+    appendIndented(indent, "}");
+  }
+
+  private String assignment(
+      SourceField field, String target, String valueExpression, boolean localTarget) {
+    if (localTarget) {
+      return target + " = " + valueExpression + ";";
+    }
+    return field.writeStatement(target, valueExpression);
+  }
+
+  private void appendIndented(int spaces, String code) {
+    appendIndent(spaces);
+    builder.append(code).append("\n");
   }
 
   private String[][] primitiveWriteCases(SourceField field) {
@@ -702,26 +794,6 @@ final class StaticSerializerSourceWriter {
     return meta.substring(start + prefix.length(), end);
   }
 
-  private void writeReadRecordGroup(
-      String groupName, String fieldsName, String idsName, String helperName) {
-    builder
-        .append("  private void read")
-        .append(groupName)
-        .append("RecordFields(ReadContext readContext, Object[] values) {\n");
-    builder.append("    for (int i = 0; i < ").append(fieldsName).append(".length; i++) {\n");
-    builder.append("      SerializationFieldInfo fieldInfo = ").append(fieldsName).append("[i];\n");
-    appendDebugRead("before", "fieldInfo", 6);
-    builder
-        .append("      values[")
-        .append(idsName)
-        .append("[i]] = ")
-        .append(helperName)
-        .append("(readContext, fieldInfo);\n");
-    appendDebugRead("after", "fieldInfo", 6);
-    builder.append("    }\n");
-    builder.append("  }\n\n");
-  }
-
   private void writeCompatibleRead() {
     builder.append("  @Override\n");
     builder
@@ -732,19 +804,6 @@ final class StaticSerializerSourceWriter {
     builder.append("      return readSchemaConsistent(readContext);\n");
     builder.append("    }\n");
     if (struct.record) {
-      builder.append("    Object[] values = new Object[DESCRIPTORS.size()];\n");
-      for (SourceField field : struct.fields) {
-        builder
-            .append("    values[")
-            .append(field.id)
-            .append("] = ")
-            .append(field.defaultValue())
-            .append(";\n");
-      }
-      builder.append("    for (int i = 0; i < remoteFields.size(); i++) {\n");
-      builder.append("      RemoteFieldInfo remoteField = remoteFields.get(i);\n");
-      builder.append("      readCompatibleRecordField(readContext, values, remoteField);\n");
-      builder.append("    }\n");
       for (SourceField field : struct.fields) {
         builder
             .append("    ")
@@ -752,14 +811,28 @@ final class StaticSerializerSourceWriter {
             .append(" field")
             .append(field.id)
             .append(" = ")
-            .append(field.castExpression("values[" + field.id + "]"))
+            .append(field.defaultValue())
             .append(";\n");
       }
-      builder.append("    return new ").append(struct.typeName).append("(");
-      appendRecordConstructorArguments("field");
-      builder.append(");\n");
+      builder.append("    for (int i = 0; i < remoteFields.size(); i++) {\n");
+      builder.append("      RemoteFieldInfo remoteField = remoteFields.get(i);\n");
+      builder.append("      if (remoteField.matchedId == -1) {\n");
+      appendDebugRemoteRead("before skip", "remoteField", 8);
+      builder.append("        skipField(readContext, remoteField);\n");
+      appendDebugRemoteRead("after skip", "remoteField", 8);
+      builder.append("        continue;\n");
+      builder.append("      }\n");
+      appendCompatibleRecordSwitch();
+      builder.append("    }\n");
+      appendRecordConstruction("record", "field", 4);
+      builder.append("    return record;\n");
     } else {
-      builder.append("    ").append(struct.typeName).append(" value = newBean();\n");
+      builder
+          .append("    ")
+          .append(struct.typeName)
+          .append(" value = ")
+          .append(newGeneratedBeanExpression())
+          .append(";\n");
       builder.append("    readContext.reference(value);\n");
       builder.append("    for (int i = 0; i < remoteFields.size(); i++) {\n");
       builder.append("      RemoteFieldInfo remoteField = remoteFields.get(i);\n");
@@ -771,27 +844,105 @@ final class StaticSerializerSourceWriter {
     writeCompatibleDispatchMethods();
   }
 
-  private void writeCompatibleDispatchMethods() {
-    int groupCount = (struct.fields.size() + DISPATCH_GROUP_SIZE - 1) / DISPATCH_GROUP_SIZE;
-    if (struct.record) {
-      writeCompatibleDispatchRouter("readCompatibleRecordField", true, groupCount);
-      for (int group = 0; group < groupCount; group++) {
-        writeCompatibleRecordDispatchGroup(group);
+  private void appendCompatibleRecordSwitch() {
+    builder.append("      switch (remoteField.matchedId) {\n");
+    for (int matchedId = 0; matchedId < struct.fields.size() * 2; matchedId++) {
+      SourceField field = struct.fields.get(matchedId >> 1);
+      builder.append("        case ").append(matchedId).append(": {\n");
+      if ((matchedId & 1) == 0) {
+        String fieldInfoName = "fieldInfo" + matchedId;
+        builder
+            .append("          SerializationFieldInfo ")
+            .append(fieldInfoName)
+            .append(" = fieldsById[")
+            .append(field.id)
+            .append("];\n");
+        appendDebugRead("before", fieldInfoName, 10);
+        if (canEmitDirectReadField(field)) {
+          builder.append("          MemoryBuffer buffer = readContext.getBuffer();\n");
+          appendDirectReadLocal(field, "field" + field.id, fieldInfoName, 10);
+        } else {
+          String fieldValueName = "fieldValue" + matchedId;
+          builder
+              .append("          Object ")
+              .append(fieldValueName)
+              .append(" = readFieldValue(readContext, ")
+              .append(fieldInfoName)
+              .append(");\n");
+          builder
+              .append("          field")
+              .append(field.id)
+              .append(" = ")
+              .append(field.castExpression(fieldValueName))
+              .append(";\n");
+        }
+        appendDebugRead("after", fieldInfoName, 10);
+        builder.append("          break;\n");
+        builder.append("        }\n");
+        continue;
       }
+      appendDebugRemoteRead("before read", "remoteField", 10);
+      String scalarRead =
+          compatibleScalarReadExpression(
+              field, "remoteField.serializationFieldInfo", "fieldsById[" + field.id + "]");
+      if (scalarRead != null) {
+        builder
+            .append("          field")
+            .append(field.id)
+            .append(" = ")
+            .append(scalarRead)
+            .append(";\n");
+        appendDebugRemoteRead("after read", "remoteField", 10);
+      } else {
+        String fieldValueName = "fieldValue" + matchedId;
+        builder
+            .append("          Object ")
+            .append(fieldValueName)
+            .append(" = readCompatibleFieldValue(readContext, remoteField, fieldsById[")
+            .append(field.id)
+            .append("]);\n");
+        appendDebugRemoteRead("after read", "remoteField", 10);
+        builder
+            .append("          field")
+            .append(field.id)
+            .append(" = ")
+            .append(field.castExpression(fieldValueName))
+            .append(";\n");
+      }
+      builder.append("          break;\n");
+      builder.append("        }\n");
+    }
+    builder.append("        default:\n");
+    builder.append(
+        "          throw new IllegalStateException(\"Invalid compatible matched id \" + remoteField.matchedId);\n");
+    builder.append("      }\n");
+  }
+
+  private void writeCompatibleDispatchMethods() {
+    int caseCount = struct.fields.size() * 2;
+    int groupCount = (caseCount + DISPATCH_GROUP_SIZE - 1) / DISPATCH_GROUP_SIZE;
+    if (struct.record) {
+      return;
     } else {
-      writeCompatibleDispatchRouter("readCompatibleField", false, groupCount);
+      writeCompatibleDispatchRouter("readCompatibleField", groupCount);
       for (int group = 0; group < groupCount; group++) {
         writeCompatibleBeanDispatchGroup(group);
       }
     }
   }
 
-  private void writeCompatibleDispatchRouter(String methodName, boolean record, int groupCount) {
+  private void writeCompatibleDispatchRouter(String methodName, int groupCount) {
     builder.append("  private void ").append(methodName).append("(");
-    appendCompatibleDispatchParameters(record);
+    appendCompatibleDispatchParameters();
     builder.append(") {\n");
+    builder.append("    if (remoteField.matchedId == -1) {\n");
+    appendDebugRemoteRead("before skip", "remoteField", 6);
+    builder.append("      skipField(readContext, remoteField);\n");
+    appendDebugRemoteRead("after skip", "remoteField", 6);
+    builder.append("      return;\n");
+    builder.append("    }\n");
     for (int group = 0; group < groupCount; group++) {
-      int upperBound = Math.min(struct.fields.size(), (group + 1) * DISPATCH_GROUP_SIZE);
+      int upperBound = Math.min(struct.fields.size() * 2, (group + 1) * DISPATCH_GROUP_SIZE);
       if (group == 0) {
         builder
             .append("    if (remoteField.matchedId >= 0 && remoteField.matchedId < ")
@@ -801,112 +952,179 @@ final class StaticSerializerSourceWriter {
         builder.append("    if (remoteField.matchedId < ").append(upperBound).append(") {\n");
       }
       builder.append("      ").append(methodName).append(group).append("(");
-      appendCompatibleDispatchArguments(record);
+      appendCompatibleDispatchArguments();
       builder.append(");\n");
       builder.append("      return;\n");
       builder.append("    }\n");
     }
-    appendDebugRemoteRead("before skip", "remoteField", 4);
-    builder.append("    skipField(readContext, remoteField);\n");
-    appendDebugRemoteRead("after skip", "remoteField", 4);
+    builder.append(
+        "    throw new IllegalStateException(\"Invalid compatible matched id \" + remoteField.matchedId);\n");
     builder.append("  }\n\n");
   }
 
   private void writeCompatibleBeanDispatchGroup(int group) {
     int start = group * DISPATCH_GROUP_SIZE;
-    int end = Math.min(struct.fields.size(), start + DISPATCH_GROUP_SIZE);
+    int end = Math.min(struct.fields.size() * 2, start + DISPATCH_GROUP_SIZE);
     builder.append("  private void readCompatibleField").append(group).append("(");
-    appendCompatibleDispatchParameters(false);
+    appendCompatibleDispatchParameters();
     builder.append(") {\n");
     builder.append("    switch (remoteField.matchedId) {\n");
-    for (int i = start; i < end; i++) {
-      SourceField field = struct.fields.get(i);
-      builder.append("      case ").append(field.id).append(":\n");
+    for (int matchedId = start; matchedId < end; matchedId++) {
+      SourceField field = struct.fields.get(matchedId >> 1);
+      builder.append("      case ").append(matchedId).append(": {\n");
+      if ((matchedId & 1) == 0) {
+        String fieldInfoName = "fieldInfo";
+        builder
+            .append("        SerializationFieldInfo ")
+            .append(fieldInfoName)
+            .append(" = fieldsById[")
+            .append(field.id)
+            .append("];\n");
+        appendDebugRead("before", fieldInfoName, 8);
+        if (canEmitDirectReadField(field)) {
+          builder.append("        MemoryBuffer buffer = readContext.getBuffer();\n");
+          appendDirectRead(field);
+        } else {
+          String fieldValueName = "fieldValue" + matchedId;
+          builder
+              .append("        Object ")
+              .append(fieldValueName)
+              .append(" = readFieldValue(readContext, ")
+              .append(fieldInfoName)
+              .append(");\n");
+          builder
+              .append("        ")
+              .append(field.writeStatement("value", field.castExpression(fieldValueName)))
+              .append("\n");
+        }
+        appendDebugRead("after", fieldInfoName, 8);
+        builder.append("        return;\n");
+        builder.append("      }\n");
+        continue;
+      }
       appendDebugRemoteRead("before read", "remoteField", 8);
-      builder
-          .append("        if (canReadGeneratedField(remoteField, fieldsById[")
-          .append(field.id)
-          .append("])) {\n");
-      builder
-          .append(
-              "          Object fieldValue = readCompatibleFieldValue(readContext, remoteField, fieldsById[")
-          .append(field.id)
-          .append("]);\n");
-      appendDebugRemoteRead("after read", "remoteField", 10);
-      builder
-          .append("          ")
-          .append(field.writeStatement("value", field.castExpression("fieldValue")))
-          .append("\n");
-      builder.append("        } else {\n");
-      appendDebugRemoteRead("before skip", "remoteField", 10);
-      builder.append("          skipField(readContext, remoteField);\n");
-      appendDebugRemoteRead("after skip", "remoteField", 10);
-      builder.append("        }\n");
+      String scalarRead =
+          compatibleScalarReadExpression(
+              field, "remoteField.serializationFieldInfo", "fieldsById[" + field.id + "]");
+      if (scalarRead != null) {
+        builder.append("        ").append(field.writeStatement("value", scalarRead)).append("\n");
+        appendDebugRemoteRead("after read", "remoteField", 8);
+      } else {
+        String fieldValueName = "fieldValue" + matchedId;
+        builder
+            .append("        Object ")
+            .append(fieldValueName)
+            .append(" = readCompatibleFieldValue(readContext, remoteField, fieldsById[")
+            .append(field.id)
+            .append("]);\n");
+        appendDebugRemoteRead("after read", "remoteField", 8);
+        builder
+            .append("        ")
+            .append(field.writeStatement("value", field.castExpression(fieldValueName)))
+            .append("\n");
+      }
       builder.append("        return;\n");
+      builder.append("      }\n");
     }
     builder.append("      default:\n");
-    appendDebugRemoteRead("before skip", "remoteField", 8);
-    builder.append("        skipField(readContext, remoteField);\n");
-    appendDebugRemoteRead("after skip", "remoteField", 8);
+    builder.append(
+        "        throw new IllegalStateException(\"Invalid compatible matched id \" + remoteField.matchedId);\n");
     builder.append("    }\n");
     builder.append("  }\n\n");
   }
 
-  private void writeCompatibleRecordDispatchGroup(int group) {
-    int start = group * DISPATCH_GROUP_SIZE;
-    int end = Math.min(struct.fields.size(), start + DISPATCH_GROUP_SIZE);
-    builder.append("  private void readCompatibleRecordField").append(group).append("(");
-    appendCompatibleDispatchParameters(true);
-    builder.append(") {\n");
-    builder.append("    switch (remoteField.matchedId) {\n");
-    for (int i = start; i < end; i++) {
-      SourceField field = struct.fields.get(i);
-      builder.append("      case ").append(field.id).append(":\n");
-      appendDebugRemoteRead("before read", "remoteField", 8);
-      builder
-          .append("        if (canReadGeneratedField(remoteField, fieldsById[")
-          .append(field.id)
-          .append("])) {\n");
-      builder
-          .append("          values[")
-          .append(field.id)
-          .append("] = readCompatibleFieldValue(readContext, remoteField, fieldsById[")
-          .append(field.id)
-          .append("]);\n");
-      appendDebugRemoteRead("after read", "remoteField", 10);
-      builder.append("        } else {\n");
-      appendDebugRemoteRead("before skip", "remoteField", 10);
-      builder.append("          skipField(readContext, remoteField);\n");
-      appendDebugRemoteRead("after skip", "remoteField", 10);
-      builder.append("        }\n");
-      builder.append("        return;\n");
-    }
-    builder.append("      default:\n");
-    appendDebugRemoteRead("before skip", "remoteField", 8);
-    builder.append("        skipField(readContext, remoteField);\n");
-    appendDebugRemoteRead("after skip", "remoteField", 8);
-    builder.append("    }\n");
-    builder.append("  }\n\n");
-  }
-
-  private void appendCompatibleDispatchParameters(boolean record) {
+  private void appendCompatibleDispatchParameters() {
     builder.append("ReadContext readContext, ");
-    if (record) {
-      builder.append("Object[] values, ");
-    } else {
-      builder.append(struct.typeName).append(" value, ");
-    }
+    builder.append(struct.typeName).append(" value, ");
     builder.append("RemoteFieldInfo remoteField");
   }
 
-  private void appendCompatibleDispatchArguments(boolean record) {
+  private void appendCompatibleDispatchArguments() {
     builder.append("readContext, ");
-    if (record) {
-      builder.append("values, ");
-    } else {
-      builder.append("value, ");
-    }
+    builder.append("value, ");
     builder.append("remoteField");
+  }
+
+  private String compatibleScalarReadExpression(
+      SourceField field, String remoteFieldInfo, String localFieldInfo) {
+    String helper;
+    switch (field.erasedType) {
+      case "boolean":
+        helper = "readBooleanTarget";
+        break;
+      case "java.lang.Boolean":
+        helper = "readBoxedBooleanTarget";
+        break;
+      case "byte":
+        helper = "readByteTarget";
+        break;
+      case "java.lang.Byte":
+        helper = "readBoxedByteTarget";
+        break;
+      case "short":
+        helper = "readShortTarget";
+        break;
+      case "java.lang.Short":
+        helper = "readBoxedShortTarget";
+        break;
+      case "int":
+        helper = "readIntTarget";
+        break;
+      case "java.lang.Integer":
+        helper = "readBoxedIntTarget";
+        break;
+      case "long":
+        helper = "readLongTarget";
+        break;
+      case "java.lang.Long":
+        helper = "readBoxedLongTarget";
+        break;
+      case "float":
+        helper = "readFloatTarget";
+        break;
+      case "java.lang.Float":
+        helper = "readBoxedFloatTarget";
+        break;
+      case "double":
+        helper = "readDoubleTarget";
+        break;
+      case "java.lang.Double":
+        helper = "readBoxedDoubleTarget";
+        break;
+      case "java.lang.String":
+        helper = "readStringTarget";
+        break;
+      case "java.math.BigDecimal":
+        helper = "readDecimalTarget";
+        break;
+      case "org.apache.fory.type.unsigned.UInt8":
+        helper = "readUInt8Target";
+        break;
+      case "org.apache.fory.type.unsigned.UInt16":
+        helper = "readUInt16Target";
+        break;
+      case "org.apache.fory.type.unsigned.UInt32":
+        helper = "readUInt32Target";
+        break;
+      case "org.apache.fory.type.unsigned.UInt64":
+        helper = "readUInt64Target";
+        break;
+      case "org.apache.fory.type.Float16":
+        helper = "readFloat16Target";
+        break;
+      case "org.apache.fory.type.BFloat16":
+        helper = "readBFloat16Target";
+        break;
+      default:
+        return null;
+    }
+    return "FieldConverters."
+        + helper
+        + "(readContext, "
+        + remoteFieldInfo
+        + ", "
+        + localFieldInfo
+        + ")";
   }
 
   private void appendDebugWrite(String stage, String fieldInfoName, int indent) {
@@ -982,18 +1200,16 @@ final class StaticSerializerSourceWriter {
                         + "])"))
             .append(";\n");
       }
-      builder
-          .append("    ")
-          .append(struct.typeName)
-          .append(" copied = new ")
-          .append(struct.typeName)
-          .append("(");
-      appendRecordConstructorArguments("field");
-      builder.append(");\n");
+      appendRecordConstruction("copied", "field", 4);
       builder.append("    copyContext.reference(value, copied);\n");
       builder.append("    return copied;\n");
     } else {
-      builder.append("    ").append(struct.typeName).append(" copied = newBean();\n");
+      builder
+          .append("    ")
+          .append(struct.typeName)
+          .append(" copied = ")
+          .append(newGeneratedBeanExpression())
+          .append(";\n");
       builder.append("    copyContext.reference(value, copied);\n");
       for (SourceField field : struct.fields) {
         builder
@@ -1019,11 +1235,28 @@ final class StaticSerializerSourceWriter {
         "  private static TypeExtMeta meta(int typeId, boolean nullable, boolean trackingRef) {\n");
     builder.append("    return TypeExtMeta.of(typeId, nullable, trackingRef);\n");
     builder.append("  }\n");
+    builder.append(
+        "  private static java.lang.reflect.Field declaredField(Class<?> type, String declaringClassName, String fieldName) {\n");
+    builder.append("    try {\n");
+    builder.append(
+        "      return Class.forName(declaringClassName, false, type.getClassLoader()).getDeclaredField(fieldName);\n");
+    builder.append("    } catch (ReflectiveOperationException e) {\n");
+    builder.append("      throw new IllegalStateException(e);\n");
+    builder.append("    }\n");
+    builder.append("  }\n");
   }
 
-  private void appendRecordConstructorArguments(String prefix) {
+  private void appendRecordConstruction(String variableName, String prefix, int indent) {
+    appendIndent(indent);
+    builder
+        .append(struct.typeName)
+        .append(" ")
+        .append(variableName)
+        .append(" = new ")
+        .append(struct.typeName)
+        .append("(");
     for (int i = 0; i < struct.recordConstructorFields.size(); i++) {
-      if (i > 0) {
+      if (i != 0) {
         builder.append(", ");
       }
       SourceField field = struct.recordConstructorFields.get(i);
@@ -1033,6 +1266,11 @@ final class StaticSerializerSourceWriter {
         builder.append(field.defaultValue());
       }
     }
+    builder.append(");\n");
+  }
+
+  private String newGeneratedBeanExpression() {
+    return "(" + struct.typeName + ") generatedObjectInstantiator.newInstance()";
   }
 
   private static String escape(String value) {

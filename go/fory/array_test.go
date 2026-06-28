@@ -39,7 +39,7 @@ func TestArrayDynSerializer(t *testing.T) {
 }
 
 func TestArrayDynSerializerRoundTrip(t *testing.T) {
-	f := NewFory(WithXlang(false))
+	f := NewFory(WithXlang(false), WithCompatible(false))
 
 	t.Run("array of interfaces with strings", func(t *testing.T) {
 		arr := [3]any{"hello", "world", "test"}
@@ -95,5 +95,25 @@ func TestArrayDynSerializerRoundTrip(t *testing.T) {
 		require.Equal(t, arr[1], resultSlice[1])
 		require.Equal(t, arr[2], resultSlice[2])
 		require.Equal(t, arr[3], resultSlice[3])
+	})
+}
+
+func TestArrayRejectsLengthMismatch(t *testing.T) {
+	f := NewFory(WithXlang(false), WithCompatible(false))
+
+	t.Run("concrete", func(t *testing.T) {
+		bytes, err := f.Marshal([3]string{"a", "b", "c"})
+		require.NoError(t, err)
+
+		var out [2]string
+		require.Error(t, f.Unmarshal(bytes, &out))
+	})
+
+	t.Run("dynamic", func(t *testing.T) {
+		bytes, err := f.Marshal([3]any{"a", "b", "c"})
+		require.NoError(t, err)
+
+		var out [2]any
+		require.Error(t, f.Unmarshal(bytes, &out))
 	})
 }

@@ -22,7 +22,7 @@ license: |
 Use `fory-kotlin-ksp` when Kotlin classes must participate in Fory
 cross-language schema serialization. The processor generates Kotlin source
 serializers at build time. Those serializers call the existing Fory Java
-runtime, including `WriteContext`, `ReadContext`, and `MemoryBuffer`; there is
+implementation, including `WriteContext`, `ReadContext`, and `MemoryBuffer`; there is
 no Kotlin-only protocol.
 
 Static generated Kotlin serializers are for Kotlin/JVM and Android xlang/schema
@@ -31,7 +31,7 @@ graph implementation details such as the exact concrete collection class.
 
 ## Add KSP
 
-Add `fory-kotlin` at runtime and run `fory-kotlin-ksp` as a KSP processor in
+Add `fory-kotlin` to the application classpath and run `fory-kotlin-ksp` as a KSP processor in
 the module that compiles your `@ForyStruct` Kotlin classes.
 
 ```kotlin
@@ -87,7 +87,7 @@ class` is the common case, but it is not required.
 Internal Kotlin struct classes are supported when KSP runs in the same Kotlin
 module that owns the struct. The generated Kotlin serializer is also internal,
 so it can call the internal constructor and expose the internal type in
-overrides while still producing a JVM class that the Fory Java runtime can load.
+overrides while still producing a JVM class that Fory Java can load.
 Application code outside that Kotlin module still cannot refer to the internal
 struct directly, so registration must happen from code that can see the class.
 
@@ -151,7 +151,7 @@ For example, `List<String>` is encoded as `list<string>` and
 `Map<String, Int>` is encoded as `map<string, int32>`.
 
 Deserialization only guarantees that the result is assignable to the declared
-field type. Fory does not preserve whether the original runtime value was an
+field type. Fory does not preserve whether the original concrete value was an
 `ArrayList`, `LinkedList`, `Collections.unmodifiableList`, synchronized
 collection wrapper, or another JVM-specific collection implementation.
 
@@ -221,7 +221,7 @@ serialization.
 KSP generates serializers for top-level sealed classes annotated with
 `@ForyUnion`. Each schema case is a nested class annotated with `@ForyCase` and
 one constructor property named `value`. `Unknown(UnknownCase)` is marked with
-`@ForyUnknownCase` as the runtime-owned forward-compatibility carrier. It is
+`@ForyUnknownCase` as the Fory-owned forward-compatibility carrier. It is
 omitted from the schema case table because the marker only selects the carrier
 and does not add a schema entry. A typed union must declare at least one
 non-`Unknown` case:
@@ -250,7 +250,7 @@ output mode cannot express a legal qualifier for a conflict, the IDL compiler
 appends `Case` to the generated case class name.
 
 Generated schema modules register sealed unions through `KotlinSerializers.registerUnion`.
-The runtime discovers the generated `<Target>_ForySerializer` automatically, so
+Fory discovers the generated `<Target>_ForySerializer` automatically, so
 callers do not pass a serializer instance.
 
 ## Register Classes
@@ -271,12 +271,12 @@ val fory = ForyKotlin.builder()
 fory.register<User>("example.User")
 ```
 
-`ForyKotlin.builder()` installs the Kotlin runtime bootstrap for the Fory
+`ForyKotlin.builder()` installs the Kotlin serializer bootstrap for the Fory
 instance. The `fory.register<T>(...)` extension registers your xlang schema type
 name and resolves the generated serializer from the target class.
 
 Do not register or reference generated serializer classes in application code.
-The runtime resolves them from the registered target class.
+Fory resolves them from the registered target class.
 
 Generated Schema IDL modules use the same path. They call
 `KotlinSerializers.registerType`, `registerSerializer`, `registerEnum`, and
@@ -314,6 +314,6 @@ release-minified validation guidance.
 Kotlin KSP generated serializers are only for xlang/schema mode. They do not
 replace Fory Java native object serializers and do not preserve JVM object graph
 identity. If you use Fory with `withXlang(false)`, Fory uses the normal Java and
-Kotlin runtime serializers instead.
+Kotlin serializers instead.
 
 Kotlin/Native and Kotlin/JS are not supported by this module.

@@ -245,9 +245,12 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         break;
       case TypeId.NAMED_UNION:
         if (this.builder.resolver.isCompatible()) {
-          const typeMeta = this.scope.uniqueName("unionTypeMeta");
           namesStmt = `
-            const ${typeMeta} = ${this.builder.typeMetaResolver.readTypeMeta()};
+            ${this.builder.typeMetaResolver.readNamedTypeMeta(
+              TypeId.NAMED_UNION,
+              this.typeInfo.namespace,
+              this.typeInfo.typeName,
+            )};
           `;
         } else {
           namesStmt = `

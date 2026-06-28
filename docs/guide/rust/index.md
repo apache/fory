@@ -36,11 +36,16 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 ## Crates
 
-| Crate                                                                       | Description                       | Version                                       |
-| --------------------------------------------------------------------------- | --------------------------------- | --------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [1.1.0](https://crates.io/crates/fory)        |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [1.1.0](https://crates.io/crates/fory-core)   |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [1.1.0](https://crates.io/crates/fory-derive) |
+| Crate                                                                       | Description                                               | Version                                       |
+| --------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.3.0](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.3.0](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.3.0](https://crates.io/crates/fory-derive) |
+
+Most applications should depend on `fory` only. It re-exports the derive
+macros and the public runtime types needed by generated code. Use `fory-core`
+or `fory-derive` directly only when intentionally building on the lower-level
+runtime crates.
 
 ## Quick Start
 
@@ -48,7 +53,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "1.1.0"
+fory = "1.3.0"
 ```
 
 ### Basic Example
@@ -93,9 +98,9 @@ fn main() -> Result<(), Error> {
 
 ## Xlang Mode And Native Mode
 
-Use xlang mode for cross-language payloads and schemas shared with other Fory runtimes. Xlang mode is the default Rust wire mode, and Rust examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
+Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default Rust wire mode, and Rust examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)`, uses schema-consistent payloads unless compatible mode is enabled, and keeps Rust object serialization on the Rust runtime path. It is optimized for Rust's type system and covers Rust-specific object features such as trait objects and shared-reference patterns that are not portable xlang payloads.
+Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)` and keeps Rust object serialization in Rust-native form. It is optimized for Rust's type system and covers Rust-specific object features such as trait objects and shared-reference patterns that are not portable xlang payloads. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same Rust schema and you want faster serialization and smaller size.
 
 See [Xlang Serialization](xlang-serialization.md) for Rust xlang registration and interoperability rules, and [Native Serialization](native-serialization.md) for Rust-only payloads.
 
@@ -193,3 +198,4 @@ fory-derive/           # Procedural macros
 - [Polymorphism](polymorphism.md) - Trait object serialization
 - [Custom Serializers](custom-serializers.md) - Extend serialization behavior
 - [Row Format](row-format.md) - Zero-copy row-based format
+- [gRPC Support](grpc-support.md) - Fory payloads over tonic

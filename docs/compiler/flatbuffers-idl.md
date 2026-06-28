@@ -49,9 +49,9 @@ translates them into Fory IR for code generation.
 
 | Situation                                                          | Recommended Path       |
 | ------------------------------------------------------------------ | ---------------------- |
-| You already have `.fbs` schemas and want Fory runtime/codegen      | Use FlatBuffers input  |
+| You already have `.fbs` schemas and want Fory APIs/codegen         | Use FlatBuffers input  |
 | You are starting new schema work and want full Fory syntax control | Use native Fory IDL    |
-| You need FlatBuffers wire compatibility at runtime                 | Keep FlatBuffers stack |
+| You need FlatBuffers wire compatibility                            | Keep FlatBuffers stack |
 | You need Fory object-graph semantics (`ref`, weak refs, etc.)      | Use Fory               |
 
 ## FlatBuffers to Fory Mapping
@@ -62,7 +62,7 @@ translates them into Fory IR for code generation.
 - `include` entries map to Fory imports.
 - `table` is translated as `evolving=true`.
 - `struct` is translated as `evolving=false`.
-- `root_type` is parsed but ignored by Fory runtime/codegen.
+- `root_type` is parsed but ignored by Fory codegen.
 - `file_identifier` and `file_extension` are parsed but not used by Fory codegen.
 
 ### Field Numbering
@@ -125,8 +125,10 @@ message Container {
 ### Services
 
 FlatBuffers `rpc_service` definitions are translated to Fory services. With
-`--grpc`, the compiler emits Java and Python gRPC service companions that use
-Fory serialization for request and response payloads.
+`--grpc`, the compiler emits gRPC service companions for supported outputs such
+as Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript. JavaScript
+browser clients are generated with `--grpc-web`. These companions use Fory
+serialization for request and response payloads.
 
 ```fbs
 rpc_service SearchService {
@@ -136,16 +138,21 @@ rpc_service SearchService {
 ```
 
 ```bash
-foryc api.fbs --java_out=./generated/java --python_out=./generated/python --grpc
+foryc api.fbs --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
-Generated service code imports grpc APIs, so applications must provide grpc-java
-or `grpcio` dependencies when they compile or run those files. The Fory runtime
-packages do not add gRPC as a hard dependency.
+Generated service code imports grpc APIs, so applications must provide grpc-java,
+grpc-kotlin, Scala grpc-java APIs, `grpcio`, grpc-go, Rust `tonic` and `bytes`,
+`@grpc/grpc-js`, C# `Grpc.Core.Api` plus server/client dependencies, or Dart
+`package:grpc` when they compile or run those files. Python companions use
+`grpc.aio` by default and can be generated in sync mode with
+`--grpc-python-mode=sync`. Fory packages do not add gRPC as a hard dependency.
+Use `--grpc-web` with JavaScript output to generate browser clients that import
+`grpc-web`.
 
 ### Defaults and Metadata
 
-- FlatBuffers default values are parsed but not applied as Fory runtime defaults.
+- FlatBuffers default values are parsed but not applied as Fory defaults.
 - Non-Fory metadata attributes are preserved as generic options in IR and may be
   consumed by downstream tooling.
 
@@ -190,7 +197,7 @@ FlatBuffers `ByteBuffer`-style APIs.
 - Java, Scala, and Kotlin: JVM model types with Fory metadata and registration helpers
 - Python: dataclasses plus registration helpers
 - C++, Go, and Rust: native structs and Fory metadata
-- JavaScript/TypeScript: TypeScript interfaces and registration helpers
+- JavaScript/TypeScript: TypeScript interfaces and schema helpers
 - C#, Swift, and Dart: annotated or macro-based model types with registration helpers
 
 The serialization format is Fory binary protocol, not FlatBuffers wire format.
@@ -221,5 +228,5 @@ foryc schema.fbs --emit-fdl --emit-fdl-path ./translated
 ## Summary
 
 FlatBuffers input lets you reuse existing `.fbs` schemas while moving to Fory's
-runtime and code generation model. This is useful for incremental adoption while
-preserving schema investment and using Fory-native object APIs.
+serialization and code generation model. This is useful for incremental adoption
+while preserving schema investment and using Fory-native object APIs.

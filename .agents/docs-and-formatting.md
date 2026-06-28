@@ -29,6 +29,11 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 - Do not treat checked-in benchmark reports as canonical for current numbers. Run the active harness or a source-aligned size check, and match schema, config, and mode before comparing runtimes.
 - Use portable repo-relative or web links in repository docs, not local filesystem paths. Package readmes rendered by external package managers should link to canonical published docs pages when that is the user-facing context.
 - Published `docs/guide/**` pages should prioritize end-user installation and usage flows unless the file is explicitly a contributor or development guide.
+- Keep `docs/guide/**` configuration text user-action focused. Do not put cache ownership,
+  cold/hot path, publish ordering, exact-local schema bypass, or TypeDef/TypeMeta routing
+  invariants there; put implementation invariants in `docs/specification/xlang_implementation_guide.md`,
+  security classifications in `docs/security/deserialization.md`, and agent-only workflow rules in
+  `.agents/**`.
 - Documentation examples should use normal explicit imports, avoid unused imports, and keep common Fory types unqualified where that is the idiom.
 - Generated Markdown under `docs/benchmarks/**` should satisfy markdownlint blank-line rules at generation time: no repeated blank lines and no extra blank line after final content.
 - Keep default recommendations minimal. Put uncommon optimization or transport patterns in clearly labeled optional sections.

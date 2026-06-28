@@ -44,7 +44,7 @@ Required disclosure fields:
 - Scope of assistance (for example: design drafting, code drafting, refactor suggestions, tests, docs)
 - Affected files or subsystems (high-level)
 - AI review summary (self-review completed, AI review loop status, and final result)
-- Final AI review artifacts (embedded screenshots or links showing the final clean AI review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes)
+- Final AI review artifacts (embedded screenshots or equivalent persisted links showing the final clean AI review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes)
 - Human verification performed (checks run locally or in CI, and results reviewed by the contributor)
 - Provenance and license confirmation (see Section 6)
 
@@ -56,7 +56,7 @@ AI Usage Disclosure
 - scope: <design drafting | code drafting | refactor suggestions | tests | docs | other>
 - affected_files_or_subsystems: <high-level paths/modules>
 - ai_review: <line-by-line self-review completed; summarize the two-reviewer loop and final no-further-comments result>
-- ai_review_artifacts: <embedded screenshots or links showing the final clean review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes>
+- ai_review_artifacts: <embedded screenshots or equivalent persisted links showing the final clean review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes>
 - human_verification: <checks run locally or in CI + pass/fail summary + contributor reviewed results>
 - performance_verification: <N/A or benchmark/regression evidence summary>
 - provenance_license_confirmation: <Apache-2.0-compatible provenance confirmed; no incompatible third-party code introduced>
@@ -92,17 +92,17 @@ For substantial AI assistance, every PR MUST also provide verifiable evidence of
 
 - The contributor personally performs a line-by-line self-review first and fixes all issues found before requesting AI review.
 - The contributor then runs two fresh AI review agents on the current PR diff or current HEAD after the latest code changes:
-  - one reviewer MUST use `.claude/skills/fory-code-review/SKILL.md`
-  - one reviewer MUST NOT use that skill
+  - one reviewer MUST be a Fory-guided reviewer prompted to follow `AGENTS.md` and the review workflow in `.agents/ci-and-pr.md`
+  - one reviewer MUST be an independent general reviewer in a separate clean-context review session; it MAY follow mandatory repository safety and contribution instructions required by its tooling, but it MUST NOT be pointed to `.agents/ci-and-pr.md` or any copied Fory-specific review checklist. If its tooling auto-loads `AGENTS.md`, it MUST follow the independent-review carve-out there instead of loading `.agents/ci-and-pr.md`.
 - The contributor addresses all actionable comments from both reviewers, reruns both reviewers on the updated diff, and repeats this loop until both reviewers report no further actionable comments.
-- The PR body MUST include the final clean AI review result from both reviewers plus screenshot evidence in the `AI Usage Disclosure`.
+- The PR body MUST include the final clean AI review result from both reviewers plus screenshot evidence or equivalent persisted links in the `AI Usage Disclosure`.
 - If the contributor cannot produce this evidence, the PR is not ready for maintainer review.
 
 Definitions for AI review evidence:
 
 - Fresh AI review agent means a new clean-context review session started on the current diff after the latest code changes. Reusing an old reviewer thread as the final review evidence is not sufficient.
 - Final clean AI review result means the last rerun of both reviewers on the current PR diff or current HEAD, with no unresolved actionable comments remaining.
-- Screenshot evidence must show, for each reviewer, the reviewer identity or workflow label, the reviewed diff/commit or PR state, and the clean no-further-actionable-comments result. Persisted links with equivalent information MAY be used when screenshots are impractical.
+- Screenshots or equivalent persisted links must show, for each reviewer, the reviewer identity or workflow label, the reviewed diff/commit or PR state, and the clean no-further-actionable-comments result.
 
 Definition of adequate human verification:
 
@@ -150,7 +150,7 @@ Maintainers MAY close or return PRs that materially fail project standards, incl
 
 - Contributor cannot explain key implementation logic
 - Missing required disclosure for substantial AI assistance
-- Missing required AI review loop evidence, final clean reviewer outputs, or screenshot artifacts in the PR body
+- Missing required AI review loop evidence, final clean reviewer outputs, or screenshot artifacts or equivalent persisted links in the PR body
 - Missing or inadequate human verification evidence for changed behavior
 - Redundant implementation of existing utilities without clear necessity
 - Introduction of dead code, unused helpers, or placeholder abstractions without justification
@@ -182,9 +182,9 @@ This is the canonical checklist for the PR template AI section.
 - [ ] If `yes`, I can explain and defend all important changes without AI help.
 - [ ] If `yes`, I reviewed AI-assisted code changes line by line before submission.
 - [ ] If `yes`, I completed line-by-line self-review first and fixed issues before requesting AI review.
-- [ ] If `yes`, I ran two fresh AI review agents on the current PR diff or current HEAD after the latest code changes: one using `.claude/skills/fory-code-review/SKILL.md` and one without that skill.
+- [ ] If `yes`, I ran two fresh AI review agents on the current PR diff or current HEAD after the latest code changes: one Fory-guided reviewer using `AGENTS.md` and `.agents/ci-and-pr.md`, and one independent general reviewer in a separate clean-context review session that was not pointed to `.agents/ci-and-pr.md` or any copied Fory-specific review checklist. If the independent reviewer's tooling auto-loaded `AGENTS.md`, it followed the independent-review carve-out there.
 - [ ] If `yes`, I addressed all AI review comments and repeated the review loop until both ai reviewers reported no further actionable comments.
-- [ ] If `yes`, I attached screenshot evidence of the final clean AI review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes in this PR body.
+- [ ] If `yes`, I attached screenshot evidence or equivalent persisted links of the final clean AI review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes in this PR body.
 - [ ] If `yes`, I ran adequate human verification and recorded evidence (checks run locally or in CI, pass/fail summary, and confirmation I reviewed results).
 - [ ] If `yes`, I added/updated tests and specs where required.
 - [ ] If `yes`, I validated protocol/performance impacts with evidence when applicable.
@@ -198,7 +198,7 @@ AI Usage Disclosure
 - scope: <design drafting | code drafting | refactor suggestions | tests | docs | other>
 - affected_files_or_subsystems: <high-level paths/modules>
 - ai_review: <line-by-line self-review completed; summarize the two-reviewer loop and final no-further-comments result>
-- ai_review_artifacts: <embedded screenshots or links showing the final clean review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes>
+- ai_review_artifacts: <embedded screenshots or equivalent persisted links showing the final clean review results from both fresh reviewers on the current PR diff or current HEAD after the latest code changes>
 - human_verification: <checks run locally or in CI + pass/fail summary + contributor reviewed results>
 - performance_verification: <N/A or benchmark/regression evidence summary>
 - provenance_license_confirmation: <Apache-2.0-compatible provenance confirmed; no incompatible third-party code introduced>

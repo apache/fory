@@ -35,8 +35,8 @@ final class SerializationFieldInfo {
     required this.index,
     TypeInfo? declaredTypeInfo,
     bool? usesDeclaredType,
-  })  : _declaredTypeInfo = declaredTypeInfo,
-        _usesDeclaredType = usesDeclaredType;
+  }) : _declaredTypeInfo = declaredTypeInfo,
+       _usesDeclaredType = usesDeclaredType;
 
   String get name => field.name;
 

@@ -107,6 +107,7 @@ public class AndroidDynamicFeatureTest {
               .withStringCompressed(compressString)
               .withRefTracking(true)
               .requireClassRegistration(false)
+              .withCompatible(false)
               .build();
       check(!fory.getConfig().isCodeGenEnabled(), "Android must force codegen off");
       registerPhase4Serializers(fory);
@@ -173,7 +174,8 @@ public class AndroidDynamicFeatureTest {
     }
 
     private static void verifyXlangUnion() {
-      Fory fory = Fory.builder().withXlang(true).registerGuavaTypes(false).build();
+      Fory fory =
+          Fory.builder().withXlang(true).registerGuavaTypes(false).withCompatible(true).build();
       Union2<String, Integer> value = Union2.ofT2(26);
       checkEquals(fory.deserialize(fory.serialize(value)), value, "Android xlang union");
     }

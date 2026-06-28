@@ -26,7 +26,6 @@ import logging
 import pickle
 import types
 import typing
-from typing import TypeVar, Union
 from enum import Enum
 
 from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
@@ -136,6 +135,7 @@ from pyfory.types import (
 )
 from pyfory.type_util import (
     load_class,
+    normalize_fory_type,
     record_class_factory,
 )
 from pyfory._fory import (
@@ -144,7 +144,7 @@ from pyfory._fory import (
     NO_TYPE_ID,
     NO_USER_TYPE_ID,
 )
-from pyfory.meta.typedef import TypeDef
+from pyfory.meta.typedef import TypeDef, is_named_typedef_kind
 from pyfory.meta.typedef_decoder import decode_typedef, skip_typedef
 from pyfory.meta.typedef_encoder import encode_typedef
 
@@ -156,7 +156,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 namespace_decoder = MetaStringDecoder(".", "_")
 typename_decoder = MetaStringDecoder("$", "_")
-MAX_CACHED_TYPE_DEFS = 8192
+MIN_REMOTE_TYPE_DEF_LIMIT = 8192
 MAX_CACHED_ENCODED_META_STRINGS = 8192
 
 _NO_REF_NUMERIC_TYPE_IDS = frozenset(
@@ -342,8 +342,7 @@ class TypeResolver:
         "compatible",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
+        "config",
         "shared_registry",
         "_type_id_counter",
         "_types_info",
@@ -361,6 +360,8 @@ class TypeResolver:
         "_user_type_id_to_type_info",
         "_used_user_type_ids",
         "_meta_shared_type_info",
+        "_remote_schema_versions_by_type",
+        "_total_accepted_schema_versions",
         "meta_share",
         "_internal_py_serializer_map",
         "_actual_type_resolver",
@@ -368,14 +369,13 @@ class TypeResolver:
     )
 
     def __init__(self, config, *, shared_registry):
+        self.config = config
         self.xlang = config.xlang
         self.track_ref = config.track_ref
         self.strict = config.strict
         self.compatible = config.compatible
         self.field_nullable = config.field_nullable
         self.policy = config.policy
-        self.max_collection_size = config.max_collection_size
-        self.max_binary_size = config.max_binary_size
         self.shared_registry = shared_registry
         self.require_registration = self.strict
         self._metastr_to_type = dict()
@@ -392,6 +392,8 @@ class TypeResolver:
         self.namespace_encoder = MetaStringEncoder(".", "_")
         self.namespace_decoder = MetaStringDecoder(".", "_")
         self._meta_shared_type_info = {}
+        self._remote_schema_versions_by_type = {}
+        self._total_accepted_schema_versions = 0
         self.typename_encoder = MetaStringEncoder("$", "_")
         self.typename_decoder = MetaStringDecoder("$", "_")
         self.meta_compressor = config.meta_compressor if config.meta_compressor is not None else DeflaterMetaCompressor()
@@ -551,7 +553,7 @@ class TypeResolver:
 
     def register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -568,7 +570,7 @@ class TypeResolver:
 
     def register_union(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         name: str = None,
@@ -605,7 +607,7 @@ class TypeResolver:
 
     def _register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -616,6 +618,7 @@ class TypeResolver:
     ):
         """Register type with given type id or typename. If typename is not None, it will be used for
         cross-language serialization."""
+        cls = normalize_fory_type(cls)
         if internal:
             if type_id is not None and type_id >= 0 and type_id > 0xFF:
                 raise ValueError(f"Internal type id overflow: {type_id}")
@@ -656,7 +659,7 @@ class TypeResolver:
 
     def _register_xtype(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -714,7 +717,7 @@ class TypeResolver:
 
     def __register_type(
         self,
-        cls: Union[type, TypeVar],
+        cls,
         *,
         type_id: int = None,
         user_type_id: int = NO_USER_TYPE_ID,
@@ -766,16 +769,6 @@ class TypeResolver:
                 if type_id not in self._type_id_to_type_info or not internal:
                     self._type_id_to_type_info[type_id] = typeinfo
         self._types_info[cls] = typeinfo
-        # Create TypeDef for named non-struct types when meta_share is enabled
-        if self.meta_share and type_id is not None:
-            if type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_UNION):
-                type_def = encode_typedef(
-                    self._actual_type_resolver,
-                    cls,
-                    include_fields=is_struct_type(type_id),
-                )
-                if type_def is not None:
-                    typeinfo.type_def = type_def
         return typeinfo
 
     def _next_type_id(self):
@@ -784,8 +777,9 @@ class TypeResolver:
             type_id = self._type_id_counter = self._type_id_counter + 1
         return type_id
 
-    def register_serializer(self, cls: Union[type, TypeVar], serializer):
-        assert isinstance(cls, (type, TypeVar)), cls
+    def register_serializer(self, cls, serializer):
+        cls = normalize_fory_type(cls)
+        assert isinstance(cls, type) or type(cls) is int, cls
         if cls not in self._types_info:
             raise TypeUnregisteredError(f"{cls} not registered")
         typeinfo = self._types_info[cls]
@@ -815,6 +809,7 @@ class TypeResolver:
         return self.get_type_info(cls).serializer
 
     def get_type_info(self, cls, create=True):
+        cls = normalize_fory_type(cls)
         if cls is tuple and self.xlang:
             return self.get_type_info(list, create=create)
         type_info = self._types_info.get(cls)
@@ -883,6 +878,15 @@ class TypeResolver:
                 typeinfo.serializer = DataClassSerializer(serializer_type_resolver, typeinfo.cls)
         else:
             typeinfo.serializer = self._create_serializer(typeinfo.cls)
+            if (
+                self.meta_share
+                and typeinfo.type_def is None
+                and (
+                    TypeId.is_namespaced_type(type_id)
+                    or (needs_user_type_id(type_id) and typeinfo.user_type_id is not None and typeinfo.user_type_id != NO_USER_TYPE_ID)
+                )
+            ):
+                typeinfo.type_def = encode_typedef(serializer_type_resolver, typeinfo.cls)
 
         return typeinfo
 
@@ -954,6 +958,7 @@ class TypeResolver:
         return serializer
 
     def is_registered_by_name(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         if typeinfo is None:
             return False
@@ -961,6 +966,7 @@ class TypeResolver:
 
     def is_registered_by_id(self, cls=None, type_id=None, user_type_id=NO_USER_TYPE_ID):
         if cls is not None:
+            cls = normalize_fory_type(cls)
             typeinfo = self._types_info.get(cls)
             if typeinfo is None:
                 return False
@@ -975,21 +981,25 @@ class TypeResolver:
             return type_id in self._type_id_to_type_info
 
     def get_registered_name(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.decode_namespace(), typeinfo.decode_typename()
 
     def get_registered_id(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.type_id
 
     def get_registered_user_type_id(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.user_type_id
 
     def get_registered_type_ids(self, cls):
+        cls = normalize_fory_type(cls)
         typeinfo = self._types_info.get(cls)
         assert typeinfo is not None, f"{cls} not registered"
         return typeinfo.type_id, typeinfo.user_type_id
@@ -1168,6 +1178,63 @@ class TypeResolver:
         )
         return typeinfo
 
+    def _local_type_info_for_typedef(self, type_def):
+        if is_named_typedef_kind(type_def.type_id):
+            return self.get_type_info_by_name(type_def.namespace, type_def.typename)
+        if self.is_registered_by_id(type_id=type_def.type_id, user_type_id=type_def.user_type_id):
+            return self.get_type_info_by_id(type_def.type_id, user_type_id=type_def.user_type_id)
+        return None
+
+    def _remote_type_def_key(self, type_id, namespace, typename, user_type_id):
+        if is_named_typedef_kind(type_id):
+            return (namespace or "", typename)
+        return user_type_id
+
+    def _check_remote_type_def_key(self, type_key):
+        versions_for_type = self._remote_schema_versions_by_type.get(type_key, 0)
+        max_schema_versions_per_type = self.config.max_schema_versions_per_type
+        if versions_for_type >= max_schema_versions_per_type:
+            raise ValueError(
+                f"Remote schema version limit exceeded for type {type_key}: "
+                f"{versions_for_type} >= {max_schema_versions_per_type}. "
+                "The data may be malicious. If the data is not malicious, "
+                "please increase max_schema_versions_per_type."
+            )
+        accepted_type_count = len(self._remote_schema_versions_by_type) + 1 if versions_for_type == 0 else len(self._remote_schema_versions_by_type)
+        max_average_schema_versions_per_type = self.config.max_average_schema_versions_per_type
+        global_limit = max(
+            MIN_REMOTE_TYPE_DEF_LIMIT,
+            accepted_type_count * max_average_schema_versions_per_type,
+        )
+        if self._total_accepted_schema_versions >= global_limit:
+            raise ValueError(
+                "Remote schema version limit exceeded: "
+                f"{self._total_accepted_schema_versions} metadata versions for "
+                f"{accepted_type_count} accepted remote types exceeds the average "
+                f"limit {max_average_schema_versions_per_type}. The data may be malicious. "
+                "If the data is not malicious, please increase "
+                "max_average_schema_versions_per_type."
+            )
+        return type_key
+
+    def _check_remote_type_def_limit(self, type_def):
+        return self._check_remote_type_def_key(
+            self._remote_type_def_key(
+                type_def.type_id,
+                type_def.namespace,
+                type_def.typename,
+                type_def.user_type_id,
+            )
+        )
+
+    def _check_remote_type_def_meta(self, type_id, namespace, typename, user_type_id):
+        return self._check_remote_type_def_key(self._remote_type_def_key(type_id, namespace, typename, user_type_id))
+
+    def _record_remote_type_def(self, type_key):
+        versions_for_type = self._remote_schema_versions_by_type.get(type_key, 0)
+        self._remote_schema_versions_by_type[type_key] = versions_for_type + 1
+        self._total_accepted_schema_versions += 1
+
     def _read_and_build_type_info(self, buffer):
         """Read TypeDef inline from buffer and build TypeInfo.
 
@@ -1178,11 +1245,23 @@ class TypeResolver:
         type_info = self._meta_shared_type_info.get(header)
         if type_info is not None:
             # Header-cache hits intentionally skip without rehashing. Entries reach this cache only
-            # after a successful TypeDef parse and 52-bit metadata-hash validation.
+            # after a successful TypeDef parse and 52-bit metadata-hash validation. Do not add
+            # body/hash/schema-limit/exact-local checks here; the miss path owns them before publish.
             skip_typedef(buffer, header)
             return type_info
+        return self._read_uncached_type_info(buffer, header)
+
+    def _read_uncached_type_info(self, buffer, header):
         type_def = decode_typedef(buffer, self, header=header)
+        local_type_info = self._local_type_info_for_typedef(type_def)
+        if local_type_info is not None:
+            if local_type_info.type_def is None:
+                self._set_type_info(local_type_info)
+            if local_type_info.type_def is not None and local_type_info.type_def.encoded == type_def.encoded:
+                self._meta_shared_type_info[header] = local_type_info
+                return local_type_info
+        type_key = self._check_remote_type_def_limit(type_def)
         type_info = self._build_type_info_from_typedef(type_def)
-        if len(self._meta_shared_type_info) < MAX_CACHED_TYPE_DEFS:
-            self._meta_shared_type_info[header] = type_info
+        self._meta_shared_type_info[header] = type_info
+        self._record_remote_type_def(type_key)
         return type_info

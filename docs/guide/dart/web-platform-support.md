@@ -20,14 +20,14 @@ license: |
 ---
 
 Fory Dart supports Dart VM/AOT, Flutter, browser, and Flutter web builds
-through generated serializers and platform-specific runtime implementations.
+through generated serializers and platform-specific implementations.
 The public API and registration flow are the same across these platforms, but
 web builds have stricter integer precision rules because Dart `int` is
 represented by JavaScript numbers.
 
 ## Supported Targets
 
-The Dart runtime supports:
+Fory Dart supports:
 
 - Dart VM/JIT applications.
 - Dart AOT/native applications.
@@ -97,7 +97,7 @@ Use this rule when choosing field types:
 | Signed 64-bit value within JS-safe range | `int`                              | Works with default `int64` mapping and `@ForyField(type: Int64Type(...))` encodings. |
 | Full signed 64-bit range                 | `Int64`                            | Preserves values outside the JS-safe range.                                          |
 | Unsigned 64-bit value                    | `Uint64`                           | Required for values that do not fit in signed or JS-safe Dart `int`.                 |
-| 8/16/32-bit integer                      | `int` + `@ForyField(type: ...)`    | Use explicit field metadata to match peer runtimes exactly.                          |
+| 8/16/32-bit integer                      | `int` + `@ForyField(type: ...)`    | Use explicit field metadata to match peer languages exactly.                         |
 
 `@ForyField(type: Int64Type(...))` controls the wire encoding of a Dart `int`
 field:

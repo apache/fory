@@ -35,6 +35,7 @@ public class EnsureSerializerExample {
             .withName(EnsureSerializerExample.class.getName())
             .withXlang(false)
             .requireClassRegistration(true)
+            .withCompatible(false)
             .build();
     // register and generate serializer code.
     fory.registerSerializer(Custom.class, new CustomSerializer(fory.getConfig()));

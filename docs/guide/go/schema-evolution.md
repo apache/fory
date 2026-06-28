@@ -19,30 +19,24 @@ license: |
   limitations under the License.
 ---
 
-Schema evolution allows your data structures to change over time while maintaining compatibility with previously serialized data. Fory Go supports this through compatible mode. Xlang mode uses compatible schema evolution by default; native mode uses schema-consistent payloads by default and enables compatible mode explicitly.
+Schema evolution allows your data structures to change over time while maintaining compatibility with previously serialized data. Fory Go supports this through compatible mode, which is the default for both xlang and native mode.
 
 ## Compatible Mode Defaults
 
-For cross-language and default Go payloads, use the default runtime:
+For cross-language payloads, create a Fory instance with the default xlang settings:
 
 ```go
 f := fory.New(fory.WithXlang(true))
 ```
 
-For Go-only native-mode payloads that need schema evolution, enable compatible
-mode explicitly:
+For Go-only native-mode payloads that need schema evolution, use native mode and keep the compatible
+default:
 
 ```go
-f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f := fory.New(fory.WithXlang(false))
 ```
 
 ## How It Works
-
-### Schema-Consistent Native Mode
-
-- Compact serialization without metadata
-- Struct hash is checked during deserialization
-- Any schema change causes `ErrKindHashMismatch`
 
 ### With Compatible Mode
 
@@ -50,19 +44,11 @@ f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
 - Supports adding, removing, and reordering fields
 - Enables forward and backward compatibility
 
-### Disable Evolution for Stable Structs
+### Same-Schema Optimization
 
-If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Implement the `ForyEvolving` interface and return `false`:
-
-```go
-type StableMessage struct {
-    ID int64
-}
-
-func (StableMessage) ForyEvolving() bool {
-    return false
-}
-```
+- Compact serialization without evolution metadata
+- Struct hash is checked during deserialization
+- Any schema change causes `ErrKindHashMismatch`
 
 ## Supported Schema Changes
 
@@ -227,10 +213,10 @@ This is treated as removing `UserName` and adding `Username`, resulting in data 
 f := fory.New(fory.WithXlang(true))
 ```
 
-For Go-only native-mode data stored in databases, files, or caches, enable compatible mode:
+For Go-only native-mode data stored in databases, files, or caches, use compatible mode:
 
 ```go
-f := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+f := fory.New(fory.WithXlang(false))
 ```
 
 ### 2. Provide Default Values
@@ -291,11 +277,11 @@ Message msg = fory.deserialize(data, Message.class);
 
 Compatible mode mainly affects serialized size:
 
-| Aspect             | Schema Consistent | Compatible Mode                                          |
-| ------------------ | ----------------- | -------------------------------------------------------- |
-| Serialized Size    | Smaller           | Larger (includes metadata, especially without field IDs) |
-| Speed              | Fast              | Similar (metadata is just memcpy)                        |
-| Schema Flexibility | None              | Full                                                     |
+| Aspect             | `WithCompatible(false)` | Compatible mode                                          |
+| ------------------ | ----------------------- | -------------------------------------------------------- |
+| Serialized Size    | Smaller                 | Larger (includes metadata, especially without field IDs) |
+| Speed              | Fast                    | Similar (metadata is just memcpy)                        |
+| Schema Flexibility | Same schema required    | Add, remove, and reorder fields                          |
 
 **Note**: Using field IDs (`fory:"id=N"`) reduces metadata size in compatible mode.
 
@@ -305,18 +291,34 @@ Compatible mode mainly affects serialized size:
 - Cross-service communication
 - Long-lived caches
 
-Use native schema-consistent mode for:
+Use `WithCompatible(false)` only when every reader and writer always uses the same Go struct schema
+and you want faster serialization and smaller size. For xlang payloads, use `WithCompatible(false)` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL. Same-schema uses include:
 
 - In-memory operations
-- Same-version communication
-- Minimum serialized size
+- Same-schema communication
+- Faster serialization and smaller size
+
+### Per-Struct Opt-Out
+
+For one struct, you can opt out of evolution metadata by implementing `ForyEvolving` and returning
+`false`:
+
+```go
+type SameSchemaMessage struct {
+    ID int64
+}
+
+func (SameSchemaMessage) ForyEvolving() bool {
+    return false
+}
+```
 
 ## Error Handling
 
-### Hash Mismatch (Native Schema-Consistent Mode)
+### Hash Mismatch (Native Same-Schema Mode)
 
 ```go
-f := fory.New(fory.WithXlang(false))  // Compatible mode disabled
+f := fory.New(fory.WithXlang(false), fory.WithCompatible(false))
 
 // Schema changed without compatible mode
 err := f.Deserialize(oldData, &newStruct)

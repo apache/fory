@@ -17,28 +17,25 @@
  * under the License.
  */
 
-/// Runtime configuration for the Dart xlang implementation.
+/// Fory instance configuration for the Dart xlang implementation.
 ///
-/// The defaults favor compatible mode with conservative safety limits.
+/// The defaults favor compatible mode with conservative structural limits.
 final class Config {
   /// Default maximum nesting depth for a single serialization or
   /// deserialization operation.
   static const int defaultMaxDepth = 256;
-
-  /// Default maximum number of collection entries accepted in one collection or
-  /// map payload.
-  static const int defaultMaxCollectionSize = 1 << 20;
-
-  /// Default maximum number of bytes accepted for a binary payload.
-  static const int defaultMaxBinarySize = 64 * 1024 * 1024;
+  static const int defaultMaxTypeFields = 512;
+  static const int defaultMaxTypeMetaBytes = 4096;
+  static const int defaultMaxSchemaVersionsPerType = 10;
+  static const int defaultMaxAverageSchemaVersionsPerType = 3;
 
   /// Enables compatible struct encoding and decoding.
   ///
-  /// In compatible mode the runtime shares TypeDef metadata and disables
+  /// In compatible mode Fory shares TypeDef metadata and disables
   /// [checkStructVersion].
   final bool compatible;
 
-  /// Enables struct schema-version validation in schema-consistent mode.
+  /// Enables struct schema-version validation for same-schema payloads.
   ///
   /// This flag is forced to `false` when [compatible] is `true`.
   final bool checkStructVersion;
@@ -46,11 +43,18 @@ final class Config {
   /// Maximum allowed read or write nesting depth.
   final int maxDepth;
 
-  /// Maximum allowed collection or map size.
-  final int maxCollectionSize;
+  /// Maximum accepted field count in one received struct TypeDef.
+  final int maxTypeFields;
 
-  /// Maximum allowed binary payload size in bytes.
-  final int maxBinarySize;
+  /// Maximum accepted body size in one received TypeDef.
+  final int maxTypeMetaBytes;
+
+  /// Maximum accepted remote metadata versions for one logical type.
+  final int maxSchemaVersionsPerType;
+
+  /// Maximum accepted average remote metadata versions across logical
+  /// types.
+  final int maxAverageSchemaVersionsPerType;
 
   /// Creates an immutable configuration object.
   ///
@@ -60,13 +64,21 @@ final class Config {
     this.compatible = true,
     bool checkStructVersion = true,
     this.maxDepth = defaultMaxDepth,
-    this.maxCollectionSize = defaultMaxCollectionSize,
-    this.maxBinarySize = defaultMaxBinarySize,
-  })  : checkStructVersion = compatible ? false : checkStructVersion,
-        assert(maxDepth > 0, 'maxDepth must be positive'),
-        assert(
-          maxCollectionSize > 0,
-          'maxCollectionSize must be positive',
-        ),
-        assert(maxBinarySize > 0, 'maxBinarySize must be positive');
+    this.maxTypeFields = defaultMaxTypeFields,
+    this.maxTypeMetaBytes = defaultMaxTypeMetaBytes,
+    this.maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
+    this.maxAverageSchemaVersionsPerType =
+        defaultMaxAverageSchemaVersionsPerType,
+  }) : checkStructVersion = compatible ? false : checkStructVersion,
+       assert(maxDepth > 0, 'maxDepth must be positive'),
+       assert(maxTypeFields > 0, 'maxTypeFields must be positive'),
+       assert(maxTypeMetaBytes > 0, 'maxTypeMetaBytes must be positive'),
+       assert(
+         maxSchemaVersionsPerType > 0,
+         'maxSchemaVersionsPerType must be positive',
+       ),
+       assert(
+         maxAverageSchemaVersionsPerType > 0,
+         'maxAverageSchemaVersionsPerType must be positive',
+       );
 }

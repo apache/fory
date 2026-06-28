@@ -2327,6 +2327,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         : TypeRef.of(descriptor.getField().getGenericType());
   }
 
+  protected TypeRef<?> readValueTypeRef(Descriptor descriptor) {
+    return hasCompatibleCollectionArrayRead(descriptor)
+        ? compatibleLocalTypeRef(descriptor)
+        : descriptor.getTypeRef();
+  }
+
   private Expression deserializeForNotNullForField(
       Expression buffer, Descriptor descriptor, Expression serializer) {
     TypeRef<?> typeRef = descriptor.getTypeRef();

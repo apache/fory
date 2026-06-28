@@ -30,7 +30,7 @@ import org.apache.fory.test.bean.Foo;
 public class Test {
 
   public static void main(String[] args) {
-    final Fory fory = Fory.builder().build();
+    final Fory fory = Fory.builder().withCompatible(true).build();
     fory.serialize(Foo.create());
 
     Encoders.bean(Foo.class, fory);

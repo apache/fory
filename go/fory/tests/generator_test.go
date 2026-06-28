@@ -45,7 +45,7 @@ func TestValidationDemo(t *testing.T) {
 	assert.Equal(t, true, original.E, "Original E should be true")
 
 	// 2. SerializeWithCallback using generated code
-	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := fory.NewFory(fory.WithXlang(false), fory.WithCompatible(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(original)
 	require.NoError(t, err, "Serialization should not fail")
 	require.NotEmpty(t, data, "Serialized data should not be empty")
@@ -78,7 +78,7 @@ func TestSliceDemo(t *testing.T) {
 	assert.NotEmpty(t, original.BoolSlice, "BoolSlice should not be empty")
 
 	// 2. SerializeWithCallback using generated code
-	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := fory.NewFory(fory.WithXlang(false), fory.WithCompatible(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(original)
 	require.NoError(t, err, "Serialization should not fail")
 	require.NotEmpty(t, data, "Serialized data should not be empty")
@@ -116,7 +116,7 @@ func TestDynamicSliceDemo(t *testing.T) {
 	assert.Equal(t, int64(12345), original.DynamicSlice[4], "Fifth element should be int64(12345)")
 
 	// 2. SerializeWithCallback using generated code
-	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := fory.NewFory(fory.WithXlang(false), fory.WithCompatible(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(original)
 	require.NoError(t, err, "Serialization should not fail")
 	require.NotEmpty(t, data, "Serialized data should not be empty")
@@ -142,7 +142,7 @@ func TestDynamicSliceDemoWithNilAndEmpty(t *testing.T) {
 
 	// SerializeWithCallback using generated code
 	// WithXlang(false) enables native Go mode where nil slices are preserved as nil
-	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := fory.NewFory(fory.WithXlang(false), fory.WithCompatible(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(original)
 	require.NoError(t, err, "Serialization should not fail")
 	require.NotEmpty(t, data, "Serialized data should not be empty")
@@ -192,7 +192,7 @@ func TestMapDemo(t *testing.T) {
 
 	// SerializeWithCallback with codegen
 	// WithXlang(false) enables native Go mode where nil maps are preserved as nil
-	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
+	f := fory.NewFory(fory.WithXlang(false), fory.WithCompatible(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(instance)
 	require.NoError(t, err, "Serialization failed")
 

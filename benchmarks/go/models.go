@@ -34,6 +34,21 @@ type NumericStruct struct {
 	F12 int32 `msgpack:"12" fory:"id=12"`
 }
 
+type NumericStructV2 struct {
+	F1  int64 `fory:"id=1"`
+	F2  int32 `fory:"id=2"`
+	F3  int32 `fory:"id=3"`
+	F4  int32 `fory:"id=4"`
+	F5  int32 `fory:"id=5"`
+	F6  int32 `fory:"id=6"`
+	F7  int32 `fory:"id=7"`
+	F8  int32 `fory:"id=8"`
+	F9  int32 `fory:"id=9"`
+	F10 int32 `fory:"id=10"`
+	F11 int32 `fory:"id=11"`
+	F12 int32 `fory:"id=12"`
+}
+
 // Sample is a complex struct with various types and arrays
 // Matches the C++ Sample and protobuf Sample message
 type Sample struct {
@@ -59,6 +74,31 @@ type Sample struct {
 	CharArray         []int32   `msgpack:"20" fory:"id=20,type=array(element=int32)"`
 	BooleanArray      []bool    `msgpack:"21" fory:"id=21,type=array(element=bool)"`
 	String            string    `msgpack:"22" fory:"id=22"`
+}
+
+type SampleV2 struct {
+	IntValue          int64     `fory:"id=1"`
+	LongValue         int64     `fory:"id=2"`
+	FloatValue        float32   `fory:"id=3"`
+	DoubleValue       float64   `fory:"id=4"`
+	ShortValue        int32     `fory:"id=5"`
+	CharValue         int32     `fory:"id=6"`
+	BooleanValue      bool      `fory:"id=7"`
+	IntValueBoxed     int32     `fory:"id=8"`
+	LongValueBoxed    int64     `fory:"id=9"`
+	FloatValueBoxed   float32   `fory:"id=10"`
+	DoubleValueBoxed  float64   `fory:"id=11"`
+	ShortValueBoxed   int32     `fory:"id=12"`
+	CharValueBoxed    int32     `fory:"id=13"`
+	BooleanValueBoxed bool      `fory:"id=14"`
+	IntArray          []int32   `fory:"id=15,type=array(element=int32)"`
+	LongArray         []int64   `fory:"id=16,type=array(element=int64)"`
+	FloatArray        []float32 `fory:"id=17,type=array(element=float32)"`
+	DoubleArray       []float64 `fory:"id=18,type=array(element=float64)"`
+	ShortArray        []int32   `fory:"id=19,type=array(element=int32)"`
+	CharArray         []int32   `fory:"id=20,type=array(element=int32)"`
+	BooleanArray      []bool    `fory:"id=21,type=array(element=bool)"`
+	String            string    `fory:"id=22"`
 }
 
 // Player enum type
@@ -93,6 +133,21 @@ type Media struct {
 	Copyright  string   `msgpack:"12" fory:"id=12"`
 }
 
+type MediaV2 struct {
+	URI        string   `fory:"id=1"`
+	Title      string   `fory:"id=2"`
+	Width      int64    `fory:"id=3"`
+	Height     int32    `fory:"id=4"`
+	Format     string   `fory:"id=5"`
+	Duration   int64    `fory:"id=6"`
+	Size       int64    `fory:"id=7"`
+	Bitrate    int32    `fory:"id=8"`
+	HasBitrate bool     `fory:"id=9"`
+	Persons    []string `fory:"id=10"`
+	Player     Player   `fory:"id=11"`
+	Copyright  string   `fory:"id=12"`
+}
+
 // Image represents image metadata
 type Image struct {
 	URI    string `msgpack:"1" fory:"id=1"`
@@ -102,22 +157,47 @@ type Image struct {
 	Size   Size   `msgpack:"5" fory:"id=5"`
 }
 
+type ImageV2 struct {
+	URI    string `fory:"id=1"`
+	Title  string `fory:"id=2"`
+	Width  int64  `fory:"id=3"`
+	Height int32  `fory:"id=4"`
+	Size   Size   `fory:"id=5"`
+}
+
 // MediaContent contains media and images
 type MediaContent struct {
 	Media  Media   `msgpack:"1" fory:"id=1"`
 	Images []Image `msgpack:"2" fory:"id=2"`
 }
 
+type MediaContentV2 struct {
+	Media  MediaV2   `fory:"id=1"`
+	Images []ImageV2 `fory:"id=2"`
+}
+
 type NumericStructList struct {
 	NumericStructs []NumericStruct `msgpack:"1" fory:"id=1"`
+}
+
+type NumericStructListV2 struct {
+	NumericStructs []NumericStructV2 `fory:"id=1"`
 }
 
 type SampleList struct {
 	SampleList []Sample `msgpack:"1" fory:"id=1"`
 }
 
+type SampleListV2 struct {
+	SampleList []SampleV2 `fory:"id=1"`
+}
+
 type MediaContentList struct {
 	MediaContentList []MediaContent `msgpack:"1" fory:"id=1"`
+}
+
+type MediaContentListV2 struct {
+	MediaContentList []MediaContentV2 `fory:"id=1"`
 }
 
 // CreateNumericStruct creates test data matching C++ benchmark

@@ -25,7 +25,7 @@ of the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Go mode, when bytes must be read by
 Java, Python, C++, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, Kotlin,
-or another non-Go Fory runtime.
+or another non-Go Fory implementation.
 
 ## When To Use Native Serialization
 
@@ -34,12 +34,13 @@ Use native serialization when:
 - A payload is produced and consumed only by Go applications.
 - The data model uses Go-specific behavior such as native `int`/`uint`, nil slices, nil maps,
   pointers, interfaces, or Go-only dynamic values.
-- You need schema-consistent Go payloads with the smallest same-schema metadata surface.
+- You want faster serialization and smaller size, and every reader uses the same struct schema as
+  the writer.
 - You want compatible schema evolution for Go-only rolling deployments without committing to a
   cross-language type mapping.
 - You are using reflection or code-generated serializers for Go structs that never leave Go.
 
-## Create a Native Runtime
+## Create a Native-Mode Fory Instance
 
 ```go
 package main
@@ -84,18 +85,19 @@ _ = f.RegisterStruct(Order{}, 100)
 
 ## Schema Evolution
 
-Native serialization defaults to schema-consistent mode. Writer and reader structs should match
-when `WithCompatible(true)` is not set.
-
-Enable compatible mode when Go-only services roll independently:
+Native serialization defaults to compatible mode. Keep that default when Go-only services roll
+independently:
 
 ```go
-writer := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
-reader := fory.New(fory.WithXlang(false), fory.WithCompatible(true))
+writer := fory.New(fory.WithXlang(false))
+reader := fory.New(fory.WithXlang(false))
 ```
 
 Compatible mode writes schema metadata so readers can tolerate added, removed, or reordered fields
 when field names or explicit field IDs remain compatible. See [Schema Evolution](schema-evolution.md).
+
+For faster serialization and smaller size, set `WithCompatible(false)` only when
+every reader and writer always uses the same Go struct schema.
 
 ## Registration
 
@@ -116,7 +118,7 @@ If you register without stable IDs, every writer and reader must make the same r
 
 ## Go Object Surface
 
-Native serialization keeps Go data on the Go runtime path:
+Native serialization keeps Go data in Go-native form:
 
 - Primitive numeric types, including Go-native `int` and `uint`.
 - Structs with exported fields.
@@ -167,9 +169,9 @@ _ = data
 
 ## Performance Guidelines
 
-- Reuse `Fory` or the thread-safe wrapper instead of constructing a runtime per request.
-- Keep schema-consistent mode for lockstep Go services; enable compatible mode only when schema
-  evolution is needed.
+- Reuse `Fory` or the thread-safe wrapper instead of constructing a Fory instance per request.
+- Use `WithCompatible(false)` only when every reader and writer always uses the same Go struct
+  schema and wants faster serialization and smaller size.
 - Register structs with explicit numeric IDs.
 - Disable reference tracking unless the graph requires identity or cycles.
 - Use code generation for hot Go structs when reflection overhead matters.
@@ -177,26 +179,26 @@ _ = data
 
 ## Native And Xlang Comparison
 
-| Requirement                              | Use native serialization | Use xlang serialization |
-| ---------------------------------------- | ------------------------ | ----------------------- |
-| Go-only payloads                         | Yes                      | Optional                |
-| Non-Go readers or writers                | No                       | Yes                     |
-| Go-native `int`, `uint`, nil slice/map   | Yes                      | Limited                 |
-| Schema-consistent same-language payloads | Yes                      | No                      |
-| Compatible schema evolution by default   | No                       | Yes                     |
-| Portable type mapping across runtimes    | No                       | Yes                     |
+| Requirement                            | Use native serialization | Use xlang serialization |
+| -------------------------------------- | ------------------------ | ----------------------- |
+| Go-only payloads                       | Yes                      | Optional                |
+| Non-Go readers or writers              | No                       | Yes                     |
+| Go-native `int`, `uint`, nil slice/map | Yes                      | Limited                 |
+| Same-schema compact payloads           | Yes                      | No                      |
+| Compatible schema evolution by default | Yes                      | Yes                     |
+| Portable type mapping across languages | No                       | Yes                     |
 
 ## Troubleshooting
 
-### A non-Go runtime cannot read the payload
+### A non-Go implementation cannot read the payload
 
 The writer is using native serialization. Rebuild it with `fory.WithXlang(true)` and align type
-registration with every peer runtime.
+registration with every peer.
 
 ### A rolling deployment fails after a field change
 
-Native serialization defaults to schema-consistent mode. Use `fory.WithCompatible(true)` on both
-writer and reader when struct definitions can differ.
+Native serialization defaults to compatible mode. Keep that default when struct definitions can
+differ.
 
 ### A nil slice or map changes shape
 
@@ -205,12 +207,12 @@ Cross-language schemas should model nullability explicitly.
 
 ### Returned bytes change after another serialization
 
-The default runtime reuses its buffer. Copy the byte slice or use `threadsafe.New(...)`.
+The default `Fory` instance reuses its buffer. Copy the byte slice or use `threadsafe.New(...)`.
 
 ## Related Topics
 
-- [Xlang Serialization](xlang-serialization.md) - Cross-runtime Go payloads
-- [Configuration](configuration.md) - Go runtime options
+- [Xlang Serialization](xlang-serialization.md) - Cross-language Go payloads
+- [Configuration](configuration.md) - Go options
 - [Type Registration](type-registration.md) - Struct and enum registration
 - [References](references.md) - Shared and circular references
 - [Schema Evolution](schema-evolution.md) - Compatible mode

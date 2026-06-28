@@ -42,6 +42,13 @@ mixin _BufferMixin {
   /// Number of unread bytes between the reader and writer indices.
   int get readableBytes => _writerIndex - _readerIndex;
 
+  /// Fails if [length] bytes are not currently readable.
+  void checkReadableBytes(int length) {
+    if (length < 0 || length > readableBytes) {
+      throw StateError('Insufficient readable bytes: $length.');
+    }
+  }
+
   /// Returns the written portion of the underlying storage.
   ///
   /// The returned view shares memory with the buffer.
@@ -324,6 +331,20 @@ void bufferSetWriterIndex(Buffer buffer, int index) {
 @internal
 void bufferSetReaderIndex(Buffer buffer, int index) {
   buffer._readerIndex = index;
+}
+
+@internal
+bool bufferMatchesBytes(Buffer buffer, int start, Uint8List bytes) {
+  final end = start + bytes.length;
+  if (start < 0 || end > buffer._writerIndex) {
+    return false;
+  }
+  for (var i = 0; i < bytes.length; i += 1) {
+    if (buffer._bytes[start + i] != bytes[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 @internal

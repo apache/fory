@@ -36,6 +36,10 @@ export class BinaryReaderBuilder {
     return `${this.holder}.readSetCursor(${v})`;
   }
 
+  checkReadableBytes(len: string | number) {
+    return `${this.holder}.checkReadableBytes(${len})`;
+  }
+
   getDataView() {
     return `${this.holder}.getDataView()`;
   }
@@ -371,11 +375,17 @@ class TypeMetaContextBuilder {
     return `${this.readHolder}.readTypeMeta()`;
   }
 
-  readTypeMetaIfSchemaChanged(expectedHash: string, original?: string) {
+  readNamedTypeMeta(typeId: number, namespace: string, typeName: string) {
+    const safeNamespace = CodecBuilder.replaceBackslashAndQuote(namespace);
+    const safeTypeName = CodecBuilder.replaceBackslashAndQuote(typeName);
+    return `${this.readHolder}.readNamedTypeMeta(${typeId}, "${safeNamespace}", "${safeTypeName}")`;
+  }
+
+  readCompatibleStructSerializer(localHash: string, original?: string) {
     if (original) {
-      return `${this.readHolder}.readTypeMetaIfSchemaChanged(${expectedHash}, ${original})`;
+      return `${this.readHolder}.readCompatibleStructSerializer(${localHash}, ${original})`;
     }
-    return `${this.readHolder}.readTypeMetaIfSchemaChanged(${expectedHash})`;
+    return `${this.readHolder}.readCompatibleStructSerializer(${localHash})`;
   }
 
   genSerializerByTypeMetaRuntime(typeMeta: string, original?: string) {

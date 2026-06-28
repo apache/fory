@@ -40,7 +40,11 @@ public class NewJava11StringSuite {
   }
 
   private static Fory fory =
-      Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
+      Fory.builder()
+          .withStringCompressed(true)
+          .requireClassRegistration(false)
+          .withCompatible(true)
+          .build();
   private static StringSerializer stringSerializer = new StringSerializer(fory.getConfig());
   private static MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(512);
 

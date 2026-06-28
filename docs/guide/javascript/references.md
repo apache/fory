@@ -102,7 +102,7 @@ Leave it disabled when:
 
 ## Xlang Note
 
-Reference tracking is part of the Fory binary protocol and works across runtimes. Both sides must enable reference tracking and mark the same fields as reference-tracked for the behavior to be consistent.
+Reference tracking is part of the Fory binary protocol and works across languages. Both sides must enable reference tracking and mark the same fields as reference-tracked for the behavior to be consistent.
 
 ## Related Topics
 

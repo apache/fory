@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.go import GoServiceGeneratorMixin
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
@@ -38,7 +39,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class GoGenerator(BaseGenerator):
+class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
     """Generates Go structs with fory tags."""
 
     language_name = "go"

@@ -1,8 +1,8 @@
 # Apache Fory™ Dart
 
-Apache Fory™ Dart is the Dart xlang runtime for Apache Fory™. It reads and
+Apache Fory™ Dart is the Dart xlang implementation for Apache Fory™. It reads and
 writes Fory's cross-language wire format and works in both Dart and Flutter
-applications. Because Flutter prohibits `dart:mirrors`, the runtime uses static
+applications. Because Flutter prohibits `dart:mirrors`, Fory Dart uses static
 code generation for type handling.
 
 The publishable package lives at `packages/fory/`. See its
@@ -13,7 +13,7 @@ including getting started, API reference, and code examples.
 
 | Directory                        | Description                             |
 | -------------------------------- | --------------------------------------- |
-| `packages/fory/lib/`             | Core runtime and public API             |
+| `packages/fory/lib/`             | Core implementation and public API      |
 | `packages/fory/lib/src/codegen/` | Build-runner code generator             |
 | `packages/fory/example/`         | Annotated example with generated output |
 | `packages/fory/test/`            | Unit and integration tests              |

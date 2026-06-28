@@ -192,8 +192,13 @@ TEST(NamespaceMacros, FieldConfigInNamespace) {
 }
 
 TEST(NamespaceMacros, UnionInNamespace) {
-  auto fory =
-      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  auto fory = Fory::builder()
+                  .xlang(true)
+                  .compatible(true)
+                  .track_ref(false)
+                  .max_type_meta_bytes(1)
+                  .max_schema_versions_per_type(1)
+                  .build();
   ASSERT_TRUE(fory.register_union<macro_test::Choice>(1001).ok());
 
   auto bytes = fory.serialize(macro_test::Choice::text("hello"));

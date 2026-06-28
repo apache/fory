@@ -2,14 +2,26 @@
 
 package org.apache.fory.benchmark.state.generated;
 
-import java.nio.*;
-import java.lang.*;
-
-import com.google.flatbuffers.*;
+import com.google.flatbuffers.BaseVector;
+import com.google.flatbuffers.BooleanVector;
+import com.google.flatbuffers.ByteVector;
+import com.google.flatbuffers.Constants;
+import com.google.flatbuffers.DoubleVector;
+import com.google.flatbuffers.FlatBufferBuilder;
+import com.google.flatbuffers.FloatVector;
+import com.google.flatbuffers.IntVector;
+import com.google.flatbuffers.LongVector;
+import com.google.flatbuffers.ShortVector;
+import com.google.flatbuffers.StringVector;
+import com.google.flatbuffers.Struct;
+import com.google.flatbuffers.Table;
+import com.google.flatbuffers.UnionVector;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 @SuppressWarnings("unused")
 public final class FBSImage extends Table {
-  public static void ValidateVersion() { Constants.FLATBUFFERS_2_0_0(); }
+  public static void ValidateVersion() { Constants.FLATBUFFERS_25_2_10(); }
   public static FBSImage getRootAsFBSImage(ByteBuffer _bb) { return getRootAsFBSImage(_bb, new FBSImage()); }
   public static FBSImage getRootAsFBSImage(ByteBuffer _bb, FBSImage obj) { _bb.order(ByteOrder.LITTLE_ENDIAN); return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb)); }
   public void __init(int _i, ByteBuffer _bb) { __reset(_i, _bb); }
@@ -24,8 +36,8 @@ public final class FBSImage extends Table {
   public int width() { int o = __offset(8); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
   public int height() { int o = __offset(10); return o != 0 ? bb.getInt(o + bb_pos) : 0; }
   public byte size() { int o = __offset(12); return o != 0 ? bb.get(o + bb_pos) : 0; }
-  public FBSMedia media() { return media(new FBSMedia()); }
-  public FBSMedia media(FBSMedia obj) { int o = __offset(14); return o != 0 ? obj.__assign(__indirect(o + bb_pos), bb) : null; }
+  public org.apache.fory.benchmark.state.generated.FBSMedia media() { return media(new org.apache.fory.benchmark.state.generated.FBSMedia()); }
+  public org.apache.fory.benchmark.state.generated.FBSMedia media(org.apache.fory.benchmark.state.generated.FBSMedia obj) { int o = __offset(14); return o != 0 ? obj.__assign(__indirect(o + bb_pos), bb) : null; }
 
   public static int createFBSImage(FlatBufferBuilder builder,
       int uriOffset,
@@ -63,4 +75,3 @@ public final class FBSImage extends Table {
     public FBSImage get(FBSImage obj, int j) {  return obj.__assign(__indirect(__element(j), bb), bb); }
   }
 }
-

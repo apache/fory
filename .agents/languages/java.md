@@ -22,6 +22,19 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - Do not add normal-JVM process-global caches keyed by user classes, generated classes, serializer classes, classloaders, or class-bound method handles. Prefer per-runtime state, immutable shared metadata, or build-time-only template data.
 - Concrete serializers may opt into sharing only after auditing retained fields. Treat serializers retaining `TypeResolver`, `RefResolver`, mutable scratch buffers, runtime state, or classloader-sensitive state as non-shareable unless that state is externalized.
 - Resolver and serializer hot paths should keep the fast-path/null-slow-path shape obvious. Hoist repeated buffer or cache-state access into locals for multi-step operations and keep rebuild/restoration logic cold.
+- Remote metadata and class-token paths that materialize Java classes must keep
+  `TypeResolver.loadClass` or an equivalent owner in the path so
+  `TypeChecker.checkType` and `DisallowedList` run on the remote class name
+  before `Class.forName`.
+  Do not add a direct `Class.forName`, descriptor-load, serializer-lookup, or
+  `loadClassForMeta` bypass that materializes a class from TypeDef/TypeMeta
+  names before those name-level checks. Checks that require `Class<?>`,
+  including `checkClassForDeserialization`, remain after loading; do not replace
+  them with new string-only registration or security checks.
+- Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
+  read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
+  implementations during cold setup or code generation, cache final/static-final shape decisions,
+  or move type checks behind cold one-time dispatch instead.
 - Hot-path feature gates that are runtime constants must be `static final` fields read directly in
   the branch. Do not hide them behind helper methods such as `jdkInternalFieldAccess()`, because
   that obscures branch folding and can leave avoidable call/inlining work in hot serializers.
@@ -128,6 +141,9 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `ObjectInstantiators.getObjectInstantiator(TypeResolver, Class)` or bypass the runtime-scoped owner; format
   builders without a Fory runtime context may use the base `ObjectInstantiators.getObjectInstantiator(Class)`
   construction default.
+- Compatible scalar, list-array, and binary/uint8 adapters are immediate-field-only. For matched
+  nested field metadata, classify schema pairs before generated dispatch and require exact
+  nullable/ref/generic/type shape, except for user-defined type-family normalization.
 - Root codegen and builder classes that still need Unsafe on JDK8-24 must route symbolic Unsafe
   access through a helper with a Java 25 replacement. Do not leave `_JDKAccess.unsafe()` or
   `sun.misc.Unsafe` references in JDK25-visible classes outside matching `java25` replacements.
@@ -160,8 +176,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   trusted-lookup initialization or cold setup, not inside string hot paths.
 - `FieldAccessor` owns field-accessor dispatch. `RecordFieldAccessors` owns record field access,
   and `InstanceFieldAccessors` owns non-record instance field access. Do not reintroduce a
-  `FieldAccessorFactory` layer. `InstanceFieldAccessors` is public only so generated serializers
-  can name its concrete nested accessor type; treat it as internal owner code, not user API.
+  `FieldAccessorFactory` layer. Treat `InstanceFieldAccessors` as package-owned implementation
+  code, not user API and not generated-serializer API.
 - Android non-record reflection field access belongs inside the root `InstanceFieldAccessors`
   owner. Do not keep a standalone `ReflectionFieldAccessor`; Java25 never needs that path, and
   record reflection fallback remains record-owned in `RecordFieldAccessors`. Keep `sun.misc.Unsafe`
@@ -180,11 +196,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   hot-path try/catch blocks and do not call `FieldAccessor.checkObj`; VarHandle validates null and
   receiver type itself. Root Unsafe offset access may keep a debug-only `assert` receiver check
   because Unsafe does not validate the target object; do not add production receiver checks.
-- JDK25+ generated serializers should store field accessors as concrete
-  `InstanceFieldAccessors.InstanceAccessor` static final fields, initialized once through
-  `FieldAccessor.createAccessor(...)` and a static-init cast. This keeps platform dispatch out of
-  generated read/write hot paths and avoids `FieldAccessor` virtual dispatch on final/private field
-  get/set calls.
+- JDK25+ generated serializers should store per-field `static final VarHandle` fields and call
+  `VarHandleCodegenSupport` typed static helpers directly. Do not use `InstanceAccessor` wrappers,
+  hidden generated accessors, `MethodHandle` bridges, boxed primitive VarHandle calls, or dynamic
+  handle containers in generated read/write hot paths. Final field writes must use this path
+  regardless of public, protected, package, or private visibility.
 - `DefineClass#defineHiddenNestmate` belongs in the root `DefineClass` owner. Do not add a Java25
   overlay only to call `Lookup#defineHiddenClass` directly, and do not move it to `java9` because
   `Lookup#defineClass` defines normal package classes, not hidden nestmates. Root code must avoid
@@ -230,9 +246,13 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - Source-generated constructor serializers must own their constructor metadata at generation time
   and call constructors directly. They must not depend on runtime `ObjectInstantiator` constructor-field
   metadata or varargs constructor calls.
-- Java annotation-processor static serializers do not own ordinary-class constructor metadata.
-  Reject ordinary non-record final fields instead of generating descriptor-based final-field
-  mutation; records and Kotlin KSP primary-constructor serializers are the constructor-owned paths.
+- Java annotation-processor static serializers must support the same Java class surface as normal
+  Fory object serialization when compatible-read static generation needs it. Ordinary classes that
+  cannot be assigned directly should allocate through generated-subclass-owned
+  `ObjectInstantiator` state and write private, inaccessible, or final fields through
+  generated-subclass-owned cached `FieldAccessor`s. Do not add constructor-binding APIs, per-read
+  reflective lookup, descriptor-based varargs constructor calls, or shared-parent argument buffers.
+  Records and Kotlin KSP primary-constructor serializers remain constructor-owned paths.
 - Generated JVM copy code may direct-copy immutable scalar values, but Java `Collection`/`Map`
   subclasses must be copied through `CopyContext.copyObject(...)` so collection/map serializers own
   concrete type, comparator, wrapper, and reference behavior.

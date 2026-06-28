@@ -461,7 +461,7 @@ public final class ByteBuffer {
     @inline(__always)
     public func checkBound(_ need: Int) throws {
         let length = readableCount
-        if cursor + need > length {
+        if need < 0 || cursor > length || need > length - cursor {
             throw ForyError.outOfBounds(cursor: cursor, need: need, length: length)
         }
     }
@@ -885,11 +885,20 @@ public final class ByteBuffer {
 
     @inlinable
     public func readBytes(count: Int) throws -> [UInt8] {
+        try checkBound(count)
         if count == 0 {
             return []
         }
-        return try [UInt8](unsafeUninitializedCapacity: count) { destination, initializedCount in
-            try readBytes(into: UnsafeMutableRawBufferPointer(destination))
+        return [UInt8](unsafeUninitializedCapacity: count) { destination, initializedCount in
+            withUnsafeReadableBytes { rawBytes in
+                let sourceBase = rawBytes.baseAddress!
+                let destinationBase = destination.baseAddress!
+                UnsafeMutableRawPointer(destinationBase).copyMemory(
+                    from: sourceBase.advanced(by: cursor),
+                    byteCount: count
+                )
+            }
+            cursor += count
             initializedCount = count
         }
     }

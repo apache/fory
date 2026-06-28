@@ -219,7 +219,11 @@ public class UnsignedTest {
   @Test(dataProvider = "configProvider")
   public void testUIntPojoSerialization(boolean enableCodegen, boolean xlang) {
     ForyBuilder builder =
-        Fory.builder().withXlang(xlang).withCodegen(enableCodegen).requireClassRegistration(false);
+        Fory.builder()
+            .withXlang(xlang)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory = builder.build();
 
     // Register UInt serializers
@@ -251,7 +255,11 @@ public class UnsignedTest {
   @Test(dataProvider = "configProvider")
   public void testPrimitiveUIntPojoSerialization(boolean enableCodegen, boolean xlang) {
     ForyBuilder builder =
-        Fory.builder().withXlang(xlang).withCodegen(enableCodegen).requireClassRegistration(false);
+        Fory.builder()
+            .withXlang(xlang)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory = builder.build();
 
     // Register the primitive POJO class
@@ -280,7 +288,11 @@ public class UnsignedTest {
   @Test(dataProvider = "configProvider")
   public void testAllPojoTypes(boolean enableCodegen, boolean xlang) {
     ForyBuilder builder =
-        Fory.builder().withXlang(xlang).withCodegen(enableCodegen).requireClassRegistration(false);
+        Fory.builder()
+            .withXlang(xlang)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory = builder.build();
 
     // Register UInt serializers
@@ -330,7 +342,11 @@ public class UnsignedTest {
   @Test(dataProvider = "configProvider")
   public void testUIntPojoWithZeroValues(boolean enableCodegen, boolean xlang) {
     ForyBuilder builder =
-        Fory.builder().withXlang(xlang).withCodegen(enableCodegen).requireClassRegistration(false);
+        Fory.builder()
+            .withXlang(xlang)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory = builder.build();
 
     // Register UInt serializers
@@ -355,7 +371,11 @@ public class UnsignedTest {
   @Test(dataProvider = "configProvider")
   public void testMaxValuesRoundTrip(boolean enableCodegen, boolean xlang) {
     ForyBuilder builder =
-        Fory.builder().withXlang(xlang).withCodegen(enableCodegen).requireClassRegistration(false);
+        Fory.builder()
+            .withXlang(xlang)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .withCompatible(xlang);
     Fory fory = builder.build();
 
     // Register UInt serializers

@@ -89,7 +89,7 @@ See [Type Registration](type-registration.md) for guidance on choosing between I
 `@ForyStruct()` defaults to `evolving: true`, which is the right choice for most applications.
 
 - `evolving: true` — Fory stores enough metadata so that if you add or remove fields later, old and new code can still exchange messages. Enable this whenever different versions of your app or service may be running at the same time.
-- `evolving: false` — No extra metadata; marginally smaller payloads. Safe only when both writer and reader are always updated together.
+- `evolving: false` — Faster serialization and smaller size. Use only when every reader and writer always uses the same struct schema.
 
 ```dart
 // evolving: true is the default, you can omit it

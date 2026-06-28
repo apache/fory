@@ -23,6 +23,7 @@ struct BenchmarkConfig {
     var durationSeconds: Double = 3.0
     var dataFilter: DataKind?
     var serializerFilter: SerializerKind?
+    var schemaMismatch: Bool = false
 }
 
 struct BenchmarkEntry: Codable {
@@ -40,8 +41,8 @@ struct BenchmarkEntry: Codable {
 struct SizeEntry: Codable {
     let dataType: String
     let fory: Int
-    let protobuf: Int
-    let json: Int
+    let protobuf: Int?
+    let json: Int?
 }
 
 struct BenchmarkContext: Codable {
@@ -61,14 +62,21 @@ struct BenchmarkOutput: Codable {
 
 final class BenchmarkSuite {
     private let config: BenchmarkConfig
-    private let fory: Fory
+    private let foryWriter: Fory
+    private let foryReader: Fory
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 
     init(config: BenchmarkConfig) {
         self.config = config
-        self.fory = Fory(xlang: false, ref: false, compatible: true)
-        registerTypes()
+        self.foryWriter = Fory(ref: false, compatible: true)
+        self.foryReader = Fory(ref: false, compatible: true)
+        registerV1Types(foryWriter)
+        if config.schemaMismatch {
+            registerV2Types(foryReader)
+        } else {
+            registerV1Types(foryReader)
+        }
     }
 
     func run() throws -> BenchmarkOutput {
@@ -78,36 +86,58 @@ final class BenchmarkSuite {
         try runBenchmarks(
             dataKind: .numericStruct,
             value: BenchmarkDataFactory.makeNumericStruct(),
+            validateMismatch: { (decoded: NumericStructV2, expected: NumericStruct) in
+                decoded.f1 == Int64(expected.f1)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
         try runBenchmarks(
             dataKind: .sample,
             value: BenchmarkDataFactory.makeSample(),
+            validateMismatch: { (decoded: SampleV2, expected: Sample) in
+                decoded.intValue == Int64(expected.intValue)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
         try runBenchmarks(
             dataKind: .mediaContent,
             value: BenchmarkDataFactory.makeMediaContent(),
+            validateMismatch: { (decoded: MediaContentV2, expected: MediaContent) in
+                decoded.media.width == Int64(expected.media.width)
+                    && decoded.images.first?.width == Int64(expected.images[0].width)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
         try runBenchmarks(
             dataKind: .numericStructList,
             value: BenchmarkDataFactory.makeNumericStructList(),
+            validateMismatch: { (decoded: NumericStructListV2, expected: NumericStructList) in
+                decoded.structList.first?.f1 == Int64(expected.structList[0].f1)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
         try runBenchmarks(
             dataKind: .sampleList,
             value: BenchmarkDataFactory.makeSampleList(),
+            validateMismatch: { (decoded: SampleListV2, expected: SampleList) in
+                decoded.sampleList.first?.intValue == Int64(expected.sampleList[0].intValue)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
         try runBenchmarks(
             dataKind: .mediaContentList,
             value: BenchmarkDataFactory.makeMediaContentList(),
+            validateMismatch: { (decoded: MediaContentListV2, expected: MediaContentList) in
+                decoded.mediaContentList.first?.media.width
+                    == Int64(expected.mediaContentList[0].media.width)
+                    && decoded.mediaContentList.first?.images.first?.width
+                        == Int64(expected.mediaContentList[0].images[0].width)
+            },
             entries: &entries,
             sizeEntries: &sizeEntries
         )
@@ -122,7 +152,7 @@ final class BenchmarkSuite {
         )
     }
 
-    private func registerTypes() {
+    private func registerV1Types(_ fory: Fory) {
         fory.register(NumericStruct.self, id: 1)
         fory.register(Sample.self, id: 2)
         fory.register(Media.self, id: 3)
@@ -131,6 +161,17 @@ final class BenchmarkSuite {
         fory.register(NumericStructList.self, id: 6)
         fory.register(SampleList.self, id: 7)
         fory.register(MediaContentList.self, id: 8)
+    }
+
+    private func registerV2Types(_ fory: Fory) {
+        fory.register(NumericStructV2.self, id: 1)
+        fory.register(SampleV2.self, id: 2)
+        fory.register(MediaV2.self, id: 3)
+        fory.register(ImageV2.self, id: 4)
+        fory.register(MediaContentV2.self, id: 5)
+        fory.register(NumericStructListV2.self, id: 6)
+        fory.register(SampleListV2.self, id: 7)
+        fory.register(MediaContentListV2.self, id: 8)
     }
 
     private func shouldRun(_ dataKind: DataKind, _ serializer: SerializerKind) -> Bool {
@@ -143,9 +184,10 @@ final class BenchmarkSuite {
         return true
     }
 
-    private func runBenchmarks<T: Serializer & Codable & ProtobufConvertible>(
+    private func runBenchmarks<T: Serializer & Codable & ProtobufConvertible, TRead: Serializer>(
         dataKind: DataKind,
         value: T,
+        validateMismatch: (TRead, T) -> Bool,
         entries: inout [BenchmarkEntry],
         sizeEntries: inout [SizeEntry]
     ) throws {
@@ -153,18 +195,24 @@ final class BenchmarkSuite {
             return
         }
 
-        let foryBytes = try fory.serialize(value)
-        let protobufBytes = try value.toProtobuf().serializedData()
-        let jsonBytes = try jsonEncoder.encode(value)
+        let foryBytes = try foryWriter.serialize(value)
+        let protobufBytes = config.schemaMismatch ? nil : try value.toProtobuf().serializedData()
+        let jsonBytes = config.schemaMismatch ? nil : try jsonEncoder.encode(value)
 
         sizeEntries.append(
             SizeEntry(
                 dataType: dataKind.title,
                 fory: foryBytes.count,
-                protobuf: protobufBytes.count,
-                json: jsonBytes.count
+                protobuf: protobufBytes?.count,
+                json: jsonBytes?.count
             )
         )
+        if config.schemaMismatch {
+            let decoded: TRead = try foryReader.deserialize(foryBytes, as: TRead.self)
+            guard validateMismatch(decoded, value) else {
+                throw BenchmarkError.schemaMismatchValidation(dataKind.rawValue)
+            }
+        }
 
         if shouldRun(dataKind, .fory) {
             entries.append(
@@ -174,7 +222,7 @@ final class BenchmarkSuite {
                     operation: .serialize,
                     bytes: foryBytes.count
                 ) {
-                    try self.fory.serialize(value).count
+                    try self.foryWriter.serialize(value).count
                 }
             )
             entries.append(
@@ -184,14 +232,22 @@ final class BenchmarkSuite {
                     operation: .deserialize,
                     bytes: foryBytes.count
                 ) {
-                    let decoded: T = try self.fory.deserialize(foryBytes, as: T.self)
-                    withExtendedLifetime(decoded) {}
+                    if self.config.schemaMismatch {
+                        let decoded: TRead = try self.foryReader.deserialize(foryBytes, as: TRead.self)
+                        withExtendedLifetime(decoded) {}
+                    } else {
+                        let decoded: T = try self.foryReader.deserialize(foryBytes, as: T.self)
+                        withExtendedLifetime(decoded) {}
+                    }
                     return foryBytes.count
                 }
             )
         }
 
-        if shouldRun(dataKind, .protobuf) {
+        if !config.schemaMismatch && shouldRun(dataKind, .protobuf) {
+            guard let protobufBytes = protobufBytes else {
+                throw BenchmarkError.schemaMismatchValidation(dataKind.rawValue)
+            }
             entries.append(
                 try runSingleCase(
                     serializer: .protobuf,
@@ -217,7 +273,10 @@ final class BenchmarkSuite {
             )
         }
 
-        if shouldRun(dataKind, .json) {
+        if !config.schemaMismatch && shouldRun(dataKind, .json) {
+            guard let jsonBytes = jsonBytes else {
+                throw BenchmarkError.schemaMismatchValidation(dataKind.rawValue)
+            }
             entries.append(
                 try runSingleCase(
                     serializer: .json,
@@ -325,5 +384,16 @@ final class BenchmarkSuite {
             memoryGB: Double(process.physicalMemory) / (1024.0 * 1024.0 * 1024.0),
             durationSeconds: config.durationSeconds
         )
+    }
+}
+
+enum BenchmarkError: Error, CustomStringConvertible {
+    case schemaMismatchValidation(String)
+
+    var description: String {
+        switch self {
+        case let .schemaMismatchValidation(dataType):
+            return "Fory schema-mismatch validation failed for \(dataType)"
+        }
     }
 }

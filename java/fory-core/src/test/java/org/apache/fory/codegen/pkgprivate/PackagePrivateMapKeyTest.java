@@ -41,6 +41,7 @@ public class PackagePrivateMapKeyTest {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .buildThreadSafeFory();
 
     ReproContainer container = new ReproContainer("v1");

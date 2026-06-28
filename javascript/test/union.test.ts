@@ -34,6 +34,21 @@ describe('union', () => {
     expect(result).toEqual(input);
   });
 
+  test('id union does not use TypeMeta limits', () => {
+    const fory = new Fory({
+      compatible: true,
+      ref: true,
+      maxTypeMetaBytes: 1,
+      maxSchemaVersionsPerType: 1,
+    });
+    const { serialize, deserialize } = fory.register(Type.union(101, {
+      1: Type.string(),
+    }));
+    const input = { case: 1, value: "hello" };
+    const result = deserialize(serialize(input));
+    expect(result).toEqual(input);
+  });
+
   test('should union with int case roundtrip', () => {
     const fory = new Fory({ compatible: false, ref: true });
     const { serialize, deserialize } = fory.register(Type.struct(200, {

@@ -107,6 +107,7 @@ public class FeatureTestExample {
             .withName(FeatureTestExample.class.getName())
             .withXlang(false)
             .requireClassRegistration(true)
+            .withCompatible(false)
             .build();
     fory.register(PrivateConstructorClass.class);
     fory.register(SerializablePrivateParentBean.class);

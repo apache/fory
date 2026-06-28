@@ -32,7 +32,7 @@ public class MemoryBufferObjectOutputTest {
 
   @Test
   public void testForyStructOutput() throws IOException {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.getWriteContext().prepare(buffer, null);
     try (MemoryBufferObjectOutput output =

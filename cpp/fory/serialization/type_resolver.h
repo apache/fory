@@ -220,8 +220,6 @@ public:
 // TypeMeta - Complete type metadata (for schema evolution)
 // ============================================================================
 
-constexpr size_t MAX_PARSED_NUM_TYPE_DEFS = 8192;
-
 /// Type metadata containing all field information
 /// Used for schema evolution to compare remote and local type schemas
 class TypeMeta {
@@ -252,13 +250,17 @@ public:
   /// @param buffer Source buffer
   /// @param local_type_info Local type information (for field ID assignment)
   static Result<std::unique_ptr<TypeMeta>, Error>
-  from_bytes(Buffer &buffer, const TypeMeta *local_type_info);
+  from_bytes(Buffer &buffer, const TypeMeta *local_type_info,
+             uint32_t max_type_fields = 512,
+             uint32_t max_type_meta_bytes = 4096);
 
   /// Read type meta from buffer with pre-read header
   /// @param buffer Source buffer (positioned after header)
   /// @param header Pre-read 8-byte header
   static Result<std::unique_ptr<TypeMeta>, Error>
-  from_bytes_with_header(Buffer &buffer, int64_t header);
+  from_bytes_with_header(Buffer &buffer, int64_t header,
+                         uint32_t max_type_fields = 512,
+                         uint32_t max_type_meta_bytes = 4096);
 
   /// skip type meta in buffer without parsing
   static Result<void, Error> skip_bytes_for_validated_header(Buffer &buffer,
@@ -274,8 +276,9 @@ public:
 
   /// Assign field IDs by comparing with local type
   /// This is the key function for schema evolution!
-  static void assign_field_ids(const TypeMeta *local_type,
-                               std::vector<FieldInfo> &remote_fields);
+  static Result<void, Error>
+  assign_field_ids(const TypeMeta *local_type,
+                   std::vector<FieldInfo> &remote_fields);
 
   const std::vector<FieldInfo> &get_field_infos() const { return field_infos; }
   int64_t get_hash() const { return hash; }
@@ -633,13 +636,13 @@ void apply_integer_encoding(FieldType &ft, const FieldNodeSpec &spec,
     ft.set_type_id(static_cast<uint32_t>(TypeId::UINT16));
   } else if constexpr (std::is_same_v<Decayed, uint32_t>) {
     ft.set_type_id(static_cast<uint32_t>(
-        enc == Encoding::Varint ? TypeId::VAR_UINT32 : TypeId::UINT32));
+        enc == Encoding::Fixed ? TypeId::UINT32 : TypeId::VAR_UINT32));
   } else if constexpr (std::is_same_v<Decayed, uint64_t>) {
-    ft.set_type_id(static_cast<uint32_t>(enc == Encoding::Varint
-                                             ? TypeId::VAR_UINT64
+    ft.set_type_id(static_cast<uint32_t>(enc == Encoding::Fixed
+                                             ? TypeId::UINT64
                                              : (enc == Encoding::Tagged
                                                     ? TypeId::TAGGED_UINT64
-                                                    : TypeId::UINT64)));
+                                                    : TypeId::VAR_UINT64)));
   } else if constexpr (std::is_same_v<Decayed, int32_t> ||
                        std::is_same_v<Decayed, int>) {
     ft.set_type_id(static_cast<uint32_t>(
@@ -1117,19 +1120,19 @@ constexpr uint32_t compute_unsigned_type_id() {
     } else if constexpr (std::is_same_v<InnerType, uint16_t>) {
       return static_cast<uint32_t>(TypeId::UINT16);
     } else if constexpr (std::is_same_v<InnerType, uint32_t>) {
-      if constexpr (enc == Encoding::Varint) {
-        return static_cast<uint32_t>(TypeId::VAR_UINT32);
-      } else {
+      // uint32_t defaults to Serializer<uint32_t>::type_id (VAR_UINT32);
+      // only an explicit fixed field config should emit UINT32 metadata.
+      if constexpr (enc == Encoding::Fixed) {
         return static_cast<uint32_t>(TypeId::UINT32);
       }
+      return static_cast<uint32_t>(TypeId::VAR_UINT32);
     } else if constexpr (std::is_same_v<InnerType, uint64_t>) {
-      if constexpr (enc == Encoding::Varint) {
-        return static_cast<uint32_t>(TypeId::VAR_UINT64);
+      if constexpr (enc == Encoding::Fixed) {
+        return static_cast<uint32_t>(TypeId::UINT64);
       } else if constexpr (enc == Encoding::Tagged) {
         return static_cast<uint32_t>(TypeId::TAGGED_UINT64);
-      } else {
-        return static_cast<uint32_t>(TypeId::UINT64);
       }
+      return static_cast<uint32_t>(TypeId::VAR_UINT64);
     }
   }
   // Not an unsigned type with configured encoding; use the type default.
@@ -1174,9 +1177,8 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         ::fory::to_snake_case<max_snake_len>(original_name);
     std::string field_name(snake_buffer.data(), snake_len);
 
-    const auto field_ptr = std::get<Index>(field_ptrs);
-    using RawFieldType =
-        typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+    const auto field_entry = std::get<Index>(field_ptrs);
+    using RawFieldType = meta::FieldRawTypeT<T, decltype(field_entry)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
@@ -1221,9 +1223,8 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         ::fory::to_snake_case<max_snake_len>(original_name);
     std::string field_name(snake_buffer.data(), snake_len);
 
-    const auto field_ptr = std::get<Index>(field_ptrs);
-    using RawFieldType =
-        typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
+    const auto field_entry = std::get<Index>(field_ptrs);
+    using RawFieldType = meta::FieldRawTypeT<T, decltype(field_entry)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
@@ -1454,6 +1455,10 @@ private:
 
   template <typename T>
   static void *harness_read_data_adapter_abstract(ReadContext &ctx);
+
+  template <typename T> static void harness_destroy_adapter(void *ptr);
+
+  static void harness_destroy_adapter_noop(void *ptr);
 
   template <typename T>
   static Result<std::vector<FieldInfo>, Error>
@@ -1961,6 +1966,14 @@ TypeResolver::build_enum_type_info(uint32_t type_id, uint32_t user_type_id,
   FORY_TRY(enc_tn, encode_meta_string(entry->type_name, false));
   entry->encoded_type_name = std::move(enc_tn);
 
+  if (register_by_name) {
+    TypeMeta meta = TypeMeta::from_fields(
+        type_id, entry->namespace_name, entry->type_name, register_by_name,
+        entry->user_type_id, std::vector<FieldInfo>{});
+    FORY_TRY(type_def, meta.to_bytes());
+    entry->type_def = std::move(type_def);
+  }
+
   return entry;
 }
 
@@ -2027,6 +2040,14 @@ TypeResolver::build_union_type_info(uint32_t type_id, uint32_t user_type_id,
   FORY_TRY(enc_tn, encode_meta_string(entry->type_name, false));
   entry->encoded_type_name = std::move(enc_tn);
 
+  if (register_by_name) {
+    TypeMeta meta = TypeMeta::from_fields(
+        type_id, entry->namespace_name, entry->type_name, register_by_name,
+        entry->user_type_id, std::vector<FieldInfo>{});
+    FORY_TRY(type_def, meta.to_bytes());
+    entry->type_def = std::move(type_def);
+  }
+
   return entry;
 }
 
@@ -2043,6 +2064,7 @@ Harness TypeResolver::make_struct_harness_impl(std::true_type) {
                   &TypeResolver::harness_read_adapter_abstract<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter_abstract<T>,
+                  &TypeResolver::harness_destroy_adapter_noop,
                   &TypeResolver::harness_struct_sorted_fields<T>,
                   &TypeResolver::harness_read_compatible_adapter_abstract<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
@@ -2056,6 +2078,7 @@ Harness TypeResolver::make_struct_harness_impl(std::false_type) {
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter<T>,
+                  &TypeResolver::harness_destroy_adapter<T>,
                   &TypeResolver::harness_struct_sorted_fields<T>,
                   &TypeResolver::harness_read_compatible_adapter<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
@@ -2068,6 +2091,7 @@ template <typename T> Harness TypeResolver::make_serializer_harness() {
                   &TypeResolver::harness_read_adapter<T>,
                   &TypeResolver::harness_write_data_adapter<T>,
                   &TypeResolver::harness_read_data_adapter<T>,
+                  &TypeResolver::harness_destroy_adapter<T>,
                   &TypeResolver::harness_empty_sorted_fields<T>);
   harness.any_write_fn = &detail::any_write_adapter<T>;
   harness.any_read_fn = &detail::any_read_adapter<T>;
@@ -2122,6 +2146,12 @@ void *TypeResolver::harness_read_data_adapter_abstract(ReadContext &ctx) {
   ctx.set_error(Error::type_error("Cannot deserialize abstract type"));
   return nullptr;
 }
+
+template <typename T> void TypeResolver::harness_destroy_adapter(void *ptr) {
+  delete static_cast<T *>(ptr);
+}
+
+inline void TypeResolver::harness_destroy_adapter_noop(void *ptr) { (void)ptr; }
 
 template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,

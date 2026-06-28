@@ -62,10 +62,10 @@ class ThreadSafeFory;
 /// Example:
 /// ```cpp
 /// // Single-threaded xlang Fory (not thread-safe)
-/// auto fory = Fory::builder().xlang(true).build();
+/// auto fory = Fory::builder().build();
 ///
 /// // Thread-safe Fory (uses context pools)
-/// auto fory = Fory::builder().xlang(true).build_thread_safe();
+/// auto fory = Fory::builder().build_thread_safe();
 /// ```
 class ForyBuilder {
 public:
@@ -109,6 +109,37 @@ public:
     return *this;
   }
 
+  /// Set maximum accepted field count in one received struct TypeMeta.
+  ForyBuilder &max_type_fields(uint32_t max_fields) {
+    FORY_CHECK(max_fields > 0) << "max_type_fields must be positive";
+    config_.max_type_fields = max_fields;
+    return *this;
+  }
+
+  /// Set maximum accepted body size in one received TypeMeta.
+  ForyBuilder &max_type_meta_bytes(uint32_t max_bytes) {
+    FORY_CHECK(max_bytes > 0) << "max_type_meta_bytes must be positive";
+    config_.max_type_meta_bytes = max_bytes;
+    return *this;
+  }
+
+  /// Set maximum accepted remote metadata versions for one logical type.
+  ForyBuilder &max_schema_versions_per_type(uint32_t max_versions) {
+    FORY_CHECK(max_versions > 0)
+        << "max_schema_versions_per_type must be positive";
+    config_.max_schema_versions_per_type = max_versions;
+    return *this;
+  }
+
+  /// Set maximum accepted average remote metadata versions across logical
+  /// types. The effective global minimum remains 8192 schemas.
+  ForyBuilder &max_average_schema_versions_per_type(uint32_t max_versions) {
+    FORY_CHECK(max_versions > 0)
+        << "max_average_schema_versions_per_type must be positive";
+    config_.max_average_schema_versions_per_type = max_versions;
+    return *this;
+  }
+
   /// Provide a custom type resolver instance.
   ForyBuilder &type_resolver(std::shared_ptr<TypeResolver> resolver) {
     type_resolver_ = std::move(resolver);
@@ -121,26 +152,13 @@ public:
   /// Build a thread-safe Fory instance (uses context pools).
   ThreadSafeFory build_thread_safe();
 
-  /// Set the maximum allowed size for binary data in bytes.
-  inline ForyBuilder &max_binary_size(uint32_t size) {
-    config_.max_binary_size = size;
-    return *this;
-  }
-
-  /// Set the maximum allowed number of elements in a collection or entries in a
-  /// map.
-  inline ForyBuilder &max_collection_size(uint32_t size) {
-    config_.max_collection_size = size;
-    return *this;
-  }
-
 private:
   const Config &normalized_config() {
-    if (config_.xlang && !compatible_set_) {
+    if (!compatible_set_) {
       config_.compatible = true;
     }
     // Compatible mode carries field metadata for evolution; schema hash checks
-    // belong only to schema-consistent mode.
+    // are only useful for same-schema payloads.
     if (config_.compatible) {
       config_.check_struct_version = false;
     }
@@ -513,7 +531,7 @@ protected:
 ///
 /// Example:
 /// ```cpp
-/// auto fory = Fory::builder().xlang(true).build();
+/// auto fory = Fory::builder().build();
 /// fory.register_struct<MyStruct>(1);
 ///
 /// MyStruct obj{...};
@@ -904,7 +922,7 @@ private:
 ///
 /// Example:
 /// ```cpp
-/// auto fory = Fory::builder().xlang(true).build_thread_safe();
+/// auto fory = Fory::builder().build_thread_safe();
 /// fory.register_struct<MyStruct>(1);
 ///
 /// // Can be used from multiple threads safely

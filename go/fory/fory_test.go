@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
@@ -269,7 +270,7 @@ func TestSerializeArray(t *testing.T) {
 func TestSerializeStructSimple(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		// Use WithXlang(false) for native Go mode where nil slices/maps are preserved
-		fory := NewFory(WithXlang(false), WithRefTracking(referenceTracking))
+		fory := NewFory(WithXlang(false), WithRefTracking(referenceTracking), WithCompatible(false))
 		type A struct {
 			F1 []string
 		}
@@ -510,6 +511,33 @@ func TestSerializeCommonReference(t *testing.T) {
 			unsafe.Pointer(reflect.ValueOf(newValue[1]).Pointer()))
 		require.Equal(t, newValue[0], newValue[1])
 	}
+}
+
+func TestReadBufferObjectRejectsTruncatedInBandData(t *testing.T) {
+	buf := NewByteBuffer(nil)
+	buf.WriteBool(true)
+	buf.WriteVarUint32(4)
+	buf.WriteBinary([]byte{1, 2})
+
+	ctx := NewReadContext(false)
+	ctx.SetData(buf.Bytes())
+
+	require.Nil(t, ctx.ReadBufferObject())
+	require.Error(t, ctx.CheckError())
+}
+
+func TestReadBufferObjectCopiesInBandDataFromStream(t *testing.T) {
+	data := []byte{1, 3, 10, 11, 12, 20, 21, 22, 23, 24, 25}
+	ctx := NewReadContext(false)
+	ctx.buffer.ResetWithReader(bytes.NewReader(data), 2)
+
+	buf := ctx.ReadBufferObject()
+	require.NoError(t, ctx.CheckError())
+	require.Equal(t, []byte{10, 11, 12}, buf.GetData())
+
+	ctx.buffer.Skip(6, ctx.Err())
+	require.NoError(t, ctx.CheckError())
+	require.Equal(t, []byte{10, 11, 12}, buf.GetData())
 }
 
 // TestSerializeZeroCopy is temporarily disabled during API refactoring

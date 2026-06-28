@@ -1954,7 +1954,7 @@ public class ClassResolver extends TypeResolver {
           || extRegistry.registeredClassIdMap.get(cls) != null
           || shimDispatcher.contains(cls);
     } else {
-      return extRegistry.typeChecker.checkType(this, cls.getName());
+      return checkType(cls.getName());
     }
   }
 
@@ -2097,7 +2097,7 @@ public class ClassResolver extends TypeResolver {
    *
    * <p>For named-class tokens, this method enforces deserialization class policy before returning
    * the class, including the disallowed list and registration or TypeChecker checks. For registered
-   * type-id tokens, it returns the registered class whose admission was already checked during
+   * type-id tokens, it returns the registered class whose class policy was already checked during
    * registration.
    *
    * <p>Note that the object of the class can be non-serializable. For serializable object, {@link

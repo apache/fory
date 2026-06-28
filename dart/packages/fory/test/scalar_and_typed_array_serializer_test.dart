@@ -136,6 +136,19 @@ class CompatibleNullableListEnvelope {
 }
 
 @ForyStruct()
+class CompatibleRootNullableListEnvelope {
+  CompatibleRootNullableListEnvelope();
+
+  @ForyField(
+    type: ListType(
+      element: Int32Type(encoding: Encoding.fixed),
+      nullable: true,
+    ),
+  )
+  List<int>? values = <int>[];
+}
+
+@ForyStruct()
 class CompatibleStringListEnvelope {
   CompatibleStringListEnvelope();
 
@@ -157,6 +170,53 @@ class CompatibleNestedListEnvelope {
 
   @ListField(element: ListType(element: Int32Type(encoding: Encoding.fixed)))
   List<List<int>> values = <List<int>>[];
+}
+
+@ForyStruct()
+class CompatibleNestedStringListEnvelope {
+  CompatibleNestedStringListEnvelope();
+
+  @ListField(element: ListType(element: StringType()))
+  List<List<String>> values = <List<String>>[];
+}
+
+@ForyStruct()
+class CompatibleNestedNullableListEnvelope {
+  CompatibleNestedNullableListEnvelope();
+
+  @ListField(
+    element: ListType(
+      element: Int32Type(nullable: true, encoding: Encoding.fixed),
+    ),
+  )
+  List<List<int?>> values = <List<int?>>[];
+}
+
+@ForyStruct()
+class CompatibleNestedIntMapEnvelope {
+  CompatibleNestedIntMapEnvelope();
+
+  @MapField(key: StringType(), value: Int32Type(encoding: Encoding.fixed))
+  Map<String, int> values = <String, int>{};
+}
+
+@ForyStruct()
+class CompatibleNestedNullableMapEnvelope {
+  CompatibleNestedNullableMapEnvelope();
+
+  @MapField(
+    key: StringType(),
+    value: Int32Type(nullable: true, encoding: Encoding.fixed),
+  )
+  Map<String, int?> values = <String, int?>{};
+}
+
+@ForyStruct()
+class CompatibleNestedStringMapEnvelope {
+  CompatibleNestedStringMapEnvelope();
+
+  @MapField(key: StringType(), value: StringType())
+  Map<String, String> values = <String, String>{};
 }
 
 @ForyStruct()
@@ -240,6 +300,14 @@ class CompatibleScalarUint64Envelope {
 }
 
 @ForyStruct()
+class CompatibleScalarWrappedInt64Envelope {
+  CompatibleScalarWrappedInt64Envelope();
+
+  @ForyField(id: 1, type: Int64Type(encoding: Encoding.varint))
+  Int64 value = Int64(0);
+}
+
+@ForyStruct()
 class CompatibleScalarFloat64Envelope {
   CompatibleScalarFloat64Envelope();
 
@@ -253,6 +321,14 @@ class CompatibleScalarFloat32Envelope {
 
   @ForyField(id: 1, type: Float32Type())
   double value = 0.0;
+}
+
+@ForyStruct()
+class CompatibleScalarWrappedFloat32Envelope {
+  CompatibleScalarWrappedFloat32Envelope();
+
+  @ForyField(id: 1, type: Float32Type())
+  Float32 value = Float32(0);
 }
 
 @ForyStruct()
@@ -454,7 +530,7 @@ void main() {
 
       for (final value in cases) {
         final roundTrip = fory.deserialize<double>(
-          fory.serializeBuiltin(value, wireTypeId: TypeIds.float16),
+          fory.serializeBuiltin(value, typeId: TypeIds.float16),
         );
         expect(toFloat16Bits(roundTrip), equals(toFloat16Bits(value)));
       }
@@ -486,7 +562,7 @@ void main() {
 
       for (final value in cases) {
         final roundTrip = fory.deserialize<double>(
-          fory.serializeBuiltin(value, wireTypeId: TypeIds.bfloat16),
+          fory.serializeBuiltin(value, typeId: TypeIds.bfloat16),
         );
         expect(toBfloat16Bits(roundTrip), equals(toBfloat16Bits(value)));
       }
@@ -803,40 +879,74 @@ void main() {
       expect(decoded.values, orderedEquals(<int>[1, 2, 3]));
     });
 
-    test(
-      'rejects compatible list payload with nullable elements for dense array fields',
-      () {
-        final writer = Fory();
-        final reader = Fory();
-        ScalarAndTypedArraySerializerTestForyModule.register(
-          writer,
-          CompatibleNullableListEnvelope,
-          name: 'test.CompatibleNullableListArrayEnvelope',
-        );
-        ScalarAndTypedArraySerializerTestForyModule.register(
-          reader,
-          CompatibleArrayEnvelope,
-          name: 'test.CompatibleNullableListArrayEnvelope',
-        );
+    test('adapts compatible nullable list schema into dense array fields', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleNullableListEnvelope,
+        name: 'test.CompatibleNullableListArrayEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleArrayEnvelope,
+        name: 'test.CompatibleNullableListArrayEnvelope',
+      );
 
-        final nonNullBytes = writer.serialize(
-          CompatibleNullableListEnvelope()..values = <int?>[1, 2, 3],
-        );
-        final decoded = reader.deserialize<CompatibleArrayEnvelope>(
-          nonNullBytes,
-        );
-        expect(decoded.values, orderedEquals(<int>[1, 2, 3]));
+      final bytes = writer.serialize(
+        CompatibleNullableListEnvelope()..values = <int?>[1, 2, 3],
+      );
 
-        final nullableBytes = writer.serialize(
-          CompatibleNullableListEnvelope()..values = <int?>[1, null, 3],
-        );
+      final decoded = reader.deserialize<CompatibleArrayEnvelope>(bytes);
+      _expectInt32ListEquals(
+        decoded.values,
+        Int32List.fromList(<int>[1, 2, 3]),
+      );
 
-        expect(
-          () => reader.deserialize<CompatibleArrayEnvelope>(nullableBytes),
-          throwsStateError,
-        );
-      },
-    );
+      final nullBytes = writer.serialize(
+        CompatibleNullableListEnvelope()..values = <int?>[1, null, 3],
+      );
+      expect(
+        () => reader.deserialize<CompatibleArrayEnvelope>(nullBytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('cannot read nullable'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects compatible nullable list field into dense array field', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleRootNullableListEnvelope,
+        name: 'test.CompatibleRootNullableListArrayEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleArrayEnvelope,
+        name: 'test.CompatibleRootNullableListArrayEnvelope',
+      );
+
+      final bytes = writer.serialize(
+        CompatibleRootNullableListEnvelope()..values = <int>[1, 2, 3],
+      );
+
+      expect(
+        () => reader.deserialize<CompatibleArrayEnvelope>(bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('unsupported list/array schema mismatch'),
+          ),
+        ),
+      );
+    });
 
     test(
       'rejects incompatible compatible list and dense array element fields',
@@ -889,6 +999,119 @@ void main() {
         () => reader.deserialize<CompatibleNestedListEnvelope>(bytes),
         throwsStateError,
       );
+    });
+
+    test('rejects nested list scalar changes', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleNestedStringListEnvelope,
+        name: 'test.CompatibleNestedScalarListEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleNestedListEnvelope,
+        name: 'test.CompatibleNestedScalarListEnvelope',
+      );
+
+      final bytes = writer.serialize(
+        CompatibleNestedStringListEnvelope()
+          ..values = <List<String>>[
+            <String>['1'],
+          ],
+      );
+
+      expect(
+        () => reader.deserialize<CompatibleNestedListEnvelope>(bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('incompatible local and remote schemas'),
+          ),
+        ),
+      );
+    });
+
+    test('reads nested list scalar nullable changes', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleNestedNullableListEnvelope,
+        name: 'test.CompatibleNestedScalarListNullableEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleNestedListEnvelope,
+        name: 'test.CompatibleNestedScalarListNullableEnvelope',
+      );
+
+      final bytes = writer.serialize(
+        CompatibleNestedNullableListEnvelope()
+          ..values = <List<int?>>[
+            <int?>[7],
+          ],
+      );
+
+      final decoded = reader.deserialize<CompatibleNestedListEnvelope>(bytes);
+      expect(decoded.values, <List<int>>[
+        <int>[7],
+      ]);
+    });
+
+    test('rejects nested map scalar changes', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleNestedStringMapEnvelope,
+        name: 'test.CompatibleNestedScalarMapEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleNestedIntMapEnvelope,
+        name: 'test.CompatibleNestedScalarMapEnvelope',
+      );
+
+      final bytes = writer.serialize(
+        CompatibleNestedStringMapEnvelope()
+          ..values = <String, String>{'x': '1'},
+      );
+
+      expect(
+        () => reader.deserialize<CompatibleNestedIntMapEnvelope>(bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('incompatible local and remote schemas'),
+          ),
+        ),
+      );
+    });
+
+    test('reads nested map scalar nullable changes', () {
+      final writer = Fory();
+      final reader = Fory();
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        writer,
+        CompatibleNestedNullableMapEnvelope,
+        name: 'test.CompatibleNestedScalarMapNullableEnvelope',
+      );
+      ScalarAndTypedArraySerializerTestForyModule.register(
+        reader,
+        CompatibleNestedIntMapEnvelope,
+        name: 'test.CompatibleNestedScalarMapNullableEnvelope',
+      );
+
+      final bytes = writer.serialize(
+        CompatibleNestedNullableMapEnvelope()..values = <String, int?>{'x': 9},
+      );
+
+      final decoded = reader.deserialize<CompatibleNestedIntMapEnvelope>(bytes);
+      expect(decoded.values, <String, int>{'x': 9});
     });
 
     test('converts compatible scalar fields losslessly', () {
@@ -950,12 +1173,60 @@ void main() {
         equals('18446744073709551615'),
       );
       expect(
+        _compatibleScalarRoundTrip<CompatibleScalarUint64Envelope>(
+          CompatibleScalarInt64Envelope,
+          CompatibleScalarUint64Envelope,
+          CompatibleScalarInt64Envelope()..value = 42,
+        ).value,
+        equals(Uint64(42)),
+      );
+      expect(
+        _compatibleScalarRoundTrip<CompatibleScalarWrappedInt64Envelope>(
+          CompatibleScalarUint64Envelope,
+          CompatibleScalarWrappedInt64Envelope,
+          CompatibleScalarUint64Envelope()..value = Uint64(42),
+        ).value,
+        equals(Int64(42)),
+      );
+      expect(
         _compatibleScalarRoundTrip<CompatibleScalarFloat32Envelope>(
           CompatibleScalarStringEnvelope,
           CompatibleScalarFloat32Envelope,
           CompatibleScalarStringEnvelope()..value = '0.5',
         ).value,
         equals(0.5),
+      );
+      expect(
+        _compatibleScalarRoundTrip<CompatibleScalarFloat32Envelope>(
+          CompatibleScalarFloat64Envelope,
+          CompatibleScalarFloat32Envelope,
+          CompatibleScalarFloat64Envelope()..value = 0.5,
+        ).value,
+        equals(0.5),
+      );
+      expect(
+        _compatibleScalarRoundTrip<CompatibleScalarFloat64Envelope>(
+          CompatibleScalarFloat32Envelope,
+          CompatibleScalarFloat64Envelope,
+          CompatibleScalarFloat32Envelope()..value = double.infinity,
+        ).value,
+        equals(double.infinity),
+      );
+      expect(
+        _compatibleScalarRoundTrip<CompatibleScalarFloat32Envelope>(
+          CompatibleScalarFloat64Envelope,
+          CompatibleScalarFloat32Envelope,
+          CompatibleScalarFloat64Envelope()..value = double.negativeInfinity,
+        ).value,
+        equals(double.negativeInfinity),
+      );
+      expect(
+        _compatibleScalarRoundTrip<CompatibleScalarWrappedFloat32Envelope>(
+          CompatibleScalarFloat64Envelope,
+          CompatibleScalarWrappedFloat32Envelope,
+          CompatibleScalarFloat64Envelope()..value = 0.5,
+        ).value,
+        equals(Float32(0.5)),
       );
       final negativeZero =
           _compatibleScalarRoundTrip<CompatibleScalarFloat32Envelope>(
@@ -1065,6 +1336,11 @@ void main() {
         CompatibleScalarDecimalEnvelope,
         CompatibleScalarInt64Envelope,
         CompatibleScalarDecimalEnvelope()..value = Decimal(BigInt.one << 63, 0),
+      );
+      _expectCompatibleScalarError(
+        CompatibleScalarUint64Envelope,
+        CompatibleScalarInt64Envelope,
+        CompatibleScalarUint64Envelope()..value = _uint64HighBit,
       );
       _expectCompatibleScalarError(
         CompatibleScalarDecimalEnvelope,
@@ -1205,24 +1481,25 @@ void main() {
       expect(buffer.readableBytes, equals(0));
     });
 
-    test('rejects tracked scalar nullable framing mismatch', () {
+    test('rejects tracked scalar nullable framing mismatch during layout', () {
       expect(
-        _compatibleScalarRoundTrip<CompatibleScalarTrackingRefBoolEnvelope>(
-          CompatibleScalarOptionalTrackingRefBoolEnvelope,
-          CompatibleScalarTrackingRefBoolEnvelope,
-          CompatibleScalarOptionalTrackingRefBoolEnvelope()..value = true,
-        ).value,
-        isFalse,
+        () =>
+            _compatibleScalarRoundTrip<CompatibleScalarTrackingRefBoolEnvelope>(
+              CompatibleScalarOptionalTrackingRefBoolEnvelope,
+              CompatibleScalarTrackingRefBoolEnvelope,
+              CompatibleScalarOptionalTrackingRefBoolEnvelope()..value = true,
+            ),
+        throwsA(isA<StateError>()),
       );
       expect(
-        _compatibleScalarRoundTrip<
+        () => _compatibleScalarRoundTrip<
           CompatibleScalarOptionalTrackingRefBoolEnvelope
         >(
           CompatibleScalarTrackingRefBoolEnvelope,
           CompatibleScalarOptionalTrackingRefBoolEnvelope,
           CompatibleScalarTrackingRefBoolEnvelope()..value = true,
-        ).value,
-        isNull,
+        ),
+        throwsA(isA<StateError>()),
       );
       expect(
         _compatibleScalarRoundTrip<
@@ -1233,33 +1510,6 @@ void main() {
           CompatibleScalarOptionalTrackingRefBoolEnvelope()..value = true,
         ).value,
         isTrue,
-      );
-    });
-
-    test('enforces maxBinarySize on write and read', () {
-      final oversized = Uint8List.fromList(<int>[1, 2, 3, 4]);
-
-      expect(
-        () => Fory(maxBinarySize: 3).serialize(oversized),
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.toString(),
-            'message',
-            contains('Binary payload exceeds 3 bytes.'),
-          ),
-        ),
-      );
-
-      final bytes = Fory().serialize(oversized);
-      expect(
-        () => Fory(maxBinarySize: 3).deserialize<Uint8List>(bytes),
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.toString(),
-            'message',
-            contains('Binary payload exceeds 3 bytes.'),
-          ),
-        ),
       );
     });
   });

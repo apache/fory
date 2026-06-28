@@ -168,19 +168,19 @@ _refOverrideContainerForySchema = GeneratedStructSchema<RefOverrideContainer>(
 final class _RefOverrideContainerForySerializer
     extends Serializer<RefOverrideContainer>
     implements GeneratedStructSerializer<RefOverrideContainer> {
-  List<GeneratedStructFieldInfo>? _generatedFields;
+  List<GeneratedStructFieldDescriptor>? _fieldDescriptors;
 
   _RefOverrideContainerForySerializer();
 
-  List<GeneratedStructFieldInfo> _writeFields(WriteContext context) {
-    return _generatedFields ??= buildGeneratedStructFieldInfos(
+  List<GeneratedStructFieldDescriptor> _writeFields(WriteContext context) {
+    return _fieldDescriptors ??= buildGeneratedStructFieldDescriptors(
       context.typeResolver,
       _refOverrideContainerForySchema,
     );
   }
 
-  List<GeneratedStructFieldInfo> _readFields(ReadContext context) {
-    return _generatedFields ??= buildGeneratedStructFieldInfos(
+  List<GeneratedStructFieldDescriptor> _readFields(ReadContext context) {
+    return _fieldDescriptors ??= buildGeneratedStructFieldDescriptors(
       context.typeResolver,
       _refOverrideContainerForySchema,
     );
@@ -189,9 +189,36 @@ final class _RefOverrideContainerForySerializer
   @override
   void write(WriteContext context, RefOverrideContainer value) {
     final fields = _writeFields(context);
-    writeGeneratedStructFieldInfoValue(context, fields[0], value.listField);
-    writeGeneratedStructFieldInfoValue(context, fields[1], value.mapField);
-    writeGeneratedStructFieldInfoValue(context, fields[2], value.setField);
+    final field0 = fields[0];
+    final field0Value = value.listField;
+    final field0Declared = field0.declaredTypeInfo;
+    if (field0Declared != null && field0.usesDeclaredType) {
+      context.writeResolvedValue(field0Declared, field0Value, field0.fieldType);
+    } else {
+      final actualResolved = context.typeResolver.resolveValue(field0Value);
+      context.writeTypeMetaValue(actualResolved);
+      context.writeResolvedValue(actualResolved, field0Value, field0.fieldType);
+    }
+    final field1 = fields[1];
+    final field1Value = value.mapField;
+    final field1Declared = field1.declaredTypeInfo;
+    if (field1Declared != null && field1.usesDeclaredType) {
+      context.writeResolvedValue(field1Declared, field1Value, field1.fieldType);
+    } else {
+      final actualResolved = context.typeResolver.resolveValue(field1Value);
+      context.writeTypeMetaValue(actualResolved);
+      context.writeResolvedValue(actualResolved, field1Value, field1.fieldType);
+    }
+    final field2 = fields[2];
+    final field2Value = value.setField;
+    final field2Declared = field2.declaredTypeInfo;
+    if (field2Declared != null && field2.usesDeclaredType) {
+      context.writeResolvedValue(field2Declared, field2Value, field2.fieldType);
+    } else {
+      final actualResolved = context.typeResolver.resolveValue(field2Value);
+      context.writeTypeMetaValue(actualResolved);
+      context.writeResolvedValue(actualResolved, field2Value, field2.fieldType);
+    }
   }
 
   @override
@@ -199,15 +226,15 @@ final class _RefOverrideContainerForySerializer
     final value = RefOverrideContainer();
     final fields = _readFields(context);
     value.listField = _readRefOverrideContainerListField(
-      readGeneratedStructFieldInfoValue(context, fields[0], value.listField),
+      readGeneratedStructDescriptorValue(context, fields[0], value.listField),
       value.listField,
     );
     value.mapField = _readRefOverrideContainerMapField(
-      readGeneratedStructFieldInfoValue(context, fields[1], value.mapField),
+      readGeneratedStructDescriptorValue(context, fields[1], value.mapField),
       value.mapField,
     );
     value.setField = _readRefOverrideContainerSetField(
-      readGeneratedStructFieldInfoValue(context, fields[2], value.setField),
+      readGeneratedStructDescriptorValue(context, fields[2], value.setField),
       value.setField,
     );
     return value;
@@ -219,34 +246,64 @@ final class _RefOverrideContainerForySerializer
     CompatibleStructReadLayout layout,
   ) {
     final value = RefOverrideContainer();
+    final fields = _readFields(context);
     for (var index = 0; index < layout.fieldCount; index += 1) {
-      final field = layout.localFieldAt(index);
-      if (field == null) {
-        skipGeneratedCompatibleStructField(context, layout, index);
-        continue;
-      }
-      switch (field.index) {
+      final field = layout.fieldAt(index);
+      switch (field.matchedId) {
+        case -1:
+          skipGeneratedCompatibleStructField(context, field);
+          break;
         case 0:
           value.listField = _readRefOverrideContainerListField(
-            readGeneratedCompatibleStructField(context, layout, index),
+            readGeneratedStructDescriptorValue(
+              context,
+              fields[0],
+              value.listField,
+            ),
             value.listField,
           );
           break;
         case 1:
-          value.mapField = _readRefOverrideContainerMapField(
-            readGeneratedCompatibleStructField(context, layout, index),
-            value.mapField,
+          value.listField = _readRefOverrideContainerListField(
+            readGeneratedCompatibleStructField(context, field),
+            value.listField,
           );
           break;
         case 2:
+          value.mapField = _readRefOverrideContainerMapField(
+            readGeneratedStructDescriptorValue(
+              context,
+              fields[1],
+              value.mapField,
+            ),
+            value.mapField,
+          );
+          break;
+        case 3:
+          value.mapField = _readRefOverrideContainerMapField(
+            readGeneratedCompatibleStructField(context, field),
+            value.mapField,
+          );
+          break;
+        case 4:
           value.setField = _readRefOverrideContainerSetField(
-            readGeneratedCompatibleStructField(context, layout, index),
+            readGeneratedStructDescriptorValue(
+              context,
+              fields[2],
+              value.setField,
+            ),
+            value.setField,
+          );
+          break;
+        case 5:
+          value.setField = _readRefOverrideContainerSetField(
+            readGeneratedCompatibleStructField(context, field),
             value.setField,
           );
           break;
         default:
           throw StateError(
-            'Compatible field index is out of range for RefOverrideContainer.',
+            'Compatible matched id is out of range for RefOverrideContainer.',
           );
       }
     }

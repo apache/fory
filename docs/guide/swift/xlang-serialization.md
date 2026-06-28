@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Fory Swift can exchange payloads with other Fory runtimes using the xlang protocol.
+Fory Swift can exchange payloads with other Fory implementations using the xlang protocol.
 
 ## Recommended Xlang Configuration
 

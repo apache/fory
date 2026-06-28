@@ -24,6 +24,8 @@ import java.lang.invoke.VarHandle;
 import java.nio.ByteOrder;
 
 public class LittleEndian {
+  private static final VarHandle BYTE_ARRAY_INT =
+      MethodHandles.byteArrayViewVarHandle(int[].class, ByteOrder.LITTLE_ENDIAN);
   private static final VarHandle BYTE_ARRAY_LONG =
       MethodHandles.byteArrayViewVarHandle(long[].class, ByteOrder.LITTLE_ENDIAN);
 
@@ -64,6 +66,14 @@ public class LittleEndian {
 
   public static long getInt64(byte[] o, int index) {
     return (long) BYTE_ARRAY_LONG.get(o, index);
+  }
+
+  public static int getInt32(byte[] o, int index) {
+    return (int) BYTE_ARRAY_INT.get(o, index);
+  }
+
+  public static void putInt32(byte[] o, int index, int value) {
+    BYTE_ARRAY_INT.set(o, index, value);
   }
 
   public static void putInt64(byte[] o, int index, long value) {

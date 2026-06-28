@@ -89,7 +89,8 @@ public class TypeDef implements Serializable {
   public static void skipTypeDef(MemoryBuffer buffer, long id) {
     // Header-cache hits intentionally treat the current body as opaque bytes and skip by the size
     // in the current header. Parsed TypeDefs are published to the cache only after successful body
-    // parse and 52-bit metadata-hash validation; cache hits must not reparse or rehash that body.
+    // parse and 52-bit metadata-hash validation; cache hits must not reparse, rehash, allocate, or
+    // otherwise materialize that body.
     int size = (int) (id & META_SIZE_MASKS);
     if (size == META_SIZE_MASKS) {
       int extendedSize = buffer.readVarUInt32Small14();
@@ -321,12 +322,28 @@ public class TypeDef implements Serializable {
     return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, buffer.readInt64());
   }
 
+  /** Decode an encoded class definition. */
+  public static TypeDef readTypeDef(TypeResolver resolver, byte[] encoded) {
+    return readTypeDef(resolver, MemoryBuffer.fromByteArray(encoded));
+  }
+
   /** Read class definition from buffer. */
   public static TypeDef readTypeDef(TypeResolver resolver, MemoryBuffer buffer, long header) {
     if (resolver.isCrossLanguage()) {
       return TypeDefDecoder.decodeTypeDef((XtypeResolver) resolver, buffer, header);
     }
     return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, header);
+  }
+
+  /** Read encoded class definition bytes from buffer. */
+  public static byte[] readTypeDefBytes(TypeResolver resolver, MemoryBuffer buffer, long header) {
+    if (resolver.isCrossLanguage()) {
+      if ((header & COMPRESS_META_FLAG) != 0) {
+        throw new DeserializationException("Compressed xlang TypeDef is not supported");
+      }
+      return NativeTypeDefDecoder.decodeTypeDefBuf(buffer, resolver, header).f1;
+    }
+    return NativeTypeDefDecoder.decodeTypeDefBuf(buffer, resolver, header).f1;
   }
 
   /**

@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-This page covers advanced Java runtime features that are not part of first-use serialization.
+This page covers advanced Java Fory features that are not part of first-use serialization.
 Java native-mode zero-copy serialization is documented in [Native Serialization](native-serialization.md), and deep
 copy semantics are documented in [Object Copy](object-copy.md).
 

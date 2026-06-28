@@ -69,4 +69,4 @@ Keep registration mapping consistent across peers:
 
 ## Dynamic Types and Registration
 
-When serializing dynamic values (`Any`, `AnyObject`, `any Serializer`) that contain user-defined types, the concrete runtime types must still be registered.
+When serializing dynamic values (`Any`, `AnyObject`, `any Serializer`) that contain user-defined types, the concrete types must still be registered.

@@ -391,13 +391,13 @@ func TestCompatibleScalarConversions(t *testing.T) {
 	}
 }
 
-func TestCompatibleScalarRejectsInvalidBoolPayload(t *testing.T) {
+func TestRejectsInvalidBoolByte(t *testing.T) {
 	f := NewForyWithOptions(WithXlang(true), WithCompatible(true))
 	f.readCtx.SetData([]byte{2})
 	_ = readCompatibleScalarValue(f.readCtx, BOOL)
 	err := f.readCtx.CheckError()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bool payload is not 0 or 1")
+	assert.Contains(t, err.Error(), "bool byte is not 0 or 1")
 }
 
 func TestCompatibleScalarRejectsRefValueFlag(t *testing.T) {
@@ -439,11 +439,11 @@ func TestCompatibleScalarSameTypeNullableStrictRead(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid compatible scalar null flag")
 
-	badPayload := append([]byte(nil), data...)
-	badPayload[len(badPayload)-1] = 2
-	err = reader.Unmarshal(badPayload, &out)
+	badBoolByte := append([]byte(nil), data...)
+	badBoolByte[len(badBoolByte)-1] = 2
+	err = reader.Unmarshal(badBoolByte, &out)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "bool payload")
+	assert.Contains(t, err.Error(), "bool byte")
 }
 
 func TestCompatibleScalarTrackingRefMismatch(t *testing.T) {
@@ -456,11 +456,9 @@ func TestCompatibleScalarTrackingRefMismatch(t *testing.T) {
 		tagID:    -1,
 	}
 	ser := newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefMismatch", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err := ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 
 	remoteDef.trackRef = false
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefMatch", []FieldDef{remoteDef})
@@ -473,19 +471,15 @@ func TestCompatibleScalarTrackingRefMismatch(t *testing.T) {
 	remoteDef.trackRef = true
 	remoteDef.nullable = true
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarBool{}), "ScalarTrackingRefNullableRemote", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err = ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 
 	remoteDef.trackRef = true
 	remoteDef.nullable = false
 	remoteDef.typeSpec = NewSimpleTypeSpec(INT32)
 	ser = newStructSerializerFromTypeDef(reflect.TypeOf(scalarTrackingRefInt32{}), "ScalarTrackingRefTypeChange", []FieldDef{remoteDef})
-	require.NoError(t, ser.initialize(f.typeResolver))
-	require.Len(t, ser.fields, 1)
-	assert.Equal(t, -1, ser.fields[0].Meta.FieldIndex)
-	assert.Nil(t, ser.fields[0].Meta.CompatibleScalar)
-	assert.True(t, ser.typeDefDiffers)
+	err = ser.initialize(f.typeResolver)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot be read as local field")
 }

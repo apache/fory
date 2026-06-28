@@ -25,7 +25,7 @@ xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default C++ mode, when
 bytes must be read by Java, Python, Go, Rust, JavaScript/TypeScript, C#, Swift,
-Dart, Scala, Kotlin, or another non-C++ Fory runtime.
+Dart, Scala, Kotlin, or another non-C++ Fory implementation.
 
 ## When To Use Native Serialization
 
@@ -34,11 +34,12 @@ Use native serialization when:
 - A payload is produced and consumed only by C++ applications.
 - The data model uses C++-specific types such as character types, unsigned-native type IDs,
   `std::tuple`, smart pointers, or C++ polymorphic models.
-- You want schema-consistent C++ payloads for lockstep services.
+- You want faster serialization and smaller size, and every reader uses the same schema as the
+  writer.
 - You need compatible schema evolution for C++-only rolling deployments.
 - You want to avoid portable xlang type-mapping constraints for a C++ boundary.
 
-## Create a Native Runtime
+## Create a Native-Mode Fory Instance
 
 ```cpp
 #include "fory/serialization/fory.h"
@@ -71,7 +72,7 @@ int main() {
 }
 ```
 
-Use one configured `Fory` instance per thread, or build a thread-safe runtime when the same runtime
+Use one configured `Fory` instance per thread, or build a thread-safe Fory instance when the same instance
 is shared by multiple threads:
 
 ```cpp
@@ -85,18 +86,20 @@ Register types before concurrent serialization starts.
 
 ## Schema Evolution
 
-Native serialization defaults to schema-consistent mode. Enable compatible mode when C++-only
-writer and reader schemas can differ:
+Native serialization defaults to compatible mode. Keep that default when C++-only writer and reader
+schemas can differ:
 
 ```cpp
 auto fory = Fory::builder()
     .xlang(false)
-    .compatible(true)
     .build();
 ```
 
 Compatible mode writes schema metadata so readers can tolerate added, removed, or reordered fields
 when field identity remains compatible. See [Schema Evolution](schema-evolution.md).
+
+For faster serialization and smaller size, set `.compatible(false)` only when
+every reader and writer always uses the same C++ schema.
 
 ## Registration
 
@@ -121,7 +124,7 @@ Native serialization owns the C++-specific object surface:
 - `std::shared_ptr` and `std::unique_ptr`.
 - Character types such as `char`, `char16_t`, and `char32_t`.
 - Unsigned integer types with native-mode type IDs.
-- Polymorphic serialization registered through the C++ runtime.
+- Polymorphic serialization registered through the C++ implementation.
 
 Use [Supported Types](supported-types.md) for the full type surface and xlang mapping notes.
 
@@ -155,7 +158,7 @@ auto unsigned_bytes = fory.serialize(uint64_t{42}).value();
 auto unsigned_value = fory.deserialize<uint64_t>(unsigned_bytes).value();
 ```
 
-For xlang payloads, use schema metadata and the shared xlang type mapping instead of relying on
+For xlang payloads, use metadata and the shared xlang type mapping instead of relying on
 C++ native-only type IDs.
 
 ## Performance Guidelines
@@ -163,8 +166,8 @@ C++ native-only type IDs.
 - Reuse configured `Fory` instances.
 - Use single-threaded `Fory` per thread for the fastest path; use `build_thread_safe()` for shared
   concurrent use.
-- Keep native schema-consistent mode for lockstep C++ services.
-- Enable `.compatible(true)` only when C++-only schema evolution is required.
+- Use `.compatible(false)` only when every reader and writer always uses the same C++ schema and
+  the application wants faster serialization and smaller size.
 - Register structs with explicit numeric IDs for compact payloads.
 - Disable reference tracking for value-shaped graphs.
 - Prefer concrete types over polymorphic/dynamic fields on hot paths.
@@ -177,25 +180,24 @@ C++ native-only type IDs.
 | Non-C++ readers or writers               | No                       | Yes                     |
 | C++ native character and unsigned shapes | Yes                      | Limited                 |
 | Smart pointers and C++ object graphs     | Yes                      | Limited                 |
-| Schema-consistent same-language payloads | Yes                      | No                      |
-| Compatible schema evolution by default   | No                       | Yes                     |
-| Portable type mapping across runtimes    | No                       | Yes                     |
+| Same-schema compact payloads             | Yes                      | No                      |
+| Compatible schema evolution by default   | Yes                      | Yes                     |
+| Portable type mapping across languages   | No                       | Yes                     |
 
 ## Troubleshooting
 
-### A non-C++ runtime cannot read the payload
+### A non-C++ implementation cannot read the payload
 
 The writer is using native serialization. Rebuild it with `.xlang(true)` and align type
-registration with every peer runtime.
+registration with every peer.
 
 ### A rolling deployment fails after a field change
 
-Native serialization defaults to schema-consistent mode. Use `.compatible(true)` on both writer and
-reader when schemas can differ.
+Native serialization defaults to compatible mode. Keep that default when schemas can differ.
 
 ### A native-only scalar does not map to another language
 
-Use xlang serialization with explicit schema metadata for portable payloads. Native C++ type IDs
+Use xlang serialization with explicit metadata for portable payloads. Native C++ type IDs
 are only for C++ readers.
 
 ### A shared pointer graph loses identity
@@ -204,7 +206,7 @@ Enable `.track_ref(true)` and verify the graph uses supported pointer patterns.
 
 ## Related Topics
 
-- [Xlang Serialization](xlang-serialization.md) - Cross-runtime C++ payloads
+- [Xlang Serialization](xlang-serialization.md) - Cross-language C++ payloads
 - [Configuration](configuration.md) - Builder options
 - [Basic Serialization](basic-serialization.md) - Object graph serialization
 - [Supported Types](supported-types.md) - C++ type support

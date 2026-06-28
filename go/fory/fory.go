@@ -65,24 +65,26 @@ const (
 
 // Config holds configuration options for Fory instances
 type Config struct {
-	TrackRef          bool
-	MaxDepth          int
-	IsXlang           bool
-	Compatible        bool // Schema evolution compatibility mode
-	MaxCollectionSize int
-	MaxBinarySize     int
-	MaxTypeFields     int
+	TrackRef                        bool
+	MaxDepth                        int
+	IsXlang                         bool
+	Compatible                      bool // Schema evolution compatibility mode
+	MaxTypeFields                   int
+	MaxTypeMetaBytes                int
+	MaxSchemaVersionsPerType        int
+	MaxAverageSchemaVersionsPerType int
 }
 
 // defaultConfig returns the default configuration
 func defaultConfig() Config {
 	return Config{
-		TrackRef:          false, // Match Java's default: reference tracking disabled
-		MaxDepth:          20,
-		IsXlang:           true,
-		MaxCollectionSize: 1_000_000,
-		MaxBinarySize:     64 * 1024 * 1024,
-		MaxTypeFields:     10000,
+		TrackRef:                        false, // Match Java's default: reference tracking disabled
+		MaxDepth:                        20,
+		IsXlang:                         true,
+		MaxTypeFields:                   512,
+		MaxTypeMetaBytes:                4096,
+		MaxSchemaVersionsPerType:        10,
+		MaxAverageSchemaVersionsPerType: 3,
 	}
 }
 
@@ -123,24 +125,43 @@ func WithCompatible(enabled bool) Option {
 	}
 }
 
-// WithMaxCollectionSize sets the maximum collection size limit
-func WithMaxCollectionSize(size int) Option {
-	return func(f *Fory) {
-		f.config.MaxCollectionSize = size
-	}
-}
-
-// WithMaxBinarySize sets the maximum binary size limit
-func WithMaxBinarySize(size int) Option {
-	return func(f *Fory) {
-		f.config.MaxBinarySize = size
-	}
-}
-
 // WithMaxTypeFields sets the maximum field count limit for schema definition deserialization
 func WithMaxTypeFields(size int) Option {
+	if size <= 0 {
+		panic("MaxTypeFields must be positive")
+	}
 	return func(f *Fory) {
 		f.config.MaxTypeFields = size
+	}
+}
+
+// WithMaxTypeMetaBytes sets the maximum body size for received type metadata.
+func WithMaxTypeMetaBytes(size int) Option {
+	if size <= 0 {
+		panic("MaxTypeMetaBytes must be positive")
+	}
+	return func(f *Fory) {
+		f.config.MaxTypeMetaBytes = size
+	}
+}
+
+// WithMaxSchemaVersionsPerType sets the maximum accepted remote metadata versions for one logical type.
+func WithMaxSchemaVersionsPerType(size int) Option {
+	if size <= 0 {
+		panic("MaxSchemaVersionsPerType must be positive")
+	}
+	return func(f *Fory) {
+		f.config.MaxSchemaVersionsPerType = size
+	}
+}
+
+// WithMaxAverageSchemaVersionsPerType sets the average remote metadata version limit across accepted remote types.
+func WithMaxAverageSchemaVersionsPerType(size int) Option {
+	if size <= 0 {
+		panic("MaxAverageSchemaVersionsPerType must be positive")
+	}
+	return func(f *Fory) {
+		f.config.MaxAverageSchemaVersionsPerType = size
 	}
 }
 
@@ -174,9 +195,7 @@ func New(opts ...Option) *Fory {
 	for _, opt := range opts {
 		opt(f)
 	}
-	if f.config.IsXlang && !f.compatibleSet {
-		f.config.Compatible = true
-	}
+	f.applyCompatibleDefault()
 
 	// Initialize meta context if compatible mode is enabled
 	if f.config.Compatible {
@@ -199,8 +218,6 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
-	f.readCtx.maxCollectionSize = f.config.MaxCollectionSize
-	f.readCtx.maxBinarySize = f.config.MaxBinarySize
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
@@ -210,6 +227,12 @@ func New(opts ...Option) *Fory {
 	}
 
 	return f
+}
+
+func (f *Fory) applyCompatibleDefault() {
+	if !f.compatibleSet {
+		f.config.Compatible = true
+	}
 }
 
 // MetaContext returns the meta context for schema evolution

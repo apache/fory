@@ -1,11 +1,12 @@
 {
   "name": "@apache-fory/core",
-  "version": "1.2.0-alpha.0",
+  "version": "1.4.0-alpha.0",
   "description": "Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy",
   "homepage": "https://fory.apache.org/docs/guide/javascript",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test test/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "files": [

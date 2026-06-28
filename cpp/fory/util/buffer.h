@@ -219,6 +219,10 @@ public:
   }
 
   // Unsafe methods don't check bound
+  FORY_ALWAYS_INLINE void unsafe_increase_reader_index(uint32_t diff) {
+    reader_index_ += diff;
+  }
+
   template <typename T>
   FORY_ALWAYS_INLINE void unsafe_put(uint32_t offset, T value) {
     store_unaligned(data_ + offset, value);

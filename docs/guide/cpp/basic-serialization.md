@@ -23,7 +23,7 @@ This page covers basic object graph serialization and the core serialization API
 
 ## Object Graph Serialization
 
-Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `FORY_STRUCT` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `FORY_STRUCT` macro generates efficient serialization code at compile time, eliminating reflection overhead.
 
 **Key capabilities:**
 
@@ -210,6 +210,63 @@ public:
 };
 ```
 
+### Accessor Properties
+
+Use `FORY_PROPERTY` when the serialized field is exposed through accessor
+methods instead of a data member. This keeps the type registered as a normal
+struct type:
+
+```cpp
+struct AccountImpl {
+  int32_t id = 0;
+};
+
+class Account {
+public:
+  explicit Account(AccountImpl *impl) : impl_(impl) {}
+
+  const int32_t &id() const { return impl_->id; }
+  Account &id(int32_t value) {
+    impl_->id = value;
+    return *this;
+  }
+
+private:
+  AccountImpl *impl_ = nullptr;
+
+public:
+  FORY_STRUCT(Account, FORY_PROPERTY(id));
+};
+```
+
+`FORY_PROPERTY(id)` calls `obj.id()` to read the field and `obj.id(value)` to
+write it. The field type is inferred from the const getter return type with
+cv-qualifiers and references removed, so `const int32_t &` is treated as
+`int32_t`.
+
+Use the three-argument form when the getter and setter have different names:
+
+```cpp
+class User {
+public:
+  const int32_t &get_id() const;
+  void set_id(int32_t value);
+
+  FORY_STRUCT(User, FORY_PROPERTY(id, get_id, set_id));
+};
+```
+
+Field metadata can be attached as the final argument:
+
+```cpp
+FORY_STRUCT(Account, FORY_PROPERTY(id, fory::F().varint()));
+FORY_STRUCT(User, FORY_PROPERTY(id, get_id, set_id, fory::F(1).varint()));
+```
+
+When `FORY_STRUCT` is declared at namespace scope, the accessor methods must be
+public. For private PIMPL accessors or private data members, place
+`FORY_STRUCT` inside the class in a `public:` section.
+
 The macro:
 
 1. Generates compile-time field metadata
@@ -228,7 +285,7 @@ The macro:
 ## External / Third-Party Types
 
 When you cannot modify a third-party type, use `FORY_STRUCT` at namespace
-scope. This only works with **public** fields.
+scope. This only works with public data members or public accessor methods.
 
 ```cpp
 namespace thirdparty {
@@ -244,7 +301,7 @@ FORY_STRUCT(Foo, id, name);
 **Limitations:**
 
 - Must be declared at namespace scope in the same namespace as the type
-- Only public fields are supported
+- Only public data members or accessor methods are supported
 
 ## Inherited Fields
 

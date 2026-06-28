@@ -40,15 +40,15 @@ private func makeStringReadContext(payload: [UInt8], encoding: ManualStringEncod
     buffer.writeBytes(payload)
     return ReadContext(
         buffer: buffer,
-        typeResolver: TypeResolver(trackRef: false),
-        trackRef: false
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
+        config: Config(trackRef: false)
     )
 }
 
 private func stringPayloadBytes(for value: String) throws -> [UInt8] {
     let context = WriteContext(
         buffer: ByteBuffer(),
-        typeResolver: TypeResolver(trackRef: false),
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
     try value.foryWriteData(context, hasGenerics: false)
@@ -83,8 +83,8 @@ func stringSerializerRoundTripsUnicodeAndLengthBoundaries() throws {
 
         let context = ReadContext(
             buffer: ByteBuffer(bytes: payload),
-            typeResolver: TypeResolver(trackRef: false),
-            trackRef: false
+            typeResolver: TypeResolver(config: Config(trackRef: false)),
+            config: Config(trackRef: false)
         )
         #expect(try String.foryReadData(context) == value)
     }
@@ -135,8 +135,8 @@ func stringSerializerRejectsInvalidPayloads() throws {
     unsupportedEncodingBuffer.writeVarUInt36Small(3)
     let unsupportedEncoding = ReadContext(
         buffer: unsupportedEncodingBuffer,
-        typeResolver: TypeResolver(trackRef: false),
-        trackRef: false
+        typeResolver: TypeResolver(config: Config(trackRef: false)),
+        config: Config(trackRef: false)
     )
     do {
         _ = try String.foryReadData(unsupportedEncoding)

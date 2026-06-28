@@ -42,6 +42,7 @@ public class ThreadSafeExample {
                       .withName(ThreadSafeExample.class.getName())
                       .withXlang(false)
                       .requireClassRegistration(true)
+                      .withCompatible(false)
                       .build();
               // register and generate serializer code.
               f.register(Foo.class);

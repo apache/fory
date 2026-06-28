@@ -24,6 +24,7 @@ import java.util.AbstractMap;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Set;
+import org.apache.fory.exception.DeserializationException;
 
 class Container {}
 
@@ -104,6 +105,10 @@ class JDKImmutableMapContainer<K, V> extends AbstractMap<K, V> {
   private int offset;
 
   JDKImmutableMapContainer(int mapCapacity) {
+    if (mapCapacity > (Integer.MAX_VALUE >>> 1)) {
+      throw new DeserializationException(
+          "Immutable map size exceeds internal array capacity: " + mapCapacity);
+    }
     array = new Object[mapCapacity << 1];
   }
 

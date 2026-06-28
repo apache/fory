@@ -135,7 +135,11 @@ fn test_date_uses_var_i64_day_count() {
 
 #[test]
 fn test_date_uses_i32_day_count_in_native_mode() {
-    let fory = Fory::builder().xlang(false).track_ref(false).build();
+    let fory = Fory::builder()
+        .xlang(false)
+        .track_ref(false)
+        .compatible(false)
+        .build();
     let day = Date::from_epoch_days(-1);
     let mut buf = Vec::new();
     fory.serialize_to(&mut buf, &day).unwrap();

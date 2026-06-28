@@ -51,7 +51,7 @@ public class LazyMapTest extends ForyTestBase {
 
   @Test
   public void testMapSerialization() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     Map<String, Integer> map = new HashMap<>();
     map.put("k1", 1);
     map.put("k2", 2);

@@ -21,9 +21,14 @@ package org.apache.fory.serializer.converter;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.RefMode;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.Float16;
@@ -183,7 +188,225 @@ final class CompatibleScalarConverter {
     throw dataError(fromDispatchId, fromType, toDispatchId, toType, fieldName);
   }
 
-  static Boolean readBool(
+  static boolean readBooleanTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return false;
+    }
+    return readBooleanTargetPayload(readContext, buffer, from, to);
+  }
+
+  static Boolean readBoxedBooleanTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readBooleanTargetPayload(readContext, buffer, from, to);
+  }
+
+  static byte readByteTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0;
+    }
+    return (byte) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static Byte readBoxedByteTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return (byte) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static short readShortTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0;
+    }
+    return (short) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static Short readBoxedShortTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return (short) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static int readIntTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0;
+    }
+    return (int) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static Integer readBoxedIntTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return (int) readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static long readLongTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0L;
+    }
+    return readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static Long readBoxedLongTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readIntegerBitsTarget(readContext, buffer, from, to);
+  }
+
+  static float readFloatTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0.0f;
+    }
+    return readFloatTargetPayload(readContext, buffer, from, to);
+  }
+
+  static Float readBoxedFloatTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readFloatTargetPayload(readContext, buffer, from, to);
+  }
+
+  static double readDoubleTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return 0.0d;
+    }
+    return readDoubleTargetPayload(readContext, buffer, from, to);
+  }
+
+  static Double readBoxedDoubleTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readDoubleTargetPayload(readContext, buffer, from, to);
+  }
+
+  static String readStringTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    String fieldName = to.qualifiedFieldName;
+    int fromDomain = domain(from.dispatchId, from.type);
+    switch (fromDomain) {
+      case BOOL:
+        return readBool(buffer, from.dispatchId, from.type, fieldName) ? "true" : "false";
+      case STRING:
+        return readContext.readString();
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        return readIntegerSource(buffer, from, fieldName).toString();
+      case DECIMAL:
+        return decimalText(readDecimalSource(readContext, from));
+      case FLOAT:
+        return readFloatText(buffer, from, fieldName);
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  static BigDecimal readDecimalTarget(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readNumericDecimal(readContext, buffer, from, to.qualifiedFieldName);
+  }
+
+  static UInt8 readUInt8Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    BigInteger value = readIntegerTargetPayload(readContext, buffer, from, to);
+    return UInt8.valueOf(value.intValue());
+  }
+
+  static UInt16 readUInt16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    BigInteger value = readIntegerTargetPayload(readContext, buffer, from, to);
+    return UInt16.valueOf(value.intValue());
+  }
+
+  static UInt32 readUInt32Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    BigInteger value = readIntegerTargetPayload(readContext, buffer, from, to);
+    return UInt32.valueOf(value.intValue());
+  }
+
+  static UInt64 readUInt64Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    BigInteger value = readIntegerTargetPayload(readContext, buffer, from, to);
+    return UInt64.valueOf(value.longValue());
+  }
+
+  static Float16 readFloat16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readFloat16TargetPayload(readContext, buffer, from, to);
+  }
+
+  static BFloat16 readBFloat16Target(
+      ReadContext readContext, SerializationFieldInfo from, SerializationFieldInfo to) {
+    MemoryBuffer buffer = readScalarBuffer(readContext, from);
+    if (buffer == null) {
+      return null;
+    }
+    return readBFloat16TargetPayload(readContext, buffer, from, to);
+  }
+
+  static boolean readBool(
       MemoryBuffer buffer, int fromDispatchId, Class<?> fromType, String fieldName) {
     byte raw = buffer.readByte();
     if (raw == 0) {
@@ -193,6 +416,864 @@ final class CompatibleScalarConverter {
       return true;
     }
     throw dataError(fromDispatchId, fromType, DispatchId.BOOL, Boolean.class, fieldName);
+  }
+
+  private static MemoryBuffer readScalarBuffer(
+      ReadContext readContext, SerializationFieldInfo from) {
+    if (from.refMode == RefMode.TRACKING) {
+      throw new DeserializationException(
+          "Reference-tracked scalar conversion is schema incompatible for "
+              + from.qualifiedFieldName);
+    }
+    MemoryBuffer buffer = readContext.getBuffer();
+    if (from.refMode == RefMode.NULL_ONLY) {
+      byte flag = buffer.readByte();
+      if (flag == Fory.NULL_FLAG) {
+        return null;
+      }
+      if (flag != Fory.NOT_NULL_VALUE_FLAG) {
+        throw new DeserializationException(
+            "Invalid nullable compatible scalar field flag "
+                + flag
+                + " for "
+                + from.qualifiedFieldName);
+      }
+    }
+    return buffer;
+  }
+
+  private static boolean readBooleanTargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    String fieldName = to.qualifiedFieldName;
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        return readBool(buffer, from.dispatchId, from.type, fieldName);
+      case STRING:
+        return boolFromString(readContext.readString(), from, to);
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        return boolFromInteger(readIntegerSource(buffer, from, fieldName), from, to);
+      case DECIMAL:
+        return boolFromDecimal(readDecimalSource(readContext, from), from, to);
+      case FLOAT:
+        return readFloatBool(buffer, from, to);
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static boolean boolFromString(
+      String text, SerializationFieldInfo from, SerializationFieldInfo to) {
+    if ("0".equals(text) || "false".equals(text)) {
+      return false;
+    }
+    if ("1".equals(text) || "true".equals(text)) {
+      return true;
+    }
+    throw dataError(from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+  }
+
+  private static boolean boolFromInteger(
+      BigInteger value, SerializationFieldInfo from, SerializationFieldInfo to) {
+    if (BIG_ZERO.equals(value)) {
+      return false;
+    }
+    if (BIG_ONE.equals(value)) {
+      return true;
+    }
+    throw dataError(from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+  }
+
+  private static boolean boolFromDecimal(
+      BigDecimal value, SerializationFieldInfo from, SerializationFieldInfo to) {
+    if (value.compareTo(DECIMAL_ZERO) == 0) {
+      return false;
+    }
+    if (value.compareTo(DECIMAL_ONE) == 0) {
+      return true;
+    }
+    throw dataError(from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+  }
+
+  private static BigInteger readIntegerTargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    String fieldName = to.qualifiedFieldName;
+    BigInteger value;
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        value = readBool(buffer, from.dispatchId, from.type, fieldName) ? BIG_ONE : BIG_ZERO;
+        break;
+      case STRING:
+        value =
+            integerFromDecimal(parseDecimalString(readContext.readString(), from, to), from, to);
+        break;
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        value = readIntegerSource(buffer, from, fieldName);
+        break;
+      case DECIMAL:
+        value = integerFromDecimal(readDecimalSource(readContext, from), from, to);
+        break;
+      case FLOAT:
+        value = integerFromDecimal(readFiniteFloatDecimal(buffer, from, fieldName), from, to);
+        break;
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+    checkIntegerRange(value, to.dispatchId, to.type, fieldName);
+    return value;
+  }
+
+  private static long readIntegerBitsTarget(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    String fieldName = to.qualifiedFieldName;
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        return checkedSignedIntegerBits(
+            readBool(buffer, from.dispatchId, from.type, fieldName) ? 1L : 0L,
+            to.dispatchId,
+            to.type,
+            fieldName);
+      case STRING:
+      case DECIMAL:
+      case FLOAT:
+        return readIntegerTargetPayload(readContext, buffer, from, to).longValue();
+      case SIGNED_INT:
+        return readSignedIntegerBitsTarget(buffer, from, to.dispatchId, to.type, fieldName);
+      case UNSIGNED_INT:
+        return readUnsignedIntegerBitsTarget(buffer, from, to.dispatchId, to.type, fieldName);
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static long readSignedIntegerBitsTarget(
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      int toDispatchId,
+      Class<?> toType,
+      String fieldName) {
+    long value;
+    switch (from.dispatchId) {
+      case DispatchId.INT8:
+        value = buffer.readByte();
+        break;
+      case DispatchId.INT16:
+        value = buffer.readInt16();
+        break;
+      case DispatchId.INT32:
+        value = buffer.readInt32();
+        break;
+      case DispatchId.VARINT32:
+        value = buffer.readVarInt32();
+        break;
+      case DispatchId.INT64:
+        value = buffer.readInt64();
+        break;
+      case DispatchId.VARINT64:
+        value = buffer.readVarInt64();
+        break;
+      case DispatchId.TAGGED_INT64:
+        value = buffer.readTaggedInt64();
+        break;
+      default:
+        throw dataError(from.dispatchId, from.type, toDispatchId, toType, fieldName);
+    }
+    return checkedSignedIntegerBits(value, toDispatchId, toType, fieldName);
+  }
+
+  private static long readUnsignedIntegerBitsTarget(
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      int toDispatchId,
+      Class<?> toType,
+      String fieldName) {
+    long value;
+    boolean unsigned64 = false;
+    switch (from.dispatchId) {
+      case DispatchId.UINT8:
+      case DispatchId.EXT_UINT8:
+        value = buffer.readByte() & 0xFFL;
+        break;
+      case DispatchId.UINT16:
+      case DispatchId.EXT_UINT16:
+        value = buffer.readInt16() & 0xFFFFL;
+        break;
+      case DispatchId.UINT32:
+      case DispatchId.EXT_UINT32:
+        value = Integer.toUnsignedLong(buffer.readInt32());
+        break;
+      case DispatchId.VAR_UINT32:
+      case DispatchId.EXT_VAR_UINT32:
+        value = Integer.toUnsignedLong(buffer.readVarUInt32());
+        break;
+      case DispatchId.UINT64:
+      case DispatchId.EXT_UINT64:
+        value = buffer.readInt64();
+        unsigned64 = true;
+        break;
+      case DispatchId.VAR_UINT64:
+      case DispatchId.EXT_VAR_UINT64:
+        value = buffer.readVarUInt64();
+        unsigned64 = true;
+        break;
+      case DispatchId.TAGGED_UINT64:
+        value = buffer.readTaggedUInt64();
+        unsigned64 = true;
+        break;
+      default:
+        throw dataError(from.dispatchId, from.type, toDispatchId, toType, fieldName);
+    }
+    return unsigned64
+        ? checkedUnsigned64IntegerBits(value, toDispatchId, toType, fieldName)
+        : checkedUnsignedIntegerBits(value, toDispatchId, toType, fieldName);
+  }
+
+  private static long checkedSignedIntegerBits(
+      long value, int toDispatchId, Class<?> toType, String fieldName) {
+    switch (normalizedIntegerId(toDispatchId, toType)) {
+      case DispatchId.INT8:
+        if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT16:
+        if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT32:
+        if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT64:
+        return value;
+      case DispatchId.UINT8:
+        if (value < 0 || value > 0xFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT16:
+        if (value < 0 || value > 0xFFFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT32:
+        if (value < 0 || value > 0xFFFF_FFFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT64:
+        if (value < 0) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      default:
+        throw dataError(DispatchId.UNKNOWN, BigInteger.class, toDispatchId, toType, fieldName);
+    }
+  }
+
+  private static long checkedUnsignedIntegerBits(
+      long value, int toDispatchId, Class<?> toType, String fieldName) {
+    switch (normalizedIntegerId(toDispatchId, toType)) {
+      case DispatchId.INT8:
+        if (value > Byte.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT16:
+        if (value > Short.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT32:
+        if (value > Integer.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT64:
+      case DispatchId.UINT64:
+        return value;
+      case DispatchId.UINT8:
+        if (value > 0xFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT16:
+        if (value > 0xFFFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT32:
+        if (value > 0xFFFF_FFFFL) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      default:
+        throw dataError(DispatchId.UNKNOWN, BigInteger.class, toDispatchId, toType, fieldName);
+    }
+  }
+
+  private static long checkedUnsigned64IntegerBits(
+      long value, int toDispatchId, Class<?> toType, String fieldName) {
+    switch (normalizedIntegerId(toDispatchId, toType)) {
+      case DispatchId.INT8:
+        if (value < 0 || value > Byte.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT16:
+        if (value < 0 || value > Short.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT32:
+        if (value < 0 || value > Integer.MAX_VALUE) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.INT64:
+        if (value < 0) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT8:
+        if (Long.compareUnsigned(value, 0xFFL) > 0) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT16:
+        if (Long.compareUnsigned(value, 0xFFFFL) > 0) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT32:
+        if (Long.compareUnsigned(value, 0xFFFF_FFFFL) > 0) {
+          throwIntegerRangeError(toDispatchId, toType, fieldName);
+        }
+        return value;
+      case DispatchId.UINT64:
+        return value;
+      default:
+        throw dataError(DispatchId.UNKNOWN, BigInteger.class, toDispatchId, toType, fieldName);
+    }
+  }
+
+  private static void throwIntegerRangeError(int toDispatchId, Class<?> toType, String fieldName) {
+    throw dataError(DispatchId.UNKNOWN, BigInteger.class, toDispatchId, toType, fieldName);
+  }
+
+  private static BigInteger integerFromDecimal(
+      BigDecimal decimal, SerializationFieldInfo from, SerializationFieldInfo to) {
+    try {
+      return canonicalDecimal(decimal).toBigIntegerExact();
+    } catch (ArithmeticException e) {
+      throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, to.qualifiedFieldName, e);
+    }
+  }
+
+  private static BigInteger readIntegerSource(
+      MemoryBuffer buffer, SerializationFieldInfo from, String fieldName) {
+    switch (from.dispatchId) {
+      case DispatchId.INT8:
+        return BigInteger.valueOf(buffer.readByte());
+      case DispatchId.UINT8:
+      case DispatchId.EXT_UINT8:
+        return BigInteger.valueOf(buffer.readByte() & 0xFF);
+      case DispatchId.INT16:
+        return BigInteger.valueOf(buffer.readInt16());
+      case DispatchId.UINT16:
+      case DispatchId.EXT_UINT16:
+        return BigInteger.valueOf(buffer.readInt16() & 0xFFFF);
+      case DispatchId.INT32:
+        return BigInteger.valueOf(buffer.readInt32());
+      case DispatchId.UINT32:
+      case DispatchId.EXT_UINT32:
+        return BigInteger.valueOf(Integer.toUnsignedLong(buffer.readInt32()));
+      case DispatchId.VARINT32:
+        return BigInteger.valueOf(buffer.readVarInt32());
+      case DispatchId.VAR_UINT32:
+      case DispatchId.EXT_VAR_UINT32:
+        return BigInteger.valueOf(Integer.toUnsignedLong(buffer.readVarUInt32()));
+      case DispatchId.INT64:
+        return BigInteger.valueOf(buffer.readInt64());
+      case DispatchId.UINT64:
+      case DispatchId.EXT_UINT64:
+        return unsignedLongBigInteger(buffer.readInt64());
+      case DispatchId.VARINT64:
+        return BigInteger.valueOf(buffer.readVarInt64());
+      case DispatchId.TAGGED_INT64:
+        return BigInteger.valueOf(buffer.readTaggedInt64());
+      case DispatchId.VAR_UINT64:
+      case DispatchId.EXT_VAR_UINT64:
+        return unsignedLongBigInteger(buffer.readVarUInt64());
+      case DispatchId.TAGGED_UINT64:
+        return unsignedLongBigInteger(buffer.readTaggedUInt64());
+      default:
+        throw dataError(
+            from.dispatchId, from.type, DispatchId.UNKNOWN, BigInteger.class, fieldName);
+    }
+  }
+
+  private static BigInteger unsignedLongBigInteger(long bits) {
+    if (bits >= 0) {
+      return BigInteger.valueOf(bits);
+    }
+    return BigInteger.valueOf(bits & Long.MAX_VALUE).setBit(63);
+  }
+
+  private static BigDecimal readNumericDecimal(
+      ReadContext readContext, MemoryBuffer buffer, SerializationFieldInfo from, String fieldName) {
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        return readBool(buffer, from.dispatchId, from.type, fieldName) ? DECIMAL_ONE : DECIMAL_ZERO;
+      case STRING:
+        return canonicalDecimal(parseDecimalString(readContext.readString(), from, from));
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        return new BigDecimal(readIntegerSource(buffer, from, fieldName));
+      case DECIMAL:
+        return canonicalDecimal(readDecimalSource(readContext, from));
+      case FLOAT:
+        return readFiniteFloatDecimal(buffer, from, fieldName);
+      default:
+        throw dataError(
+            from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+    }
+  }
+
+  private static BigDecimal parseDecimalString(
+      String value, SerializationFieldInfo from, SerializationFieldInfo to) {
+    if (!numericLiteralFits(value)) {
+      throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, to.qualifiedFieldName);
+    }
+    try {
+      return new BigDecimal(value);
+    } catch (NumberFormatException e) {
+      throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, to.qualifiedFieldName, e);
+    }
+  }
+
+  private static BigDecimal readDecimalSource(
+      ReadContext readContext, SerializationFieldInfo from) {
+    if (from.useDeclaredTypeInfo) {
+      readContext.preserveRefId(-1);
+      return (BigDecimal) readContext.readNonRef(from.typeInfo);
+    }
+    TypeInfo typeInfo = readContext.getTypeResolver().readTypeInfo(readContext, from.type);
+    return (BigDecimal) typeInfo.getSerializer().read(readContext, RefMode.NONE);
+  }
+
+  private static float readFloatTargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    String fieldName = to.qualifiedFieldName;
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        return readBool(buffer, from.dispatchId, from.type, fieldName) ? 1.0f : 0.0f;
+      case STRING:
+        {
+          String value = readContext.readString();
+          BigDecimal decimal = parseDecimalString(value, from, to);
+          return decimalToFloat32(
+              decimal, value.charAt(0) == '-' && decimal.signum() == 0, to, fieldName);
+        }
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        return decimalToFloat32(
+            new BigDecimal(readIntegerSource(buffer, from, fieldName)), false, to, fieldName);
+      case DECIMAL:
+        return decimalToFloat32(readDecimalSource(readContext, from), false, to, fieldName);
+      case FLOAT:
+        return readFloatAsFloat32(buffer, from, to, fieldName);
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static double readDoubleTargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    String fieldName = to.qualifiedFieldName;
+    switch (domain(from.dispatchId, from.type)) {
+      case BOOL:
+        return readBool(buffer, from.dispatchId, from.type, fieldName) ? 1.0d : 0.0d;
+      case STRING:
+        {
+          String value = readContext.readString();
+          BigDecimal decimal = parseDecimalString(value, from, to);
+          return decimalToFloat64(
+              decimal, value.charAt(0) == '-' && decimal.signum() == 0, to, fieldName);
+        }
+      case SIGNED_INT:
+      case UNSIGNED_INT:
+        return decimalToFloat64(
+            new BigDecimal(readIntegerSource(buffer, from, fieldName)), false, to, fieldName);
+      case DECIMAL:
+        return decimalToFloat64(readDecimalSource(readContext, from), false, to, fieldName);
+      case FLOAT:
+        return readFloatAsFloat64(buffer, from, to, fieldName);
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static Float16 readFloat16TargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    if (sameScalar(from.dispatchId, from.type, to.dispatchId, to.type)) {
+      return Float16.fromBits(buffer.readInt16());
+    }
+    return (Float16)
+        decimalToFloat(
+            readNumericDecimal(readContext, buffer, from, to.qualifiedFieldName),
+            to.dispatchId,
+            to.type,
+            false,
+            to.qualifiedFieldName);
+  }
+
+  private static BFloat16 readBFloat16TargetPayload(
+      ReadContext readContext,
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to) {
+    if (sameScalar(from.dispatchId, from.type, to.dispatchId, to.type)) {
+      return BFloat16.fromBits(buffer.readInt16());
+    }
+    return (BFloat16)
+        decimalToFloat(
+            readNumericDecimal(readContext, buffer, from, to.qualifiedFieldName),
+            to.dispatchId,
+            to.type,
+            false,
+            to.qualifiedFieldName);
+  }
+
+  private static boolean readFloatBool(
+      MemoryBuffer buffer, SerializationFieldInfo from, SerializationFieldInfo to) {
+    switch (normalizedFloatId(from.dispatchId, from.type)) {
+      case DispatchId.FLOAT16:
+        {
+          Float16 value = Float16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+          }
+          if (value.isZero()) {
+            return false;
+          }
+          if (value.toBits() == Float16.ONE.toBits()) {
+            return true;
+          }
+          throw dataError(
+              from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+        }
+      case DispatchId.BFLOAT16:
+        {
+          BFloat16 value = BFloat16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+          }
+          if (value.isZero()) {
+            return false;
+          }
+          if (value.toBits() == BFloat16.ONE.toBits()) {
+            return true;
+          }
+          throw dataError(
+              from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+        }
+      case DispatchId.FLOAT32:
+        {
+          float value = buffer.readFloat32();
+          if (!Float.isFinite(value)) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+          }
+          if (value == 0.0f) {
+            return false;
+          }
+          if (value == 1.0f) {
+            return true;
+          }
+          throw dataError(
+              from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+        }
+      case DispatchId.FLOAT64:
+        {
+          double value = buffer.readFloat64();
+          if (!Double.isFinite(value)) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+          }
+          if (value == 0.0d) {
+            return false;
+          }
+          if (value == 1.0d) {
+            return true;
+          }
+          throw dataError(
+              from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+        }
+      default:
+        throw dataError(
+            from.dispatchId, from.type, DispatchId.BOOL, to.type, to.qualifiedFieldName);
+    }
+  }
+
+  private static BigDecimal readFiniteFloatDecimal(
+      MemoryBuffer buffer, SerializationFieldInfo from, String fieldName) {
+    switch (normalizedFloatId(from.dispatchId, from.type)) {
+      case DispatchId.FLOAT16:
+        {
+          Float16 value = Float16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+          }
+          return value.isZero() ? BigDecimal.ZERO : exactFloatDecimal(value.floatValue());
+        }
+      case DispatchId.BFLOAT16:
+        {
+          BFloat16 value = BFloat16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+          }
+          return value.isZero() ? BigDecimal.ZERO : exactFloatDecimal(value.floatValue());
+        }
+      case DispatchId.FLOAT32:
+        {
+          float value = buffer.readFloat32();
+          if (!Float.isFinite(value)) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+          }
+          return value == 0.0f ? BigDecimal.ZERO : exactFloatDecimal(value);
+        }
+      case DispatchId.FLOAT64:
+        {
+          double value = buffer.readFloat64();
+          if (!Double.isFinite(value)) {
+            throw dataError(
+                from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+          }
+          return value == 0.0d ? BigDecimal.ZERO : exactDoubleDecimal(value);
+        }
+      default:
+        throw dataError(
+            from.dispatchId, from.type, DispatchId.UNKNOWN, BigDecimal.class, fieldName);
+    }
+  }
+
+  private static String readFloatText(
+      MemoryBuffer buffer, SerializationFieldInfo from, String fieldName) {
+    switch (normalizedFloatId(from.dispatchId, from.type)) {
+      case DispatchId.FLOAT16:
+        {
+          Float16 value = Float16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(from.dispatchId, from.type, DispatchId.STRING, String.class, fieldName);
+          }
+          if (value.isZero()) {
+            return value.signbit() ? "-0.0" : "0.0";
+          }
+          String text = decimalText(exactFloatDecimal(value.floatValue()));
+          return text.indexOf('.') >= 0 ? text : text + ".0";
+        }
+      case DispatchId.BFLOAT16:
+        {
+          BFloat16 value = BFloat16.fromBits(buffer.readInt16());
+          if (!value.isFinite()) {
+            throw dataError(from.dispatchId, from.type, DispatchId.STRING, String.class, fieldName);
+          }
+          if (value.isZero()) {
+            return value.signbit() ? "-0.0" : "0.0";
+          }
+          String text = decimalText(exactFloatDecimal(value.floatValue()));
+          return text.indexOf('.') >= 0 ? text : text + ".0";
+        }
+      case DispatchId.FLOAT32:
+        {
+          float value = buffer.readFloat32();
+          if (!Float.isFinite(value)) {
+            throw dataError(from.dispatchId, from.type, DispatchId.STRING, String.class, fieldName);
+          }
+          if (value == 0.0f) {
+            return Float.floatToRawIntBits(value) < 0 ? "-0.0" : "0.0";
+          }
+          String text = decimalText(exactFloatDecimal(value));
+          return text.indexOf('.') >= 0 ? text : text + ".0";
+        }
+      case DispatchId.FLOAT64:
+        {
+          double value = buffer.readFloat64();
+          if (!Double.isFinite(value)) {
+            throw dataError(from.dispatchId, from.type, DispatchId.STRING, String.class, fieldName);
+          }
+          if (value == 0.0d) {
+            return Double.doubleToRawLongBits(value) < 0 ? "-0.0" : "0.0";
+          }
+          String text = decimalText(exactDoubleDecimal(value));
+          return text.indexOf('.') >= 0 ? text : text + ".0";
+        }
+      default:
+        throw dataError(from.dispatchId, from.type, DispatchId.STRING, String.class, fieldName);
+    }
+  }
+
+  private static float readFloatAsFloat32(
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to,
+      String fieldName) {
+    switch (normalizedFloatId(from.dispatchId, from.type)) {
+      case DispatchId.FLOAT16:
+        {
+          Float16 value = Float16.fromBits(buffer.readInt16());
+          if (value.isNaN()) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (value.isInfinite()) {
+            return value.signbit() ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+          }
+          if (value.isZero()) {
+            return value.signbit() ? -0.0f : 0.0f;
+          }
+          return decimalToFloat32(exactFloatDecimal(value.floatValue()), false, to, fieldName);
+        }
+      case DispatchId.BFLOAT16:
+        {
+          BFloat16 value = BFloat16.fromBits(buffer.readInt16());
+          if (value.isNaN()) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (value.isInfinite()) {
+            return value.signbit() ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+          }
+          if (value.isZero()) {
+            return value.signbit() ? -0.0f : 0.0f;
+          }
+          return decimalToFloat32(exactFloatDecimal(value.floatValue()), false, to, fieldName);
+        }
+      case DispatchId.FLOAT32:
+        return buffer.readFloat32();
+      case DispatchId.FLOAT64:
+        {
+          double value = buffer.readFloat64();
+          if (Double.isNaN(value)) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (Double.isInfinite(value)) {
+            return value < 0 ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+          }
+          if (value == 0.0d) {
+            return Double.doubleToRawLongBits(value) < 0 ? -0.0f : 0.0f;
+          }
+          return decimalToFloat32(exactDoubleDecimal(value), false, to, fieldName);
+        }
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static double readFloatAsFloat64(
+      MemoryBuffer buffer,
+      SerializationFieldInfo from,
+      SerializationFieldInfo to,
+      String fieldName) {
+    switch (normalizedFloatId(from.dispatchId, from.type)) {
+      case DispatchId.FLOAT16:
+        {
+          Float16 value = Float16.fromBits(buffer.readInt16());
+          if (value.isNaN()) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (value.isInfinite()) {
+            return value.signbit() ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+          }
+          if (value.isZero()) {
+            return value.signbit() ? -0.0d : 0.0d;
+          }
+          return decimalToFloat64(exactFloatDecimal(value.floatValue()), false, to, fieldName);
+        }
+      case DispatchId.BFLOAT16:
+        {
+          BFloat16 value = BFloat16.fromBits(buffer.readInt16());
+          if (value.isNaN()) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (value.isInfinite()) {
+            return value.signbit() ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+          }
+          if (value.isZero()) {
+            return value.signbit() ? -0.0d : 0.0d;
+          }
+          return decimalToFloat64(exactFloatDecimal(value.floatValue()), false, to, fieldName);
+        }
+      case DispatchId.FLOAT32:
+        {
+          float value = buffer.readFloat32();
+          if (Float.isNaN(value)) {
+            throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+          }
+          if (Float.isInfinite(value)) {
+            return value < 0 ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+          }
+          if (value == 0.0f) {
+            return Float.floatToRawIntBits(value) < 0 ? -0.0d : 0.0d;
+          }
+          return decimalToFloat64(exactFloatDecimal(value), false, to, fieldName);
+        }
+      case DispatchId.FLOAT64:
+        return buffer.readFloat64();
+      default:
+        throw dataError(from.dispatchId, from.type, to.dispatchId, to.type, fieldName);
+    }
+  }
+
+  private static float decimalToFloat32(
+      BigDecimal decimal, boolean negativeZero, SerializationFieldInfo to, String fieldName) {
+    decimal = canonicalDecimal(decimal);
+    if (decimal.signum() == 0) {
+      return negativeZero ? -0.0f : 0.0f;
+    }
+    float result = decimal.floatValue();
+    if (!Float.isFinite(result) || exactFloatDecimal(result).compareTo(decimal) != 0) {
+      throw dataError(DispatchId.UNKNOWN, BigDecimal.class, to.dispatchId, to.type, fieldName);
+    }
+    return result;
+  }
+
+  private static double decimalToFloat64(
+      BigDecimal decimal, boolean negativeZero, SerializationFieldInfo to, String fieldName) {
+    decimal = canonicalDecimal(decimal);
+    if (decimal.signum() == 0) {
+      return negativeZero ? -0.0d : 0.0d;
+    }
+    double result = decimal.doubleValue();
+    if (!Double.isFinite(result) || exactDoubleDecimal(result).compareTo(decimal) != 0) {
+      throw dataError(DispatchId.UNKNOWN, BigDecimal.class, to.dispatchId, to.type, fieldName);
+    }
+    return result;
   }
 
   private static Object fromBool(

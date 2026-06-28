@@ -89,6 +89,39 @@ private struct LocalVarUInt32V2: Equatable {
 }
 
 @ForyStruct
+private struct ExactEncodedV1: Equatable {
+  @ForyField(id: 1, encoding: .fixed)
+  var fixed32: Int32 = 0
+
+  @ForyField(id: 2, encoding: .fixed)
+  var fixed64: Int64 = 0
+
+  @ForyField(id: 3, encoding: .tagged)
+  var tagged64: Int64 = 0
+
+  @ForyField(id: 4)
+  var tail: String = ""
+}
+
+@ForyStruct
+private struct ExactEncodedV2: Equatable {
+  @ForyField(id: 0)
+  var added: Int32 = 0
+
+  @ForyField(id: 3, encoding: .tagged)
+  var tagged64: Int64 = 0
+
+  @ForyField(id: 1, encoding: .fixed)
+  var fixed32: Int32 = 0
+
+  @ForyField(id: 4)
+  var tail: String = ""
+
+  @ForyField(id: 2, encoding: .fixed)
+  var fixed64: Int64 = 0
+}
+
+@ForyStruct
 private struct ScalarBoolBox: Equatable {
   var value: Bool = false
 }
@@ -208,6 +241,18 @@ private struct CompatibleNullableListFieldV1: Equatable {
   var values: [Int32?] = []
 
   var extra: Int32 = 0
+}
+
+@ForyStruct
+private struct CompatibleNestedNullableListV1: Equatable {
+  @ListField(element: .list(element: .int32(nullable: true)))
+  var values: [[Int32?]] = []
+}
+
+@ForyStruct
+private struct CompatibleNestedRequiredListV2: Equatable {
+  @ListField(element: .list(element: .int32()))
+  var values: [[Int32]] = []
 }
 
 @ForyStruct
@@ -522,7 +567,7 @@ func sameTypeNullableScalarUsesStrictSourceRead() throws {
 }
 
 @Test
-func scalarTrackRefMismatchIsUnassigned() throws {
+func scalarTrackRefMismatchIsRejected() throws {
   let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
   let local = try TypeMeta(
     typeID: TypeId.compatibleStruct.rawValue,
@@ -549,8 +594,9 @@ func scalarTrackRefMismatchIsUnassigned() throws {
         fieldType: TypeMeta.FieldType(typeID: TypeId.bool.rawValue, nullable: false, trackRef: true)
       )
     ])
-  let resolvedRemote = try remoteTracking.assigningFieldIDs(from: local)
-  #expect(resolvedRemote.fields[0].fieldID == -1)
+  try expectInvalidData {
+    _ = try remoteTracking.assigningFieldIDs(from: local)
+  }
 
   let localTracking = try TypeMeta(
     typeID: TypeId.compatibleStruct.rawValue,
@@ -577,8 +623,9 @@ func scalarTrackRefMismatchIsUnassigned() throws {
         fieldName: "$tag1",
         fieldType: TypeMeta.FieldType(typeID: TypeId.bool.rawValue, nullable: false))
     ])
-  let resolvedLocalTracking = try remote.assigningFieldIDs(from: localTracking)
-  #expect(resolvedLocalTracking.fields[0].fieldID == -1)
+  try expectInvalidData {
+    _ = try remote.assigningFieldIDs(from: localTracking)
+  }
 
   let resolvedBothTracking = try remoteTracking.assigningFieldIDs(from: localTracking)
   #expect(resolvedBothTracking.fields[0].fieldID == 0)
@@ -612,12 +659,283 @@ func scalarTrackRefMismatchIsUnassigned() throws {
   let resolvedBothNullableTracking = try remoteNullableTracking.assigningFieldIDs(
     from: localNullableTracking)
   #expect(resolvedBothNullableTracking.fields[0].fieldID == 0)
-  let resolvedRemoteNullableTracking = try remoteNullableTracking.assigningFieldIDs(
-    from: localTracking)
-  #expect(resolvedRemoteNullableTracking.fields[0].fieldID == -1)
-  let resolvedLocalNullableTracking = try remoteTracking.assigningFieldIDs(
-    from: localNullableTracking)
-  #expect(resolvedLocalNullableTracking.fields[0].fieldID == -1)
+  try expectInvalidData {
+    _ = try remoteNullableTracking.assigningFieldIDs(from: localTracking)
+  }
+  try expectInvalidData {
+    _ = try remoteTracking.assigningFieldIDs(from: localNullableTracking)
+  }
+}
+
+@Test
+func namedRemoteOnlyFieldIsSkipped() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let stringType = TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false)
+  let intType = TypeMeta.FieldType(typeID: TypeId.int64.rawValue, nullable: false)
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "username", fieldType: stringType),
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "id", fieldType: intType)
+    ])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "email", fieldType: stringType),
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "id", fieldType: intType)
+    ])
+
+  let resolved = try remote.assigningFieldIDs(from: local)
+  #expect(resolved.fields[0].fieldID == -1)
+  #expect(resolved.fields[1].fieldID == 2)
+}
+
+@Test
+func remoteOnlyFieldsSkipWhenLocalSchemaIsEmpty() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let stringType = TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false)
+  let intType = TypeMeta.FieldType(typeID: TypeId.int64.rawValue, nullable: false)
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: 1, fieldName: "$tag1", fieldType: stringType),
+      TypeMeta.FieldInfo(fieldID: 2, fieldName: "$tag2", fieldType: intType)
+    ])
+
+  let resolved = try remote.assigningFieldIDs(from: local)
+  #expect(resolved.fields[0].fieldID == -1)
+  #expect(resolved.fields[1].fieldID == -1)
+}
+
+@Test
+func nameRemoteFieldDoesNotMatchTaggedLocalField() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let stringType = TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false)
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: 1, fieldName: "value", fieldType: stringType)
+    ])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+    ])
+
+  let resolved = try remote.assigningFieldIDs(from: local)
+  #expect(resolved.fields[0].fieldID == -1)
+}
+
+@Test
+func duplicateRemoteNameBindingFails() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let stringType = TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false)
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+    ])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType),
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "value", fieldType: stringType)
+    ])
+
+  #expect(throws: ForyError.invalidData("compatible field value duplicates local field value")) {
+    _ = try remote.assigningFieldIDs(from: local)
+  }
+}
+
+@Test
+func matchedFieldIdOverflowFails() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let fieldType = TypeMeta.FieldType(typeID: TypeId.bool.rawValue, nullable: false)
+  let overflowIndex = Int(Int16.max) / 2 + 1
+  let localFields = (0...overflowIndex).map {
+    TypeMeta.FieldInfo(fieldID: nil, fieldName: "f\($0)", fieldType: fieldType)
+  }
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: localFields)
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "f\(overflowIndex)",
+        fieldType: fieldType)
+    ])
+
+  try expectInvalidData {
+    _ = try remote.assigningFieldIDs(from: local)
+  }
+}
+
+@Test
+func matchedByteFamilyClassification() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let binaryType = TypeMeta.FieldType(typeID: TypeId.binary.rawValue, nullable: false)
+  let uint8ArrayType = TypeMeta.FieldType(typeID: TypeId.uint8Array.rawValue, nullable: false)
+  let int8ArrayType = TypeMeta.FieldType(typeID: TypeId.int8Array.rawValue, nullable: false)
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: binaryType)
+    ])
+  let remoteUInt8Array = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: uint8ArrayType)
+    ])
+  let remoteInt8Array = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "payload", fieldType: int8ArrayType)
+    ])
+
+  let resolved = try remoteUInt8Array.assigningFieldIDs(from: local)
+  #expect(resolved.fields[0].fieldID == 1)
+  try expectInvalidData {
+    _ = try remoteInt8Array.assigningFieldIDs(from: local)
+  }
+}
+
+@Test
+func matchedNestedScalarShapeAcceptsNullableDrift() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "values",
+        fieldType: TypeMeta.FieldType(
+          typeID: TypeId.list.rawValue,
+          nullable: false,
+          generics: [TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)]))
+    ])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "values",
+        fieldType: TypeMeta.FieldType(
+          typeID: TypeId.list.rawValue,
+          nullable: false,
+          generics: [TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: true)]))
+    ])
+
+  let resolved = try remote.assigningFieldIDs(from: local)
+  #expect(resolved.fields[0].fieldID == 1)
+}
+
+@Test
+func matchedNestedScalarShapeRejectsRefDrift() throws {
+  let empty = MetaString.empty(specialChar1: "_", specialChar2: "_")
+  let local = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "values",
+        fieldType: TypeMeta.FieldType(
+          typeID: TypeId.list.rawValue,
+          nullable: false,
+          generics: [TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false)]))
+    ])
+  let remote = try TypeMeta(
+    typeID: TypeId.compatibleStruct.rawValue,
+    userTypeID: 1,
+    namespace: empty,
+    typeName: empty,
+    registerByName: false,
+    fields: [
+      TypeMeta.FieldInfo(
+        fieldID: nil,
+        fieldName: "values",
+        fieldType: TypeMeta.FieldType(
+          typeID: TypeId.list.rawValue,
+          nullable: false,
+          generics: [
+            TypeMeta.FieldType(
+              typeID: TypeId.string.rawValue,
+              nullable: false,
+              trackRef: true)
+          ]))
+    ])
+
+  try expectInvalidData {
+    _ = try remote.assigningFieldIDs(from: local)
+  }
 }
 
 @Test
@@ -706,6 +1024,28 @@ func sameSchemaScalarPreserved() throws {
 }
 
 @Test
+func encodedExactReadsUseCodecs() throws {
+  let value = ExactEncodedV1(
+    fixed32: 0x0102_0304,
+    fixed64: 0x0102_0304_0506_0708,
+    tagged64: Int64(Int32.max) + 0x1020,
+    tail: "aligned"
+  )
+
+  let sameSchema = Fory(config: .init(trackRef: false, compatible: true))
+  sameSchema.register(ExactEncodedV1.self, id: 9960)
+  let sameDecoded: ExactEncodedV1 = try sameSchema.deserialize(try sameSchema.serialize(value))
+  #expect(sameDecoded == value)
+
+  let changedDecoded: ExactEncodedV2 = try compatibleDecode(value, as: ExactEncodedV2.self, id: 9961)
+  #expect(changedDecoded.added == 0)
+  #expect(changedDecoded.fixed32 == value.fixed32)
+  #expect(changedDecoded.fixed64 == value.fixed64)
+  #expect(changedDecoded.tagged64 == value.tagged64)
+  #expect(changedDecoded.tail == value.tail)
+}
+
+@Test
 func scalarConversionDoesNotDriveFallbackMatch() throws {
   let decoded: LocalFallbackStringBox = try compatibleDecode(
     RemoteFallbackBoolBox(remoteValue: true),
@@ -746,7 +1086,7 @@ func compatibleModePreservesSharedAndCircularReferencesForMacroObjects() throws 
     items: [shared, shared],
     byName: [
       "left": shared,
-      "right": shared,
+      "right": shared
     ]
   )
 
@@ -806,7 +1146,7 @@ func compatibleNestedArrayEvolves() throws {
   let sourceV1 = CompatibleNestedArrayV1(
     items: [
       CompatibleNestedProfileV1(id: 1, name: "alpha"),
-      CompatibleNestedProfileV1(id: 2, name: "beta"),
+      CompatibleNestedProfileV1(id: 2, name: "beta")
     ]
   )
   let decodedAsV2: CompatibleNestedArrayV2 = try readerV2.deserialize(
@@ -827,7 +1167,7 @@ func compatibleNestedArrayEvolves() throws {
   let sourceV2 = CompatibleNestedArrayV2(
     items: [
       CompatibleNestedProfileV2(id: 3, name: "gamma", alias: "g", scores: [3, 4]),
-      CompatibleNestedProfileV2(id: 4, name: "delta", alias: "d", scores: []),
+      CompatibleNestedProfileV2(id: 4, name: "delta", alias: "d", scores: [])
     ]
   )
   let decodedAsV1: CompatibleNestedArrayV1 = try readerV1.deserialize(
@@ -835,7 +1175,7 @@ func compatibleNestedArrayEvolves() throws {
   #expect(
     decodedAsV1.items == [
       CompatibleNestedProfileV1(id: 3, name: "gamma"),
-      CompatibleNestedProfileV1(id: 4, name: "delta"),
+      CompatibleNestedProfileV1(id: 4, name: "delta")
     ])
 }
 
@@ -854,7 +1194,7 @@ func compatibleReadConvertsFixedUInt32() throws {
 }
 
 @Test
-func compatibleSkipUsesRemoteMetadataForNestedMapListSetFields() throws {
+func compatibleRejectsNestedMapListMismatch() throws {
   let writer = Fory(config: .init(trackRef: false, compatible: true))
   writer.register(RemoteNestedFixedMapV1.self, id: 9921)
 
@@ -864,15 +1204,17 @@ func compatibleSkipUsesRemoteMetadataForNestedMapListSetFields() throws {
   let source = RemoteNestedFixedMapV1(
     data: [
       "a": [1, nil, Int32.max],
-      "b": [],
+      "b": []
     ],
     keep: 84,
     ids: [nil, -1, Int32.max]
   )
-  let decoded: LocalNestedVarintMapV2 = try reader.deserialize(try writer.serialize(source))
-  #expect(decoded.data.isEmpty)
-  #expect(decoded.keep == source.keep)
-  #expect(decoded.ids.isEmpty)
+  let bytes = try writer.serialize(source)
+  #expect(
+    throws: ForyError.invalidData("compatible field $tag1 cannot be read as local field data")
+  ) {
+    let _: LocalNestedVarintMapV2 = try reader.deserialize(bytes)
+  }
 }
 
 @Test
@@ -918,7 +1260,7 @@ func compatibleReadAdaptsArrayFieldToDefaultVarintListField() throws {
 }
 
 @Test
-func compatibleReadRejectsNullableListElementsForArrayField() throws {
+func compatibleReadAcceptsNullableListSchemaForArrayField() throws {
   let writer = Fory(config: .init(trackRef: false, compatible: true))
   writer.register(CompatibleNullableListFieldV1.self, id: 9923)
 
@@ -929,28 +1271,45 @@ func compatibleReadRejectsNullableListElementsForArrayField() throws {
   let decoded: CompatibleArrayFieldV2 = try reader.deserialize(bytes)
   #expect(decoded.values == [1, 2, 3])
 
-  let nullableBytes = try writer.serialize(
-    CompatibleNullableListFieldV1(values: [1, nil, 3], extra: 9))
+  let nullBytes = try writer.serialize(CompatibleNullableListFieldV1(values: [1, nil, 3], extra: 9))
   #expect(
     throws: ForyError.invalidData("compatible list-to-array field cannot read nullable elements")
   ) {
-    let _: CompatibleArrayFieldV2 = try reader.deserialize(nullableBytes)
+    let _: CompatibleArrayFieldV2 = try reader.deserialize(nullBytes)
   }
 }
 
 @Test
-func compatibleReadSkipsNestedListArrayFieldPair() throws {
+func compatibleRejectsNestedListArrayPair() throws {
   let writer = Fory(config: .init(trackRef: false, compatible: true))
   writer.register(CompatibleNestedListArrayFieldV1.self, id: 9926)
 
   let reader = Fory(config: .init(trackRef: false, compatible: true))
   reader.register(CompatibleNestedArrayListFieldV2.self, id: 9926)
 
-  let decoded: CompatibleNestedArrayListFieldV2 = try reader.deserialize(
-    try writer.serialize(CompatibleNestedListArrayFieldV1(values: [[1, 2]], keep: 7))
-  )
-  #expect(decoded.values.isEmpty)
-  #expect(decoded.keep == 7)
+  let bytes = try writer.serialize(CompatibleNestedListArrayFieldV1(values: [[1, 2]], keep: 7))
+  #expect(
+    throws: ForyError.invalidData("compatible field values cannot be read as local field values")
+  ) {
+    let _: CompatibleNestedArrayListFieldV2 = try reader.deserialize(bytes)
+  }
+}
+
+@Test
+func compatibleReadsNestedNullableScalarWithoutNulls() throws {
+  let writer = Fory(config: .init(trackRef: false, compatible: true))
+  writer.register(CompatibleNestedNullableListV1.self, id: 9927)
+
+  let reader = Fory(config: .init(trackRef: false, compatible: true))
+  reader.register(CompatibleNestedRequiredListV2.self, id: 9927)
+
+  let bytes = try writer.serialize(CompatibleNestedNullableListV1(values: [[1, 2]]))
+  let decoded: CompatibleNestedRequiredListV2 = try reader.deserialize(bytes)
+  #expect(decoded.values == [[1, 2]])
+
+  let nullBytes = try writer.serialize(CompatibleNestedNullableListV1(values: [[1, nil, 2]]))
+  let decodedWithNull: CompatibleNestedRequiredListV2 = try reader.deserialize(nullBytes)
+  #expect(decodedWithNull.values == [[1, 0, 2]])
 }
 
 @Test
@@ -966,7 +1325,7 @@ func compatibleNestedMapEvolves() throws {
   let sourceV1 = CompatibleNestedMapV1(
     items: [
       1: CompatibleNestedProfileV1(id: 10, name: "first"),
-      2: CompatibleNestedProfileV1(id: 20, name: "second"),
+      2: CompatibleNestedProfileV1(id: 20, name: "second")
     ]
   )
   let decodedAsV2: CompatibleNestedMapV2 = try readerV2.deserialize(
@@ -994,14 +1353,14 @@ func compatibleNestedReadsReuseTypeMeta() throws {
   let first = CompatibleNestedArrayV1(
     items: [
       CompatibleNestedProfileV1(id: 1, name: "alpha"),
-      CompatibleNestedProfileV1(id: 2, name: "beta"),
+      CompatibleNestedProfileV1(id: 2, name: "beta")
     ]
   )
   let second = CompatibleNestedArrayV1(
     items: [
       CompatibleNestedProfileV1(id: 3, name: "gamma"),
       CompatibleNestedProfileV1(id: 4, name: "delta"),
-      CompatibleNestedProfileV1(id: 5, name: "epsilon"),
+      CompatibleNestedProfileV1(id: 5, name: "epsilon")
     ]
   )
 

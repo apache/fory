@@ -21,10 +21,12 @@ license: |
 
 Schema evolution lets different versions of your service exchange messages safely — a v2 writer can produce a message a v1 reader still understands, and vice versa.
 
-## Compatible And Schema-Consistent Evolution
+## Compatible Mode
 
-- **Compatible mode** (default): writes extra field metadata so readers can skip unknown fields and tolerate missing ones. Good for independent deployments, rolling upgrades, and xlang services.
-- **Schema-consistent mode**: more compact, but both sides must have exactly the same schema. Use it only when schemas do not change, or when all services update together.
+Compatible mode is the default. It writes extra field metadata so readers can skip unknown fields and
+tolerate missing ones. Keep it for independent deployments, rolling upgrades, and xlang services.
+For payloads whose reader and writer schemas never differ, see
+[When to Use Each Mode](#when-to-use-each-mode).
 
 Compatible readers also tolerate selected scalar field type changes when the conversion is lossless.
 A matched field can read between `boolean`, `string`, numeric scalars, and `Decimal` when the
@@ -74,7 +76,20 @@ const readerType = Type.struct(
 
 With compatible mode, the reader ignores fields it does not know about, and fills unknown fields with default values.
 
-## Opting Out of Evolution for One Struct
+## When to Use Each Mode
+
+| Requirement                                  | Same-schema opt-out | Compatible mode |
+| -------------------------------------------- | ------------------- | --------------- |
+| Every reader and writer uses the same schema | works               | works           |
+| Independent deployments                      | unsafe              | recommended     |
+| Best size and speed for same-schema data     | yes                 | no              |
+| Rolling upgrades                             | unsafe              | recommended     |
+
+Set `compatible: false` for xlang payloads only after verifying that every
+language uses the same schema, or when native types are generated from Fory
+schema IDL.
+
+## Same-Schema Per-Struct Opt-Out
 
 You can disable evolution metadata for a specific struct even inside a `compatible: true` instance:
 
@@ -87,16 +102,9 @@ const fixedType = Type.struct(
 );
 ```
 
-`evolving: false` produces smaller messages for that struct, but **both the writer and reader must agree** on this setting. If one side writes with `evolving: false` and the other reads expecting compatible metadata, deserialization will fail.
-
-## When to Use Each Mode
-
-|                                 | Schema-consistent | Compatible          |
-| ------------------------------- | ----------------- | ------------------- |
-| Services always update together | best choice       | works, but wasteful |
-| Independent deployments         | will break        | best choice         |
-| Smallest possible messages      | best choice       | slightly larger     |
-| Rolling upgrades                | risky             | safe                |
+`evolving: false` can be faster and smaller for that struct. Use it only when every reader and
+writer always uses the same struct schema. If one side writes with `evolving: false` and the other
+reads expecting compatible metadata, deserialization will fail.
 
 ## Xlang Requirement
 

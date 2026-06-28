@@ -352,14 +352,13 @@ unsafe impl<'a> Sync for WriteContext<'a> {}
 pub struct ReadContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
+    config: Config,
     compatible: bool,
     share_meta: bool,
     xlang: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
     check_string_read: bool,
-    max_binary_size: u32,
-    max_collection_size: u32,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -382,14 +381,13 @@ impl<'a> ReadContext<'a> {
     pub fn new(type_resolver: TypeResolver, config: Config) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
+            config: config.clone(),
             compatible: config.compatible,
             share_meta: config.share_meta,
             xlang: config.xlang,
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
             check_string_read: config.check_string_read,
-            max_binary_size: config.max_binary_size,
-            max_collection_size: config.max_collection_size,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -440,18 +438,6 @@ impl<'a> ReadContext<'a> {
         self.max_dyn_depth
     }
 
-    /// Get maximum allowed binary data size in bytes.
-    #[inline(always)]
-    pub fn max_binary_size(&self) -> u32 {
-        self.max_binary_size
-    }
-
-    /// Get maximum allowed collection/map element count.
-    #[inline(always)]
-    pub fn max_collection_size(&self) -> u32 {
-        self.max_collection_size
-    }
-
     #[inline(always)]
     pub fn attach_reader(&mut self, reader: Reader<'a>) {
         self.reader = reader;
@@ -479,7 +465,7 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn read_type_meta(&mut self) -> Result<Rc<TypeInfo>, Error> {
         self.meta_resolver
-            .read_type_meta(&mut self.reader, &self.type_resolver)
+            .read_type_meta(&mut self.reader, &self.type_resolver, &self.config)
     }
 
     pub fn read_any_type_info(&mut self) -> Result<Rc<TypeInfo>, Error> {

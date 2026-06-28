@@ -41,7 +41,7 @@ struct Color {
 // Postive tests
 #[test]
 fn test_register_before_serialize_succeeds() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     // registration before any serialize/deserialize should succeed.
     assert!(fory.register::<Point>(100).is_ok());
 
@@ -53,7 +53,7 @@ fn test_register_before_serialize_succeeds() {
 
 #[test]
 fn test_multiple_registrations_before_serialize_succeed() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     assert!(fory.register::<Point>(100).is_ok());
     assert!(fory.register::<Color>(101).is_ok());
 
@@ -65,14 +65,14 @@ fn test_multiple_registrations_before_serialize_succeed() {
 
 #[test]
 fn test_register_by_name_requires_name() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     let err = fory.register_by_name::<Point>("com.example.").unwrap_err();
     assert!(matches!(err, Error::NotAllowed(_)));
 }
 
 #[test]
 fn test_register_by_name_rejects_duplicate_identity() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Point>("com.example.Point").unwrap();
     let err = fory
         .register_by_name::<Color>("com.example.Point")
@@ -85,7 +85,7 @@ fn test_register_by_name_rejects_duplicate_identity() {
 /// ensures `register()` is forbidden after `serialize()` triggers snapshot init.
 #[test]
 fn test_register_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
 
     // first serialize, this initializes the final_type_resolver snapshot.
@@ -112,7 +112,7 @@ fn test_register_after_serialize_fails() {
 /// Ensures `register()` is forbidden after `deserialize()` triggers snapshot init.
 #[test]
 fn test_register_after_deserialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
 
     let point = Point { x: 5, y: 10 };
@@ -130,7 +130,7 @@ fn test_register_after_deserialize_fails() {
 /// Ensures `register_by_name()` is forbidden after snapshot init.
 #[test]
 fn test_register_by_name_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -143,7 +143,7 @@ fn test_register_by_name_after_serialize_fails() {
 /// Ensures `register_by_name()` with a namespace prefix is forbidden after snapshot init.
 #[test]
 fn test_register_by_name_with_namespace_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -156,7 +156,7 @@ fn test_register_by_name_with_namespace_after_serialize_fails() {
 /// Ensures `register_serializer()` is forbidden after snapshot init.
 #[test]
 fn test_register_serializer_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -169,7 +169,7 @@ fn test_register_serializer_after_serialize_fails() {
 /// Ensures `register_serializer_by_name()` is forbidden after snapshot init.
 #[test]
 fn test_register_serializer_by_name_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -182,7 +182,7 @@ fn test_register_serializer_by_name_after_serialize_fails() {
 /// Ensures `register_serializer_by_name()` with a namespace prefix is forbidden after snapshot init.
 #[test]
 fn test_register_serializer_by_name_with_namespace_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -195,7 +195,7 @@ fn test_register_serializer_by_name_with_namespace_after_serialize_fails() {
 /// Ensures `register_union()` is forbidden after snapshot init.
 #[test]
 fn test_register_union_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -208,7 +208,7 @@ fn test_register_union_after_serialize_fails() {
 /// Ensures `register_union_by_name()` is forbidden after snapshot init.
 #[test]
 fn test_register_union_by_name_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -221,7 +221,7 @@ fn test_register_union_by_name_after_serialize_fails() {
 /// Ensures `register_union_by_name()` with a namespace prefix is forbidden after snapshot init.
 #[test]
 fn test_register_union_by_name_with_namespace_after_serialize_fails() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -234,7 +234,7 @@ fn test_register_union_by_name_with_namespace_after_serialize_fails() {
 // Edge-case
 #[test]
 fn test_late_registration_error_message_is_descriptive() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
     let _bytes = fory.serialize(&Point { x: 0, y: 0 }).unwrap();
 
@@ -261,7 +261,7 @@ fn test_late_registration_error_message_is_descriptive() {
 
 #[test]
 fn test_serialize_multiple_times_after_registration_succeeds() {
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Point>(100).unwrap();
 
     let p1 = Point { x: 1, y: 2 };

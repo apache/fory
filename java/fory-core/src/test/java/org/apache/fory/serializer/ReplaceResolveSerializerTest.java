@@ -79,6 +79,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
@@ -160,6 +161,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass2.class, ReplaceResolveSerializer.class);
     for (Object o :
@@ -209,6 +211,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass3.class, ReplaceResolveSerializer.class);
     {
@@ -281,6 +284,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass3.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass4.class, ReplaceResolveSerializer.class);
@@ -335,6 +339,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass2.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(Subclass1.class, ReplaceResolveSerializer.class);
@@ -390,6 +395,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass2.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(Subclass2.class, ReplaceResolveSerializer.class);
@@ -427,6 +433,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass5.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(Subclass3.class, ReplaceResolveSerializer.class);
@@ -447,6 +454,7 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(CustomReplaceClass6.class, ReplaceResolveSerializer.class);
     assertThrows(Exception.class, () -> jdkSerialize(new CustomReplaceClass6()));
@@ -467,12 +475,14 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     Fory fory2 =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     roundCheck(fory1, fory2, ImmutableList.of(1, 2));
     roundCheck(fory1, fory2, ImmutableList.of("a", "b"));
@@ -508,12 +518,14 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     Fory fory2 =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     roundCheck(fory1, fory2, ImmutableMap.of("k", 2));
     roundCheck(fory1, fory2, ImmutableMap.of(1, 2));
@@ -562,7 +574,12 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
 
   @Test
   public void testInheritance() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     byte[] bytes = fory.serialize(new InheritanceTestClass((byte) 10));
     InheritanceTestClass o = (InheritanceTestClass) fory.deserialize(bytes);
     assertEquals(o.f1, 10);
@@ -647,22 +664,32 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
 
   @Test
   public void testRejectExternalizableReplace() {
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     byte[] bytes = writer.serialize(new ReplaceProtectedExternalizable(10));
     ReplaceProtectedExternalizable.readExternalCalled = false;
 
-    Fory reader = Fory.builder().withXlang(false).build();
+    Fory reader = Fory.builder().withXlang(false).withCompatible(false).build();
     assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
     assertFalse(ReplaceProtectedExternalizable.readExternalCalled);
   }
 
   @Test
   public void testRegisteredExternalizableReplace() {
-    Fory writer = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     byte[] bytes = writer.serialize(new ReplaceProtectedExternalizable(10));
     ReplaceProtectedExternalizable.readExternalCalled = false;
 
-    Fory reader = Fory.builder().withXlang(false).build();
+    Fory reader = Fory.builder().withXlang(false).withCompatible(false).build();
     reader.register(ReplaceProtectedExternalizable.class);
     ReplaceProtectedExternalizable o = (ReplaceProtectedExternalizable) reader.deserialize(bytes);
     assertTrue(ReplaceProtectedExternalizable.readExternalCalled);

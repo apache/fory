@@ -19,7 +19,10 @@
 
 #include "gtest/gtest.h"
 
+#include "fory/meta/field.h"
 #include "fory/meta/field_info.h"
+#include <cstdint>
+#include <type_traits>
 
 namespace fory {
 
@@ -66,6 +69,52 @@ TEST(FieldInfo, Hidden) {
   static_assert(info.Names[0] == "a");
 
   static_assert(std::get<0>(decltype(info)::ptrs()) == &B::a);
+}
+
+struct C {
+  const int32_t &value() const { return value_; }
+  int32_t &value() { return value_; }
+  C &value(int32_t v) {
+    value_ = v;
+    return *this;
+  }
+
+  const int32_t &get_count() const { return count_; }
+  C &set_count(int32_t v) {
+    count_ = v;
+    return *this;
+  }
+
+  int32_t value_ = 0;
+  int32_t count_ = 0;
+
+  FORY_STRUCT(C, FORY_PROPERTY(value),
+              FORY_PROPERTY(count, get_count, set_count, fory::F(7).varint()));
+};
+
+TEST(FieldInfo, Property) {
+  C c;
+  constexpr auto info = meta::fory_field_info(c);
+
+  static_assert(info.Size == 2);
+  static_assert(info.Names[0] == "value");
+  static_assert(info.Names[1] == "count");
+
+  using ValueEntry = decltype(std::get<0>(decltype(info)::ptrs()));
+  using CountEntry = decltype(std::get<1>(decltype(info)::ptrs()));
+  static_assert(meta::IsPropertyDescriptorV<ValueEntry>);
+  static_assert(meta::IsPropertyDescriptorV<CountEntry>);
+  static_assert(std::is_same_v<meta::FieldRawTypeT<C, ValueEntry>, int32_t>);
+  static_assert(std::is_same_v<meta::FieldRawTypeT<C, CountEntry>, int32_t>);
+  static_assert(std::get<1>(decltype(info)::entries).meta.id_ == 7);
+  static_assert(std::get<1>(decltype(info)::entries).meta.encoding_ ==
+                Encoding::Varint);
+
+  auto entries = decltype(info)::ptrs();
+  field_value_set(c, std::get<0>(entries), 11);
+  field_value_set(c, std::get<1>(entries), 22);
+  EXPECT_EQ(field_value_get(c, std::get<0>(entries)), 11);
+  EXPECT_EQ(field_value_get(c, std::get<1>(entries)), 22);
 }
 
 } // namespace test

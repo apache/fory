@@ -22,7 +22,7 @@ license: |
 Apache Fory™ supports seamless data exchange across Java, Python, C++, Go,
 Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin.
 
-## Create an Xlang Runtime
+## Create an Xlang Fory Instance
 
 Rust defaults to xlang mode with compatible schema evolution. Set the mode explicitly in xlang examples:
 

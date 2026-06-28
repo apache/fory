@@ -21,6 +21,7 @@ package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
+import org.apache.fory.exception.DeserializationException
 import org.apache.fory.resolver.TypeResolver
 import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
@@ -58,7 +59,13 @@ public class KotlinArrayDequeSerializer<E>(
   override fun newCollection(readContext: ReadContext): Collection<E> {
     val buffer = readContext.buffer
     val numElements = buffer.readVarUInt32Small7()
+    if (numElements < 0) {
+      throw DeserializationException("Collection size must be non-negative: $numElements")
+    }
     setNumElements(numElements)
+    if (numElements != 0) {
+      buffer.checkReadableBytes(numElements)
+    }
     return ArrayDequeBuilder<E>(ArrayDeque<E>(numElements))
   }
 }

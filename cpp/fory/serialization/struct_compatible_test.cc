@@ -261,6 +261,22 @@ struct CompatibleNestedArrayField {
                                       fory::T::array(fory::T::int32()))));
 };
 
+struct CompatibleUnsignedExactV1 {
+  uint32_t id = 0;
+  uint64_t count = 0;
+  std::string extra;
+
+  FORY_STRUCT(CompatibleUnsignedExactV1, (id, fory::F(1)), (count, fory::F(2)),
+              (extra, fory::F(3)));
+};
+
+struct CompatibleUnsignedExactV2 {
+  uint32_t id = 0;
+  uint64_t count = 0;
+
+  FORY_STRUCT(CompatibleUnsignedExactV2, (id, fory::F(1)), (count, fory::F(2)));
+};
+
 struct ScalarBoolField {
   bool value = false;
   FORY_STRUCT(ScalarBoolField, (value, fory::F(1)));
@@ -330,6 +346,52 @@ struct OptionalBoolField {
 struct OptionalIntField {
   std::optional<int32_t> value;
   FORY_STRUCT(OptionalIntField, (value, fory::F(1)));
+};
+
+struct PimplCompatibleAImpl {
+  int32_t a = 0;
+};
+
+class PimplCompatibleA {
+public:
+  PimplCompatibleA() : impl_(std::make_unique<PimplCompatibleAImpl>()) {}
+  explicit PimplCompatibleA(int32_t a) : PimplCompatibleA() { impl_->a = a; }
+  PimplCompatibleA(const PimplCompatibleA &other)
+      : PimplCompatibleA(other.a()) {}
+  PimplCompatibleA &operator=(const PimplCompatibleA &other) {
+    a(other.a());
+    return *this;
+  }
+  PimplCompatibleA(PimplCompatibleA &&) noexcept = default;
+  PimplCompatibleA &operator=(PimplCompatibleA &&) noexcept = default;
+
+  const int32_t &a() const { return impl_->a; }
+  int32_t &a() { return impl_->a; }
+  PimplCompatibleA &a(int32_t value) {
+    impl_->a = value;
+    return *this;
+  }
+
+private:
+  std::unique_ptr<PimplCompatibleAImpl> impl_;
+
+public:
+  FORY_STRUCT(PimplCompatibleA, FORY_PROPERTY(a));
+};
+
+struct DirectCompatibleA {
+  int32_t a = 0;
+  FORY_STRUCT(DirectCompatibleA, a);
+};
+
+struct PimplCompatibleB {
+  PimplCompatibleA a;
+  FORY_STRUCT(PimplCompatibleB, a);
+};
+
+struct DirectCompatibleB {
+  DirectCompatibleA a;
+  FORY_STRUCT(DirectCompatibleB, a);
 };
 
 // ============================================================================
@@ -604,7 +666,7 @@ TEST(SchemaEvolutionTest, ImmediateArrayFieldCanReadIntoListCarrier) {
   EXPECT_EQ(decoded.value().values, (std::vector<int32_t>{4, 5, 6}));
 }
 
-TEST(SchemaEvolutionTest, NullableListElementsCannotReadIntoArrayCarrier) {
+TEST(SchemaEvolutionTest, NullableListElementsReadIntoArrayCarrier) {
   auto writer = Fory::builder().compatible(true).xlang(true).build();
   auto reader = Fory::builder().compatible(true).xlang(true).build();
 
@@ -622,13 +684,14 @@ TEST(SchemaEvolutionTest, NullableListElementsCannotReadIntoArrayCarrier) {
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
   EXPECT_EQ(decoded.value().values, (std::vector<int32_t>{1, 2}));
 
-  bytes = writer.serialize(CompatibleNullableListField{{1, std::nullopt}});
-  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
-  payload = std::move(bytes).value();
-  decoded =
-      reader.deserialize<CompatibleArrayField>(payload.data(), payload.size());
-
-  ASSERT_FALSE(decoded.ok());
+  auto null_bytes = writer.serialize(
+      CompatibleNullableListField{{std::optional<int32_t>{1}, std::nullopt}});
+  ASSERT_TRUE(null_bytes.ok()) << null_bytes.error().to_string();
+  auto null_payload = std::move(null_bytes).value();
+  auto null_decoded = reader.deserialize<CompatibleArrayField>(
+      null_payload.data(), null_payload.size());
+  ASSERT_FALSE(null_decoded.ok());
+  EXPECT_EQ(null_decoded.error().code(), ErrorCode::InvalidData);
 }
 
 TEST(SchemaEvolutionTest, NestedListArraySchemaPairsAreNotMatched) {
@@ -645,8 +708,52 @@ TEST(SchemaEvolutionTest, NestedListArraySchemaPairsAreNotMatched) {
   auto decoded = reader.deserialize<CompatibleNestedArrayField>(
       bytes.value().data(), bytes.value().size());
 
+  ASSERT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.error().code(), ErrorCode::TypeError);
+}
+
+TEST(SchemaEvolutionTest, ChangedSchemaReadsExactUnsignedFields) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  constexpr uint32_t TYPE_ID = 1009;
+  ASSERT_TRUE(writer.register_struct<CompatibleUnsignedExactV1>(TYPE_ID).ok());
+  ASSERT_TRUE(reader.register_struct<CompatibleUnsignedExactV2>(TYPE_ID).ok());
+
+  CompatibleUnsignedExactV1 value{300u, 5000000000ull, "skip"};
+  auto bytes = writer.serialize(value);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto decoded = reader.deserialize<CompatibleUnsignedExactV2>(
+      bytes.value().data(), bytes.value().size());
+
   ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
-  EXPECT_TRUE(decoded.value().values.empty());
+  EXPECT_EQ(decoded.value().id, value.id);
+  EXPECT_EQ(decoded.value().count, value.count);
+}
+
+TEST(SchemaEvolutionTest, PimplPropertyNestedNamedStruct) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  ASSERT_TRUE(writer.register_struct<PimplCompatibleA>("pimpl", "A").ok());
+  ASSERT_TRUE(writer.register_struct<PimplCompatibleB>("pimpl", "B").ok());
+  ASSERT_TRUE(reader.register_struct<DirectCompatibleA>("pimpl", "A").ok());
+  ASSERT_TRUE(reader.register_struct<DirectCompatibleB>("pimpl", "B").ok());
+
+  auto type_info = writer.type_resolver().get_type_info<PimplCompatibleA>();
+  ASSERT_TRUE(type_info.ok()) << type_info.error().to_string();
+  EXPECT_EQ(type_info.value()->type_id,
+            static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT));
+
+  PimplCompatibleB original;
+  original.a.a(2468);
+  auto bytes = writer.serialize(original);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<DirectCompatibleB>(bytes.value().data(),
+                                                       bytes.value().size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().to_string();
+  EXPECT_EQ(decoded.value().a.a, 2468);
 }
 
 TEST(SchemaEvolutionTest, ScalarBoolString) {
@@ -734,6 +841,10 @@ TEST(SchemaEvolutionTest, ScalarNumberNumber) {
   auto narrowed = convert_field<ScalarInt64Field, ScalarInt8Field>({127}, 1016);
   ASSERT_TRUE(narrowed.ok()) << narrowed.error().to_string();
   EXPECT_EQ(narrowed.value().value, 127);
+
+  auto widened = convert_field<ScalarInt32Field, ScalarInt64Field>({123}, 1050);
+  ASSERT_TRUE(widened.ok()) << widened.error().to_string();
+  EXPECT_EQ(widened.value().value, 123);
 
   auto range_error =
       convert_field<ScalarInt64Field, ScalarInt8Field>({128}, 1017);

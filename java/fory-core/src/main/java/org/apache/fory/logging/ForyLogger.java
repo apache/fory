@@ -29,7 +29,7 @@ import java.time.format.DateTimeFormatter;
 
 public class ForyLogger implements Logger {
   private static final DateTimeFormatter dateTimeFormatter =
-      DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss");
+      DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
   private final String name;
 
   public ForyLogger(Class<?> targetClass) {

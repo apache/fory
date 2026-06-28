@@ -64,8 +64,10 @@ public class Config implements Serializable {
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
-  private final int maxBinarySize;
-  private final int maxCollectionSize;
+  private final int maxTypeFields;
+  private final int maxTypeMetaBytes;
+  private final int maxSchemaVersionsPerType;
+  private final int maxAverageSchemaVersionsPerType;
   private final float mapRefLoadFactor;
   private final boolean forVirtualThread;
 
@@ -108,8 +110,10 @@ public class Config implements Serializable {
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
-    maxBinarySize = builder.maxBinarySize;
-    maxCollectionSize = builder.maxCollectionSize;
+    maxTypeFields = builder.maxTypeFields;
+    maxTypeMetaBytes = builder.maxTypeMetaBytes;
+    maxSchemaVersionsPerType = builder.maxSchemaVersionsPerType;
+    maxAverageSchemaVersionsPerType = builder.maxAverageSchemaVersionsPerType;
     mapRefLoadFactor = builder.mapRefLoadFactor;
     forVirtualThread = builder.forVirtualThread;
   }
@@ -296,14 +300,24 @@ public class Config implements Serializable {
     return maxDepth;
   }
 
-  /** Returns max binary payload size for attacker-controlled binary and primitive-array lengths. */
-  public int maxBinarySize() {
-    return maxBinarySize;
+  /** Returns the maximum number of fields accepted in one received struct TypeDef. */
+  public int maxTypeFields() {
+    return maxTypeFields;
   }
 
-  /** Returns max collection allocation size for attacker-controlled collection lengths. */
-  public int maxCollectionSize() {
-    return maxCollectionSize;
+  /** Returns the maximum body size accepted for one received TypeDef. */
+  public int maxTypeMetaBytes() {
+    return maxTypeMetaBytes;
+  }
+
+  /** Returns the maximum accepted remote metadata versions for one logical type. */
+  public int maxSchemaVersionsPerType() {
+    return maxSchemaVersionsPerType;
+  }
+
+  /** Returns the maximum average accepted remote metadata versions across logical types. */
+  public int maxAverageSchemaVersionsPerType() {
+    return maxAverageSchemaVersionsPerType;
   }
 
   /** Returns loadFactor of MacRef's writtenObjects. */
@@ -340,8 +354,6 @@ public class Config implements Serializable {
         && compressIntArray == config.compressIntArray
         && compressLongArray == config.compressLongArray
         && bufferSizeLimitBytes == config.bufferSizeLimitBytes
-        && maxBinarySize == config.maxBinarySize
-        && maxCollectionSize == config.maxCollectionSize
         && requireClassRegistration == config.requireClassRegistration
         && suppressClassRegistrationWarnings == config.suppressClassRegistrationWarnings
         && registerGuavaTypes == config.registerGuavaTypes
@@ -352,6 +364,10 @@ public class Config implements Serializable {
         && deserializeUnknownClass == config.deserializeUnknownClass
         && xlang == config.xlang
         && compatible == config.compatible
+        && maxTypeFields == config.maxTypeFields
+        && maxTypeMetaBytes == config.maxTypeMetaBytes
+        && maxSchemaVersionsPerType == config.maxSchemaVersionsPerType
+        && maxAverageSchemaVersionsPerType == config.maxAverageSchemaVersionsPerType
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -380,11 +396,13 @@ public class Config implements Serializable {
         compressIntArray,
         compressLongArray,
         bufferSizeLimitBytes,
-        maxBinarySize,
-        maxCollectionSize,
         requireClassRegistration,
         suppressClassRegistrationWarnings,
         registerGuavaTypes,
+        maxTypeFields,
+        maxTypeMetaBytes,
+        maxSchemaVersionsPerType,
+        maxAverageSchemaVersionsPerType,
         metaShareEnabled,
         scopedMetaShareEnabled,
         metaCompressor,

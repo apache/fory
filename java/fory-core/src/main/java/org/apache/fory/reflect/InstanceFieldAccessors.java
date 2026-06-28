@@ -36,15 +36,9 @@ import org.apache.fory.platform.internal._UnsafeUtils;
 import org.apache.fory.util.Preconditions;
 import sun.misc.Unsafe;
 
-/**
- * Non-record instance field accessor owner.
- *
- * <p>This class is public only so generated serializers can name {@link InstanceAccessor} as a
- * concrete field type on JDK25+. Callers must still create accessors through {@link
- * FieldAccessor#createAccessor(Field)} so platform dispatch stays centralized.
- */
+/** Non-record instance field accessor owner. */
 @Internal
-public final class InstanceFieldAccessors {
+final class InstanceFieldAccessors {
   private static final int BOOLEAN_ACCESS = 1;
   private static final int BYTE_ACCESS = 2;
   private static final int CHAR_ACCESS = 3;
@@ -119,8 +113,7 @@ public final class InstanceFieldAccessors {
     }
   }
 
-  /** Public only for generated serializers; use {@link FieldAccessor#createAccessor(Field)}. */
-  public static final class InstanceAccessor extends FieldAccessor {
+  static final class InstanceAccessor extends FieldAccessor {
     private static final Unsafe UNSAFE = _UnsafeUtils.UNSAFE;
 
     private final long fieldOffset;
@@ -342,6 +335,25 @@ public final class InstanceFieldAccessors {
     public void putDouble(Object obj, double value) {
       checkObj(obj);
       UNSAFE.putDouble(obj, fieldOffset, value);
+    }
+
+    @Override
+    public Object getObject(Object obj) {
+      if (accessKind != OBJECT_ACCESS) {
+        return get(obj);
+      }
+      checkObj(obj);
+      return UNSAFE.getObject(obj, fieldOffset);
+    }
+
+    @Override
+    public void putObject(Object obj, Object value) {
+      if (accessKind != OBJECT_ACCESS) {
+        set(obj, value);
+        return;
+      }
+      checkObj(obj);
+      UNSAFE.putObject(obj, fieldOffset, value);
     }
   }
 

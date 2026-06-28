@@ -32,24 +32,6 @@ private enum CompatibleScalarValue {
   case decimal(Decimal)
 }
 
-private enum CompatibleScalarKind {
-  case bool
-  case string
-  case signedInteger
-  case unsignedInteger
-  case floatingPoint
-  case decimal
-
-  var isNumeric: Bool {
-    switch self {
-    case .signedInteger, .unsignedInteger, .floatingPoint, .decimal:
-      return true
-    case .bool, .string:
-      return false
-    }
-  }
-}
-
 private struct DecimalLiteral {
   let negative: Bool
   let digits: String
@@ -75,58 +57,39 @@ private struct BinaryFloatLayout {
 }
 
 @inline(never)
-public func foryReadCompatibleScalarField<T>(
+public func foryReadCompatibleBoolField(
   _ context: ReadContext,
-  remoteFieldType: TypeMeta.FieldType,
-  localTypeID: UInt32,
-  fieldName: String,
-  directRead: () throws -> T
-) throws -> T {
-  guard let remoteTypeID = TypeId(rawValue: remoteFieldType.typeID),
-    let localTypeID = TypeId(rawValue: localTypeID)
-  else {
-    return try directRead()
-  }
-  guard compatibleScalarKind(localTypeID) != nil else {
-    return try directRead()
-  }
-  guard compatibleScalarKind(remoteTypeID) != nil else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "remote field type is not a compatible scalar"
-    )
-  }
-  guard compatibleScalarPair(remoteTypeID: remoteTypeID, localTypeID: localTypeID) else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "schema pair is outside the scalar conversion matrix"
-    )
-  }
-  guard !remoteFieldType.trackRef else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "trackingRef scalar conversion is not supported"
-    )
-  }
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Bool {
+  try foryReadCompatibleOptionalBoolField(
+    context, remoteField: remoteField, localField: localField)
+    ?? false
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalBoolField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Bool? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
   guard
-    let remoteValue = try readCompatibleRemoteScalar(
-      context, remoteTypeID: remoteTypeID, fieldType: remoteFieldType)
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
   else {
-    return compatibleScalarDefault(T.self, localTypeID: localTypeID)
+    return nil
   }
-  guard
-    let converted = try convertCompatibleScalar(remoteValue, to: T.self, localTypeID: localTypeID)
-  else {
+  guard let converted = try compatibleScalarToBool(remoteValue) else {
     throw compatibleScalarError(
       fieldName: fieldName,
       remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
+      localTypeID: resolvedLocalTypeID,
       reason: "value is not lossless for the local field type"
     )
   }
@@ -134,105 +97,667 @@ public func foryReadCompatibleScalarField<T>(
 }
 
 @inline(never)
-public func foryReadCompatibleOptionalScalarField<T>(
+public func foryReadCompatibleInt8Field(
   _ context: ReadContext,
-  remoteFieldType: TypeMeta.FieldType,
-  localTypeID: UInt32,
-  fieldName: String,
-  directRead: () throws -> T?
-) throws -> T? {
-  guard let remoteTypeID = TypeId(rawValue: remoteFieldType.typeID),
-    let localTypeID = TypeId(rawValue: localTypeID)
-  else {
-    return try directRead()
-  }
-  guard compatibleScalarKind(localTypeID) != nil else {
-    return try directRead()
-  }
-  guard compatibleScalarKind(remoteTypeID) != nil else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "remote field type is not a compatible scalar"
-    )
-  }
-  guard compatibleScalarPair(remoteTypeID: remoteTypeID, localTypeID: localTypeID) else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "schema pair is outside the scalar conversion matrix"
-    )
-  }
-  guard !remoteFieldType.trackRef else {
-    throw compatibleScalarError(
-      fieldName: fieldName,
-      remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
-      reason: "trackingRef scalar conversion is not supported"
-    )
-  }
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int8 {
+  try foryReadCompatibleOptionalInt8Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalInt8Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int8? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
   guard
-    let remoteValue = try readCompatibleRemoteScalar(
-      context, remoteTypeID: remoteTypeID, fieldType: remoteFieldType)
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
   else {
     return nil
   }
-  guard
-    let converted = try convertCompatibleScalar(remoteValue, to: T.self, localTypeID: localTypeID)
-  else {
+  guard let converted = try compatibleScalarToInt8Target(remoteValue) else {
     throw compatibleScalarError(
       fieldName: fieldName,
       remoteTypeID: remoteTypeID,
-      localTypeID: localTypeID,
+      localTypeID: resolvedLocalTypeID,
       reason: "value is not lossless for the local field type"
     )
   }
   return converted
 }
 
-private func compatibleScalarKind(_ typeID: TypeId) -> CompatibleScalarKind? {
-  switch typeID {
-  case .bool:
-    return .bool
-  case .string:
-    return .string
-  case .int8, .int16, .int32, .varint32, .int64, .varint64, .taggedInt64:
-    return .signedInteger
-  case .uint8, .uint16, .uint32, .varUInt32, .uint64, .varUInt64, .taggedUInt64:
-    return .unsignedInteger
-  case .float16, .bfloat16, .float32, .float64:
-    return .floatingPoint
-  case .decimal:
-    return .decimal
-  default:
-    return nil
-  }
+@inline(never)
+public func foryReadCompatibleInt16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int16 {
+  try foryReadCompatibleOptionalInt16Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
 }
 
-private func compatibleScalarPair(remoteTypeID: TypeId, localTypeID: TypeId) -> Bool {
-  guard let remote = compatibleScalarKind(remoteTypeID),
-    let local = compatibleScalarKind(localTypeID)
+@inline(never)
+public func foryReadCompatibleOptionalInt16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int16? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
   else {
-    return false
+    return nil
   }
-  if remoteTypeID == localTypeID {
-    return true
+  guard let converted = try compatibleScalarToInt16Target(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
   }
-  if remote == .bool {
-    return local == .string || local.isNumeric
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleInt32Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int32 {
+  try foryReadCompatibleOptionalInt32Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalInt32Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int32? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
   }
-  if local == .bool {
-    return remote == .string || remote.isNumeric
+  guard let converted = try compatibleScalarToInt32Target(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
   }
-  if remote == .string {
-    return local.isNumeric
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleInt64Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int64 {
+  try foryReadCompatibleOptionalInt64Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalInt64Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int64? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
   }
-  if local == .string {
-    return remote.isNumeric
+  guard let converted = try compatibleScalarToInt64(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
   }
-  return remote.isNumeric && local.isNumeric
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleIntField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int {
+  try foryReadCompatibleOptionalIntField(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalIntField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Int? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToIntTarget(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleUInt8Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt8 {
+  try foryReadCompatibleOptionalUInt8Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalUInt8Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt8? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToUInt8Target(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleUInt16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt16 {
+  try foryReadCompatibleOptionalUInt16Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalUInt16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt16? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToUInt16Target(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleUInt32Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt32 {
+  try foryReadCompatibleOptionalUInt32Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalUInt32Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt32? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToUInt32Target(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleUInt64Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt64 {
+  try foryReadCompatibleOptionalUInt64Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalUInt64Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt64? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToUInt64(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleUIntField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt {
+  try foryReadCompatibleOptionalUIntField(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalUIntField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> UInt? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToUIntTarget(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleFloat16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Float16 {
+  try foryReadCompatibleOptionalFloat16Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalFloat16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Float16? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToFloat16(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleBFloat16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> BFloat16 {
+  try foryReadCompatibleOptionalBFloat16Field(
+    context, remoteField: remoteField, localField: localField)
+    ?? BFloat16()
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalBFloat16Field(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> BFloat16? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToBFloat16(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleFloatField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Float {
+  try foryReadCompatibleOptionalFloatField(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalFloatField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Float? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToFloat(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleDoubleField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Double {
+  try foryReadCompatibleOptionalDoubleField(
+    context, remoteField: remoteField, localField: localField)
+    ?? 0
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalDoubleField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Double? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToDouble(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleStringField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> String {
+  try foryReadCompatibleOptionalStringField(
+    context, remoteField: remoteField, localField: localField)
+    ?? ""
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalStringField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> String? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToString(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+@inline(never)
+public func foryReadCompatibleDecimalField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Decimal {
+  try foryReadCompatibleOptionalDecimalField(
+    context, remoteField: remoteField, localField: localField)
+    ?? .zero
+}
+
+@inline(never)
+public func foryReadCompatibleOptionalDecimalField(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  localField: TypeMeta.FieldInfo
+) throws -> Decimal? {
+  var remoteTypeID: TypeId = .unknown
+  let resolvedLocalTypeID = try compatibleScalarLocalTypeID(localField)
+  let fieldName = localField.fieldName
+  guard
+    let remoteValue = try readCompatibleScalarValue(
+      context,
+      remoteField: remoteField,
+      fieldName: fieldName,
+      remoteTypeID: &remoteTypeID)
+  else {
+    return nil
+  }
+  guard let converted = try compatibleScalarToDecimal(remoteValue) else {
+    throw compatibleScalarError(
+      fieldName: fieldName,
+      remoteTypeID: remoteTypeID,
+      localTypeID: resolvedLocalTypeID,
+      reason: "value is not lossless for the local field type"
+    )
+  }
+  return converted
+}
+
+private func readCompatibleScalarValue(
+  _ context: ReadContext,
+  remoteField: TypeMeta.FieldInfo,
+  fieldName: String,
+  remoteTypeID: inout TypeId
+) throws -> CompatibleScalarValue? {
+  let remoteFieldType = remoteField.fieldType
+  guard let resolvedRemoteTypeID = TypeId(rawValue: remoteFieldType.typeID) else {
+    throw ForyError.invalidData(
+      "unknown compatible scalar remote type \(remoteFieldType.typeID) for field \(fieldName)")
+  }
+  remoteTypeID = resolvedRemoteTypeID
+  return try readCompatibleRemoteScalar(
+    context, remoteTypeID: resolvedRemoteTypeID, fieldType: remoteFieldType)
+}
+
+private func compatibleScalarLocalTypeID(_ localField: TypeMeta.FieldInfo) throws -> TypeId {
+  guard let localTypeID = TypeId(rawValue: localField.fieldType.typeID) else {
+    throw ForyError.invalidData(
+      "unknown compatible scalar local type for field \(localField.fieldName)")
+  }
+  return localTypeID
 }
 
 private func readCompatibleRemoteScalar(
@@ -325,73 +850,81 @@ private func readCompatibleBoolPayload(_ context: ReadContext) throws -> Bool {
   }
 }
 
-private func convertCompatibleScalar<T>(
-  _ value: CompatibleScalarValue,
-  to _: T.Type,
-  localTypeID: TypeId
-) throws -> T? {
-  switch localTypeID {
-  case .bool:
-    guard T.self == Bool.self, let converted = try compatibleScalarToBool(value) else {
-      return nil
-    }
-    return converted as? T
-  case .string:
-    guard T.self == String.self, let converted = try compatibleScalarToString(value) else {
-      return nil
-    }
-    return converted as? T
-  case .int8:
-    return compatibleCastSigned(
-      try compatibleScalarToInt64(value), min: Int64(Int8.min), max: Int64(Int8.max), to: T.self)
-  case .int16:
-    return compatibleCastSigned(
-      try compatibleScalarToInt64(value), min: Int64(Int16.min), max: Int64(Int16.max), to: T.self)
-  case .int32, .varint32:
-    return compatibleCastSigned(
-      try compatibleScalarToInt64(value), min: Int64(Int32.min), max: Int64(Int32.max), to: T.self)
-  case .int64, .varint64, .taggedInt64:
-    return compatibleCastSigned(
-      try compatibleScalarToInt64(value), min: Int64.min, max: Int64.max, to: T.self)
-  case .uint8:
-    return compatibleCastUnsigned(
-      try compatibleScalarToUInt64(value), max: UInt64(UInt8.max), to: T.self)
-  case .uint16:
-    return compatibleCastUnsigned(
-      try compatibleScalarToUInt64(value), max: UInt64(UInt16.max), to: T.self)
-  case .uint32, .varUInt32:
-    return compatibleCastUnsigned(
-      try compatibleScalarToUInt64(value), max: UInt64(UInt32.max), to: T.self)
-  case .uint64, .varUInt64, .taggedUInt64:
-    return compatibleCastUnsigned(try compatibleScalarToUInt64(value), max: UInt64.max, to: T.self)
-  case .float16:
-    guard T.self == Float16.self, let converted = try compatibleScalarToFloat16(value) else {
-      return nil
-    }
-    return converted as? T
-  case .bfloat16:
-    guard T.self == BFloat16.self, let converted = try compatibleScalarToBFloat16(value) else {
-      return nil
-    }
-    return converted as? T
-  case .float32:
-    guard T.self == Float.self, let converted = try compatibleScalarToFloat(value) else {
-      return nil
-    }
-    return converted as? T
-  case .float64:
-    guard T.self == Double.self, let converted = try compatibleScalarToDouble(value) else {
-      return nil
-    }
-    return converted as? T
-  case .decimal:
-    guard T.self == Decimal.self, let converted = try compatibleScalarToDecimal(value) else {
-      return nil
-    }
-    return converted as? T
-  default:
+private func compatibleScalarToInt8Target(_ value: CompatibleScalarValue) throws -> Int8? {
+  guard
+    let converted = try compatibleScalarToInt64(value),
+    converted >= Int64(Int8.min),
+    converted <= Int64(Int8.max)
+  else {
     return nil
   }
+  return Int8(converted)
+}
+
+private func compatibleScalarToInt16Target(_ value: CompatibleScalarValue) throws -> Int16? {
+  guard
+    let converted = try compatibleScalarToInt64(value),
+    converted >= Int64(Int16.min),
+    converted <= Int64(Int16.max)
+  else {
+    return nil
+  }
+  return Int16(converted)
+}
+
+private func compatibleScalarToInt32Target(_ value: CompatibleScalarValue) throws -> Int32? {
+  guard
+    let converted = try compatibleScalarToInt64(value),
+    converted >= Int64(Int32.min),
+    converted <= Int64(Int32.max)
+  else {
+    return nil
+  }
+  return Int32(converted)
+}
+
+private func compatibleScalarToIntTarget(_ value: CompatibleScalarValue) throws -> Int? {
+  guard let converted = try compatibleScalarToInt64(value) else {
+    return nil
+  }
+  return Int(exactly: converted)
+}
+
+private func compatibleScalarToUInt8Target(_ value: CompatibleScalarValue) throws -> UInt8? {
+  guard
+    let converted = try compatibleScalarToUInt64(value),
+    converted <= UInt64(UInt8.max)
+  else {
+    return nil
+  }
+  return UInt8(converted)
+}
+
+private func compatibleScalarToUInt16Target(_ value: CompatibleScalarValue) throws -> UInt16? {
+  guard
+    let converted = try compatibleScalarToUInt64(value),
+    converted <= UInt64(UInt16.max)
+  else {
+    return nil
+  }
+  return UInt16(converted)
+}
+
+private func compatibleScalarToUInt32Target(_ value: CompatibleScalarValue) throws -> UInt32? {
+  guard
+    let converted = try compatibleScalarToUInt64(value),
+    converted <= UInt64(UInt32.max)
+  else {
+    return nil
+  }
+  return UInt32(converted)
+}
+
+private func compatibleScalarToUIntTarget(_ value: CompatibleScalarValue) throws -> UInt? {
+  guard let converted = try compatibleScalarToUInt64(value) else {
+    return nil
+  }
+  return UInt(exactly: converted)
 }
 
 private func compatibleScalarToBool(_ value: CompatibleScalarValue) throws -> Bool? {
@@ -612,8 +1145,7 @@ private func compatibleScalarToDecimal(_ value: CompatibleScalarValue) throws ->
 }
 
 private func compatibleScalarToDecimalLiteral(_ value: CompatibleScalarValue) throws
-  -> DecimalLiteral?
-{
+  -> DecimalLiteral? {
   switch value {
   case .bool(let value):
     return DecimalLiteral(negative: false, digits: value ? "1" : "0", scale: 0, negativeZero: false)
@@ -638,102 +1170,6 @@ private func compatibleScalarToDecimalLiteral(_ value: CompatibleScalarValue) th
     return compatibleParseCanonicalDecimal(compatibleDecimalText(value))
   case .string(let value):
     return compatibleParseNumericLiteral(value)
-  }
-}
-
-private func compatibleCastSigned<T>(_ value: Int64?, min: Int64, max: Int64, to _: T.Type) -> T? {
-  guard let value, value >= min, value <= max else {
-    return nil
-  }
-  switch T.self {
-  case is Int8.Type:
-    return Int8(value) as? T
-  case is Int16.Type:
-    return Int16(value) as? T
-  case is Int32.Type:
-    return Int32(value) as? T
-  case is Int64.Type:
-    return value as? T
-  case is Int.Type:
-    guard let converted = Int(exactly: value) else {
-      return nil
-    }
-    return converted as? T
-  default:
-    return nil
-  }
-}
-
-private func compatibleCastUnsigned<T>(_ value: UInt64?, max: UInt64, to _: T.Type) -> T? {
-  guard let value, value <= max else {
-    return nil
-  }
-  switch T.self {
-  case is UInt8.Type:
-    return UInt8(value) as? T
-  case is UInt16.Type:
-    return UInt16(value) as? T
-  case is UInt32.Type:
-    return UInt32(value) as? T
-  case is UInt64.Type:
-    return value as? T
-  case is UInt.Type:
-    guard let converted = UInt(exactly: value) else {
-      return nil
-    }
-    return converted as? T
-  default:
-    return nil
-  }
-}
-
-private func compatibleScalarDefault<T>(_: T.Type, localTypeID: TypeId) -> T {
-  guard let value = compatibleScalarDefaultValue(T.self, localTypeID: localTypeID) else {
-    preconditionFailure("unsupported compatible scalar default")
-  }
-  return value
-}
-
-private func compatibleScalarDefaultValue<T>(_: T.Type, localTypeID: TypeId) -> T? {
-  switch localTypeID {
-  case .bool:
-    return false as? T
-  case .string:
-    return "" as? T
-  case .int8:
-    return Int8(0) as? T
-  case .int16:
-    return Int16(0) as? T
-  case .int32, .varint32:
-    return Int32(0) as? T
-  case .int64, .varint64, .taggedInt64:
-    if T.self == Int.self {
-      return Int(0) as? T
-    }
-    return Int64(0) as? T
-  case .uint8:
-    return UInt8(0) as? T
-  case .uint16:
-    return UInt16(0) as? T
-  case .uint32, .varUInt32:
-    return UInt32(0) as? T
-  case .uint64, .varUInt64, .taggedUInt64:
-    if T.self == UInt.self {
-      return UInt(0) as? T
-    }
-    return UInt64(0) as? T
-  case .float16:
-    return Float16(0) as? T
-  case .bfloat16:
-    return BFloat16() as? T
-  case .float32:
-    return Float(0) as? T
-  case .float64:
-    return Double(0) as? T
-  case .decimal:
-    return Decimal.zero as? T
-  default:
-    return nil
   }
 }
 
@@ -903,7 +1339,9 @@ private func compatibleParseNumericLiteral(_ text: String) -> DecimalLiteral? {
   else {
     return nil
   }
-  let normalized = String(decoding: digitBytes, as: UTF8.self)
+  guard let normalized = String(bytes: digitBytes, encoding: .utf8) else {
+    return nil
+  }
   let negativeZero = negative && normalized == "0"
   return DecimalLiteral(
     negative: negative, digits: normalized, scale: scale, negativeZero: negativeZero)
@@ -1039,8 +1477,7 @@ private func compatibleFormatDecimalText(negative: Bool, digits: String, scale: 
   return fraction.isEmpty ? sign + integer : "\(sign)\(integer).\(fraction)"
 }
 
-private func compatibleFloatCanonicalText(_ literal: DecimalLiteral, forceFraction: Bool) -> String?
-{
+private func compatibleFloatCanonicalText(_ literal: DecimalLiteral, forceFraction: Bool) -> String? {
   if literal.isZero {
     return literal.negativeZero ? "-0.0" : "0.0"
   }

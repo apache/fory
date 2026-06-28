@@ -23,7 +23,7 @@ Apache Fory™ supports schema evolution in **Compatible mode**, allowing serial
 
 ## Compatible Mode
 
-Enable schema evolution with `compatible(true)`:
+Compatible mode is enabled by default:
 
 ```cpp
 #include "fory/serialization/fory.h"
@@ -49,12 +49,10 @@ int main() {
   // Create separate Fory instances for each schema version
   auto fory_v1 = Fory::builder()
       .xlang(true)
-      .compatible(true)  // Enable schema evolution
       .build();
 
   auto fory_v2 = Fory::builder()
       .xlang(true)
-      .compatible(true)
       .build();
 
   // Register with the SAME type ID for schema evolution
@@ -74,18 +72,6 @@ int main() {
 
   return 0;
 }
-```
-
-### Disable Evolution for Stable Structs
-
-If a struct schema is stable and will not change, you can disable evolution for that struct to avoid compatible metadata overhead. Use `FORY_STRUCT_EVOLVING` after `FORY_STRUCT`:
-
-```cpp
-struct StableMessage {
-  int32_t id;
-};
-FORY_STRUCT(StableMessage, id);
-FORY_STRUCT_EVOLVING(StableMessage, false);
 ```
 
 ## Schema Evolution Features
@@ -302,12 +288,13 @@ When fields are missing, C++ default initialization is used:
 | `std::optional<T>`     | `std::nullopt`      |
 | Struct types           | Default-constructed |
 
-## Schema Consistent Mode
+## Same-Schema Optimization
 
-Without compatible mode, schemas must match exactly. In xlang mode, compatible mode is the default, so disable it explicitly only when schemas do not change or all services deploy schema changes at the same time:
+Compatible mode is the default in both xlang and native mode. Set `compatible(false)` explicitly
+only when every reader and writer always uses the same schema and you want faster serialization and smaller size:
 
 ```cpp
-// Strict schema-consistent mode
+// Same-schema optimization
 auto fory = Fory::builder()
     .xlang(true)
     .compatible(false)
@@ -317,11 +304,24 @@ auto fory = Fory::builder()
 // Schema mismatches may cause errors or undefined behavior
 ```
 
-**Use SchemaConsistent mode when:**
+**Use `compatible(false)` when:**
 
-- Schemas are guaranteed to match (same binary version)
-- Maximum performance is required (less metadata overhead)
-- You control both serialization and deserialization
+- Every reader and writer always uses the same schema
+- You want faster serialization and smaller size
+- For xlang payloads, every language uses the same verified schema or native types generated from Fory schema IDL
+
+### Per-Struct Opt-Out
+
+For one struct, you can opt out of evolution metadata with `FORY_STRUCT_EVOLVING` after
+`FORY_STRUCT`:
+
+```cpp
+struct SameSchemaMessage {
+  int32_t id;
+};
+FORY_STRUCT(SameSchemaMessage, id);
+FORY_STRUCT_EVOLVING(SameSchemaMessage, false);
+```
 
 **Use Compatible mode when:**
 
@@ -402,18 +402,16 @@ Test both upgrade and downgrade scenarios:
 Schema evolution works across languages when using xlang mode:
 
 ```cpp
-// C++ with compatible mode
+// C++ with compatible mode, the default
 auto fory = Fory::builder()
     .xlang(true)
-    .compatible(true)
     .build();
 ```
 
 ```java
-// Java with compatible mode
+// Java with compatible mode, the default
 Fory fory = Fory.builder()
     .withXlang(true)
-    .withCompatible(true)
     .build();
 ```
 

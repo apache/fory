@@ -42,6 +42,7 @@ public class CodecUtilsTest {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     Class<?> seqCodecClass = fory.getTypeResolver().getSerializerClass(BeanA.class);
     assertGeneratedClassShape(seqCodecClass, BeanA.class);

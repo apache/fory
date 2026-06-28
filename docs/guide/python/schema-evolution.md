@@ -20,8 +20,7 @@ license: |
 ---
 
 Apache Fory™ supports schema evolution in compatible mode, allowing fields to be added or removed
-while maintaining compatibility. Xlang mode enables compatible mode by default. In native mode,
-set `compatible=True` explicitly when Python-only payloads need schema evolution.
+while maintaining compatibility. Compatible mode is enabled by default in both xlang and native mode.
 
 Compatible readers also tolerate selected scalar field type changes when the value is lossless. A
 matched field can read between `bool`, `str`, numeric scalars, and `Decimal` when the converted value
@@ -38,25 +37,13 @@ during deserialization.
 Optional and nullable fields still compose with these conversions, but reference-tracked scalar type
 changes are incompatible.
 
-## Xlang Default
+## Default Compatible Mode
 
 ```python
 import pyfory
 
-f = pyfory.Fory(xlang=True)
-```
-
-## Disable Evolution for Stable Classes
-
-If a dataclass schema is stable and will not change, you can disable evolution for that class to avoid compatible metadata overhead. Use `pyfory.dataclass` with `evolving=False`:
-
-```python
-import pyfory
-
-@pyfory.dataclass(evolving=False)
-class StableMessage:
-    id: int
-    name: str
+f = pyfory.Fory()
+native_f = pyfory.Fory(xlang=False)
 ```
 
 `pyfory.dataclass` also supports `slots=True`:
@@ -100,6 +87,26 @@ print(user.email)  # "unknown@example.com"
 - **Add new fields**: With default values
 - **Remove fields**: Old data with extra fields will be skipped
 - **Reorder fields**: Fields are matched by name, not position
+
+## Same-Schema Class Optimization
+
+Use `compatible=False` only when the class schema used to deserialize every payload is always the same
+as the class schema used to serialize it, and you want faster serialization and smaller size. For xlang payloads, set `compatible=False` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
+```python
+f = pyfory.Fory(xlang=False, compatible=False)
+```
+
+For one dataclass, you can opt out of evolution metadata with `pyfory.dataclass(evolving=False)`:
+
+```python
+import pyfory
+
+@pyfory.dataclass(evolving=False)
+class SameSchemaMessage:
+    id: int
+    name: str
+```
 
 ## Best Practices
 

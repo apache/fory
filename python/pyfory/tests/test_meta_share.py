@@ -22,6 +22,7 @@ import pytest
 
 import pyfory
 from pyfory import Fory
+from pyfory.error import TypeNotCompatibleError
 
 
 @dataclasses.dataclass
@@ -192,10 +193,9 @@ class TestMetaShareMode:
 
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ListFieldsClassInconsistent)
-        deserialized = fory2.deserialize(buffer)
 
-        assert isinstance(deserialized, ListFieldsClassInconsistent)
-        assert deserialized.name == "test"
+        with pytest.raises(TypeNotCompatibleError):
+            fory2.deserialize(buffer)
 
     def test_schema_inconsistent_dict_fields(self):
         fory1 = Fory(xlang=True, compatible=True)
@@ -204,7 +204,6 @@ class TestMetaShareMode:
 
         fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(DictFieldsClassInconsistent)
-        deserialized = fory2.deserialize(buffer)
 
-        assert isinstance(deserialized, DictFieldsClassInconsistent)
-        assert deserialized.name == "test"
+        with pytest.raises(TypeNotCompatibleError):
+            fory2.deserialize(buffer)

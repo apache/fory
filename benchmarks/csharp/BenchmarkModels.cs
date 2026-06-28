@@ -189,7 +189,6 @@ public sealed class SampleList
     public List<Sample> Values { get; set; } = [];
 }
 
-[ForyStruct]
 [ProtoContract]
 public enum Player
 {
@@ -199,7 +198,6 @@ public enum Player
     Flash,
 }
 
-[ForyStruct]
 [ProtoContract]
 public enum MediaSize
 {
@@ -311,6 +309,206 @@ public sealed class MediaContentList
     [ForyField(Id = 1)]
     [ProtoMember(1)]
     public List<MediaContent> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class NumericStructV2
+{
+    [ForyField(Id = 1)]
+    public long F1 { get; set; }
+
+    [ForyField(Id = 2)]
+    public int F2 { get; set; }
+
+    [ForyField(Id = 3)]
+    public int F3 { get; set; }
+
+    [ForyField(Id = 4)]
+    public int F4 { get; set; }
+
+    [ForyField(Id = 5)]
+    public int F5 { get; set; }
+
+    [ForyField(Id = 6)]
+    public int F6 { get; set; }
+
+    [ForyField(Id = 7)]
+    public int F7 { get; set; }
+
+    [ForyField(Id = 8)]
+    public int F8 { get; set; }
+
+    [ForyField(Id = 9)]
+    public int F9 { get; set; }
+
+    [ForyField(Id = 10)]
+    public int F10 { get; set; }
+
+    [ForyField(Id = 11)]
+    public int F11 { get; set; }
+
+    [ForyField(Id = 12)]
+    public int F12 { get; set; }
+}
+
+[ForyStruct]
+public sealed class NumericStructListV2
+{
+    [ForyField(Id = 1)]
+    public List<NumericStructV2> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class SampleV2
+{
+    [ForyField(Id = 1)]
+    public long IntValue { get; set; }
+
+    [ForyField(Id = 2)]
+    public long LongValue { get; set; }
+
+    [ForyField(Id = 3)]
+    public float FloatValue { get; set; }
+
+    [ForyField(Id = 4)]
+    public double DoubleValue { get; set; }
+
+    [ForyField(Id = 5)]
+    public int ShortValue { get; set; }
+
+    [ForyField(Id = 6)]
+    public int CharValue { get; set; }
+
+    [ForyField(Id = 7)]
+    public bool BooleanValue { get; set; }
+
+    [ForyField(Id = 8)]
+    public int IntValueBoxed { get; set; }
+
+    [ForyField(Id = 9)]
+    public long LongValueBoxed { get; set; }
+
+    [ForyField(Id = 10)]
+    public float FloatValueBoxed { get; set; }
+
+    [ForyField(Id = 11)]
+    public double DoubleValueBoxed { get; set; }
+
+    [ForyField(Id = 12)]
+    public int ShortValueBoxed { get; set; }
+
+    [ForyField(Id = 13)]
+    public int CharValueBoxed { get; set; }
+
+    [ForyField(Id = 14)]
+    public bool BooleanValueBoxed { get; set; }
+
+    [ForyField(Id = 15)]
+    public int[] IntArray { get; set; } = [];
+
+    [ForyField(Id = 16)]
+    public long[] LongArray { get; set; } = [];
+
+    [ForyField(Id = 17)]
+    public float[] FloatArray { get; set; } = [];
+
+    [ForyField(Id = 18)]
+    public double[] DoubleArray { get; set; } = [];
+
+    [ForyField(Id = 19)]
+    public int[] ShortArray { get; set; } = [];
+
+    [ForyField(Id = 20)]
+    public int[] CharArray { get; set; } = [];
+
+    [ForyField(Id = 21)]
+    public bool[] BooleanArray { get; set; } = [];
+
+    [ForyField(Id = 22)]
+    public string String { get; set; } = string.Empty;
+}
+
+[ForyStruct]
+public sealed class SampleListV2
+{
+    [ForyField(Id = 1)]
+    public List<SampleV2> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class MediaV2
+{
+    [ForyField(Id = 1)]
+    public string Uri { get; set; } = string.Empty;
+
+    [ForyField(Id = 2)]
+    public string Title { get; set; } = string.Empty;
+
+    [ForyField(Id = 3)]
+    public long Width { get; set; }
+
+    [ForyField(Id = 4)]
+    public int Height { get; set; }
+
+    [ForyField(Id = 5)]
+    public string Format { get; set; } = string.Empty;
+
+    [ForyField(Id = 6)]
+    public long Duration { get; set; }
+
+    [ForyField(Id = 7)]
+    public long Size { get; set; }
+
+    [ForyField(Id = 8)]
+    public int Bitrate { get; set; }
+
+    [ForyField(Id = 9)]
+    public bool HasBitrate { get; set; }
+
+    [ForyField(Id = 10)]
+    public List<string> Persons { get; set; } = [];
+
+    [ForyField(Id = 11)]
+    public Player Player { get; set; }
+
+    [ForyField(Id = 12)]
+    public string Copyright { get; set; } = string.Empty;
+}
+
+[ForyStruct]
+public sealed class ImageV2
+{
+    [ForyField(Id = 1)]
+    public string Uri { get; set; } = string.Empty;
+
+    [ForyField(Id = 2)]
+    public string Title { get; set; } = string.Empty;
+
+    [ForyField(Id = 3)]
+    public long Width { get; set; }
+
+    [ForyField(Id = 4)]
+    public int Height { get; set; }
+
+    [ForyField(Id = 5)]
+    public MediaSize Size { get; set; }
+}
+
+[ForyStruct]
+public sealed class MediaContentV2
+{
+    [ForyField(Id = 1)]
+    public MediaV2 Media { get; set; } = new();
+
+    [ForyField(Id = 2)]
+    public List<ImageV2> Images { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class MediaContentListV2
+{
+    [ForyField(Id = 1)]
+    public List<MediaContentV2> Values { get; set; } = [];
 }
 
 public static class BenchmarkDataFactory

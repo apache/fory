@@ -1,6 +1,6 @@
 # Kotlin
 
-Load this file when changing `kotlin/`.
+Load this file when changing `kotlin/` or compiler code that generates Kotlin source.
 
 ## Rules
 
@@ -14,6 +14,9 @@ Load this file when changing `kotlin/`.
   Fory. Do not auto-install a new serializer for an existing type-registered Kotlin class unless the
   wire format matches the previous serializer family and old-payload/new-runtime compatibility is
   tested.
+- When adding Kotlin gRPC service companions, emit Kotlin source only. Reuse the generated schema
+  module's `ThreadSafeFory` and KSP-generated schema serializers, and keep grpc-java/grpc-kotlin
+  dependencies application-owned instead of adding them as hard `fory-kotlin` dependencies.
 
 ## Commands
 

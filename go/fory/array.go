@@ -228,6 +228,13 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	length := int(buf.ReadVarUint32(err))
+	if ctx.HasError() {
+		return
+	}
+	if length != value.Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match serialized length %d", value.Len(), length))
+		return
+	}
 
 	var trackRefs bool
 	if length > 0 {
@@ -312,7 +319,7 @@ func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Create a temp slice to read into, then copy back to array
 	sliceType := reflect.SliceOf(value.Type().Elem())
 	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())
-	s.sliceSerializer.ReadData(ctx, tempSlice)
+	s.sliceSerializer.readData(ctx, tempSlice, value.Len())
 	if ctx.HasError() {
 		return
 	}
@@ -365,16 +372,29 @@ func (s byteArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 
 func (s byteArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
-	length := ctx.ReadCollectionLength()
+	err := ctx.Err()
+	length := buf.ReadLength(err)
 	if ctx.HasError() {
+		return
+	}
+	if length != value.Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match serialized binary length %d", value.Len(), length))
+		return
+	}
+	if !buf.CheckReadable(length, err) {
+		return
+	}
+	if length == 0 {
+		return
+	}
+	if value.CanAddr() {
+		buf.Read(value.Slice(0, length).Bytes())
 		return
 	}
 	data := make([]byte, length)
 	buf.Read(data)
-	if value.CanSet() {
-		for i := 0; i < length && i < value.Len(); i++ {
-			value.Index(i).SetUint(uint64(data[i]))
-		}
+	for i := 0; i < length && i < value.Len(); i++ {
+		value.Index(i).SetUint(uint64(data[i]))
 	}
 }
 

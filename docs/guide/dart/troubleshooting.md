@@ -19,15 +19,15 @@ license: |
   limitations under the License.
 ---
 
-This page covers common Dart runtime issues and fixes.
+This page covers common Dart issues and fixes.
 
-## `Only xlang payloads are supported by the Dart runtime.`
+## `Only xlang payloads are supported by the Dart implementation.`
 
 The writer is sending a native-mode payload. Make sure every peer writes the xlang wire format:
 
-- **Java**: configure the peer runtime for xlang mode instead of native mode.
-- **Go**: configure the peer runtime for xlang mode.
-- **Other runtimes**: check their respective guides for xlang mode.
+- **Java**: configure the peer for xlang mode instead of native mode.
+- **Go**: configure the peer for xlang mode.
+- **Other languages**: check their respective guides for xlang mode.
 
 ## `Type ... is not registered.`
 
@@ -76,7 +76,7 @@ Checklist:
 2. Stable `@ForyField(id: ...)` assigned before the first payload was produced.
 3. Compatible numeric widths — use `@ForyField(type: Int32Type())` in Dart when the peer field is `int` (Java), `int32` (Go), or `int` (C#).
 4. `Timestamp` / `LocalDate` instead of raw `DateTime` for date/time fields.
-5. Compatible schema evolution on both sides. Dart enables it by default; make sure peers have not explicitly selected schema-consistent mode.
+5. Compatible schema evolution on both sides. Dart enables it by default; make sure peers have not explicitly selected `compatible: false`.
 
 ## Int64 or Uint64 values fail on web
 
@@ -118,7 +118,7 @@ class FileBlock {
 field, but it does not remove the web integer precision limit. Use `Int64` for
 full-range signed values and `Uint64` for full-range unsigned values. See
 [Web Platform Support](web-platform-support.md) for the full browser support
-matrix and runtime guidance.
+matrix and platform guidance.
 
 ## Running Tests Locally
 
@@ -138,9 +138,26 @@ dart run build_runner build --delete-conflicting-outputs
 dart test
 ```
 
+## Generated gRPC files cannot find `package:grpc` types
+
+**Cause**: gRPC packages are application dependencies. The `fory` package does
+not add gRPC as a hard dependency.
+
+**Fix**: Add `grpc` to your `pubspec.yaml` (and the `build_runner` dev
+dependency), then run `dart pub get`. See [gRPC Support](grpc-support.md).
+
+## A protobuf client cannot decode a Fory gRPC service
+
+**Cause**: Fory gRPC companions use gRPC transports with Fory-encoded message
+bodies, not protobuf wire encoding.
+
+**Fix**: Use a Fory-generated client for Fory-generated services, or expose a
+separate protobuf service endpoint for generic protobuf clients.
+
 ## Related Topics
 
 - [Xlang Serialization](xlang-serialization.md)
 - [Code Generation](code-generation.md)
 - [Custom Serializers](custom-serializers.md)
 - [Web Platform Support](web-platform-support.md)
+- [gRPC Support](grpc-support.md)

@@ -107,7 +107,7 @@ fn debug_hooks_trigger_for_struct() {
     set_before_read_field_func(before_read);
     set_after_read_field_func(after_read);
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<DebugSample>(4001).unwrap();
     let sample = DebugSample {
         a: 7,

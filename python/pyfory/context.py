@@ -230,8 +230,6 @@ class WriteContext:
         "compatible",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
         "ref_writer",
         "meta_string_writer",
         "meta_share_context",
@@ -250,8 +248,6 @@ class WriteContext:
         self.compatible = config.compatible
         self.field_nullable = config.field_nullable
         self.policy = config.policy
-        self.max_collection_size = config.max_collection_size
-        self.max_binary_size = config.max_binary_size
         self.ref_writer = MapRefWriter() if self.track_ref else NoRefWriter()
         self.meta_string_writer = MetaStringWriter()
         self.meta_share_context = MetaShareWriteContext() if config.scoped_meta_share_enabled else None
@@ -473,8 +469,6 @@ class ReadContext:
         "compatible",
         "field_nullable",
         "policy",
-        "max_collection_size",
-        "max_binary_size",
         "max_depth",
         "ref_reader",
         "meta_string_reader",
@@ -495,8 +489,6 @@ class ReadContext:
         self.compatible = config.compatible
         self.field_nullable = config.field_nullable
         self.policy = config.policy
-        self.max_collection_size = config.max_collection_size
-        self.max_binary_size = config.max_binary_size
         self.max_depth = config.max_depth
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
@@ -513,6 +505,14 @@ class ReadContext:
         if buffer is None:
             raise AttributeError(name)
         return getattr(buffer, name)
+
+    def check_readable_bytes(self, length):
+        if length < 0:
+            raise ValueError(f"Readable byte count {length} is negative")
+        if length == 0:
+            return
+        reader_index = self.buffer.get_reader_index()
+        self.buffer.check_bound(reader_index, length)
 
     def prepare(
         self,
@@ -636,11 +636,10 @@ class ReadContext:
     def read_buffer_object(self):
         if not self.peer_out_of_band_enabled:
             size = self.buffer.read_var_uint32()
-            if size > self.max_binary_size:
-                raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
             if self.buffer.has_input_stream():
                 return self.buffer.read_bytes(size)
             reader_index = self.buffer.get_reader_index()
+            self.buffer.check_bound(reader_index, size)
             buf = self.buffer.slice(reader_index, size)
             self.buffer.set_reader_index(reader_index + size)
             return buf
@@ -649,11 +648,10 @@ class ReadContext:
             assert self.buffers is not None
             return next(self.buffers)
         size = self.buffer.read_var_uint32()
-        if size > self.max_binary_size:
-            raise ValueError(f"Binary size {size} exceeds the configured limit of {self.max_binary_size}")
         if self.buffer.has_input_stream():
             return self.buffer.read_bytes(size)
         reader_index = self.buffer.get_reader_index()
+        self.buffer.check_bound(reader_index, size)
         buf = self.buffer.slice(reader_index, size)
         self.buffer.set_reader_index(reader_index + size)
         return buf

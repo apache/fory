@@ -50,9 +50,10 @@ from plot_style import (  # noqa: E402
 
 apply_benchmark_style(plt)
 
-SERIALIZER_ORDER = ["fory", "protobuf", "flatbuffer"]
+SERIALIZER_ORDER = ["fory-codegen=true", "fory-codegen=false", "protobuf", "flatbuffer"]
 COLORS = {
-    "fory": "#FF6f01",
+    "fory-codegen=true": "#FF6f01",
+    "fory-codegen=false": "#C94700",
     "protobuf": "#55BCC2",
     "flatbuffer": (0.55, 0.40, 0.45),
 }
@@ -146,6 +147,9 @@ def collect_results(payload: Any) -> dict:
         score = float(metric.get("score", bench.get("opsPerSec", 0.0)))
         unit = metric.get("scoreUnit", "ops/s")
         serializer = match.group("serializer").lower()
+        if serializer == "fory":
+            codegen = str(bench.get("params", {}).get("codegen", "unknown")).lower()
+            serializer = f"fory-codegen={codegen}"
         datatype = datatype_key(match.group("datatype"))
         operation = match.group("operation").lower()
         results[datatype][operation][serializer] = score_to_ops_per_sec(score, unit)
@@ -230,12 +234,18 @@ def format_table_value(value: float) -> str:
     return f"{value:,.0f}" if value > 0 else "N/A"
 
 
+def serializer_title(serializer: str) -> str:
+    if serializer.startswith("fory-codegen="):
+        return "Fory " + serializer[len("fory-") :]
+    return serializer.capitalize()
+
+
 def winner_cell(values: dict) -> str:
     positive = {name: value for name, value in values.items() if value > 0}
     if not positive:
         return "N/A"
     winner = max(positive, key=positive.get)
-    return winner.capitalize()
+    return serializer_title(winner)
 
 
 def build_xlang_section(results: dict, image_name: str) -> str:
@@ -251,8 +261,14 @@ def build_xlang_section(results: dict, image_name: str) -> str:
         "JMH parameters: `-f 1 -wi 3 -i 3 -t 1 -w 3s -r 3s -bm thrpt -tu s`. "
         "Higher throughput is better.\n\n",
         f"![Java Xlang Serialization Throughput]({image_name})\n\n",
-        "| Data type | Operation | Fory ops/sec | Protobuf ops/sec | Flatbuffer ops/sec | Fastest |\n",
-        "|-----------|-----------|--------------|------------------|--------------------|---------|\n",
+        "| Data type | Operation | "
+        + " | ".join(
+            f"{serializer_title(serializer)} ops/sec" for serializer in SERIALIZER_ORDER
+        )
+        + " | Fastest |\n",
+        "|-----------|-----------|"
+        + "|".join("---:" for _ in SERIALIZER_ORDER)
+        + "|---------|\n",
     ]
 
     for datatype in DATATYPE_ORDER:

@@ -188,12 +188,7 @@ void main() {
   });
 
   test('constructor forwards direct config parameters', () {
-    final fory = Fory(
-      compatible: true,
-      maxDepth: 64,
-      maxCollectionSize: 1024,
-      maxBinarySize: 4096,
-    );
+    final fory = Fory(compatible: true, maxDepth: 64);
     final bytes = fory.serialize((42));
     expect(fory.deserialize<int>(bytes), equals((42)));
   });

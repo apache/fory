@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.dart import DartServiceGeneratorMixin
 from fory_compiler.ir.ast import (
     ArrayType,
     Enum,
@@ -40,7 +41,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class DartGenerator(BaseGenerator):
+class DartGenerator(DartServiceGeneratorMixin, BaseGenerator):
     language_name = "dart"
     file_extension = ".dart"
 
@@ -245,6 +246,8 @@ class DartGenerator(BaseGenerator):
         names: Set[str] = set()
         for defs in (self.schema.enums, self.schema.unions, self.schema.messages):
             for item in defs:
+                if self.is_imported_type(item):
+                    continue
                 names.add(self.safe_type_identifier(self.to_pascal_case(item.name)))
         return names
 
@@ -1291,8 +1294,10 @@ class DartGenerator(BaseGenerator):
         lines.extend(
             [
                 f"{self.indent_str * (indent + 1)}static Fory getFory() {{",
-                f"{self.indent_str * (indent + 2)}final fory = _fory;",
-                f"{self.indent_str * (indent + 2)}if (fory == null) throw StateError('Call {self.module_type_name()}.install(...) before using generated helpers.');",
+                f"{self.indent_str * (indent + 2)}final existing = _fory;",
+                f"{self.indent_str * (indent + 2)}if (existing != null) return existing;",
+                f"{self.indent_str * (indent + 2)}final fory = Fory();",
+                f"{self.indent_str * (indent + 2)}install(fory);",
                 f"{self.indent_str * (indent + 2)}return fory;",
                 f"{self.indent_str * (indent + 1)}}}",
                 "",

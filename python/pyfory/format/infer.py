@@ -108,24 +108,17 @@ _supported_types_mapping = {
     datetime.datetime: timestamp,
 }
 
-# Add pyfory type annotations support
-from pyfory.annotation import (
-    Int8 as int8_type,
-    Int16 as int16_type,
-    Int32 as int32_type,
-    Int64 as int64_type,
-    Float32 as float32_type,
-    Float64 as float64_type,
-)
-
 _supported_types_mapping.update(
     {
-        int8_type: int8,
-        int16_type: int16,
-        int32_type: int32,
-        int64_type: int64,
-        float32_type: float32,
-        float64_type: float64,
+        TypeId.INT8: int8,
+        TypeId.INT16: int16,
+        TypeId.INT32: int32,
+        TypeId.VARINT32: int32,
+        TypeId.INT64: int64,
+        TypeId.VARINT64: int64,
+        TypeId.TAGGED_INT64: int64,
+        TypeId.FLOAT32: float32,
+        TypeId.FLOAT64: float64,
     }
 )
 

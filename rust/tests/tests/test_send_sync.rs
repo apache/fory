@@ -84,7 +84,7 @@ where
 
 #[test]
 fn test_builtin_send_sync_arc_any_reads() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     assert_arc_any_roundtrip(&fory, 42_i32);
     assert_arc_any_roundtrip(&fory, true);
@@ -99,7 +99,7 @@ fn test_derived_send_sync_arc_any_read() {
         count: i32,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Value>(900).unwrap();
 
     assert_arc_any_roundtrip(
@@ -157,7 +157,7 @@ fn wrapped_container_arc_any_read() {
         values: Vec<i32>,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<IntList>(901).unwrap();
 
     assert_arc_any_roundtrip(
@@ -170,7 +170,7 @@ fn wrapped_container_arc_any_read() {
 
 #[test]
 fn generic_containers_rejected_arc_any() {
-    let fory = Fory::builder().xlang(false).build();
+    let fory = Fory::builder().xlang(false).compatible(false).build();
 
     assert_arc_any_unsupported(&fory, vec![1_i32, 2, 3]);
     assert_arc_any_unsupported(&fory, LinkedList::from([1_i32, 2, 3]));
@@ -188,7 +188,7 @@ fn test_auto_send_sync_struct() {
         name: String,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Value>(902).unwrap();
 
     assert_arc_any_roundtrip(
@@ -254,7 +254,7 @@ fn manual_serializer_arc_any_read() {
         }
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_serializer::<ManualValue>(910).unwrap();
 
     assert_arc_any_roundtrip(
@@ -278,7 +278,7 @@ fn test_nested_custom_default() {
         leaf: Leaf,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Leaf>(902).unwrap();
     fory.register::<Value>(903).unwrap();
 
@@ -312,7 +312,7 @@ fn test_send_sync_union() {
         Value(String),
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_union::<Event>(905).unwrap();
 
     assert_arc_any_roundtrip(&fory, Event::Value("union".to_string()));
@@ -327,7 +327,7 @@ fn test_send_sync_enum() {
         Inactive,
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Status>(906).unwrap();
 
     assert_arc_any_roundtrip(&fory, Status::Inactive);

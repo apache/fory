@@ -164,6 +164,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<String> data = new ArrayList<>(ImmutableList.of("a", "b", "c"));
     serDeCheckSerializer(fory, data, "ArrayList");
@@ -188,6 +189,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<String> data0 = new ArrayList<>(ImmutableList.of("a", "b", "c"));
     List<List<String>> data = new ArrayList<>(ImmutableList.of(data0, data0));
@@ -213,6 +215,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withRefTracking(referenceTracking)
             .withCodegen(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<List<List<String>>> list = new ArrayList<>();
     list.add(ofArrayList(ofArrayList("a", "b")));
@@ -232,6 +235,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<String> data = new ArrayList<>(ImmutableList.of("a", "b", "c"));
     byte[] bytes1 = fory.serialize(data);
@@ -257,6 +261,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     // Test serialize Comparator
     TreeSet<String> set =
@@ -399,6 +404,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     for (SortedSetConstructorCase testCase : treeSetConstructorCases()) {
       SortedSet<String> original = testCase.factory.get();
@@ -429,6 +435,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     for (SortedSetConstructorCase testCase : concurrentSkipListSetConstructorCases()) {
       SortedSet<String> original = testCase.factory.get();
@@ -459,6 +466,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     for (PriorityQueueConstructorCase testCase : priorityQueueConstructorCases()) {
       PriorityQueue<String> original = testCase.factory.get();
@@ -508,6 +516,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ChildTreeSet set = new ChildTreeSet();
     set.add("b");
@@ -525,6 +534,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     ChildTreeSetWithComparator set = new ChildTreeSetWithComparator();
     set.add("b");
@@ -542,6 +552,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     // Subclass without Comparator constructor should not throw when registered with
     // SortedSetSerializer
@@ -565,6 +576,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(referenceTrackingConfig)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     fory.registerSerializer(
         ChildTreeSetWithComparator.class,
@@ -1007,6 +1019,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withCodegen(false)
             .requireClassRegistration(true)
             .suppressClassRegistrationWarnings(true)
+            .withCompatible(false)
             .build();
     fory.register(ExternalizableSetFromMapHolder.class);
     fory.register(RefMarker.class);
@@ -1120,26 +1133,33 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     {
-      ArrayBlockingQueue<Integer> queue = new ArrayBlockingQueue<>(10);
+      ArrayBlockingQueue<Integer> queue = new ArrayBlockingQueue<>(3);
       queue.add(1);
       queue.add(2);
       queue.add(3);
       ArrayBlockingQueue<Integer> deserialized = serDe(fory, queue);
       assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
-      // Verify capacity is preserved
-      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 10);
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 3);
     }
     {
-      LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
+      LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(3);
       queue.add(1);
       queue.add(2);
       queue.add(3);
       LinkedBlockingQueue<Integer> deserialized = serDe(fory, queue);
       assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
-      // Verify capacity is preserved
-      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 10);
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 3);
+    }
+    {
+      LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>();
+      queue.add(1);
+      queue.add(2);
+      LinkedBlockingQueue<Integer> deserialized = serDe(fory, queue);
+      assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), Integer.MAX_VALUE);
     }
   }
 
@@ -1150,21 +1170,11 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
-            .withMaxCollectionSize(4)
+            .withCompatible(false)
             .build();
-    CollectionSerializers.ArrayBlockingQueueSerializer arraySerializer =
-        new CollectionSerializers.ArrayBlockingQueueSerializer(
-            fory.getTypeResolver(), ArrayBlockingQueue.class);
     CollectionSerializers.LinkedBlockingQueueSerializer linkedSerializer =
         new CollectionSerializers.LinkedBlockingQueueSerializer(
             fory.getTypeResolver(), LinkedBlockingQueue.class);
-
-    MemoryBuffer oversizedCapacity = MemoryUtils.buffer(8);
-    oversizedCapacity.writeVarUInt32Small7(2);
-    oversizedCapacity.writeVarUInt32Small7(5);
-    Assert.expectThrows(
-        DeserializationException.class,
-        () -> withReadContext(fory, oversizedCapacity, arraySerializer::newCollection));
 
     MemoryBuffer undersizedCapacity = MemoryUtils.buffer(8);
     undersizedCapacity.writeVarUInt32Small7(2);
@@ -1172,29 +1182,39 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.expectThrows(
         DeserializationException.class,
         () -> withReadContext(fory, undersizedCapacity, linkedSerializer::newCollection));
+
+    CollectionSerializers.ArrayBlockingQueueSerializer arraySerializer =
+        new CollectionSerializers.ArrayBlockingQueueSerializer(
+            fory.getTypeResolver(), ArrayBlockingQueue.class);
+    MemoryBuffer sparseCapacity = MemoryUtils.buffer(8);
+    sparseCapacity.writeVarUInt32Small7(2);
+    sparseCapacity.writeVarUInt32Small7(10);
+    Assert.expectThrows(
+        IndexOutOfBoundsException.class,
+        () -> withReadContext(fory, sparseCapacity, arraySerializer::newCollection));
   }
 
   @Test
-  public void testCollectionRejectsTooManyElements() {
+  public void testCollectionReadRequiresBodyByte() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
             .withRefTracking(true)
             .requireClassRegistration(false)
-            .withMaxCollectionSize(1)
+            .withCompatible(false)
             .build();
     CollectionSerializers.ArrayListSerializer serializer =
         new CollectionSerializers.ArrayListSerializer(fory.getTypeResolver());
     MemoryBuffer buffer = MemoryUtils.buffer(8);
     buffer.writeVarUInt32Small7(2);
     Assert.expectThrows(
-        DeserializationException.class,
+        IndexOutOfBoundsException.class,
         () -> withReadContext(fory, buffer, serializer::newCollection));
   }
 
   @Test
   public void testBitSetRejectsNegativeBinary() {
-    Fory fory = Fory.builder().withXlang(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
     ReadContext readContext = fory.getReadContext();
@@ -1237,7 +1257,7 @@ public class CollectionSerializersTest extends ForyTestBase {
 
   @Test
   public void testCollectionNoJIT() {
-    Fory fory = Fory.builder().withXlang(false).withCodegen(false).build();
+    Fory fory = Fory.builder().withXlang(false).withCodegen(false).withCompatible(false).build();
     serDeCheck(fory, new ArrayList<>(ImmutableList.of("a", "b", "c")));
     serDeCheck(fory, new ArrayList<>(ImmutableList.of(1, 2, 3)));
     serDeCheck(fory, new ArrayList<>(ImmutableList.of("a", 1, "b", 2)));
@@ -1513,7 +1533,12 @@ public class CollectionSerializersTest extends ForyTestBase {
 
   @Test
   public void testDefaultCollectionSerializer() {
-    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TestClassForDefaultCollectionSerializer collection =
         new TestClassForDefaultCollectionSerializer();
     collection.add("a");
@@ -1566,6 +1591,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(false)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     JDKCompatibleCollectionSerializer javaSerializer =
@@ -1615,6 +1641,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .requireClassRegistration(false)
             .withJdkClassSerializableCheck(false)
+            .withCompatible(false)
             .build();
     ArrayList<Integer> list = new ArrayList<>(ImmutableList.of(1, 2, 3, 4));
     fory.registerSerializer(
@@ -1636,7 +1663,8 @@ public class CollectionSerializersTest extends ForyTestBase {
     // will be equal to element type: null
     List data = new ArrayList<>();
     data.add(null);
-    Fory f = Fory.builder().withXlang(false).withRefTracking(refTracking).build();
+    Fory f =
+        Fory.builder().withXlang(false).withRefTracking(refTracking).withCompatible(false).build();
     serDeCheck(f, data);
   }
 
@@ -1666,6 +1694,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withXlang(false)
             .withCodegen(enableCodegen)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     {
       CollectionAbstractTest test = new CollectionAbstractTest();
@@ -1701,6 +1730,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withCodegen(true)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     List<Foo> fooList = new ArrayList<>();
     fooList.add(null);
@@ -1720,6 +1750,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withCodegen(enableCodegen)
             .withRefTracking(true)
             .requireClassRegistration(false)
+            .withCompatible(false)
             .build();
     serDeCheck(fory, obj);
   }

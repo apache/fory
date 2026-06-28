@@ -85,6 +85,13 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testReadCharsAndSizeRequiresBodyBeforeAlloc() {
+    MemoryBuffer buffer = MemoryUtils.buffer(8);
+    buffer.writeVarUInt32(1 << 20);
+    assertThrows(IndexOutOfBoundsException.class, buffer::readCharsAndSize);
+  }
+
+  @Test
   public void testDirectBufferRejectsHeap() {
     assertThrows(
         IllegalArgumentException.class,
@@ -578,6 +585,14 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testReadCharsAndSizeAlignment() {
+    MemoryBuffer buf = MemoryUtils.buffer(8);
+    buf.writeVarUInt32(3);
+    buf.writeBytes(new byte[] {1, 2, 3});
+    assertThrows(IllegalArgumentException.class, buf::readCharsAndSize);
+  }
+
+  @Test
   public void testWriteVarUInt32() {
     for (int i = 0; i < 32; i++) {
       MemoryBuffer buf = MemoryUtils.buffer(8);
@@ -900,6 +915,18 @@ public class MemoryBufferTest {
     assertEquals(buffer.writerIndex() % 4, 0);
     buffer.readByte();
     assertEquals(buffer.readAlignedVarUInt32(), Integer.MAX_VALUE);
+  }
+
+  @Test
+  public void testReadAlignedVarUInt32Bounds() {
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () -> MemoryBuffer.fromByteArray(new byte[] {(byte) 0xff}).readAlignedVarUInt32());
+    assertThrows(
+        IndexOutOfBoundsException.class,
+        () ->
+            MemoryBuffer.fromByteArray(new byte[] {(byte) 0xff, 0x40}, 0, 1)
+                .readAlignedVarUInt32());
   }
 
   @Test

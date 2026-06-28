@@ -135,22 +135,29 @@ void _registerNullableReader(Fory fory) {
 
 void main() {
   group('nested type specs', () {
-    test('compatible mode reads nested overridden fixed int32 list values', () {
+    test('compatible mode rejects nested scalar encoding drift', () {
       final writer = Fory(compatible: true);
       final reader = Fory(compatible: true);
       _registerFixedCompatible(writer);
       _registerVarintConsistent(reader);
 
-      final result = reader.deserialize<NestedVarintContainer>(
-        writer.serialize(
-          NestedFixedContainer()
-            ..nested = <String, List<int?>>{
-              'a': <int?>[1, null, -7],
-            },
-        ),
+      final bytes = writer.serialize(
+        NestedFixedContainer()
+          ..nested = <String, List<int?>>{
+            'a': <int?>[1, null, -7],
+          },
       );
 
-      expect(result.nested['a'], orderedEquals(<int?>[1, null, -7]));
+      expect(
+        () => reader.deserialize<NestedVarintContainer>(bytes),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('incompatible local and remote schemas'),
+          ),
+        ),
+      );
     });
 
     test('schema-consistent mode rejects nested encoding hash mismatches', () {

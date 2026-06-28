@@ -59,8 +59,6 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.reflect.FieldAccessor;
-import org.apache.fory.reflect.InstanceFieldAccessors.InstanceAccessor;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -91,6 +89,13 @@ public abstract class CodecBuilder {
   static TypeRef<MemoryBuffer> bufferTypeRef = TypeRef.of(MemoryBuffer.class);
   static TypeRef<TypeInfo> classInfoTypeRef = TypeRef.of(TypeInfo.class);
   static TypeRef<TypeInfoHolder> classInfoHolderTypeRef = TypeRef.of(TypeInfoHolder.class);
+  private static final String VAR_HANDLE_TYPE_NAME = "java.lang.invoke.VarHandle";
+  private static final String VAR_HANDLE_SUPPORT =
+      "org.apache.fory.builder.VarHandleCodegenSupport";
+  private static final Class<?> VAR_HANDLE_CLASS =
+      JdkVersion.MAJOR_VERSION >= 9 ? loadClass(VAR_HANDLE_TYPE_NAME) : Object.class;
+  private static final Class<?> VAR_HANDLE_SUPPORT_CLASS =
+      JdkVersion.MAJOR_VERSION >= 25 ? loadClass(VAR_HANDLE_SUPPORT) : Object.class;
 
   protected final CodegenContext ctx;
   protected final TypeRef<?> beanType;
@@ -314,18 +319,7 @@ public abstract class CodecBuilder {
       Expression inputObject, Class<?> cls, Descriptor descriptor) {
     String fieldName = descriptor.getName();
     if (JdkVersion.MAJOR_VERSION >= 25) {
-      Reference fieldAccessor = getFieldAccessor(descriptor);
-      boolean fieldNullable = fieldNullable(descriptor);
-      if (descriptor.getTypeRef().isPrimitive()) {
-        Preconditions.checkArgument(!fieldNullable);
-        TypeRef<?> returnType = descriptor.getTypeRef();
-        String funcName = "get" + StringUtils.capitalize(descriptor.getRawType().toString());
-        return new Invoke(fieldAccessor, funcName, returnType, false, inputObject);
-      } else {
-        Invoke getObj =
-            new Invoke(fieldAccessor, "getObject", OBJECT_TYPE, fieldNullable, inputObject);
-        return tryCastIfPublic(getObj, descriptor.getTypeRef(), fieldName);
-      }
+      return varHandleGetField(inputObject, descriptor);
     }
     Expression fieldOffsetExpr = fieldOffsetExpr(cls, descriptor);
     boolean fieldNullable = fieldNullable(descriptor);
@@ -418,45 +412,6 @@ public abstract class CodecBuilder {
     }
   }
 
-  private Reference getFieldAccessor(Descriptor descriptor) {
-    Field field = descriptor.getField();
-    String fieldName = descriptor.getName();
-    String fieldAccessorName =
-        (duplicatedFields.contains(fieldName)
-                ? field.getDeclaringClass().getName().replaceAll("\\.|\\$", "_") + "_"
-                : "")
-            + fieldName
-            + "_accessor_";
-    if (JdkVersion.MAJOR_VERSION >= 25) {
-      // JDK25+ field writes go through the VarHandle-backed instance accessor. Keep the generated
-      // static field typed as the concrete final accessor so hot-path putX calls do not pay a
-      // FieldAccessor virtual dispatch. FieldAccessor.createAccessor still owns platform dispatch;
-      // this one-time cast happens only during generated-class initialization.
-      return getOrCreateField(
-          true,
-          InstanceAccessor.class,
-          fieldAccessorName,
-          () ->
-              new Cast(
-                  new StaticInvoke(
-                      FieldAccessor.class,
-                      "createAccessor",
-                      TypeRef.of(FieldAccessor.class),
-                      getReflectField(field.getDeclaringClass(), field, false)),
-                  TypeRef.of(InstanceAccessor.class)));
-    }
-    return getOrCreateField(
-        true,
-        FieldAccessor.class,
-        fieldAccessorName,
-        () ->
-            new StaticInvoke(
-                FieldAccessor.class,
-                "createAccessor",
-                TypeRef.of(FieldAccessor.class),
-                getReflectField(field.getDeclaringClass(), field, false)));
-  }
-
   /**
    * Returns an expression that deserialize data as a java bean of type {@link
    * CodecBuilder#beanClass}.
@@ -470,6 +425,11 @@ public abstract class CodecBuilder {
     Class<?> memberRawType = getRawType(memberType);
     if (value instanceof Inlineable) {
       ((Inlineable) value).inline();
+    }
+    if (JdkVersion.MAJOR_VERSION >= 25 && d.isFinalField()) {
+      // Final-field restoration must not fall through public-field or setter branches. Only the
+      // target-class trusted VarHandle supports JDK25+ final writes across all field visibilities.
+      return varHandleSetField(bean, d, value);
     }
     if (duplicatedFields.contains(fieldName) || !sourcePublicAccessible(beanClass)) {
       return unsafeSetField(bean, d, value);
@@ -540,14 +500,7 @@ public abstract class CodecBuilder {
   private Expression unsafeSetField(Expression bean, Descriptor descriptor, Expression value) {
     TypeRef<?> fieldType = descriptor.getTypeRef();
     if (JdkVersion.MAJOR_VERSION >= 25) {
-      Reference fieldAccessor = getFieldAccessor(descriptor);
-      if (descriptor.getTypeRef().isPrimitive()) {
-        Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
-        String funcName = "put" + StringUtils.capitalize(getRawType(fieldType).toString());
-        return new Invoke(fieldAccessor, funcName, bean, value);
-      } else {
-        return new Invoke(fieldAccessor, "putObject", bean, value);
-      }
+      return varHandleSetField(bean, descriptor, value);
     }
     // Use Field in case the class has duplicate field name as `fieldName`.
     Expression fieldOffsetExpr = fieldOffsetExpr(beanClass, descriptor);
@@ -558,6 +511,21 @@ public abstract class CodecBuilder {
     } else {
       return unsafeInvoke("putObject", bean, fieldOffsetExpr, value);
     }
+  }
+
+  private Expression varHandleSetField(Expression bean, Descriptor descriptor, Expression value) {
+    TypeRef<?> fieldType = descriptor.getTypeRef();
+    if (descriptor.getTypeRef().isPrimitive()) {
+      Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
+    }
+    return new StaticInvoke(
+        varHandleSupportClass(),
+        varHandleSetMethod(fieldType),
+        PRIMITIVE_VOID_TYPE,
+        false,
+        getVarHandle(descriptor),
+        bean,
+        value);
   }
 
   private Reference getReflectField(Class<?> cls, Field field) {
@@ -605,6 +573,27 @@ public abstract class CodecBuilder {
         });
   }
 
+  private Reference getVarHandle(Descriptor descriptor) {
+    Field field = descriptor.getField();
+    String fieldName = descriptor.getName();
+    String fieldHandleName =
+        (duplicatedFields.contains(fieldName)
+                ? field.getDeclaringClass().getName().replaceAll("\\.|\\$", "_") + "_"
+                : "")
+            + fieldName
+            + "_varHandle_";
+    return getOrCreateField(
+        true,
+        varHandleClass(),
+        fieldHandleName,
+        () ->
+            new StaticInvoke(
+                varHandleSupportClass(),
+                "getVarHandle",
+                TypeRef.of(varHandleClass()),
+                getReflectField(field.getDeclaringClass(), field, false)));
+  }
+
   protected Reference getOrCreateField(
       boolean isStatic, Class<?> type, String fieldName, Supplier<Expression> value) {
     Reference fieldRef = fieldMap.get(fieldName);
@@ -615,6 +604,58 @@ public abstract class CodecBuilder {
       fieldMap.put(fieldName, fieldRef);
     }
     return fieldRef;
+  }
+
+  private Expression varHandleGetField(Expression inputObject, Descriptor descriptor) {
+    TypeRef<?> returnType =
+        descriptor.getTypeRef().isPrimitive() ? descriptor.getTypeRef() : OBJECT_TYPE;
+    Expression getValue =
+        new StaticInvoke(
+            varHandleSupportClass(),
+            varHandleGetMethod(returnType),
+            descriptor.getName(),
+            returnType,
+            fieldNullable(descriptor),
+            getVarHandle(descriptor),
+            inputObject);
+    return descriptor.getTypeRef().isPrimitive()
+        ? getValue
+        : tryCastIfPublic(getValue, descriptor.getTypeRef(), descriptor.getName());
+  }
+
+  private static String varHandleGetMethod(TypeRef<?> type) {
+    if (type.isPrimitive()) {
+      return "get" + StringUtils.capitalize(getRawType(type).toString());
+    }
+    return "getObject";
+  }
+
+  private static String varHandleSetMethod(TypeRef<?> type) {
+    if (type.isPrimitive()) {
+      return "set" + StringUtils.capitalize(getRawType(type).toString());
+    }
+    return "setObject";
+  }
+
+  // Keep the Java 8 baseline CodecBuilder linkable: guarded class constants do not resolve
+  // higher-JDK class names on older runtimes.
+  private static Class<?> varHandleClass() {
+    Preconditions.checkState(JdkVersion.MAJOR_VERSION >= 9, "VarHandle requires JDK9+");
+    return VAR_HANDLE_CLASS;
+  }
+
+  private static Class<?> varHandleSupportClass() {
+    Preconditions.checkState(
+        JdkVersion.MAJOR_VERSION >= 25, "VarHandle codegen support requires JDK25+");
+    return VAR_HANDLE_SUPPORT_CLASS;
+  }
+
+  private static Class<?> loadClass(String className) {
+    try {
+      return Class.forName(className, false, CodecBuilder.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new IllegalStateException("Cannot load generated-code helper class " + className, e);
+    }
   }
 
   /** Returns an Expression that create a new java object of type {@link CodecBuilder#beanClass}. */

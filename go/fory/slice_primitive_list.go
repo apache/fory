@@ -112,31 +112,31 @@ func (s primitiveListSerializer) writeDataWithGenerics(ctx *WriteContext, value 
 func (s primitiveListSerializer) writeValues(buf *ByteBuffer, value reflect.Value) {
 	switch s.type_.Elem().Kind() {
 	case reflect.Bool:
-		writeBoolListPayload(buf, primitiveListSliceView[bool](value))
+		writeBoolListValues(buf, primitiveListSliceView[bool](value))
 	case reflect.Int8:
-		writeInt8ListPayload(buf, primitiveListSliceView[int8](value))
+		writeInt8ListValues(buf, primitiveListSliceView[int8](value))
 	case reflect.Uint8:
-		writeUint8ListPayload(buf, primitiveListSliceView[byte](value))
+		writeUint8ListValues(buf, primitiveListSliceView[byte](value))
 	case reflect.Int16:
-		writeInt16ListPayload(buf, primitiveListSliceView[int16](value))
+		writeInt16ListValues(buf, primitiveListSliceView[int16](value))
 	case reflect.Uint16:
-		writeUint16ListPayload(buf, primitiveListSliceView[uint16](value))
+		writeUint16ListValues(buf, primitiveListSliceView[uint16](value))
 	case reflect.Int32:
-		writeInt32ListPayload(buf, primitiveListSliceView[int32](value), s.elemTypeID)
+		writeInt32ListValues(buf, primitiveListSliceView[int32](value), s.elemTypeID)
 	case reflect.Uint32:
-		writeUint32ListPayload(buf, primitiveListSliceView[uint32](value), s.elemTypeID)
+		writeUint32ListValues(buf, primitiveListSliceView[uint32](value), s.elemTypeID)
 	case reflect.Int64:
-		writeInt64ListPayload(buf, primitiveListSliceView[int64](value), s.elemTypeID)
+		writeInt64ListValues(buf, primitiveListSliceView[int64](value), s.elemTypeID)
 	case reflect.Uint64:
-		writeUint64ListPayload(buf, primitiveListSliceView[uint64](value), s.elemTypeID)
+		writeUint64ListValues(buf, primitiveListSliceView[uint64](value), s.elemTypeID)
 	case reflect.Int:
-		writeIntListPayload(buf, primitiveListSliceView[int](value), s.elemTypeID)
+		writeIntListValues(buf, primitiveListSliceView[int](value), s.elemTypeID)
 	case reflect.Uint:
-		writeUintListPayload(buf, primitiveListSliceView[uint](value), s.elemTypeID)
+		writeUintListValues(buf, primitiveListSliceView[uint](value), s.elemTypeID)
 	case reflect.Float32:
-		writeFloat32ListPayload(buf, primitiveListSliceView[float32](value))
+		writeFloat32ListValues(buf, primitiveListSliceView[float32](value))
 	case reflect.Float64:
-		writeFloat64ListPayload(buf, primitiveListSliceView[float64](value))
+		writeFloat64ListValues(buf, primitiveListSliceView[float64](value))
 	}
 }
 
@@ -164,21 +164,33 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	buf := ctx.Buffer()
 	err := ctx.Err()
 	length := ctx.ReadCollectionLength()
+	if ctx.HasError() {
+		return
+	}
 	if length == 0 {
 		value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		return
 	}
 	collectFlag := buf.ReadInt8(err)
+	if ctx.HasError() {
+		return
+	}
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
 			ctx.TypeResolver().ReadTypeInfo(buf, err)
 		}
+	}
+	if ctx.HasError() {
+		return
 	}
 	if (collectFlag & CollectionTrackingRef) != 0 {
 		ctx.SetError(DeserializationErrorf("primitive list does not support reference-tracked elements"))
 		return
 	}
 	hasNull := (collectFlag & CollectionHasNull) != 0
+	if !s.checkBodyReadable(buf, err, length, hasNull) {
+		return
+	}
 	s.readValues(buf, err, value, length, hasNull)
 }
 
@@ -227,10 +239,16 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 		return
 	}
 	collectFlag := buf.ReadInt8(err)
+	if ctx.HasError() {
+		return
+	}
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
 			ctx.TypeResolver().ReadTypeInfo(buf, err)
 		}
+	}
+	if ctx.HasError() {
+		return
 	}
 	if (collectFlag & CollectionTrackingRef) != 0 {
 		ctx.SetError(DeserializationErrorf("array-compatible list does not support reference-tracked elements"))
@@ -242,6 +260,9 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if (collectFlag & (CollectionIsSameType | CollectionIsDeclElementType)) != (CollectionIsSameType | CollectionIsDeclElementType) {
 		ctx.SetError(DeserializationErrorf("array-compatible list requires declared same-type elements"))
+		return
+	}
+	if !s.listReader.checkBodyReadable(buf, err, length, false) {
 		return
 	}
 	if value.Kind() == reflect.Slice {
@@ -260,54 +281,79 @@ func (s compatiblePrimitiveListToArraySerializer) ReadWithTypeInfo(ctx *ReadCont
 	s.Read(ctx, refMode, false, false, value)
 }
 
+func (s primitiveListSerializer) checkBodyReadable(buf *ByteBuffer, err *Error, length int, hasNull bool) bool {
+	if !hasNull {
+		switch s.type_.Elem().Kind() {
+		case reflect.Int16, reflect.Uint16:
+			return checkPrimitiveListBytes(buf, err, length, 2)
+		case reflect.Int32, reflect.Uint32:
+			if s.elemTypeID == INT32 || s.elemTypeID == UINT32 {
+				return checkPrimitiveListBytes(buf, err, length, 4)
+			}
+		case reflect.Int64, reflect.Uint64:
+			if s.elemTypeID == INT64 || s.elemTypeID == UINT64 {
+				return checkPrimitiveListBytes(buf, err, length, 8)
+			}
+		case reflect.Int:
+			if s.elemTypeID == INT64 {
+				return checkPrimitiveListBytes(buf, err, length, 8)
+			} else if s.elemTypeID == INT32 {
+				return checkPrimitiveListBytes(buf, err, length, 4)
+			}
+		case reflect.Uint:
+			if s.elemTypeID == UINT64 {
+				return checkPrimitiveListBytes(buf, err, length, 8)
+			} else if s.elemTypeID == UINT32 {
+				return checkPrimitiveListBytes(buf, err, length, 4)
+			}
+		case reflect.Float32:
+			return checkPrimitiveListBytes(buf, err, length, 4)
+		case reflect.Float64:
+			return checkPrimitiveListBytes(buf, err, length, 8)
+		}
+	}
+	return buf.CheckReadable(length, err)
+}
+
 func (s primitiveListSerializer) readValues(buf *ByteBuffer, err *Error, value reflect.Value, length int, hasNull bool) {
 	switch s.type_.Elem().Kind() {
 	case reflect.Bool:
-		*(*[]bool)(value.Addr().UnsafePointer()) = readBoolListPayload(buf, err, length, hasNull)
+		*(*[]bool)(value.Addr().UnsafePointer()) = readBoolListValues(buf, err, length, hasNull)
 	case reflect.Int8:
-		*(*[]int8)(value.Addr().UnsafePointer()) = readInt8ListPayload(buf, err, length, hasNull)
+		*(*[]int8)(value.Addr().UnsafePointer()) = readInt8ListValues(buf, err, length, hasNull)
 	case reflect.Uint8:
-		*(*[]byte)(value.Addr().UnsafePointer()) = readUint8ListPayload(buf, err, length, hasNull)
+		*(*[]byte)(value.Addr().UnsafePointer()) = readUint8ListValues(buf, err, length, hasNull)
 	case reflect.Int16:
-		*(*[]int16)(value.Addr().UnsafePointer()) = readInt16ListPayload(buf, err, length, hasNull)
+		*(*[]int16)(value.Addr().UnsafePointer()) = readInt16ListValues(buf, err, length, hasNull)
 	case reflect.Uint16:
-		*(*[]uint16)(value.Addr().UnsafePointer()) = readUint16ListPayload(buf, err, length, hasNull)
+		*(*[]uint16)(value.Addr().UnsafePointer()) = readUint16ListValues(buf, err, length, hasNull)
 	case reflect.Int32:
-		*(*[]int32)(value.Addr().UnsafePointer()) = readInt32ListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]int32)(value.Addr().UnsafePointer()) = readInt32ListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Uint32:
-		*(*[]uint32)(value.Addr().UnsafePointer()) = readUint32ListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]uint32)(value.Addr().UnsafePointer()) = readUint32ListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Int64:
-		*(*[]int64)(value.Addr().UnsafePointer()) = readInt64ListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]int64)(value.Addr().UnsafePointer()) = readInt64ListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Uint64:
-		*(*[]uint64)(value.Addr().UnsafePointer()) = readUint64ListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]uint64)(value.Addr().UnsafePointer()) = readUint64ListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Int:
-		*(*[]int)(value.Addr().UnsafePointer()) = readIntListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]int)(value.Addr().UnsafePointer()) = readIntListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Uint:
-		*(*[]uint)(value.Addr().UnsafePointer()) = readUintListPayload(buf, err, length, hasNull, s.elemTypeID)
+		*(*[]uint)(value.Addr().UnsafePointer()) = readUintListValues(buf, err, length, hasNull, s.elemTypeID)
 	case reflect.Float32:
-		*(*[]float32)(value.Addr().UnsafePointer()) = readFloat32ListPayload(buf, err, length, hasNull)
+		*(*[]float32)(value.Addr().UnsafePointer()) = readFloat32ListValues(buf, err, length, hasNull)
 	case reflect.Float64:
-		*(*[]float64)(value.Addr().UnsafePointer()) = readFloat64ListPayload(buf, err, length, hasNull)
+		*(*[]float64)(value.Addr().UnsafePointer()) = readFloat64ListValues(buf, err, length, hasNull)
 	}
 }
 
 func (s primitiveListSerializer) readArrayValues(buf *ByteBuffer, err *Error, value reflect.Value, length int) {
 	switch s.type_.Elem().Kind() {
 	case reflect.Bool:
-		raw := buf.ReadBinary(length, err)
-		for i := 0; i < length; i++ {
-			value.Index(i).SetBool(raw[i] != 0)
-		}
+		buf.Read(unsafe.Slice((*byte)(value.Addr().UnsafePointer()), length))
 	case reflect.Int8:
-		raw := buf.ReadBinary(length, err)
-		for i := 0; i < length; i++ {
-			value.Index(i).SetInt(int64(int8(raw[i])))
-		}
+		buf.Read(unsafe.Slice((*byte)(value.Addr().UnsafePointer()), length))
 	case reflect.Uint8:
-		raw := buf.ReadBinary(length, err)
-		for i := 0; i < length; i++ {
-			value.Index(i).SetUint(uint64(raw[i]))
-		}
+		buf.Read(unsafe.Slice((*byte)(value.Addr().UnsafePointer()), length))
 	case reflect.Int16:
 		for i := 0; i < length; i++ {
 			value.Index(i).SetInt(int64(buf.ReadInt16(err)))
@@ -389,17 +435,43 @@ func (s primitiveListSerializer) readArrayValues(buf *ByteBuffer, err *Error, va
 	}
 }
 
-func writeBoolListPayload(buf *ByteBuffer, value []bool) {
+func writeBoolListValues(buf *ByteBuffer, value []bool) {
 	if len(value) > 0 {
 		buf.WriteBinary(unsafe.Slice((*byte)(unsafe.Pointer(&value[0])), len(value)))
 	}
 }
 
-func readBoolListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []bool {
+func primitiveListByteSize(length int, elemSize int, err *Error) (int, bool) {
+	if length < 0 {
+		*err = DeserializationErrorf("negative primitive list length: %d", length)
+		return 0, false
+	}
+	if elemSize <= 0 {
+		*err = DeserializationErrorf("invalid primitive element size: %d", elemSize)
+		return 0, false
+	}
+	if length > int(^uint(0)>>1)/elemSize {
+		*err = DeserializationErrorf("primitive list byte size overflows: length %d element size %d", length, elemSize)
+		return 0, false
+	}
+	return length * elemSize, true
+}
+
+func checkPrimitiveListBytes(buf *ByteBuffer, err *Error, length int, elemSize int) bool {
+	size, ok := primitiveListByteSize(length, elemSize, err)
+	if !ok {
+		return false
+	}
+	if !buf.CheckReadable(size, err) {
+		return false
+	}
+	return true
+}
+
+func readBoolListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []bool {
 	result := make([]bool, length)
 	if !hasNull {
-		raw := buf.ReadBinary(length, err)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), length), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), length))
 		return result
 	}
 	for i := 0; i < length; i++ {
@@ -410,17 +482,16 @@ func readBoolListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) 
 	return result
 }
 
-func writeInt8ListPayload(buf *ByteBuffer, value []int8) {
+func writeInt8ListValues(buf *ByteBuffer, value []int8) {
 	if len(value) > 0 {
 		buf.WriteBinary(unsafe.Slice((*byte)(unsafe.Pointer(&value[0])), len(value)))
 	}
 }
 
-func readInt8ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []int8 {
+func readInt8ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []int8 {
 	result := make([]int8, length)
 	if !hasNull {
-		raw := buf.ReadBinary(length, err)
-		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), length), raw)
+		buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), length))
 		return result
 	}
 	for i := 0; i < length; i++ {
@@ -431,17 +502,16 @@ func readInt8ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) 
 	return result
 }
 
-func writeUint8ListPayload(buf *ByteBuffer, value []byte) {
+func writeUint8ListValues(buf *ByteBuffer, value []byte) {
 	if len(value) > 0 {
 		buf.WriteBinary(value)
 	}
 }
 
-func readUint8ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []byte {
+func readUint8ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []byte {
 	result := make([]byte, length)
 	if !hasNull {
-		raw := buf.ReadBinary(length, err)
-		copy(result, raw)
+		buf.Read(result)
 		return result
 	}
 	for i := 0; i < length; i++ {
@@ -452,7 +522,7 @@ func readUint8ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool)
 	return result
 }
 
-func writeInt16ListPayload(buf *ByteBuffer, value []int16) {
+func writeInt16ListValues(buf *ByteBuffer, value []int16) {
 	size := len(value) * 2
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -465,13 +535,12 @@ func writeInt16ListPayload(buf *ByteBuffer, value []int16) {
 	}
 }
 
-func readInt16ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []int16 {
+func readInt16ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []int16 {
 	result := make([]int16, length)
 	if !hasNull {
 		size := length * 2
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = buf.ReadInt16(err)
@@ -487,7 +556,7 @@ func readInt16ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool)
 	return result
 }
 
-func writeUint16ListPayload(buf *ByteBuffer, value []uint16) {
+func writeUint16ListValues(buf *ByteBuffer, value []uint16) {
 	size := len(value) * 2
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -500,13 +569,12 @@ func writeUint16ListPayload(buf *ByteBuffer, value []uint16) {
 	}
 }
 
-func readUint16ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []uint16 {
+func readUint16ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []uint16 {
 	result := make([]uint16, length)
 	if !hasNull {
 		size := length * 2
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = uint16(buf.ReadInt16(err))
@@ -522,9 +590,9 @@ func readUint16ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool
 	return result
 }
 
-func writeInt32ListPayload(buf *ByteBuffer, value []int32, typeID TypeId) {
+func writeInt32ListValues(buf *ByteBuffer, value []int32, typeID TypeId) {
 	if typeID == INT32 {
-		writeInt32FixedListPayload(buf, value)
+		writeInt32FixedListValues(buf, value)
 		return
 	}
 	for _, v := range value {
@@ -532,7 +600,7 @@ func writeInt32ListPayload(buf *ByteBuffer, value []int32, typeID TypeId) {
 	}
 }
 
-func writeInt32FixedListPayload(buf *ByteBuffer, value []int32) {
+func writeInt32FixedListValues(buf *ByteBuffer, value []int32) {
 	size := len(value) * 4
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -545,13 +613,12 @@ func writeInt32FixedListPayload(buf *ByteBuffer, value []int32) {
 	}
 }
 
-func readInt32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int32 {
+func readInt32ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int32 {
 	result := make([]int32, length)
 	if !hasNull && typeID == INT32 {
 		size := length * 4
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = buf.ReadInt32(err)
@@ -572,9 +639,9 @@ func readInt32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool,
 	return result
 }
 
-func writeUint32ListPayload(buf *ByteBuffer, value []uint32, typeID TypeId) {
+func writeUint32ListValues(buf *ByteBuffer, value []uint32, typeID TypeId) {
 	if typeID == UINT32 {
-		writeUint32FixedListPayload(buf, value)
+		writeUint32FixedListValues(buf, value)
 		return
 	}
 	for _, v := range value {
@@ -582,7 +649,7 @@ func writeUint32ListPayload(buf *ByteBuffer, value []uint32, typeID TypeId) {
 	}
 }
 
-func writeUint32FixedListPayload(buf *ByteBuffer, value []uint32) {
+func writeUint32FixedListValues(buf *ByteBuffer, value []uint32) {
 	size := len(value) * 4
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -595,13 +662,12 @@ func writeUint32FixedListPayload(buf *ByteBuffer, value []uint32) {
 	}
 }
 
-func readUint32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint32 {
+func readUint32ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint32 {
 	result := make([]uint32, length)
 	if !hasNull && typeID == UINT32 {
 		size := length * 4
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = uint32(buf.ReadInt32(err))
@@ -622,10 +688,10 @@ func readUint32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool
 	return result
 }
 
-func writeInt64ListPayload(buf *ByteBuffer, value []int64, typeID TypeId) {
+func writeInt64ListValues(buf *ByteBuffer, value []int64, typeID TypeId) {
 	switch typeID {
 	case INT64:
-		writeInt64FixedListPayload(buf, value)
+		writeInt64FixedListValues(buf, value)
 	case TAGGED_INT64:
 		for _, v := range value {
 			buf.WriteTaggedInt64(v)
@@ -637,7 +703,7 @@ func writeInt64ListPayload(buf *ByteBuffer, value []int64, typeID TypeId) {
 	}
 }
 
-func writeInt64FixedListPayload(buf *ByteBuffer, value []int64) {
+func writeInt64FixedListValues(buf *ByteBuffer, value []int64) {
 	size := len(value) * 8
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -650,13 +716,12 @@ func writeInt64FixedListPayload(buf *ByteBuffer, value []int64) {
 	}
 }
 
-func readInt64ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int64 {
+func readInt64ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int64 {
 	result := make([]int64, length)
 	if !hasNull && typeID == INT64 {
 		size := length * 8
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = buf.ReadInt64(err)
@@ -680,10 +745,10 @@ func readInt64ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool,
 	return result
 }
 
-func writeUint64ListPayload(buf *ByteBuffer, value []uint64, typeID TypeId) {
+func writeUint64ListValues(buf *ByteBuffer, value []uint64, typeID TypeId) {
 	switch typeID {
 	case UINT64:
-		writeUint64FixedListPayload(buf, value)
+		writeUint64FixedListValues(buf, value)
 	case TAGGED_UINT64:
 		for _, v := range value {
 			buf.WriteTaggedUint64(v)
@@ -695,7 +760,7 @@ func writeUint64ListPayload(buf *ByteBuffer, value []uint64, typeID TypeId) {
 	}
 }
 
-func writeUint64FixedListPayload(buf *ByteBuffer, value []uint64) {
+func writeUint64FixedListValues(buf *ByteBuffer, value []uint64) {
 	size := len(value) * 8
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -708,13 +773,12 @@ func writeUint64FixedListPayload(buf *ByteBuffer, value []uint64) {
 	}
 }
 
-func readUint64ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint64 {
+func readUint64ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint64 {
 	result := make([]uint64, length)
 	if !hasNull && typeID == UINT64 {
 		size := length * 8
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = uint64(buf.ReadInt64(err))
@@ -738,10 +802,10 @@ func readUint64ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool
 	return result
 }
 
-func writeIntListPayload(buf *ByteBuffer, value []int, typeID TypeId) {
+func writeIntListValues(buf *ByteBuffer, value []int, typeID TypeId) {
 	if reflect.TypeOf(int(0)).Size() == 8 {
 		asInt64 := unsafe.Slice((*int64)(unsafe.Pointer(&value[0])), len(value))
-		writeInt64ListPayload(buf, asInt64, typeID)
+		writeInt64ListValues(buf, asInt64, typeID)
 		return
 	}
 	for _, v := range value {
@@ -753,10 +817,10 @@ func writeIntListPayload(buf *ByteBuffer, value []int, typeID TypeId) {
 	}
 }
 
-func readIntListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int {
+func readIntListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []int {
 	result := make([]int, length)
 	if reflect.TypeOf(int(0)).Size() == 8 {
-		values := readInt64ListPayload(buf, err, length, hasNull, typeID)
+		values := readInt64ListValues(buf, err, length, hasNull, typeID)
 		copy(unsafe.Slice((*int64)(unsafe.Pointer(&result[0])), length), values)
 		return result
 	}
@@ -773,10 +837,10 @@ func readIntListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, t
 	return result
 }
 
-func writeUintListPayload(buf *ByteBuffer, value []uint, typeID TypeId) {
+func writeUintListValues(buf *ByteBuffer, value []uint, typeID TypeId) {
 	if reflect.TypeOf(uint(0)).Size() == 8 {
 		asUint64 := unsafe.Slice((*uint64)(unsafe.Pointer(&value[0])), len(value))
-		writeUint64ListPayload(buf, asUint64, typeID)
+		writeUint64ListValues(buf, asUint64, typeID)
 		return
 	}
 	for _, v := range value {
@@ -788,10 +852,10 @@ func writeUintListPayload(buf *ByteBuffer, value []uint, typeID TypeId) {
 	}
 }
 
-func readUintListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint {
+func readUintListValues(buf *ByteBuffer, err *Error, length int, hasNull bool, typeID TypeId) []uint {
 	result := make([]uint, length)
 	if reflect.TypeOf(uint(0)).Size() == 8 {
-		values := readUint64ListPayload(buf, err, length, hasNull, typeID)
+		values := readUint64ListValues(buf, err, length, hasNull, typeID)
 		copy(unsafe.Slice((*uint64)(unsafe.Pointer(&result[0])), length), values)
 		return result
 	}
@@ -808,7 +872,7 @@ func readUintListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool, 
 	return result
 }
 
-func writeFloat32ListPayload(buf *ByteBuffer, value []float32) {
+func writeFloat32ListValues(buf *ByteBuffer, value []float32) {
 	size := len(value) * 4
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -821,13 +885,12 @@ func writeFloat32ListPayload(buf *ByteBuffer, value []float32) {
 	}
 }
 
-func readFloat32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []float32 {
+func readFloat32ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []float32 {
 	result := make([]float32, length)
 	if !hasNull {
 		size := length * 4
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = buf.ReadFloat32(err)
@@ -843,7 +906,7 @@ func readFloat32ListPayload(buf *ByteBuffer, err *Error, length int, hasNull boo
 	return result
 }
 
-func writeFloat64ListPayload(buf *ByteBuffer, value []float64) {
+func writeFloat64ListValues(buf *ByteBuffer, value []float64) {
 	size := len(value) * 8
 	if len(value) > 0 {
 		if isLittleEndian {
@@ -856,13 +919,12 @@ func writeFloat64ListPayload(buf *ByteBuffer, value []float64) {
 	}
 }
 
-func readFloat64ListPayload(buf *ByteBuffer, err *Error, length int, hasNull bool) []float64 {
+func readFloat64ListValues(buf *ByteBuffer, err *Error, length int, hasNull bool) []float64 {
 	result := make([]float64, length)
 	if !hasNull {
 		size := length * 8
 		if isLittleEndian {
-			raw := buf.ReadBinary(size, err)
-			copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+			buf.Read(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size))
 		} else {
 			for i := 0; i < length; i++ {
 				result[i] = buf.ReadFloat64(err)

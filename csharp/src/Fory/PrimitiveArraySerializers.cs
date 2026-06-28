@@ -37,9 +37,10 @@ internal sealed class BoolArraySerializer : Serializer<bool[]>
 
     public override bool[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        bool[] values = new bool[payloadSize];
-        for (int i = 0; i < payloadSize; i++)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.CheckBound(byteSize);
+        bool[] values = new bool[byteSize];
+        for (int i = 0; i < byteSize; i++)
         {
             values[i] = context.Reader.ReadUInt8() != 0;
         }
@@ -68,9 +69,10 @@ internal sealed class Int8ArraySerializer : Serializer<sbyte[]>
 
     public override sbyte[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        sbyte[] values = new sbyte[payloadSize];
-        for (int i = 0; i < payloadSize; i++)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        context.Reader.CheckBound(byteSize);
+        sbyte[] values = new sbyte[byteSize];
+        for (int i = 0; i < byteSize; i++)
         {
             values[i] = context.Reader.ReadInt8();
         }
@@ -99,13 +101,14 @@ internal sealed class Int16ArraySerializer : Serializer<short[]>
 
     public override short[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("int16 array payload size mismatch");
+            throw new InvalidDataException("int16 array byte size mismatch");
         }
 
-        short[] values = new short[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        short[] values = new short[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt16();
@@ -135,13 +138,14 @@ internal sealed class Int32ArraySerializer : Serializer<int[]>
 
     public override int[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("int32 array payload size mismatch");
+            throw new InvalidDataException("int32 array byte size mismatch");
         }
 
-        int[] values = new int[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        int[] values = new int[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt32();
@@ -171,13 +175,14 @@ internal sealed class Int64ArraySerializer : Serializer<long[]>
 
     public override long[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("int64 array payload size mismatch");
+            throw new InvalidDataException("int64 array byte size mismatch");
         }
 
-        long[] values = new long[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        long[] values = new long[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadInt64();
@@ -207,13 +212,14 @@ internal sealed class UInt16ArraySerializer : Serializer<ushort[]>
 
     public override ushort[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("uint16 array payload size mismatch");
+            throw new InvalidDataException("uint16 array byte size mismatch");
         }
 
-        ushort[] values = new ushort[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        ushort[] values = new ushort[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt16();
@@ -243,13 +249,14 @@ internal sealed class UInt32ArraySerializer : Serializer<uint[]>
 
     public override uint[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("uint32 array payload size mismatch");
+            throw new InvalidDataException("uint32 array byte size mismatch");
         }
 
-        uint[] values = new uint[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        uint[] values = new uint[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt32();
@@ -279,13 +286,14 @@ internal sealed class UInt64ArraySerializer : Serializer<ulong[]>
 
     public override ulong[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("uint64 array payload size mismatch");
+            throw new InvalidDataException("uint64 array byte size mismatch");
         }
 
-        ulong[] values = new ulong[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        ulong[] values = new ulong[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadUInt64();
@@ -315,13 +323,14 @@ internal sealed class Float16ArraySerializer : Serializer<Half[]>
 
     public override Half[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("float16 array payload size mismatch");
+            throw new InvalidDataException("float16 array byte size mismatch");
         }
 
-        Half[] values = new Half[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        Half[] values = new Half[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = BitConverter.UInt16BitsToHalf(context.Reader.ReadUInt16());
@@ -351,13 +360,14 @@ internal sealed class BFloat16ArraySerializer : Serializer<BFloat16[]>
 
     public override BFloat16[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 1) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 1) != 0)
         {
-            throw new InvalidDataException("bfloat16 array payload size mismatch");
+            throw new InvalidDataException("bfloat16 array byte size mismatch");
         }
 
-        BFloat16[] values = new BFloat16[payloadSize / 2];
+        context.Reader.CheckBound(byteSize);
+        BFloat16[] values = new BFloat16[byteSize / 2];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = BFloat16.FromBits(context.Reader.ReadUInt16());
@@ -387,13 +397,14 @@ internal sealed class Float32ArraySerializer : Serializer<float[]>
 
     public override float[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 3) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 3) != 0)
         {
-            throw new InvalidDataException("float32 array payload size mismatch");
+            throw new InvalidDataException("float32 array byte size mismatch");
         }
 
-        float[] values = new float[payloadSize / 4];
+        context.Reader.CheckBound(byteSize);
+        float[] values = new float[byteSize / 4];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadFloat32();
@@ -423,13 +434,14 @@ internal sealed class Float64ArraySerializer : Serializer<double[]>
 
     public override double[] ReadData(ReadContext context)
     {
-        int payloadSize = checked((int)context.Reader.ReadVarUInt32());
-        if ((payloadSize & 7) != 0)
+        int byteSize = checked((int)context.Reader.ReadVarUInt32());
+        if ((byteSize & 7) != 0)
         {
-            throw new InvalidDataException("float64 array payload size mismatch");
+            throw new InvalidDataException("float64 array byte size mismatch");
         }
 
-        double[] values = new double[payloadSize / 8];
+        context.Reader.CheckBound(byteSize);
+        double[] values = new double[byteSize / 8];
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = context.Reader.ReadFloat64();

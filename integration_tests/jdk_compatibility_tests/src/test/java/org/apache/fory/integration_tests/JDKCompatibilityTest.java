@@ -34,7 +34,7 @@ import org.testng.annotations.Test;
 public class JDKCompatibilityTest {
 
   ForyBuilder builder() {
-    return Fory.builder().withXlang(false).requireClassRegistration(false);
+    return Fory.builder().withXlang(false).withCompatible(false).requireClassRegistration(false);
   }
 
   Object createObject() {

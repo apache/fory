@@ -23,13 +23,29 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MediaContent implements java.io.Serializable {
-  public Media media;
-  public List<Image> images;
+  private Media media;
+  private List<Image> images;
 
   public MediaContent() {}
 
   public MediaContent(Media media, List<Image> images) {
     this.media = media;
+    this.images = images;
+  }
+
+  public Media getMedia() {
+    return media;
+  }
+
+  public void setMedia(Media media) {
+    this.media = media;
+  }
+
+  public List<Image> getImages() {
+    return images;
+  }
+
+  public void setImages(List<Image> images) {
     this.images = images;
   }
 
@@ -67,17 +83,17 @@ public class MediaContent implements java.io.Serializable {
 
   public MediaContent populate(boolean circularReference) {
     media = new Media();
-    media.uri = "http://javaone.com/keynote.ogg";
-    media.width = 641;
-    media.height = 481;
-    media.format = "video/theora\u1234";
-    media.duration = 18000001;
-    media.size = 58982401;
-    media.persons = new ArrayList();
-    media.persons.add("Bill Gates, Jr.");
-    media.persons.add("Steven Jobs");
-    media.player = Media.Player.FLASH;
-    media.copyright = "Copyright (c) 2009, Scooby Dooby Doo";
+    media.setUri("http://javaone.com/keynote.ogg");
+    media.setWidth(641);
+    media.setHeight(481);
+    media.setFormat("video/theora\u1234");
+    media.setDuration(18000001);
+    media.setSize(58982401);
+    media.setPersons(new ArrayList<>());
+    media.getPersons().add("Bill Gates, Jr.");
+    media.getPersons().add("Steven Jobs");
+    media.setPlayer(Media.Player.FLASH);
+    media.setCopyright("Copyright (c) 2009, Scooby Dooby Doo");
     images = new ArrayList();
     Media media = circularReference ? this.media : null;
     images.add(

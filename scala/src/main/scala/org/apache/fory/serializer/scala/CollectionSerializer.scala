@@ -55,9 +55,13 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
   override def newCollection(readContext: ReadContext): util.Collection[_] = {
     val buffer = readContext.getBuffer
     val numElements = buffer.readVarUInt32()
+    checkCollectionSize(numElements)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
     val builder = factory.newBuilder
+    if (numElements != 0) {
+      buffer.checkReadableBytes(numElements)
+    }
     builder.sizeHint(numElements)
     new JavaCollectionBuilder[A, T](builder)
   }

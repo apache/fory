@@ -73,11 +73,13 @@ public class Benchmark {
   private static final Fory fory2;
 
   static {
-    fory1 = Fory.builder().withXlang(false).withNumberCompressed(false).build();
+    fory1 =
+        Fory.builder().withXlang(false).withNumberCompressed(false).withCompatible(false).build();
     fory1.register(Foo.class);
     fory1.register(Struct.class);
     fory1.ensureSerializersCompiled();
-    fory2 = Fory.builder().withXlang(false).withNumberCompressed(true).build();
+    fory2 =
+        Fory.builder().withXlang(false).withNumberCompressed(true).withCompatible(false).build();
     fory2.register(Foo.class);
     fory2.register(Struct.class);
     fory2.ensureSerializersCompiled();

@@ -6,7 +6,7 @@
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Crates.io](https://img.shields.io/crates/v/fory.svg?style=for-the-badge)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.3.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
 [![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI&style=for-the-badge)](https://pypi.org/project/pyfory/)
 [![npm](https://img.shields.io/npm/v/%40apache-fory%2Fcore?logo=npm&style=for-the-badge)](https://www.npmjs.com/package/@apache-fory/core)
 [![NuGet](https://img.shields.io/nuget/v/Apache.Fory?logo=nuget&style=for-the-badge)](https://www.nuget.org/packages/Apache.Fory)
@@ -19,7 +19,7 @@ idiomatic domain objects, schema IDL, and cross-language data exchange.
 
 ## Why Fory
 
-Fory is built for fast, compact serialization across languages and runtimes. It
+Fory is built for fast, compact serialization across languages and implementations. It
 works with idiomatic objects in each language, supports shared schemas when you
 need a contract, and preserves object features such as shared and circular
 references.
@@ -36,8 +36,8 @@ references.
   objects for each language without forcing wrapper types into user code.
 - **Row-Format Random Access**: Read fields, arrays, and nested values without
   rebuilding full objects, with zero-copy access and partial reads.
-- **Optimized Runtimes**: Java JIT serializers and generated/static serializers
-  in other runtimes keep hot paths fast and payloads compact.
+- **Optimized Implementations**: Java JIT serializers and generated/static serializers
+  in other language implementations keep hot paths fast and payloads compact.
 - **Language And Platform Support**: Java, Python, C++, Go, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
   native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
@@ -46,7 +46,7 @@ references.
 
 Benchmarks show Fory delivering higher throughput and smaller serialized
 payloads than common serialization frameworks on representative workloads. Java
-has the broadest comparison set; the other charts show runtime-specific results
+has the broadest comparison set; the other charts show language-specific results
 across supported languages.
 
 **Java** [Benchmarks](docs/benchmarks/java)
@@ -121,7 +121,7 @@ JDK serialization on selected workloads.
 
 ## Installation
 
-Pick the runtime you use and run the package-manager command, or paste the
+Pick your language and run the package-manager command, or paste the
 dependency block into your build file.
 
 **Java**
@@ -132,14 +132,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```gradle
-implementation "org.apache.fory:fory-core:1.1.0"
+implementation "org.apache.fory:fory-core:1.3.0"
 ```
 
 On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
@@ -160,7 +160,7 @@ Use the Fory core module name when Fory is on the module path:
 sbt:
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.1.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
 ```
 
 **Kotlin**
@@ -168,7 +168,7 @@ libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.1.0"
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.1.0")
+implementation("org.apache.fory:fory-kotlin:1.3.0")
 ```
 
 Maven:
@@ -177,7 +177,7 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.1.0</version>
+  <version>1.3.0</version>
 </dependency>
 ```
 
@@ -199,7 +199,7 @@ pip install "pyfory[format]"
 
 ```toml
 [dependencies]
-fory = "1.1.0"
+fory = "1.3.0"
 ```
 
 **C++**
@@ -211,7 +211,7 @@ include(FetchContent)
 FetchContent_Declare(
   fory
   GIT_REPOSITORY https://github.com/apache/fory.git
-  GIT_TAG v1.1.0
+  GIT_TAG v1.3.0
   SOURCE_SUBDIR cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -222,8 +222,8 @@ Bazel:
 
 ```bazel
 # MODULE.bazel
-bazel_dep(name = "fory", version = "1.1.0")
-git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.1.0")
+bazel_dep(name = "fory", version = "1.3.0")
+git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.3.0")
 
 # BUILD
 deps = ["@fory//cpp/fory/serialization:fory_serialization"]
@@ -256,13 +256,13 @@ npm install @apache-fory/core @apache-fory/hps
 **C#**
 
 ```bash
-dotnet add package Apache.Fory --version 1.1.0
+dotnet add package Apache.Fory --version 1.3.0
 ```
 
 **Dart**
 
 ```bash
-dart pub add fory:^1.1.0
+dart pub add fory:^1.3.0
 dart pub add dev:build_runner
 ```
 
@@ -272,7 +272,7 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.1.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.3.0")
 ],
 targets: [
   .target(
@@ -297,14 +297,14 @@ Snapshots for Java, Scala, and Kotlin are available from
 | Mode        | Use it when                                                   | Start here                                               |
 | ----------- | ------------------------------------------------------------- | -------------------------------------------------------- |
 | Xlang mode  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
-| Native mode | Producer and consumer are in the same language                | Language guide for your runtime                          |
+| Native mode | Producer and consumer are in the same language                | Language guide                                           |
 | Row format  | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
-metadata constraints, stays closer to each runtime's native type system, and
+metadata constraints, stays closer to each language's native type system, and
 supports broader language-specific object graphs. Use it when both producer and
-consumer are in the same runtime family and you want the native object model
+consumer are in the same language family and you want the native object model
 rather than a portable cross-language schema.
 
 For Java/JVM-only systems, native mode is the replacement path for JDK
@@ -313,13 +313,15 @@ Python-only systems, native mode is the replacement path for pickle and
 cloudpickle.
 
 Compatible mode is Fory's schema-evolution mode. It writes the metadata readers
-and writers need to tolerate schema differences. Xlang mode enables compatible
-mode by default to better handle differences between language type systems.
-Native mode keeps it off by default for smaller payloads and higher throughput.
+and writers need to tolerate schema differences. It is the default for xlang
+mode and native mode in implementations that expose the option.
 
 Use compatible mode when services deploy independently or when fields may be
-added or deleted over time. Use schema-consistent mode when writer and reader
-schemas deploy together and you want the smallest payloads.
+added or deleted over time. Set compatible mode to `false` only when every reader
+and writer always uses the same schema and you want faster serialization and
+smaller size. For xlang payloads, set compatible mode to `false` only after
+verifying that every language uses the same schema, or when native types are
+generated from Fory schema IDL.
 
 For xlang, all peers must agree on type identity. Name-based registration is
 easier to read in examples. Numeric IDs are smaller and faster, but they require
@@ -328,7 +330,7 @@ coordination across every reader and writer.
 ## Cross-Language Serialization
 
 Xlang mode writes the cross-language Fory wire format. Bytes produced by one
-runtime can be read by another when the runtimes use the same type identity,
+language implementation can be read by another when every peer uses the same type identity,
 compatible mode setting, and field schema.
 
 **Java**
@@ -601,10 +603,10 @@ type-mapping rules, see the [cross-language guide](docs/guide/xlang) and
 ## Native Serialization
 
 Use native mode when the writer and reader are in the same language. It is
-optimized for each runtime's native type system and can cover language-specific
+optimized for each language's native type system and can cover language-specific
 types, object graphs, and framework-replacement cases that xlang mode keeps out
 of the portable wire format. The languages below expose an explicit
-`xlang=false` or native-mode setting; runtimes without that switch stay on their
+`xlang=false` or native-mode setting; implementations without that switch stay on their
 documented default path.
 
 Choose Java native mode for Java/JVM-only replacements of JDK serialization,
@@ -612,7 +614,7 @@ Kryo, FST, Hessian, or Java-only Protocol Buffers payloads. Choose Python native
 mode when replacing pickle or cloudpickle for Python-only payloads.
 
 Keep class/type registration enabled for untrusted input. See the language guides
-for runtime-specific security and compatibility settings.
+for language-specific security and compatibility settings.
 
 **Java**
 
@@ -802,7 +804,7 @@ deserialization, see the
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) before sending pull requests. Bug
-reports, docs fixes, tests, benchmarks, and runtime improvements are welcome.
+reports, docs fixes, tests, benchmarks, and implementation improvements are welcome.
 
 ## License
 

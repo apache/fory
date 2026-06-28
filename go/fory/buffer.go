@@ -50,6 +50,12 @@ func NewByteBufferFromReader(r io.Reader, bufferSize int) *ByteBuffer {
 
 //go:noinline
 func (b *ByteBuffer) fill(n int, errOut *Error) bool {
+	if n < 0 {
+		if errOut != nil {
+			*errOut = DeserializationErrorf("negative readable byte count: %d", n)
+		}
+		return false
+	}
 	if b.reader == nil {
 		if errOut != nil {
 			*errOut = BufferOutOfBoundError(b.readerIndex, n, len(b.data))
@@ -69,24 +75,38 @@ func (b *ByteBuffer) fill(n int, errOut *Error) bool {
 		b.data = b.data[:b.writerIndex]
 	}
 
-	if cap(b.data) < n {
-		newCap := cap(b.data) * 2
-		if newCap < n {
-			newCap = n
-		}
-		if newCap < b.bufferSize {
-			newCap = b.bufferSize
-		}
-		newData := make([]byte, len(b.data), newCap)
-		copy(newData, b.data)
-		b.data = newData
-	}
-
 	for len(b.data) < n {
-		spare := b.data[len(b.data):cap(b.data)]
-		if len(spare) == 0 {
-			return false
+		if len(b.data) == cap(b.data) {
+			// n can come from attacker-controlled wire lengths. Do not query
+			// reader availability here: interface/type-specific probes add
+			// hot-path cost for a rare fast path and are not the correctness
+			// source. Grow only from bytes already buffered so truncated streams
+			// fail before reserving the declared body size.
+			currentCap := cap(b.data)
+			newCap := currentCap * 2
+			if currentCap > MaxInt/2 {
+				newCap = MaxInt
+			}
+			if newCap < b.bufferSize {
+				newCap = b.bufferSize
+			}
+			if newCap <= currentCap {
+				newCap = currentCap + 1
+			}
+			if newCap > n {
+				newCap = n
+			}
+			if newCap <= currentCap {
+				if errOut != nil {
+					*errOut = DeserializationErrorf("stream buffer size exceeds supported range")
+				}
+				return false
+			}
+			newData := make([]byte, len(b.data), newCap)
+			copy(newData, b.data)
+			b.data = newData
 		}
+		spare := b.data[len(b.data):cap(b.data)]
 		readBytes, err := b.reader.Read(spare)
 		if readBytes > 0 {
 			b.data = b.data[:len(b.data)+readBytes]
@@ -99,6 +119,35 @@ func (b *ByteBuffer) fill(n int, errOut *Error) bool {
 			if errOut != nil {
 				if err == io.EOF {
 					*errOut = BufferOutOfBoundError(b.readerIndex, n, len(b.data))
+				} else {
+					*errOut = DeserializationError(fmt.Sprintf("stream read error: %v", err))
+				}
+			}
+			return false
+		}
+		if readBytes == 0 {
+			if errOut != nil {
+				*errOut = DeserializationError("stream read made no progress")
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func (b *ByteBuffer) discardFromReader(length int, errOut *Error) bool {
+	var scratch [8192]byte
+	for length > 0 {
+		n := length
+		if n > len(scratch) {
+			n = len(scratch)
+		}
+		readBytes, err := io.ReadFull(b.reader, scratch[:n])
+		length -= readBytes
+		if err != nil {
+			if errOut != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					*errOut = BufferOutOfBoundError(b.readerIndex, n, readBytes)
 				} else {
 					*errOut = DeserializationError(fmt.Sprintf("stream read error: %v", err))
 				}
@@ -197,7 +246,15 @@ func (b *ByteBuffer) WriteLength(value int) {
 }
 
 func (b *ByteBuffer) ReadLength(err *Error) int {
-	return int(b.ReadVarUint32(err))
+	length := b.ReadVarUint32(err)
+	const maxInt32 = uint32(1<<31 - 1)
+	if intSize == 32 && length > maxInt32 {
+		if err != nil {
+			*err = DeserializationErrorf("length %d exceeds supported int range", length)
+		}
+		return 0
+	}
+	return int(length)
 }
 
 func (b *ByteBuffer) WriteUint64(value uint64) {
@@ -371,7 +428,13 @@ func (b *ByteBuffer) Read(p []byte) (n int, err error) {
 
 // ReadBinary reads n bytes and sets error on bounds violation
 func (b *ByteBuffer) ReadBinary(length int, err *Error) []byte {
-	if b.readerIndex+length > len(b.data) {
+	if length < 0 {
+		if err != nil {
+			*err = DeserializationErrorf("negative byte count: %d", length)
+		}
+		return nil
+	}
+	if length > len(b.data)-b.readerIndex {
 		if !b.fill(length, err) {
 			return nil
 		}
@@ -1555,7 +1618,13 @@ func (b *ByteBuffer) IncreaseReaderIndex(n int) {
 
 // ReadBytes reads n bytes and sets error on bounds violation
 func (b *ByteBuffer) ReadBytes(n int, err *Error) []byte {
-	if b.readerIndex+n > len(b.data) {
+	if n < 0 {
+		if err != nil {
+			*err = DeserializationErrorf("negative byte count: %d", n)
+		}
+		return nil
+	}
+	if n > len(b.data)-b.readerIndex {
 		if !b.fill(n, err) {
 			return nil
 		}
@@ -1576,10 +1645,25 @@ func (b *ByteBuffer) ReadBytes(n int, err *Error) []byte {
 
 // Skip skips n bytes and sets error on bounds violation
 func (b *ByteBuffer) Skip(length int, err *Error) {
-	if b.readerIndex+length > len(b.data) {
-		if !b.fill(length, err) {
+	if length < 0 {
+		if err != nil {
+			*err = DeserializationErrorf("negative skip length: %d", length)
+		}
+		return
+	}
+	if length > len(b.data)-b.readerIndex {
+		if b.reader == nil {
+			if err != nil {
+				*err = BufferOutOfBoundError(b.readerIndex, length, len(b.data))
+			}
 			return
 		}
+		available := len(b.data) - b.readerIndex
+		b.readerIndex = len(b.data)
+		if !b.discardFromReader(length-available, err) {
+			return
+		}
+		return
 	}
 	b.readerIndex += length
 }
@@ -1587,7 +1671,13 @@ func (b *ByteBuffer) Skip(length int, err *Error) {
 // CheckReadable ensures that at least n bytes are available to read.
 // In stream mode, it will attempt to fill the buffer if necessary.
 func (b *ByteBuffer) CheckReadable(n int, err *Error) bool {
-	if b.readerIndex+n > len(b.data) {
+	if n < 0 {
+		if err != nil {
+			*err = DeserializationErrorf("negative readable byte count: %d", n)
+		}
+		return false
+	}
+	if n > len(b.data)-b.readerIndex {
 		return b.fill(n, err)
 	}
 	return true

@@ -65,12 +65,15 @@ class PythonServiceGeneratorMixin:
     def generate_grpc_module(self, services: List[Service]) -> GeneratedFile:
         """Generate a grpcio-style companion module for schema services."""
         module_name = self.get_module_name()
+        async_mode = self.python_grpc_async()
         lines = []
         lines.append(self.get_license_header("#"))
         lines.append("")
         lines.append("from __future__ import annotations")
         lines.append("")
         lines.append("import grpc")
+        if async_mode:
+            lines.append("import grpc.aio")
         lines.append(f"import {module_name} as _models")
         lines.append("")
         lines.append("")
@@ -86,7 +89,10 @@ class PythonServiceGeneratorMixin:
         for service in services:
             lines.extend(self.generate_python_grpc_stub(service))
             lines.append("")
-            lines.extend(self.generate_python_grpc_servicer(service))
+            if async_mode:
+                lines.extend(self.generate_python_grpc_async_servicer(service))
+            else:
+                lines.extend(self.generate_python_grpc_servicer(service))
             lines.append("")
             lines.extend(self.generate_python_grpc_registration(service))
             lines.append("")
@@ -134,6 +140,27 @@ class PythonServiceGeneratorMixin:
             lines.append("        context.set_code(grpc.StatusCode.UNIMPLEMENTED)")
             lines.append('        context.set_details("Method not implemented!")')
             lines.append('        raise NotImplementedError("Method not implemented!")')
+        return lines
+
+    def generate_python_grpc_async_servicer(self, service: Service) -> List[str]:
+        lines = []
+        lines.append(f"class {service.name}Servicer(object):")
+        lines.append(f'    """AsyncIO base servicer for {service.name}."""')
+        if not service.methods:
+            lines.append("    pass")
+            return lines
+        for method in service.methods:
+            python_name = self.python_grpc_method_name(method)
+            lines.append("")
+            if method.client_streaming:
+                lines.append(
+                    f"    async def {python_name}(self, request_iterator, context):"
+                )
+            else:
+                lines.append(f"    async def {python_name}(self, request, context):")
+            lines.append(
+                '        await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")'
+            )
         return lines
 
     def generate_python_grpc_registration(self, service: Service) -> List[str]:
@@ -194,3 +221,9 @@ class PythonServiceGeneratorMixin:
 
     def python_grpc_add_servicer_name(self, service: Service) -> str:
         return f"_add_{self.safe_name(self.to_snake_case(service.name))}_servicer"
+
+    def python_grpc_async(self) -> bool:
+        mode = self.options.grpc_python_mode
+        if mode not in ("async", "sync"):
+            raise ValueError(f"Unknown Python gRPC mode: {mode}")
+        return mode == "async"

@@ -38,7 +38,7 @@ fn basic() {
         Map(HashMap<String, Token>),
     }
 
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Token>(1000).unwrap();
 
     let mut map = HashMap::new();
@@ -81,10 +81,10 @@ fn named_enum() {
         Assign { value: i32, target: String },
     }
 
-    let mut fory1 = Fory::builder().xlang(false).build();
+    let mut fory1 = Fory::builder().xlang(false).compatible(false).build();
     fory1.register::<Token1>(1000).unwrap();
 
-    let mut fory2 = Fory::builder().xlang(false).build();
+    let mut fory2 = Fory::builder().xlang(false).compatible(false).build();
     fory2.register::<Token2>(1000).unwrap();
 
     let token = Token1::Assign {
@@ -151,6 +151,28 @@ fn struct_with_enum_field() {
     let bin = fory.serialize(&obj).unwrap();
     let result: StructWithEnum = fory.deserialize(&bin).unwrap();
     assert_eq!(obj, result);
+}
+
+#[test]
+fn id_enum_does_not_use_type_meta_limits() {
+    #[derive(ForyEnum, Debug, Default, PartialEq, Clone)]
+    enum Color {
+        #[default]
+        Red,
+        Green,
+    }
+
+    let mut fory = Fory::builder()
+        .xlang(true)
+        .compatible(true)
+        .max_type_meta_bytes(1)
+        .max_schema_versions_per_type(1)
+        .build();
+    fory.register::<Color>(100).unwrap();
+
+    let bin = fory.serialize(&Color::Green).unwrap();
+    let result: Color = fory.deserialize(&bin).unwrap();
+    assert_eq!(result, Color::Green);
 }
 
 /// Test Union-compatible enum xlang serialization format.

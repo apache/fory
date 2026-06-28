@@ -40,7 +40,7 @@ use std::collections::HashMap;
 //         }),
 //     };
 //
-//     let mut fory = Fory::builder().xlang(false).build();
+//     let mut fory = Fory::builder().xlang(false).compatible(false).build();
 //     fory.register::<Animal>(999);
 //     fory.register::<Person>(1000);
 //     let bin = fory.serialize(&person);
@@ -57,7 +57,7 @@ fn enum_without_payload() {
         Red,
         Blue,
     }
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Color>(999).unwrap();
     let color = Color::Red;
     let bin = fory.serialize(&color).unwrap();
@@ -108,13 +108,13 @@ fn complex_struct() {
         c5: 2.0,
         c6: 4.0,
     };
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Animal>(899).unwrap();
     fory.register::<Person>(999).unwrap();
     let bin: Vec<u8> = fory.serialize(&person).unwrap();
     let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register_by_name::<Animal>("animal").unwrap();
     fory.register_by_name::<Person>("person").unwrap();
     let bin: Vec<u8> = fory.serialize(&person).unwrap();
@@ -141,7 +141,7 @@ fn encode_to_obin() {
         f8: f64,
         f10: HashMap<i32, f64>,
     }
-    let mut fory = Fory::builder().xlang(false).build();
+    let mut fory = Fory::builder().xlang(false).compatible(false).build();
     fory.register::<Person>(999).unwrap();
     fory.register::<Animal>(899).unwrap();
     let bin: Vec<u8> = fory

@@ -20,7 +20,7 @@ license: |
 ---
 
 :::warning Experimental Feature
-Code generation is an **experimental** feature in Fory Go. The API and behavior may change in future releases. The standard runtime path remains the stable, recommended approach for most use cases.
+Code generation is an **experimental** feature in Fory Go. The API and behavior may change in future releases. The standard dynamic serialization path remains the stable, recommended approach for most use cases.
 :::
 
 Fory Go provides optional ahead-of-time (AOT) code generation for performance-critical paths. This generates dedicated serializers ahead of time and adds compile-time shape checks.
@@ -307,7 +307,7 @@ type HotPathStruct struct {
 }
 
 type ColdPathStruct struct {
-    // Not annotated, uses the standard runtime serializer
+    // Not annotated, uses the standard dynamic serializer
 }
 ```
 

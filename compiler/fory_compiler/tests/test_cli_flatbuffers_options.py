@@ -43,6 +43,7 @@ def test_cli_swift_namespace_style_works_for_flatbuffers(tmp_path: Path):
         fbs_path,
         {"swift": swift_out},
         swift_namespace_style="flatten",
+        generated_outputs={},
     )
     assert ok is True
 
@@ -64,6 +65,7 @@ def test_cli_go_nested_type_style_is_accepted_for_flatbuffers(tmp_path: Path):
         fbs_path,
         {"go": go_out},
         go_nested_type_style="camelcase",
+        generated_outputs={},
     )
     assert ok is True
 

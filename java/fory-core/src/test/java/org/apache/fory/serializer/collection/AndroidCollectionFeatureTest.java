@@ -153,6 +153,7 @@ public class AndroidCollectionFeatureTest {
         .withRefTracking(true)
         .requireClassRegistration(false)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withCompatible(false)
         .build();
   }
 
@@ -207,6 +208,7 @@ public class AndroidCollectionFeatureTest {
               .withRefTracking(true)
               .requireClassRegistration(false)
               .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withCompatible(false)
               .build();
       check(!fory.getConfig().isCodeGenEnabled(), "Android must force codegen off");
       verifyUnmodifiableWrappers(fory);

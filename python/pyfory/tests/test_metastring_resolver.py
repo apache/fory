@@ -17,10 +17,11 @@
 
 import pytest
 
-from pyfory import Buffer
+from pyfory import Buffer, Fory
 from pyfory.context import EncodedMetaString, MetaStringReader, MetaStringWriter
 from pyfory.meta.metastring import MetaStringEncoder
 from pyfory.registry import MAX_CACHED_ENCODED_META_STRINGS, SharedRegistry
+from pyfory.types import TypeId
 
 try:
     from pyfory.serialization import MetaStringReader as CythonMetaStringReader
@@ -121,6 +122,12 @@ def test_cython_cached_big_metastring_validates_bytes_before_reuse():
 
     with pytest.raises(ValueError, match="Malformed metastring hash"):
         reader.read_encoded_meta_string(buffer)
+
+
+def test_malformed_metastring_ref_raises_value_error():
+    data = bytes([1, 255, TypeId.NAMED_STRUCT, 3])
+    with pytest.raises(ValueError, match="Invalid dynamic metastring id"):
+        Fory(xlang=True, compatible=False, strict=False).deserialize(data)
 
 
 def test_read_metastring_reset_clears_dynamic_ids_only():

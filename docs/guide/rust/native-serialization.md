@@ -25,7 +25,7 @@ of the portable xlang type system.
 
 Use [Xlang Serialization](xlang-serialization.md), the default Rust mode, when bytes must be read
 by Java, Python, C++, Go, JavaScript/TypeScript, C#, Swift, Dart, Scala,
-Kotlin, or another non-Rust Fory runtime.
+Kotlin, or another non-Rust Fory implementation.
 
 ## When To Use Native Serialization
 
@@ -34,12 +34,13 @@ Use native serialization when:
 - A payload is produced and consumed only by Rust applications.
 - The data model uses Rust-specific object graph features such as `Rc<T>`, `Arc<T>`, weak
   pointers, `RefCell<T>`, `Mutex<T>`, trait objects, or `dyn Any`.
-- You want schema-consistent Rust payloads for lockstep services.
+- You want faster serialization and smaller size, and every reader uses the same schema as the
+  writer.
 - You need compatible schema evolution for Rust-only rolling deployments.
 - You want compile-time serializers from `#[derive(ForyStruct)]` without portable xlang mapping
   constraints.
 
-## Create a Native Runtime
+## Create a Native-Mode Fory Instance
 
 ```rust
 use fory::{Error, Fory, ForyStruct};
@@ -67,16 +68,19 @@ be shared through `Arc`.
 
 ## Schema Evolution
 
-Native serialization defaults to schema-consistent mode. Enable compatible mode only when Rust-only
-writer and reader versions can differ:
+Native serialization defaults to compatible mode. Keep that default when Rust-only writer and reader
+versions can differ:
 
 ```rust
-let mut writer = Fory::builder().xlang(false).compatible(true).build();
-let mut reader = Fory::builder().xlang(false).compatible(true).build();
+let mut writer = Fory::builder().xlang(false).build();
+let mut reader = Fory::builder().xlang(false).build();
 ```
 
-Compatible mode uses schema metadata to tolerate added, removed, or reordered fields when field
+Compatible mode uses metadata to tolerate added, removed, or reordered fields when field
 identity remains compatible. See [Schema Evolution](schema-evolution.md).
+
+For faster serialization and smaller size, set `.compatible(false)` only when
+every reader and writer always uses the same Rust schema.
 
 ## Registration
 
@@ -140,7 +144,7 @@ when the target has been dropped.
 
 ## Trait Objects
 
-Trait objects are Rust runtime features and belong in native serialization:
+Trait objects are Rust language features and belong in native serialization:
 
 ```rust
 use fory::{register_trait_type, Error, Fory, ForyStruct, Serializer};
@@ -163,7 +167,7 @@ impl Animal for Dog {
 register_trait_type!(Animal, Dog);
 
 fn main() -> Result<(), Error> {
-    let mut fory = Fory::builder().xlang(false).compatible(true).build();
+    let mut fory = Fory::builder().xlang(false).build();
     fory.register::<Dog>(100)?;
 
     let value: Box<dyn Animal> = Box::new(Dog { name: "Milo".into() });
@@ -179,30 +183,30 @@ Register every concrete implementation that can appear behind the trait object.
 ## Performance Guidelines
 
 - Reuse a configured `Fory` instance and register types before concurrent use.
-- Keep native schema-consistent mode for lockstep Rust services.
-- Enable `.compatible(true)` only when Rust-only schema evolution is required.
+- Use `.compatible(false)` only when every reader and writer always uses the same Rust schema and
+  the application wants faster serialization and smaller size.
 - Use derive-generated serializers for application structs.
 - Use `.track_ref(true)` only for weak-pointer or cyclic graph scenarios that require it.
 - Prefer concrete typed fields over `dyn Any` or trait objects on hot paths.
 
 ## Native And Xlang Comparison
 
-| Requirement                              | Use native serialization | Use xlang serialization |
-| ---------------------------------------- | ------------------------ | ----------------------- |
-| Rust-only payloads                       | Yes                      | Optional                |
-| Non-Rust readers or writers              | No                       | Yes                     |
-| `Rc`, `Arc`, weak pointers               | Yes                      | No                      |
-| Trait objects and `dyn Any`              | Yes                      | No                      |
-| Schema-consistent same-language payloads | Yes                      | No                      |
-| Compatible schema evolution by default   | No                       | Yes                     |
-| Portable type mapping across runtimes    | No                       | Yes                     |
+| Requirement                            | Use native serialization | Use xlang serialization |
+| -------------------------------------- | ------------------------ | ----------------------- |
+| Rust-only payloads                     | Yes                      | Optional                |
+| Non-Rust readers or writers            | No                       | Yes                     |
+| `Rc`, `Arc`, weak pointers             | Yes                      | No                      |
+| Trait objects and `dyn Any`            | Yes                      | No                      |
+| Same-schema compact payloads           | Yes                      | No                      |
+| Compatible schema evolution by default | Yes                      | Yes                     |
+| Portable type mapping across languages | No                       | Yes                     |
 
 ## Troubleshooting
 
-### A non-Rust runtime cannot read the payload
+### A non-Rust implementation cannot read the payload
 
 The writer is using native serialization. Rebuild it with `.xlang(true)` and align type
-registration with every peer runtime.
+registration with every peer.
 
 ### A weak pointer fails to resolve
 
@@ -216,12 +220,11 @@ object.
 
 ### A rolling deployment fails after a field change
 
-Native serialization defaults to schema-consistent mode. Use `.compatible(true)` on both writer and
-reader when schemas can differ.
+Native serialization defaults to compatible mode. Keep that default when schemas can differ.
 
 ## Related Topics
 
-- [Xlang Serialization](xlang-serialization.md) - Cross-runtime Rust payloads
+- [Xlang Serialization](xlang-serialization.md) - Cross-language Rust payloads
 - [Configuration](configuration.md) - Builder options
 - [Basic Serialization](basic-serialization.md) - Object graph serialization
 - [Shared & Circular References](references.md) - `Rc`, `Arc`, and weak pointers

@@ -44,7 +44,7 @@ Fix:
 
 ### `Invalid data: xlang bitmap mismatch`
 
-Cause: the input was produced by a peer runtime that did not write the xlang
+Cause: the input was produced by a peer that did not write the xlang
 wire format Swift expects.
 
 Fix: configure the peer serializer to write xlang format. Swift already uses
@@ -52,12 +52,12 @@ xlang format and has no native-mode switch.
 
 ### `Invalid data: class version hash mismatch`
 
-Cause: schema changed while `compatible=false`.
+Cause: schema changed while `compatible: false`.
 
 Fix:
 
-- Enable compatible mode for evolving schemas
-- Or keep strict schema parity with schema-consistent mode
+- Keep compatible mode enabled for evolving schemas.
+- Or use `compatible: false` only when every reader and writer uses the same schema.
 
 ## Common Macro-time Errors
 

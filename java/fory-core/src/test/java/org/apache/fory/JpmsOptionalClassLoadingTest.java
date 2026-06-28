@@ -38,7 +38,8 @@ public class JpmsOptionalClassLoadingTest {
     }
     if (JdkVersion.MAJOR_VERSION >= 25) {
       throw new SkipException(
-          "JDK25+ optional-module coverage runs in integration_tests/jpms_tests with packaged MR-JAR");
+          "JDK25+ optional-module coverage runs in integration_tests/jpms_tests with packaged"
+              + " MR-JAR");
     }
     Process process =
         new ProcessBuilder(
@@ -65,7 +66,12 @@ public class JpmsOptionalClassLoadingTest {
 
   public static final class NoJavaSqlMain {
     public static void main(String[] args) {
-      Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       byte[] bytes = fory.serialize(new SampleValue("fory"));
       SampleValue value = (SampleValue) fory.deserialize(bytes);
       if (!"fory".equals(value.value)) {

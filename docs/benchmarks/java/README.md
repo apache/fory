@@ -64,31 +64,31 @@ SAMPLE is a class from [kryo benchmark](https://github.com/EsotericSoftware/kryo
 
 Serialize data java byte array.
 
-#### Java schema consistent serialization
+#### Java same-schema serialization
 
-The deserialization peer must have same class definition with the serialization peer.
-No class forward/backward compatibility are supported in this mode.
+The reader and writer use the same class schema. Class forward/backward compatibility is not used in
+this mode.
 
-![Java Heap Schema Consistent Serialization](java_heap_serialize_consistent.png)
+![Java Heap Same-Schema Serialization](java_heap_serialize_consistent.png)
 
-#### Java schema compatible serialization
+#### Java compatible serialization
 
-The deserialization peer can have different class definition with the serialization peer.
-Class forward/backward compatibility are supported in this mode.
+The reader and writer can use different class schemas. Class forward/backward compatibility is
+supported in this mode.
 
 ![Java Heap Schema Compatible Serialization](java_heap_serialize_compatible.png)
 
-#### Java schema consistent deserialization
+#### Java same-schema deserialization
 
-The deserialization peer must have same class definition with the serialization peer.
-No class forward/backward compatibility are supported in this mode.
+The reader and writer use the same class schema. Class forward/backward compatibility is not used in
+this mode.
 
-![Java Heap Schema Consistent Deserialization](java_heap_deserialize_consistent.png)
+![Java Heap Same-Schema Deserialization](java_heap_deserialize_consistent.png)
 
-#### Java schema compatible deserialization
+#### Java compatible deserialization
 
-The deserialization peer can have different class definition with the serialization peer.
-Class forward/backward compatibility are supported in this mode.
+The reader and writer can use different class schemas. Class forward/backward compatibility is
+supported in this mode.
 
 ![Java Heap Schema Compatible Deserialization](java_heap_deserialize_compatible.png)
 
@@ -96,31 +96,31 @@ Class forward/backward compatibility are supported in this mode.
 
 Serialize data off-heap memory.
 
-#### Java schema consistent serialization
+#### Java same-schema serialization
 
-The deserialization peer must have same class definition with the serialization peer.
-No class forward/backward compatibility are supported in this mode.
+The reader and writer use the same class schema. Class forward/backward compatibility is not used in
+this mode.
 
-![Java Off Heap Schema Consistent Serialization](java_offheap_serialize_consistent.png)
+![Java Off Heap Same-Schema Serialization](java_offheap_serialize_consistent.png)
 
-#### Java schema compatible serialization
+#### Java compatible serialization
 
-The deserialization peer can have different class definition with the serialization peer.
-Class forward/backward compatibility are supported in this mode.
+The reader and writer can use different class schemas. Class forward/backward compatibility is
+supported in this mode.
 
 ![Java Off Heap Schema Compatible Serialization](java_offheap_serialize_compatible.png)
 
-#### Java schema consistent deserialization
+#### Java same-schema deserialization
 
-The deserialization peer must have same class definition with the serialization peer.
-No class forward/backward compatibility are supported in this mode.
+The reader and writer use the same class schema. Class forward/backward compatibility is not used in
+this mode.
 
-![Java Off Heap Schema Consistent Deserialization](java_offheap_deserialize_consistent.png)
+![Java Off Heap Same-Schema Deserialization](java_offheap_deserialize_consistent.png)
 
-#### Java schema compatible deserialization
+#### Java compatible deserialization
 
-The deserialization peer can have different class definition with the serialization peer.
-Class forward/backward compatibility are supported in this mode.
+The reader and writer can use different class schemas. Class forward/backward compatibility is
+supported in this mode.
 
 ![Java Off Heap Schema Compatible Deserialization](java_offheap_deserialize_compatible.png)
 

@@ -2,6 +2,7 @@
 
 package org.apache.fory.benchmark.xlang.generated;
 
+@SuppressWarnings("unused")
 public final class FBSPlayer {
   private FBSPlayer() { }
   public static final byte JAVA = 0;

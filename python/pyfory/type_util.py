@@ -20,18 +20,15 @@ import importlib
 import inspect
 
 import typing
-from typing import TypeVar
 from abc import ABC, abstractmethod
 
 from pyfory.annotation import ArrayMeta, RefMeta
+from pyfory.type_id import TypeId
 
 try:
-    from typing import Annotated as _Annotated
+    from typing import Annotated
 except ImportError:
-    try:
-        from typing_extensions import Annotated as _Annotated
-    except ImportError:
-        _Annotated = None
+    from typing_extensions import Annotated
 
 try:
     from typing_extensions import get_type_hints as _typing_extensions_get_type_hints
@@ -75,7 +72,7 @@ def get_type_hints(type_):
 
 def unwrap_ref(type_):
     origin = _get_origin(type_)
-    if _Annotated is not None and origin is _Annotated:
+    if origin is Annotated:
         args = _get_args(type_)
         if args:
             base = args[0]
@@ -83,7 +80,7 @@ def unwrap_ref(type_):
             for meta in args[1:]:
                 if isinstance(meta, RefMeta):
                     if other_metadata:
-                        return _Annotated[(base, *other_metadata)], meta.enable
+                        return Annotated[(base, *other_metadata)], meta.enable
                     return base, meta.enable
                 other_metadata.append(meta)
             return type_, None
@@ -103,12 +100,62 @@ def unwrap_ref(type_):
 
 def unwrap_array(type_):
     origin = _get_origin(type_)
-    if _Annotated is not None and origin is _Annotated:
+    if origin is Annotated:
         args = _get_args(type_)
         for meta in args[1:]:
             if isinstance(meta, ArrayMeta):
                 return meta
     return getattr(type_, "__fory_array_meta__", None)
+
+
+_INT_SCALAR_TYPE_IDS = frozenset(
+    {
+        TypeId.INT8,
+        TypeId.INT16,
+        TypeId.INT32,
+        TypeId.VARINT32,
+        TypeId.INT64,
+        TypeId.VARINT64,
+        TypeId.TAGGED_INT64,
+        TypeId.UINT8,
+        TypeId.UINT16,
+        TypeId.UINT32,
+        TypeId.VAR_UINT32,
+        TypeId.UINT64,
+        TypeId.VAR_UINT64,
+        TypeId.TAGGED_UINT64,
+    }
+)
+_FLOAT_SCALAR_TYPE_IDS = frozenset({TypeId.FLOAT16, TypeId.BFLOAT16, TypeId.FLOAT32, TypeId.FLOAT64})
+_SCALAR_TYPE_IDS = _INT_SCALAR_TYPE_IDS | _FLOAT_SCALAR_TYPE_IDS
+
+
+def scalar_type_id(type_):
+    if type(type_) is int and type_ in _SCALAR_TYPE_IDS:
+        return type_
+    origin = _get_origin(type_)
+    if origin is not Annotated:
+        return None
+    args = _get_args(type_)
+    if not args:
+        return None
+    base = args[0]
+    for meta in args[1:]:
+        if type(meta) is not int or meta not in _SCALAR_TYPE_IDS:
+            continue
+        if base is int and meta in _INT_SCALAR_TYPE_IDS:
+            return meta
+        if base is float and meta in _FLOAT_SCALAR_TYPE_IDS:
+            return meta
+        raise TypeError(f"Fory scalar TypeId {meta} does not match Annotated base type {base}")
+    return None
+
+
+def normalize_fory_type(type_):
+    type_id = scalar_type_id(type_)
+    if type_id is None:
+        return type_
+    return type_id
 
 
 # modified from `fluent python`
@@ -306,6 +353,9 @@ def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     array_meta = unwrap_array(type_)
     if array_meta is not None:
         return visitor.visit_array(field_name, array_meta.element_type, array_meta.carrier, types_path=types_path)
+    normalized_type = normalize_fory_type(type_)
+    if normalized_type is not type_:
+        return visitor.visit_other(field_name, normalized_type, types_path=types_path)
     origin = _get_origin(type_) or getattr(type_, "__origin__", type_)
     origin = origin or type_
     args = _get_args(type_)
@@ -358,10 +408,7 @@ def compute_string_hash(string):
 
 
 def qualified_class_name(cls):
-    if isinstance(cls, TypeVar):
-        return cls.__module__ + "#" + cls.__name__
-    else:
-        return cls.__module__ + "#" + cls.__qualname__
+    return cls.__module__ + "#" + cls.__qualname__
 
 
 def load_class(classname: str, policy=None):

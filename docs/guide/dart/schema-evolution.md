@@ -21,9 +21,7 @@ license: |
 
 Schema evolution lets different versions of your app exchange messages safely — a v2 writer can produce a message that a v1 reader can still decode, and vice versa.
 
-## Compatible And Schema-Consistent Evolution
-
-### Compatible Mode
+## Compatible Mode
 
 Compatible mode is the Dart default. Keep this default when services may run different versions at
 the same time, for example during a rolling deployment or when clients are not updated immediately.
@@ -44,14 +42,6 @@ elements. String-to-number conversion accepts finite ASCII decimal literals with
 leading `+`, Unicode digits, underscores, `NaN`, or `Infinity`. Nullable fields still compose with
 these conversions, but reference-tracked scalar type changes are incompatible. Invalid strings,
 out-of-range values, and lossy conversions fail with `InvalidDataException` during deserialization.
-
-### Schema-Consistent Mode
-
-Both sides must have the same model. Fory validates that the schemas match and will reject messages from a different schema version. Use this when all services are always updated together and you want schema mismatches to be caught as fast errors.
-
-```dart
-final fory = Fory(compatible: false);
-```
 
 ## Setting Up for Evolution
 
@@ -92,13 +82,21 @@ If you add field IDs after payloads are already in production, existing stored m
 
 ## Xlang Notes
 
-Evolution only works when **all** runtimes that exchange messages agree on:
+Evolution only works when **all** peers that exchange messages agree on:
 
 1. The same `compatible` setting.
 2. The same type registration identity (numeric ID or `name`).
 3. The logical meaning of field IDs.
 
 Test rolling-upgrade scenarios with real round trips before deploying.
+
+## Same-Schema Optimization
+
+Use `compatible: false` only when every reader and writer always uses the same schema and you want faster serialization and smaller size. For xlang payloads, set `compatible: false` only after verifying that every language uses the same schema, or when native types are generated from Fory schema IDL.
+
+```dart
+final fory = Fory(compatible: false);
+```
 
 ## Related Topics
 

@@ -40,6 +40,7 @@ public class ReadResolveCircularTest {
             .withXlang(false)
             .requireClassRegistration(false)
             .withRefTracking(true)
+            .withCompatible(false)
             .build();
     byte[] bytes = fory.serialize(c);
     System.out.println(fory.deserialize(bytes));

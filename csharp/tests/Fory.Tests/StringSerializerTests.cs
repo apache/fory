@@ -74,7 +74,8 @@ public sealed class StringSerializerTests
         writer.WriteVarUInt36Small((3UL << 2) | Utf16);
         writer.WriteBytes([0x61, 0x00, 0x62]);
 
-        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), trackRef: false, compatible: false);
+        Config config = Fory.Builder().Compatible(false).Build().Config;
+        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), config);
         Assert.Throws<EncodingException>(() => StringSerializer.ReadString(context));
     }
 
@@ -84,7 +85,8 @@ public sealed class StringSerializerTests
         ByteWriter writer = new();
         writer.WriteVarUInt36Small(3UL);
 
-        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), trackRef: false, compatible: false);
+        Config config = Fory.Builder().Compatible(false).Build().Config;
+        ReadContext context = new(new ByteReader(writer.ToArray()), new TypeResolver(), config);
         Assert.Throws<EncodingException>(() => StringSerializer.ReadString(context));
     }
 
@@ -119,7 +121,8 @@ public sealed class StringSerializerTests
         int byteLength = checked((int)(header >> 2));
         Assert.Equal(payload.Length - headerReader.Cursor, byteLength);
 
-        ReadContext readContext = new(new ByteReader(payload), resolver, trackRef: false, compatible: false);
+        Config config = Fory.Builder().Compatible(false).Build().Config;
+        ReadContext readContext = new(new ByteReader(payload), resolver, config);
         string decoded = StringSerializer.ReadString(readContext);
         Assert.Equal(0, readContext.Reader.Remaining);
         return (encoding, decoded, headerReader.Cursor, byteLength);

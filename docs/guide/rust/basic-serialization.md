@@ -23,7 +23,7 @@ This page covers basic object graph serialization and supported types.
 
 ## Object Graph Serialization
 
-Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyStruct)]` macro generates efficient serialization code at compile time, eliminating reflection overhead.
 
 **Key capabilities:**
 
@@ -147,7 +147,7 @@ let later = timestamp.checked_add_duration(duration)?;
 
 ```toml
 [dependencies]
-fory = { version = "1.1.0", features = ["chrono"] }
+fory = { version = "1.3.0", features = ["chrono"] }
 ```
 
 ### Custom Types

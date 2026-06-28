@@ -30,28 +30,37 @@ internal interface IBenchmarkSerializer<T>
 
     byte[] Serialize(T value);
 
-    T Deserialize(byte[] payload);
+    object? Deserialize(byte[] payload);
 }
 
-internal sealed class ForySerializer<T> : IBenchmarkSerializer<T>
+internal sealed class ForySerializer<TWrite, TRead> : IBenchmarkSerializer<TWrite>
 {
-    private readonly ForyRuntime _fory = ForyRuntime.Builder().Compatible(true).Build();
+    private readonly ForyRuntime _writer = ForyRuntime.Builder().Compatible(true).Build();
+    private readonly ForyRuntime _reader = ForyRuntime.Builder().Compatible(true).Build();
 
-    public ForySerializer()
+    public ForySerializer(bool schemaMismatch)
     {
-        BenchmarkTypeRegistry.RegisterAll(_fory);
+        BenchmarkTypeRegistry.RegisterAll(_writer);
+        if (schemaMismatch)
+        {
+            BenchmarkTypeRegistry.RegisterAllV2(_reader);
+        }
+        else
+        {
+            BenchmarkTypeRegistry.RegisterAll(_reader);
+        }
     }
 
     public string Name => "fory";
 
-    public byte[] Serialize(T value)
+    public byte[] Serialize(TWrite value)
     {
-        return _fory.Serialize(value);
+        return _writer.Serialize(value);
     }
 
-    public T Deserialize(byte[] payload)
+    public object? Deserialize(byte[] payload)
     {
-        return _fory.Deserialize<T>(payload);
+        return _reader.Deserialize<TRead>(payload);
     }
 }
 
@@ -71,6 +80,21 @@ internal static class BenchmarkTypeRegistry
         fory.Register<Player>(9);
         fory.Register<MediaSize>(10);
     }
+
+    public static void RegisterAllV2(ForyRuntime fory)
+    {
+        // Keep user type IDs identical to v1 so compatible reads exercise schema evolution.
+        fory.Register<NumericStructV2>(1);
+        fory.Register<SampleV2>(2);
+        fory.Register<MediaV2>(3);
+        fory.Register<ImageV2>(4);
+        fory.Register<MediaContentV2>(5);
+        fory.Register<NumericStructListV2>(6);
+        fory.Register<SampleListV2>(7);
+        fory.Register<MediaContentListV2>(8);
+        fory.Register<Player>(9);
+        fory.Register<MediaSize>(10);
+    }
 }
 
 internal sealed class ProtobufSerializer<T> : IBenchmarkSerializer<T>
@@ -87,7 +111,7 @@ internal sealed class ProtobufSerializer<T> : IBenchmarkSerializer<T>
         return _writeStream.ToArray();
     }
 
-    public T Deserialize(byte[] payload)
+    public object? Deserialize(byte[] payload)
     {
         using MemoryStream stream = new(payload, writable: false);
         return ProtobufNetSerializer.Deserialize<T>(stream);
@@ -105,7 +129,7 @@ internal sealed class MessagePackRuntimeSerializer<T> : IBenchmarkSerializer<T>
         return MessagePackSerializer.Serialize(value, _options);
     }
 
-    public T Deserialize(byte[] payload)
+    public object? Deserialize(byte[] payload)
     {
         return MessagePackSerializer.Deserialize<T>(payload, _options);
     }

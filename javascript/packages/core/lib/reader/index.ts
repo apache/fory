@@ -93,6 +93,12 @@ export class BinaryReader {
     this.cursor += len;
   }
 
+  checkReadableBytes(len: number) {
+    if (len < 0 || len > this.byteLength - this.cursor) {
+      throw new Error("Insufficient bytes to read");
+    }
+  }
+
   readInt32() {
     const result = this.dataView.getInt32(this.cursor, true);
     this.cursor += 4;

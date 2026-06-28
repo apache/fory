@@ -69,7 +69,7 @@ fory.Register<MyType, MyTypeSerializer>("com.example.MyType");
 
 ## Thread-Safe Registration
 
-`ThreadSafeFory` exposes the same registration APIs. Registrations are propagated to all per-thread runtimes.
+`ThreadSafeFory` exposes the same registration APIs. Registrations are propagated to all per-thread Fory instances.
 
 ```csharp
 using ThreadSafeFory fory = Fory.Builder().BuildThreadSafe();
@@ -82,7 +82,7 @@ fory.Register<Order>(101);
 - Register user-defined types on both writer and reader sides.
 - Keep ID/name mappings consistent across services and languages.
 - For the split overloads, `typeName` must be non-empty and must not contain dots.
-- Register before high-volume serialization workloads to avoid runtime misses.
+- Register before high-volume serialization workloads to avoid missing type metadata.
 
 ## Related Topics
 
