@@ -29,13 +29,11 @@ import java.util.function.Supplier;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
-import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.SchemaHistory;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.ExceptionUtils;
 
@@ -104,13 +102,6 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     return SchemaHistory.evolutionBean(valType, typeCtx());
   }
 
-  // Match the row-format type inference, which synthesizes interface-typed bean fields; without it
-  // a class with interface members would not be recognized as a bean even though the row codec can
-  // encode it.
-  private static TypeResolutionContext typeCtx() {
-    return new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-  }
-
   /**
    * Bean this map's key evolves on, reachable through the key type, mirroring {@link
    * #evolutionBean()} for the value. Null when the key carries no bean. A versioned key is read at
@@ -119,17 +110,6 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    */
   private Class<?> keyEvolutionBean() {
     return SchemaHistory.evolutionBean(keyType, typeCtx());
-  }
-
-  /**
-   * Combine the key and value strict hashes into one 64-bit map-layout hash. The map header carries
-   * a single hash, so it must identify the (key-version, value-version) combination jointly. Two
-   * distinct combinations that collide here would map to one projection codec, so {@link
-   * #buildVersioned} proves the combined hashes are unique at build time rather than letting one
-   * combination silently overwrite another.
-   */
-  private static long combinedHash(long keyHash, long valHash) {
-    return SchemaHistory.combineHashes(keyHash, valHash);
   }
 
   /**
@@ -148,7 +128,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // The map's own key and value are independent positions on the wire (each its own array), and
     // the map header's combined hash identifies the (key-layout, value-layout) pair. Each position
     // is enumerated over every versioned bean reachable through its wrappers, so a position that
-    // itself wraps more than one bean (such as a value typed Map<KBean, VBean>) evolves all of them.
+    // itself wraps more than one bean (such as a value typed Map<KBean, VBean>) evolves all of
+    // them.
     // A position with no bean contributes a single current-only layout, so the cross-product
     // degenerates to the evolving position's versions (or to just the current layout when neither
     // evolves, i.e. a non-versioned bean that still needs the hash prefix for flag-mismatch
@@ -177,7 +158,10 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         if (valVs == valCurrent && keyVs == keyCurrent) {
           continue;
         }
-        long hash = combinedHash(positionHash(keyVs), positionHash(valVs));
+        // The map header carries a single hash, so combine the key and value strict hashes into
+        // one 64-bit map-layout hash that identifies the (key-version, value-version) combination
+        // jointly. The collision check below proves these combined hashes are unique at build time.
+        long hash = SchemaHistory.combineHashes(positionHash(keyVs), positionHash(valVs));
         ProjectionMapFactory previous =
             projectionFactories.put(
                 hash,
@@ -192,7 +176,8 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
       }
     }
     final var currentFactory = generatedMapEncoder();
-    long currentHash = combinedHash(positionHash(keyCurrent), positionHash(valCurrent));
+    long currentHash =
+        SchemaHistory.combineHashes(positionHash(keyCurrent), positionHash(valCurrent));
     // The decode hot path matches currentHash before consulting the projection map, so a projection
     // colliding with it would be shadowed and never dispatched to. Prove that cannot happen.
     if (projectionFactories.containsKey(currentHash)) {
