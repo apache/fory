@@ -42,6 +42,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
@@ -245,7 +246,7 @@ public class ClassResolver extends TypeResolver {
   public static final short REPLACE_STUB_ID = INTERNAL_TYPE_START_ID + 28;
   public static final int NONEXISTENT_META_SHARED_ID = REPLACE_STUB_ID + 1;
 
-  private TypeInfo typeInfoCache;
+  private final TypeInfo[] typeInfoCache;
   // Every deserialization for unregistered class will query it, performance is important.
   private final ObjectMap<TypeNameBytes, TypeInfo> compositeNameBytes2TypeInfo =
       new ObjectMap<>(16, foryMapLoadFactor);
@@ -257,10 +258,15 @@ public class ClassResolver extends TypeResolver {
       SharedRegistry sharedRegistry,
       JITContext jitContext) {
     super(config, classLoader, sharedRegistry, jitContext);
-    typeInfoCache = NIL_TYPE_INFO;
+    typeInfoCache = new TypeInfo[config.maxDepth() + TYPE_INFO_CACHE_DEPTH_SLACK];
+    clearTypeInfoCache();
     extRegistry.classIdGenerator = NONEXISTENT_META_SHARED_ID + 1;
     shimDispatcher = new ShimDispatcher(this);
     _addGraalvmClassRegistry(config.getConfigHash(), this);
+  }
+
+  private void clearTypeInfoCache() {
+    Arrays.fill(typeInfoCache, NIL_TYPE_INFO);
   }
 
   @Override
@@ -1245,9 +1251,7 @@ public class ClassResolver extends TypeResolver {
           TypeNameBytes typeNameBytes = new TypeNameBytes(typeInfo.namespace, typeInfo.typeName);
           compositeNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
         }
-        if (typeInfoCache.type == type) {
-          typeInfoCache = NIL_TYPE_INFO;
-        }
+        clearTypeInfoCache();
       }
     }
     // in order to support customized serializer for abstract or interface.
@@ -1306,7 +1310,7 @@ public class ClassResolver extends TypeResolver {
       if (cls.getName().equals(className)) {
         LOG.info("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
-        typeInfoCache = NIL_TYPE_INFO;
+        clearTypeInfoCache();
         return;
       }
     }
@@ -1323,7 +1327,7 @@ public class ClassResolver extends TypeResolver {
       if (className.startsWith(classNamePrefix)) {
         LOG.info("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
-        typeInfoCache = NIL_TYPE_INFO;
+        clearTypeInfoCache();
       }
     }
   }
@@ -1570,9 +1574,7 @@ public class ClassResolver extends TypeResolver {
             @Override
             public void onSuccess(Class<? extends Serializer> result) {
               setSerializer(clz, Serializers.newSerializer(ClassResolver.this, clz, result));
-              if (typeInfoCache.type == clz) {
-                typeInfoCache = NIL_TYPE_INFO; // clear class info cache
-              }
+              clearTypeInfoCache();
               Preconditions.checkState(getSerializer(clz).getClass() == result);
             }
 
@@ -1707,30 +1709,18 @@ public class ClassResolver extends TypeResolver {
 
   @Internal
   public TypeInfo getOrUpdateTypeInfo(Class<?> cls) {
-    TypeInfo typeInfo = typeInfoCache;
+    return getOrUpdateTypeInfo(cls, 0);
+  }
+
+  private TypeInfo getOrUpdateTypeInfo(Class<?> cls, int depth) {
+    TypeInfo typeInfo = typeInfoCache[depth];
     if (typeInfo.type != cls) {
       typeInfo = classInfoMap.get(cls);
       if (typeInfo == null || typeInfo.serializer == null) {
         addSerializer(cls, createSerializer(cls));
         typeInfo = classInfoMap.get(cls);
       }
-      typeInfoCache = typeInfo;
-    }
-    return typeInfo;
-  }
-
-  private TypeInfo getOrUpdateTypeInfo(short classId) {
-    TypeInfo typeInfo = typeInfoCache;
-    TypeInfo internalInfo = classId < typeIdToTypeInfo.length ? typeIdToTypeInfo[classId] : null;
-    Preconditions.checkArgument(
-        internalInfo != null, "Internal class id %s is not registered", classId);
-    if (typeInfo != internalInfo) {
-      typeInfo = internalInfo;
-      if (typeInfo.serializer == null) {
-        addSerializer(typeInfo.type, createSerializer(typeInfo.type));
-        typeInfo = classInfoMap.get(typeInfo.type);
-      }
-      typeInfoCache = typeInfo;
+      typeInfoCache[depth] = typeInfo;
     }
     return typeInfo;
   }
@@ -1881,7 +1871,7 @@ public class ClassResolver extends TypeResolver {
           .putCompatibleDeserializerClass(
               cls, CodecUtils.loadOrGenStaticCompatibleCodecClass(this, cls, typeDef));
     }
-    typeInfoCache = NIL_TYPE_INFO;
+    clearTypeInfoCache();
     if (RecordUtils.isRecord(cls)) {
       RecordUtils.getRecordConstructor(cls);
       RecordUtils.getRecordComponents(cls);
@@ -1995,7 +1985,7 @@ public class ClassResolver extends TypeResolver {
     } else if (cls == Long.class) {
       buffer.writeVarUInt32Small7(Types.INT64);
     } else {
-      writeTypeInfo(writeContext, getOrUpdateTypeInfo(cls));
+      writeTypeInfo(writeContext, getOrUpdateTypeInfo(cls, writeContext.getDepth()));
     }
   }
 
@@ -2474,7 +2464,7 @@ public class ClassResolver extends TypeResolver {
             }
           });
       if (GraalvmSupport.isGraalBuildTime()) {
-        typeInfoCache = NIL_TYPE_INFO;
+        clearTypeInfoCache();
         clearGraalvmGeneratedTypeInfoSerializers();
         compositeNameBytes2TypeInfo.forEach(
             (typeNameBytes, typeInfo) -> clearGraalvmTypeInfoSerializer(typeInfo));

@@ -518,6 +518,8 @@ public abstract class CodecBuilder {
     if (descriptor.getTypeRef().isPrimitive()) {
       Preconditions.checkArgument(getRawType(value.type()) == getRawType(fieldType));
     }
+    // Janino cannot compile VarHandle's signature-polymorphic access modes directly. Keep generated
+    // serializers on typed helper methods even though the VarHandle itself is a static final field.
     return new StaticInvoke(
         varHandleSupportClass(),
         varHandleSetMethod(fieldType),
@@ -609,6 +611,7 @@ public abstract class CodecBuilder {
   private Expression varHandleGetField(Expression inputObject, Descriptor descriptor) {
     TypeRef<?> returnType =
         descriptor.getTypeRef().isPrimitive() ? descriptor.getTypeRef() : OBJECT_TYPE;
+    // See varHandleSetField: direct VarHandle access-mode calls are not valid Janino output.
     Expression getValue =
         new StaticInvoke(
             varHandleSupportClass(),

@@ -40,7 +40,6 @@ import org.apache.fory.json.reader.Utf8ObjectReader;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringObjectWriter;
 import org.apache.fory.json.writer.Utf8ObjectWriter;
-import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.util.record.RecordUtils;
 
 public final class JsonCodegen {
@@ -121,8 +120,7 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(this, className, type, properties, utf8, true, false)
             .genCode();
     try {
-      CompileUnit unit = new CompileUnit(PACKAGE, className, code, JsonCodegen.class);
-      Class<?> writerClass = codeGenerator.compileAndLoad(unit, state -> state.lock.lock());
+      Class<?> writerClass = compileClass(className, code);
       Constructor<?> constructor =
           writerClass.getDeclaredConstructor(JsonFieldInfo[].class, JsonCodec[].class);
       constructor.setAccessible(true);
@@ -143,8 +141,7 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(this, className, type, properties, false, false, record)
             .genCode();
     try {
-      CompileUnit unit = new CompileUnit(PACKAGE, className, code, JsonCodegen.class);
-      Class<?> readerClass = codeGenerator.compileAndLoad(unit, state -> state.lock.lock());
+      Class<?> readerClass = compileClass(className, code);
       Constructor<?> constructor =
           readerClass.getDeclaredConstructor(
               JsonFieldInfo[].class, JsonCodec[].class, BaseObjectCodec[].class);
@@ -153,6 +150,12 @@ public final class JsonCodegen {
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot compile generated JSON reader " + className, e);
     }
+  }
+
+  private Class<?> compileClass(String className, String code) throws ClassNotFoundException {
+    CompileUnit unit = new CompileUnit(PACKAGE, className, code);
+    ClassLoader classLoader = codeGenerator.compile(unit);
+    return classLoader.loadClass(PACKAGE + "." + className);
   }
 
   private static JsonCodec[] writeCodecs(JsonFieldInfo[] properties) {
@@ -230,15 +233,7 @@ public final class JsonCodegen {
   }
 
   private boolean canCompile(Class<?> type) {
-    return supportsHiddenNestmateLoading()
-        && CodeGenerator.sourcePublicAccessible(type)
-        && isVisible(type);
-  }
-
-  private static boolean supportsHiddenNestmateLoading() {
-    // Generated JSON codecs are defined as hidden nestmates of JsonCodegen; JDK 8 must keep using
-    // the interpreter path because hidden classes are unavailable there.
-    return JdkVersion.MAJOR_VERSION >= 15;
+    return CodeGenerator.sourcePublicAccessible(type) && isVisible(type);
   }
 
   private boolean isVisible(Class<?> type) {

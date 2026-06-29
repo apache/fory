@@ -537,16 +537,19 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     int bytesLen = bytes.length;
     long header = ((long) bytesLen << 2) | coder;
     int writerIndex = buffer.writerIndex();
-    // The `ensure` ensure next operations are safe without bound checks,
-    // and inner heap buffer doesn't change.
-    buffer.ensure(writerIndex + 9 + bytesLen); // 1 byte coder + varint max 8 bytes
+    buffer.ensure(writerIndex + 9 + bytesLen);
     final byte[] targetArray = buffer.getHeapMemory();
     if (targetArray != null) {
-      // Some JDK11 Unsafe.copyMemory will `copyMemoryChecks`, and
-      // jvm doesn't eliminate well in some jdk.
       final int targetIndex = buffer._unsafeHeapWriterIndex();
       int arrIndex = targetIndex;
-      arrIndex += LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
+      if (header >>> 7 == 0) {
+        targetArray[arrIndex++] = (byte) header;
+      } else if (header >>> 14 == 0) {
+        targetArray[arrIndex++] = (byte) ((header & 0x7F) | 0x80);
+        targetArray[arrIndex++] = (byte) (header >>> 7);
+      } else {
+        arrIndex += LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
+      }
       writerIndex += arrIndex - targetIndex;
       System.arraycopy(bytes, 0, targetArray, arrIndex, bytesLen);
     } else {
@@ -644,7 +647,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     byte[] heapMemory = buffer.getHeapMemory();
     if (heapMemory != null) {
       final int arrIndex = buffer._unsafeHeapReaderIndex();
-      buffer.increaseReaderIndex(numBytes);
+      buffer._increaseReaderIndexUnsafe(numBytes);
       bytes = new byte[numBytes];
       System.arraycopy(heapMemory, arrIndex, bytes, 0, numBytes);
     } else {

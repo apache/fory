@@ -205,15 +205,14 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   overlay only to call `Lookup#defineHiddenClass` directly, and do not move it to `java9` because
   `Lookup#defineClass` defines normal package classes, not hidden nestmates. Root code must avoid
   direct `Lookup.ClassOption` linkage and cache the method-handle/option-array setup off the hot
-  path.
-- Hidden generated serializers are Java25+ only. Do not broaden serializer hidden-class definition
-  to Java15-24, because those runtimes still use the unsafe-backed field/object path. Keep
-  `AccessorHelper` as the source-generated same-package helper; do not turn it into a bytecode
+  path. Keep this method available for future Java25+ designs even when runtime codegen does not
+  call it.
+- Runtime generated serializers use the normal `CodeGenerator` classloader path, not hidden
+  nestmate class definition. Janino-generated source still cannot directly access target bean
+  private fields through hidden nestmate definition, so do not reintroduce hidden serializer loading
+  or same-package source-access plumbing without a separate Java25 design and measured proof.
+  `AccessorHelper` remains the source-generated same-package helper; do not turn it into a bytecode
   hidden-field owner unless a separate Java25-only design explicitly requires that.
-- JDK25 hidden generated serializers must not emit private split helper methods. Janino lowers
-  private instance helpers to static bridge methods whose receiver parameter uses the original
-  binary class name, which fails hidden-class verification. Use non-private final split helpers on
-  that path.
 - Runtime codegen must not emit Janino source that names bootstrap JDK implementation classes in
   concealed or non-source-public packages. Generated source in the unnamed module cannot access
   those classes even when Fory's trusted field-access path can read/write their fields; use

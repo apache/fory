@@ -962,7 +962,9 @@ public final class MemoryBuffer {
     } else {
       final int writerIdx = writerIndex;
       final int newIdx = writerIdx + 1;
-      ensure(newIdx);
+      if (newIdx > size) {
+        globalAllocator.grow(this, newIdx);
+      }
       final long pos = address + writerIdx;
       UNSAFE.putByte(heapMemory, pos, value);
       writerIndex = newIdx;

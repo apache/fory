@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.MapEntry;
@@ -294,21 +295,32 @@ public final class UnknownClassSerializers {
 
     @Override
     public void write(WriteContext writeContext, UnknownEnum value) {
+      writeValue(writeContext, writeContext.getBuffer(), value);
+    }
+
+    @CodegenInvoke
+    public final void writeValue(
+        WriteContext writeContext, MemoryBuffer buffer, UnknownEnum value) {
       if (!config.isXlang() && config.serializeEnumByName()) {
         writeContext.writeString(value.name());
       } else {
-        writeContext.getBuffer().writeVarUInt32Small7(value.ordinal());
+        buffer.writeVarUInt32Small7(value.ordinal());
       }
     }
 
     @Override
     public UnknownEnum read(ReadContext readContext) {
+      return readValue(readContext, readContext.getBuffer());
+    }
+
+    @CodegenInvoke
+    public final UnknownEnum readValue(ReadContext readContext, MemoryBuffer buffer) {
       if (!config.isXlang() && config.serializeEnumByName()) {
         readContext.readString();
         return UnknownEnum.UNKNOWN;
       }
 
-      int ordinal = readContext.getBuffer().readVarUInt32Small7();
+      int ordinal = buffer.readVarUInt32Small7();
       if (ordinal >= enumConstants.length) {
         return UnknownEnum.UNKNOWN;
       }

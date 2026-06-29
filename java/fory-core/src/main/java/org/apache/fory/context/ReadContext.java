@@ -55,9 +55,11 @@ public final class ReadContext {
   private final Generics generics;
   private final TypeResolver typeResolver;
   private final RefReader refReader;
+  private final TypeInfoHolder rootTypeInfoHolder;
   private final MetaStringReader metaStringReader;
   private final StringSerializer stringSerializer;
   private final boolean crossLanguage;
+  private final boolean trackingRef;
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final int maxDepth;
@@ -86,9 +88,11 @@ public final class ReadContext {
     this.generics = generics;
     this.typeResolver = typeResolver;
     this.refReader = refReader;
+    rootTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.metaStringReader = metaStringReader;
     stringSerializer = (StringSerializer) typeResolver.getSerializer(String.class);
     crossLanguage = config.isXlang();
+    trackingRef = config.trackingRef();
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
@@ -576,6 +580,20 @@ public final class ReadContext {
       return null;
     }
     return (T) readNonRef(serializer);
+  }
+
+  /** Reads the root object for one deserialization operation. */
+  public Object readRootRef() {
+    if (trackingRef) {
+      return readRef(rootTypeInfoHolder);
+    }
+    MemoryBuffer buffer = this.buffer;
+    int headFlag = buffer.readByte();
+    if (headFlag >= Fory.NOT_NULL_VALUE_FLAG) {
+      TypeInfo typeInfo = typeResolver.readTypeInfo(this, rootTypeInfoHolder);
+      return readNonRef(typeInfo);
+    }
+    return null;
   }
 
   /** Reads a non-null, first-seen object together with its type metadata. */

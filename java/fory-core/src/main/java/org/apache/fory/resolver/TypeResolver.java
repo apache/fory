@@ -123,6 +123,7 @@ public abstract class TypeResolver {
   static final int INTERNAL_NATIVE_ID_LIMIT = 250;
   private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
   private static final float TYPE_ID_MAP_LOAD_FACTOR = 0.5f;
+  static final int TYPE_INFO_CACHE_DEPTH_SLACK = 10;
   static final long MAX_USER_TYPE_ID = 0xffff_fffEL;
 
   private static final class TransformedTypeInfo {
@@ -149,9 +150,9 @@ public abstract class TypeResolver {
   final TypeInfo[] typeIdToTypeInfo;
   // Map for user-registered type ids, keyed by user id.
   final LongMap<TypeInfo> userTypeIdToTypeInfo = new LongMap<>(4, TYPE_ID_MAP_LOAD_FACTOR);
-  // Cache for readTypeInfo(MemoryBuffer) - persists between calls to avoid reloading
+  // Caches for readTypeInfo(ReadContext) - persist between calls to avoid reloading
   // dynamically created classes that can't be found by Class.forName
-  private TypeInfo typeInfoCache;
+  private final TypeInfo[] typeInfoCache;
   private boolean registrationFinished;
 
   protected TypeResolver(
@@ -167,6 +168,8 @@ public abstract class TypeResolver {
     typeDefMap = sharedRegistry.typeDefMap;
     int length = isCrossLanguage() ? Types.BOUND : INTERNAL_NATIVE_ID_LIMIT;
     typeIdToTypeInfo = new TypeInfo[length];
+    typeInfoCache = new TypeInfo[config.maxDepth() + TYPE_INFO_CACHE_DEPTH_SLACK];
+    Arrays.fill(typeInfoCache, NIL_TYPE_INFO);
   }
 
   public final Config getConfig() {
@@ -557,6 +560,27 @@ public abstract class TypeResolver {
     }
   }
 
+  // Generated exact-class branches call this only after code generation resolves the TypeInfo to a
+  // compatible struct id. The wire body stays in writeSharedClassMeta; this helper only skips the
+  // generic type-id switch.
+  @Internal
+  public final void writeCompatibleTypeInfo(
+      WriteContext writeContext, MemoryBuffer buffer, TypeInfo typeInfo) {
+    assert isCompatibleStructTypeId(typeInfo.typeId);
+    buffer.writeUInt8(typeInfo.typeId);
+    writeSharedClassMeta(writeContext, buffer, typeInfo);
+  }
+
+  private static boolean isCompatibleStructTypeId(int typeId) {
+    switch (typeId) {
+      case Types.COMPATIBLE_STRUCT:
+      case Types.NAMED_COMPATIBLE_STRUCT:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   static int toUserTypeId(long userTypeId) {
     Preconditions.checkArgument(
         userTypeId >= 0 && userTypeId <= MAX_USER_TYPE_ID,
@@ -576,6 +600,21 @@ public abstract class TypeResolver {
     return new Invoke(classResolverRef, "writeTypeInfo", buffer, classInfo);
   }
 
+  // Note: Thread safe for jit thread to call.
+  public Expression writeExactClassExpr(
+      Expression classResolverRef,
+      Expression writeContext,
+      Expression buffer,
+      Expression classInfo,
+      Class<?> cls) {
+    TypeInfo typeInfo = getTypeInfo(cls);
+    if (isCompatibleStructTypeId(typeInfo.typeId)) {
+      return new Invoke(
+          classResolverRef, "writeCompatibleTypeInfo", writeContext, buffer, classInfo);
+    }
+    return writeClassExpr(classResolverRef, writeContext, classInfo);
+  }
+
   /**
    * Writes shared class metadata using the meta-share protocol. Protocol: If class already written,
    * writes {@code (index << 1) | 1} (reference). If new class, writes {@code (index << 1)} followed
@@ -585,6 +624,11 @@ public abstract class TypeResolver {
    */
   protected final void writeSharedClassMeta(WriteContext writeContext, TypeInfo typeInfo) {
     MemoryBuffer buffer = writeContext.getBuffer();
+    writeSharedClassMeta(writeContext, buffer, typeInfo);
+  }
+
+  private void writeSharedClassMeta(
+      WriteContext writeContext, MemoryBuffer buffer, TypeInfo typeInfo) {
     MetaWriteContext metaWriteContext = writeContext.getMetaWriteContext();
     assert metaWriteContext != null : SET_META_WRITE_CONTEXT_MSG;
     IdentityObjectIntMap<Class<?>> classMap = metaWriteContext.classMap;
@@ -619,6 +663,8 @@ public abstract class TypeResolver {
    */
   public final TypeInfo readTypeInfo(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
+    int depth = readContext.getDepth();
+    TypeInfo cachedTypeInfo = typeInfoCache[depth];
     int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     switch (typeId) {
@@ -626,20 +672,20 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
+        typeInfo = readRegisteredTypeInfo(typeId, buffer.readVarUInt32(), cachedTypeInfo);
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassTypeInfo(readContext, null);
+        typeInfo = readSharedClassTypeInfo(readContext, null, cachedTypeInfo);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
         if (!metaContextShareEnabled) {
-          typeInfo = readTypeInfoFromBytes(readContext, typeInfoCache, typeId);
+          typeInfo = readTypeInfoFromBytes(readContext, cachedTypeInfo, typeId);
         } else {
-          typeInfo = readSharedClassTypeInfo(readContext, null);
+          typeInfo = readSharedClassTypeInfo(readContext, null, cachedTypeInfo);
         }
         break;
       case Types.LIST:
@@ -654,7 +700,7 @@ public abstract class TypeResolver {
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
     }
-    typeInfoCache = typeInfo;
+    typeInfoCache[depth] = typeInfo;
     return typeInfo;
   }
 
@@ -664,6 +710,8 @@ public abstract class TypeResolver {
    */
   public final TypeInfo readTypeInfo(ReadContext readContext, Class<?> targetClass) {
     MemoryBuffer buffer = readContext.getBuffer();
+    int depth = readContext.getDepth();
+    TypeInfo cachedTypeInfo = typeInfoCache[depth];
     int typeId = buffer.readUInt8();
     TypeInfo typeInfo;
     switch (typeId) {
@@ -671,20 +719,20 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
+        typeInfo = readRegisteredTypeInfo(typeId, buffer.readVarUInt32(), cachedTypeInfo);
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassMeta(readContext, targetClass);
+        typeInfo = readSharedClassMeta(readContext, targetClass, cachedTypeInfo);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
         if (!metaContextShareEnabled) {
-          typeInfo = readTypeInfoFromBytes(readContext, typeInfoCache, typeId);
+          typeInfo = readTypeInfoFromBytes(readContext, cachedTypeInfo, typeId);
         } else {
-          typeInfo = readSharedClassMeta(readContext, targetClass);
+          typeInfo = readSharedClassMeta(readContext, targetClass, cachedTypeInfo);
         }
         break;
       case Types.LIST:
@@ -699,7 +747,7 @@ public abstract class TypeResolver {
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
     }
-    typeInfoCache = typeInfo;
+    typeInfoCache[depth] = typeInfo;
     return typeInfo;
   }
 
@@ -721,7 +769,7 @@ public abstract class TypeResolver {
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
+        typeInfo = readRegisteredTypeInfo(typeId, buffer.readVarUInt32(), typeInfoCache);
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
@@ -763,28 +811,27 @@ public abstract class TypeResolver {
   public final TypeInfo readTypeInfo(ReadContext readContext, TypeInfoHolder classInfoHolder) {
     MemoryBuffer buffer = readContext.getBuffer();
     int typeId = buffer.readUInt8();
+    TypeInfo cachedTypeInfo = classInfoHolder.typeInfo;
     TypeInfo typeInfo;
-    boolean updateCache = false;
     switch (typeId) {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
       case Types.TYPED_UNION:
-        typeInfo = Objects.requireNonNull(userTypeIdToTypeInfo.get(buffer.readVarUInt32()));
+        typeInfo = readRegisteredTypeInfo(typeId, buffer.readVarUInt32(), cachedTypeInfo);
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassTypeInfo(readContext, null);
+        typeInfo = readSharedClassTypeInfo(readContext, null, cachedTypeInfo);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
       case Types.NAMED_UNION:
         if (!metaContextShareEnabled) {
-          typeInfo = readTypeInfoFromBytes(readContext, classInfoHolder.typeInfo, typeId);
-          updateCache = true;
+          typeInfo = readTypeInfoFromBytes(readContext, cachedTypeInfo, typeId);
         } else {
-          typeInfo = readSharedClassTypeInfo(readContext, null);
+          typeInfo = readSharedClassTypeInfo(readContext, null, cachedTypeInfo);
         }
         break;
       case Types.LIST:
@@ -796,22 +843,24 @@ public abstract class TypeResolver {
       default:
         typeInfo = Objects.requireNonNull(getInternalTypeInfoByTypeId(typeId));
     }
+    // Do not return internal TypeInfo above before this check: lazy codegen can briefly clear a
+    // cached TypeInfo serializer while resolving recursive serializers.
     if (typeInfo.serializer == null) {
       typeInfo = ensureSerializerForTypeInfo(typeInfo);
     }
-    if (updateCache) {
+    if (typeInfo != cachedTypeInfo) {
       classInfoHolder.typeInfo = typeInfo;
     }
     return typeInfo;
   }
 
-  /**
-   * Read class info using the provided cache. Returns cached TypeInfo if the namespace and type
-   * name bytes match.
-   */
-  protected final TypeInfo readTypeInfoByCache(
-      ReadContext readContext, TypeInfo typeInfoCache, int header) {
-    return readTypeInfoFromBytes(readContext, typeInfoCache, header);
+  private TypeInfo readRegisteredTypeInfo(int typeId, int userTypeId, TypeInfo cachedTypeInfo) {
+    TypeInfo typeInfo = cachedTypeInfo;
+    if (typeInfo.typeId != typeId || typeInfo.userTypeId != userTypeId) {
+      typeInfo = userTypeIdToTypeInfo.get(userTypeId);
+      assert typeInfo != null;
+    }
+    return typeInfo;
   }
 
   /**
@@ -849,7 +898,12 @@ public abstract class TypeResolver {
   }
 
   public final TypeInfo readSharedClassMeta(ReadContext readContext, Class<?> targetClass) {
-    TypeInfo typeInfo = readSharedClassTypeInfo(readContext, targetClass);
+    return readSharedClassMeta(readContext, targetClass, null);
+  }
+
+  private TypeInfo readSharedClassMeta(
+      ReadContext readContext, Class<?> targetClass, TypeInfo cachedTypeInfo) {
+    TypeInfo typeInfo = readSharedClassTypeInfo(readContext, targetClass, cachedTypeInfo);
     Class<?> readClass = typeInfo.getType();
     if (targetClass != readClass) {
       return getTargetTypeInfo(typeInfo, targetClass);
@@ -858,6 +912,11 @@ public abstract class TypeResolver {
   }
 
   private TypeInfo readSharedClassTypeInfo(ReadContext readContext, Class<?> targetClass) {
+    return readSharedClassTypeInfo(readContext, targetClass, null);
+  }
+
+  private TypeInfo readSharedClassTypeInfo(
+      ReadContext readContext, Class<?> targetClass, TypeInfo cachedTypeInfo) {
     MemoryBuffer buffer = readContext.getBuffer();
     MetaReadContext metaReadContext = readContext.getMetaReadContext();
     assert metaReadContext != null : SET_META_READ_CONTEXT_MSG;
@@ -875,7 +934,14 @@ public abstract class TypeResolver {
       // body/hash/schema-limit/exact-local checks here; the header-miss path owns them before
       // cache publish.
       long id = buffer.readInt64();
-      typeInfo = extRegistry.typeInfoByTypeDefId.get(id);
+      TypeDef cachedTypeDef = cachedTypeInfo == null ? null : cachedTypeInfo.getTypeDef();
+      // A field-local cache hit is valid only when the cached TypeInfo carries the exact checked
+      // TypeDef id that was parsed and accepted earlier by this resolver.
+      if (cachedTypeDef != null && cachedTypeDef.getId() == id) {
+        typeInfo = cachedTypeInfo;
+      } else {
+        typeInfo = extRegistry.typeInfoByTypeDefId.get(id);
+      }
       if (typeInfo != null) {
         TypeDef.skipTypeDef(buffer, id);
       } else {

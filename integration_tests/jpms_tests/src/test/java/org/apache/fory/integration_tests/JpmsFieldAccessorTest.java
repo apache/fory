@@ -130,9 +130,8 @@ public class JpmsFieldAccessorTest {
     Assert.assertEquals(result.value(), 17);
 
     Class<?> serializerClass = serializerClass(fory, PrivateFieldBean.class);
-    Assert.assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
-    Assert.assertSame(
-        Class.class.getMethod("getNestHost").invoke(serializerClass), PrivateFieldBean.class);
+    // Runtime codegen uses the normal CodeGenerator classloader path. JDK25+ final-field access is
+    // guaranteed by the generated VarHandle field, not by hidden-nestmate source access.
     assertVarHandleField(serializerClass, "value");
   }
 

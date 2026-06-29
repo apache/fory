@@ -26,11 +26,13 @@ import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyEnumId;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings("rawtypes")
@@ -65,15 +67,25 @@ public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareab
 
   @Override
   public void write(WriteContext writeContext, Enum value) {
+    writeValue(writeContext, writeContext.getBuffer(), value);
+  }
+
+  @CodegenInvoke
+  public final void writeValue(WriteContext writeContext, MemoryBuffer buffer, Enum value) {
     if (!config.isXlang() && config.serializeEnumByName()) {
       writeContext.writeString(value.name());
     } else {
-      writeContext.getBuffer().writeVarUInt32Small7(tagByOrdinal[value.ordinal()]);
+      buffer.writeVarUInt32Small7(tagByOrdinal[value.ordinal()]);
     }
   }
 
   @Override
   public Enum read(ReadContext readContext) {
+    return readValue(readContext, readContext.getBuffer());
+  }
+
+  @CodegenInvoke
+  public final Enum readValue(ReadContext readContext, MemoryBuffer buffer) {
     if (!config.isXlang() && config.serializeEnumByName()) {
       String name = readContext.readString();
       Enum e = stringToEnum.get(name);
@@ -82,7 +94,7 @@ public class EnumSerializer extends ImmutableSerializer<Enum> implements Shareab
       }
       return handleUnknownEnumValue(name);
     } else {
-      int tag = readContext.getBuffer().readVarUInt32Small7();
+      int tag = buffer.readVarUInt32Small7();
       Enum value = null;
       if (enumConstantByTagArray != null && tag < enumConstantByTagArray.length) {
         value = enumConstantByTagArray[tag];

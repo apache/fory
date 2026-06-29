@@ -40,7 +40,6 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.internal.DefineClass;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.ClassLoaderUtils;
 import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
@@ -136,46 +135,6 @@ public class CodeGenerator {
       }
       parentClassLoader = classLoader;
     }
-    Map<String, byte[]> classes = compileToBytecode(compileUnits, parentClassLoader, callback);
-    return defineClasses(classes);
-  }
-
-  public Class<?> compileAndLoad(CompileUnit unit, CompileCallback callback) {
-    Class<?> neighborClass = unit.getNeighborClass();
-    if (neighborClass == null) {
-      ClassLoader loader = compile(java.util.Collections.singletonList(unit), callback);
-      try {
-        return loader.loadClass(unit.getQualifiedClassName());
-      } catch (ClassNotFoundException e) {
-        throw new IllegalStateException("Impossible because we just compiled class", e);
-      }
-    }
-    checkRuntimeCodegenSupported();
-    DefineState defineState = getDefineState(unit.getQualifiedClassName());
-    if (defineState.definedClass != null) {
-      return defineState.definedClass;
-    }
-    synchronized (defineState.lock) {
-      if (defineState.definedClass != null) {
-        return defineState.definedClass;
-      }
-      ClassLoader parentClassLoader = getClassLoader();
-      Map<String, byte[]> classes =
-          compileToBytecode(java.util.Collections.singletonList(unit), parentClassLoader, callback);
-      byte[] bytecodes = classes.get(classFilepath(unit));
-      if (bytecodes == null) {
-        throw new IllegalStateException(
-            "Compiler did not produce bytecode for " + unit.getQualifiedClassName());
-      }
-      Class<?> definedClass = DefineClass.defineHiddenNestmate(neighborClass, bytecodes);
-      defineState.definedClass = definedClass;
-      defineState.defined = true;
-      return definedClass;
-    }
-  }
-
-  private Map<String, byte[]> compileToBytecode(
-      List<CompileUnit> compileUnits, ClassLoader parentClassLoader, CompileCallback callback) {
     CompileState compileState = getCompileState(compileUnits);
     callback.lock(compileState);
     Map<String, byte[]> classes;
@@ -192,7 +151,7 @@ public class CodeGenerator {
         compileState.lock.unlock();
       }
     }
-    return classes;
+    return defineClasses(classes);
   }
 
   /**
@@ -342,7 +301,6 @@ public class CodeGenerator {
   private static class DefineState {
     final Object lock;
     volatile boolean defined;
-    volatile Class<?> definedClass;
 
     private DefineState() {
       this.lock = new Object();
@@ -449,7 +407,7 @@ public class CodeGenerator {
   }
 
   public static String fullClassName(CompileUnit unit) {
-    return unit.getQualifiedClassName();
+    return unit.pkg + "." + unit.mainClassName;
   }
 
   public static String fullClassNameFromClassFilePath(String classFilePath) {
@@ -564,40 +522,10 @@ public class CodeGenerator {
     if (clz.isPrimitive()) {
       return true;
     }
-    if (!sourcePkgLevelAccessible(clz)) {
+    if (!ReflectionUtils.isPublic(clz)) {
       return false;
     }
-    Class<?> current = clz;
-    while (current != null) {
-      if (!ReflectionUtils.isPublic(current)) {
-        return false;
-      }
-      current = current.getEnclosingClass();
-    }
-    return true;
-  }
-
-  public static boolean sourceAccessibleFrom(Class<?> clz, String pkg) {
-    if (sourcePublicAccessible(clz)) {
-      return true;
-    }
-    if (clz.isArray()) {
-      return sourceAccessibleFrom(clz.getComponentType(), pkg);
-    }
-    if (!sourcePkgLevelAccessible(clz)) {
-      return false;
-    }
-    if (!ReflectionUtils.getPackage(clz).equals(pkg)) {
-      return false;
-    }
-    Class<?> current = clz;
-    while (current != null) {
-      if (ReflectionUtils.isPrivate(current)) {
-        return false;
-      }
-      current = current.getEnclosingClass();
-    }
-    return true;
+    return sourcePkgLevelAccessible(clz);
   }
 
   private static final Map<Class<?>, Boolean> sourcePkgLevelAccessible =

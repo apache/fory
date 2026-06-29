@@ -50,7 +50,6 @@ import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
-import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
 
@@ -270,7 +269,7 @@ public abstract class ForyJsonTestModels {
   }
 
   protected static void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertEquals(json.hasGeneratedWriter(type), JdkVersion.MAJOR_VERSION >= 15);
+    assertTrue(json.hasGeneratedWriter(type));
   }
 
   protected static String repeat(char ch, int length) {

@@ -799,9 +799,10 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     Expression bean;
     if (!isRecord) {
       bean = newBean();
-      Expression referenceObject = invokeReadContext("reference", bean);
       expressions.add(bean);
-      expressions.add(referenceObject);
+      if (typeResolver.trackingRef()) {
+        expressions.add(invokeReadContext("reference", bean));
+      }
     } else {
       if (recordCtrAccessible) {
         bean = new FieldsCollector();

@@ -132,7 +132,11 @@ implementation, CI-fix, or verification task, or when the user explicitly asks f
 
 ## Workflow Changes
 
-- In ASF GitHub Actions, verify new `uses:` entries against approved Apache infrastructure action patterns; replace unapproved actions with approved actions plus shell or Python logic when needed.
+- In ASF GitHub Actions, verify new or updated `uses:` entries against the approved Apache
+  infrastructure action reference at
+  `https://github.com/apache/infrastructure-actions/blob/main/actions.yml`; use an allowlisted pin
+  from that file or replace unapproved actions with approved actions plus shell or Python logic when
+  needed.
 - Do not add workflow dependencies on new repository variables or secrets when GitHub Actions context, constants, or checked-in configuration can provide stable non-secret values. Coordinate required repo config before landing if no safe default exists.
 - If a setup action fails because of a runtime deprecation, verify the current official major and upgrade to the compatible major rather than adding temporary runner flags.
 - Reusable release automation belongs under `ci/` unless the user explicitly requests a language-local script.

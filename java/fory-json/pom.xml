@@ -39,6 +39,8 @@
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+    <fory.json.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.json.jdk25.test.classes>
+    <fory.core.jdk25.test.classes>${project.basedir}/../fory-core/target/jdk25-test-classes</fory.core.jdk25.test.classes>
   </properties>
 
   <dependencies>
@@ -149,6 +151,58 @@
                 </configuration>
               </execution>
             </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk25-core-test-overlay</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>prepare-jdk25-test-classes</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.json.jdk25.test.classes}"/>
+                    <mkdir dir="${fory.json.jdk25.test.classes}"/>
+                    <!-- Reactor tests see dependency target/classes instead of the packaged
+                         multi-release jar. Put Fory core's JDK25 test overlay ahead of the raw
+                         dependency classes so JsonCodegen exercises the same CodecBuilder owner
+                         path as packaged JDK25 runs. -->
+                    <copy todir="${fory.json.jdk25.test.classes}">
+                      <fileset dir="${project.build.outputDirectory}">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.core.jdk25.test.classes}" erroronmissingdir="false">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <argLine>${argLine} --add-opens=java.base/java.lang.invoke=ALL-UNNAMED</argLine>
+              <classesDirectory>${fory.json.jdk25.test.classes}</classesDirectory>
+            </configuration>
           </plugin>
         </plugins>
       </build>
