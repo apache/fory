@@ -20,8 +20,8 @@
 package org.apache.fory.builder;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertTrue;
 
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
@@ -62,8 +62,8 @@ public class CodecUtilsTest {
   private static void assertGeneratedClassShape(Class<?> serializerClass, Class<?> beanClass)
       throws Exception {
     if (JdkVersion.MAJOR_VERSION >= 25) {
-      assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
-      assertSame(Class.class.getMethod("getNestHost").invoke(serializerClass), beanClass);
+      assertFalse((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
+      assertSame(serializerClass.getClassLoader(), beanClass.getClassLoader());
     } else {
       assertSame(
           serializerClass.getClassLoader().loadClass(serializerClass.getName()), serializerClass);

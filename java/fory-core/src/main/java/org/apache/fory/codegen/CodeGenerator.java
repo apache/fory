@@ -34,12 +34,14 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.fory.builder.AccessorHelper;
 import org.apache.fory.builder.Generated;
+import org.apache.fory.codegen.CompileUnit.DefinitionMode;
 import org.apache.fory.collection.Collections;
 import org.apache.fory.collection.MultiKeyWeakMap;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.platform.internal.DefineClass;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.ClassLoaderUtils;
@@ -167,7 +169,18 @@ public class CodeGenerator {
         throw new IllegalStateException(
             "Compiler did not produce bytecode for " + unit.getQualifiedClassName());
       }
-      Class<?> definedClass = DefineClass.defineHiddenNestmate(neighborClass, bytecodes);
+      Class<?> definedClass;
+      if (unit.getDefinitionMode() == DefinitionMode.NORMAL || JdkVersion.MAJOR_VERSION < 15) {
+        definedClass =
+            DefineClass.defineClass(
+                unit.getQualifiedClassName(),
+                neighborClass,
+                parentClassLoader,
+                neighborClass.getProtectionDomain(),
+                bytecodes);
+      } else {
+        definedClass = DefineClass.defineHiddenNestmate(neighborClass, bytecodes);
+      }
       defineState.definedClass = definedClass;
       defineState.defined = true;
       return definedClass;

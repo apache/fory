@@ -29,11 +29,16 @@ import org.apache.fory.util.StringUtils;
 public class CompileUnit {
   private static final Logger LOG = LoggerFactory.getLogger(CompileUnit.class);
 
+  public enum DefinitionMode {
+    HIDDEN_NESTMATE,
+    NORMAL
+  }
+
   String pkg;
   String mainClassName;
-  // Non-null only when the compiled class must be defined as a JDK25+ hidden nestmate of this
-  // neighbor. Ordinary generated classes still use the CodeGenerator classloader path.
+  // Non-null when the compiled class should be defined with this class as the lookup neighbor.
   private final Class<?> neighborClass;
+  private final DefinitionMode definitionMode;
   private String code;
   private Supplier<String> genCodeFunc;
 
@@ -42,10 +47,20 @@ public class CompileUnit {
   }
 
   public CompileUnit(String pkg, String mainClassName, String code, Class<?> neighborClass) {
+    this(pkg, mainClassName, code, neighborClass, DefinitionMode.HIDDEN_NESTMATE);
+  }
+
+  public CompileUnit(
+      String pkg,
+      String mainClassName,
+      String code,
+      Class<?> neighborClass,
+      DefinitionMode definitionMode) {
     this.pkg = pkg;
     this.mainClassName = mainClassName;
     this.code = code;
     this.neighborClass = neighborClass;
+    this.definitionMode = definitionMode;
   }
 
   public CompileUnit(String pkg, String mainClassName, Supplier<String> genCodeFunc) {
@@ -54,10 +69,20 @@ public class CompileUnit {
 
   public CompileUnit(
       String pkg, String mainClassName, Supplier<String> genCodeFunc, Class<?> neighborClass) {
+    this(pkg, mainClassName, genCodeFunc, neighborClass, DefinitionMode.HIDDEN_NESTMATE);
+  }
+
+  public CompileUnit(
+      String pkg,
+      String mainClassName,
+      Supplier<String> genCodeFunc,
+      Class<?> neighborClass,
+      DefinitionMode definitionMode) {
     this.pkg = pkg;
     this.mainClassName = mainClassName;
     this.genCodeFunc = genCodeFunc;
     this.neighborClass = neighborClass;
+    this.definitionMode = definitionMode;
   }
 
   public String getCode() {
@@ -81,6 +106,10 @@ public class CompileUnit {
 
   public Class<?> getNeighborClass() {
     return neighborClass;
+  }
+
+  public DefinitionMode getDefinitionMode() {
+    return definitionMode;
   }
 
   @Override
