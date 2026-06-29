@@ -70,6 +70,21 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
     }
   }
 
+  // The compact array sizes every element slot from the element's declared schema width, so a
+  // fixed-slot write must match that width exactly; see BinaryWriter#checkFixedWidth.
+  // Variable-width elements (fixedWidth < 0) store an offset/length pointer and are not checked.
+  @Override
+  protected void checkFixedWidth(final int ordinal, final int written) {
+    assert fixedWidth < 0 || fixedWidth == written
+        : "element "
+            + ((DataTypes.ListType) field.type()).valueField()
+            + " has a "
+            + fixedWidth
+            + "-byte slot but the codec wrote "
+            + written
+            + " bytes; getForyField width must match encodedType";
+  }
+
   @Override
   protected int writeNumElements() {
     buffer.putInt32(startIndex, numElements);
@@ -79,6 +94,35 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
   @Override
   protected int calculateHeaderInBytes() {
     return CompactBinaryArray.calculateHeaderInBytes(fixedWidth, numElements, elementNullable);
+  }
+
+  // Binary-valued element codecs write through these paths rather than write(long), so the
+  // fixed-slot width check must live here too; see CompactBinaryRowWriter for the row analogue.
+  @Override
+  public void writeUnaligned(
+      final int ordinal, final byte[] input, final int offset, final int numBytes) {
+    if (fixedWidth > 0) {
+      checkFixedWidth(ordinal, numBytes);
+    }
+    super.writeUnaligned(ordinal, input, offset, numBytes);
+  }
+
+  @Override
+  public void writeUnaligned(
+      final int ordinal, final MemoryBuffer input, final int offset, final int numBytes) {
+    if (fixedWidth > 0) {
+      checkFixedWidth(ordinal, numBytes);
+    }
+    super.writeUnaligned(ordinal, input, offset, numBytes);
+  }
+
+  @Override
+  public void writeAlignedBytes(
+      final int ordinal, final MemoryBuffer input, final int baseOffset, final int numBytes) {
+    if (fixedWidth > 0) {
+      checkFixedWidth(ordinal, numBytes);
+    }
+    super.writeAlignedBytes(ordinal, input, baseOffset, numBytes);
   }
 
   @Override

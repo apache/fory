@@ -48,6 +48,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class CompactCodecTest {
@@ -55,6 +56,131 @@ public class CompactCodecTest {
   static {
     Encoders.registerCustomCodec(UUID.class, new CompactUUIDCodec());
     Encoders.registerCustomCodec(NotNullByte.class, new NotNullByteCodec());
+    Encoders.registerCustomCodec(WidthMismatchType.class, Instant.class, new WidthMismatchCodec());
+    Encoders.registerCustomCodec(
+        WidthMismatchCollection.class, Instant.class, new WidthMismatchCodec());
+    Encoders.registerCustomCodec(
+        WidthMismatchBinaryCollection.class, UUID.class, new WidthMismatchBinaryCodec());
+  }
+
+  @Data
+  public static class WidthMismatchType {
+    public Instant t;
+
+    public WidthMismatchType() {}
+  }
+
+  @Data
+  public static class WidthMismatchCollection {
+    public List<Instant> items;
+
+    public WidthMismatchCollection() {}
+  }
+
+  @Data
+  public static class WidthMismatchBinaryCollection {
+    public List<UUID> items;
+
+    public WidthMismatchBinaryCollection() {}
+  }
+
+  // A misconfigured fixed-width-binary element codec: getForyField declares a 16-byte slot but
+  // encode() writes an 8-byte MemoryBuffer, so it routes through the binary write path
+  // (writeUnaligned(MemoryBuffer)) rather than write(long). The compact array writer's
+  // checkFixedWidth must catch this on the binary path too, not only on the primitive path.
+  static class WidthMismatchBinaryCodec implements CustomCodec.MemoryBufferCodec<UUID> {
+    @Override
+    public Field getForyField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.fixedWidthBinary(16));
+    }
+
+    @Override
+    public MemoryBuffer encode(final UUID value) {
+      final MemoryBuffer result = MemoryBuffer.newHeapBuffer(8);
+      result.putInt64(0, value.getMostSignificantBits());
+      return result;
+    }
+
+    @Override
+    public UUID decode(final MemoryBuffer value) {
+      return new UUID(value.readInt64(), 0);
+    }
+  }
+
+  // A misconfigured codec: getForyField declares int32 (a 4-byte compact slot) but encodes a Long,
+  // so encode() writes 8 bytes into a 4-byte slot. The compact writer's checkFixedWidth must catch
+  // this rather than silently overrunning the slot.
+  static class WidthMismatchCodec implements CustomCodec<Instant, Long> {
+    @Override
+    public Field getForyField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.int32());
+    }
+
+    @Override
+    public Long encode(final Instant value) {
+      return value.toEpochMilli();
+    }
+
+    @Override
+    public Instant decode(final Long value) {
+      return Instant.ofEpochMilli(value);
+    }
+
+    @Override
+    public TypeRef<Long> encodedType() {
+      return TypeRef.of(Long.class);
+    }
+  }
+
+  // The width traps are asserts (zero-cost in production), so they only fire with -ea. Surefire
+  // enables assertions by default; skip rather than spuriously fail if run without them.
+  private static void requireAssertions() {
+    boolean assertionsEnabled = false;
+    assert assertionsEnabled = true;
+    if (!assertionsEnabled) {
+      throw new SkipException("requires -ea: width trap is assertion-based");
+    }
+  }
+
+  // The width mismatch corrupts the compact layout (the slot is sized from the declared width);
+  // checkFixedWidth asserts the codec wrote exactly the declared width.
+  @Test(expectedExceptions = AssertionError.class)
+  public void widthMismatchOnCompactWrite() {
+    requireAssertions();
+    final WidthMismatchType bean = new WidthMismatchType();
+    bean.t = Instant.ofEpochMilli(1_700_000_000_000L);
+    Encoders.buildBeanCodec(WidthMismatchType.class).compactEncoding().build().get().toRow(bean);
+  }
+
+  // The same guard must cover compact collection elements, where each slot is sized from the
+  // element's declared width. A misconfigured element codec writing the wrong width must trip the
+  // assert on the array write path, not just the row write path.
+  @Test(expectedExceptions = AssertionError.class)
+  public void widthMismatchOnCompactArrayElement() {
+    requireAssertions();
+    final WidthMismatchCollection bean = new WidthMismatchCollection();
+    bean.items = Arrays.asList(Instant.ofEpochMilli(1_700_000_000_000L));
+    Encoders.buildBeanCodec(WidthMismatchCollection.class)
+        .compactEncoding()
+        .build()
+        .get()
+        .toRow(bean);
+  }
+
+  // Same guard on the binary write path: a fixed-width-binary element codec that encodes the wrong
+  // number of bytes routes through writeUnaligned(MemoryBuffer), not write(long). The compact array
+  // writer must check the width there too, otherwise an 8-byte write silently underfills a 16-byte
+  // element slot.
+  @Test(expectedExceptions = AssertionError.class)
+  public void widthMismatchOnCompactArrayBinaryElement() {
+    requireAssertions();
+    final WidthMismatchBinaryCollection bean = new WidthMismatchBinaryCollection();
+    bean.items = Arrays.asList(new UUID(1, 2));
+    Encoders.buildBeanCodec(WidthMismatchBinaryCollection.class)
+        .compactEncoding()
+        .build()
+        .get()
+        .toRow(bean);
   }
 
   @Data

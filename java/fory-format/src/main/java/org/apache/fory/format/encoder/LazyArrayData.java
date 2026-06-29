@@ -61,9 +61,10 @@ public class LazyArrayData extends AbstractExpression {
    */
   public LazyArrayData(
       Expression inputArrayData,
+      Class<?> enclosingType,
       TypeRef<?> elemType,
       SerializableBiFunction<Expression, Expression, Expression> notNullAction) {
-    this(inputArrayData, elemType, notNullAction, null);
+    this(inputArrayData, enclosingType, elemType, notNullAction, null);
   }
 
   /**
@@ -72,6 +73,7 @@ public class LazyArrayData extends AbstractExpression {
    */
   public LazyArrayData(
       Expression inputArrayData,
+      Class<?> enclosingType,
       TypeRef<?> elemType,
       SerializableBiFunction<Expression, Expression, Expression> notNullAction,
       Expression nullValue) {
@@ -79,8 +81,12 @@ public class LazyArrayData extends AbstractExpression {
     Preconditions.checkArgument(getRawType(inputArrayData.type()) == BinaryArray.class);
     this.inputArrayData = inputArrayData;
     CustomTypeHandler customTypeHandler = CustomTypeEncoderRegistry.customTypeHandler();
+    // Resolve the element codec scoped to the same enclosing type the schema used: the bean for a
+    // bean's collection field, Object for a top-level collection, falling back to an Object-scoped
+    // registration. A bean-scoped codec applies to that bean's collection elements, not only its
+    // direct fields, but does not bind to a top-level collection the schema never applied it to.
     CustomCodec<?, ?> customEncoder =
-        customTypeHandler.findCodec(BinaryArray.class, elemType.getRawType());
+        customTypeHandler.findCodec(enclosingType, elemType.getRawType());
     TypeRef<?> accessType;
     if (customEncoder == null) {
       accessType = elemType;
