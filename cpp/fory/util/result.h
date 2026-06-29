@@ -22,6 +22,7 @@
 #include "fory/util/error.h"
 #include "fory/util/logging.h"
 #include "fory/util/macros.h"
+#include <cstddef>
 #include <new>
 #include <type_traits>
 #include <utility>
