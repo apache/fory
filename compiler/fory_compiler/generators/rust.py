@@ -1364,7 +1364,20 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         )
         field_name = self.get_field_identifier(parent_stack[-1], field)
 
-        lines.append(f"pub {field_name}: {rust_type},")
+        field_line = f"pub {field_name}: {rust_type},"
+
+        if len(f"    {field_line}") > 80 and rust_type.startswith(
+            "::std::collections::HashMap<"
+        ):
+            inner_type = rust_type.removeprefix("::std::collections::HashMap<").removesuffix(">")
+            key_type, value_type = inner_type.split(", ", 1)
+
+            lines.append(f"pub {field_name}: ::std::collections::HashMap<")
+            lines.append(f"    {key_type},")
+            lines.append(f"    {value_type},")
+            lines.append(">,")
+        else:
+            lines.append(field_line)
 
         return lines
 
